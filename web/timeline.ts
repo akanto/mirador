@@ -46,6 +46,18 @@ export type TimelineBlock =
   | PermissionBlock
   | (Origin & { kind: "error"; message: string });
 
+export type Author = "user" | "agent";
+
+export function authorOf(block: TimelineBlock | undefined): Author | null {
+  if (!block || block.kind === "notice") return null;
+  return block.kind === "user" ? "user" : "agent";
+}
+
+export function startsAuthorGroup(timeline: TimelineBlock[], index: number) {
+  const author = authorOf(timeline[index]);
+  return author !== null && author !== authorOf(timeline[index - 1]);
+}
+
 type TextBlockKind = "user" | "agent" | "thought";
 
 export function contentText(content: ContentBlock): string {

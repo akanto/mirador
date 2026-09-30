@@ -50,8 +50,8 @@ test("chat and canvas can be resized, stay above a minimum width and remember th
 test.describe("on a system in dark mode", () => {
   test.use({ colorScheme: "dark" });
   const background = (page: Page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  const LIGHT = "rgb(246, 247, 249)";
-  const DARK = "rgb(21, 23, 27)";
+  const LIGHT = "rgb(255, 255, 255)";
+  const DARK = "rgb(18, 19, 23)";
 
   test("the theme is light unless the user picks dark or matching the system, and the choice is remembered", async ({ page }) => {
     await signIn(page, host);

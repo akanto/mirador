@@ -2,12 +2,12 @@ import type { SessionConfigOption, SessionConfigSelectOption, ToolCallContent } 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { harnessLabels, terminalActivityLabels, type AskMode, type Conversation, type Profile } from "../shared/model.ts";
+import { harnessLabels, terminalActivityLabels, type AskMode, type Conversation, type HarnessId, type Profile } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
 import type { OpenConversation } from "./state.ts";
-import { buildTimeline, contentText, type PermissionBlock, type TimelineBlock, type ToolBlock } from "./timeline.ts";
+import { authorOf, buildTimeline, contentText, startsAuthorGroup, type Author, type PermissionBlock, type TimelineBlock, type ToolBlock } from "./timeline.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 
 function MarkdownText({ text }: { text: string }) {
@@ -255,13 +255,60 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
   );
 }
 
-function TimestampedEntry({ block, conversationId }: { block: TimelineBlock; conversationId: string }) {
+const agentNames: Record<HarnessId, string> = { claude: "Claude", opencode: "opencode" };
+const agentMarks: Record<HarnessId, string> = { claude: "✳", opencode: "◆" };
+
+function PersonIcon() {
   return (
-    <div className="timeline-entry">
-      <time className="timestamp" dateTime={new Date(block.at).toISOString()} title={formatFullTime(block.at)}>
-        {formatClockTime(block.at)}
-      </time>
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="5.2" r="3" fill="currentColor" />
+      <path d="M2.4 14.6c.7-3.1 2.9-4.6 5.6-4.6s4.9 1.5 5.6 4.6z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function Avatar({ author, harness }: { author: Author; harness: HarnessId }) {
+  return author === "user" ? (
+    <span className="avatar user" aria-hidden="true">
+      <PersonIcon />
+    </span>
+  ) : (
+    <span className={`avatar agent-${harness}`} aria-hidden="true">
+      {agentMarks[harness]}
+    </span>
+  );
+}
+
+function Timestamp({ at }: { at: number }) {
+  return (
+    <time className="timestamp" dateTime={new Date(at).toISOString()} title={formatFullTime(at)}>
+      {formatClockTime(at)}
+    </time>
+  );
+}
+
+function TimestampedEntry({
+  block,
+  startsGroup,
+  harness,
+  conversationId,
+}: {
+  block: TimelineBlock;
+  startsGroup: boolean;
+  harness: HarnessId;
+  conversationId: string;
+}) {
+  const author = authorOf(block);
+  return (
+    <div className={`timeline-entry ${startsGroup ? "group-start" : ""} ${author ? "" : "notice-entry"}`}>
+      <div className="gutter">{startsGroup && author ? <Avatar author={author} harness={harness} /> : <Timestamp at={block.at} />}</div>
       <div className="entry-body">
+        {startsGroup && (
+          <div className="author">
+            {author === "user" ? "You" : agentNames[harness]}
+            <Timestamp at={block.at} />
+          </div>
+        )}
         <TimelineEntry block={block} conversationId={conversationId} />
       </div>
     </div>
@@ -395,8 +442,14 @@ export function ChatPanel({
       <div className="timeline" ref={ref} onScroll={onScroll}>
         {!open.loaded && <div className="notice-line">Loading…</div>}
         {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas on the right.</div>}
-        {timeline.map((block) => (
-          <TimestampedEntry key={block.key} block={block} conversationId={conversation.id} />
+        {timeline.map((block, index) => (
+          <TimestampedEntry
+            key={block.key}
+            block={block}
+            startsGroup={startsAuthorGroup(timeline, index)}
+            harness={conversation.harness}
+            conversationId={conversation.id}
+          />
         ))}
         {conversation.status === "running" && <div className="working">Working…</div>}
       </div>

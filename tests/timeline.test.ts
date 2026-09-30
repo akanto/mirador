@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
-import { buildTimeline } from "../web/timeline.ts";
+import { buildTimeline, startsAuthorGroup, type TimelineBlock } from "../web/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -64,6 +64,14 @@ describe("buildTimeline", () => {
   test("a message made of many chunks has the time of its first chunk", () => {
     const timeline = buildTimeline(stored([{ type: "user-message", text: "hi" }, agentText("Hel"), agentText("lo")]));
     expect(timeline.map(({ at }) => at)).toEqual([1000, 2000]);
+  });
+});
+
+describe("startsAuthorGroup", () => {
+  test("a block opens a group when its author differs from the one before, and notices belong to no one", () => {
+    const block = (kind: string) => ({ kind, key: kind, at: 0, text: "" }) as TimelineBlock;
+    const timeline = ["user", "user", "agent", "tool", "notice", "agent", "error", "notice"].map(block);
+    expect(timeline.map((_, index) => startsAuthorGroup(timeline, index))).toEqual([true, false, true, false, false, true, false, false]);
   });
 });
 

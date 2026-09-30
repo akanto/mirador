@@ -86,6 +86,19 @@ function statusDot(conversation: Conversation) {
   return <span className={`dot status-${conversation.status}`} title={conversation.statusDetail ?? conversation.status} />;
 }
 
+const markColors = ["#6e56cf", "#0e9384", "#d9822b", "#3e63dd", "#d6409f", "#12a594", "#8e4ec6", "#ad7f58"];
+
+function initialsOf(name: string) {
+  const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const initials = words.length > 1 ? words.slice(0, 2).map((word) => word.charAt(0)).join("") : name.slice(0, 2);
+  return initials.toUpperCase();
+}
+
+function markColorOf(name: string) {
+  const hash = [...name].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) >>> 0, 7);
+  return markColors[hash % markColors.length];
+}
+
 const launchKey = ({ harness, profileId }: Launch) => profileId ?? harness;
 
 /** Every agent on its own, then every profile (each belongs to one agent). */
@@ -144,6 +157,9 @@ function WorkspaceSection({
   return (
     <section className="workspace">
       <header>
+        <span className="workspace-mark" style={{ background: markColorOf(workspace.name) }} aria-hidden="true">
+          {initialsOf(workspace.name)}
+        </span>
         <div className="workspace-name" title={workspace.path}>
           {workspace.name}
         </div>

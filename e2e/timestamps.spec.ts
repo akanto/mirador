@@ -16,7 +16,9 @@ test.afterAll(async () => {
   gateway.stop();
 });
 
-test("each line shows its time while pointed at, or always once timestamps are switched on", async ({ page }) => {
+test("each author's name carries the time; later lines show theirs while pointed at, or always once timestamps are switched on", async ({
+  page,
+}) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const dialog = await createProfile(page, "fake gateway", gatewayEnvironment(gateway));
@@ -27,30 +29,34 @@ test("each line shows its time while pointed at, or always once timestamps are s
   await expect(page.locator(".timeline")).toContainText("fake gateway says no", { timeout: 60_000 });
   await waitForTurnToEnd(page);
 
-  const timestamps = page.locator(".timeline .timestamp");
   const userLine = page.locator(".timeline-entry", { has: page.locator(".message.user") });
-  const userLineTime = userLine.locator(".timestamp");
-  await expect(timestamps.first()).toBeHidden();
-  const agentLine = page.locator(".timeline-entry", { has: page.locator(".message.agent") }).first();
-  const indentOf = async () => (await agentLine.locator(".entry-body").boundingBox())!.x - (await agentLine.boundingBox())!.x;
-  expect(await indentOf()).toBe(0);
-  await userLine.locator(".message.user").hover();
+  const userLineTime = userLine.locator(".author .timestamp");
+  await expect(userLine.locator(".author")).toContainText("You");
   await expect(userLineTime).toBeVisible();
   await expect(userLineTime).toHaveText(/^\d\d:\d\d$/);
   await expect(userLineTime).toHaveAttribute("title", new RegExp(String(new Date().getFullYear())));
+  await expect(page.locator(".timeline-entry", { has: page.locator(".message.agent") }).locator(".author")).toContainText("Claude");
+
+  const laterLine = page.locator(".timeline-entry", { has: page.locator(".error-line") });
+  const laterLineTime = laterLine.locator(".gutter .timestamp");
+  await expect(laterLine).not.toHaveClass(/group-start/);
+  await expect(laterLineTime).toBeHidden();
+  const indentOf = async () => (await laterLine.locator(".entry-body").boundingBox())!.x - (await laterLine.boundingBox())!.x;
+  const indentWithTimeHidden = await indentOf();
+  await laterLine.hover();
+  await expect(laterLineTime).toBeVisible();
+  await expect(laterLineTime).toHaveText(/^\d\d:\d\d$/);
   await page.locator(".chat-header h2").hover();
-  await expect(userLineTime).toBeHidden();
+  await expect(laterLineTime).toBeHidden();
 
   const toggle = page.getByLabel("Show timestamps");
   await expect(toggle).not.toBeChecked();
   await toggle.check();
-  expect(await indentOf()).toBeGreaterThan(20);
-  expect(await timestamps.count()).toBeGreaterThan(1);
-  for (const timestamp of await timestamps.all()) await expect(timestamp).toBeVisible();
+  await expect(laterLineTime).toBeVisible();
+  expect(await indentOf()).toBe(indentWithTimeHidden);
   await page.reload();
   await expect(page.getByLabel("Show timestamps")).toBeChecked();
-  await expect(userLineTime).toBeVisible();
+  await expect(laterLineTime).toBeVisible();
   await page.getByLabel("Show timestamps").uncheck();
-  await expect(userLineTime).toBeHidden();
-  expect(await indentOf()).toBe(0);
+  await expect(laterLineTime).toBeHidden();
 });
