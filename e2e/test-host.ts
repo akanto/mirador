@@ -1,0 +1,138 @@
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+
+const repoRoot = join(import.meta.dirname, "..");
+export const notifierDir = join(homedir(), ".config", "claude-notifier");
+const claudeProjectsDir = join(homedir(), ".claude", "projects");
+const TRANSCRIPT_WRITERS_GRACE_MS = 2_000;
+
+/**
+ * Test sessions must be muted in the user's real claude-notifier directory; otherwise its
+ * hooks (auto-approve in yolo mode, phone mirroring) act on them. These are the markers
+ * this app wrote, so cleanup can remove them again.
+ */
+function appMuteMarkers() {
+  if (!existsSync(notifierDir)) return [];
+  return readdirSync(notifierDir)
+    .filter((name) => name.startsWith("mute-"))
+    .filter((name) => readFileSync(join(notifierDir, name), "utf8").includes("(visualized-sessions)"));
+}
+
+/** Runs the real host (and through it a real Claude Code on a cheap model) in throwaway directories. */
+export class TestHost {
+  /** Only a path until start(): Playwright also imports spec files in a process that never runs their hooks. */
+  readonly root = join(tmpdir(), `vcs-e2e-${crypto.randomUUID().slice(0, 8)}`);
+  readonly dataDir = join(this.root, "data");
+  readonly projectDir = join(this.root, "project");
+  private starts = 0;
+  private logFile?: import("node:fs").WriteStream;
+  private readonly markersBefore = new Set(appMuteMarkers());
+  readonly origin: string;
+  authUrl = "";
+  private process?: ChildProcess;
+  private output = "";
+
+  constructor(readonly port: number) {
+    this.origin = `http://127.0.0.1:${port}`;
+  }
+
+  /** A fresh token per start, like production, so resume must re-supply it to the agent. */
+  get mcpToken() {
+    return `e2e-mcp-token-${this.starts}`;
+  }
+
+  /** VCS_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
+  private baseEnvironment(): NodeJS.ProcessEnv {
+    if (!process.env.VCS_E2E_MINIMAL_ENV) return process.env;
+    const bunDir = dirname(execFileSync("which", ["bun"], { encoding: "utf8" }).trim());
+    return {
+      HOME: homedir(),
+      USER: process.env.USER,
+      TMPDIR: process.env.TMPDIR,
+      LANG: "en_US.UTF-8",
+      PATH: [bunDir, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":"),
+    };
+  }
+
+  async start() {
+    if (!existsSync(this.projectDir)) {
+      mkdirSync(this.projectDir, { recursive: true });
+      writeFileSync(join(this.projectDir, "README.md"), "# e2e project\n");
+    }
+    this.starts += 1;
+    this.output = "";
+    const child = spawn(process.env.VCS_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun", ["host/main.ts"], {
+      cwd: repoRoot,
+      env: {
+        ...this.baseEnvironment(),
+        VCS_PORT: String(this.port),
+        VCS_DATA_DIR: this.dataDir,
+        VCS_MCP_TOKEN: this.mcpToken,
+        VCS_TEST_MODEL: process.env.VCS_TEST_MODEL ?? "haiku",
+        VCS_TEST_EFFORT: process.env.VCS_TEST_EFFORT ?? "low",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    this.process = child;
+    const log = createWriteStream(join(this.root, "host.log"), { flags: "a" });
+    this.logFile = log;
+    const capture = (chunk: Buffer) => {
+      this.output += chunk;
+      log.write(chunk);
+    };
+    child.stdout!.on("data", capture);
+    child.stderr!.on("data", capture);
+    child.once("exit", (code, signal) => log.end(`\n[host exited: ${code ?? signal}]\n`));
+    const deadline = Date.now() + 15_000;
+    while (!this.output.includes("/auth?token=")) {
+      if (Date.now() > deadline || child.exitCode !== null) throw new Error(`host did not start:\n${this.output}`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    this.authUrl = this.output.match(/(http:\/\/\S+\/auth\?token=\w+)/)![1]!;
+  }
+
+  async stop() {
+    const child = this.process;
+    if (!child || child.exitCode !== null) return;
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    this.logFile?.write(`\n${new Date().toISOString()} [test host: sending SIGTERM]\n`);
+    child.kill("SIGTERM");
+    await exited;
+  }
+
+  async restart() {
+    await this.stop();
+    await this.start();
+  }
+
+  get log() {
+    return this.output;
+  }
+
+  async cleanUp() {
+    appMuteMarkers()
+      .filter((name) => !this.markersBefore.has(name))
+      .forEach((name) => rmSync(join(notifierDir, name), { force: true }));
+    if (process.env.VCS_E2E_KEEP) return;
+    rmSync(this.root, { recursive: true, force: true });
+    this.removeClaudeTranscripts();
+    await new Promise((resolve) => setTimeout(resolve, TRANSCRIPT_WRITERS_GRACE_MS));
+    this.removeClaudeTranscripts();
+  }
+
+  /** Claude Code processes outlive the host briefly and write a last "interrupted" entry while they stop. */
+  private removeClaudeTranscripts() {
+    this.claudeTranscriptDirs().forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+  }
+
+  /** Claude Code keeps a transcript directory per working directory; these are the test project's. */
+  private claudeTranscriptDirs() {
+    if (!existsSync(claudeProjectsDir)) return [];
+    const rootName = basename(this.root);
+    return readdirSync(claudeProjectsDir)
+      .filter((name) => name.includes(rootName))
+      .map((name) => join(claudeProjectsDir, name));
+  }
+}

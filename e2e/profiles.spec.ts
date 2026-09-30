@@ -1,0 +1,149 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
+import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
+import { addWorkspace, createProfile, openProfiles, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { TestHost } from "./test-host.ts";
+
+const host = new TestHost(4780);
+const prelaunchMarker = join(host.root, "prelaunch-ran");
+
+const gateway = new FakeGateway();
+
+const profilePicker = (page: Page) => page.getByLabel("Profile", { exact: true });
+const chosenProfile = (page: Page) => profilePicker(page).locator("option:checked");
+
+async function requestContaining(text: string) {
+  const find = () => gateway.messageRequests().find(({ body }) => body.includes(text));
+  await expect.poll(find, { timeout: 60_000 }).toBeDefined();
+  return find()!;
+}
+
+test.describe.configure({ mode: "serial" });
+test.beforeAll(async () => {
+  await gateway.start();
+  await host.start();
+});
+test.afterAll(async () => {
+  await host.stop();
+  await host.cleanUp();
+  gateway.stop();
+});
+
+test("a profile's environment and pre-launch command reach Claude Code, and its secrets stay hidden", async ({ page }) => {
+  await signIn(page, host);
+  await addWorkspace(page, host.projectDir);
+
+  const dialog = await openProfiles(page);
+  await dialog.getByLabel("Environment", { exact: true }).fill('ANTHROPIC_MODEL="$model"');
+  await expect(dialog.locator(".form-errors")).toContainText("values are not expanded");
+  await expect(dialog.getByRole("button", { name: "Create profile" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  const environment = [
+    "-u ANTHROPIC_API_KEY",
+    "# pasted from a shell alias",
+    `ANTHROPIC_BASE_URL=${gateway.url}`,
+    'ANTHROPIC_AUTH_TOKEN="e2e-gateway-token"',
+    "ANTHROPIC_MODEL=e2e-gateway-model",
+  ].join("\n");
+  const saved = await createProfile(page, "fake gateway", environment, `echo "$ANTHROPIC_BASE_URL" > '${prelaunchMarker}'`);
+  await expect(saved.getByLabel("Environment (secrets hidden)")).toContainText("ANTHROPIC_AUTH_TOKEN=••••••");
+  await expect(page.getByText("e2e-gateway-token")).toHaveCount(0);
+  await saved.getByRole("button", { name: "Close" }).click();
+
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "fake gateway · Claude Code" });
+  await startConversation(page);
+  await expect(chosenProfile(page)).toHaveText("fake gateway");
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("e2e-gateway-model");
+  expect(readFileSync(prelaunchMarker, "utf8").trim()).toBe(gateway.url);
+
+  await sendMessage(page, "hello");
+  await expect.poll(() => gateway.tokensSentToMessages(), { timeout: 60_000 }).toContain("Bearer e2e-gateway-token");
+  expect(gateway.messageRequests().some(({ body }) => JSON.parse(body).model === "e2e-gateway-model")).toBe(true);
+  await expect(page.locator(".timeline")).toContainText("fake gateway says no", { timeout: 60_000 });
+  await waitForTurnToEnd(page);
+});
+
+test("saving a changed profile restarts its agent, and the conversation continues with the new environment", async ({ page }) => {
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  const dialog = await openProfiles(page);
+  await dialog.getByRole("button", { name: "Edit environment" }).click();
+  const field = dialog.getByLabel("Environment", { exact: true });
+  await field.fill((await field.inputValue()).replace("e2e-gateway-token", "e2e-rotated-token"));
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByText("Saved")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await sendMessage(page, "hello again");
+  await expect.poll(() => gateway.tokensSentToMessages(), { timeout: 60_000 }).toContain("Bearer e2e-rotated-token");
+  await expect(page.locator(".timeline")).not.toContainText("agent process was restarted");
+});
+
+test("a failing pre-launch command is reported with its output", async ({ page }) => {
+  await signIn(page, host);
+  await createProfile(page, "broken proxy", "A=1", "echo 'proxy binary missing' >&2; exit 3");
+  await page.getByRole("dialog", { name: "Profiles" }).getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "broken proxy · Claude Code" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page.locator(".chat-header .status-detail")).toContainText(
+    "The pre-launch command of Claude Code (broken proxy) exited with 3: proxy binary missing",
+    { timeout: 30_000 },
+  );
+  expect(existsSync(prelaunchMarker)).toBe(true);
+});
+
+test("a conversation moves to another profile of its agent and continues the same session there", async ({ page }) => {
+  await signIn(page, host);
+  const saved = await createProfile(page, "second gateway", `${gatewayEnvironment(gateway, "e2e-second-token")}\nANTHROPIC_MODEL=e2e-second-model`);
+  await saved.getByRole("button", { name: "Close" }).click();
+  await page.locator(".workspace li", { hasText: "hello" }).click();
+  await expect(chosenProfile(page)).toHaveText("fake gateway");
+
+  await profilePicker(page).selectOption({ label: "second gateway" });
+  await expect(page.locator(".timeline")).toContainText("Now using the profile “second gateway”");
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("e2e-second-model", { timeout: 60_000 });
+  await sendMessage(page, "after the switch");
+  const afterSwitch = await requestContaining("after the switch");
+  expect(afterSwitch.authorization).toBe("Bearer e2e-second-token");
+  expect(JSON.parse(afterSwitch.body).model).toBe("e2e-second-model");
+  expect(afterSwitch.body).toContain("hello again");
+  await waitForTurnToEnd(page);
+  await expect(page.locator(".timeline")).not.toContainText("Could not resume");
+});
+
+test("a new conversation moved to another profile before its first message starts there", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "fake gateway · Claude Code" });
+  await startConversation(page);
+  await profilePicker(page).selectOption({ label: "second gateway" });
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("e2e-second-model", { timeout: 60_000 });
+
+  await sendMessage(page, "first message, on the second gateway");
+  const first = await requestContaining("first message, on the second gateway");
+  expect(first.authorization).toBe("Bearer e2e-second-token");
+  await waitForTurnToEnd(page);
+  await expect(page.locator(".timeline")).not.toContainText("Could not resume");
+  await expect(page.locator(".timeline")).toContainText("fake gateway says no");
+});
+
+test("a conversation whose profile was deleted continues after picking another one", async ({ page }) => {
+  await signIn(page, host);
+  const dialog = await openProfiles(page);
+  await dialog.locator(".profile-list li", { hasText: "second gateway" }).click();
+  page.once("dialog", (confirmation) => confirmation.accept());
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(dialog.locator(".profile-list li", { hasText: "second gateway" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.locator(".workspace li", { hasText: "hello" }).click();
+  await expect(chosenProfile(page)).toHaveText("Deleted profile");
+
+  await profilePicker(page).selectOption({ label: "fake gateway" });
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("e2e-gateway-model", { timeout: 60_000 });
+  await sendMessage(page, "back on the first gateway");
+  const afterSwitch = await requestContaining("back on the first gateway");
+  expect(afterSwitch.authorization).toBe("Bearer e2e-rotated-token");
+  expect(afterSwitch.body).toContain("after the switch");
+  await waitForTurnToEnd(page);
+});
