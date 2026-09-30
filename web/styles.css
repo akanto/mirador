@@ -571,6 +571,11 @@ button.primary {
   color: var(--muted);
 }
 
+.config.yolo.on {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .config select {
   padding: 2px 4px;
   font-size: 12px;
@@ -586,6 +591,7 @@ button.primary {
 }
 
 .timeline-entry {
+  position: relative;
   display: flex;
   gap: 8px;
   align-items: baseline;
@@ -598,6 +604,18 @@ button.primary {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   user-select: none;
+}
+
+:root:not([data-timestamps="shown"]) .timestamp {
+  position: absolute;
+  top: -9px;
+  right: 0;
+  width: auto;
+  padding: 1px 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 1;
 }
 
 :root:not([data-timestamps="shown"]) .timeline-entry:not(:hover) > .timestamp {
@@ -937,13 +955,19 @@ button.primary {
 }
 
 .canvas-frame.ask-context iframe {
+  flex: none;
+  box-sizing: content-box;
   height: 45vh;
+  max-height: 80vh;
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .canvas-frame.ask-preview iframe {
+  flex: none;
+  box-sizing: content-box;
   height: 240px;
+  max-height: 60vh;
   border: 1px solid var(--border);
   border-radius: 6px;
 }

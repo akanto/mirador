@@ -65,7 +65,9 @@ export class ScriptedModel {
       return this.call(response, { name: canvasTool("show"), arguments: { title: argument, html: `<h1>${argument}</h1>` } });
     }
     if (directive === "ASK") {
-      return this.call(response, { name: canvasTool("ask"), arguments: { question: argument, options: [{ label: "Red" }, { label: "Blue" }] } });
+      const context = `<h2>Why this matters</h2><div style="height:600px">Taller than the frame's starting height</div>`;
+      const options = [{ label: "Red", html: `<div style="height:100px">Red swatch</div>` }, { label: "Blue" }];
+      return this.call(response, { name: canvasTool("ask"), arguments: { question: argument, html: context, options } });
     }
     return this.say(response, `Echo: ${text}`);
   }

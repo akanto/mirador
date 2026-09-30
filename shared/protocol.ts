@@ -34,6 +34,7 @@ export type ClientMessage =
   | { type: "conversation.prompt"; conversationId: string; text: string }
   | { type: "conversation.cancel"; conversationId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }
+  | { type: "conversation.set-bypass-permissions"; conversationId: string; bypassPermissions: boolean }
   | { type: "conversation.set-config"; conversationId: string; configId: string; value: string | boolean }
   | { type: "permission.respond"; conversationId: string; permissionId: string; optionId: string | null }
   | { type: "ask.answer"; itemId: string; label: string; note?: string }

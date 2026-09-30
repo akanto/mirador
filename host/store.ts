@@ -34,6 +34,7 @@ const addedColumns = [
   { table: "workspaces", column: "default_harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
   { table: "profiles", column: "harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
   { table: "conversations", column: "title_set_by_user", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "conversations", column: "bypass_permissions", definition: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 type WorkspaceRow = {
@@ -56,6 +57,7 @@ type ConversationRow = {
   title_set_by_user: number;
   acp_session_id: string | null;
   ask_mode: AskMode;
+  bypass_permissions: number;
   config_options: string;
   created_at: number;
   updated_at: number;
@@ -87,6 +89,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   titleSetByUser: row.title_set_by_user === 1,
   acpSessionId: row.acp_session_id,
   askMode: row.ask_mode,
+  bypassPermissions: row.bypass_permissions === 1,
   status: "idle",
   statusDetail: null,
   openInTerminal: null,
@@ -156,8 +159,8 @@ export class Store {
   insertConversation(conversation: Conversation) {
     this.db
       .query(
-        `INSERT INTO conversations (id, workspace_id, harness, profile_id, title, title_set_by_user, acp_session_id, ask_mode, config_options, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO conversations (id, workspace_id, harness, profile_id, title, title_set_by_user, acp_session_id, ask_mode, bypass_permissions, config_options, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         conversation.id,
@@ -168,6 +171,7 @@ export class Store {
         Number(conversation.titleSetByUser),
         conversation.acpSessionId,
         conversation.askMode,
+        Number(conversation.bypassPermissions),
         JSON.stringify(conversation.configOptions),
         conversation.createdAt,
         conversation.updatedAt,
@@ -177,7 +181,7 @@ export class Store {
   updateConversation(conversation: Conversation) {
     this.db
       .query(
-        `UPDATE conversations SET profile_id = ?, title = ?, title_set_by_user = ?, acp_session_id = ?, ask_mode = ?, config_options = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE conversations SET profile_id = ?, title = ?, title_set_by_user = ?, acp_session_id = ?, ask_mode = ?, bypass_permissions = ?, config_options = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
         conversation.profileId,
@@ -185,6 +189,7 @@ export class Store {
         Number(conversation.titleSetByUser),
         conversation.acpSessionId,
         conversation.askMode,
+        Number(conversation.bypassPermissions),
         JSON.stringify(conversation.configOptions),
         conversation.updatedAt,
         conversation.id,

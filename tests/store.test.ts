@@ -18,6 +18,7 @@ function seededStore() {
     titleSetByUser: false,
     acpSessionId: null,
     askMode: "wait",
+    bypassPermissions: false,
     status: "idle",
     statusDetail: null,
     openInTerminal: null,
@@ -42,8 +43,8 @@ describe("Store", () => {
   test("updates a conversation's persisted fields but always loads it idle", () => {
     const { store, conversation } = seededStore();
     store.saveProfile({ id: "p1", name: "work", harness: "claude", environment: "", prelaunch: "", createdAt: 1 });
-    store.updateConversation({ ...conversation, profileId: "p1", title: "renamed", askMode: "next-message", acpSessionId: "s1", status: "running" });
-    expect(store.findConversation("c1")).toMatchObject({ profileId: "p1", title: "renamed", askMode: "next-message", acpSessionId: "s1", status: "idle" });
+    store.updateConversation({ ...conversation, profileId: "p1", title: "renamed", askMode: "next-message", bypassPermissions: true, acpSessionId: "s1", status: "running" });
+    expect(store.findConversation("c1")).toMatchObject({ profileId: "p1", title: "renamed", askMode: "next-message", bypassPermissions: true, acpSessionId: "s1", status: "idle" });
   });
 
   test("upserts canvas items by id", () => {
@@ -104,7 +105,7 @@ describe("Store", () => {
     expect(store.findWorkspace("w1")?.defaultLaunch).toEqual({ harness: "claude", profileId: null });
     expect(store.findConversation("c1")?.profileId).toBeNull();
     expect(store.findProfile("p1")?.harness).toBe("claude");
-    expect(store.findConversation("c1")?.titleSetByUser).toBe(false);
+    expect(store.findConversation("c1")).toMatchObject({ titleSetByUser: false, bypassPermissions: false });
     store.close();
   });
 });

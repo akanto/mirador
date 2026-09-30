@@ -64,6 +64,7 @@ const conversation = (id: string, workspaceId: string, createdAt: number): Conve
   titleSetByUser: false,
   acpSessionId: null,
   askMode: "wait",
+  bypassPermissions: false,
   status: "idle",
   statusDetail: null,
   openInTerminal: null,

@@ -84,6 +84,25 @@ function ProfilePicker({ conversation, profiles }: { conversation: Conversation;
   );
 }
 
+function YoloSwitch({ conversation }: { conversation: Conversation }) {
+  return (
+    <label
+      className={`config yolo ${conversation.bypassPermissions ? "on" : ""}`}
+      title="Bypass permissions: approve everything the agent asks to do, without asking you"
+    >
+      <input
+        type="checkbox"
+        aria-label="YOLO"
+        checked={conversation.bypassPermissions}
+        onChange={(event) =>
+          connection.send({ type: "conversation.set-bypass-permissions", conversationId: conversation.id, bypassPermissions: event.target.checked })
+        }
+      />
+      YOLO
+    </label>
+  );
+}
+
 const askModeLabels: Record<AskMode, string> = {
   wait: "Agent waits for my answer",
   "next-message": "My answer is sent as the next message",
@@ -123,6 +142,7 @@ function ChatHeader({
         {conversation.configOptions.map((option) => (
           <ConfigControl key={option.id} conversationId={conversation.id} option={option} />
         ))}
+        <YoloSwitch conversation={conversation} />
         <label className="config" title="What happens when the agent asks you a question in the canvas">
           <span>Questions</span>
           <select

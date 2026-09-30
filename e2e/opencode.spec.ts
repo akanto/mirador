@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { agentEnvironment } from "../host/acp/environment.ts";
 import { applyEnvironment, parseEnvironment } from "../shared/profile-environment.ts";
 import { addWorkspace, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
@@ -35,6 +35,9 @@ test.afterAll(async () => {
   model.stop();
 });
 
+const innerOverflowOf = (frame: Locator) =>
+  frame.contentFrame().locator("html").evaluate((html) => html.scrollHeight - html.clientHeight);
+
 async function chooseScriptedOpencode(page: Page) {
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · opencode` });
 }
@@ -62,7 +65,14 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await waitForTurnToEnd(page);
 
   await sendMessage(page, "ASK Pick a color");
-  await page.getByRole("button", { name: "Choose “Blue”" }).click({ timeout: 60_000 });
+  const context = page.locator(".canvas-frame.ask-context iframe");
+  await expect(context.contentFrame().locator("h2")).toHaveText("Why this matters", { timeout: 60_000 });
+  await expect.poll(() => innerOverflowOf(context)).toBe(0);
+  expect((await context.boundingBox())!.height).toBeGreaterThan(600);
+  const preview = page.locator(".canvas-frame.ask-preview iframe");
+  await expect.poll(() => innerOverflowOf(preview)).toBe(0);
+  expect((await preview.boundingBox())!.height).toBeLessThan(200);
+  await page.getByRole("button", { name: "Choose “Blue”" }).click();
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Blue");
 });
@@ -99,4 +109,25 @@ test("an opencode conversation moves to another opencode profile and keeps its c
   await expect(lastAgentMessage(page)).toContainText("Echo: after the switch");
   expect(JSON.stringify(model.requests.at(-1)!.messages)).toContain("Pick a color");
   await expect(page.locator(".timeline")).not.toContainText("Could not resume");
+});
+
+test("with YOLO on, tools run without asking, and switching it on approves the request already waiting", async ({ page }) => {
+  await signIn(page, host);
+  await chooseScriptedOpencode(page);
+  await startConversation(page);
+  const yolo = page.getByLabel("YOLO", { exact: true });
+  await expect(yolo).not.toBeChecked();
+
+  await sendMessage(page, "RUN echo approved-by-yolo");
+  await expect(page.locator(".permission.pending")).toBeVisible({ timeout: 60_000 });
+  await yolo.click();
+  await expect(yolo).toBeChecked();
+  await expect(lastAgentMessage(page)).toContainText("Tool result: approved-by-yolo", { timeout: 60_000 });
+  await waitForTurnToEnd(page);
+
+  await sendMessage(page, "RUN echo no-questions-asked");
+  await expect(lastAgentMessage(page)).toContainText("Tool result: no-questions-asked", { timeout: 60_000 });
+  await expect(page.locator(".permission")).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByLabel("YOLO", { exact: true })).toBeChecked();
 });

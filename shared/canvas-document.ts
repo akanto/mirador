@@ -3,6 +3,7 @@ export const CANVAS_MESSAGE_SOURCE = "vcs-canvas";
 export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "error"; message: string }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "rendered"; errors: string[] }
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "size"; height: number }
   | {
       source: typeof CANVAS_MESSAGE_SOURCE;
       itemId: string;
@@ -46,7 +47,7 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
   ].join("; ");
 }
 
-function errorReporter(itemId: string) {
+function frameReporter(itemId: string) {
   return `(() => {
   const itemId = ${JSON.stringify(itemId)};
   const errors = [];
@@ -69,6 +70,7 @@ function errorReporter(itemId: string) {
     consoleError.apply(console, args);
   };
   addEventListener("load", () => setTimeout(() => post({ kind: "rendered", errors }), 1500));
+  new ResizeObserver(() => post({ kind: "size", height: Math.ceil(document.documentElement.getBoundingClientRect().height) })).observe(document.documentElement);
   addEventListener("keydown", (event) => {
     if (!event.isTrusted || !(event.metaKey || event.ctrlKey || event.altKey)) return;
     const target = event.target;
@@ -95,7 +97,7 @@ export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: 
     `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy(assetsOrigin))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
-    `<script>${errorReporter(itemId)}</script>`,
+    `<script>${frameReporter(itemId)}</script>`,
     "<style>html{background:#fff;color:#111;font-family:system-ui,sans-serif}</style>",
     withoutDoctype,
   ].join("\n");

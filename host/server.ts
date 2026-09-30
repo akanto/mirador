@@ -151,6 +151,8 @@ export function startServer(services: HostServices) {
         return conversations.cancel(message.conversationId);
       case "conversation.set-ask-mode":
         return conversations.setAskMode(message.conversationId, message.askMode);
+      case "conversation.set-bypass-permissions":
+        return conversations.setBypassPermissions(message.conversationId, message.bypassPermissions);
       case "conversation.set-config":
         return conversations.setConfigOption(message.conversationId, message.configId, message.value);
       case "permission.respond":

@@ -27,11 +27,16 @@ const TITLE_LENGTH = 60;
 
 type PermissionResolver = (optionId: string | null) => void;
 
+interface PendingPermission {
+  settle: PermissionResolver;
+  allowOptionId: string | null;
+}
+
 interface Runtime {
   sessionId?: Promise<string>;
   harness?: HarnessProcess;
   running: boolean;
-  pendingPermissions: Map<string, PermissionResolver>;
+  pendingPermissions: Map<string, PendingPermission>;
   queuedMessages: string[];
 }
 
@@ -113,6 +118,7 @@ export class ConversationService {
       titleSetByUser: false,
       acpSessionId: null,
       askMode: "wait",
+      bypassPermissions: false,
       status: "idle",
       statusDetail: null,
       openInTerminal: null,
@@ -183,6 +189,13 @@ export class ConversationService {
     this.save({ ...this.get(conversationId), askMode });
   }
 
+  /** Switching YOLO on also approves the requests already waiting for the user. */
+  setBypassPermissions(conversationId: string, bypassPermissions: boolean) {
+    this.save({ ...this.get(conversationId), bypassPermissions });
+    if (!bypassPermissions) return;
+    this.runtime(conversationId).pendingPermissions.forEach(({ settle, allowOptionId }) => allowOptionId && settle(allowOptionId));
+  }
+
   async setConfigOption(conversationId: string, configId: string, value: ConfigValue) {
     const sessionId = await this.ensureSession(conversationId);
     const response = await this.harnessFor(this.get(conversationId)).setConfigOption(sessionId, configId, value);
@@ -222,7 +235,7 @@ export class ConversationService {
 
   async cancel(conversationId: string) {
     const runtime = this.runtime(conversationId);
-    runtime.pendingPermissions.forEach((resolve) => resolve(null));
+    runtime.pendingPermissions.forEach(({ settle }) => settle(null));
     const conversation = this.get(conversationId);
     if (runtime.running && conversation.acpSessionId) {
       await this.harnessFor(conversation).cancel(conversation.acpSessionId);
@@ -230,9 +243,9 @@ export class ConversationService {
   }
 
   respondToPermission(conversationId: string, permissionId: string, optionId: string | null) {
-    const resolve = this.runtime(conversationId).pendingPermissions.get(permissionId);
-    if (!resolve) throw new Error("This permission request is no longer pending.");
-    resolve(optionId);
+    const pending = this.runtime(conversationId).pendingPermissions.get(permissionId);
+    if (!pending) throw new Error("This permission request is no longer pending.");
+    pending.settle(optionId);
   }
 
   /** Where the conversations' Claude Code sessions are registered; a profile may set its own config directory. */
@@ -450,6 +463,10 @@ export class ConversationService {
   ): Promise<acp.RequestPermissionResponse> {
     const conversationId = this.conversationBySession.get(request.sessionId);
     if (!conversationId) return Promise.resolve({ outcome: { outcome: "cancelled" } });
+    const allowOptionId = optionThatAllows(request.options);
+    if (allowOptionId && this.get(conversationId).bypassPermissions) {
+      return Promise.resolve({ outcome: { outcome: "selected", optionId: allowOptionId } });
+    }
     const runtime = this.runtime(conversationId);
     const permissionId = crypto.randomUUID();
     this.append(conversationId, {
@@ -464,7 +481,7 @@ export class ConversationService {
         this.append(conversationId, { type: "permission-resolved", permissionId, optionId });
         resolve(optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } });
       };
-      runtime.pendingPermissions.set(permissionId, settle);
+      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId });
       signal.addEventListener("abort", () => settle(null), { once: true });
     });
   }
@@ -477,7 +494,7 @@ export class ConversationService {
       if (runtime.harness !== harness) return;
       runtime.harness = undefined;
       runtime.sessionId = undefined;
-      runtime.pendingPermissions.forEach((resolve) => resolve(null));
+      runtime.pendingPermissions.forEach(({ settle }) => settle(null));
       if (runtime.running) this.append(conversationId, { type: "error", message: `The ${harness.spec.label} agent process ${reason}.` });
     });
   }
@@ -541,6 +558,12 @@ export class ConversationService {
   private publish(conversation: Conversation) {
     this.hub.broadcast({ type: "conversation.upserted", conversation: this.withRuntimeStatus(conversation) });
   }
+}
+
+/** Allowing once leaves no trace behind; Claude Code saves an "always" answer into the project's settings. */
+export function optionThatAllows(options: acp.PermissionOption[]): string | null {
+  const allowing = options.find(({ kind }) => kind === "allow_once") ?? options.find(({ kind }) => kind === "allow_always");
+  return allowing?.optionId ?? null;
 }
 
 /** Claude Code and opencode record a session's directory with symlinks resolved (e.g. /var → /private/var on macOS). */

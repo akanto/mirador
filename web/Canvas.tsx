@@ -8,27 +8,32 @@ function CanvasFrame({
   html,
   assetsOrigin,
   className,
+  fitsContent = false,
   onRendered,
 }: {
   frameId: string;
   html: string;
   assetsOrigin: string;
   className?: string;
+  fitsContent?: boolean;
   onRendered?: (errors: string[]) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [contentHeight, setContentHeight] = useState<number>();
   const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin), [html, frameId, assetsOrigin]);
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
 
   useEffect(() => {
     setErrors([]);
+    setContentHeight(undefined);
     const listener = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || !isCanvasFrameMessage(event.data)) return;
       const message = event.data;
       if (message.kind === "error") setErrors((current) => [...current, message.message]);
       if (message.kind === "rendered") onRenderedRef.current?.(message.errors);
+      if (message.kind === "size") setContentHeight(message.height);
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
@@ -36,7 +41,13 @@ function CanvasFrame({
 
   return (
     <div className={`canvas-frame ${className ?? ""}`}>
-      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} />
+      <iframe
+        ref={frame}
+        sandbox="allow-scripts"
+        srcDoc={document}
+        title={frameId}
+        style={fitsContent && contentHeight ? { height: contentHeight } : undefined}
+      />
       {errors.length > 0 && (
         <ul className="frame-errors">
           {errors.map((error, index) => (
@@ -72,14 +83,14 @@ function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: strin
         </div>
       )}
       {item.status === "cancelled" && <div className="ask-answer">This question was withdrawn.</div>}
-      {item.html && <CanvasFrame frameId={`${item.id}-context`} html={item.html} assetsOrigin={assetsOrigin} className="ask-context" />}
+      {item.html && <CanvasFrame frameId={`${item.id}-context`} html={item.html} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />}
       <div className="ask-options">
         {options.map((option, index) => (
           <div key={option.label} className={`ask-option ${item.answer?.label === option.label ? "chosen" : ""}`}>
             <div className="ask-option-label">{option.label}</div>
             {option.description && <div className="ask-option-description">{option.description}</div>}
             {option.html && (
-              <CanvasFrame frameId={`${item.id}-option-${index}`} html={option.html} assetsOrigin={assetsOrigin} className="ask-preview" />
+              <CanvasFrame frameId={`${item.id}-option-${index}`} html={option.html} assetsOrigin={assetsOrigin} className="ask-preview" fitsContent />
             )}
             {waiting && (
               <button className="choose" onClick={() => choose(option.label)}>

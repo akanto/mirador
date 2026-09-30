@@ -64,6 +64,8 @@ export interface Conversation {
   titleSetByUser: boolean;
   acpSessionId: string | null;
   askMode: AskMode;
+  /** YOLO: the app approves whatever the agent asks permission for, without asking the user. */
+  bypassPermissions: boolean;
   status: ConversationStatus;
   statusDetail: string | null;
   openInTerminal: TerminalActivity | null;

@@ -20,6 +20,7 @@ function setUp() {
     titleSetByUser: false,
     acpSessionId: null,
     askMode: "wait",
+    bypassPermissions: false,
     status: "idle",
     statusDetail: null,
     openInTerminal: null,

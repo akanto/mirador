@@ -31,6 +31,9 @@ test("each line shows its time while pointed at, or always once timestamps are s
   const userLine = page.locator(".timeline-entry", { has: page.locator(".message.user") });
   const userLineTime = userLine.locator(".timestamp");
   await expect(timestamps.first()).toBeHidden();
+  const agentLine = page.locator(".timeline-entry", { has: page.locator(".message.agent") }).first();
+  const indentOf = async () => (await agentLine.locator(".entry-body").boundingBox())!.x - (await agentLine.boundingBox())!.x;
+  expect(await indentOf()).toBe(0);
   await userLine.locator(".message.user").hover();
   await expect(userLineTime).toBeVisible();
   await expect(userLineTime).toHaveText(/^\d\d:\d\d$/);
@@ -41,6 +44,7 @@ test("each line shows its time while pointed at, or always once timestamps are s
   const toggle = page.getByLabel("Show timestamps");
   await expect(toggle).not.toBeChecked();
   await toggle.check();
+  expect(await indentOf()).toBeGreaterThan(20);
   expect(await timestamps.count()).toBeGreaterThan(1);
   for (const timestamp of await timestamps.all()) await expect(timestamp).toBeVisible();
   await page.reload();
@@ -48,4 +52,5 @@ test("each line shows its time while pointed at, or always once timestamps are s
   await expect(userLineTime).toBeVisible();
   await page.getByLabel("Show timestamps").uncheck();
   await expect(userLineTime).toBeHidden();
+  expect(await indentOf()).toBe(0);
 });
