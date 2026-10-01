@@ -33,6 +33,12 @@ function describeRender(itemId: string, render: RenderOutcome) {
   return `Shown to the user as canvas item ${itemId}, but the page reported errors:\n${render.errors.map((error) => `- ${error}`).join("\n")}`;
 }
 
+/**
+ * With tool search on, Claude Code hides MCP tools until the agent searches for them, and an agent
+ * that doesn't know the canvas exists rarely does. This marks the canvas tools as always loaded.
+ */
+const loadedUpFront = { "anthropic/alwaysLoad": true };
+
 function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string) {
   const server = new McpServer(
     { name: CANVAS_SERVER_NAME, version: "0.1.0" },
@@ -48,6 +54,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
         title: z.string().min(1).describe("Short title shown above the page."),
         html: z.string().min(1).describe("A complete HTML document or an HTML fragment with inline CSS/JS."),
       }),
+      _meta: loadedUpFront,
     },
     async ({ title, html }) => {
       const { item, render } = await canvas.show(conversationId, { title, html });
@@ -66,6 +73,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
         options: z.array(optionSchema).min(2).max(8),
         allowOther: z.boolean().optional().describe("Let the user type an answer that is not one of the options."),
       }),
+      _meta: loadedUpFront,
     },
     async (request, ctx) => {
       const item = canvas.openAsk(conversationId, request);

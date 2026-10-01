@@ -127,6 +127,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "profile.saved":
     case "sessions.listed":
     case "sessions.failed":
+    case "statusline.rendered":
       return state;
   }
 }

@@ -1,11 +1,26 @@
-import type { SessionConfigOption, SessionConfigSelectOption, ToolCallContent } from "@agentclientprotocol/sdk";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { harnessLabels, terminalActivityLabels, type AskMode, type Conversation, type HarnessId, type Profile } from "../shared/model.ts";
+import { flatSelectOptions } from "../shared/config-options.ts";
+import {
+  harnessLabels,
+  terminalActivityLabels,
+  type AskMode,
+  type Conversation,
+  type HarnessId,
+  type Profile,
+  type QueuedMessage,
+} from "../shared/model.ts";
 import { connection } from "./connection.ts";
+import { choiceGroups } from "./choices.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
+import { joinDrafts, useDraft } from "./drafts.ts";
+import { hints, statusHints } from "./hints.ts";
+import { SearchableSelect } from "./SearchableSelect.tsx";
+import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
+import { Statusline } from "./Statusline.tsx";
 import type { OpenConversation } from "./state.ts";
 import { authorOf, buildTimeline, contentText, startsAuthorGroup, type Author, type PermissionBlock, type TimelineBlock, type ToolBlock } from "./timeline.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
@@ -23,25 +38,38 @@ function MarkdownText({ text }: { text: string }) {
   );
 }
 
-function flatSelectOptions(option: Extract<SessionConfigOption, { type: "select" }>): SessionConfigSelectOption[] {
-  return option.options.flatMap((entry) => ("group" in entry ? entry.options : [entry]));
-}
+/** Past this many choices a plain select is hard to scan: opencode lists every model of every provider. */
+const SEARCHABLE_FROM_CHOICES = 20;
+
+const configOptionHint = (option: SessionConfigOption) => [option.description, hints.configOption].filter(Boolean).join("\n\n");
 
 function ConfigControl({ conversationId, option }: { conversationId: string; option: SessionConfigOption }) {
   const setValue = (value: string | boolean) => connection.send({ type: "conversation.set-config", conversationId, configId: option.id, value });
   if (option.type === "boolean") {
     return (
-      <label className="config" title={option.description ?? undefined}>
+      <label className="config" data-hint={configOptionHint(option)}>
         <input type="checkbox" aria-label={option.name} checked={option.currentValue} onChange={(event) => setValue(event.target.checked)} />
         {option.name}
       </label>
     );
   }
+  const choices = flatSelectOptions(option);
+  if (choices.length > SEARCHABLE_FROM_CHOICES) {
+    return (
+      <SearchableSelect
+        label={option.name}
+        hint={configOptionHint(option)}
+        value={option.currentValue}
+        groups={choiceGroups(option)}
+        onChange={setValue}
+      />
+    );
+  }
   return (
-    <label className="config" title={option.description ?? undefined}>
+    <label className="config" data-hint={configOptionHint(option)}>
       <span>{option.name}</span>
       <select aria-label={option.name} value={option.currentValue} onChange={(event) => setValue(event.target.value)}>
-        {flatSelectOptions(option).map((choice) => (
+        {choices.map((choice) => (
           <option key={choice.value} value={choice.value} title={choice.description ?? undefined}>
             {choice.name}
           </option>
@@ -58,7 +86,7 @@ function ProfilePicker({ conversation, profiles }: { conversation: Conversation;
   const choices = profiles.filter(({ harness }) => harness === conversation.harness);
   const profileWasDeleted = conversation.profileId !== null && !choices.some(({ id }) => id === conversation.profileId);
   return (
-    <label className="config" title="Profile the agent runs with; the conversation continues where it left off">
+    <label className="config" data-hint={hints.profile}>
       <span>Profile</span>
       <select
         aria-label="Profile"
@@ -88,7 +116,7 @@ function YoloSwitch({ conversation }: { conversation: Conversation }) {
   return (
     <label
       className={`config yolo ${conversation.bypassPermissions ? "on" : ""}`}
-      title="Bypass permissions: approve everything the agent asks to do, without asking you"
+      data-hint={hints.yolo}
     >
       <input
         type="checkbox"
@@ -125,14 +153,16 @@ function ChatHeader({
         <h2>
           <ConversationTitle conversation={conversation} startEditingOn="click" className="conversation-name" />
         </h2>
-        <span className={`badge status-${conversation.status}`}>{conversation.status}</span>
+        <span className={`badge status-${conversation.status}`} data-hint={statusHints[conversation.status]}>
+          {conversation.status}
+        </span>
         {conversation.openInTerminal && (
-          <span className={`badge terminal-${conversation.openInTerminal}`} title="This session is also open in Claude Code in a terminal">
+          <span className={`badge terminal-${conversation.openInTerminal}`} data-hint={hints.inTerminal}>
             in a terminal · {terminalActivityLabels[conversation.openInTerminal]}
           </span>
         )}
         <span className="harness">{harnessLabels[conversation.harness]}</span>
-        <button className="toggle-canvas" onClick={onToggleCanvas}>
+        <button className="toggle-canvas" data-hint={hints.canvasToggle} onClick={onToggleCanvas}>
           {canvasVisible ? "Hide canvas" : "Show canvas"}
         </button>
       </div>
@@ -143,7 +173,7 @@ function ChatHeader({
           <ConfigControl key={option.id} conversationId={conversation.id} option={option} />
         ))}
         <YoloSwitch conversation={conversation} />
-        <label className="config" title="What happens when the agent asks you a question in the canvas">
+        <label className="config" data-hint={hints.questions}>
           <span>Questions</span>
           <select
             aria-label="Questions"
@@ -209,7 +239,74 @@ function readableToolTitle(title: string) {
 
 const statusIcons: Record<string, string> = { pending: "○", in_progress: "◐", completed: "●", failed: "✕" };
 
+const PREVIEW_LINES = 8;
+
+const ToolCallsAwaitingPermission = createContext<ReadonlySet<string>>(new Set());
+
+const toolCallsAwaitingPermission = (timeline: TimelineBlock[]) =>
+  new Set(timeline.flatMap((block) => (block.kind === "permission" && !block.resolved ? [block.toolCall.toolCallId] : [])));
+
+const lastPathSegment = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
+
+function CommandLine({ command, directory }: { command: string; directory?: string | null }) {
+  return (
+    <div className="terminal-command">
+      <span className="terminal-prompt" data-hint={directory ?? undefined}>
+        {directory ? `${lastPathSegment(directory)} $` : "$"}
+      </span>
+      <span className="terminal-typed">{command}</span>
+    </div>
+  );
+}
+
+function TerminalOutput({ output, finished, awaitingPermission }: { output: string; finished: boolean; awaitingPermission: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const lines = output ? output.split("\n") : [];
+  const hiddenCount = expanded ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
+  if (lines.length === 0) {
+    const quiet = finished ? "(no output)" : awaitingPermission ? "waiting for your approval…" : "running…";
+    return <div className="terminal-quiet">{quiet}</div>;
+  }
+  return (
+    <>
+      <pre className="terminal-output">{lines.slice(0, lines.length - hiddenCount).join("\n")}</pre>
+      {hiddenCount > 0 && (
+        <button type="button" className="terminal-more" onClick={() => setExpanded(true)}>
+          Show {hiddenCount} more {hiddenCount === 1 ? "line" : "lines"}
+        </button>
+      )}
+      {expanded && lines.length > PREVIEW_LINES && (
+        <button type="button" className="terminal-more" onClick={() => setExpanded(false)}>
+          Show less
+        </button>
+      )}
+    </>
+  );
+}
+
+function ShellCard({ block }: { block: ToolBlock }) {
+  const { command, description, output, exitCode, directory } = shellCommandOf(block);
+  const status = block.status ?? "pending";
+  const failed = status === "failed" || (exitCode !== null && exitCode !== 0);
+  const finished = status === "completed" || status === "failed";
+  const awaitingPermission = useContext(ToolCallsAwaitingPermission).has(block.toolCallId);
+  return (
+    <div className={`shell tool-${status}`}>
+      <div className="shell-header">
+        <span className="tool-status">{statusIcons[status]}</span>
+        <span className="shell-description">{description ?? "Shell command"}</span>
+        {failed && <span className="shell-exit">{exitCode !== null ? `exit ${exitCode}` : "failed"}</span>}
+      </div>
+      <div className="terminal">
+        <CommandLine command={command} directory={directory} />
+        {(status !== "pending" || awaitingPermission) && <TerminalOutput output={output} finished={finished} awaitingPermission={awaitingPermission} />}
+      </div>
+    </div>
+  );
+}
+
 function ToolCard({ block }: { block: ToolBlock }) {
+  if (isShellCommand(block)) return <ShellCard block={block} />;
   return (
     <details className={`tool tool-${block.status ?? "pending"}`}>
       <summary>
@@ -229,6 +326,12 @@ function ToolCard({ block }: { block: ToolBlock }) {
   );
 }
 
+function permissionSubject(toolCall: PermissionBlock["toolCall"]) {
+  if (toolCall.kind !== "execute") return toolCall.title ?? "tool call";
+  const description = (toolCall.rawInput as { description?: unknown } | null | undefined)?.description;
+  return typeof description === "string" ? description : "run a shell command";
+}
+
 function PermissionCard({ block, conversationId }: { block: PermissionBlock; conversationId: string }) {
   const respond = (optionId: string | null) =>
     connection.send({ type: "permission.respond", conversationId, permissionId: block.permissionId, optionId });
@@ -236,10 +339,18 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
   return (
     <div className={`permission ${block.resolved ? "resolved" : "pending"}`}>
       <div className="permission-title">
-        {block.resolved ? "Permission" : "Permission needed"}: {block.toolCall.title ?? "tool call"}
+        {block.resolved ? "Permission" : "Permission needed"}: {permissionSubject(block.toolCall)}
       </div>
-      {block.toolCall.content?.map((content, index) => <ToolContent key={index} content={content} />)}
-      <RawJson label="input" value={block.toolCall.rawInput} />
+      {block.toolCall.kind === "execute" ? (
+        <div className="terminal">
+          <CommandLine command={commandLineOf(block.toolCall.rawInput, block.toolCall.title ?? "")} />
+        </div>
+      ) : (
+        <>
+          {block.toolCall.content?.map((content, index) => <ToolContent key={index} content={content} />)}
+          <RawJson label="input" value={block.toolCall.rawInput} />
+        </>
+      )}
       {block.resolved ? (
         <div className="permission-outcome">{chosen ? chosen.name : "Cancelled"}</div>
       ) : (
@@ -376,47 +487,90 @@ function useStickToBottom(dependency: unknown) {
   return { ref, onScroll };
 }
 
+function QueuedMessages({ messages, onEdit, onRemove }: { messages: QueuedMessage[]; onEdit: (message: QueuedMessage) => void; onRemove: (message: QueuedMessage) => void }) {
+  return (
+    <section className="queue" aria-label="Queued messages">
+      <header data-hint={hints.queue}>Queued · sent when the agent finishes its turn</header>
+      <ol>
+        {messages.map((message) => (
+          <li key={message.id} className="queued">
+            <span className="queued-text">{message.text}</span>
+            <button type="button" className="link" onClick={() => onEdit(message)}>
+              Edit
+            </button>
+            <button type="button" className="link" onClick={() => onRemove(message)}>
+              Remove
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function Composer({ conversation }: { conversation: Conversation }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useDraft(conversation.id);
   const busy = isBusy(conversation);
+  const queued = conversation.queuedMessages;
   const textarea = useRef<HTMLTextAreaElement>(null);
   useEffect(() => textarea.current?.focus(), []);
 
   const send = () => {
-    if (!text.trim() || busy) return;
+    if (!text.trim()) return;
     if (connection.send({ type: "conversation.prompt", conversationId: conversation.id, text })) setText("");
   };
   const cancel = () => connection.send({ type: "conversation.cancel", conversationId: conversation.id });
+  const remove = (message: QueuedMessage) =>
+    connection.send({ type: "conversation.queue.remove", conversationId: conversation.id, messageId: message.id });
+  const pullBack = (message: QueuedMessage) => {
+    remove(message);
+    setText((current) => joinDrafts(current, message.text));
+    textarea.current?.focus();
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const lastQueued = queued.at(-1);
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       send();
+    } else if (event.key === "ArrowUp" && !text && lastQueued) {
+      event.preventDefault();
+      pullBack(lastQueued);
     } else if (event.key === "Escape" && busy) {
       cancel();
     }
   };
 
   return (
-    <div className="composer">
-      <textarea
-        ref={textarea}
-        value={text}
-        rows={Math.min(10, Math.max(2, text.split("\n").length))}
-        placeholder={
-          busy ? "The agent is working… (Esc to stop)" : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line)`
-        }
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      {busy ? (
-        <button className="stop" onClick={cancel}>
-          Stop
-        </button>
-      ) : (
-        <button className="send" onClick={send} disabled={!text.trim()}>
-          Send
-        </button>
-      )}
+    <div className="composer-area">
+      {queued.length > 0 && <QueuedMessages messages={queued} onEdit={pullBack} onRemove={remove} />}
+      <div className="composer">
+        <textarea
+          ref={textarea}
+          value={text}
+          rows={Math.min(10, Math.max(2, text.split("\n").length))}
+          placeholder={
+            busy
+              ? "The agent is working… Enter queues your message, Esc stops the agent"
+              : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line)`
+          }
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        {busy && text.trim() && (
+          <button className="queue-message" onClick={send}>
+            Queue
+          </button>
+        )}
+        {busy ? (
+          <button className="stop" onClick={cancel}>
+            Stop
+          </button>
+        ) : (
+          <button className="send" onClick={send} disabled={!text.trim()}>
+            Send
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -435,9 +589,10 @@ export function ChatPanel({
   onToggleCanvas: () => void;
 }) {
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
+  const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
   const { ref, onScroll } = useStickToBottom(open.events.length);
   return (
-    <>
+    <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
       <ChatHeader conversation={conversation} profiles={profiles} canvasVisible={canvasVisible} onToggleCanvas={onToggleCanvas} />
       <div className="timeline" ref={ref} onScroll={onScroll}>
         {!open.loaded && <div className="notice-line">Loading…</div>}
@@ -461,6 +616,7 @@ export function ChatPanel({
         </div>
       )}
       <Composer conversation={conversation} />
-    </>
+      <Statusline conversation={conversation} profiles={profiles} />
+    </ToolCallsAwaitingPermission.Provider>
   );
 }

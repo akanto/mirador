@@ -54,6 +54,27 @@ export interface Workspace {
   createdAt: number;
 }
 
+export interface QueuedMessage {
+  id: string;
+  text: string;
+}
+
+export interface ContextUsage {
+  used: number;
+  size: number;
+  cost: { amount: number; currency: string } | null;
+}
+
+/** The host's part of a conversation's statusline; the page adds what it already knows. */
+export interface StatuslineRender {
+  gitBranch: string | null;
+  /** Claude Code's `statusLine` command from the conversation's Claude settings, when one is set. */
+  command: string | null;
+  /** What the command printed, ANSI colours and all; null when it was not run or did not succeed. */
+  output: string | null;
+  error: string | null;
+}
+
 export interface Conversation {
   id: string;
   workspaceId: string;
@@ -69,6 +90,10 @@ export interface Conversation {
   status: ConversationStatus;
   statusDetail: string | null;
   openInTerminal: TerminalActivity | null;
+  /** The agent's latest report of its context window; kept in memory only, so it is empty after a host restart until the next response. */
+  contextUsage: ContextUsage | null;
+  /** Messages the user sent while the agent was busy, oldest first; each goes out when the turn before it ends. Kept in memory only. */
+  queuedMessages: QueuedMessage[];
   configOptions: SessionConfigOption[];
   createdAt: number;
   updatedAt: number;

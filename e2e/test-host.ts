@@ -34,7 +34,11 @@ export class TestHost {
   private process?: ChildProcess;
   private output = "";
 
-  constructor(readonly port: number) {
+  /** Test hosts share the user's home directory, so only a host that opts in runs statusline commands from Claude settings; its spec points a profile at settings of its own. */
+  constructor(
+    readonly port: number,
+    private readonly options: { runsUserStatusLine?: boolean } = {},
+  ) {
     this.origin = `http://127.0.0.1:${port}`;
   }
 
@@ -72,6 +76,7 @@ export class TestHost {
         VCS_MCP_TOKEN: this.mcpToken,
         VCS_TEST_MODEL: process.env.VCS_TEST_MODEL ?? "haiku",
         VCS_TEST_EFFORT: process.env.VCS_TEST_EFFORT ?? "low",
+        VCS_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

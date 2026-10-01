@@ -98,7 +98,7 @@ class TimelineBuilder {
       case "error":
         return this.push({ kind: "error", ...origin, message: event.message });
       case "profile-changed":
-        return this.push({ kind: "notice", ...origin, text: event.profileName ? `Now using the profile “${event.profileName}”` : "Now using no profile" });
+        return this.push({ kind: "notice", ...origin, text: event.profileName ? `Now using the profile “${event.profileName}”` : "Now using the agent's own setup, without a profile" });
       case "permission": {
         const block: PermissionBlock = {
           kind: "permission",

@@ -3,6 +3,7 @@ import { harnessIds, launchLabel, terminalActivityLabels, type Conversation, typ
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { startConversationIn } from "./actions.ts";
+import { hints, statusHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
 import { isMac } from "./shortcuts.ts";
 import type { AppAction, AppState, Overlay } from "./state.ts";
@@ -81,9 +82,9 @@ function AddWorkspace({ onDone }: { onDone: () => void }) {
 function statusDot(conversation: Conversation) {
   const inTerminal = conversation.openInTerminal;
   if (inTerminal && conversation.status === "idle") {
-    return <span className={`dot terminal-${inTerminal}`} title={`Open in a terminal: ${terminalActivityLabels[inTerminal]}`} />;
+    return <span className={`dot terminal-${inTerminal}`} data-hint={`Open in a terminal: ${terminalActivityLabels[inTerminal]}`} />;
   }
-  return <span className={`dot status-${conversation.status}`} title={conversation.statusDetail ?? conversation.status} />;
+  return <span className={`dot status-${conversation.status}`} data-hint={conversation.statusDetail ?? statusHints[conversation.status]} />;
 }
 
 const markColors = ["#6e56cf", "#0e9384", "#d9822b", "#3e63dd", "#d6409f", "#12a594", "#8e4ec6", "#ad7f58"];
@@ -116,7 +117,7 @@ function LaunchPicker({ workspace, profiles }: { workspace: Workspace; profiles:
   return (
     <select
       aria-label="Agent"
-      title="Agent (and profile) for new conversations in this workspace"
+      data-hint={hints.launch}
       value={launchKey(workspace.defaultLaunch)}
       onChange={(event) => choose(event.target.value)}
     >
@@ -163,7 +164,7 @@ function WorkspaceSection({
         <div className="workspace-name" title={workspace.path}>
           {workspace.name}
         </div>
-        <button className="icon" title="Remove workspace" onClick={deleteWorkspace}>
+        <button className="icon" aria-label="Remove workspace" data-hint={hints.removeWorkspace} onClick={deleteWorkspace}>
           ×
         </button>
       </header>
@@ -179,7 +180,8 @@ function WorkspaceSection({
             <ConversationTitle conversation={conversation} startEditingOn="double-click" className="conversation-title" />
             <button
               className="icon"
-              title="Delete conversation"
+              aria-label="Delete conversation"
+              data-hint={hints.deleteConversation}
               onClick={(event) => {
                 event.stopPropagation();
                 deleteConversation(conversation);
@@ -196,7 +198,11 @@ function WorkspaceSection({
         </button>
         <LaunchPicker workspace={workspace} profiles={profiles} />
       </div>
-      <button className="link" onClick={() => dispatch({ type: "open-overlay", overlay: { kind: "sessions", workspaceId: workspace.id } })}>
+      <button
+        className="link"
+        data-hint={hints.continueSession}
+        onClick={() => dispatch({ type: "open-overlay", overlay: { kind: "sessions", workspaceId: workspace.id } })}
+      >
         Continue a session…
       </button>
     </section>
@@ -206,7 +212,7 @@ function WorkspaceSection({
 function ThemePicker() {
   const [theme, setTheme] = useTheme();
   return (
-    <label className="theme-picker">
+    <label className="theme-picker" data-hint={hints.theme}>
       Theme
       <select value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
         {Object.entries(themeLabels).map(([value, label]) => (
@@ -222,7 +228,7 @@ function ThemePicker() {
 function TimestampsToggle() {
   const [shown, setShown] = useTimestampsShown();
   return (
-    <label className="timestamps-toggle" title="Off: point at a line to see its time">
+    <label className="timestamps-toggle" data-hint={hints.timestamps}>
       <input type="checkbox" checked={shown} onChange={(event) => setShown(event.target.checked)} />
       Show timestamps
     </label>
@@ -237,7 +243,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
     <nav className="sidebar">
       <header>
         <h1>Workspaces</h1>
-        <button className="icon" title="Add workspace" onClick={() => setAdding(true)}>
+        <button className="icon" aria-label="Add workspace" data-hint={hints.addWorkspace} onClick={() => setAdding(true)}>
           +
         </button>
       </header>
@@ -258,7 +264,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         />
       ))}
       <footer>
-        <button className="link" onClick={() => openOverlay({ kind: "profiles" })}>
+        <button className="link" data-hint={hints.profiles} onClick={() => openOverlay({ kind: "profiles" })}>
           Profiles…
         </button>
         <button className="link" onClick={() => openOverlay({ kind: "palette" })}>

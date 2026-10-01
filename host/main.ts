@@ -7,6 +7,7 @@ import { Hub } from "./hub.ts";
 import { NotifierMute } from "./notifier.ts";
 import { ProfileService } from "./profiles.ts";
 import { startServer } from "./server.ts";
+import { StatuslineService } from "./statusline.ts";
 import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 
@@ -18,7 +19,8 @@ const canvas = new CanvasService(store, hub, conversations);
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
 const profiles = new ProfileService(store, hub, conversations);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles });
+const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline });
 const terminalSessions = new TerminalSessionWatcher(
   () => conversations.claudeConfigDirs(),
   (activityBySession) => conversations.showTerminalActivity(activityBySession),

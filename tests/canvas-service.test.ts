@@ -24,12 +24,14 @@ function setUp() {
     status: "idle",
     statusDetail: null,
     openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
     configOptions: [],
     createdAt: 1,
     updatedAt: 1,
   });
   const nextMessages: string[] = [];
-  const conversations = { deliverAsNextMessage: (_id: string, text: string) => nextMessages.push(text) } as unknown as ConversationService;
+  const conversations = { send: async (_id: string, text: string) => void nextMessages.push(text) } as unknown as ConversationService;
   const canvas = new CanvasService(store, new Hub(), conversations);
   const ask = () => canvas.openAsk("c1", { question: "Color?", options: [{ label: "Red" }, { label: "Blue" }] });
   return { store, canvas, nextMessages, ask };

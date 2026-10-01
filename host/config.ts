@@ -16,6 +16,8 @@ export interface HostConfig {
   testModelOverride: { model?: string; effort?: string };
   /** Hot reload makes open pages swap modules mid-conversation, so it is opt-in for working on the UI itself. */
   developmentMode: boolean;
+  /** Runs the statusline command from the user's Claude Code settings; test hosts turn it off with VCS_STATUSLINE=off. */
+  runsUserStatusLine: boolean;
 }
 
 function loadOrCreateBrowserToken(dataDir: string) {
@@ -49,5 +51,6 @@ export function loadConfig(env = process.env): HostConfig {
     notifierDir: env.VCS_NOTIFIER_DIR ?? notifierDirIfInstalled(),
     testModelOverride: { model: env.VCS_TEST_MODEL, effort: env.VCS_TEST_EFFORT },
     developmentMode: env.VCS_DEV === "1",
+    runsUserStatusLine: env.VCS_STATUSLINE !== "off",
   };
 }

@@ -105,7 +105,7 @@ export class CanvasService {
       answer: { label, note: trimmedNote, deliveredAs: waiter ? "tool-result" : "next-message" },
     });
     if (waiter) waiter.answered({ label, note: trimmedNote });
-    else this.conversations.deliverAsNextMessage(item.conversationId, answerAsMessage(item, label, trimmedNote));
+    else this.conversations.send(item.conversationId, answerAsMessage(item, label, trimmedNote)).catch(() => {});
   }
 
   withdrawWaitingAsks(conversationId: string) {

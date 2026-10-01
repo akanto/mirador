@@ -11,6 +11,7 @@ import { errorMessage, type ConversationService } from "./conversations.ts";
 import type { BrowserSocket, Hub, SocketData } from "./hub.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import type { ProfileService } from "./profiles.ts";
+import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 
 const TOKEN_COOKIE = "vcs_token";
@@ -23,6 +24,7 @@ export interface HostServices {
   canvas: CanvasService;
   mcp: CanvasMcpEndpoints;
   profiles: ProfileService;
+  statusline: StatuslineService;
 }
 
 function sameSecret(candidate: string | null | undefined, secret: string) {
@@ -40,7 +42,7 @@ function cookieValue(request: Request, name: string) {
 }
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline } = services;
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
 
@@ -144,8 +146,12 @@ export function startServer(services: HostServices) {
           canvas: canvas.list(message.conversationId),
         });
       case "conversation.prompt":
-        conversations.prompt(message.conversationId, message.text).catch((error) => reply({ type: "error", message: errorMessage(error) }));
+        conversations.send(message.conversationId, message.text).catch((error) => reply({ type: "error", message: errorMessage(error) }));
         return;
+      case "conversation.queue.edit":
+        return conversations.editQueuedMessage(message.conversationId, message.messageId, message.text);
+      case "conversation.queue.remove":
+        return conversations.removeQueuedMessage(message.conversationId, message.messageId);
       case "conversation.cancel":
         canvas.withdrawWaitingAsks(message.conversationId);
         return conversations.cancel(message.conversationId);
@@ -163,6 +169,11 @@ export function startServer(services: HostServices) {
         return canvas.reportRender(message.itemId, { errors: message.errors });
       case "fs.complete":
         return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
+      case "statusline.render":
+        return statusline
+          .render(message.conversationId, message.columns, message.runCommand)
+          .then((render) => reply({ type: "statusline.rendered", requestId: message.requestId, statusline: render }))
+          .catch((error) => reply({ type: "error", message: errorMessage(error) }));
       default:
         return message satisfies never;
     }

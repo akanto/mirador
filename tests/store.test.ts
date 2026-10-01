@@ -22,6 +22,8 @@ function seededStore() {
     status: "idle",
     statusDetail: null,
     openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
     configOptions: [],
     createdAt: 1,
     updatedAt: 1,

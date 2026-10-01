@@ -68,6 +68,8 @@ const conversation = (id: string, workspaceId: string, createdAt: number): Conve
   status: "idle",
   statusDetail: null,
   openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
   configOptions: [],
   createdAt,
   updatedAt: createdAt,

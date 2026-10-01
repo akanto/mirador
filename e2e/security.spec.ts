@@ -64,7 +64,7 @@ test("a hostile canvas page cannot reach the host, the parent page or the networ
 test("canvas pages can load the bundled three.js, D3 and Mermaid", async ({ page }) => {
   await signIn(page, host);
   await page.locator(".workspace li").first().click();
-  await expect(page.locator(".canvas-tab", { hasText: "Hostile" })).toBeVisible();
+  await expect(page.locator(".canvas-title")).toHaveText("Hostile");
   const conversationId = page.url().match(/#\/c\/(.+)$/)![1]!;
 
   const assetsOrigin = `http://127.0.0.1:${host.port + 1}`;

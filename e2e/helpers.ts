@@ -75,3 +75,20 @@ export async function createProfile(page: Page, name: string, environment: strin
   await expect(dialog.locator(".profile-list li.selected")).toHaveText(`${name}${agent}`);
   return dialog;
 }
+
+export async function answerCanvasQuestion(page: Page, label: string) {
+  const ask = page.locator(".ask");
+  await ask.getByRole("radio", { name: label, exact: true }).check({ timeout: 120_000 });
+  await ask.getByRole("button", { name: "Submit" }).click();
+}
+
+export async function openCanvasHistory(page: Page) {
+  const toggle = page.locator(".history-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  return page.getByRole("list", { name: "Canvas history" });
+}
+
+export async function openFromCanvasHistory(page: Page, title: string) {
+  const history = await openCanvasHistory(page);
+  await history.locator(".history-entry", { hasText: title }).click();
+}

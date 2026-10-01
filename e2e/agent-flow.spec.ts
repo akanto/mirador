@@ -1,7 +1,17 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import {
+  addWorkspace,
+  answerCanvasQuestion,
+  lastAgentMessage,
+  openCanvasHistory,
+  openFromCanvasHistory,
+  sendMessage,
+  signIn,
+  startConversation,
+  waitForTurnToEnd,
+} from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4720);
@@ -47,6 +57,7 @@ test("streams a reply and asks for permission in the browser", async () => {
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("DONE");
   expect(readFileSync(join(host.projectDir, "hello.txt"), "utf8")).toContain("hi");
+  await expect(page.locator(".context-meter")).toHaveText(/^\d+% · [\d.]+k \/ (200k|1M)$/);
 });
 
 test("keeps the name the user chose when Claude Code titles the session", async () => {
@@ -60,19 +71,21 @@ test("shows a page and returns an ask answer as the tool result", async () => {
     page,
     'Call the canvas show tool with title "Greeting" and html "<h1>Hello canvas</h1>". Then call the canvas ask tool with question "Pick a color" and the options Red and Blue. After you get my answer, reply with only the name of the color I picked.',
   );
-  await page.getByRole("button", { name: "Choose “Blue”" }).click({ timeout: 120_000 });
+  await answerCanvasQuestion(page, "Blue");
+  await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue”");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Blue");
+  await openFromCanvasHistory(page, "Pick a color");
   await expect(page.locator(".ask-answer")).toContainText("returned to the agent");
 
-  await page.locator(".canvas-tab", { hasText: "Greeting" }).click();
+  await openFromCanvasHistory(page, "Greeting");
   await expect(page.locator(".canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "Hello canvas" })).toBeVisible();
 });
 
 test("keeps the history across a page refresh", async () => {
   await page.reload();
   await expect(page.locator(".message.user").first()).toContainText("hello.txt");
-  await expect(page.locator(".canvas-tab", { hasText: "Pick a color" })).toBeVisible();
+  await expect((await openCanvasHistory(page)).locator(".history-entry", { hasText: "Pick a color" })).toContainText("→ Blue");
   await expect(lastAgentMessage(page)).toContainText("Blue");
 });
 
@@ -94,12 +107,23 @@ test("resumes the agent session and canvas tools after a host restart", async ()
 test("delivers an answer as the next message when the conversation is set to", async () => {
   await page.getByLabel("Questions").selectOption("next-message");
   await sendMessage(page, 'Call the canvas ask tool with question "Pick a size" and the options Small and Large. Then end your turn.');
-  const choose = page.getByRole("button", { name: "Choose “Large”" });
-  await expect(choose).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator(".ask").getByRole("radio", { name: "Large" })).toBeVisible({ timeout: 120_000 });
   await waitForTurnToEnd(page);
-  await choose.click();
+  await answerCanvasQuestion(page, "Large");
   await expect(page.locator(".message.user").last()).toContainText('My answer to your question "Pick a size": Large');
+  await openFromCanvasHistory(page, "Pick a size");
   await expect(page.locator(".ask-answer")).toContainText("sent as your next message");
   await waitForTurnToEnd(page);
   expect(existsSync(join(host.dataDir, "state.sqlite"))).toBe(true);
+});
+
+test("a conversation that never got a message starts a fresh session after a host restart, without a failed resume", async () => {
+  await startConversation(page);
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("haiku");
+  await host.restart();
+  await expect(page.locator(".banner")).toHaveCount(0, { timeout: 30_000 });
+  await sendMessage(page, "Reply with only the word ready.");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("ready");
+  await expect(page.locator(".error-line")).toHaveCount(0);
 });

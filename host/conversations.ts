@@ -3,11 +3,13 @@ import type * as acp from "@agentclientprotocol/sdk";
 import type {
   AdoptMode,
   AskMode,
+  ContextUsage,
   Conversation,
   ConversationEvent,
   ConversationStatus,
   ExternalSession,
   Launch,
+  QueuedMessage,
   TerminalActivity,
   Workspace,
 } from "../shared/model.ts";
@@ -37,7 +39,7 @@ interface Runtime {
   harness?: HarnessProcess;
   running: boolean;
   pendingPermissions: Map<string, PendingPermission>;
-  queuedMessages: string[];
+  queuedMessages: QueuedMessage[];
 }
 
 export class ConversationService {
@@ -48,6 +50,7 @@ export class ConversationService {
   private readonly updatesForUnknownSessions = new Map<string, acp.SessionNotification[]>();
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
+  private readonly contextUsage = new Map<string, ContextUsage>();
 
   constructor(
     private readonly store: Store,
@@ -122,6 +125,8 @@ export class ConversationService {
       status: "idle",
       statusDetail: null,
       openInTerminal: null,
+      contextUsage: null,
+      queuedMessages: [],
       configOptions: [],
       createdAt: now,
       updatedAt: now,
@@ -139,7 +144,9 @@ export class ConversationService {
       this.conversationBySession.delete(conversation.acpSessionId);
     }
     this.runtimes.delete(conversationId);
+    this.statusOverrides.delete(conversationId);
     this.terminalActivity.delete(conversationId);
+    this.contextUsage.delete(conversationId);
     this.store.deleteConversation(conversationId);
     this.hub.broadcast({ type: "conversation.deleted", conversationId });
   }
@@ -172,7 +179,7 @@ export class ConversationService {
     this.save({
       ...conversation,
       profileId,
-      acpSessionId: this.hasTurns(conversationId) ? conversation.acpSessionId : null,
+      acpSessionId: this.agentHasRecorded(conversationId) ? conversation.acpSessionId : null,
       configOptions: conversation.configOptions.filter(({ id }) => id !== "model"),
     });
     this.append(conversationId, { type: "profile-changed", profileName: profileId && this.existingProfile(profileId).name });
@@ -223,14 +230,21 @@ export class ConversationService {
     this.sendNextQueuedMessage(conversationId);
   }
 
-  /** Sends `text` as the next user message, waiting for the current turn to end if needed. */
-  deliverAsNextMessage(conversationId: string, text: string) {
+  /** Sends `text` as the next user message, queueing it while a turn is running. */
+  async send(conversationId: string, text: string) {
     const runtime = this.runtime(conversationId);
-    if (runtime.running) {
-      runtime.queuedMessages.push(text);
-      return;
-    }
-    this.prompt(conversationId, text).catch(() => {});
+    if (!runtime.running) return this.prompt(conversationId, text);
+    runtime.queuedMessages = [...runtime.queuedMessages, { id: crypto.randomUUID(), text }];
+    this.publish(this.get(conversationId));
+  }
+
+  editQueuedMessage(conversationId: string, messageId: string, text: string) {
+    if (!text.trim()) return this.removeQueuedMessage(conversationId, messageId);
+    this.replaceQueue(conversationId, (queue) => queue.map((message) => (message.id === messageId ? { ...message, text } : message)), messageId);
+  }
+
+  removeQueuedMessage(conversationId: string, messageId: string) {
+    this.replaceQueue(conversationId, (queue) => queue.filter(({ id }) => id !== messageId), messageId);
   }
 
   async cancel(conversationId: string) {
@@ -295,11 +309,14 @@ export class ConversationService {
     return harness && sessionId ? harness.closeSession(sessionId).catch(() => {}) : Promise.resolve();
   }
 
-  /** Claude Code keeps no record of a session before its first message, so such a session cannot be resumed. */
-  private hasTurns(conversationId: string) {
+  /**
+   * Claude Code keeps no record of a session until the agent works on a message in it, so a session
+   * without a finished turn, agent output or replayed history cannot be resumed.
+   */
+  private agentHasRecorded(conversationId: string) {
     return this.store
       .listEvents(conversationId)
-      .some(({ event }) => event.type === "user-message" || (event.type === "acp" && event.update.sessionUpdate === "user_message_chunk"));
+      .some(({ event }) => event.type === "turn-end" || (event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate)));
   }
 
   private async openSession(conversationId: string): Promise<string> {
@@ -310,7 +327,7 @@ export class ConversationService {
     const sessionRequest = this.sessionRequest(conversationId, this.existingWorkspace(conversation.workspaceId));
 
     const canResume = Boolean(capabilities.agentCapabilities?.sessionCapabilities?.resume);
-    if (conversation.acpSessionId && canResume) {
+    if (conversation.acpSessionId && canResume && this.agentHasRecorded(conversationId)) {
       try {
         const resumed = await harness.resumeSession({ ...sessionRequest, sessionId: conversation.acpSessionId });
         this.bindSession(conversationId, conversation.acpSessionId, resumed.configOptions);
@@ -448,13 +465,18 @@ export class ConversationService {
       return;
     }
     const update = notification.update;
+    if (update.sessionUpdate === "usage_update") {
+      this.contextUsage.set(conversationId, { used: update.used, size: update.size, cost: update.cost ? { amount: update.cost.amount, currency: update.cost.currency } : null });
+      this.publish(this.get(conversationId));
+      return;
+    }
     if (update.sessionUpdate === "config_option_update") {
       this.save({ ...this.get(conversationId), configOptions: update.configOptions });
     }
     if (update.sessionUpdate === "session_info_update" && update.title && !this.get(conversationId).titleSetByUser) {
       this.save({ ...this.get(conversationId), title: update.title });
     }
-    if (update.sessionUpdate !== "usage_update") this.append(conversationId, { type: "acp", update });
+    this.append(conversationId, { type: "acp", update });
   }
 
   private handlePermissionRequest(
@@ -513,9 +535,19 @@ export class ConversationService {
     });
   }
 
+  private replaceQueue(conversationId: string, change: (queue: QueuedMessage[]) => QueuedMessage[], messageId: string) {
+    const runtime = this.runtime(conversationId);
+    if (!runtime.queuedMessages.some(({ id }) => id === messageId)) throw new Error("That message was already sent.");
+    runtime.queuedMessages = change(runtime.queuedMessages);
+    this.publish(this.get(conversationId));
+  }
+
   private sendNextQueuedMessage(conversationId: string) {
-    const next = this.runtimes.get(conversationId)?.queuedMessages.shift();
-    if (next !== undefined) this.prompt(conversationId, next).catch(() => {});
+    const runtime = this.runtimes.get(conversationId);
+    const [next, ...rest] = runtime?.queuedMessages ?? [];
+    if (!runtime || !next) return;
+    runtime.queuedMessages = rest;
+    this.prompt(conversationId, next.text).catch(() => {});
   }
 
   private retitleFromFirstMessage(conversationId: string, text: string) {
@@ -535,18 +567,27 @@ export class ConversationService {
     return runtime;
   }
 
+  /** A turn that was still running when its conversation got deleted ends without a trace. */
   private append(conversationId: string, event: ConversationEvent) {
+    if (!this.store.hasConversation(conversationId)) return;
     const stored = this.store.appendEvent(conversationId, event);
     this.hub.publishToConversation(conversationId, { type: "conversation.event", conversationId, event: stored });
   }
 
   private setStatus(conversationId: string, status: ConversationStatus, statusDetail: string | null = null) {
+    if (!this.store.hasConversation(conversationId)) return;
     this.statusOverrides.set(conversationId, { status, statusDetail });
     this.publish(this.get(conversationId));
   }
 
   private withRuntimeStatus(conversation: Conversation): Conversation {
-    return { ...conversation, ...this.statusOverrides.get(conversation.id), openInTerminal: this.terminalActivity.get(conversation.id) ?? null };
+    return {
+      ...conversation,
+      ...this.statusOverrides.get(conversation.id),
+      openInTerminal: this.terminalActivity.get(conversation.id) ?? null,
+      contextUsage: this.contextUsage.get(conversation.id) ?? null,
+      queuedMessages: this.runtimes.get(conversation.id)?.queuedMessages ?? [],
+    };
   }
 
   private save(conversation: Conversation) {
@@ -559,6 +600,8 @@ export class ConversationService {
     this.hub.broadcast({ type: "conversation.upserted", conversation: this.withRuntimeStatus(conversation) });
   }
 }
+
+const updatesTheAgentRecords = new Set<string>(["user_message_chunk", "agent_message_chunk", "agent_thought_chunk", "tool_call"]);
 
 /** Allowing once leaves no trace behind; Claude Code saves an "always" answer into the project's settings. */
 export function optionThatAllows(options: acp.PermissionOption[]): string | null {

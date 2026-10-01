@@ -16,6 +16,13 @@ const chunk = (delta: object, finishReason: string | null = null) => ({
   choices: [{ index: 0, delta, finish_reason: finishReason }],
 });
 
+/** Every reply reports the same token usage, so opencode's context report has a known value. */
+export const SCRIPTED_PROMPT_TOKENS = 42_000;
+const finish = (finishReason: string) => ({
+  ...chunk({}, finishReason),
+  usage: { prompt_tokens: SCRIPTED_PROMPT_TOKENS, completion_tokens: 500, total_tokens: SCRIPTED_PROMPT_TOKENS + 500 },
+});
+
 /**
  * An OpenAI-compatible model for opencode that follows a script instead of thinking: the last
  * user message decides the reply. `RUN <command>` calls bash, `SHOW <title>` and `ASK <question>`
@@ -54,7 +61,7 @@ export class ScriptedModel {
   private reply(request: ChatRequest, response: ServerResponse) {
     const tools = (request.tools ?? []).map(({ function: { name } }) => name);
     const last = request.messages.at(-1);
-    if (tools.length === 0) return this.stream(response, [chunk({ role: "assistant", content: "Scripted title" }), chunk({}, "stop")]);
+    if (tools.length === 0) return this.stream(response, [chunk({ role: "assistant", content: "Scripted title" }), finish("stop")]);
     if (last?.role === "tool") return this.say(response, `Tool result: ${textOf(last)}`);
     const text = textOf(last).trim();
     const canvasTool = (action: string) => tools.find((name) => name.includes("canvas") && name.endsWith(action))!;
@@ -73,12 +80,12 @@ export class ScriptedModel {
   }
 
   private say(response: ServerResponse, text: string) {
-    this.stream(response, [chunk({ role: "assistant", content: text }), chunk({}, "stop")]);
+    this.stream(response, [chunk({ role: "assistant", content: text }), finish("stop")]);
   }
 
   private call(response: ServerResponse, { name, arguments: args }: ToolCall) {
     const toolCall = { index: 0, id: `call_${this.requests.length}`, type: "function", function: { name, arguments: JSON.stringify(args) } };
-    this.stream(response, [chunk({ role: "assistant", tool_calls: [toolCall] }), chunk({}, "tool_calls")]);
+    this.stream(response, [chunk({ role: "assistant", tool_calls: [toolCall] }), finish("tool_calls")]);
   }
 
   private stream(response: ServerResponse, chunks: object[]) {
@@ -87,27 +94,37 @@ export class ScriptedModel {
   }
 }
 
+/** Enough models that the app offers its searchable model picker, as it does for a real opencode with many providers. */
+export const SPARE_MODELS = 24;
+
 /**
  * A profile environment that points opencode at the scripted model and keeps it away from the
  * user's own opencode setup: config, plugins, agents and session database all live under `root`.
  */
 export function scriptedOpencodeEnvironment(model: ScriptedModel, root: string) {
+  const scriptedModel = (name: string) => ({
+    name,
+    modalities: { input: ["text"], output: ["text"] },
+    supportsToolCalls: true,
+    attachment: false,
+    limit: { context: 100_000, output: 4_096 },
+  });
+  const spareModels = Object.fromEntries(Array.from({ length: SPARE_MODELS }, (_, index) => [`spare-${index + 1}`, scriptedModel(`Spare model ${index + 1}`)]));
   const config = {
     model: "e2e/scripted",
+    enabled_providers: ["e2e", "spare"],
     provider: {
       e2e: {
         npm: "@ai-sdk/openai-compatible",
         name: "E2E",
         options: { baseURL: model.url, apiKey: "unused" },
-        models: {
-          scripted: {
-            name: "Scripted",
-            modalities: { input: ["text"], output: ["text"] },
-            supportsToolCalls: true,
-            attachment: false,
-            limit: { context: 100_000, output: 4_096 },
-          },
-        },
+        models: { scripted: scriptedModel("Scripted") },
+      },
+      spare: {
+        npm: "@ai-sdk/openai-compatible",
+        name: "Spare",
+        options: { baseURL: model.url, apiKey: "unused" },
+        models: spareModels,
       },
     },
     permission: { bash: "ask" },

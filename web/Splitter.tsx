@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { hints } from "./hints.ts";
 
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_CHAT_SHARE = 0.45;
@@ -88,7 +89,7 @@ export function Splitter({ chatShare, onChange }: { chatShare: number; onChange:
       aria-label="Resize chat and canvas"
       aria-valuenow={Math.round(chatShare * 100)}
       tabIndex={0}
-      title="Drag to resize, double-click to reset"
+      data-hint={hints.splitter}
       onPointerDown={startDrag}
       onPointerMove={drag}
       onPointerUp={stopDrag}

@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, sendMessage, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openCanvasHistory, sendMessage, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 /**
@@ -35,8 +35,8 @@ test("records whether the agent uses show/ask when nobody asks it to", async ({ 
       await answerQuestionsUntilIdle(page);
       results.push({
         prompt,
-        toolCalls: await page.locator(".tool-title").allInnerTexts(),
-        canvasItems: await page.locator(".canvas-tab .tab-title").allInnerTexts(),
+        toolCalls: await page.locator(".tool-title, .shell .terminal-typed").allInnerTexts(),
+        canvasItems: await canvasTitles(page),
         errors: [...(await page.locator(".error-line").allInnerTexts()), ...(await page.locator(".status-detail").allInnerTexts())],
       });
     }
@@ -50,13 +50,21 @@ test("records whether the agent uses show/ask when nobody asks it to", async ({ 
 
 async function answerQuestionsUntilIdle(page: import("@playwright/test").Page) {
   const badge = page.locator(".chat-header .badge");
-  const choose = page.locator(".ask-option .choose").first();
+  const firstOption = page.locator(".ask-option input[type=radio]:enabled").first();
   const deadline = Date.now() + 10 * 60_000;
   await expect(badge).not.toHaveText("idle", { timeout: 30_000 });
   while (Date.now() < deadline) {
-    if (await choose.isVisible()) await choose.click();
+    if (await firstOption.isVisible()) {
+      await firstOption.check();
+      await page.locator(".ask").getByRole("button", { name: "Submit" }).click();
+    }
     if (["idle", "error"].includes(await badge.innerText())) return;
     await page.waitForTimeout(1000);
   }
   throw new Error("turn did not finish in 10 minutes");
+}
+
+async function canvasTitles(page: import("@playwright/test").Page) {
+  if ((await page.locator(".history-toggle").isDisabled())) return [];
+  return (await openCanvasHistory(page)).locator(".entry-title").allInnerTexts();
 }

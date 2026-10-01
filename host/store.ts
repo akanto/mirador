@@ -93,6 +93,8 @@ const toConversation = (row: ConversationRow): Conversation => ({
   status: "idle",
   statusDetail: null,
   openInTerminal: null,
+  contextUsage: null,
+  queuedMessages: [],
   configOptions: JSON.parse(row.config_options),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -149,6 +151,10 @@ export class Store {
       .query("SELECT * FROM conversations ORDER BY created_at")
       .all()
       .map((row) => toConversation(row as ConversationRow));
+  }
+
+  hasConversation(id: string): boolean {
+    return this.db.query("SELECT 1 FROM conversations WHERE id = ?").get(id) !== null;
   }
 
   findConversation(id: string): Conversation | undefined {

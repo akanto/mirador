@@ -4,6 +4,7 @@ import { focusPane, startConversationIn, startRenamingOpenConversation } from ".
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
+import { HintLayer } from "./Hint.tsx";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
 import { ProfilesDialog } from "./Profiles.tsx";
@@ -179,6 +180,7 @@ export function App() {
       {showCanvas && (
         <CanvasPanel key={conversation!.id} items={state.open!.canvas} assetsOrigin={state.canvasAssetsOrigin} />
       )}
+      <HintLayer />
       <div className="notices">
         {state.notices.map((notice) => (
           <div key={notice.id} className="notice" onClick={() => dispatch({ type: "dismiss-notice", id: notice.id })}>
