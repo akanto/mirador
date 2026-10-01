@@ -259,11 +259,11 @@ const lastPathSegment = (path: string) => path.split("/").filter(Boolean).at(-1)
 
 function CommandLine({ command, directory }: { command: string; directory?: string | null }) {
   return (
-    <div className="terminal-command">
-      <span className="terminal-prompt" data-hint={directory ?? undefined}>
+    <div className="shell-command">
+      <span className="shell-prompt" data-hint={directory ?? undefined}>
         {directory ? `${lastPathSegment(directory)} $` : "$"}
       </span>
-      <span className="terminal-typed">{command}</span>
+      <span className="shell-typed">{command}</span>
     </div>
   );
 }
@@ -274,18 +274,18 @@ function TerminalOutput({ output, finished, awaitingPermission }: { output: stri
   const hiddenCount = expanded ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
   if (lines.length === 0) {
     const quiet = finished ? "(no output)" : awaitingPermission ? "waiting for your approval…" : "running…";
-    return <div className="terminal-quiet">{quiet}</div>;
+    return <div className="shell-quiet">{quiet}</div>;
   }
   return (
     <>
-      <pre className="terminal-output">{lines.slice(0, lines.length - hiddenCount).join("\n")}</pre>
+      <pre className="shell-output">{lines.slice(0, lines.length - hiddenCount).join("\n")}</pre>
       {hiddenCount > 0 && (
-        <button type="button" className="terminal-more" onClick={() => setExpanded(true)}>
+        <button type="button" className="shell-more" onClick={() => setExpanded(true)}>
           Show {hiddenCount} more {hiddenCount === 1 ? "line" : "lines"}
         </button>
       )}
       {expanded && lines.length > PREVIEW_LINES && (
-        <button type="button" className="terminal-more" onClick={() => setExpanded(false)}>
+        <button type="button" className="shell-more" onClick={() => setExpanded(false)}>
           Show less
         </button>
       )}
@@ -306,7 +306,7 @@ function ShellCard({ block }: { block: ToolBlock }) {
         <span className="shell-description">{description ?? "Shell command"}</span>
         {failed && <span className="shell-exit">{exitCode !== null ? `exit ${exitCode}` : "failed"}</span>}
       </div>
-      <div className="terminal">
+      <div className="shell-body">
         <CommandLine command={command} directory={directory} />
         {(status !== "pending" || awaitingPermission) && <TerminalOutput output={output} finished={finished} awaitingPermission={awaitingPermission} />}
       </div>
@@ -339,7 +339,7 @@ function CommandCard({ command, conversationId }: { command: UserCommand; conver
           </button>
         )}
       </div>
-      <div className="terminal">
+      <div className="shell-body">
         <CommandLine command={command.command} />
         <TerminalOutput output={output} finished={command.ended} awaitingPermission={false} />
       </div>
@@ -384,7 +384,7 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
         {block.resolved ? "Permission" : "Permission needed"}: {permissionSubject(block.toolCall)}
       </div>
       {block.toolCall.kind === "execute" ? (
-        <div className="terminal">
+        <div className="shell-body">
           <CommandLine command={commandLineOf(block.toolCall.rawInput, block.toolCall.title ?? "")} />
         </div>
       ) : (

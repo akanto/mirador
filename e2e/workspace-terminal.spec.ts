@@ -29,6 +29,7 @@ test("a terminal opens under the canvas in the workspace folder, keeps its shell
   await runInTerminal(page, "pwd; echo marker-$((6*7))");
   await expect(screen(page)).toContainText("/project");
   await expect(screen(page)).toContainText("marker-42");
+  await expect(page.locator(".terminal-pane .xterm")).toHaveCSS("padding-top", "0px");
   const primary = (await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control";
   await page.keyboard.press(`${primary}+k`);
   await expect(page.getByPlaceholder(/Go to a conversation/)).toBeVisible();

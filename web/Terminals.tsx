@@ -93,7 +93,7 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
       {terminalId ? (
         <TerminalView key={terminalId} terminalId={terminalId} />
       ) : (
-        <div className="terminal-view terminal-idle">
+        <div className="terminal-view terminal-start">
           {terminalIds && (
             <button type="button" onClick={() => openTerminal(workspace.id)}>
               Start a shell

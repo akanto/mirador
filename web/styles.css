@@ -1895,44 +1895,44 @@ input.rename {
   background: color-mix(in srgb, var(--danger) 13%, transparent);
 }
 
-.terminal {
-  --terminal-text: #d7d9e0;
-  --terminal-muted: #868a96;
+.shell-body {
+  --shell-text: #d7d9e0;
+  --shell-muted: #868a96;
   background: #16171c;
-  color: var(--terminal-text);
+  color: var(--shell-text);
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.5;
   padding: 8px 12px;
 }
 
-.permission .terminal {
+.permission .shell-body {
   border-radius: 6px;
 }
 
-.terminal-command {
+.shell-command {
   display: flex;
   gap: 8px;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.terminal-prompt {
+.shell-prompt {
   flex-shrink: 0;
   color: #7fd38a;
   user-select: none;
 }
 
-.terminal-typed {
+.shell-typed {
   color: #ffffff;
 }
 
-.terminal-output {
+.shell-output {
   margin: 6px 0 0;
   padding: 0;
   border: none;
   background: none;
-  color: var(--terminal-text);
+  color: var(--shell-text);
   font: inherit;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1940,13 +1940,13 @@ input.rename {
   overflow: auto;
 }
 
-.terminal-quiet {
+.shell-quiet {
   margin-top: 4px;
-  color: var(--terminal-muted);
+  color: var(--shell-muted);
   font-style: italic;
 }
 
-button.terminal-more {
+button.shell-more {
   display: block;
   margin-top: 4px;
   padding: 0;
@@ -1957,7 +1957,7 @@ button.terminal-more {
   font-size: 12px;
 }
 
-button.terminal-more:hover {
+button.shell-more:hover {
   background: none;
   text-decoration: underline;
 }
@@ -2217,15 +2217,9 @@ button.terminal-more:hover {
   height: 100%;
 }
 
-.terminal-idle {
+.terminal-start {
   display: grid;
   place-items: center;
-}
-
-.terminal-view .xterm {
-  padding: 0;
-  background: none;
-  line-height: normal;
 }
 
 .terminal-view .xterm .xterm-viewport {

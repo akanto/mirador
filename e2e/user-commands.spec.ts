@@ -37,8 +37,8 @@ test("! runs a command in the workspace folder, and its output goes to the agent
   await startConversation(page);
 
   const first = await runCommand(page, "pwd; echo to-stderr >&2");
-  await expect(first.locator(".terminal-output")).toContainText("/project");
-  await expect(first.locator(".terminal-output")).toContainText("to-stderr");
+  await expect(first.locator(".shell-output")).toContainText("/project");
+  await expect(first.locator(".shell-output")).toContainText("to-stderr");
   await expect(first.locator(".shell-description")).toHaveText("Goes to the agent with your next message");
   const attached = page.locator(".command-outputs-attached");
   await expect(attached).toHaveText(/1 command output goes with your next message/);
@@ -50,7 +50,7 @@ test("! runs a command in the workspace folder, and its output goes to the agent
   await expect(attached).toHaveCount(0);
 
   const dropped = await runCommand(page, "echo not-for-the-agent");
-  await expect(dropped.locator(".terminal-output")).toHaveText("not-for-the-agent");
+  await expect(dropped.locator(".shell-output")).toHaveText("not-for-the-agent");
   await page.getByRole("button", { name: "Don't send the command outputs" }).click();
   await expect(attached).toHaveCount(0);
   await expect(dropped.locator(".shell-description")).toHaveText("Not sent to the agent");
@@ -62,7 +62,7 @@ test("! runs a command in the workspace folder, and its output goes to the agent
   await expect(stopped.locator(".shell-description")).toHaveText("Goes to the agent with your next message once it finishes");
   await stopped.getByRole("button", { name: "Stop" }).click();
   await expect(stopped.locator(".shell-exit")).toHaveText("stopped");
-  await expect(stopped.locator(".terminal-quiet")).toHaveText("(no output)");
+  await expect(stopped.locator(".shell-quiet")).toHaveText("(no output)");
 
   await page.reload();
   await expect(page.locator(".user-command")).toHaveCount(3);

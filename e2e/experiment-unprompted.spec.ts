@@ -35,7 +35,7 @@ test("records whether the agent uses show/ask when nobody asks it to", async ({ 
       await answerQuestionsUntilIdle(page);
       results.push({
         prompt,
-        toolCalls: await page.locator(".tool-title, .shell .terminal-typed").allInnerTexts(),
+        toolCalls: await page.locator(".tool-title, .shell .shell-typed").allInnerTexts(),
         canvasItems: await canvasTitles(page),
         errors: [...(await page.locator(".error-line").allInnerTexts()), ...(await page.locator(".status-detail").allInnerTexts())],
       });
