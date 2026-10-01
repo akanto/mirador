@@ -93,7 +93,7 @@ describe("Store", () => {
   });
 
   test("adds the profile and agent columns to a database created before they existed", () => {
-    const path = join(mkdtempSync(join(tmpdir(), "vcs-store-")), "state.sqlite");
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const old = new Database(path);
     old.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL)");
     old.run(`CREATE TABLE conversations (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, harness TEXT NOT NULL, title TEXT NOT NULL,

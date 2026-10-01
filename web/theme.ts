@@ -4,7 +4,7 @@ export type Theme = "light" | "dark" | "system";
 
 export const themeLabels: Record<Theme, string> = { light: "Light", dark: "Dark", system: "Match system" };
 
-const STORAGE_KEY = "vcs-theme";
+const STORAGE_KEY = "mirador-theme";
 
 export function storedTheme(): Theme {
   try {

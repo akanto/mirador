@@ -1,5 +1,5 @@
 {
-  "name": "visualized-sessions-desktop",
+  "name": "mirador-desktop",
   "private": true,
   "type": "module",
   "scripts": {

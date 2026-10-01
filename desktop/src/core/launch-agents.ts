@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-const LABEL_PREFIX = "com.sodre90.visualized-sessions";
+const LABEL_PREFIX = "com.sodre90.mirador";
 
 export const hostAgentLabel = (port: number) => `${LABEL_PREFIX}.host.${port}`;
 export const openAtLoginLabel = (port: number) => `${LABEL_PREFIX}.open-at-login.${port}`;

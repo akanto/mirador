@@ -4,7 +4,7 @@ import { hints } from "./hints.ts";
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_CHAT_SHARE = 0.45;
 const KEYBOARD_STEP = 0.03;
-const STORAGE_KEY = "vcs.chatShare";
+const STORAGE_KEY = "mirador.chatShare";
 
 function loadChatShare() {
   try {

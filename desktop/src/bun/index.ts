@@ -7,7 +7,7 @@ import { SettingsStore } from "../core/settings.ts";
 import { installApplicationMenu } from "./app-menu.ts";
 import { DesktopApp } from "./desktop-app.ts";
 
-const APP_NAME = "Visualized Sessions";
+const APP_NAME = "Mirador";
 
 const home = homedir();
 const runtime = resolveRuntime(process.env, home);

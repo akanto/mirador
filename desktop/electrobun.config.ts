@@ -7,8 +7,8 @@ const bun = Bun.which("bun") ?? join(homedir(), ".bun", "bin", "bun");
 
 export default {
   app: {
-    name: "Visualized Sessions",
-    identifier: "com.sodre90.visualized-sessions",
+    name: "Mirador",
+    identifier: "com.sodre90.mirador",
     version: "0.1.0",
   },
   build: {

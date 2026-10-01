@@ -18,7 +18,7 @@ let terminalSessionId = "";
 /** What a user does in a terminal: `claude -p` in the project directory, here against the fake gateway. */
 async function runClaudeInTerminal(cwd: string, prompt: string) {
   const sessionId = crypto.randomUUID();
-  if (existsSync(notifierDir)) writeFileSync(join(notifierDir, `mute-${sessionId}`), "e2e terminal session (visualized-sessions)");
+  if (existsSync(notifierDir)) writeFileSync(join(notifierDir, `mute-${sessionId}`), "e2e terminal session (mirador)");
   const env = applyEnvironment(agentEnvironment(), parseEnvironment(gatewayEnvironment(gateway)));
   const claude = spawn(bundledClaude, ["-p", prompt, "--session-id", sessionId, "--model", "haiku"], { cwd, env, stdio: "ignore" });
   await new Promise((resolve) => claude.once("exit", resolve));

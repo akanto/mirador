@@ -9,7 +9,7 @@ export class NotifierMute {
   constructor(private readonly notifierDir: string | null) {}
 
   mute(sessionId: string, label: string) {
-    if (this.notifierDir) writeFileSync(this.markerPath(sessionId), `${label} (visualized-sessions)`);
+    if (this.notifierDir) writeFileSync(this.markerPath(sessionId), `${label} (mirador)`);
   }
 
   unmute(sessionId: string) {

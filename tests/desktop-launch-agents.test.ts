@@ -21,7 +21,7 @@ const settings = defaultSettings({ hostDirectory: "/repo", bun: "/bun/bin/bun" }
 const directories: string[] = [];
 
 function scratchDirectory() {
-  const directory = mkdtempSync(join(tmpdir(), "vcs-launchd-"));
+  const directory = mkdtempSync(join(tmpdir(), "mirador-launchd-"));
   directories.push(directory);
   return directory;
 }
@@ -46,8 +46,8 @@ class FakeLaunchctl {
 
 describe("launch agent labels", () => {
   test("derive from the port so a dev build never meets the real app's agents", () => {
-    expect(hostAgentLabel(4600)).toBe("com.sodre90.visualized-sessions.host.4600");
-    expect(openAtLoginLabel(4600)).toBe("com.sodre90.visualized-sessions.open-at-login.4600");
+    expect(hostAgentLabel(4600)).toBe("com.sodre90.mirador.host.4600");
+    expect(openAtLoginLabel(4600)).toBe("com.sodre90.mirador.open-at-login.4600");
     expect(hostAgentLabel(4790)).not.toBe(hostAgentLabel(4600));
     expect(openAtLoginLabel(4790)).not.toBe(openAtLoginLabel(4600));
   });
@@ -77,12 +77,12 @@ describe("host launch agent plist", () => {
 
   test("never carries environment values, and nothing at all for the real app's defaults", () => {
     expect(plist).not.toContain("EnvironmentVariables");
-    expect(plist).not.toContain("VCS_");
+    expect(plist).not.toContain("MIRADOR_");
   });
 
   test("carries a dev port's overrides only as arguments", () => {
-    const dev = hostAgentPlist({ label: "x", argv: hostArgv("/bin/zsh", "/bun", { VCS_PORT: "4790" }), workingDirectory: "/repo", logPath: "/l" });
-    expect(dev).toContain("<string>VCS_PORT=4790</string>");
+    const dev = hostAgentPlist({ label: "x", argv: hostArgv("/bin/zsh", "/bun", { MIRADOR_PORT: "4790" }), workingDirectory: "/repo", logPath: "/l" });
+    expect(dev).toContain("<string>MIRADOR_PORT=4790</string>");
     expect(dev).not.toContain("EnvironmentVariables");
   });
 
@@ -94,16 +94,16 @@ describe("host launch agent plist", () => {
 
 describe("open at login plist", () => {
   test("opens the app bundle at load", () => {
-    const plist = openAtLoginPlist({ label: "x.login.4600", appPath: "/Applications/Visualized Sessions.app", overrides: {} });
-    expect(plist).toContain("<string>/usr/bin/open</string>\n    <string>-a</string>\n    <string>/Applications/Visualized Sessions.app</string>");
+    const plist = openAtLoginPlist({ label: "x.login.4600", appPath: "/Applications/Mirador.app", overrides: {} });
+    expect(plist).toContain("<string>/usr/bin/open</string>\n    <string>-a</string>\n    <string>/Applications/Mirador.app</string>");
     expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
     expect(plist).not.toContain("KeepAlive");
-    expect(plist).not.toContain("VCS_");
+    expect(plist).not.toContain("MIRADOR_");
   });
 
   test("hands a dev port's overrides to the app with open's --env", () => {
-    expect(openAtLoginArgv({ appPath: "/A.app", overrides: { VCS_PORT: "4790", VCS_DATA_DIR: "/s" } })).toEqual([
-      "/usr/bin/open", "-a", "/A.app", "--env", "VCS_PORT=4790", "--env", "VCS_DATA_DIR=/s",
+    expect(openAtLoginArgv({ appPath: "/A.app", overrides: { MIRADOR_PORT: "4790", MIRADOR_DATA_DIR: "/s" } })).toEqual([
+      "/usr/bin/open", "-a", "/A.app", "--env", "MIRADOR_PORT=4790", "--env", "MIRADOR_DATA_DIR=/s",
     ]);
   });
 });

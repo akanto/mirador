@@ -1,10 +1,10 @@
 {
-  "name": "visualized-sessions",
+  "name": "mirador",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "bun host/main.ts",
-    "dev": "VCS_DEV=1 bun host/main.ts",
+    "dev": "MIRADOR_DEV=1 bun host/main.ts",
     "test": "bun test tests",
     "e2e": "bunx playwright test",
     "typecheck": "tsc --noEmit"

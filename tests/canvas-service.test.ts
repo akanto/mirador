@@ -77,7 +77,7 @@ describe("CanvasService", () => {
 
 describe("completeDirectories", () => {
   test("lists matching subdirectories and hides dotfiles unless asked", async () => {
-    const root = mkdtempSync(join(tmpdir(), "vcs-paths-"));
+    const root = mkdtempSync(join(tmpdir(), "mirador-paths-"));
     ["alpha", "alps", "beta", ".hidden"].forEach((name) => mkdirSync(join(root, name)));
     expect(await completeDirectories(`${root}/al`)).toEqual([`${root}/alpha/`, `${root}/alps/`]);
     expect(await completeDirectories(`${root}/`)).toEqual([`${root}/alpha/`, `${root}/alps/`, `${root}/beta/`]);

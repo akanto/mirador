@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const storageKey = (conversationId: string) => `vcs-draft-${conversationId}`;
+const storageKey = (conversationId: string) => `mirador-draft-${conversationId}`;
 
 function storedDraft(conversationId: string) {
   try {

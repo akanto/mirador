@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const STORAGE_KEY = "vcs-timestamps";
+const STORAGE_KEY = "mirador-timestamps";
 
 export function storedTimestampsShown(): boolean {
   try {

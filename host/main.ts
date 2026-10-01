@@ -27,7 +27,7 @@ const terminalSessions = new TerminalSessionWatcher(
 );
 terminalSessions.start();
 
-console.log(`visualized-sessions is running. Open:\n\n  ${config.appOrigin}/auth?token=${config.browserToken}\n`);
+console.log(`Mirador is running. Open:\n\n  ${config.appOrigin}/auth?token=${config.browserToken}\n`);
 console.log(`data: ${config.dataDir}  agent logs: ${config.dataDir}/logs`);
 
 let stopping = false;

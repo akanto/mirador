@@ -16,7 +16,7 @@ export interface HostConfig {
   testModelOverride: { model?: string; effort?: string };
   /** Hot reload makes open pages swap modules mid-conversation, so it is opt-in for working on the UI itself. */
   developmentMode: boolean;
-  /** Runs the statusline command from the user's Claude Code settings; test hosts turn it off with VCS_STATUSLINE=off. */
+  /** Runs the statusline command from the user's Claude Code settings; test hosts turn it off with MIRADOR_STATUSLINE=off. */
   runsUserStatusLine: boolean;
 }
 
@@ -34,9 +34,9 @@ function notifierDirIfInstalled() {
 }
 
 export function loadConfig(env = process.env): HostConfig {
-  const port = Number(env.VCS_PORT ?? 4600);
-  const canvasAssetsPort = Number(env.VCS_CANVAS_PORT ?? port + 1);
-  const dataDir = env.VCS_DATA_DIR ?? join(homedir(), ".visualized-sessions");
+  const port = Number(env.MIRADOR_PORT ?? 4600);
+  const canvasAssetsPort = Number(env.MIRADOR_CANVAS_PORT ?? port + 1);
+  const dataDir = env.MIRADOR_DATA_DIR ?? join(homedir(), ".mirador");
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   chmodSync(dataDir, 0o700);
   return {
@@ -45,12 +45,12 @@ export function loadConfig(env = process.env): HostConfig {
     dataDir,
     databasePath: join(dataDir, "state.sqlite"),
     browserToken: loadOrCreateBrowserToken(dataDir),
-    mcpToken: env.VCS_MCP_TOKEN ?? crypto.randomUUID().replaceAll("-", ""),
+    mcpToken: env.MIRADOR_MCP_TOKEN ?? crypto.randomUUID().replaceAll("-", ""),
     appOrigin: `http://127.0.0.1:${port}`,
     canvasAssetsOrigin: `http://127.0.0.1:${canvasAssetsPort}`,
-    notifierDir: env.VCS_NOTIFIER_DIR ?? notifierDirIfInstalled(),
-    testModelOverride: { model: env.VCS_TEST_MODEL, effort: env.VCS_TEST_EFFORT },
-    developmentMode: env.VCS_DEV === "1",
-    runsUserStatusLine: env.VCS_STATUSLINE !== "off",
+    notifierDir: env.MIRADOR_NOTIFIER_DIR ?? notifierDirIfInstalled(),
+    testModelOverride: { model: env.MIRADOR_TEST_MODEL, effort: env.MIRADOR_TEST_EFFORT },
+    developmentMode: env.MIRADOR_DEV === "1",
+    runsUserStatusLine: env.MIRADOR_STATUSLINE !== "off",
   };
 }

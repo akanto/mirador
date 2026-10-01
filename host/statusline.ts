@@ -40,7 +40,7 @@ export function statuslineInput(conversation: Conversation, directory: string, t
     cwd: directory,
     model: { id: model?.id ?? conversation.harness, display_name: model?.name ?? harnessLabels[conversation.harness] },
     workspace: { current_dir: directory, project_dir: directory },
-    version: "visualized-sessions",
+    version: "mirador",
     output_style: { name: "default" },
     cost: {
       total_cost_usd: usage?.cost?.currency === "USD" ? usage.cost.amount : 0,

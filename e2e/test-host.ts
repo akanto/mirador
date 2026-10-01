@@ -17,13 +17,13 @@ function appMuteMarkers() {
   if (!existsSync(notifierDir)) return [];
   return readdirSync(notifierDir)
     .filter((name) => name.startsWith("mute-"))
-    .filter((name) => readFileSync(join(notifierDir, name), "utf8").includes("(visualized-sessions)"));
+    .filter((name) => readFileSync(join(notifierDir, name), "utf8").includes("(mirador)"));
 }
 
 /** Runs the real host (and through it a real Claude Code on a cheap model) in throwaway directories. */
 export class TestHost {
   /** Only a path until start(): Playwright also imports spec files in a process that never runs their hooks. */
-  readonly root = join(tmpdir(), `vcs-e2e-${crypto.randomUUID().slice(0, 8)}`);
+  readonly root = join(tmpdir(), `mirador-e2e-${crypto.randomUUID().slice(0, 8)}`);
   readonly dataDir = join(this.root, "data");
   readonly projectDir = join(this.root, "project");
   private starts = 0;
@@ -47,9 +47,9 @@ export class TestHost {
     return `e2e-mcp-token-${this.starts}`;
   }
 
-  /** VCS_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
+  /** MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
   private baseEnvironment(): NodeJS.ProcessEnv {
-    if (!process.env.VCS_E2E_MINIMAL_ENV) return process.env;
+    if (!process.env.MIRADOR_E2E_MINIMAL_ENV) return process.env;
     const bunDir = dirname(execFileSync("which", ["bun"], { encoding: "utf8" }).trim());
     return {
       HOME: homedir(),
@@ -67,16 +67,16 @@ export class TestHost {
     }
     this.starts += 1;
     this.output = "";
-    const child = spawn(process.env.VCS_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun", ["host/main.ts"], {
+    const child = spawn(process.env.MIRADOR_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun", ["host/main.ts"], {
       cwd: repoRoot,
       env: {
         ...this.baseEnvironment(),
-        VCS_PORT: String(this.port),
-        VCS_DATA_DIR: this.dataDir,
-        VCS_MCP_TOKEN: this.mcpToken,
-        VCS_TEST_MODEL: process.env.VCS_TEST_MODEL ?? "haiku",
-        VCS_TEST_EFFORT: process.env.VCS_TEST_EFFORT ?? "low",
-        VCS_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
+        MIRADOR_PORT: String(this.port),
+        MIRADOR_DATA_DIR: this.dataDir,
+        MIRADOR_MCP_TOKEN: this.mcpToken,
+        MIRADOR_TEST_MODEL: process.env.MIRADOR_TEST_MODEL ?? "haiku",
+        MIRADOR_TEST_EFFORT: process.env.MIRADOR_TEST_EFFORT ?? "low",
+        MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -120,7 +120,7 @@ export class TestHost {
     appMuteMarkers()
       .filter((name) => !this.markersBefore.has(name))
       .forEach((name) => rmSync(join(notifierDir, name), { force: true }));
-    if (process.env.VCS_E2E_KEEP) return;
+    if (process.env.MIRADOR_E2E_KEEP) return;
     rmSync(this.root, { recursive: true, force: true });
     this.removeClaudeTranscripts();
     await new Promise((resolve) => setTimeout(resolve, TRANSCRIPT_WRITERS_GRACE_MS));

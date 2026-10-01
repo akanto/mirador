@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "visualized-sessions",
+      "name": "mirador",
       "dependencies": {
         "@agentclientprotocol/claude-agent-acp": "0.84.0",
         "@agentclientprotocol/sdk": "1.5.1",

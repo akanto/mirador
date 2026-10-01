@@ -1,4 +1,4 @@
-export const CANVAS_MESSAGE_SOURCE = "vcs-canvas";
+export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
 export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "error"; message: string }

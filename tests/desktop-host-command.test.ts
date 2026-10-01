@@ -10,21 +10,21 @@ describe("runtime", () => {
     expect(resolveRuntime({}, home)).toEqual({
       port: 4600,
       canvasPort: 4601,
-      dataDir: "/Users/someone/.visualized-sessions",
+      dataDir: "/Users/someone/.mirador",
       origin: "http://127.0.0.1:4600",
       canvasOrigin: "http://127.0.0.1:4601",
     });
   });
 
   test("follows the host's environment overrides, the canvas port tracking the port", () => {
-    const runtime = resolveRuntime({ VCS_PORT: "4790", VCS_DATA_DIR: "/scratch" }, home);
+    const runtime = resolveRuntime({ MIRADOR_PORT: "4790", MIRADOR_DATA_DIR: "/scratch" }, home);
     expect(runtime).toMatchObject({ port: 4790, canvasPort: 4791, dataDir: "/scratch", origin: "http://127.0.0.1:4790", canvasOrigin: "http://127.0.0.1:4791" });
-    expect(resolveRuntime({ VCS_PORT: "4790", VCS_CANVAS_PORT: "5000" }, home).canvasPort).toBe(5000);
+    expect(resolveRuntime({ MIRADOR_PORT: "4790", MIRADOR_CANVAS_PORT: "5000" }, home).canvasPort).toBe(5000);
   });
 
   test("ignores a port that is not a port", () => {
-    expect(resolveRuntime({ VCS_PORT: "abc" }, home).port).toBe(4600);
-    expect(resolveRuntime({ VCS_PORT: "70000" }, home).port).toBe(4600);
+    expect(resolveRuntime({ MIRADOR_PORT: "abc" }, home).port).toBe(4600);
+    expect(resolveRuntime({ MIRADOR_PORT: "70000" }, home).port).toBe(4600);
   });
 
   test("passes the host nothing when everything is default", () => {
@@ -32,9 +32,9 @@ describe("runtime", () => {
   });
 
   test("passes the host only what differs from its defaults", () => {
-    const runtime = resolveRuntime({ VCS_PORT: "4790", VCS_CANVAS_PORT: "4900", VCS_DATA_DIR: "/scratch" }, home);
-    expect(hostEnvironmentOverrides(runtime, home)).toEqual({ VCS_PORT: "4790", VCS_CANVAS_PORT: "4900", VCS_DATA_DIR: "/scratch" });
-    expect(hostEnvironmentOverrides(resolveRuntime({ VCS_PORT: "4790" }, home), home)).toEqual({ VCS_PORT: "4790" });
+    const runtime = resolveRuntime({ MIRADOR_PORT: "4790", MIRADOR_CANVAS_PORT: "4900", MIRADOR_DATA_DIR: "/scratch" }, home);
+    expect(hostEnvironmentOverrides(runtime, home)).toEqual({ MIRADOR_PORT: "4790", MIRADOR_CANVAS_PORT: "4900", MIRADOR_DATA_DIR: "/scratch" });
+    expect(hostEnvironmentOverrides(resolveRuntime({ MIRADOR_PORT: "4790" }, home), home)).toEqual({ MIRADOR_PORT: "4790" });
   });
 
   test("keeps the app's own files in the data directory", () => {
@@ -57,8 +57,8 @@ describe("host command", () => {
   });
 
   test("hands overrides over as command-line assignments, never the environment", () => {
-    expect(hostArgv("/bin/zsh", "/bun/bin/bun", { VCS_PORT: "4790" })).toEqual([
-      "/bin/zsh", "-ilc", 'exec "$0" "$@"', "/usr/bin/env", "VCS_PORT=4790", "/bun/bin/bun", "host/main.ts",
+    expect(hostArgv("/bin/zsh", "/bun/bin/bun", { MIRADOR_PORT: "4790" })).toEqual([
+      "/bin/zsh", "-ilc", 'exec "$0" "$@"', "/usr/bin/env", "MIRADOR_PORT=4790", "/bun/bin/bun", "host/main.ts",
     ]);
   });
 
@@ -72,7 +72,7 @@ describe("host command", () => {
     expect(isHostCommandLine("/Users/me/.bun/bin/bun host/main.ts")).toBe(true);
     expect(isHostCommandLine("bun host/main.ts")).toBe(true);
     expect(isHostCommandLine('/bin/zsh -ilc exec "$0" "$@" /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
-    expect(isHostCommandLine('/bin/zsh -ilc exec "$0" "$@" /usr/bin/env VCS_PORT=4790 /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
+    expect(isHostCommandLine('/bin/zsh -ilc exec "$0" "$@" /usr/bin/env MIRADOR_PORT=4790 /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
   });
 
   test("does not mistake other processes for a host", () => {
@@ -85,7 +85,7 @@ describe("host command", () => {
 
 describe("app bundle", () => {
   test("is the .app around the running executable", () => {
-    expect(appBundlePath("/Applications/Visualized Sessions.app/Contents/MacOS/bun")).toBe("/Applications/Visualized Sessions.app");
+    expect(appBundlePath("/Applications/Mirador.app/Contents/MacOS/bun")).toBe("/Applications/Mirador.app");
     expect(appBundlePath("/a/b.app/Contents/Resources/c.app/Contents/MacOS/bun")).toBe("/a/b.app/Contents/Resources/c.app");
   });
 

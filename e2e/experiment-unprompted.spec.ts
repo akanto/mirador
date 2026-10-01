@@ -4,8 +4,8 @@ import { addWorkspace, openCanvasHistory, sendMessage, signIn, startConversation
 import { TestHost } from "./test-host.ts";
 
 /**
- * vcs-60h.9: do agents reach for the canvas without being told? Opt-in (VCS_EXPERIMENT=1) because it
- * runs real turns on the chosen model, e.g. VCS_TEST_MODEL=default VCS_TEST_EFFORT=default.
+ * vcs-60h.9: do agents reach for the canvas without being told? Opt-in (MIRADOR_EXPERIMENT=1) because it
+ * runs real turns on the chosen model, e.g. MIRADOR_TEST_MODEL=default MIRADOR_TEST_EFFORT=default.
  */
 const prompts = [
   "Explain how a request flows through a typical web app that has a CDN, a load balancer, several app servers, a cache and a database.",
@@ -13,7 +13,7 @@ const prompts = [
   "Compare three ways to manage state in a mid-sized React app and recommend one.",
 ];
 
-test.skip(!process.env.VCS_EXPERIMENT, "set VCS_EXPERIMENT=1 to run the unprompted-use experiment");
+test.skip(!process.env.MIRADOR_EXPERIMENT, "set MIRADOR_EXPERIMENT=1 to run the unprompted-use experiment");
 test.setTimeout(30 * 60_000);
 
 test("records whether the agent uses show/ask when nobody asks it to", async ({ page }) => {

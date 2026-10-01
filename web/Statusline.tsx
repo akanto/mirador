@@ -13,7 +13,7 @@ const TERMINAL_FONT_SIZE = 12;
 const REQUEST_DELAY_MS = 300;
 const REFRESH_MS = 30_000;
 const MAX_WRAPPED_ROWS = 12;
-const PREFERENCE_KEY = "vcs-statusline";
+const PREFERENCE_KEY = "mirador-statusline";
 const ansiEscape = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
 
 export function ContextMeter({ usage }: { usage: ContextUsage }) {

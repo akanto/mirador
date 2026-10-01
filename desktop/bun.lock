@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "visualized-sessions-desktop",
+      "name": "mirador-desktop",
       "dependencies": {
         "electrobun": "2.0.2",
       },

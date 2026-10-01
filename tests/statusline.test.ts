@@ -37,7 +37,7 @@ const conversation: Conversation = {
 };
 
 const configDirWith = (settings: unknown) => {
-  const directory = mkdtempSync(join(tmpdir(), "vcs-statusline-"));
+  const directory = mkdtempSync(join(tmpdir(), "mirador-statusline-"));
   writeFileSync(join(directory, "settings.json"), JSON.stringify(settings));
   return directory;
 };

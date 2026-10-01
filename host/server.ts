@@ -14,7 +14,7 @@ import type { ProfileService } from "./profiles.ts";
 import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 
-const TOKEN_COOKIE = "vcs_token";
+const TOKEN_COOKIE = "mirador_token";
 
 export interface HostServices {
   config: HostConfig;

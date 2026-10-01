@@ -129,7 +129,7 @@ export class HarnessProcess {
       Readable.toWeb(child.stdout!) as unknown as ReadableStream<Uint8Array>,
     );
     this.connection = acp
-      .client({ name: "visualized-sessions" })
+      .client({ name: "mirador" })
       .onNotification(acp.methods.client.session.update, (ctx) => this.listener.onSessionUpdate(ctx.params))
       .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
         this.listener.onPermissionRequest(ctx.params, ctx.signal),
@@ -138,7 +138,7 @@ export class HarnessProcess {
     return this.connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       clientCapabilities: {},
-      clientInfo: { name: "visualized-sessions", version: "0.1.0" },
+      clientInfo: { name: "mirador", version: "0.1.0" },
     });
   }
 

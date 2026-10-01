@@ -1,4 +1,4 @@
-# Visualized Sessions
+# Mirador
 
 A localhost web app that drives coding agents (Claude Code and opencode today; pi next) over ACP and gives them a **canvas**: a browser panel where they render HTML, diagrams, mockups and 3D scenes (`show`), and ask you to choose between options with visual previews (`ask`).
 
@@ -21,9 +21,9 @@ Open the `http://127.0.0.1:4600/auth?token=…` link the host prints (once per b
 - **YOLO** (top of a conversation, off by default): the app approves every permission request of that conversation without asking (allow once; switching it on also approves requests already waiting). Works the same for Claude Code and opencode. Claude Code's own *Bypass permissions* mode, in its *Mode* list, is separate.
 - **Timestamps**: lines are grouped by author, and each group's header shows who wrote it and when. Point at a later line in the group to see its time (hover the time for the full date); *Show timestamps* in the sidebar footer shows them on every line. Remembered per browser. History loaded from a session started elsewhere carries the time it was loaded, not when it was written.
 - **Questions** (chat header): *Agent waits for my answer* returns your choice as the `ask` tool result. *My answer is sent as the next message* lets the agent end its turn, and your choice arrives as your next message.
-- State lives in `~/.visualized-sessions` (SQLite, browser token, agent logs under `logs/`).
+- State lives in `~/.mirador` (SQLite, browser token, agent logs under `logs/`).
 
-Environment: `VCS_PORT` (default 4600; canvas assets use the next port), `VCS_DATA_DIR`. `bun run dev` enables hot reload of the UI (only for working on `web/`; open pages swap code mid-session).
+Environment: `MIRADOR_PORT` (default 4600; canvas assets use the next port), `MIRADOR_DATA_DIR`. `bun run dev` enables hot reload of the UI (only for working on `web/`; open pages swap code mid-session).
 
 ## Develop
 
@@ -31,8 +31,8 @@ Environment: `VCS_PORT` (default 4600; canvas assets use the next port), `VCS_DA
 bun run typecheck
 bun test tests          # unit tests
 bunx playwright test    # e2e: a real Claude Code on haiku, opencode against a scripted fake model (installed Google Chrome)
-VCS_E2E_MINIMAL_ENV=1 bunx playwright test e2e/agent-flow.spec.ts   # host started with a bare environment
-VCS_EXPERIMENT=1 VCS_TEST_MODEL=default VCS_TEST_EFFORT=default bunx playwright test e2e/experiment-unprompted.spec.ts
+MIRADOR_E2E_MINIMAL_ENV=1 bunx playwright test e2e/agent-flow.spec.ts   # host started with a bare environment
+MIRADOR_EXPERIMENT=1 MIRADOR_TEST_MODEL=default MIRADOR_TEST_EFFORT=default bunx playwright test e2e/experiment-unprompted.spec.ts
 ```
 
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and the canvas document builder), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).

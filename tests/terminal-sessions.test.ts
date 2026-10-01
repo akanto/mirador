@@ -11,7 +11,7 @@ async function exitedProcessId() {
 }
 
 test("finds sessions open in a running terminal Claude Code, busiest first, ignoring the app's own and stale ones", async () => {
-  const configDir = mkdtempSync(join(tmpdir(), "vcs-registry-"));
+  const configDir = mkdtempSync(join(tmpdir(), "mirador-registry-"));
   const sessions = join(configDir, "sessions");
   mkdirSync(sessions);
   const register = (name: string, registration: object) => writeFileSync(join(sessions, `${name}.json`), JSON.stringify(registration));

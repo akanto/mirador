@@ -8,7 +8,7 @@ const build = { hostDirectory: "/repo", bun: "/bin/bun" };
 const directories: string[] = [];
 
 function scratchFile() {
-  const directory = mkdtempSync(join(tmpdir(), "vcs-desktop-"));
+  const directory = mkdtempSync(join(tmpdir(), "mirador-desktop-"));
   directories.push(directory);
   return join(directory, "nested", "desktop.json");
 }
