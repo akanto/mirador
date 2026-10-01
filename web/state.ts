@@ -128,6 +128,10 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "sessions.listed":
     case "sessions.failed":
     case "statusline.rendered":
+    case "terminals.listed":
+    case "terminal.replayed":
+    case "terminal.output":
+    case "terminal.exited":
       return state;
   }
 }

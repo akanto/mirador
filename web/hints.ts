@@ -10,6 +10,8 @@ export const hints = {
   configOption:
     "The agent offers this setting for the session. Changing it sends the new value to the agent (ACP session/set_config_option), which applies it to this conversation.",
   canvasToggle: "Hide or show the canvas pane. Drawings and questions still arrive while it's hidden and stay in History.",
+  terminalToggle: "Hide or show a terminal in this workspace's folder. Its shell keeps running while the pane is hidden, and reloading the page reattaches to it.",
+  terminalHide: "Hide the terminal. The shell keeps running; show it again from the conversation header or the command palette.",
   inTerminal:
     "This Claude Code session is also running in a terminal. The host sees that in Claude Code's session registry (<config dir>/sessions/<pid>.json) and shows what the terminal is doing.",
   launch:

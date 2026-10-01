@@ -13,6 +13,7 @@ import { completeDirectories, existingDirectory } from "./paths.ts";
 import type { ProfileService } from "./profiles.ts";
 import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
+import type { TerminalService } from "./terminals.ts";
 
 const TOKEN_COOKIE = "mirador_token";
 
@@ -25,6 +26,7 @@ export interface HostServices {
   mcp: CanvasMcpEndpoints;
   profiles: ProfileService;
   statusline: StatuslineService;
+  terminals: TerminalService;
 }
 
 function sameSecret(candidate: string | null | undefined, secret: string) {
@@ -42,7 +44,7 @@ function cookieValue(request: Request, name: string) {
 }
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals } = services;
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
 
@@ -76,7 +78,7 @@ export function startServer(services: HostServices) {
       return new Response("unauthorized", { status: 401 });
     }
     if (request.headers.get("origin") !== config.appOrigin) return new Response("forbidden origin", { status: 403 });
-    const upgraded = server.upgrade(request, { data: { subscriptions: new Set<string>() } });
+    const upgraded = server.upgrade(request, { data: { subscriptions: new Set<string>(), terminalWorkspaceId: null } });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 
@@ -111,6 +113,7 @@ export function startServer(services: HostServices) {
           .list()
           .filter((conversation) => conversation.workspaceId === message.workspaceId)
           .forEach((conversation) => deleteConversation(conversation.id));
+        terminals.closeWorkspace(message.workspaceId);
         store.deleteWorkspace(message.workspaceId);
         return hub.broadcast({ type: "workspace.deleted", workspaceId: message.workspaceId });
       case "workspace.set-default-launch":
@@ -174,6 +177,18 @@ export function startServer(services: HostServices) {
           .render(message.conversationId, message.columns, message.runCommand)
           .then((render) => reply({ type: "statusline.rendered", requestId: message.requestId, statusline: render }))
           .catch((error) => reply({ type: "error", message: errorMessage(error) }));
+      case "terminals.attach":
+        return terminals.attach(socket, message.workspaceId);
+      case "terminal.open":
+        return terminals.open(message.workspaceId, message.columns, message.rows);
+      case "terminal.replay":
+        return terminals.replay(socket, message.terminalId);
+      case "terminal.input":
+        return terminals.input(message.terminalId, message.data);
+      case "terminal.resize":
+        return terminals.resize(message.terminalId, message.columns, message.rows);
+      case "terminal.close":
+        return terminals.close(message.terminalId);
       default:
         return message satisfies never;
     }

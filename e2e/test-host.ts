@@ -37,7 +37,7 @@ export class TestHost {
   /** Test hosts share the user's home directory, so only a host that opts in runs statusline commands from Claude settings; its spec points a profile at settings of its own. */
   constructor(
     readonly port: number,
-    private readonly options: { runsUserStatusLine?: boolean } = {},
+    private readonly options: { runsUserStatusLine?: boolean; shell?: string } = {},
   ) {
     this.origin = `http://127.0.0.1:${port}`;
   }
@@ -77,6 +77,7 @@ export class TestHost {
         MIRADOR_TEST_MODEL: process.env.MIRADOR_TEST_MODEL ?? "haiku",
         MIRADOR_TEST_EFFORT: process.env.MIRADOR_TEST_EFFORT ?? "low",
         MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
+        ...(this.options.shell && { SHELL: this.options.shell }),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

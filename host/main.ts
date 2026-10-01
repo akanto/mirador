@@ -10,6 +10,7 @@ import { startServer } from "./server.ts";
 import { StatuslineService } from "./statusline.ts";
 import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
+import { TerminalService } from "./terminals.ts";
 
 const config = loadConfig();
 const store = new Store(config.databasePath);
@@ -20,7 +21,8 @@ const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOri
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline });
+const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals });
 const terminalSessions = new TerminalSessionWatcher(
   () => conversations.claudeConfigDirs(),
   (activityBySession) => conversations.showTerminalActivity(activityBySession),
@@ -35,6 +37,7 @@ function shutdown() {
   if (stopping) return;
   stopping = true;
   terminalSessions.stop();
+  terminals.shutdown();
   conversations.shutdown();
   server.stop(true);
   assetsServer.stop(true);

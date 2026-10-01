@@ -43,7 +43,13 @@ export type ClientMessage =
   | { type: "ask.answer"; itemId: string; label: string; note?: string }
   | { type: "canvas.report"; itemId: string; errors: string[] }
   | { type: "fs.complete"; requestId: string; prefix: string }
-  | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean };
+  | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
+  | { type: "terminals.attach"; workspaceId: string | null }
+  | { type: "terminal.open"; workspaceId: string; columns: number; rows: number }
+  | { type: "terminal.replay"; terminalId: string }
+  | { type: "terminal.input"; terminalId: string; data: string }
+  | { type: "terminal.resize"; terminalId: string; columns: number; rows: number }
+  | { type: "terminal.close"; terminalId: string };
 
 export type ServerMessage =
   | {
@@ -68,4 +74,8 @@ export type ServerMessage =
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }
   | { type: "sessions.listed"; requestId: string; sessions: ExternalSession[] }
   | { type: "sessions.failed"; requestId: string; message: string }
+  | { type: "terminals.listed"; workspaceId: string; terminalIds: string[] }
+  | { type: "terminal.replayed"; terminalId: string; data: string }
+  | { type: "terminal.output"; terminalId: string; data: string }
+  | { type: "terminal.exited"; terminalId: string; exitCode: number }
   | { type: "error"; message: string };

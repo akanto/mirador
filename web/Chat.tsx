@@ -141,11 +141,15 @@ function ChatHeader({
   profiles,
   canvasVisible,
   onToggleCanvas,
+  terminalVisible,
+  onToggleTerminal,
 }: {
   conversation: Conversation;
   profiles: Profile[];
   canvasVisible: boolean;
   onToggleCanvas: () => void;
+  terminalVisible: boolean;
+  onToggleTerminal: () => void;
 }) {
   return (
     <header className="chat-header">
@@ -164,6 +168,9 @@ function ChatHeader({
         <span className="harness">{harnessLabels[conversation.harness]}</span>
         <button className="toggle-canvas" data-hint={hints.canvasToggle} onClick={onToggleCanvas}>
           {canvasVisible ? "Hide canvas" : "Show canvas"}
+        </button>
+        <button className="toggle-terminal" data-hint={hints.terminalToggle} onClick={onToggleTerminal}>
+          {terminalVisible ? "Hide terminal" : "Show terminal"}
         </button>
       </div>
       {conversation.statusDetail && <div className="status-detail">{conversation.statusDetail}</div>}
@@ -581,19 +588,30 @@ export function ChatPanel({
   open,
   canvasVisible,
   onToggleCanvas,
+  terminalVisible,
+  onToggleTerminal,
 }: {
   conversation: Conversation;
   profiles: Profile[];
   open: OpenConversation;
   canvasVisible: boolean;
   onToggleCanvas: () => void;
+  terminalVisible: boolean;
+  onToggleTerminal: () => void;
 }) {
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
   const { ref, onScroll } = useStickToBottom(open.events.length);
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
-      <ChatHeader conversation={conversation} profiles={profiles} canvasVisible={canvasVisible} onToggleCanvas={onToggleCanvas} />
+      <ChatHeader
+        conversation={conversation}
+        profiles={profiles}
+        canvasVisible={canvasVisible}
+        onToggleCanvas={onToggleCanvas}
+        terminalVisible={terminalVisible}
+        onToggleTerminal={onToggleTerminal}
+      />
       <div className="timeline" ref={ref} onScroll={onScroll}>
         {!open.loaded && <div className="notice-line">Loading…</div>}
         {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas on the right.</div>}

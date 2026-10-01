@@ -4,10 +4,9 @@ import type { ContextUsage, Conversation, Profile, StatuslineRender } from "../s
 import { parseAnsi, plainTextOf, type AnsiStyle } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { TERMINAL_FONT } from "./terminal-look.ts";
 import { compactTokenCount, contextHint, contextLevel, formatCost, usedPercentLabel, usedShare } from "./usage.ts";
 
-/** Statusline scripts draw with Nerd Font glyphs; the first of these the Mac has renders them. */
-const TERMINAL_FONT = '"MesloLGS NF", "Symbols Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", Menlo, monospace';
 const TERMINAL_FONT_SIZE = 12;
 const TERMINAL_PADDING_X = 8;
 const REQUEST_DELAY_MS = 300;

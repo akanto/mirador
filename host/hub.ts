@@ -3,6 +3,7 @@ import type { ServerMessage } from "../shared/protocol.ts";
 
 export interface SocketData {
   subscriptions: Set<string>;
+  terminalWorkspaceId: string | null;
 }
 
 export type BrowserSocket = ServerWebSocket<SocketData>;
@@ -29,6 +30,13 @@ export class Hub {
 
   hasSubscribers(conversationId: string) {
     return [...this.sockets].some((socket) => socket.data.subscriptions.has(conversationId));
+  }
+
+  publishWhere(isRecipient: (socket: BrowserSocket) => boolean, message: ServerMessage) {
+    const payload = JSON.stringify(message);
+    this.sockets.forEach((socket) => {
+      if (isRecipient(socket)) socket.send(payload);
+    });
   }
 
   publishToConversation(conversationId: string, message: ServerMessage) {
