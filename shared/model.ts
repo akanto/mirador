@@ -99,8 +99,14 @@ export interface Conversation {
   updatedAt: number;
 }
 
+export type CommandStream = "stdout" | "stderr";
+
 export type ConversationEvent =
-  | { type: "user-message"; text: string }
+  | { type: "user-message"; text: string; attachedCommandIds?: string[] }
+  | { type: "user-command"; commandId: string; command: string }
+  | { type: "user-command-output"; commandId: string; stream: CommandStream; text: string }
+  | { type: "user-command-ended"; commandId: string; exitCode: number | null }
+  | { type: "user-command-dropped"; commandIds: string[] }
   | { type: "acp"; update: SessionUpdate }
   | { type: "permission"; permissionId: string; toolCall: ToolCallUpdate; options: PermissionOption[] }
   | { type: "permission-resolved"; permissionId: string; optionId: string | null }

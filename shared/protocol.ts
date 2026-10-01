@@ -34,6 +34,9 @@ export type ClientMessage =
   | { type: "conversation.subscribe"; conversationId: string }
   | { type: "conversation.prompt"; conversationId: string; text: string }
   | { type: "conversation.cancel"; conversationId: string }
+  | { type: "conversation.run-command"; conversationId: string; command: string }
+  | { type: "conversation.stop-command"; conversationId: string; commandId: string }
+  | { type: "conversation.drop-command-outputs"; conversationId: string; commandIds: string[] }
   | { type: "conversation.queue.edit"; conversationId: string; messageId: string; text: string }
   | { type: "conversation.queue.remove"; conversationId: string; messageId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }

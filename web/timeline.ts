@@ -9,6 +9,7 @@ import type {
   ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { StoredEvent } from "../shared/model.ts";
+import { UserCommandLog, type UserCommand } from "../shared/user-commands.ts";
 
 /** The stored event a block starts with: its sequence number keys the block, and its time is the block's time. */
 export interface Origin {
@@ -44,13 +45,14 @@ export type TimelineBlock =
   | ToolBlock
   | PlanBlock
   | PermissionBlock
+  | (Origin & { kind: "command"; command: UserCommand })
   | (Origin & { kind: "error"; message: string });
 
 export type Author = "user" | "agent";
 
 export function authorOf(block: TimelineBlock | undefined): Author | null {
   if (!block || block.kind === "notice") return null;
-  return block.kind === "user" ? "user" : "agent";
+  return block.kind === "user" || block.kind === "command" ? "user" : "agent";
 }
 
 export function startsAuthorGroup(timeline: TimelineBlock[], index: number) {
@@ -84,10 +86,18 @@ class TimelineBuilder {
   private readonly toolBlocks = new Map<string, ToolBlock>();
   private readonly permissionBlocks = new Map<string, PermissionBlock>();
   private currentPlan: PlanBlock | null = null;
+  private readonly commands = new UserCommandLog();
 
   add({ seq, at, event }: StoredEvent) {
     const origin = { key: String(seq), at };
+    this.commands.apply(event);
     switch (event.type) {
+      case "user-command":
+        return this.push({ kind: "command", ...origin, command: this.commands.get(event.commandId)! });
+      case "user-command-output":
+      case "user-command-ended":
+      case "user-command-dropped":
+        return;
       case "user-message":
         this.currentPlan = null;
         return this.push({ kind: "user", ...origin, text: event.text });

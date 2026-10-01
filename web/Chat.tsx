@@ -12,6 +12,8 @@ import {
   type Profile,
   type QueuedMessage,
 } from "../shared/model.ts";
+import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
+import { parseAnsi, plainTextOf } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { choiceGroups } from "./choices.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
@@ -312,6 +314,39 @@ function ShellCard({ block }: { block: ToolBlock }) {
   );
 }
 
+function commandDelivery({ delivery, ended }: UserCommand) {
+  if (delivery === "sent") return "Sent to the agent with your message";
+  if (delivery === "dropped") return "Not sent to the agent";
+  return ended ? "Goes to the agent with your next message" : "Goes to the agent with your next message once it finishes";
+}
+
+/** A command the user ran with `!` in the message box. */
+function CommandCard({ command, conversationId }: { command: UserCommand; conversationId: string }) {
+  const status = !command.ended ? "in_progress" : command.exitCode === 0 ? "completed" : "failed";
+  const output = useMemo(() => plainTextOf(parseAnsi(outputOf(command))).trimEnd(), [command]);
+  const stop = () => connection.send({ type: "conversation.stop-command", conversationId, commandId: command.commandId });
+  return (
+    <div className={`shell user-command tool-${status}`}>
+      <div className="shell-header">
+        <span className="tool-status">{statusIcons[status]}</span>
+        <span className="shell-description" data-hint={hints.commandDelivery}>
+          {commandDelivery(command)}
+        </span>
+        {status === "failed" && <span className="shell-exit">{command.exitCode === null ? "stopped" : `exit ${command.exitCode}`}</span>}
+        {!command.ended && (
+          <button type="button" className="link stop-command" onClick={stop}>
+            Stop
+          </button>
+        )}
+      </div>
+      <div className="terminal">
+        <CommandLine command={command.command} />
+        <TerminalOutput output={output} finished={command.ended} awaitingPermission={false} />
+      </div>
+    </div>
+  );
+}
+
 function ToolCard({ block }: { block: ToolBlock }) {
   if (isShellCommand(block)) return <ShellCard block={block} />;
   return (
@@ -452,6 +487,8 @@ function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conver
       );
     case "tool":
       return <ToolCard block={block} />;
+    case "command":
+      return <CommandCard command={block.command} conversationId={conversationId} />;
     case "plan":
       return (
         <div className="plan">
@@ -515,16 +552,37 @@ function QueuedMessages({ messages, onEdit, onRemove }: { messages: QueuedMessag
   );
 }
 
-function Composer({ conversation }: { conversation: Conversation }) {
+/** `!git status` in the message box runs `git status` instead of messaging the agent. */
+const commandIn = (text: string) => (text.trimStart().startsWith("!") ? text.trimStart().slice(1).trim() : null);
+
+function CommandOutputsAttached({ commands, conversationId }: { commands: UserCommand[]; conversationId: string }) {
+  if (commands.length === 0) return null;
+  const drop = () => connection.send({ type: "conversation.drop-command-outputs", conversationId, commandIds: commands.map(({ commandId }) => commandId) });
+  return (
+    <div className="command-outputs-attached" data-hint={hints.commandOutputsAttached}>
+      <span>{commands.length === 1 ? "1 command output goes" : `${commands.length} command outputs go`} with your next message</span>
+      <button type="button" className="icon" aria-label="Don't send the command outputs" onClick={drop}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function Composer({ conversation, pendingCommands }: { conversation: Conversation; pendingCommands: UserCommand[] }) {
   const [text, setText] = useDraft(conversation.id);
   const busy = isBusy(conversation);
   const queued = conversation.queuedMessages;
+  const command = commandIn(text);
   const textarea = useRef<HTMLTextAreaElement>(null);
   useEffect(() => textarea.current?.focus(), []);
 
   const send = () => {
-    if (!text.trim()) return;
-    if (connection.send({ type: "conversation.prompt", conversationId: conversation.id, text })) setText("");
+    if (!text.trim() || command === "") return;
+    const message =
+      command === null
+        ? ({ type: "conversation.prompt", conversationId: conversation.id, text } as const)
+        : ({ type: "conversation.run-command", conversationId: conversation.id, command } as const);
+    if (connection.send(message)) setText("");
   };
   const cancel = () => connection.send({ type: "conversation.cancel", conversationId: conversation.id });
   const remove = (message: QueuedMessage) =>
@@ -550,7 +608,8 @@ function Composer({ conversation }: { conversation: Conversation }) {
   return (
     <div className="composer-area">
       {queued.length > 0 && <QueuedMessages messages={queued} onEdit={pullBack} onRemove={remove} />}
-      <div className="composer">
+      <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />
+      <div className={command === null ? "composer" : "composer shell-mode"}>
         <textarea
           ref={textarea}
           value={text}
@@ -558,24 +617,33 @@ function Composer({ conversation }: { conversation: Conversation }) {
           placeholder={
             busy
               ? "The agent is working… Enter queues your message, Esc stops the agent"
-              : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line)`
+              : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, ! to run a command)`
           }
           onChange={(event) => setText(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        {busy && text.trim() && (
-          <button className="queue-message" onClick={send}>
-            Queue
+        {command !== null ? (
+          <button className="run-command" data-hint={hints.runCommand} onClick={send} disabled={!command}>
+            Run
           </button>
+        ) : (
+          busy &&
+          text.trim() && (
+            <button className="queue-message" onClick={send}>
+              Queue
+            </button>
+          )
         )}
         {busy ? (
           <button className="stop" onClick={cancel}>
             Stop
           </button>
         ) : (
-          <button className="send" onClick={send} disabled={!text.trim()}>
-            Send
-          </button>
+          command === null && (
+            <button className="send" onClick={send} disabled={!text.trim()}>
+              Send
+            </button>
+          )
         )}
       </div>
     </div>
@@ -600,6 +668,7 @@ export function ChatPanel({
   onToggleTerminal: () => void;
 }) {
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
+  const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
   const { ref, onScroll } = useStickToBottom(open.events.length);
   return (
@@ -633,7 +702,7 @@ export function ChatPanel({
           it there first.
         </div>
       )}
-      <Composer conversation={conversation} />
+      <Composer conversation={conversation} pendingCommands={pendingCommands} />
       <Statusline conversation={conversation} profiles={profiles} />
     </ToolCallsAwaitingPermission.Provider>
   );

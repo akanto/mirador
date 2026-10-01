@@ -151,6 +151,12 @@ export function startServer(services: HostServices) {
       case "conversation.prompt":
         conversations.send(message.conversationId, message.text).catch((error) => reply({ type: "error", message: errorMessage(error) }));
         return;
+      case "conversation.run-command":
+        return conversations.runCommand(message.conversationId, message.command);
+      case "conversation.stop-command":
+        return conversations.stopCommand(message.conversationId, message.commandId);
+      case "conversation.drop-command-outputs":
+        return conversations.dropCommandOutputs(message.conversationId, message.commandIds);
       case "conversation.queue.edit":
         return conversations.editQueuedMessage(message.conversationId, message.messageId, message.text);
       case "conversation.queue.remove":

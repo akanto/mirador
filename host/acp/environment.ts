@@ -1,3 +1,8 @@
+import { userInfo } from "node:os";
+
+/** The shell the user logs in with, even when the host was started without $SHELL (e.g. by launchd). */
+export const loginShell = () => process.env.SHELL || userInfo().shell || "/bin/sh";
+
 const sessionScopedPrefixes = ["CMUX_", "TMUX", "CLAUDE_CODE_SESSION", "CLAUDE_CODE_MESSAGING"];
 
 const sessionScopedNames = new Set([

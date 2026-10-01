@@ -13,6 +13,7 @@ import type {
   TerminalActivity,
   Workspace,
 } from "../shared/model.ts";
+import { awaitingDelivery, userCommandsIn, withCommandOutputs } from "../shared/user-commands.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
@@ -21,6 +22,7 @@ import type { NotifierMute } from "./notifier.ts";
 import { assertLaunchable } from "./profiles.ts";
 import type { Store } from "./store.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
+import { UserCommandRunner } from "./user-commands.ts";
 
 const UNTITLED = "New conversation";
 const MAX_TITLE_LENGTH = 200;
@@ -51,6 +53,7 @@ export class ConversationService {
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
   private readonly contextUsage = new Map<string, ContextUsage>();
+  private readonly commands = new UserCommandRunner();
 
   constructor(
     private readonly store: Store,
@@ -214,12 +217,14 @@ export class ConversationService {
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
     runtime.running = true;
     this.retitleFromFirstMessage(conversationId, text);
-    this.append(conversationId, { type: "user-message", text });
+    const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
+    const attachedCommandIds = commands.map(({ commandId }) => commandId);
+    this.append(conversationId, { type: "user-message", text, ...(attachedCommandIds.length > 0 && { attachedCommandIds }) });
     try {
       this.setStatus(conversationId, "starting");
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
-      const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, text);
+      const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, withCommandOutputs(commands, text));
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
     } catch (error) {
       this.append(conversationId, { type: "error", message: errorMessage(error) });
@@ -236,6 +241,26 @@ export class ConversationService {
     if (!runtime.running) return this.prompt(conversationId, text);
     runtime.queuedMessages = [...runtime.queuedMessages, { id: crypto.randomUUID(), text }];
     this.publish(this.get(conversationId));
+  }
+
+  /** Runs a `!` command from the message box in the conversation's workspace, with the environment its agent gets. */
+  runCommand(conversationId: string, command: string) {
+    const conversation = this.get(conversationId);
+    const directory = this.store.findWorkspace(conversation.workspaceId)?.path;
+    if (!directory) throw new Error("This conversation's workspace no longer exists.");
+    const environment = profileEnvironment(conversation.profileId === null ? null : this.existingProfile(conversation.profileId));
+    void this.commands.run(command, directory, environment, (event) => this.append(conversationId, event));
+  }
+
+  /** A command the host no longer runs (it was restarted meanwhile) is marked as stopped, so its card stops waiting. */
+  stopCommand(conversationId: string, commandId: string) {
+    if (this.commands.isRunning(commandId)) return this.commands.stop(commandId);
+    const orphaned = userCommandsIn(this.store.listEvents(conversationId)).some((command) => command.commandId === commandId && !command.ended);
+    if (orphaned) this.append(conversationId, { type: "user-command-ended", commandId, exitCode: null });
+  }
+
+  dropCommandOutputs(conversationId: string, commandIds: string[]) {
+    if (commandIds.length > 0) this.append(conversationId, { type: "user-command-dropped", commandIds });
   }
 
   editQueuedMessage(conversationId: string, messageId: string, text: string) {
@@ -289,6 +314,7 @@ export class ConversationService {
   }
 
   shutdown() {
+    this.commands.shutdown();
     this.harnessesByLaunch.forEach((harness) => harness.stop());
   }
 

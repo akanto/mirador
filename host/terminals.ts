@@ -1,6 +1,6 @@
 import type { Subprocess } from "bun";
-import { userInfo } from "node:os";
 import type { ServerMessage } from "../shared/protocol.ts";
+import { agentEnvironment, loginShell } from "./acp/environment.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
@@ -14,7 +14,6 @@ interface Shell {
   scrollbackLength: number;
 }
 
-const loginShell = () => process.env.SHELL || userInfo().shell || "/bin/sh";
 const dimension = (value: number) => Math.min(Math.max(1, Math.floor(value) || 1), MAX_DIMENSION);
 
 /**
@@ -47,7 +46,7 @@ export class TerminalService {
     const shell: Shell = { id: crypto.randomUUID(), workspaceId, child: undefined!, scrollback: [], scrollbackLength: 0 };
     shell.child = Bun.spawn([loginShell(), "-l"], {
       cwd,
-      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
+      env: { ...agentEnvironment(), TERM: "xterm-256color", COLORTERM: "truecolor" },
       terminal: {
         cols: dimension(columns),
         rows: dimension(rows),
