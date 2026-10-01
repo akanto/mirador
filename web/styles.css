@@ -1831,7 +1831,7 @@ input.rename {
   padding: 1px 6px;
 }
 
-.hint {
+.hint-bubble {
   position: fixed;
   z-index: 50;
   max-width: 340px;
@@ -1847,12 +1847,12 @@ input.rename {
   pointer-events: none;
 }
 
-.hint strong {
+.hint-bubble strong {
   font-weight: 600;
   color: #ffffff;
 }
 
-.hint p {
+.hint-bubble p {
   margin: 6px 0 0;
   color: #b9bcc6;
 }

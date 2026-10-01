@@ -29,3 +29,12 @@ test("clicking a hinted dropdown hides its hint, which stays away until the poin
   await picker.hover();
   await expect(hint).toBeVisible();
 });
+
+test("help text in the app stays where it is written, unlike the hint bubble", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByRole("button", { name: "Continue a session…" }).click();
+  const help = page.locator(".modal.sessions p.hint");
+  await expect(help).toBeVisible();
+  await expect(help).toHaveCSS("position", "static");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+});

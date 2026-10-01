@@ -96,7 +96,7 @@ export function HintLayer() {
   if (!hint) return null;
   const [summary, ...details] = hint.text.split("\n\n");
   return (
-    <div ref={bubble} className="hint" role="tooltip" style={{ visibility: "hidden" }}>
+    <div ref={bubble} className="hint-bubble" role="tooltip" style={{ visibility: "hidden" }}>
       {details.length > 0 ? <strong>{summary}</strong> : summary}
       {details.map((paragraph) => (
         <p key={paragraph}>{paragraph}</p>
