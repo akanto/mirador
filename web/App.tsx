@@ -11,7 +11,7 @@ import { ProfilesDialog } from "./Profiles.tsx";
 import { SessionsDialog } from "./Sessions.tsx";
 import type { ShortcutCommand } from "./shortcuts.ts";
 import { Sidebar } from "./Sidebar.tsx";
-import { splitColumns, Splitter, useChatCanvasSplit } from "./Splitter.tsx";
+import { DEFAULT_CHAT_SHARE, splitColumns, Splitter, useChatCanvasSplit } from "./Splitter.tsx";
 import { initialStateFor, reducer, type AppAction, type AppState } from "./state.ts";
 import { TerminalPane } from "./Terminals.tsx";
 import { useShortcuts } from "./useShortcuts.ts";
@@ -189,11 +189,11 @@ export function App() {
           </div>
         )}
       </main>
-      {showRightColumn && <Splitter chatShare={chatShare} onChange={setChatShare} />}
+      {showRightColumn && <Splitter share={chatShare} onChange={setChatShare} label="Resize chat and canvas" resetShare={DEFAULT_CHAT_SHARE} />}
       {showRightColumn && (
         <div className="right-column">
           {showCanvas && <CanvasPanel key={conversation!.id} items={state.open!.canvas} assetsOrigin={state.canvasAssetsOrigin} />}
-          {terminalWorkspace && <TerminalPane workspace={terminalWorkspace} status={status} onHide={toggleTerminal} />}
+          {terminalWorkspace && <TerminalPane key={terminalWorkspace.id} workspace={terminalWorkspace} status={status} onHide={toggleTerminal} />}
         </div>
       )}
       <HintLayer />

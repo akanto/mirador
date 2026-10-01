@@ -186,7 +186,7 @@ export function startServer(services: HostServices) {
       case "terminals.attach":
         return terminals.attach(socket, message.workspaceId);
       case "terminal.open":
-        return terminals.open(message.workspaceId, message.columns, message.rows);
+        return reply({ type: "terminal.opened", requestId: message.requestId, ...terminals.open(message.workspaceId, message.columns, message.rows, message.tabId) });
       case "terminal.replay":
         return terminals.replay(socket, message.terminalId);
       case "terminal.input":
@@ -195,6 +195,8 @@ export function startServer(services: HostServices) {
         return terminals.resize(message.terminalId, message.columns, message.rows);
       case "terminal.close":
         return terminals.close(message.terminalId);
+      case "terminal.close-tab":
+        return terminals.closeTab(message.tabId);
       default:
         return message satisfies never;
     }

@@ -14,7 +14,13 @@ export const hints = {
   commandDelivery: "Commands you run with ! go to the agent with your next message, in the tags Claude Code uses for its own ! commands.",
   commandOutputsAttached: "These outputs of commands you ran with ! go ahead of your next message to the agent. ✕ keeps them out of it.",
   terminalToggle: "Hide or show a terminal in this workspace's folder. Its shell keeps running while the pane is hidden, and reloading the page reattaches to it.",
-  terminalHide: "Hide the terminal. The shell keeps running; show it again from the conversation header or the command palette.",
+  terminalHide: "Hide the terminals. Their shells keep running; show them again from the conversation header or the command palette.",
+  terminalNewTab: "Open a shell in a new tab, in this workspace's folder. Every window shows the same tabs.",
+  terminalSplit: "Open another shell beside this one, in the same tab (up to 4).",
+  terminalCloseTab: "Close this tab and end its shells.",
+  terminalCloseTabArmed: "Click again to end the shells in this tab, and whatever they are running.",
+  terminalCloseSplit: "End this shell and close its split.",
+  terminalCloseSplitArmed: "Click again to end this shell and whatever it is running.",
   inTerminal:
     "This Claude Code session is also running in a terminal. The host sees that in Claude Code's session registry (<config dir>/sessions/<pid>.json) and shows what the terminal is doing.",
   launch:

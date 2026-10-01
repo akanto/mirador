@@ -101,6 +101,20 @@ export interface Conversation {
 
 export type CommandStream = "stdout" | "stderr";
 
+/** Shells side by side in one tab of a workspace's terminal pane; the title is what the first shell last set, if anything. */
+export const MAX_TERMINALS_PER_TAB = 4;
+
+export interface TabTerminal {
+  id: string;
+  title: string | null;
+}
+
+export interface TerminalTab {
+  id: string;
+  name: string;
+  terminals: TabTerminal[];
+}
+
 export type ConversationEvent =
   | { type: "user-message"; text: string; attachedCommandIds?: string[] }
   | { type: "user-command"; commandId: string; command: string }

@@ -185,7 +185,7 @@
       <ul>
         <li><b>＋</b> opens a new tab with one shell. A tab is named after the title the shell sets, or "zsh", "zsh 2" and so on.</li>
         <li><b>◫ Split</b> adds another shell beside the others in the tab (up to 4), with resizable dividers between them.</li>
-        <li><b>×</b> on a tab closes its shells. <code>exit</code> or ⌃D closes that one terminal; the tab closes with its last terminal.</li>
+        <li><b>×</b> on a tab closes its shells; × in a split's corner (shown on hover) closes that one. Both ask again in place, like deleting a conversation. <code>exit</code> or ⌃D closes that one terminal; the tab closes with its last terminal.</li>
       </ul>
     </div>
     <div class="card">
@@ -198,7 +198,7 @@
       <h3 style="margin-top:0">How long they live</h3>
       <ul>
         <li>Shells live in the host. Reloading the page or closing and reopening the window <b>reattaches</b>: the host keeps the last ~256 KB of output of each terminal and replays it.</li>
-        <li>Two windows show the same terminals; tabs and splits are kept in the host too.</li>
+        <li>Two windows show the same terminals; tabs and splits are kept in the host too. How wide each split is stays with the window.</li>
         <li>Restarting the host ends every shell.</li>
       </ul>
     </div>

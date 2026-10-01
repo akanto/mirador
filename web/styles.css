@@ -2186,27 +2186,126 @@ button.shell-more:hover {
 .terminal-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   height: 33px;
-  padding: 0 10px 0 14px;
+  padding: 0 10px 0 0;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   font-size: 12.5px;
   color: var(--muted);
 }
 
-.terminal-title {
+.terminal-tabs {
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 200px;
+  border-right: 1px solid var(--border);
+}
+
+.terminal-tab.active {
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.terminal-tab [role="tab"] {
+  min-width: 0;
+  height: 100%;
+  padding: 0 2px 0 12px;
+  overflow: hidden;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.terminal-tab.active [role="tab"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.terminal-tab .close-tab {
+  padding: 0 8px 0 4px;
+  font-size: 14px;
+}
+
+.terminal-tab .close-tab.armed {
+  font-size: 12px;
+}
+
+.terminal-tabs .new-tab {
+  padding: 0 10px;
+}
+
+.terminal-splits {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: #1b1c22;
+}
+
+.terminal-splits > .splitter {
+  flex: 0 0 var(--splitter-width);
+  background-image: linear-gradient(#34363f, #34363f);
+}
+
+.terminal-splits > .splitter:hover,
+.terminal-splits > .splitter:focus-visible,
+.terminal-splits > .splitter.dragging {
+  background-image: linear-gradient(var(--accent), var(--accent));
+}
+
+.terminal-split {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.split-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 2px 0 10px;
+  flex-shrink: 0;
+  background: #23252c;
+  border-bottom: 1px solid #2f313a;
+  color: #9a9daa;
+  font-size: 11.5px;
+}
+
+.split-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
-  color: var(--text);
+}
+
+.split-strip .close-split {
+  padding: 0 6px;
+  color: inherit;
+  font-size: 14px;
+}
+
+.split-strip .close-split.armed {
+  font-size: 11.5px;
 }
 
 .terminal-view {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   padding: 6px 4px 4px 10px;
   background: #1b1c22;

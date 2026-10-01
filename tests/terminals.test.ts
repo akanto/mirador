@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MAX_TERMINALS_PER_TAB, type TerminalTab } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { Hub, type BrowserSocket } from "../host/hub.ts";
 import { TerminalService } from "../host/terminals.ts";
@@ -10,6 +11,7 @@ let workspaceDir: string;
 let terminals: TerminalService;
 let hub: Hub;
 const originalShell = process.env.SHELL;
+const originalHome = process.env.HOME;
 
 function fakeBrowser() {
   const received: ServerMessage[] = [];
@@ -24,7 +26,8 @@ function fakeBrowser() {
 const outputOf = (received: ServerMessage[]) =>
   received.flatMap((message) => (message.type === "terminal.output" ? [message.data] : [])).join("");
 
-const lastListing = (received: ServerMessage[]) => received.findLast((message) => message.type === "terminals.listed");
+const lastTabs = (received: ServerMessage[]): TerminalTab[] | undefined =>
+  received.findLast((message) => message.type === "terminals.listed")?.tabs;
 
 async function eventually<T>(read: () => T, isDone: (value: T) => boolean, timeoutMs = 5_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
@@ -35,19 +38,13 @@ async function eventually<T>(read: () => T, isDone: (value: T) => boolean, timeo
 const outputContaining = (received: ServerMessage[], text: string) =>
   eventually(() => outputOf(received), (output) => output.includes(text));
 
-async function openedTerminal(browser: ReturnType<typeof fakeBrowser>) {
-  const before = browser.received.length;
-  terminals.open("w1", 100, 30);
-  const listing = await eventually(
-    () => browser.received.slice(before).findLast((message) => message.type === "terminals.listed"),
-    (message) => message !== undefined,
-  );
-  return listing?.type === "terminals.listed" ? listing.terminalIds.at(-1)! : "";
-}
+const tabsOnceSettled = (received: ServerMessage[], isSettled: (tabs: TerminalTab[]) => boolean) =>
+  eventually(() => lastTabs(received) ?? [], isSettled);
 
 beforeEach(async () => {
-  process.env.SHELL = "/bin/sh";
   workspaceDir = await realpath(await mkdtemp(join(tmpdir(), "mirador-terminals-")));
+  process.env.SHELL = "/bin/sh";
+  process.env.HOME = workspaceDir;
   hub = new Hub();
   terminals = new TerminalService(hub, (workspaceId) => (workspaceId === "w1" ? workspaceDir : undefined));
 });
@@ -55,6 +52,7 @@ beforeEach(async () => {
 afterEach(async () => {
   terminals.shutdown();
   process.env.SHELL = originalShell;
+  process.env.HOME = originalHome;
   await rm(workspaceDir, { recursive: true, force: true });
 });
 
@@ -63,44 +61,77 @@ test("a terminal runs a shell in the workspace folder, sized as asked, and strea
   const elsewhere = fakeBrowser();
   terminals.attach(watching.socket, "w1");
   terminals.attach(elsewhere.socket, "w2");
-  const terminalId = await openedTerminal(watching);
+  const { terminalId } = terminals.open("w1", 100, 30);
 
   terminals.input(terminalId, "pwd; stty size\n");
   expect(await outputContaining(watching.received, "30 100")).toContain(`${workspaceDir}\r\n30 100`);
   terminals.resize(terminalId, 120, 40);
   terminals.input(terminalId, "stty size\n");
   expect(await outputContaining(watching.received, "40 120")).toContain("40 120");
-  expect(elsewhere.received.filter(({ type }) => type.startsWith("terminal"))).toEqual([{ type: "terminals.listed", workspaceId: "w2", terminalIds: [] }]);
+  expect(elsewhere.received.filter(({ type }) => type.startsWith("terminal"))).toEqual([{ type: "terminals.listed", workspaceId: "w2", tabs: [] }]);
 });
 
-test("a browser that attaches later gets the list and can replay what the terminal printed", async () => {
+test("a browser that attaches later gets the tabs and can replay what each terminal printed", async () => {
   const first = fakeBrowser();
   terminals.attach(first.socket, "w1");
-  const terminalId = await openedTerminal(first);
+  const { tabId, terminalId } = terminals.open("w1", 100, 30);
   terminals.input(terminalId, "echo before-reload\n");
   expect(await outputContaining(first.received, "before-reload\r\n")).toContain("before-reload\r\n");
 
   const reloaded = fakeBrowser();
   terminals.attach(reloaded.socket, "w1");
   terminals.replay(reloaded.socket, terminalId);
-  expect(lastListing(reloaded.received)).toEqual({ type: "terminals.listed", workspaceId: "w1", terminalIds: [terminalId] });
+  expect(lastTabs(reloaded.received)).toEqual([{ id: tabId, name: "sh", terminals: [{ id: terminalId, title: null }] }]);
   const replayed = reloaded.received.find((message) => message.type === "terminal.replayed");
   expect(replayed).toMatchObject({ terminalId, data: expect.stringContaining("before-reload\r\n") });
 });
 
-test("exiting the shell or closing the terminal ends it and takes it off the list", async () => {
+test("new tabs are named after the shell with the lowest free number, and a tab splits into at most four terminals", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "w1");
-  const exiting = await openedTerminal(browser);
-  terminals.input(exiting, "exit 3\n");
-  const exited = await eventually(() => browser.received.find((message) => message.type === "terminal.exited"), (message) => message !== undefined);
-  expect(exited).toEqual({ type: "terminal.exited", terminalId: exiting, exitCode: 3 });
-  expect(lastListing(browser.received)).toMatchObject({ terminalIds: [] });
+  const first = terminals.open("w1", 80, 24);
+  const second = terminals.open("w1", 80, 24);
+  const splits = Array.from({ length: MAX_TERMINALS_PER_TAB - 1 }, () => terminals.open("w1", 80, 24, first.tabId));
 
-  const closing = await openedTerminal(browser);
-  terminals.close(closing);
-  const afterClose = await eventually(() => lastListing(browser.received), (message) => message?.type === "terminals.listed" && message.terminalIds.length === 0);
-  expect(afterClose).toMatchObject({ terminalIds: [] });
+  expect(splits.every(({ tabId }) => tabId === first.tabId)).toBe(true);
+  expect(lastTabs(browser.received)?.map(({ name, terminals }) => [name, terminals.length])).toEqual([
+    ["sh", MAX_TERMINALS_PER_TAB],
+    ["sh 2", 1],
+  ]);
+  expect(() => terminals.open("w1", 80, 24, first.tabId)).toThrow(`A tab holds at most ${MAX_TERMINALS_PER_TAB} terminals.`);
+
+  terminals.closeTab(second.tabId);
+  expect((await tabsOnceSettled(browser.received, (tabs) => tabs.length === 1)).map(({ name }) => name)).toEqual(["sh"]);
+  expect(() => terminals.open("w1", 80, 24, second.tabId)).toThrow("That terminal tab is closed.");
+  terminals.open("w1", 80, 24);
+  expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual(["sh", "sh 2"]);
+});
+
+test("a terminal that exits leaves its tab, and the tab goes with its last terminal", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const kept = terminals.open("w1", 80, 24);
+  const exiting = terminals.open("w1", 80, 24, kept.tabId);
+  terminals.input(exiting.terminalId, "exit 3\n");
+  const exited = await eventually(() => browser.received.find((message) => message.type === "terminal.exited"), (message) => message !== undefined);
+  expect(exited).toEqual({ type: "terminal.exited", terminalId: exiting.terminalId, exitCode: 3 });
+  expect(lastTabs(browser.received)).toMatchObject([{ id: kept.tabId, terminals: [{ id: kept.terminalId }] }]);
+
+  terminals.close(kept.terminalId);
+  expect(await tabsOnceSettled(browser.received, (tabs) => tabs.length === 0)).toEqual([]);
+});
+
+test("each terminal in a tab carries the title its shell sets", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const { tabId, terminalId } = terminals.open("w1", 80, 24);
+  const split = terminals.open("w1", 80, 24, tabId);
+  terminals.input(split.terminalId, "printf '\\033]0;my-title\\007'\n");
+  const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[1]?.title === "my-title");
+  expect(tab?.terminals).toEqual([
+    { id: terminalId, title: null },
+    { id: split.terminalId, title: "my-title" },
+  ]);
 });
 
 test("opening a terminal in a workspace that no longer exists fails", () => {
