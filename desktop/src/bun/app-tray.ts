@@ -5,7 +5,7 @@ const trayActions: readonly string[] = ["open", "restart-host", "toggle-backgrou
 const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
 
 export class AppTray {
-  private readonly tray = new Tray({ title: "VS" });
+  private readonly tray = new Tray({ image: "views://assets/tray-icon.png", template: true, width: 18, height: 18 });
 
   constructor(onAction: (action: TrayAction) => void) {
     this.tray.on("tray-clicked", (event) => {

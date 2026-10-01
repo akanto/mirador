@@ -132,8 +132,8 @@ test("a conversation whose profile was deleted continues after picking another o
   await signIn(page, host);
   const dialog = await openProfiles(page);
   await dialog.locator(".profile-list li", { hasText: "second gateway" }).click();
-  page.once("dialog", (confirmation) => confirmation.accept());
-  await dialog.getByRole("button", { name: "Delete" }).click();
+  await dialog.getByRole("button", { name: "Delete profile" }).click();
+  await dialog.getByRole("button", { name: "Confirm: Delete profile" }).click();
   await expect(dialog.locator(".profile-list li", { hasText: "second gateway" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.locator(".workspace li", { hasText: "hello" }).click();

@@ -237,13 +237,16 @@ test("messages sent while the agent works wait in an editable queue and go out w
 });
 
 test("deleting a conversation while its agent works ends the turn quietly", async ({ page }) => {
-  page.on("dialog", (dialog) => dialog.accept());
   await signIn(page, host);
   await chooseScriptedOpencode(page);
   await startConversation(page);
   await sendMessage(page, "ASK Pick a shape");
   await expect(page.locator(".ask")).toBeVisible({ timeout: 60_000 });
-  await page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" }).click();
+  const deleteButton = page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" });
+  await deleteButton.click();
+  await expect(deleteButton).toHaveText("Delete?");
+  await expect(page.locator(".chat-header")).toHaveCount(1);
+  await deleteButton.click();
   await expect(page.locator(".chat-header")).toHaveCount(0);
   await page.waitForTimeout(1_000);
   await expect(page.locator(".notice")).toHaveCount(0);

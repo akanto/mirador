@@ -18,6 +18,8 @@ bun run build          # build/stable-macos-arm64/Mirador.app (self-expanding, a
 bun run dev            # run from source with Electrobun's dev runner
 ```
 
+Icons: `assets/app-icon.svg` (app icon) and `assets/tray-icon.svg` (menu bar, drawn black and shown by macOS as a template image) are the sources. `scripts/render-icons.sh` renders `icon.iconset/` and `assets/tray-icon.png` from them; rerun it after editing either SVG. The page's favicon is `web/favicon.svg`.
+
 The stable build is a small stub. The first launch expands it in place and writes Electrobun's uninstall manifest to `~/Library/Application Support/com.sodre90.mirador/stable/`.
 
 ## Install

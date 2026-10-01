@@ -1,8 +1,7 @@
-import { Terminal } from "@xterm/xterm";
-import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { chosenModel } from "../shared/config-options.ts";
 import type { ContextUsage, Conversation, Profile, StatuslineRender } from "../shared/model.ts";
+import { parseAnsi, plainTextOf, type AnsiStyle } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { compactTokenCount, contextHint, contextLevel, formatCost, usedPercentLabel, usedShare } from "./usage.ts";
@@ -10,11 +9,10 @@ import { compactTokenCount, contextHint, contextLevel, formatCost, usedPercentLa
 /** Statusline scripts draw with Nerd Font glyphs; the first of these the Mac has renders them. */
 const TERMINAL_FONT = '"MesloLGS NF", "Symbols Nerd Font Mono", "JetBrainsMono Nerd Font", "Hack Nerd Font", Menlo, monospace';
 const TERMINAL_FONT_SIZE = 12;
+const TERMINAL_PADDING_X = 8;
 const REQUEST_DELAY_MS = 300;
 const REFRESH_MS = 30_000;
-const MAX_WRAPPED_ROWS = 12;
 const PREFERENCE_KEY = "mirador-statusline";
-const ansiEscape = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
 
 export function ContextMeter({ usage }: { usage: ContextUsage }) {
   const share = usedShare(usage);
@@ -59,7 +57,7 @@ function useColumns(element: RefObject<HTMLElement | null>) {
     const target = element.current;
     if (!target) return;
     const cellWidth = terminalCellWidth();
-    const observer = new ResizeObserver(() => setColumns(Math.max(1, Math.floor(target.clientWidth / cellWidth) - 1)));
+    const observer = new ResizeObserver(() => setColumns(Math.max(1, Math.floor((target.clientWidth - 2 * TERMINAL_PADDING_X) / cellWidth) - 1)));
     observer.observe(target);
     return () => observer.disconnect();
   }, []);
@@ -91,47 +89,40 @@ function useStatuslineRender(conversation: Conversation, columns: number | null,
   return render;
 }
 
-/** Lines wider than the pane wrap onto rows of their own; growing the terminal brings back the rows they pushed out of view. */
-function growToShowWrappedLines(terminal: Terminal, columns: number) {
-  const renderedRows = Math.min(MAX_WRAPPED_ROWS, terminal.buffer.active.length);
-  if (renderedRows > terminal.rows) terminal.resize(columns, renderedRows);
+function cssOf({ foreground, background, bold, dim, italic, underline, inverse, strikethrough }: AnsiStyle): CSSProperties {
+  const [color, backgroundColor] = inverse
+    ? [background ?? "var(--terminal-background)", foreground ?? "var(--terminal-foreground)"]
+    : [foreground, background];
+  return {
+    color: dim ? `color-mix(in srgb, ${color ?? "var(--terminal-foreground)"} 60%, transparent)` : color,
+    backgroundColor,
+    fontWeight: bold ? 700 : undefined,
+    fontStyle: italic ? "italic" : undefined,
+    textDecoration: [underline && "underline", strikethrough && "line-through"].filter(Boolean).join(" ") || undefined,
+  };
 }
 
-function TerminalText({ text, columns }: { text: string; columns: number }) {
-  const container = useRef<HTMLDivElement>(null);
-  const terminal = useRef<Terminal | null>(null);
-
-  useEffect(() => {
-    const created = new Terminal({
-      disableStdin: true,
-      convertEol: true,
-      cursorInactiveStyle: "none",
-      allowTransparency: true,
-      fontFamily: TERMINAL_FONT,
-      fontSize: TERMINAL_FONT_SIZE,
-      scrollback: MAX_WRAPPED_ROWS,
-      cols: columns,
-      rows: 1,
-    });
-    created.open(container.current!);
-    created.textarea?.setAttribute("tabindex", "-1");
-    terminal.current = created;
-    return () => {
-      created.dispose();
-      terminal.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const current = terminal.current;
-    if (!current) return;
-    current.options.theme = { background: "rgba(0, 0, 0, 0)", foreground: getComputedStyle(container.current!).color };
-    current.reset();
-    current.resize(columns, text.split("\n").length);
-    current.write(`\x1b[?25l${text}`, () => growToShowWrappedLines(current, columns));
-  }, [text, columns]);
-
-  return <div ref={container} className="statusline-terminal" role="img" aria-label={text.replace(ansiEscape, "").trim()} />;
+/** The command's output drawn as a terminal would, on a terminal's dark background, since statusline scripts colour themselves for one. */
+function TerminalText({ text }: { text: string }) {
+  const lines = useMemo(() => parseAnsi(text), [text]);
+  return (
+    <div
+      className="statusline-terminal"
+      role="img"
+      aria-label={plainTextOf(lines).trim()}
+      style={{ fontFamily: TERMINAL_FONT, fontSize: TERMINAL_FONT_SIZE, paddingInline: TERMINAL_PADDING_X }}
+    >
+      {lines.map((runs, lineIndex) => (
+        <div key={lineIndex} className="statusline-line">
+          {runs.map((run, runIndex) => (
+            <span key={runIndex} style={cssOf(run.style)}>
+              {run.text}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function BuiltInStatusline({ conversation, profiles, gitBranch }: { conversation: Conversation; profiles: Profile[]; gitBranch: string | null }) {
@@ -176,7 +167,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
     <section className="statusline" aria-label="Statusline">
       <div className="statusline-content" ref={content}>
         {commandOutput !== null && columns ? (
-          <TerminalText text={commandOutput} columns={columns} />
+          <TerminalText text={commandOutput} />
         ) : (
           <BuiltInStatusline conversation={conversation} profiles={profiles} gitBranch={render?.gitBranch ?? null} />
         )}

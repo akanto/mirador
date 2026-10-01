@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { harnessIds, harnessLabels, type HarnessId, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
+import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
+import { hints } from "./hints.ts";
 
 const NEW_PROFILE = "new";
 
@@ -82,11 +84,7 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
   const { errors } = useMemo(() => parseEnvironment(environment), [environment]);
   const unchanged = profile && name === profile.name && environment === profile.environment && prelaunch === profile.prelaunch;
 
-  const deleteProfile = () => {
-    if (profile && confirm(`Delete profile "${profile.name}"? Its conversations can continue with another profile.`)) {
-      connection.send({ type: "profile.delete", profileId: profile.id });
-    }
-  };
+  const deleteProfile = () => profile && connection.send({ type: "profile.delete", profileId: profile.id });
 
   return (
     <form
@@ -149,9 +147,9 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
           {profile ? "Save" : "Create profile"}
         </button>
         {profile && (
-          <button type="button" className="danger" onClick={deleteProfile}>
+          <ConfirmButton className="danger" label="Delete profile" armedText="Delete?" armedHint={hints.deleteProfileArmed} onConfirm={deleteProfile}>
             Delete
-          </button>
+          </ConfirmButton>
         )}
         {savedOnce && unchanged && <span className="saved">Saved</span>}
       </div>

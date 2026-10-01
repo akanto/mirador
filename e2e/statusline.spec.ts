@@ -48,7 +48,8 @@ test("the statusline command from the profile's Claude settings replaces the bui
   const statusline = page.getByRole("region", { name: "Statusline" });
   const printed = statusline.locator(".statusline-terminal");
   await expect(printed).toHaveAttribute("aria-label", /context none from-the-profile cols \d+$/);
-  await expect(printed.locator(".xterm-rows")).toContainText("from-the-profile");
+  await expect(printed).toContainText("from-the-profile");
+  await expect(printed.getByText("E2E/Scripted")).toHaveCSS("color", "rgb(152, 195, 121)");
 
   await sendMessage(page, "hello");
   await waitForTurnToEnd(page);

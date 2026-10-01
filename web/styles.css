@@ -113,6 +113,17 @@ button.danger {
   color: var(--danger);
 }
 
+button.armed,
+button.icon.armed,
+button.icon.armed:hover:not(:disabled) {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  visibility: visible;
+}
+
 input,
 textarea,
 select {
@@ -2020,18 +2031,20 @@ button.terminal-more:hover {
   color: var(--faint);
 }
 
-.statusline-terminal .xterm {
-  padding: 0;
+.statusline-terminal {
+  --terminal-background: #1b1c22;
+  --terminal-foreground: #d4d6de;
+  background: var(--terminal-background);
+  color: var(--terminal-foreground);
+  border-radius: 6px;
+  padding-block: 3px;
+  line-height: 1.4;
+  white-space: pre;
+  overflow: hidden;
 }
 
-.statusline-terminal .xterm .xterm-viewport,
-.statusline-terminal .xterm .xterm-scrollable-element {
-  background-color: transparent !important;
-  overflow: hidden !important;
-}
-
-.statusline-terminal .xterm .scrollbar {
-  display: none;
+.statusline-line {
+  min-height: 1.4em;
 }
 
 .statusline-error {

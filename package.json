@@ -13,7 +13,6 @@
     "@agentclientprotocol/claude-agent-acp": "0.84.0",
     "@agentclientprotocol/sdk": "1.5.1",
     "@modelcontextprotocol/server": "2.2.0",
-    "@xterm/xterm": "^6.0.0",
     "d3": "7",
     "mermaid": "12",
     "react": "19",

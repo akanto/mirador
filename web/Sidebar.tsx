@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type KeyboardEvent } from "react";
 import { harnessIds, launchLabel, terminalActivityLabels, type Conversation, type Launch, type Profile, type Workspace } from "../shared/model.ts";
+import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { startConversationIn } from "./actions.ts";
@@ -144,16 +145,8 @@ function WorkspaceSection({
   dispatch: Dispatch<AppAction>;
 }) {
 
-  const deleteWorkspace = () => {
-    if (confirm(`Remove workspace ${workspace.name} and its ${conversations.length} conversation(s) from the app? Files on disk are not touched.`)) {
-      connection.send({ type: "workspace.delete", workspaceId: workspace.id });
-    }
-  };
-  const deleteConversation = (conversation: Conversation) => {
-    if (confirm(`Delete conversation "${conversation.title}"?`)) {
-      connection.send({ type: "conversation.delete", conversationId: conversation.id });
-    }
-  };
+  const deleteWorkspace = () => connection.send({ type: "workspace.delete", workspaceId: workspace.id });
+  const deleteConversation = (conversation: Conversation) => connection.send({ type: "conversation.delete", conversationId: conversation.id });
 
   return (
     <section className="workspace">
@@ -164,9 +157,16 @@ function WorkspaceSection({
         <div className="workspace-name" title={workspace.path}>
           {workspace.name}
         </div>
-        <button className="icon" aria-label="Remove workspace" data-hint={hints.removeWorkspace} onClick={deleteWorkspace}>
+        <ConfirmButton
+          className="icon"
+          label="Remove workspace"
+          hint={hints.removeWorkspace}
+          armedText="Remove?"
+          armedHint={hints.removeWorkspaceArmed}
+          onConfirm={deleteWorkspace}
+        >
           ×
-        </button>
+        </ConfirmButton>
       </header>
       <div className="workspace-path">{workspace.path}</div>
       <ul>
@@ -178,17 +178,16 @@ function WorkspaceSection({
           >
             {statusDot(conversation)}
             <ConversationTitle conversation={conversation} startEditingOn="double-click" className="conversation-title" />
-            <button
+            <ConfirmButton
               className="icon"
-              aria-label="Delete conversation"
-              data-hint={hints.deleteConversation}
-              onClick={(event) => {
-                event.stopPropagation();
-                deleteConversation(conversation);
-              }}
+              label="Delete conversation"
+              hint={hints.deleteConversation}
+              armedText="Delete?"
+              armedHint={hints.deleteConversationArmed}
+              onConfirm={() => deleteConversation(conversation)}
             >
               ×
-            </button>
+            </ConfirmButton>
           </li>
         ))}
       </ul>

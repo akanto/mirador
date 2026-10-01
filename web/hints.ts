@@ -21,7 +21,10 @@ export const hints = {
   theme: "Light, dark, or follow the system setting. The sidebar stays dark either way.",
   addWorkspace: "Add a project directory. Its conversations run with it as the working directory.",
   removeWorkspace: "Remove this workspace and its conversations from the app. The directory and its files are not touched.",
+  removeWorkspaceArmed: "Click again to remove this workspace and its conversations from the app. The directory and its files are not touched.",
   deleteConversation: "Delete this conversation, its timeline and its canvas history from the app. The agent's own session files stay on disk.",
+  deleteConversationArmed: "Click again to delete this conversation. The agent's own session files stay on disk.",
+  deleteProfileArmed: "Click again to delete this profile. Its conversations can continue with another profile.",
   splitter: "Drag to resize, double-click to reset.",
   queue:
     "Messages you send while the agent works wait here and go out one at a time, each when the turn before it ends (also after you press Stop).\n\nEdit moves a message back into the message box; ↑ in an empty box does the same for the last one. The queue lives in the host, so it survives a page reload but not a host restart.",
