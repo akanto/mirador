@@ -11,7 +11,10 @@ interface Hint {
 
 const hintedElementAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>("[data-hint]") : null);
 
-/** Shows the `data-hint` text of whatever is pointed at or focused with the keyboard, one hint at a time. */
+/**
+ * Shows the `data-hint` text of whatever is pointed at or focused with the keyboard, one hint at a time.
+ * Pressing an element puts its hint away until the pointer moves to something else or the element loses focus.
+ */
 export function HintLayer() {
   const [hint, setHint] = useState<Hint | null>(null);
   const bubble = useRef<HTMLDivElement>(null);
@@ -20,6 +23,7 @@ export function HintLayer() {
     let current: HTMLElement | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let visible = false;
+    let dismissed: HTMLElement | null = null;
     const hide = () => {
       clearTimeout(timer);
       current = null;
@@ -36,30 +40,39 @@ export function HintLayer() {
         setHint({ text, anchor: element.getBoundingClientRect() });
       }, delay);
     };
+    const onPointerDown = (event: PointerEvent) => {
+      dismissed = hintedElementAt(event.target);
+      hide();
+    };
     const onPointerOver = (event: PointerEvent) => {
       const element = hintedElementAt(event.target);
+      if (element !== dismissed) dismissed = null;
       if (element === current) return;
-      if (element) showFor(element, visible ? 0 : SHOW_DELAY_MS);
+      if (element && element !== dismissed) showFor(element, visible ? 0 : SHOW_DELAY_MS);
       else hide();
     };
     const onFocusIn = (event: FocusEvent) => {
       const element = hintedElementAt(event.target);
-      if (element && event.target instanceof Element && event.target.matches(":focus-visible")) showFor(element, 0);
+      if (element && element !== dismissed && event.target instanceof Element && event.target.matches(":focus-visible")) showFor(element, 0);
+    };
+    const onFocusOut = (event: FocusEvent) => {
+      if (event.target instanceof Node && dismissed?.contains(event.target)) dismissed = null;
+      hide();
     };
     const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && hide();
     document.addEventListener("pointerover", onPointerOver);
-    document.addEventListener("pointerdown", hide);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", hide);
+    document.addEventListener("focusout", onFocusOut);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("scroll", hide, true);
     window.addEventListener("blur", hide);
     return () => {
       clearTimeout(timer);
       document.removeEventListener("pointerover", onPointerOver);
-      document.removeEventListener("pointerdown", hide);
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("focusout", hide);
+      document.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("scroll", hide, true);
       window.removeEventListener("blur", hide);

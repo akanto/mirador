@@ -1,0 +1,31 @@
+import { expect, test } from "@playwright/test";
+import { addWorkspace, signIn } from "./helpers.ts";
+import { TestHost } from "./test-host.ts";
+
+const host = new TestHost(4960);
+
+test.beforeAll(() => host.start());
+test.afterAll(async () => {
+  await host.stop();
+  await host.cleanUp();
+});
+
+test("clicking a hinted dropdown hides its hint, which stays away until the pointer leaves", async ({ page }) => {
+  await signIn(page, host);
+  await addWorkspace(page, host.projectDir);
+  const picker = page.getByLabel("Agent", { exact: true });
+  const hint = page.getByRole("tooltip");
+
+  await picker.hover();
+  await expect(hint).toBeVisible();
+  await picker.click();
+  await page.waitForTimeout(800);
+  await expect(hint).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(800);
+  await expect(hint).toHaveCount(0);
+
+  await page.getByRole("button", { name: "+ New conversation" }).hover();
+  await picker.hover();
+  await expect(hint).toBeVisible();
+});
