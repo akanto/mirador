@@ -17,11 +17,13 @@ const sizeOf = (rect: DOMRect, axis: SplitAxis) => (axis === "columns" ? rect.wi
 
 /**
  * Divides two panes: side by side for columns, one above the other for rows. `share` is the first pane's part of
- * the room they share. Without `area`, the two panes are the divider's previous and next siblings.
+ * the room they share. Without `area`, the two panes are the divider's previous and next siblings. With `onDrag`,
+ * a pointer drag shows its shares there and `onChange` gets only the last one, so a costly owner updates once.
  */
 export function Splitter({
   share,
   onChange,
+  onDrag,
   label,
   resetShare,
   axis = "columns",
@@ -31,6 +33,7 @@ export function Splitter({
 }: {
   share: number;
   onChange: (share: number) => void;
+  onDrag?: (share: number) => void;
   label: string;
   resetShare: number;
   axis?: SplitAxis;
@@ -40,6 +43,7 @@ export function Splitter({
 }) {
   const handle = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  const draggedShare = useRef<number | null>(null);
 
   useEffect(() => {
     document.body.classList.toggle("resizing", dragging);
@@ -75,12 +79,18 @@ export function Splitter({
   };
 
   const drag = (event: PointerEvent<HTMLDivElement>) => {
-    if (dragging) onChange(shareAtPointer(event));
+    if (!dragging) return;
+    const next = shareAtPointer(event);
+    if (!onDrag) return onChange(next);
+    draggedShare.current = next;
+    onDrag(next);
   };
 
   const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
     handle.current!.releasePointerCapture(event.pointerId);
     setDragging(false);
+    if (draggedShare.current !== null) onChange(draggedShare.current);
+    draggedShare.current = null;
   };
 
   const nudge = (event: KeyboardEvent<HTMLDivElement>) => {

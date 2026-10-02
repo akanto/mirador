@@ -8,7 +8,7 @@ import { HintLayer } from "./Hint.tsx";
 import { hints } from "./hints.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
-import { DEFAULT_SIDEBAR_WIDTH, type PaneLayout } from "./layout.ts";
+import { DEFAULT_SIDEBAR_WIDTH, sidebarWidthWithinLimits, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { ProfilesDialog } from "./Profiles.tsx";
 import { isFreshReview } from "./review-placement.ts";
@@ -143,6 +143,8 @@ export function App() {
   useReloadWhenHostRestarted(state.hostRunId);
   const conversationLayouts = useConversationLayouts();
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
+  const layoutElement = useRef<HTMLDivElement>(null);
+  const showSidebarWidth = (share: number) => layoutElement.current?.style.setProperty("--sidebar-width", `${sidebarWidthWithinLimits(share * window.innerWidth)}px`);
   const workspace = currentWorkspace(state);
   const layout = conversationLayouts.layoutOf(state.selectedConversationId);
   const changeLayout = (update: (layout: PaneLayout) => PaneLayout) => conversationLayouts.change(state.selectedConversationId, update);
@@ -258,7 +260,7 @@ export function App() {
     </main>
   );
   return (
-    <div className="layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+    <div ref={layoutElement} className="layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
       <Sidebar state={state} dispatch={dispatch} />
       <Splitter
         label="Resize the sidebar"
@@ -266,6 +268,7 @@ export function App() {
         resetShare={DEFAULT_SIDEBAR_WIDTH / window.innerWidth}
         minimumSize={0}
         area={() => ({ start: 0, size: window.innerWidth })}
+        onDrag={showSidebarWidth}
         onChange={(share) => setSidebarWidth(share * window.innerWidth)}
       />
       <WorkspaceArea

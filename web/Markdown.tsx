@@ -1,7 +1,9 @@
+import { memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export function MarkdownText({ text }: { text: string }) {
+/** Parsing is the costly part, so a re-render with the same text reuses the last result. */
+export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
   return (
     <div className="markdown">
       <Markdown
@@ -12,4 +14,4 @@ export function MarkdownText({ text }: { text: string }) {
       </Markdown>
     </div>
   );
-}
+});

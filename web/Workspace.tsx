@@ -155,7 +155,13 @@ export function WorkspaceArea({
   const shown = { conversation: content.conversation !== null, canvas: content.canvas !== null, terminals: content.terminals !== null };
   const { fullscreen, toggleFullscreen, setFullscreen } = useFullscreen(area, layout, shown, onChange);
   const { moving, startMove } = useMovePane(onChange);
-  const { columns, rows, areas, columnDivider, rowDivider } = placement(layout, shown, fullscreen);
+  const [dragged, setDragged] = useState<Partial<Pick<PaneLayout, "leftShare" | "topShare">>>({});
+  const shownLayout = { ...layout, ...dragged };
+  const { columns, rows, areas, columnDivider, rowDivider } = placement(shownLayout, shown, fullscreen);
+  const commitShares = (shares: Partial<Pick<PaneLayout, "leftShare" | "topShare">>) => {
+    setDragged({});
+    onChange((current) => ({ ...current, ...shares }));
+  };
 
   const areaAlong = (axis: SplitAxis) => () => {
     const rect = area.current!.getBoundingClientRect();
@@ -188,8 +194,9 @@ export function WorkspaceArea({
           <Splitter
             key="columns"
             style={{ gridArea: columnDivider }}
-            share={layout.leftShare}
-            onChange={(leftShare) => onChange((current) => ({ ...current, leftShare }))}
+            share={shownLayout.leftShare}
+            onDrag={(leftShare) => setDragged({ leftShare })}
+            onChange={(leftShare) => commitShares({ leftShare })}
             label="Resize the left and right panes"
             resetShare={DEFAULT_LEFT_SHARE}
             minimumSize={MIN_PANE_WIDTH}
@@ -200,8 +207,9 @@ export function WorkspaceArea({
           <Splitter
             key="rows"
             style={{ gridArea: rowDivider }}
-            share={layout.topShare}
-            onChange={(topShare) => onChange((current) => ({ ...current, topShare }))}
+            share={shownLayout.topShare}
+            onDrag={(topShare) => setDragged({ topShare })}
+            onChange={(topShare) => commitShares({ topShare })}
             label="Resize the top and bottom panes"
             resetShare={DEFAULT_TOP_SHARE}
             axis="rows"

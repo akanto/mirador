@@ -1,5 +1,5 @@
 import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { flatSelectOptions } from "../shared/config-options.ts";
 import {
   harnessLabels,
@@ -537,7 +537,8 @@ function authorName(author: Author, harness: HarnessId) {
   return author === "user" ? "You" : agentNames[harness];
 }
 
-function TimestampedEntry({
+/** Long conversations have hundreds of entries; one that did not change is not rendered again. */
+const TimestampedEntry = memo(function TimestampedEntry({
   block,
   startsGroup,
   harness,
@@ -563,7 +564,7 @@ function TimestampedEntry({
       </div>
     </div>
   );
-}
+});
 
 function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conversationId: string }) {
   switch (block.kind) {
