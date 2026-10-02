@@ -647,6 +647,15 @@ function anchorAtTop(timeline: HTMLElement): ScrollAnchor | null {
   return { element: crossing, fraction: rect.height ? (top - rect.top) / rect.height : 0 };
 }
 
+/** The first entry not yet scrolled past, and how far down it the top edge of the view is (negative while it starts lower). */
+function entryAtTop(timeline: HTMLElement): ScrollAnchor | null {
+  const top = timeline.getBoundingClientRect().top;
+  const entry = firstEndingBelow([...timeline.querySelectorAll(":scope > .timeline-entry")], top);
+  if (!entry) return null;
+  const rect = entry.getBoundingClientRect();
+  return { element: entry, fraction: rect.height ? (top - rect.top) / rect.height : 0 };
+}
+
 function scrollBackTo(timeline: HTMLElement, { element, fraction }: ScrollAnchor) {
   if (!element.isConnected) return;
   const rect = element.getBoundingClientRect();
@@ -663,6 +672,7 @@ function useScrollAnchor(dependency: unknown) {
   const pinned = useRef(true);
   const anchor = useRef<ScrollAnchor | null>(null);
   const size = useRef({ width: 0, height: 0 });
+  const held = useRef<ScrollAnchor | "bottom" | null>(null);
 
   const resizedSinceLastLook = (timeline: HTMLElement) => timeline.clientWidth !== size.current.width || timeline.clientHeight !== size.current.height;
 
@@ -682,13 +692,52 @@ function useScrollAnchor(dependency: unknown) {
     return () => observer.disconnect();
   }, []);
 
+  useLayoutEffect(() => {
+    const place = held.current;
+    if (!place) return;
+    held.current = null;
+    if (place === "bottom") ref.current!.scrollTop = ref.current!.scrollHeight;
+    else scrollBackTo(ref.current!, place);
+  });
+
   const onScroll = () => {
     const timeline = ref.current;
     if (!timeline || resizedSinceLastLook(timeline)) return;
     pinned.current = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 40;
     anchor.current = pinned.current ? null : anchorAtTop(timeline);
   };
-  return { ref, onScroll };
+  /** Keeps the reader's place through the next render, which adds or removes entries above the view. */
+  const holdPlace = () => {
+    if (ref.current) held.current = pinned.current ? "bottom" : entryAtTop(ref.current);
+  };
+  const isPinned = () => pinned.current;
+  return { ref, onScroll, holdPlace, isPinned };
+}
+
+const ENTRIES_PER_LOAD = 200;
+
+/**
+ * A long conversation keeps only its newest entries in the page: WebKit repaints every entry whenever any pane changes
+ * size, which made dragging a divider lag in conversations with thousands of entries. Earlier entries load as the
+ * reader scrolls up to them; while the reader stays at the bottom, the oldest loaded ones are let go again.
+ */
+function useLoadedEntries(entryCount: number, historyLoaded: boolean, scroll: { holdPlace: () => void; isPinned: () => boolean }) {
+  const [first, setFirst] = useState<number | null>(null);
+  const newest = Math.max(0, entryCount - ENTRIES_PER_LOAD);
+  useEffect(() => {
+    if (historyLoaded && first === null) setFirst(newest);
+  }, [historyLoaded]);
+  useEffect(() => {
+    if (first !== null && scroll.isPinned() && entryCount - first > 2 * ENTRIES_PER_LOAD) setFirst(newest);
+  }, [entryCount]);
+  const firstLoaded = Math.min(first ?? newest, entryCount);
+  const loadFrom = (index: number) => {
+    const target = Math.max(0, index);
+    if (target >= firstLoaded) return;
+    scroll.holdPlace();
+    setFirst(target);
+  };
+  return { firstLoaded, loadFrom, loadEarlier: () => loadFrom(firstLoaded - ENTRIES_PER_LOAD) };
 }
 
 const queuedMessagesGoOut: Record<HarnessId, string> = {
@@ -1099,7 +1148,18 @@ export function ChatPanel({
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
-  const { ref, onScroll } = useScrollAnchor(open.events.length);
+  const { ref, onScroll, holdPlace, isPinned } = useScrollAnchor(open.events.length);
+  const { firstLoaded, loadFrom, loadEarlier } = useLoadedEntries(timeline.length, open.loaded, { holdPlace, isPinned });
+  const [subagentToShow, setSubagentToShow] = useState<string | null>(null);
+  useEffect(() => {
+    if (!subagentToShow) return;
+    ref.current?.querySelector(`[data-tool-call-id="${CSS.escape(subagentToShow)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setSubagentToShow(null);
+  }, [subagentToShow]);
+  const onTimelineScroll = () => {
+    onScroll();
+    if (ref.current!.scrollTop < ref.current!.clientHeight) loadEarlier();
+  };
   const busy = isBusy(conversation);
   const subagents = useMemo(() => subagentsIn(timeline), [timeline]);
   const subagentStates = useMemo(() => new Map(subagents.map((block) => [block.toolCallId, subagentState(block, busy)])), [subagents, busy]);
@@ -1107,7 +1167,8 @@ export function ChatPanel({
   const showRunningSubagent = () => {
     const first = runningSubagents[0];
     if (!first) return;
-    ref.current?.querySelector(`[data-tool-call-id="${CSS.escape(first.toolCallId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    loadFrom(timeline.findIndex((block) => subagentsIn([block]).includes(first)));
+    setSubagentToShow(first.toolCallId);
   };
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
@@ -1122,14 +1183,19 @@ export function ChatPanel({
           runningSubagents={runningSubagents.length}
           onShowRunningSubagent={showRunningSubagent}
         />
-        <div className="timeline" ref={ref} onScroll={onScroll}>
+        <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
           {!open.loaded && <div className="notice-line">Loading…</div>}
           {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
-          {timeline.map((block, index) => (
+          {firstLoaded > 0 && (
+            <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
+              Show earlier entries ({firstLoaded.toLocaleString()} more)
+            </button>
+          )}
+          {timeline.slice(firstLoaded).map((block, offset) => (
             <TimestampedEntry
               key={block.key}
               block={block}
-              startsGroup={startsAuthorGroup(timeline, index)}
+              startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
               harness={conversation.harness}
               conversationId={conversation.id}
             />

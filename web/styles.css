@@ -1755,6 +1755,18 @@ input.picker-search {
   display: none;
 }
 
+.timeline > .load-earlier {
+  width: 100%;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.timeline > .load-earlier:hover {
+  color: var(--text);
+}
+
 .working {
   color: var(--muted);
   font-size: 12px;
