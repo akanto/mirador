@@ -1,5 +1,5 @@
 import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { flatSelectOptions } from "../shared/config-options.ts";
 import {
   harnessLabels,
@@ -20,6 +20,7 @@ import { harnessSteers, useEnterWhileBusy, type EnterWhileBusy } from "./busy-se
 import { connection } from "./connection.ts";
 import { choiceGroups } from "./choices.ts";
 import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages.tsx";
+import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
@@ -772,6 +773,68 @@ function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wa
   );
 }
 
+const MIN_COMPOSER_HEIGHT = 40;
+const MAX_COMPOSER_SHARE_OF_PANE = 0.7;
+const COMPOSER_KEYBOARD_STEP = 24;
+
+/** The message box's top edge: dragging it sets how tall the box is at least; it still grows with longer text. */
+function ComposerGrip({ textarea }: { textarea: RefObject<HTMLTextAreaElement | null> }) {
+  const drag = useRef<{ pointerY: number; height: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle("resizing", dragging);
+    document.body.classList.toggle("resizing-rows", dragging);
+  }, [dragging]);
+
+  const resizeTo = (height: number) => {
+    const pane = textarea.current?.closest(".composer-area")?.parentElement?.clientHeight ?? window.innerHeight;
+    setComposerHeight(Math.min(Math.max(height, MIN_COMPOSER_HEIGHT), pane * MAX_COMPOSER_SHARE_OF_PANE));
+  };
+
+  const startDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (!textarea.current) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { pointerY: event.clientY, height: textarea.current.offsetHeight };
+    setDragging(true);
+  };
+
+  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (drag.current) resizeTo(drag.current.height + drag.current.pointerY - event.clientY);
+  };
+
+  const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    drag.current = null;
+    setDragging(false);
+  };
+
+  const nudge = (event: KeyboardEvent<HTMLDivElement>) => {
+    const direction = ({ ArrowUp: 1, ArrowDown: -1 } as Record<string, number>)[event.key];
+    if (!direction || !textarea.current) return;
+    event.preventDefault();
+    resizeTo(textarea.current.offsetHeight + direction * COMPOSER_KEYBOARD_STEP);
+  };
+
+  return (
+    <div
+      className={`composer-grip ${dragging ? "dragging" : ""}`}
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Message box height"
+      tabIndex={0}
+      data-hint={hints.composerGrip}
+      onPointerDown={startDrag}
+      onPointerMove={moveDrag}
+      onPointerUp={stopDrag}
+      onPointerCancel={stopDrag}
+      onDoubleClick={() => setComposerHeight(null)}
+      onKeyDown={nudge}
+    />
+  );
+}
+
 /** `!git status` in the message box runs `git status` instead of messaging the agent. */
 const commandIn = (text: string) => (text.trimStart().startsWith("!") ? text.trimStart().slice(1).trim() : null);
 
@@ -854,6 +917,7 @@ function Composer({
   const queued = conversation.queuedMessages;
   const command = commandIn(text);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const composerHeight = useComposerHeight();
   const images = useComposerImages(conversation.id, text, setText, textarea);
   const typingAidAttributes = useTypingAidAttributes();
   const enterWhileBusy = useEnterWhileBusy();
@@ -929,6 +993,7 @@ function Composer({
 
   return (
     <div className="composer-area">
+      <ComposerGrip textarea={textarea} />
       {conversation.usageLimit && <UsageLimitNotice conversationId={conversation.id} wait={conversation.usageLimit} />}
       {queued.length > 0 && <QueuedMessages conversationId={conversation.id} harness={conversation.harness} messages={queued} onEdit={pullBack} onRemove={remove} />}
       <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />
@@ -946,6 +1011,7 @@ function Composer({
           ref={textarea}
           value={text}
           rows={Math.min(10, Math.max(2, text.split("\n").length))}
+          style={composerHeight === null ? undefined : { minHeight: composerHeight }}
           placeholder={
             busy
               ? busyPlaceholder(canSteer, enterWhileBusy)

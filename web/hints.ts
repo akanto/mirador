@@ -67,6 +67,7 @@ export const hints = {
   deleteConversationArmed: "Click again to delete this conversation. The agent's own session files stay on disk.",
   deleteProfileArmed: "Click again to delete this profile. Its conversations can continue with another profile.",
   splitter: "Drag to resize, double-click to reset.",
+  composerGrip: "Drag up to make the message box taller, down to make it smaller; it still grows with longer text. Every conversation in this browser uses the same height. Double-click to let it fit the text again.",
   paneGrip: "Drag onto another pane to swap the two. Each conversation remembers its own layout; Settings picks the one new conversations start with.",
   paneFullscreen: "Fill the workspace with this pane. Double-clicking the bar does the same.",
   paneExitFullscreen: "Back to the other panes. Esc does the same, except in a terminal, which keeps Esc for itself.",

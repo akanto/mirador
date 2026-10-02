@@ -2724,6 +2724,34 @@ button.shell-more:hover {
   margin: 0;
 }
 
+.composer-grip {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 10px;
+  margin-top: -4px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.composer-grip::before {
+  content: "";
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.composer-grip:hover::before,
+.composer-grip:focus-visible::before,
+.composer-grip.dragging::before {
+  background: var(--accent);
+}
+
+.composer-grip:focus-visible {
+  outline: none;
+}
+
 .statusline {
   display: flex;
   align-items: center;
