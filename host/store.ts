@@ -13,7 +13,7 @@ import type {
   StoredEvent,
   Workspace,
 } from "../shared/model.ts";
-import { isWorkspaceColor, type WorkspaceColor } from "../shared/model.ts";
+import { isCanvasUse, isWorkspaceColor, type CanvasUse, type WorkspaceColor } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
@@ -36,6 +36,7 @@ const schema = `
     id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL, prelaunch TEXT NOT NULL, created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS prompt_templates (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 
 const addedColumns = [
@@ -325,6 +326,15 @@ export class Store {
   deleteProfile(id: string) {
     this.db.query("DELETE FROM profiles WHERE id = ?").run(id);
     this.db.query("UPDATE workspaces SET default_profile_id = NULL WHERE default_profile_id = ?").run(id);
+  }
+
+  canvasUse(): CanvasUse {
+    const value = (this.db.query("SELECT value FROM settings WHERE key = 'canvas_use'").get() as { value: string } | null)?.value;
+    return isCanvasUse(value) ? value : "often";
+  }
+
+  setCanvasUse(canvasUse: CanvasUse) {
+    this.db.query("INSERT INTO settings (key, value) VALUES ('canvas_use', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(canvasUse);
   }
 
   listPromptTemplates(): PromptTemplate[] {

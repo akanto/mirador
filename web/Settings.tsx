@@ -1,7 +1,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import type { PromptTemplate } from "../shared/model.ts";
+import { canvasUseLabels, type CanvasUse, type PromptTemplate } from "../shared/model.ts";
 import { ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
+import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
@@ -43,12 +44,14 @@ function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hid
 export function SettingsDialog({
   section,
   promptTemplates,
+  canvasUse,
   layoutDefault,
   onChange,
   onClose,
 }: {
   section: SettingsSection | undefined;
   promptTemplates: PromptTemplate[];
+  canvasUse: CanvasUse;
   layoutDefault: LayoutDefault;
   onChange: (layoutDefault: LayoutDefault) => void;
   onClose: () => void;
@@ -79,6 +82,7 @@ export function SettingsDialog({
         <div data-section="prompt-templates">
           <PromptTemplateSettings templates={promptTemplates} />
         </div>
+        <CanvasSettings canvasUse={canvasUse} />
         <ReviewSettings />
         <h3>Default layout</h3>
         <p className="hint">
@@ -205,6 +209,30 @@ function SendingSettings() {
           Enter
           <select value={enterWhileBusy} onChange={(event) => setEnterWhileBusy(event.target.value as EnterWhileBusy)}>
             {Object.entries(enterWhileBusyLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </>
+  );
+}
+
+function CanvasSettings({ canvasUse }: { canvasUse: CanvasUse }) {
+  return (
+    <>
+      <h3>Canvas</h3>
+      <p className="hint">
+        Kept by the host for every browser. A conversation picks up a change when its session next starts: a new one at once, an open one after the host
+        restarts. Claude Code only; opencode follows the canvas's own instructions.
+      </p>
+      <div className="sending-settings">
+        <label data-hint={hints.canvasUse}>
+          Claude Code uses the canvas
+          <select value={canvasUse} onChange={(event) => connection.send({ type: "settings.set-canvas-use", canvasUse: event.target.value as CanvasUse })}>
+            {Object.entries(canvasUseLabels).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>

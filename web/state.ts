@@ -1,4 +1,4 @@
-import type { CanvasItem, Conversation, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, Conversation, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
@@ -26,6 +26,7 @@ export interface AppState {
   conversations: Conversation[];
   profiles: Profile[];
   promptTemplates: PromptTemplate[];
+  canvasUse: CanvasUse;
   canvasAssetsOrigin: string;
   homeDir: string;
   selectedConversationId: string | null;
@@ -52,6 +53,7 @@ export const initialState: AppState = {
   conversations: [],
   profiles: [],
   promptTemplates: [],
+  canvasUse: "often",
   canvasAssetsOrigin: "",
   homeDir: "",
   selectedConversationId: null,
@@ -98,6 +100,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         conversations: message.conversations,
         profiles: message.profiles,
         promptTemplates: message.promptTemplates,
+        canvasUse: message.canvasUse,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
         homeDir: message.homeDir,
         hostRunId: message.hostRunId,
@@ -141,6 +144,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, profiles: state.profiles.filter(({ id }) => id !== message.profileId) };
     case "prompt-template.upserted":
       return { ...state, promptTemplates: upsert(state.promptTemplates, message.template).sort((a, b) => a.name.localeCompare(b.name)) };
+    case "settings.canvas-use":
+      return { ...state, canvasUse: message.canvasUse };
     case "prompt-template.deleted":
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":

@@ -1,7 +1,14 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-type MessagesRequest = { model: string; stream?: boolean; messages: { role: string; content: string | { type: string; text?: string }[] }[] };
+type MessagesRequest = {
+  model: string;
+  stream?: boolean;
+  system?: string | { text: string }[];
+  messages: { role: string; content: string | { type: string; text?: string }[] }[];
+};
+
+const systemTextOf = ({ system }: MessagesRequest) => (typeof system === "string" ? system : (system ?? []).map(({ text }) => text).join("\n"));
 
 const textOf = (content: MessagesRequest["messages"][number]["content"]) =>
   typeof content === "string" ? content : content.map(({ text }) => text ?? "").join("");
@@ -23,6 +30,8 @@ export class FakeClaudeApi {
   /** When the limit resets, in epoch seconds; Claude Code shows it as "resets 6:20pm (Europe/Budapest)". */
   resetsAt = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
   readonly answered: string[] = [];
+  /** The system prompt each request carried, by the text the user typed last. */
+  readonly systemPrompts = new Map<string, string>();
   readonly refused: string[] = [];
   private server?: Server;
 
@@ -48,6 +57,7 @@ export class FakeClaudeApi {
 
   private reply(body: MessagesRequest, response: ServerResponse) {
     const typed = lastTypedText(body);
+    this.systemPrompts.set(typed, systemTextOf(body));
     if (this.limited) {
       this.refused.push(typed);
       response.writeHead(429, { "content-type": "application/json", ...this.limitHeaders() });
@@ -84,5 +94,5 @@ export class FakeClaudeApi {
 }
 
 /** Claude Code signs in with a made-up subscription token and gives up at the first refusal instead of retrying. */
-export const usageLimitedEnvironment = (api: FakeClaudeApi) =>
+export const subscriptionEnvironment = (api: FakeClaudeApi) =>
   ["-u ANTHROPIC_API_KEY", "-u ANTHROPIC_AUTH_TOKEN", `ANTHROPIC_BASE_URL=${api.url}`, "CLAUDE_CODE_OAUTH_TOKEN=e2e-subscription-token", "CLAUDE_CODE_MAX_RETRIES=0"].join("\n");

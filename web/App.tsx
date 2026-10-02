@@ -303,6 +303,7 @@ export function App() {
         <SettingsDialog
           section={overlay.section}
           promptTemplates={state.promptTemplates}
+          canvasUse={state.canvasUse}
           layoutDefault={conversationLayouts.layoutDefault}
           onChange={conversationLayouts.setLayoutDefault}
           onClose={closeOverlay}

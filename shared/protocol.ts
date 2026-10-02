@@ -2,6 +2,7 @@ import type {
   AdoptMode,
   AskMode,
   CanvasItem,
+  CanvasUse,
   Conversation,
   ExternalSession,
   Launch,
@@ -35,6 +36,7 @@ export type ClientMessage =
   /** Creates the template, or changes the one with this id. */
   | { type: "prompt-template.save"; template: Pick<PromptTemplate, "id" | "name" | "text"> }
   | { type: "prompt-template.delete"; templateId: string }
+  | { type: "settings.set-canvas-use"; canvasUse: CanvasUse }
   | { type: "conversation.create"; workspaceId: string; launch: Launch }
   /** Puts the conversation just before another of its workspace in the sidebar, or last. */
   | { type: "conversation.move"; conversationId: string; beforeConversationId: string | null }
@@ -100,6 +102,7 @@ export type ServerMessage =
       conversations: Conversation[];
       profiles: Profile[];
       promptTemplates: PromptTemplate[];
+      canvasUse: CanvasUse;
       canvasAssetsOrigin: string;
       homeDir: string;
       /** Fresh for each start of the host process. */
@@ -112,6 +115,7 @@ export type ServerMessage =
   | { type: "profile.saved"; requestId: string; profileId: string }
   | { type: "prompt-template.upserted"; template: PromptTemplate }
   | { type: "prompt-template.deleted"; templateId: string }
+  | { type: "settings.canvas-use"; canvasUse: CanvasUse }
   | { type: "workspace.upserted"; workspace: Workspace }
   | { type: "workspace.deleted"; workspaceId: string }
   | { type: "conversation.upserted"; conversation: Conversation }

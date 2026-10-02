@@ -570,7 +570,7 @@ export class ConversationService {
 
   private sessionRequest(conversationId: string, workspace: Workspace) {
     const { harness } = this.get(conversationId);
-    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(harness) };
+    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(harness, this.store.canvasUse()) };
   }
 
   /** claude-notifier hooks into Claude Code only. */

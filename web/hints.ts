@@ -78,6 +78,8 @@ export const hints = {
     "Claude Code stopped at its usage limit. Instead of sending your queued messages into the same wall, the host keeps them, and like Claude Code it asks the agent to continue where it left off a minute after the limit resets; your queued messages follow. It does that at most twice in a row by itself; after that, or when the message names no reset time, it waits for you.\n\nThe wait survives a host restart.",
   continueAfterUsageLimit: "Ask the agent to continue where it left off now, e.g. after switching to a profile that signs in to another account. Queued messages follow.",
   stopWaitingForUsageLimit: "Stop waiting for the reset: the agent does not continue by itself, and messages you queued go out now.",
+  canvasUse:
+    "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
   queuedDelivery: "How this message goes out: into the running turn once the agent's tools finish, or after the turn ends. Click to switch.",
   steerMessage: "Adds the message to the running turn: Claude Code reads it as soon as the tools it is running finish, before its next step.",
   afterTurnMessage: "Keeps the message until the running turn ends (or you press Stop), then sends it as your next message.",

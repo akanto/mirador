@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import index from "../web/index.html";
-import { isWorkspaceColor, type PromptTemplate, type Workspace, type WorkspaceColor } from "../shared/model.ts";
+import { isCanvasUse, isWorkspaceColor, type CanvasUse, type PromptTemplate, type Workspace, type WorkspaceColor } from "../shared/model.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
@@ -168,6 +168,13 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "prompt-template.upserted", template: store.findPromptTemplate(id)! });
   }
 
+  /** Conversations pick it up when their session next starts or resumes. */
+  function setCanvasUse(canvasUse: CanvasUse) {
+    if (!isCanvasUse(canvasUse)) throw new Error(`Unknown canvas use ${canvasUse}`);
+    store.setCanvasUse(canvasUse);
+    hub.broadcast({ type: "settings.canvas-use", canvasUse });
+  }
+
   function deletePromptTemplate(templateId: string) {
     store.deletePromptTemplate(templateId);
     hub.broadcast({ type: "prompt-template.deleted", templateId });
@@ -220,6 +227,8 @@ export function startServer(services: HostServices) {
         return savePromptTemplate(message.template);
       case "prompt-template.delete":
         return deletePromptTemplate(message.templateId);
+      case "settings.set-canvas-use":
+        return setCanvasUse(message.canvasUse);
       case "conversation.create":
         conversations.create(message.workspaceId, message.launch);
         return;
@@ -365,6 +374,7 @@ export function startServer(services: HostServices) {
           conversations: conversations.list(),
           profiles: store.listProfiles(),
           promptTemplates: store.listPromptTemplates(),
+          canvasUse: store.canvasUse(),
           canvasAssetsOrigin: config.canvasAssetsOrigin,
           homeDir: homedir(),
           hostRunId,

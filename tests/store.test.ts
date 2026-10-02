@@ -152,6 +152,19 @@ describe("Store", () => {
     reopened.close();
   });
 
+  test("tells Claude Code to use the canvas often until Settings say otherwise, also after reopening", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    expect(store.canvasUse()).toBe("often");
+    store.setCanvasUse("as-needed");
+    store.close();
+    const reopened = new Store(path);
+    expect(reopened.canvasUse()).toBe("as-needed");
+    reopened.setCanvasUse("often");
+    expect(reopened.canvasUse()).toBe("often");
+    reopened.close();
+  });
+
   test("adds the profile and agent columns to a database created before they existed", () => {
     const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const old = new Database(path);

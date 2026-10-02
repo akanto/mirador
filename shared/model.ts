@@ -81,6 +81,13 @@ export const workspaceColorLabels: Record<WorkspaceColor, string> = {
 
 export const isWorkspaceColor = (value: unknown): value is WorkspaceColor => typeof value === "string" && Object.hasOwn(workspaceColorLabels, value);
 
+/** How readily Claude Code puts things on the canvas: "often" adds guidance to its system prompt. */
+export type CanvasUse = "as-needed" | "often";
+
+export const canvasUseLabels: Record<CanvasUse, string> = { "as-needed": "As needed", often: "Often" };
+
+export const isCanvasUse = (value: unknown): value is CanvasUse => typeof value === "string" && Object.hasOwn(canvasUseLabels, value);
+
 export interface Workspace {
   id: string;
   name: string;
