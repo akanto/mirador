@@ -46,8 +46,9 @@ export class Hub {
     this.sockets.forEach((socket) => socket.send(payload));
   }
 
-  hasSubscribers(conversationId: string) {
-    return [...this.sockets].some((socket) => socket.data.subscriptions.has(conversationId));
+  /** Pages keep recently opened conversations subscribed, hidden; this is whether one is showing it. */
+  isShown(conversationId: string) {
+    return [...this.sockets].some(({ data: { presence } }) => presence.conversationId === conversationId);
   }
 
   isWatched(conversationId: string) {

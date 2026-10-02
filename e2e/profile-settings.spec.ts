@@ -24,9 +24,9 @@ test("a profile sets the mode, YOLO and Questions of the conversations that star
   await expect(created.getByLabel("Profile mode").locator("option")).toHaveText(["Agent's default"]);
   await created.getByRole("button", { name: "Close" }).click();
 
-  const sessionMode = page.getByLabel("Session Mode", { exact: true });
-  const yolo = page.getByLabel("YOLO", { exact: true });
-  const questions = page.getByLabel("Questions", { exact: true });
+  const sessionMode = page.getByLabel("Session Mode", { exact: true }).filter({ visible: true });
+  const yolo = page.getByLabel("YOLO", { exact: true }).filter({ visible: true });
+  const questions = page.getByLabel("Questions", { exact: true }).filter({ visible: true });
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "opencode" });
   const plain = await startConversation(page);
   await expect(sessionMode).toHaveValue("build");
@@ -55,8 +55,8 @@ test("a profile sets the mode, YOLO and Questions of the conversations that star
     await page.locator(`li[data-reorder-id="${plain}"]`).click();
     await expect(sessionMode).toHaveValue("build");
     await expect(yolo).not.toBeChecked();
-    await page.getByLabel("Profile", { exact: true }).selectOption({ label: PROFILE });
-    await expect(page.locator(".timeline")).toContainText(`Now using the profile “${PROFILE}”`);
+    await page.getByLabel("Profile", { exact: true }).filter({ visible: true }).selectOption({ label: PROFILE });
+    await expect(page.locator(".timeline:visible")).toContainText(`Now using the profile “${PROFILE}”`);
     await expect(sessionMode).toHaveValue("plan");
     await expect(yolo).toBeChecked();
     await expect(questions).toHaveValue("next-message");
@@ -69,7 +69,7 @@ test("a profile sets the mode, YOLO and Questions of the conversations that star
     await page.locator(`li[data-reorder-id="${profiled}"]`).click();
     await sendMessage(page, "hello after the restart");
     await waitForTurnToEnd(page);
-    await expect(page.locator(".message.agent", { hasText: "hello after the restart" })).toBeVisible();
+    await expect(page.locator(".timeline:visible .message.agent", { hasText: "hello after the restart" })).toBeVisible();
     await expect(sessionMode).toHaveValue("plan");
   });
 });

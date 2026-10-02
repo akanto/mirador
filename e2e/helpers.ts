@@ -45,27 +45,27 @@ export async function startConversation(page: Page) {
   const previousUrl = page.url();
   await page.getByRole("button", { name: "+ New conversation" }).click();
   await expect(page).not.toHaveURL(previousUrl);
-  await expect(page.locator(".chat-header h2")).toHaveText("New conversation");
-  await expect(page.getByLabel("Model", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
+  await expect(page.locator(".chat-header:visible").getByLabel("Model", { exact: true })).toBeVisible({ timeout: 60_000 });
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
 
 export const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");
 
 export async function sendMessage(page: Page, text: string) {
-  const composer = page.locator(".composer textarea");
+  const composer = page.locator(".composer:visible textarea");
   await expect(composer).toBeEditable();
-  await expect(page.locator(".composer .send")).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator(".composer:visible .send")).toBeVisible({ timeout: 120_000 });
   await composer.fill(text);
   await composer.press("Enter");
 }
 
 export async function waitForTurnToEnd(page: Page) {
-  await expect(page.locator(".chat-header .badge")).toHaveText("idle", { timeout: 180_000 });
+  await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 180_000 });
 }
 
 export function lastAgentMessage(page: Page) {
-  return page.locator(".message.agent").last();
+  return page.locator(".timeline:visible .message.agent").last();
 }
 
 export async function openProfiles(page: Page) {

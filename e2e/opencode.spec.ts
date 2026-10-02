@@ -61,7 +61,7 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await dialog.getByRole("button", { name: "Close" }).click();
   await chooseScriptedOpencode(page);
   await startConversation(page);
-  await expect(page.locator(".chat-header .harness")).toHaveText("opencode");
+  await expect(page.locator(".chat-header:visible .harness")).toHaveText("opencode");
   await expect(page.getByLabel("Profile", { exact: true }).locator("option:checked")).toHaveText(PROFILE);
   const modelPicker = page.getByRole("button", { name: "Model", exact: true });
   await expect(modelPicker).toHaveText("E2E/Scripted");
@@ -145,7 +145,7 @@ test("continuing an opencode session from a terminal gives the agent its earlier
   await expect(terminalSession).toHaveCount(1, { timeout: 30_000 });
   await terminalSession.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.locator(".timeline")).toContainText(MARKER, { timeout: 30_000 });
+  await expect(page.locator(".timeline:visible")).toContainText(MARKER, { timeout: 30_000 });
   await sendMessage(page, "What did I ask you to remember?");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: What did I ask you to remember?");
@@ -159,13 +159,13 @@ test("an opencode conversation moves to another opencode profile and keeps its c
   await saved.getByRole("button", { name: "Close" }).click();
   await page.locator(".workspace li", { hasText: "RUN echo e2e-bash-output" }).click();
   await page.getByLabel("Profile", { exact: true }).selectOption({ label: "scripted opencode 2" });
-  await expect(page.locator(".timeline")).toContainText("Now using the profile “scripted opencode 2”");
+  await expect(page.locator(".timeline:visible")).toContainText("Now using the profile “scripted opencode 2”");
 
   await sendMessage(page, "after the switch");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: after the switch");
   expect(JSON.stringify(model.requests.at(-1)!.messages)).toContain("Pick a color");
-  await expect(page.locator(".timeline")).not.toContainText("Could not resume");
+  await expect(page.locator(".timeline:visible")).not.toContainText("Could not resume");
 });
 
 test("with YOLO on, tools run without asking, and switching it on approves the request already waiting", async ({ page }) => {
@@ -179,7 +179,7 @@ test("with YOLO on, tools run without asking, and switching it on approves the r
   await expect(hint).toContainText('the host answers with the agent\'s own "allow" option');
   await page.getByLabel("Questions").hover();
   await expect(hint).toContainText("What happens when the agent asks you something");
-  await page.locator(".chat-header h2").hover();
+  await page.locator(".chat-header:visible h2").hover();
   await expect(hint).toBeHidden();
 
   await sendMessage(page, "RUN echo approved-by-yolo");
@@ -203,7 +203,7 @@ test("messages sent while the agent works wait in an editable queue and go out w
   await sendMessage(page, "ASK Pick a color");
   await expect(page.locator(".ask").getByRole("radio", { name: "Blue" })).toBeVisible({ timeout: 60_000 });
 
-  const composer = page.locator(".composer textarea");
+  const composer = page.locator(".composer:visible textarea");
   const queued = page.locator(".queue .queued-text");
   await composer.fill("first queued");
   await composer.press("Enter");
@@ -225,16 +225,16 @@ test("messages sent while the agent works wait in an editable queue and go out w
   await expect(queued).toHaveText(["first queued, edited"]);
 
   await answerCanvasQuestion(page, "Blue");
-  await expect(page.locator(".message.user").last()).toHaveText("first queued, edited", { timeout: 60_000 });
+  await expect(page.locator(".timeline:visible .message.user").last()).toHaveText("first queued, edited", { timeout: 60_000 });
   await expect(lastAgentMessage(page)).toContainText("Echo: first queued, edited", { timeout: 60_000 });
   await expect(page.locator(".queue")).toHaveCount(0);
   await waitForTurnToEnd(page);
 
   await composer.fill("a draft I haven't sent");
   await startConversation(page);
-  await expect(page.locator(".composer textarea")).toHaveValue("");
+  await expect(page.locator(".composer:visible textarea")).toHaveValue("");
   await page.locator(".workspace li", { hasText: "ASK Pick a color" }).click();
-  await expect(page.locator(".composer textarea")).toHaveValue("a draft I haven't sent");
+  await expect(page.locator(".composer:visible textarea")).toHaveValue("a draft I haven't sent");
 });
 
 test("deleting a conversation while its agent works ends the turn quietly", async ({ page }) => {
@@ -257,7 +257,7 @@ test("an image pasted into the message box goes to the agent with the message an
   await signIn(page, host);
   await chooseScriptedOpencode(page);
   await startConversation(page);
-  const composer = page.locator(".composer textarea");
+  const composer = page.locator(".composer:visible textarea");
   await composer.fill("what is in ");
   await pasteImage(composer, { width: 300, height: 200 });
   await expect(composer).toHaveValue("what is in [Image #1] ");

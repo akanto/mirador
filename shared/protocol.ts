@@ -58,6 +58,7 @@ export type ClientMessage =
   | { type: "conversation.rename"; conversationId: string; title: string }
   | { type: "conversation.set-profile"; conversationId: string; profileId: string | null }
   | { type: "conversation.subscribe"; conversationId: string }
+  | { type: "conversation.unsubscribe"; conversationId: string }
   | { type: "conversation.prompt"; conversationId: string; text: string; imageIds: string[]; afterTurn?: boolean }
   | { type: "conversation.cancel"; conversationId: string }
   | { type: "conversation.run-command"; conversationId: string; command: string }

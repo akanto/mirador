@@ -42,7 +42,7 @@ test("starts a Claude Code conversation with the test model", async () => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
-  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("haiku");
+  await expect(page.getByLabel("Model", { exact: true }).filter({ visible: true })).toHaveValue("haiku");
   await page.locator(".chat-header h2").getByText("New conversation").click();
   await page.getByLabel("Conversation name").fill(CHOSEN_NAME);
   await page.getByLabel("Conversation name").press("Enter");
@@ -100,7 +100,7 @@ test("resumes the agent session and canvas tools after a host restart", async ()
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Blue");
   await expect(page.locator(".canvas-frame.show iframe").contentFrame().getByText("The color was Blue")).toBeVisible();
-  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("haiku");
+  await expect(page.getByLabel("Model", { exact: true }).filter({ visible: true })).toHaveValue("haiku");
   await expect(page.getByLabel("Mode", { exact: true })).toHaveValue("acceptEdits");
 });
 
@@ -119,7 +119,7 @@ test("delivers an answer as the next message when the conversation is set to", a
 
 test("a conversation that never got a message starts a fresh session after a host restart, without a failed resume", async () => {
   await startConversation(page);
-  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("haiku");
+  await expect(page.getByLabel("Model", { exact: true }).filter({ visible: true })).toHaveValue("haiku");
   await host.restart();
   await expect(page.locator(".banner")).toHaveCount(0, { timeout: 30_000 });
   await sendMessage(page, "Reply with only the word ready.");

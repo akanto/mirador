@@ -30,7 +30,8 @@ export interface AppState {
   canvasAssetsOrigin: string;
   homeDir: string;
   selectedConversationId: string | null;
-  open: OpenConversation | null;
+  /** The conversations opened last, the selected one first: they stay subscribed and drawn, so switching back is instant. */
+  kept: OpenConversation[];
   awaitingConversationIn: string | null;
   overlay: Overlay | null;
   notices: { id: number; text: string }[];
@@ -57,7 +58,7 @@ export const initialState: AppState = {
   canvasAssetsOrigin: "",
   homeDir: "",
   selectedConversationId: null,
-  open: null,
+  kept: [],
   awaitingConversationIn: null,
   overlay: null,
   hostRunId: null,
@@ -76,16 +77,21 @@ function upsert<T extends { id: string }>(items: T[], item: T) {
     : [...items, item];
 }
 
+export const KEPT_CONVERSATIONS = 5;
+
+export const selectedOpen = (state: AppState) => state.kept.find(({ conversationId }) => conversationId === state.selectedConversationId) ?? null;
+
 function select(state: AppState, conversationId: string | null): AppState {
-  return {
-    ...state,
-    selectedConversationId: conversationId,
-    open: conversationId ? { conversationId, loaded: false, events: [], canvas: [] } : null,
-  };
+  if (conversationId === null) return { ...state, selectedConversationId: null };
+  const opened = state.kept.find((open) => open.conversationId === conversationId) ?? { conversationId, loaded: false, events: [], canvas: [] };
+  const others = state.kept.filter((open) => open !== opened);
+  return { ...state, selectedConversationId: conversationId, kept: [opened, ...others].slice(0, KEPT_CONVERSATIONS) };
 }
 
 function withOpen(state: AppState, conversationId: string, change: (open: OpenConversation) => OpenConversation) {
-  return state.open?.conversationId === conversationId ? { ...state, open: change(state.open) } : state;
+  return state.kept.some((open) => open.conversationId === conversationId)
+    ? { ...state, kept: state.kept.map((open) => (open.conversationId === conversationId ? change(open) : open)) }
+    : state;
 }
 
 let noticeCounter = 0;
@@ -93,7 +99,7 @@ let noticeCounter = 0;
 function applyServerMessage(state: AppState, message: ServerMessage): AppState {
   switch (message.type) {
     case "snapshot": {
-      const selectionStillExists = message.conversations.some(({ id }) => id === state.selectedConversationId);
+      const exists = (conversationId: string | null) => message.conversations.some(({ id }) => id === conversationId);
       const next = {
         ...state,
         workspaces: [...message.workspaces].sort(inSidebarOrder),
@@ -105,8 +111,9 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         homeDir: message.homeDir,
         hostRunId: message.hostRunId,
         hostCodeChanged: message.hostCodeChanged,
+        kept: state.kept.filter(({ conversationId }) => exists(conversationId)),
       };
-      return selectionStillExists ? next : select(next, null);
+      return exists(state.selectedConversationId) ? next : select(next, null);
     }
     case "workspace.upserted":
       return { ...state, workspaces: upsert(state.workspaces, message.workspace).sort(inSidebarOrder) };
@@ -121,7 +128,11 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return next;
     }
     case "conversation.deleted": {
-      const next = { ...state, conversations: state.conversations.filter(({ id }) => id !== message.conversationId) };
+      const next = {
+        ...state,
+        conversations: state.conversations.filter(({ id }) => id !== message.conversationId),
+        kept: state.kept.filter(({ conversationId }) => conversationId !== message.conversationId),
+      };
       return state.selectedConversationId === message.conversationId ? select(next, null) : next;
     }
     case "conversation.history":

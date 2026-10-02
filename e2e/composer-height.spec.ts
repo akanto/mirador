@@ -18,9 +18,9 @@ test.afterAll(async () => {
   api.stop();
 });
 
-const messageBox = (page: Page) => page.locator(".composer textarea");
+const messageBox = (page: Page) => page.locator(".composer:visible textarea");
 const heightOf = (page: Page) => messageBox(page).evaluate((element) => element.getBoundingClientRect().height);
-const paneHeight = (page: Page) => page.locator(".composer-area").evaluate((element) => element.parentElement!.clientHeight);
+const paneHeight = (page: Page) => page.locator(".composer-area:visible").evaluate((element) => element.parentElement!.clientHeight);
 
 async function dragGripUp(page: Page, by: number) {
   const grip = (await page.getByRole("separator", { name: "Message box height" }).boundingBox())!;

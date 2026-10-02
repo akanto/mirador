@@ -8,13 +8,16 @@ export function startConversationIn(workspace: Workspace, dispatch: Dispatch<App
   connection.send({ type: "conversation.create", workspaceId: workspace.id, launch: workspace.defaultLaunch });
 }
 
+/** Hidden conversations kept in the page have the same elements as the one on screen. */
+const onScreen = <T extends Element>(selector: string) => [...document.querySelectorAll<T>(selector)].find((element) => element.checkVisibility());
+
 export function startRenamingOpenConversation() {
-  document.querySelector<HTMLElement>('.chat-header [data-rename-trigger="click"]')?.click();
+  onScreen<HTMLElement>('.chat-header [data-rename-trigger="click"]')?.click();
 }
 
 /** The canvas takes focus on the control the user most likely wants: an answer button, else the page itself. */
 export function focusPane(pane: "chat" | "canvas") {
-  if (pane === "chat") return document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus();
+  if (pane === "chat") return onScreen<HTMLTextAreaElement>(".composer textarea")?.focus();
   const panel = document.querySelector(".canvas-panel");
   const target =
     panel?.querySelector<HTMLElement>(".canvas-body .choose") ??

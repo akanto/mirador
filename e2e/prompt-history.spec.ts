@@ -28,7 +28,7 @@ async function startScriptedConversation(page: Page) {
 
 /** The badge can still read idle right after Enter, before the turn starts; the reply shows the message went out. */
 async function sendAndAwaitReply(page: Page, send: () => Promise<void>) {
-  const replies = page.locator(".message.agent");
+  const replies = page.locator(".timeline:visible .message.agent");
   const repliedBefore = await replies.count();
   await send();
   await expect(replies).toHaveCount(repliedBefore + 1);
@@ -53,7 +53,7 @@ test("↑ brings back what was typed before, newest first, and ↓ goes forward 
   await sendAndAwaitReply(page, () => sendMessage(page, "an earlier conversation's message"));
 
   await startScriptedConversation(page);
-  const composer = page.locator(".composer textarea");
+  const composer = page.locator(".composer:visible textarea");
   const paths = page.getByRole("listbox", { name: "Paths" });
   await sendAndAwaitReply(page, () => sendMessage(page, "first"));
   await composer.fill("!echo hi");
@@ -112,7 +112,7 @@ test("↑ brings back what was typed before, newest first, and ↓ goes forward 
     await caretToStart(composer);
     await composer.press("ArrowUp");
     await sendAndAwaitReply(page, () => composer.press("Enter"));
-    await expect(page.locator(".message.user").last().locator(".message-images img")).toHaveJSProperty("naturalWidth", 300);
+    await expect(page.locator(".timeline:visible .message.user").last().locator(".message-images img")).toHaveJSProperty("naturalWidth", 300);
     expect(JSON.stringify(model.requests.at(-1))).toContain("data:image/png;base64,");
   });
 });

@@ -226,7 +226,7 @@ export class CanvasService {
   }
 
   private waitForRenderReport(item: CanvasItem): Promise<RenderOutcome> {
-    if (!this.hub.hasSubscribers(item.conversationId)) return Promise.resolve("no-viewer");
+    if (!this.hub.isShown(item.conversationId)) return Promise.resolve("no-viewer");
     return new Promise((resolve) => {
       const settle = (outcome: RenderOutcome) => {
         clearTimeout(timer);

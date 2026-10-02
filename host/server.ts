@@ -256,13 +256,16 @@ export function startServer(services: HostServices) {
       case "conversation.move":
         return conversations.move(message.conversationId, message.beforeConversationId);
       case "conversation.subscribe":
-        socket.data.subscriptions = new Set([message.conversationId]);
+        socket.data.subscriptions.add(message.conversationId);
         return reply({
           type: "conversation.history",
           conversationId: message.conversationId,
           events: store.listEvents(message.conversationId),
           canvas: canvas.list(message.conversationId),
         });
+      case "conversation.unsubscribe":
+        socket.data.subscriptions.delete(message.conversationId);
+        return;
       case "conversation.prompt":
         conversations.send(message.conversationId, message.text, message.imageIds, { afterTurn: message.afterTurn }).catch((error) => reply({ type: "error", message: errorMessage(error) }));
         return;
@@ -365,6 +368,9 @@ export function startServer(services: HostServices) {
       return new Response("not found", { status: 404 });
     },
     websocket: {
+      /** Bun drops what is sent while more than the limit waits to go out (16 MB by default, less than one long history), so the limit is far above that, and a client that falls further behind is disconnected to reconnect and fetch again instead of silently missing messages. */
+      backpressureLimit: 1024 * 1024 * 1024,
+      closeOnBackpressureLimit: true,
       open(socket) {
         hub.add(socket);
         if (socket.data.role === "notifier") return;

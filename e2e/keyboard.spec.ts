@@ -26,7 +26,7 @@ async function pressAndAwaitNewConversation(page: Page, keys: () => Promise<void
   const before = selectedConversationId(page);
   await keys();
   await expect.poll(() => selectedConversationId(page)).not.toBe(before);
-  await expect(page.locator(".chat-header h2")).toHaveText("New conversation");
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
   return selectedConversationId(page)!;
 }
 
@@ -93,8 +93,8 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   await expect.poll(() => focusedTag(page)).toBe("TEXTAREA");
 
   await page.keyboard.press("?");
-  await expect(page.locator(".composer textarea")).toHaveValue("?");
-  await page.locator(".composer textarea").fill("");
+  await expect(page.locator(".composer:visible textarea")).toHaveValue("?");
+  await page.locator(".composer:visible textarea").fill("");
   await page.locator(".sidebar h1").click();
   await page.keyboard.press("?");
   const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
@@ -110,7 +110,7 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   await expect(page.getByRole("dialog", { name: "Profiles" })).toBeVisible();
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.keyboard.type("x");
-  await expect(page.locator(".composer textarea")).toHaveValue("");
+  await expect(page.locator(".composer:visible textarea")).toHaveValue("");
   await page.keyboard.press("Escape");
   await expect.poll(() => focusedTag(page)).toBe("TEXTAREA");
 });

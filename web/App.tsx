@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch } from "react";
+import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
 import { launchLabel, workspaceColorLabels, type CanvasItem, type Conversation } from "../shared/model.ts";
 import { focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
@@ -17,7 +17,7 @@ import { SettingsDialog } from "./Settings.tsx";
 import { shortcutKeys, type ShortcutCommand } from "./shortcuts.ts";
 import { Sidebar } from "./Sidebar.tsx";
 import { Splitter } from "./Splitter.tsx";
-import { initialStateFor, reducer, type AppAction, type AppState } from "./state.ts";
+import { initialStateFor, reducer, selectedOpen, type AppAction, type AppState, type OpenConversation } from "./state.ts";
 import { useSystemNotifications } from "./system-notifications.ts";
 import { TerminalPane } from "./Terminals.tsx";
 import { useShortcuts } from "./useShortcuts.ts";
@@ -104,7 +104,7 @@ function paletteEntries(state: AppState, dispatch: Dispatch<AppAction>, canvas: 
   ]);
   const openConversation = state.conversations.find(({ id }) => id === state.selectedConversationId);
   const openConversationActions: PaletteEntry[] =
-    state.open && openConversation
+    selectedOpen(state) && openConversation
       ? [
           { id: "rename", label: "Rename conversation…", kind: "action", run: startRenamingOpenConversation },
           { id: "toggle-canvas", label: canvas.visible ? "Hide canvas" : "Show canvas", kind: "action", run: canvas.toggle },
@@ -137,6 +137,30 @@ function useShowCanvasForNewReview(items: CanvasItem[] | undefined, canvasVisibl
   }, [newestReview?.id]);
 }
 
+/** Moving a drawn conversation within the page would lose its scroll position, so they keep one order whichever is selected. */
+const inFixedOrder = (kept: OpenConversation[]) => kept.toSorted((a, b) => a.conversationId.localeCompare(b.conversationId));
+
+/** React still redraws hidden content as its props change; a hidden conversation instead catches up on what its agent did in one go when shown. */
+const RedrawnOnlyWhenShown = memo(
+  ({ children }: { shown: boolean; children: ReactNode }) => children,
+  (_, next) => !next.shown,
+);
+
+/** Subscribes to each conversation the page starts keeping, and to all of them again after a reconnect; unsubscribes from those it lets go. */
+function useKeptConversationsSubscribed(status: ConnectionStatus, kept: OpenConversation[]) {
+  const subscribed = useRef(new Set<string>());
+  const keptIds = kept.map(({ conversationId }) => conversationId);
+  useEffect(() => {
+    if (status !== "open") {
+      subscribed.current = new Set();
+      return;
+    }
+    keptIds.filter((id) => !subscribed.current.has(id)).forEach((conversationId) => connection.send({ type: "conversation.subscribe", conversationId }));
+    [...subscribed.current].filter((id) => !keptIds.includes(id)).forEach((conversationId) => connection.send({ type: "conversation.unsubscribe", conversationId }));
+    subscribed.current = new Set(keptIds);
+  }, [status, keptIds.join(" ")]);
+}
+
 export function App() {
   const [state, dispatch] = useReducer(reducer, conversationFromHash(), initialStateFor);
   const status = useConnectionStatus();
@@ -155,7 +179,8 @@ export function App() {
   const toggleCanvas = () => setHidden("canvas", (wasHidden) => !wasHidden);
   const toggleTerminal = () => setHidden("terminals", (wasHidden) => !wasHidden);
 
-  useShowCanvasForNewReview(state.open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
+  const open = selectedOpen(state);
+  useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
 
   const closeOverlay = useCallback(() => {
     dispatch({ type: "close-overlay" });
@@ -207,11 +232,7 @@ export function App() {
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (status === "open" && state.selectedConversationId) {
-      connection.send({ type: "conversation.subscribe", conversationId: state.selectedConversationId });
-    }
-  }, [status, state.selectedConversationId]);
+  useKeptConversationsSubscribed(status, state.kept);
 
   const openConversation = useCallback((conversationId: string) => dispatch({ type: "select", conversationId }), []);
   useSystemNotifications(state.selectedConversationId, status === "open", openConversation);
@@ -231,27 +252,36 @@ export function App() {
   }
 
   const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId) ?? null;
-  const showCanvas = canvasVisible && conversation !== null && state.open !== null;
+  const showCanvas = canvasVisible && conversation !== null && open !== null;
   const terminalWorkspace = terminalVisible ? workspace : undefined;
   const overlay = state.overlay;
   const sessionsWorkspace = overlay?.kind === "sessions" ? state.workspaces.find(({ id }) => id === overlay.workspaceId) : undefined;
   const conversationPane = (
     <main className="chat-column">
       <HostBanner status={status} state={state} />
-      {conversation && state.open ? (
-        <ChatPanel
-          key={conversation.id}
-          conversation={conversation}
-          profiles={state.profiles}
-          promptTemplates={state.promptTemplates}
-          onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", section: "prompt-templates" } })}
-          open={state.open}
-          canvasVisible={canvasVisible}
-          onToggleCanvas={toggleCanvas}
-          terminalVisible={terminalVisible}
-          onToggleTerminal={toggleTerminal}
-        />
-      ) : (
+      {inFixedOrder(state.kept).map((kept) => {
+        const keptConversation = state.conversations.find(({ id }) => id === kept.conversationId);
+        return (
+          keptConversation && (
+            <Activity key={kept.conversationId} mode={kept === open ? "visible" : "hidden"}>
+              <RedrawnOnlyWhenShown shown={kept === open}>
+                <ChatPanel
+                  conversation={keptConversation}
+                  profiles={state.profiles}
+                  promptTemplates={state.promptTemplates}
+                  onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", section: "prompt-templates" } })}
+                  open={kept}
+                  canvasVisible={canvasVisible}
+                  onToggleCanvas={toggleCanvas}
+                  terminalVisible={terminalVisible}
+                  onToggleTerminal={toggleTerminal}
+                />
+              </RedrawnOnlyWhenShown>
+            </Activity>
+          )
+        );
+      })}
+      {!(conversation && open) && (
         <div className="empty">
           <h2>No conversation selected</h2>
           <p>Add a workspace (a project directory) on the left, then start a conversation in it with Claude Code or opencode.</p>
@@ -276,7 +306,7 @@ export function App() {
         onChange={changeLayout}
         content={{
           conversation: conversationPane,
-          canvas: showCanvas ? <CanvasPanel key={conversation!.id} items={state.open!.canvas} assetsOrigin={state.canvasAssetsOrigin} onHide={toggleCanvas} /> : null,
+          canvas: showCanvas ? <CanvasPanel key={conversation!.id} items={open!.canvas} assetsOrigin={state.canvasAssetsOrigin} onHide={toggleCanvas} /> : null,
           terminals: terminalWorkspace ? <TerminalPane key={terminalWorkspace.id} workspace={terminalWorkspace} status={status} onHide={toggleTerminal} /> : null,
         }}
       />
