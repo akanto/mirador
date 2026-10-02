@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { harnessIds, harnessLabels, type HarnessId, type Profile } from "../shared/model.ts";
+import { knownModes } from "../shared/config-options.ts";
+import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
 
 const NEW_PROFILE = "new";
 
@@ -50,6 +52,7 @@ function EnvironmentField({
   startRevealed: boolean;
 }) {
   const [revealed, setRevealed] = useState(startRevealed);
+  const typingAidAttributes = useTypingAidAttributes();
   if (!revealed) {
     return (
       <div className="environment-preview">
@@ -60,6 +63,7 @@ function EnvironmentField({
   }
   return (
     <textarea
+      {...typingAidAttributes}
       aria-label="Environment"
       className="environment"
       rows={10}
@@ -71,18 +75,46 @@ function EnvironmentField({
   );
 }
 
-function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onSaved: (profileId: string) => void }) {
+const AGENTS_OWN_MODE = "";
+
+/** Agent's default first, then the modes the agent listed last, and the profile's own if the agent has not listed it yet. */
+function modeChoices(conversations: Conversation[], harness: HarnessId, saved: string) {
+  const known = knownModes(conversations, harness).map(({ value, name }) => ({ value, name }));
+  const savedButUnknown = saved !== AGENTS_OWN_MODE && !known.some(({ value }) => value === saved) ? [{ value: saved, name: saved }] : [];
+  return [{ value: AGENTS_OWN_MODE, name: "Agent's default" }, ...known, ...savedButUnknown];
+}
+
+function ProfileEditor({
+  profile,
+  conversations,
+  onSaved,
+}: {
+  profile: Profile | undefined;
+  conversations: Conversation[];
+  onSaved: (profileId: string) => void;
+}) {
   const [name, setName] = useState(profile?.name ?? "");
   const [harness, setHarness] = useState<HarnessId>(profile?.harness ?? "claude");
   const [environment, setEnvironment] = useState(profile?.environment ?? "");
   const [prelaunch, setPrelaunch] = useState(profile?.prelaunch ?? "");
+  const [mode, setMode] = useState(profile?.mode ?? AGENTS_OWN_MODE);
+  const [bypassPermissions, setBypassPermissions] = useState(profile?.bypassPermissions ?? false);
+  const [askMode, setAskMode] = useState<AskMode>(profile?.askMode ?? "wait");
   const [savedOnce, setSavedOnce] = useState(false);
+  const typingAidAttributes = useTypingAidAttributes();
   const { save, saving } = useSaveProfile((profileId) => {
     setSavedOnce(true);
     onSaved(profileId);
   });
   const { errors } = useMemo(() => parseEnvironment(environment), [environment]);
-  const unchanged = profile && name === profile.name && environment === profile.environment && prelaunch === profile.prelaunch;
+  const unchanged =
+    profile &&
+    name === profile.name &&
+    environment === profile.environment &&
+    prelaunch === profile.prelaunch &&
+    mode === (profile.mode ?? AGENTS_OWN_MODE) &&
+    bypassPermissions === profile.bypassPermissions &&
+    askMode === profile.askMode;
 
   const deleteProfile = () => profile && connection.send({ type: "profile.delete", profileId: profile.id });
 
@@ -91,12 +123,12 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
       className="profile-editor"
       onSubmit={(event) => {
         event.preventDefault();
-        save({ id: profile?.id, name, harness, environment, prelaunch });
+        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, bypassPermissions, askMode });
       }}
     >
       <label>
         <span>Name</span>
-        <input aria-label="Profile name" value={name} placeholder="e.g. work, local qwen" onChange={(event) => setName(event.target.value)} />
+        <input {...typingAidAttributes} aria-label="Profile name" value={name} placeholder="e.g. work, local qwen" onChange={(event) => setName(event.target.value)} />
       </label>
       <label>
         <span>Agent</span>
@@ -105,7 +137,10 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
           value={harness}
           disabled={Boolean(profile)}
           title={profile ? "A profile's agent is fixed: its conversations keep running on it." : undefined}
-          onChange={(event) => setHarness(event.target.value as HarnessId)}
+          onChange={(event) => {
+            setHarness(event.target.value as HarnessId);
+            setMode(AGENTS_OWN_MODE);
+          }}
         >
           {harnessIds.map((id) => (
             <option key={id} value={id}>
@@ -114,6 +149,34 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
           ))}
         </select>
       </label>
+      <label>
+        <span>Mode</span>
+        <select aria-label="Profile mode" value={mode} onChange={(event) => setMode(event.target.value)}>
+          {modeChoices(conversations, harness, mode).map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="checkbox">
+        <input type="checkbox" aria-label="Profile YOLO" checked={bypassPermissions} onChange={(event) => setBypassPermissions(event.target.checked)} />
+        <span>YOLO: approve whatever the agent asks permission for</span>
+      </label>
+      <label>
+        <span>Questions</span>
+        <select aria-label="Profile questions" value={askMode} onChange={(event) => setAskMode(event.target.value as AskMode)}>
+          {(Object.keys(askModeLabels) as AskMode[]).map((choice) => (
+            <option key={choice} value={choice}>
+              {askModeLabels[choice]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="hint">
+        A conversation takes the mode, YOLO and Questions when it starts with this profile or moves to it; its own menus change them
+        after that. The modes are the ones the agent last listed, so they show once one of its conversations has run.
+      </div>
       <div className="field-label">Environment</div>
       <EnvironmentField value={environment} harness={harness} onChange={setEnvironment} startRevealed={!profile} />
       <div className="hint">
@@ -130,6 +193,7 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
       <label>
         <span>Pre-launch command (optional)</span>
         <textarea
+          {...typingAidAttributes}
           aria-label="Pre-launch command"
           rows={3}
           spellCheck={false}
@@ -160,7 +224,7 @@ function ProfileEditor({ profile, onSaved }: { profile: Profile | undefined; onS
   );
 }
 
-export function ProfilesDialog({ profiles, onClose }: { profiles: Profile[]; onClose: () => void }) {
+export function ProfilesDialog({ profiles, conversations, onClose }: { profiles: Profile[]; conversations: Conversation[]; onClose: () => void }) {
   const [selectedId, setSelectedId] = useState(profiles[0]?.id ?? NEW_PROFILE);
   const selected = profiles.find(({ id }) => id === selectedId);
 
@@ -199,7 +263,7 @@ export function ProfilesDialog({ profiles, onClose }: { profiles: Profile[]; onC
               + New profile
             </li>
           </ul>
-          <ProfileEditor key={selected?.id ?? NEW_PROFILE} profile={selected} onSaved={setSelectedId} />
+          <ProfileEditor key={selected?.id ?? NEW_PROFILE} profile={selected} conversations={conversations} onSaved={setSelectedId} />
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { shortcutHelp } from "./shortcuts.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
 
 export interface PaletteEntry {
   id: string;
@@ -31,6 +32,7 @@ function Modal({ label, className, onClose, children }: { label: string; classNa
 
 export function Palette({ entries, onClose }: { entries: PaletteEntry[]; onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const typingAidAttributes = useTypingAidAttributes();
   const [highlighted, setHighlighted] = useState(0);
   const visible = useMemo(() => entries.filter((entry) => matchesQuery(query, entry)), [entries, query]);
   const list = useRef<HTMLUListElement>(null);
@@ -61,6 +63,7 @@ export function Palette({ entries, onClose }: { entries: PaletteEntry[]; onClose
   return (
     <Modal label="Palette" className="palette" onClose={onClose}>
       <input
+        {...typingAidAttributes}
         autoFocus
         aria-label="Search conversations and actions"
         placeholder="Go to a conversation, or type an action (new, continue, profiles, canvas)…"

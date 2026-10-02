@@ -43,7 +43,7 @@ test("the statusline command from the profile's Claude settings replaces the bui
   const dialog = await createProfile(page, PROFILE, environment, "", "opencode");
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · opencode` });
-  await startConversation(page);
+  const first = await startConversation(page);
 
   const statusline = page.getByRole("region", { name: "Statusline" });
   const printed = statusline.locator(".statusline-terminal");
@@ -62,4 +62,20 @@ test("the statusline command from the profile's Claude settings replaces the bui
   await expect(statusline.locator(".context-meter")).toBeVisible();
   await statusline.getByRole("button", { name: "Your statusline" }).click();
   await expect(printed).toHaveAttribute("aria-label", /context 42 from-the-profile/);
+
+  await test.step("coming back to a conversation shows its statusline at once, not the built-in one until the command has run again", async () => {
+    await startConversation(page);
+    await expect(printed).toHaveAttribute("aria-label", /context none from-the-profile/);
+    await expect(statusline.locator(".statusline-chips")).toHaveCount(0);
+    await page.evaluate(() => {
+      const watched = window as unknown as { builtInShown: boolean };
+      watched.builtInShown = false;
+      new MutationObserver(() => {
+        if (document.querySelector(".statusline-chips")) watched.builtInShown = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await page.locator(`li[data-reorder-id="${first}"]`).click();
+    await expect(printed).toHaveAttribute("aria-label", /context 42 from-the-profile/);
+    expect(await page.evaluate(() => (window as unknown as { builtInShown: boolean }).builtInShown)).toBe(false);
+  });
 });

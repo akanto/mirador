@@ -31,7 +31,10 @@ const conversation: Conversation = {
   openInTerminal: null,
   contextUsage: { used: 86_000, size: 200_000, cost: { amount: 0.25, currency: "USD" } },
   queuedMessages: [],
+  usageLimit: null,
+  waitingFor: null,
   configOptions: [modelOption],
+  position: 0,
   createdAt: 1_000,
   updatedAt: 1_000,
 };

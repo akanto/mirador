@@ -1,19 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { runCommand, type CommandRunner } from "./commands.ts";
 import { launchctl } from "./launch-agents.ts";
-
-export interface CommandResult {
-  exitCode: number;
-  output: string;
-}
-
-export type CommandRunner = (argv: string[]) => Promise<CommandResult>;
-
-export const runCommand: CommandRunner = async (argv) => {
-  const child = Bun.spawn(argv, { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
-  return { exitCode, output: `${stdout}${stderr}`.trim() };
-};
 
 export class LaunchAgent {
   constructor(

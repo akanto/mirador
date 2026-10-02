@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import type { Conversation } from "../shared/model.ts";
 import { connection } from "./connection.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
 
 /** A conversation's title that turns into a text field for renaming: Enter or leaving the field saves, Esc cancels. */
 export function ConversationTitle({
@@ -13,6 +14,7 @@ export function ConversationTitle({
   className: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const typingAidAttributes = useTypingAidAttributes();
 
   const save = () => {
     const title = draft?.trim();
@@ -21,12 +23,16 @@ export function ConversationTitle({
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") save();
-    if (event.key === "Escape") setDraft(null);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setDraft(null);
+    }
   };
 
   if (draft !== null) {
     return (
       <input
+        {...typingAidAttributes}
         autoFocus
         className={`${className} rename`}
         aria-label="Conversation name"

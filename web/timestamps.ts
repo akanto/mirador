@@ -31,4 +31,12 @@ const clockTime = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: 
 const fullTime = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "medium" });
 
 export const formatClockTime = (at: number) => clockTime.format(at);
+
+export function formatDuration(milliseconds: number) {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
 export const formatFullTime = (at: number) => fullTime.format(at);

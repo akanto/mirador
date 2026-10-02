@@ -3,7 +3,8 @@ export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "error"; message: string }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "rendered"; errors: string[] }
-  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "size"; height: number }
+  /** `overflowWidth` is how wide the content wants to be, when that is wider than the frame. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "size"; height: number; overflowWidth: number | null }
   | {
       source: typeof CANVAS_MESSAGE_SOURCE;
       itemId: string;
@@ -70,7 +71,14 @@ function frameReporter(itemId: string) {
     consoleError.apply(console, args);
   };
   addEventListener("load", () => setTimeout(() => post({ kind: "rendered", errors }), 1500));
-  new ResizeObserver(() => post({ kind: "size", height: Math.ceil(document.documentElement.getBoundingClientRect().height) })).observe(document.documentElement);
+  const reportSize = () => {
+    const root = document.documentElement;
+    const leftMargin = document.body ? parseFloat(getComputedStyle(document.body).marginLeft) || 0 : 0;
+    const overflowWidth = root.scrollWidth > root.clientWidth ? Math.ceil(root.scrollWidth + leftMargin) : null;
+    post({ kind: "size", height: Math.ceil(root.getBoundingClientRect().height), overflowWidth });
+  };
+  new ResizeObserver(reportSize).observe(document.documentElement);
+  addEventListener("load", reportSize);
   addEventListener("keydown", (event) => {
     if (!event.isTrusted || !(event.metaKey || event.ctrlKey || event.altKey)) return;
     const target = event.target;

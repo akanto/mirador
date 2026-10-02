@@ -79,6 +79,7 @@ test("saving a changed profile restarts its agent, and the conversation continue
   await sendMessage(page, "hello again");
   await expect.poll(() => gateway.tokensSentToMessages(), { timeout: 60_000 }).toContain("Bearer e2e-rotated-token");
   await expect(page.locator(".timeline")).not.toContainText("agent process was restarted");
+  await waitForTurnToEnd(page);
 });
 
 test("a failing pre-launch command is reported with its output", async ({ page }) => {
@@ -146,4 +147,31 @@ test("a conversation whose profile was deleted continues after picking another o
   expect(afterSwitch.authorization).toBe("Bearer e2e-rotated-token");
   expect(afterSwitch.body).toContain("after the switch");
   await waitForTurnToEnd(page);
+});
+
+test("switching profile while the agent works stops the turn, moves the session and continues it there, then sends the queue", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "Claude Code" });
+  await startConversation(page);
+  const yolo = page.getByLabel("YOLO", { exact: true });
+  await yolo.click();
+  await expect(yolo).toBeChecked();
+  await sendMessage(page, "Run the shell command `sleep 30; echo slept-long` with your Bash tool, then reply with what it printed.");
+  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
+  const composer = page.locator(".composer textarea");
+  await composer.fill("queued before the switch");
+  await composer.press("Enter");
+  await expect(page.locator(".queue .queued-text")).toHaveText(["queued before the switch"]);
+
+  await expect(profilePicker(page)).toBeEnabled();
+  await profilePicker(page).selectOption({ label: "fake gateway" });
+  await expect(page.locator(".timeline")).toContainText("Turn ended: cancelled");
+  await expect(page.locator(".timeline")).toContainText("Now using the profile “fake gateway”");
+  const continued = await requestContaining("Continue where you left off.");
+  expect(continued.body).toContain("slept-long");
+  const queued = await requestContaining("queued before the switch");
+  expect(gateway.requests.indexOf(queued)).toBeGreaterThan(gateway.requests.indexOf(continued));
+  await expect(page.locator(".message.user").last()).toHaveText("queued before the switch", { timeout: 60_000 });
+  await waitForTurnToEnd(page);
+  await expect(page.locator(".timeline")).not.toContainText("Could not resume");
 });

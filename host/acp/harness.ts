@@ -9,6 +9,8 @@ export type ConfigValue = string | boolean;
 
 const PRELAUNCH_TIMEOUT_MS = 60_000;
 const PRELAUNCH_OUTPUT_IN_ERRORS = 600;
+/** claude-agent-acp's extension for adding a message to the running turn, advertised in `_meta.steering` at initialize. */
+const STEERING_METHOD = "_session/steering";
 
 const latestStartByHarness = new Map<HarnessId, Promise<unknown>>();
 
@@ -33,6 +35,7 @@ export interface HarnessListener {
 
 export class HarnessProcess {
   private child?: ChildProcess;
+  private exited: Promise<void> = Promise.resolve();
   private connection?: acp.ClientConnection;
   private initialized?: Promise<acp.InitializeResponse>;
   private stopReason?: string;
@@ -78,8 +81,27 @@ export class HarnessProcess {
     return this.agent().request(acp.methods.agent.session.list, { cwd });
   }
 
-  async prompt(sessionId: string, text: string) {
-    return this.agent().request(acp.methods.agent.session.prompt, { sessionId, prompt: [{ type: "text", text }] });
+  async prompt(sessionId: string, prompt: acp.ContentBlock[]) {
+    return this.agent().request(acp.methods.agent.session.prompt, { sessionId, prompt });
+  }
+
+  /**
+   * Adds the message to the turn running in the session rather than starting a turn after it. False when the agent
+   * cannot, or the turn has already ended, so the message is still the caller's to send.
+   */
+  async steer(sessionId: string, prompt: acp.ContentBlock[]): Promise<boolean> {
+    if (!(await this.canSteer())) return false;
+    const { outcome } = await this.agent().request<{ outcome: string }>(STEERING_METHOD, {
+      sessionId,
+      prompt,
+      _meta: { steering: { idleBehavior: "promptRequired" } },
+    });
+    return outcome === "injected";
+  }
+
+  async canSteer() {
+    const capabilities = await this.initialized;
+    return (capabilities?._meta?.steering as { supported?: unknown } | undefined)?.supported === true;
   }
 
   async cancel(sessionId: string) {
@@ -92,10 +114,12 @@ export class HarnessProcess {
     return this.agent().request(acp.methods.agent.session.setConfigOption, request);
   }
 
+  /** Settles once the agent process has exited. */
   stop(reason?: string) {
     this.stopReason = reason;
     this.connection?.close();
     this.child?.kill();
+    return this.exited;
   }
 
   private agent() {
@@ -116,6 +140,7 @@ export class HarnessProcess {
     const [command, ...args] = this.spec.command;
     const child = spawn(command!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.spec.environment });
     this.child = child;
+    this.exited = new Promise((resolve) => child.once("exit", () => resolve()));
     child.stderr!.pipe(createWriteStream(this.logPath(), { flags: "a" }));
     child.once("exit", (code, signal) => {
       this.connection = undefined;

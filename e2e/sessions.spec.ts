@@ -11,7 +11,7 @@ import { notifierDir, TestHost } from "./test-host.ts";
 
 const host = new TestHost(4800);
 const gateway = new FakeGateway();
-const bundledClaude = join(dirname(createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk-darwin-arm64/package.json")), "claude");
+const bundledClaude = join(dirname(createRequire(import.meta.url).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/package.json`)), "claude");
 const MARKER = "external-marker-42";
 let terminalSessionId = "";
 

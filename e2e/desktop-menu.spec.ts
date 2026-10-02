@@ -1,0 +1,80 @@
+import { expect, test, type Page } from "@playwright/test";
+import type { DesktopMenu, DesktopMenuMessage } from "../shared/desktop-menu.ts";
+import { signIn } from "./helpers.ts";
+import { TestHost } from "./test-host.ts";
+
+const host = new TestHost(4810);
+
+test.beforeAll(() => host.start());
+test.afterAll(async () => {
+  await host.stop();
+  await host.cleanUp();
+});
+
+const menuWith = (openAtLogin: boolean): DesktopMenu => ({
+  nonce: "nonce-1",
+  items: [
+    { type: "normal", label: "Host: running, started by this app", enabled: false },
+    { type: "separator" },
+    { type: "normal", label: "Restart host", action: "restart-host", enabled: true },
+    { type: "normal", label: "Run host in the background", action: "toggle-background", checked: false },
+    { type: "normal", label: "Open at login", action: "toggle-open-at-login", checked: openAtLogin },
+    { type: "separator" },
+    { type: "normal", label: "Quit", action: "quit" },
+  ],
+});
+
+/** Stands in for Electrobun's page-to-app bridge, answering a menu request as the Linux desktop app does. */
+async function actAsDesktopApp(page: Page) {
+  await page.addInitScript((menu) => {
+    const sent: DesktopMenuMessage[] = [];
+    Object.assign(window, { sentToDesktopApp: sent });
+    window.__electrobunSendToHost = (message) => {
+      sent.push(message);
+      if (message.type === "desktop-menu-request") setTimeout(() => window.dispatchEvent(new CustomEvent("mirador:desktop-menu", { detail: menu })));
+    };
+  }, menuWith(false));
+  return () => page.evaluate(() => (window as unknown as { sentToDesktopApp: DesktopMenuMessage[] }).sentToDesktopApp);
+}
+
+test("in a browser there is no desktop app menu", async ({ page }) => {
+  await signIn(page, host);
+  await expect(page.getByRole("button", { name: "Profiles…" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Desktop app…" })).toHaveCount(0);
+});
+
+test("inside the Linux desktop app, the sidebar offers the tray's menu and sends the chosen action with the app's nonce", async ({ page }) => {
+  const sentToDesktopApp = await actAsDesktopApp(page);
+  await signIn(page, host);
+  const button = page.getByRole("button", { name: "Desktop app…" });
+  await button.click();
+  const menu = page.getByRole("menu", { name: "Desktop app" });
+  await expect(menu).toContainText("Host: running, started by this app");
+  await expect(menu.getByRole("menuitem", { name: "Restart host" })).toBeEnabled();
+  await expect(menu.getByRole("menuitemcheckbox", { name: "Open at login" })).toHaveAttribute("aria-checked", "false");
+
+  await menu.getByRole("menuitemcheckbox", { name: "Open at login" }).click();
+  await expect(menu).toHaveCount(0);
+  expect(await sentToDesktopApp()).toContainEqual({ type: "desktop-action", nonce: "nonce-1", action: "toggle-open-at-login" });
+
+  await page.evaluate((updated) => window.dispatchEvent(new CustomEvent("mirador:desktop-menu", { detail: updated })), menuWith(true));
+  await button.click();
+  await expect(menu.getByRole("menuitemcheckbox", { name: "Open at login" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+});
+
+test("the desktop app menu reaches past the sidebar's edge without being cut off", async ({ page }) => {
+  await actAsDesktopApp(page);
+  await signIn(page, host);
+  await page.getByRole("button", { name: "Desktop app…" }).click();
+  const menu = page.getByRole("menu", { name: "Desktop app" });
+  const sidebar = (await page.locator(".sidebar").boundingBox())!;
+  const shown = (await menu.boundingBox())!;
+  expect(shown.x + shown.width).toBeGreaterThan(sidebar.x + sidebar.width);
+  const farEdgeIsMenu = await menu.evaluate((element) => {
+    const { right, top, bottom } = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(right - 2, (top + bottom) / 2));
+  });
+  expect(farEdgeIsMenu).toBe(true);
+});

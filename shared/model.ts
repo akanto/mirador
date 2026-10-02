@@ -5,6 +5,7 @@ import type {
   StopReason,
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
+import type { Review } from "./review.ts";
 
 export type HarnessId = "claude" | "opencode";
 
@@ -17,7 +18,20 @@ export const harnessIds = Object.keys(harnessLabels) as HarnessId[];
 
 export type AskMode = "wait" | "next-message";
 
+export const askModeLabels: Record<AskMode, string> = {
+  wait: "Agent waits for my answer",
+  "next-message": "My answer is sent as the next message",
+};
+
 /** How to launch an agent: extra environment and a command to run first. No profile means the host's own environment. */
+/** A prompt the user sends often, with {{parameters}} filled in each time. */
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -25,6 +39,12 @@ export interface Profile {
   harness: HarnessId;
   environment: string;
   prelaunch: string;
+  /** The agent's mode a conversation takes when it starts with the profile or moves to it; null leaves the agent's own. */
+  mode: string | null;
+  /** YOLO, taken like the mode. */
+  bypassPermissions: boolean;
+  /** Questions, taken like the mode. */
+  askMode: AskMode;
   createdAt: number;
 }
 
@@ -46,17 +66,41 @@ export type TerminalActivity = "working" | "waiting" | "idle";
 
 export const terminalActivityLabels: Record<TerminalActivity, string> = { working: "working", waiting: "waiting for you", idle: "idle" };
 
+export type WorkspaceColor = "rose" | "peach" | "butter" | "mint" | "teal" | "sky" | "lavender" | "lilac";
+
+export const workspaceColorLabels: Record<WorkspaceColor, string> = {
+  rose: "Rose",
+  peach: "Peach",
+  butter: "Butter",
+  mint: "Mint",
+  teal: "Teal",
+  sky: "Sky",
+  lavender: "Lavender",
+  lilac: "Lilac",
+};
+
+export const isWorkspaceColor = (value: unknown): value is WorkspaceColor => typeof value === "string" && Object.hasOwn(workspaceColorLabels, value);
+
 export interface Workspace {
   id: string;
   name: string;
   path: string;
   defaultLaunch: Launch;
+  /** Picked by the user to tell workspaces apart in the sidebar. */
+  color: WorkspaceColor | null;
+  /** Its place among the workspaces in the sidebar. */
+  position: number;
   createdAt: number;
 }
 
 export interface QueuedMessage {
   id: string;
   text: string;
+  imageIds: string[];
+  /** Posted by a script the agent started (scripts/mirador-message) rather than typed by the user. */
+  fromScript?: true;
+  /** Waits for the running turn to end, then goes out as the next message, instead of joining the turn (⌥Enter). */
+  afterTurn?: true;
 }
 
 export interface ContextUsage {
@@ -73,6 +117,15 @@ export interface StatuslineRender {
   /** What the command printed, ANSI colours and all; null when it was not run or did not succeed. */
   output: string | null;
   error: string | null;
+}
+
+/** Why the agent waits for you: a tool to approve, a canvas question to answer, or a turn that ended (or failed) while you looked elsewhere. */
+export type WaitingFor = "permission" | "question" | "finished" | "error";
+
+/** While Claude's usage limit is reached, queued messages wait; the agent continues by itself at `continuesAt`, or only when told to (null). */
+export interface UsageLimitWait {
+  resetsAt: number | null;
+  continuesAt: number | null;
 }
 
 export interface Conversation {
@@ -92,9 +145,14 @@ export interface Conversation {
   openInTerminal: TerminalActivity | null;
   /** The agent's latest report of its context window; kept in memory only, so it is empty after a host restart until the next response. */
   contextUsage: ContextUsage | null;
-  /** Messages the user sent while the agent was busy, oldest first; each goes out when the turn before it ends. Kept in memory only. */
+  /** Messages sent while the agent was busy, oldest first: each joins the running turn at the agent's next step, or waits for the turn to end. */
   queuedMessages: QueuedMessage[];
+  usageLimit: UsageLimitWait | null;
+  /** Kept in memory, except for questions, so a host restart forgets the turns that ended unseen. */
+  waitingFor: WaitingFor | null;
   configOptions: SessionConfigOption[];
+  /** Its place among its workspace's conversations in the sidebar. */
+  position: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -116,7 +174,7 @@ export interface TerminalTab {
 }
 
 export type ConversationEvent =
-  | { type: "user-message"; text: string; attachedCommandIds?: string[] }
+  | { type: "user-message"; text: string; attachedCommandIds?: string[]; imageIds?: string[]; fromScript?: true }
   | { type: "user-command"; commandId: string; command: string }
   | { type: "user-command-output"; commandId: string; stream: CommandStream; text: string }
   | { type: "user-command-ended"; commandId: string; exitCode: number | null }
@@ -126,7 +184,9 @@ export type ConversationEvent =
   | { type: "permission-resolved"; permissionId: string; optionId: string | null }
   | { type: "turn-end"; stopReason: StopReason }
   | { type: "profile-changed"; profileName: string | null }
-  | { type: "error"; message: string };
+  /** `usageLimit`: Claude's usage limit stopped the turn; it resets at `resetsAt`, when the message names a time. */
+  | { type: "error"; message: string; usageLimit?: { resetsAt: number | null } }
+  | { type: "usage-limit-wait-stopped" };
 
 /** A harness session in a workspace directory, possibly started outside the app. */
 export interface ExternalSession {
@@ -162,7 +222,7 @@ export interface CanvasAnswer {
 export interface CanvasItem {
   id: string;
   conversationId: string;
-  kind: "show" | "ask";
+  kind: "show" | "ask" | "review";
   title: string;
   html?: string;
   question?: string;
@@ -170,5 +230,8 @@ export interface CanvasItem {
   allowOther?: boolean;
   status: CanvasItemStatus;
   answer?: CanvasAnswer;
+  /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */
+  shownBefore?: string[];
+  review?: Review;
   createdAt: number;
 }

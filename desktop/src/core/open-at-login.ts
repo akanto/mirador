@@ -1,7 +1,13 @@
 import type { LaunchAgent } from "./launchd.ts";
 import { openAtLoginPlist } from "./launch-agents.ts";
 
-export class OpenAtLogin {
+export interface LoginItem {
+  readonly available: boolean;
+  enable(): void;
+  disable(): void | Promise<void>;
+}
+
+export class OpenAtLogin implements LoginItem {
   constructor(
     private readonly agent: LaunchAgent,
     private readonly appPath: string | null,

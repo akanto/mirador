@@ -9,7 +9,8 @@ import {
   type NavigationState,
 } from "../web/navigation.ts";
 import { matchesQuery } from "../web/Palette.tsx";
-import { commandFor, type KeyPress } from "../web/shortcuts.ts";
+import { commandFor, shortcutKeys, type KeyPress } from "../web/shortcuts.ts";
+import { terminalKeyAction } from "../web/terminal-keys.ts";
 
 const press = (code: string, modifiers: Partial<KeyPress> = {}, key = ""): KeyPress => ({
   key,
@@ -34,6 +35,7 @@ describe("commandFor", () => {
     expect(commandFor(press("ArrowUp", { altKey: true, shiftKey: true }), "typing", true)).toEqual({ type: "adjacent-workspace", step: -1 });
     expect(commandFor(press("Digit3", { altKey: true }, "£"), "typing", true)).toEqual({ type: "numbered-conversation", number: 3 });
     expect(commandFor(press("KeyT", { altKey: true }, "†"), "typing", true)).toEqual({ type: "new-conversation" });
+    expect(commandFor(press("KeyT", { altKey: true, shiftKey: true }, "ˇ"), "typing", true)).toEqual({ type: "new-workspace" });
     expect(commandFor(press("Digit0", { altKey: true }), "typing", true)).toBeNull();
     expect(commandFor(press("KeyT", { altKey: true, metaKey: true }), "typing", true)).toBeNull();
   });
@@ -45,6 +47,21 @@ describe("commandFor", () => {
     expect(commandFor(focusCanvas, "typing", true)).toBeNull();
   });
 
+  test("on macOS a terminal keeps ⌘K for itself, but focus can still move out of it", () => {
+    expect(commandFor(press("KeyK", { metaKey: true }), "terminal", true)).toBeNull();
+    expect(commandFor(press("KeyK", { ctrlKey: true }), "terminal", false)).toEqual({ type: "palette" });
+    expect(commandFor(press("ArrowLeft", { metaKey: true, shiftKey: true }), "terminal", true)).toEqual({ type: "focus", pane: "chat" });
+  });
+
+  test("Cmd+R reloads the page and Cmd+Shift+R restarts the host, but a Linux terminal keeps Ctrl+R for its history search", () => {
+    expect(commandFor(press("KeyR", { metaKey: true }), "typing", true)).toEqual({ type: "reload-page" });
+    expect(commandFor(press("KeyR", { metaKey: true, shiftKey: true }), "terminal", true)).toEqual({ type: "restart-host" });
+    expect(commandFor(press("KeyR", { ctrlKey: true }), "not-typing", false)).toEqual({ type: "reload-page" });
+    expect(commandFor(press("KeyR", { ctrlKey: true }), "terminal", false)).toBeNull();
+    expect(commandFor(press("KeyR", { ctrlKey: true, shiftKey: true }), "terminal", false)).toBeNull();
+    expect(commandFor(press("KeyR", { metaKey: true, altKey: true }), "not-typing", true)).toBeNull();
+  });
+
   test("? opens the help only outside text fields", () => {
     const questionMark = press("Slash", { shiftKey: true }, "?");
     expect(commandFor(questionMark, "not-typing", true)).toEqual({ type: "help" });
@@ -53,9 +70,45 @@ describe("commandFor", () => {
   });
 });
 
-const workspace = (id: string): Workspace => ({ id, name: id, path: `/p/${id}`, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 0 });
+describe("shortcutKeys", () => {
+  test("the keys a button's hint shows are written for the platform", () => {
+    expect(shortcutKeys(true)).toMatchObject({ newWorkspace: "⌥⇧T", newConversation: "⌥T", toggleCanvas: "⌘\\", sendTheOtherWay: "⌥Enter" });
+    expect(shortcutKeys(false)).toMatchObject({ newWorkspace: "Alt+Shift+T", newConversation: "Alt+T", toggleCanvas: "Ctrl+\\", sendTheOtherWay: "Alt+Enter" });
+  });
+});
 
-const conversation = (id: string, workspaceId: string, createdAt: number): Conversation => ({
+describe("terminalKeyAction", () => {
+  test("gives Cmd and Option the meaning they have in a macOS terminal", () => {
+    expect(terminalKeyAction(press("KeyK", { metaKey: true }), true)).toEqual({ type: "clear" });
+    expect(terminalKeyAction(press("ArrowLeft", { metaKey: true }), true)).toEqual({ type: "send", data: "\x01" });
+    expect(terminalKeyAction(press("ArrowRight", { metaKey: true }), true)).toEqual({ type: "send", data: "\x05" });
+    expect(terminalKeyAction(press("Backspace", { metaKey: true }), true)).toEqual({ type: "send", data: "\x15" });
+    expect(terminalKeyAction(press("ArrowLeft", { altKey: true }), true)).toEqual({ type: "send", data: "\x1bb" });
+    expect(terminalKeyAction(press("ArrowRight", { altKey: true }), true)).toEqual({ type: "send", data: "\x1bf" });
+  });
+
+  test("elsewhere, copies with Ctrl+Shift+C and leaves Ctrl+Shift+V to the browser's paste, as in a Linux terminal", () => {
+    expect(terminalKeyAction(press("KeyC", { ctrlKey: true, shiftKey: true }), false)).toEqual({ type: "copy" });
+    expect(terminalKeyAction(press("KeyV", { ctrlKey: true, shiftKey: true }), false)).toEqual({ type: "browser-paste" });
+  });
+
+  test("leaves every other key to xterm.js", () => {
+    expect(terminalKeyAction(press("KeyK", { metaKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("KeyK", { ctrlKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("KeyC", { ctrlKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("KeyV", { ctrlKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("KeyK", { ctrlKey: true, shiftKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("KeyC", { ctrlKey: true, shiftKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("KeyC", { metaKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("ArrowLeft", { metaKey: true, shiftKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("Backspace", { altKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("ArrowUp", { altKey: true }), true)).toBeNull();
+  });
+});
+
+const workspace = (id: string): Workspace => ({ id, name: id, path: `/p/${id}`, defaultLaunch: { harness: "claude", profileId: null }, color: null, position: 0, createdAt: 0 });
+
+const conversation = (id: string, workspaceId: string, createdAt: number, position = 0): Conversation => ({
   id,
   workspaceId,
   harness: "claude",
@@ -70,7 +123,10 @@ const conversation = (id: string, workspaceId: string, createdAt: number): Conve
   openInTerminal: null,
     contextUsage: null,
     queuedMessages: [],
+    usageLimit: null,
+    waitingFor: null,
   configOptions: [],
+  position,
   createdAt,
   updatedAt: createdAt,
 });
@@ -83,15 +139,15 @@ describe("navigation", () => {
   };
   const selecting = (selectedConversationId: string | null) => ({ ...base, selectedConversationId });
 
-  test("lists a workspace's conversations newest first, like the sidebar", () => {
-    expect(conversationsIn(base, "a").map(({ id }) => id)).toEqual(["a-new", "a-old"]);
+  test("lists a workspace's conversations oldest first, like the sidebar", () => {
+    expect(conversationsIn(base, "a").map(({ id }) => id)).toEqual(["a-old", "a-new"]);
   });
 
   test("steps through conversations in sidebar order and wraps around", () => {
-    expect(adjacentConversation(selecting("a-new"), 1)).toBe("a-old");
-    expect(adjacentConversation(selecting("a-old"), 1)).toBe("b-only");
-    expect(adjacentConversation(selecting("b-only"), 1)).toBe("a-new");
-    expect(adjacentConversation(selecting("a-new"), -1)).toBe("b-only");
+    expect(adjacentConversation(selecting("a-old"), 1)).toBe("a-new");
+    expect(adjacentConversation(selecting("a-new"), 1)).toBe("b-only");
+    expect(adjacentConversation(selecting("b-only"), 1)).toBe("a-old");
+    expect(adjacentConversation(selecting("a-old"), -1)).toBe("b-only");
     expect(adjacentConversation(selecting(null), -1)).toBe("b-only");
   });
 
@@ -103,9 +159,17 @@ describe("navigation", () => {
 
   test("numbers conversations within the current workspace, the first workspace when nothing is selected", () => {
     expect(currentWorkspace(selecting(null))?.id).toBe("a");
-    expect(numberedConversation(selecting(null), 2)).toBe("a-old");
+    expect(numberedConversation(selecting(null), 2)).toBe("a-new");
     expect(numberedConversation(selecting("b-only"), 1)).toBe("b-only");
     expect(numberedConversation(selecting("b-only"), 2)).toBeNull();
+  });
+
+  test("lists the conversations where the user put them, and the shortcuts follow; another workspace still opens on its newest", () => {
+    const reordered = { ...base, conversations: [conversation("a-old", "a", 1, 1), conversation("a-new", "a", 2, 0), conversation("b-only", "b", 3)] };
+    expect(conversationsIn(reordered, "a").map(({ id }) => id)).toEqual(["a-new", "a-old"]);
+    expect(numberedConversation(reordered, 1)).toBe("a-new");
+    expect(adjacentConversation({ ...reordered, selectedConversationId: "a-new" }, 1)).toBe("a-old");
+    expect(adjacentWorkspaceConversation({ ...reordered, selectedConversationId: "b-only" }, 1)).toBe("a-new");
   });
 
   test("has nowhere to go without conversations", () => {

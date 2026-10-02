@@ -51,7 +51,7 @@ test("a terminal opens under the canvas in the workspace folder, keeps its shell
   await expect(screen(page)).toContainText("still-here");
 
   await page.reload();
-  await page.getByRole("button", { name: "Show terminal" }).click();
+  await expect(page.getByRole("button", { name: "Hide terminal" })).toBeVisible();
   await expect(screen(page)).toContainText("marker-42");
   await runInTerminal(page, "echo again-$SURVIVOR");
   await expect(screen(page)).toContainText("again-still-here");

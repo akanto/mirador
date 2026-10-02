@@ -1,0 +1,215 @@
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
+import type { PromptTemplate } from "../shared/model.ts";
+import { filledIn, parametersOf, promptTemplateProblem } from "../shared/prompt-templates.ts";
+import { ConfirmButton } from "./ConfirmButton.tsx";
+import { connection } from "./connection.ts";
+import { hints } from "./hints.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
+
+const NEW_TEMPLATE = "new";
+
+const firstLineOf = (text: string) => text.split("\n").find((line) => line.trim()) ?? "";
+
+/** The button that opens the popover toggles it itself, so a press on it is not a click outside. */
+function useClosingOnOutsideClick(onClose: () => void, opener: RefObject<HTMLElement | null>) {
+  const popover = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const closeOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!popover.current?.contains(target) && !opener.current?.contains(target)) onClose();
+    };
+    document.addEventListener("mousedown", closeOutside);
+    return () => document.removeEventListener("mousedown", closeOutside);
+  }, [onClose, opener]);
+  return popover;
+}
+
+function TemplateForm({
+  template,
+  onSend,
+  onInsert,
+  onBack,
+}: {
+  template: PromptTemplate;
+  onSend: (text: string) => void;
+  onInsert: (text: string) => void;
+  onBack: () => void;
+}) {
+  const parameters = parametersOf(template.text);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const typingAidAttributes = useTypingAidAttributes();
+  const text = filledIn(template.text, values);
+  const complete = parameters.every((parameter) => values[parameter]?.trim());
+  const send = (event: FormEvent) => {
+    event.preventDefault();
+    if (complete) onSend(text);
+  };
+  return (
+    <form className="template-form" onSubmit={send}>
+      <div className="template-form-name">{template.name}</div>
+      {parameters.map((parameter, index) => (
+        <label key={parameter}>
+          {parameter}
+          <input
+            {...typingAidAttributes}
+            autoFocus={index === 0}
+            value={values[parameter] ?? ""}
+            onChange={(event) => setValues((current) => ({ ...current, [parameter]: event.target.value }))}
+          />
+        </label>
+      ))}
+      <div className="template-preview" aria-label="Message to send">
+        {text}
+      </div>
+      <div className="template-actions">
+        <button type="submit" className="primary" autoFocus={parameters.length === 0} disabled={!complete}>
+          Send
+        </button>
+        <button type="button" onClick={() => onInsert(text)}>
+          Put in the message box
+        </button>
+        <button type="button" className="link" onClick={onBack}>
+          Back
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The Templates button's popover: pick a template, fill in its parameters, then send it or put it in the message box.
+ */
+export function TemplatePicker({
+  templates,
+  opener,
+  onSend,
+  onInsert,
+  onManage,
+  onClose,
+}: {
+  templates: PromptTemplate[];
+  opener: RefObject<HTMLElement | null>;
+  onSend: (text: string) => void;
+  onInsert: (text: string) => void;
+  onManage: () => void;
+  onClose: () => void;
+}) {
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const chosen = templates.find(({ id }) => id === chosenId);
+  const popover = useClosingOnOutsideClick(onClose, opener);
+  const closeOnEscape = (event: KeyboardEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  };
+  return (
+    <div ref={popover} className="template-picker" role="dialog" aria-label="Prompt templates" onKeyDown={closeOnEscape}>
+      {chosen ? (
+        <TemplateForm template={chosen} onSend={onSend} onInsert={onInsert} onBack={() => setChosenId(null)} />
+      ) : (
+        <>
+          {templates.length === 0 && <p className="hint">No templates yet.</p>}
+          <ul className="template-choices">
+            {templates.map((template, index) => (
+              <li key={template.id}>
+                <button type="button" autoFocus={index === 0} onClick={() => setChosenId(template.id)}>
+                  <span className="template-choice-name">{template.name}</span>
+                  <span className="template-choice-text">{firstLineOf(template.text)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="link" onClick={onManage}>
+            Manage templates…
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TemplateEditor({ template, onCreated }: { template: PromptTemplate | undefined; onCreated: (templateId: string) => void }) {
+  const [name, setName] = useState(template?.name ?? "");
+  const [text, setText] = useState(template?.text ?? "");
+  const typingAidAttributes = useTypingAidAttributes();
+  const parameters = parametersOf(text);
+  const unchanged = template !== undefined && name === template.name && text === template.text;
+  const problem = name.trim() && text.trim() ? promptTemplateProblem({ id: template?.id ?? NEW_TEMPLATE, name, text }) : null;
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    const templateId = template?.id ?? crypto.randomUUID();
+    if (connection.send({ type: "prompt-template.save", template: { id: templateId, name, text } }) && !template) onCreated(templateId);
+  };
+  const remove = () => template && connection.send({ type: "prompt-template.delete", templateId: template.id });
+  return (
+    <form className="profile-editor" aria-label={template ? `Template ${template.name}` : "New template"} onSubmit={save}>
+      <label>
+        <span>Name</span>
+        <input {...typingAidAttributes} aria-label="Template name" value={name} placeholder="Deep PR review" onChange={(event) => setName(event.target.value)} />
+      </label>
+      <label>
+        <span>Text</span>
+        <textarea
+          {...typingAidAttributes}
+          aria-label="Template text"
+          rows={6}
+          value={text}
+          placeholder="Review {{Pull request}} and explain how its code flows."
+          onChange={(event) => setText(event.target.value)}
+        />
+      </label>
+      <div className="hint">
+        {parameters.length > 0 ? `Asks for: ${parameters.join(", ")}.` : "Write {{a name}} where a value goes; you fill it in each time you use the template."}
+      </div>
+      {problem && <div className="form-errors">{problem}</div>}
+      <div className="form-actions">
+        <button type="submit" disabled={!name.trim() || !text.trim() || problem !== null || unchanged}>
+          {template ? "Save" : "Create template"}
+        </button>
+        {template && (
+          <ConfirmButton className="danger" label="Delete template" armedText="Delete?" armedHint={hints.deleteTemplateArmed} onConfirm={remove}>
+            Delete
+          </ConfirmButton>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/** Settings' list of prompt templates, with an editor for the one picked or a new one. */
+export function PromptTemplateSettings({ templates }: { templates: PromptTemplate[] }) {
+  const [selectedId, setSelectedId] = useState(templates[0]?.id ?? NEW_TEMPLATE);
+  const selected = templates.find(({ id }) => id === selectedId);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (createdId && templates.some(({ id }) => id === createdId)) {
+      setSelectedId(createdId);
+      setCreatedId(null);
+    } else if (selectedId !== NEW_TEMPLATE && !selected) setSelectedId(templates[0]?.id ?? NEW_TEMPLATE);
+  }, [createdId, selectedId, selected, templates]);
+
+  return (
+    <>
+      <h3>Prompt templates</h3>
+      <p className="hint">
+        Messages you send often, from the Templates button next to Send. Write <code>{"{{Pull request}}"}</code> where a value goes, and
+        you fill it in each time. Kept by the host, so every browser has them.
+      </p>
+      <div className="profiles-body">
+        <ul className="profile-list" aria-label="Prompt templates">
+          {templates.map((template) => (
+            <li key={template.id} className={template.id === selectedId ? "selected" : ""} onClick={() => setSelectedId(template.id)}>
+              {template.name}
+            </li>
+          ))}
+          <li className={selectedId === NEW_TEMPLATE ? "selected" : ""} onClick={() => setSelectedId(NEW_TEMPLATE)}>
+            + New template
+          </li>
+        </ul>
+        <TemplateEditor key={selected?.id ?? NEW_TEMPLATE} template={selected} onCreated={setCreatedId} />
+      </div>
+    </>
+  );
+}

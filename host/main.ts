@@ -1,13 +1,18 @@
+import { dirname, join } from "node:path";
 import { serveCanvasAssets } from "./canvas/assets.ts";
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
 import { Hub } from "./hub.ts";
+import { ImageStore } from "./images.ts";
 import { NotifierMute } from "./notifier.ts";
 import { ProfileService } from "./profiles.ts";
+import { HostRestart, takeTurnsStoppedForRestart } from "./restart.ts";
 import { startServer } from "./server.ts";
+import { SourceWatcher } from "./source-watcher.ts";
 import { StatuslineService } from "./statusline.ts";
+import { SystemNotifications } from "./system-notifications.ts";
 import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
@@ -15,14 +20,20 @@ import { TerminalService } from "./terminals.ts";
 const config = loadConfig();
 const store = new Store(config.databasePath);
 const hub = new Hub();
-const conversations = new ConversationService(store, hub, config, new NotifierMute(config.notifierDir));
-const canvas = new CanvasService(store, hub, conversations);
+const images = new ImageStore(join(config.dataDir, "images"));
+const notifications = new SystemNotifications(store, hub);
+const conversations = new ConversationService(store, hub, config, new NotifierMute(config.notifierDir), images, notifications);
+const canvas = new CanvasService(store, hub, conversations, notifications);
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals });
+const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
+const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart });
+const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: rebuildUi, hostEdited: () => restart.hostCodeEdited() });
+sourceWatcher.start();
+conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
 const terminalSessions = new TerminalSessionWatcher(
   () => conversations.claudeConfigDirs(),
   (activityBySession) => conversations.showTerminalActivity(activityBySession),
@@ -32,16 +43,22 @@ terminalSessions.start();
 console.log(`Mirador is running. Open:\n\n  ${config.appOrigin}/auth?token=${config.browserToken}\n`);
 console.log(`data: ${config.dataDir}  agent logs: ${config.dataDir}/logs`);
 
+async function stopServices() {
+  terminalSessions.stop();
+  sourceWatcher.stop();
+  terminals.shutdown();
+  const agentsExited = conversations.shutdown();
+  server.stop(true);
+  assetsServer.stop(true);
+  store.close();
+  await agentsExited;
+}
+
 let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  terminalSessions.stop();
-  terminals.shutdown();
-  conversations.shutdown();
-  server.stop(true);
-  assetsServer.stop(true);
-  store.close();
+  void stopServices();
   process.exit(0);
 }
 

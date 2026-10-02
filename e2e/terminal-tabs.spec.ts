@@ -71,7 +71,6 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
 
   const other = await context.newPage();
   await other.goto(page.url());
-  await other.getByRole("button", { name: "Show terminal" }).click();
   await expect(tabs(other)).toHaveText(["sh", "my-title"]);
 
   await page.getByRole("tab", { name: "sh", exact: true }).click();
@@ -96,7 +95,6 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(split).toBeDisabled();
 
   await page.reload();
-  await page.getByRole("button", { name: "Show terminal" }).click();
   await expect(tabs(page)).toHaveText(["sh"]);
   await expect(views(page)).toHaveCount(4);
   await expect(screenOf(page, 0)).toContainText("first-2");

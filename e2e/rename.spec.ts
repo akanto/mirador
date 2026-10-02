@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -19,6 +19,7 @@ test.afterAll(async () => {
 
 const headerTitle = (page: Page) => page.locator(".chat-header h2");
 const sidebarTitles = (page: Page) => page.locator(".workspace li .conversation-title");
+const cursorOver = (title: Locator) => title.evaluate((element) => getComputedStyle(element).cursor);
 
 test("a conversation is renamed from its header, and a name the user chose survives the first message and a reload", async ({ page }) => {
   await signIn(page, host);
@@ -28,6 +29,7 @@ test("a conversation is renamed from its header, and a name the user chose survi
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "fake gateway · Claude Code" });
   await startConversation(page);
 
+  expect(await cursorOver(headerTitle(page).getByText("New conversation"))).toBe("text");
   await headerTitle(page).getByText("New conversation").click();
   const field = page.getByLabel("Conversation name");
   await expect(field).toBeFocused();
@@ -45,6 +47,7 @@ test("a conversation is renamed from its header, and a name the user chose survi
 test("a conversation is renamed from the sidebar or the palette, and Esc cancels", async ({ page }) => {
   await signIn(page, host);
   const title = sidebarTitles(page).first();
+  expect(await cursorOver(title)).toBe("pointer");
   await title.dblclick();
   const field = page.getByLabel("Conversation name");
   await field.fill("Never saved");

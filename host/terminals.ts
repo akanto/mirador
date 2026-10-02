@@ -76,6 +76,16 @@ export class TerminalService {
     this.shells.get(terminalId)?.child.terminal?.resize(dimension(columns), dimension(rows));
   }
 
+  /** Forgets the output above the cursor's line, in every window and in what a reload replays, like ⌘K in a macOS terminal. */
+  clear(terminalId: string) {
+    const shell = this.shells.get(terminalId);
+    if (!shell) return;
+    const cursorLine = shell.scrollback.join("").split("\n").at(-1) ?? "";
+    shell.scrollback = [cursorLine];
+    shell.scrollbackLength = cursorLine.length;
+    this.publish(shell.workspaceId, { type: "terminal.cleared", terminalId });
+  }
+
   close(terminalId: string) {
     this.shells.get(terminalId)?.child.kill("SIGHUP");
   }

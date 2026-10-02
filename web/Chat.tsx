@@ -1,44 +1,60 @@
 import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { flatSelectOptions } from "../shared/config-options.ts";
 import {
   harnessLabels,
   terminalActivityLabels,
+  askModeLabels,
   type AskMode,
   type Conversation,
   type HarnessId,
   type Profile,
+  type PromptTemplate,
   type QueuedMessage,
+  type StoredEvent,
+  type UsageLimitWait,
 } from "../shared/model.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
 import { parseAnsi, plainTextOf } from "./ansi.ts";
+import { harnessSteers, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { choiceGroups } from "./choices.ts";
+import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages.tsx";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
+import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
+import { useMentionMenu } from "./MentionMenu.tsx";
+import { usePromptHistory } from "./PromptHistory.ts";
+import { TemplatePicker } from "./PromptTemplates.tsx";
+import { useSlashCommandMenu } from "./SlashCommandMenu.tsx";
+import { noSuggestions } from "./SuggestionList.tsx";
+import { keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
 import { Statusline } from "./Statusline.tsx";
 import type { OpenConversation } from "./state.ts";
-import { authorOf, buildTimeline, contentText, startsAuthorGroup, type Author, type PermissionBlock, type TimelineBlock, type ToolBlock } from "./timeline.ts";
-import { formatClockTime, formatFullTime } from "./timestamps.ts";
-
-function MarkdownText({ text }: { text: string }) {
-  return (
-    <div className="markdown">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" /> }}
-      >
-        {text}
-      </Markdown>
-    </div>
-  );
-}
+import {
+  authorOf,
+  buildTimeline,
+  contentText,
+  runsInBackground,
+  startsAuthorGroup,
+  subagentEndedAt,
+  subagentInput,
+  subagentsIn,
+  subagentState,
+  type Author,
+  type PermissionBlock,
+  type SubagentBlock,
+  type SubagentState,
+  type TimelineBlock,
+  type ToolBlock,
+} from "./timeline.ts";
+import { formatClockTime, formatDuration, formatFullTime } from "./timestamps.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
+import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 
 /** Past this many choices a plain select is hard to scan: opencode lists every model of every provider. */
 const SEARCHABLE_FROM_CHOICES = 20;
@@ -93,7 +109,6 @@ function ProfilePicker({ conversation, profiles }: { conversation: Conversation;
       <select
         aria-label="Profile"
         value={conversation.profileId ?? ""}
-        disabled={isBusy(conversation)}
         onChange={(event) =>
           connection.send({ type: "conversation.set-profile", conversationId: conversation.id, profileId: event.target.value || null })
         }
@@ -133,11 +148,6 @@ function YoloSwitch({ conversation }: { conversation: Conversation }) {
   );
 }
 
-const askModeLabels: Record<AskMode, string> = {
-  wait: "Agent waits for my answer",
-  "next-message": "My answer is sent as the next message",
-};
-
 function ChatHeader({
   conversation,
   profiles,
@@ -145,6 +155,8 @@ function ChatHeader({
   onToggleCanvas,
   terminalVisible,
   onToggleTerminal,
+  runningSubagents,
+  onShowRunningSubagent,
 }: {
   conversation: Conversation;
   profiles: Profile[];
@@ -152,28 +164,37 @@ function ChatHeader({
   onToggleCanvas: () => void;
   terminalVisible: boolean;
   onToggleTerminal: () => void;
+  runningSubagents: number;
+  onShowRunningSubagent: () => void;
 }) {
   return (
-    <header className="chat-header">
+    <header className="chat-header" data-pane-bar>
       <div className="title-row">
+        <PaneGrip pane="conversation" />
         <h2>
           <ConversationTitle conversation={conversation} startEditingOn="click" className="conversation-name" />
         </h2>
         <span className={`badge status-${conversation.status}`} data-hint={statusHints[conversation.status]}>
           {conversation.status}
         </span>
+        {runningSubagents > 0 && (
+          <button type="button" className="subagents-running" data-hint={hints.subagentsRunning} onClick={onShowRunningSubagent}>
+            ◐ {runningSubagents === 1 ? "1 subagent running" : `${runningSubagents} subagents running`}
+          </button>
+        )}
         {conversation.openInTerminal && (
           <span className={`badge terminal-${conversation.openInTerminal}`} data-hint={hints.inTerminal}>
             in a terminal · {terminalActivityLabels[conversation.openInTerminal]}
           </span>
         )}
         <span className="harness">{harnessLabels[conversation.harness]}</span>
-        <button className="toggle-canvas" data-hint={hints.canvasToggle} onClick={onToggleCanvas}>
+        <button className="toggle-canvas" data-hint={hints.canvasToggle} data-shortcut={shortcutKeys().toggleCanvas} onClick={onToggleCanvas}>
           {canvasVisible ? "Hide canvas" : "Show canvas"}
         </button>
         <button className="toggle-terminal" data-hint={hints.terminalToggle} onClick={onToggleTerminal}>
           {terminalVisible ? "Hide terminal" : "Show terminal"}
         </button>
+        <FullscreenToggle pane="conversation" />
       </div>
       {conversation.statusDetail && <div className="status-detail">{conversation.statusDetail}</div>}
       <div className="controls">
@@ -368,6 +389,60 @@ function ToolCard({ block }: { block: ToolBlock }) {
   );
 }
 
+const SubagentStates = createContext<ReadonlyMap<string, SubagentState>>(new Map());
+
+const subagentIcons: Record<SubagentState, string> = { running: "◐", done: "●", failed: "✕", stopped: "■" };
+
+function useClock(ticking: boolean) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  return now;
+}
+
+const callsLabel = (count: number) => (count === 1 ? "1 call" : `${count} calls`);
+
+function SubagentCard({ block, conversationId }: { block: SubagentBlock; conversationId: string }) {
+  const state = useContext(SubagentStates).get(block.toolCallId) ?? "done";
+  const now = useClock(state === "running");
+  const { description, subagent_type, model } = subagentInput(block);
+  const calls = block.subagent.blocks.filter((child) => child.kind === "tool");
+  const latestCall = calls.at(-1);
+  const facts = [
+    typeof subagent_type === "string" && subagent_type,
+    typeof model === "string" && model,
+    callsLabel(calls.length),
+    formatDuration((state === "running" ? now : subagentEndedAt(block)) - block.at),
+    runsInBackground(block) && "in the background",
+  ].filter(Boolean);
+  return (
+    <details className={`tool subagent subagent-${state}`} data-tool-call-id={block.toolCallId}>
+      <summary>
+        <span className="tool-status" aria-label={state}>
+          {subagentIcons[state]}
+        </span>
+        <span className="subagent-task">{typeof description === "string" ? description : readableToolTitle(block.title)}</span>
+        <span className="subagent-facts">{facts.join(" · ")}</span>
+        {state === "running" && latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
+      </summary>
+      <div className="subagent-work">
+        {block.subagent.blocks.map((child) => (
+          <TimelineEntry key={child.key} block={child} conversationId={conversationId} />
+        ))}
+      </div>
+      {block.content.map((content, index) => (
+        <ToolContent key={index} content={content} />
+      ))}
+      <RawJson label="input" value={block.rawInput} />
+      <RawJson label="output" value={block.rawOutput} />
+    </details>
+  );
+}
+
 function permissionSubject(toolCall: PermissionBlock["toolCall"]) {
   if (toolCall.kind !== "execute") return toolCall.title ?? "tool call";
   const description = (toolCall.rawInput as { description?: unknown } | null | undefined)?.description;
@@ -420,7 +495,23 @@ function PersonIcon() {
   );
 }
 
+function ScriptIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.5 12.2h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function Avatar({ author, harness }: { author: Author; harness: HarnessId }) {
+  if (author === "script") {
+    return (
+      <span className="avatar script" aria-hidden="true">
+        <ScriptIcon />
+      </span>
+    );
+  }
   return author === "user" ? (
     <span className="avatar user" aria-hidden="true">
       <PersonIcon />
@@ -440,6 +531,11 @@ function Timestamp({ at }: { at: number }) {
   );
 }
 
+function authorName(author: Author, harness: HarnessId) {
+  if (author === "script") return <span data-hint={hints.scriptMessage}>From a script</span>;
+  return author === "user" ? "You" : agentNames[harness];
+}
+
 function TimestampedEntry({
   block,
   startsGroup,
@@ -456,9 +552,9 @@ function TimestampedEntry({
     <div className={`timeline-entry ${startsGroup ? "group-start" : ""} ${author ? "" : "notice-entry"}`}>
       <div className="gutter">{startsGroup && author ? <Avatar author={author} harness={harness} /> : <Timestamp at={block.at} />}</div>
       <div className="entry-body">
-        {startsGroup && (
+        {startsGroup && author && (
           <div className="author">
-            {author === "user" ? "You" : agentNames[harness]}
+            {authorName(author, harness)}
             <Timestamp at={block.at} />
           </div>
         )}
@@ -471,7 +567,12 @@ function TimestampedEntry({
 function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conversationId: string }) {
   switch (block.kind) {
     case "user":
-      return <div className="message user">{block.text}</div>;
+      return (
+        <div className="message user">
+          {block.text}
+          <MessageImages conversationId={conversationId} imageIds={block.imageIds} />
+        </div>
+      );
     case "agent":
       return (
         <div className="message agent">
@@ -486,7 +587,7 @@ function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conver
         </details>
       );
     case "tool":
-      return <ToolCard block={block} />;
+      return block.subagent ? <SubagentCard block={block as SubagentBlock} conversationId={conversationId} /> : <ToolCard block={block} />;
     case "command":
       return <CommandCard command={block.command} conversationId={conversationId} />;
     case "plan":
@@ -513,32 +614,123 @@ function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conver
         </div>
       );
     case "error":
-      return <div className="error-line">{block.message}</div>;
+      return <div className={block.usageLimit ? "usage-limit-line" : "error-line"}>{block.message}</div>;
   }
 }
 
-function useStickToBottom(dependency: unknown) {
+interface ScrollAnchor {
+  element: Element;
+  fraction: number;
+}
+
+function firstEndingBelow(children: Element[], line: number) {
+  let low = 0;
+  let high = children.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (children[middle]!.getBoundingClientRect().bottom > line) high = middle;
+    else low = middle + 1;
+  }
+  return children[low];
+}
+
+/** The innermost element crossing the top edge of the view, and how far down it the edge is. */
+function anchorAtTop(timeline: HTMLElement): ScrollAnchor | null {
+  const top = timeline.getBoundingClientRect().top;
+  let element: Element | undefined = timeline;
+  let crossing: Element | null = null;
+  while ((element = firstEndingBelow([...element.children], top))) crossing = element;
+  if (!crossing) return null;
+  const rect = crossing.getBoundingClientRect();
+  return { element: crossing, fraction: rect.height ? (top - rect.top) / rect.height : 0 };
+}
+
+function scrollBackTo(timeline: HTMLElement, { element, fraction }: ScrollAnchor) {
+  if (!element.isConnected) return;
+  const rect = element.getBoundingClientRect();
+  timeline.scrollTop += rect.top + fraction * rect.height - timeline.getBoundingClientRect().top;
+}
+
+/**
+ * Keeps the reader's place when events arrive or the pane changes size: at the bottom if they were there, otherwise
+ * on the line at the top of the view, however the text rewraps. Scroll events caused by the resize itself (the browser
+ * clamping or reflowing) are ignored, so they don't overwrite the place remembered before it.
+ */
+function useScrollAnchor(dependency: unknown) {
   const ref = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const anchor = useRef<ScrollAnchor | null>(null);
+  const size = useRef({ width: 0, height: 0 });
+
+  const resizedSinceLastLook = (timeline: HTMLElement) => timeline.clientWidth !== size.current.width || timeline.clientHeight !== size.current.height;
+
   useLayoutEffect(() => {
     const element = ref.current;
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
   }, [dependency]);
+
+  useLayoutEffect(() => {
+    const timeline = ref.current!;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) timeline.scrollTop = timeline.scrollHeight;
+      else if (anchor.current) scrollBackTo(timeline, anchor.current);
+      size.current = { width: timeline.clientWidth, height: timeline.clientHeight };
+    });
+    observer.observe(timeline);
+    return () => observer.disconnect();
+  }, []);
+
   const onScroll = () => {
-    const element = ref.current;
-    if (element) pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
+    const timeline = ref.current;
+    if (!timeline || resizedSinceLastLook(timeline)) return;
+    pinned.current = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 40;
+    anchor.current = pinned.current ? null : anchorAtTop(timeline);
   };
   return { ref, onScroll };
 }
 
-function QueuedMessages({ messages, onEdit, onRemove }: { messages: QueuedMessage[]; onEdit: (message: QueuedMessage) => void; onRemove: (message: QueuedMessage) => void }) {
+const queuedMessagesGoOut: Record<HarnessId, string> = {
+  claude: "each joins the turn when the agent's tools finish, or waits for the turn to end, as tagged",
+  opencode: "sent when the agent finishes its turn",
+};
+
+function DeliveryTag({ conversationId, message }: { conversationId: string; message: QueuedMessage }) {
+  const switchDelivery = () =>
+    connection.send({ type: "conversation.queue.set-after-turn", conversationId, messageId: message.id, afterTurn: !message.afterTurn });
+  return (
+    <button type="button" className={`queued-delivery ${message.afterTurn ? "after-turn" : "joins-turn"}`} data-hint={hints.queuedDelivery} onClick={switchDelivery}>
+      {message.afterTurn ? "after the turn" : "joins the turn"}
+    </button>
+  );
+}
+
+function QueuedMessages({
+  conversationId,
+  harness,
+  messages,
+  onEdit,
+  onRemove,
+}: {
+  conversationId: string;
+  harness: HarnessId;
+  messages: QueuedMessage[];
+  onEdit: (message: QueuedMessage) => void;
+  onRemove: (message: QueuedMessage) => void;
+}) {
   return (
     <section className="queue" aria-label="Queued messages">
-      <header data-hint={hints.queue}>Queued · sent when the agent finishes its turn</header>
+      <header data-hint={hints.queue}>Queued · {queuedMessagesGoOut[harness]}</header>
       <ol>
         {messages.map((message) => (
           <li key={message.id} className="queued">
+            {message.fromScript && (
+              <span className="queued-source" data-hint={hints.scriptMessage}>
+                script
+              </span>
+            )}
+            {harnessSteers[harness] && <DeliveryTag conversationId={conversationId} message={message} />}
             <span className="queued-text">{message.text}</span>
+            <MessageImages conversationId={conversationId} imageIds={message.imageIds} />
             <button type="button" className="link" onClick={() => onEdit(message)}>
               Edit
             </button>
@@ -548,6 +740,34 @@ function QueuedMessages({ messages, onEdit, onRemove }: { messages: QueuedMessag
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
+const resetTime = (at: number) => (new Date(at).toDateString() === new Date().toDateString() ? formatClockTime(at) : `${weekday.format(at)} ${formatClockTime(at)}`);
+
+function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {
+  if (continuesAt !== null) return `Claude's usage limit is reached · the agent continues by itself at ${resetTime(continuesAt)}`;
+  if (resetsAt !== null) return `Claude's usage limit is reached · it resets at ${resetTime(resetsAt)}`;
+  return "Claude's usage limit is reached";
+}
+
+function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wait: UsageLimitWait }) {
+  return (
+    <section className="usage-limit" aria-label="Usage limit">
+      <span data-hint={hints.usageLimit}>{usageLimitStatus(wait)}</span>
+      <button type="button" data-hint={hints.continueAfterUsageLimit} onClick={() => connection.send({ type: "conversation.usage-limit.continue", conversationId })}>
+        Continue now
+      </button>
+      <button
+        type="button"
+        className="link"
+        data-hint={hints.stopWaitingForUsageLimit}
+        onClick={() => connection.send({ type: "conversation.usage-limit.stop-waiting", conversationId })}
+      >
+        Stop waiting
+      </button>
     </section>
   );
 }
@@ -568,79 +788,217 @@ function CommandOutputsAttached({ commands, conversationId }: { commands: UserCo
   );
 }
 
-function Composer({ conversation, pendingCommands }: { conversation: Conversation; pendingCommands: UserCommand[] }) {
+const busyPlaceholders: Record<EnterWhileBusy, string> = {
+  steer: "adds your message to its turn",
+  "after-turn": "sends your message after its turn",
+};
+
+function busyPlaceholder(canSteer: boolean, enterWhileBusy: EnterWhileBusy) {
+  if (!canSteer) return "The agent is working… Enter queues your message for after its turn, Esc stops the agent";
+  const other = enterWhileBusy === "steer" ? "after-turn" : "steer";
+  return `The agent is working… Enter ${busyPlaceholders[enterWhileBusy]}, ${keyLabels().option}Enter ${busyPlaceholders[other]}, Esc stops it`;
+}
+
+/** While the agent works: one button per way of sending, the one Enter does first. */
+function BusySendButtons({ canSteer, enterWhileBusy, onSend }: { canSteer: boolean; enterWhileBusy: EnterWhileBusy; onSend: (afterTurn: boolean) => void }) {
+  const keys = shortcutKeys();
+  if (!canSteer) {
+    return (
+      <button className="queue-message" data-shortcut={keys.send} onClick={() => onSend(true)}>
+        Queue
+      </button>
+    );
+  }
+  const steer = (
+    <button
+      key="steer"
+      className="queue-message"
+      data-hint={hints.steerMessage}
+      data-shortcut={enterWhileBusy === "steer" ? keys.send : keys.sendTheOtherWay}
+      onClick={() => onSend(false)}
+    >
+      Steer
+    </button>
+  );
+  const afterTurn = (
+    <button
+      key="after-turn"
+      className="queue-message"
+      data-hint={hints.afterTurnMessage}
+      data-shortcut={enterWhileBusy === "after-turn" ? keys.send : keys.sendTheOtherWay}
+      onClick={() => onSend(true)}
+    >
+      After turn
+    </button>
+  );
+  return enterWhileBusy === "steer" ? [steer, afterTurn] : [afterTurn, steer];
+}
+
+function Composer({
+  conversation,
+  events,
+  pendingCommands,
+  promptTemplates,
+  onManageTemplates,
+}: {
+  conversation: Conversation;
+  events: StoredEvent[];
+  pendingCommands: UserCommand[];
+  promptTemplates: PromptTemplate[];
+  onManageTemplates: () => void;
+}) {
   const [text, setText] = useDraft(conversation.id);
+  const [pickingTemplate, setPickingTemplate] = useState(false);
+  const templatesButton = useRef<HTMLButtonElement>(null);
   const busy = isBusy(conversation);
   const queued = conversation.queuedMessages;
   const command = commandIn(text);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const images = useComposerImages(conversation.id, text, setText, textarea);
+  const typingAidAttributes = useTypingAidAttributes();
+  const enterWhileBusy = useEnterWhileBusy();
+  const canSteer = harnessSteers[conversation.harness];
   useEffect(() => textarea.current?.focus(), []);
 
-  const send = () => {
-    if (!text.trim() || command === "") return;
-    const message =
-      command === null
-        ? ({ type: "conversation.prompt", conversationId: conversation.id, text } as const)
-        : ({ type: "conversation.run-command", conversationId: conversation.id, command } as const);
-    if (connection.send(message)) setText("");
+  const send = (afterTurn = false, message = text) => {
+    if (!message.trim() || command === "" || images.uploading) return;
+    if (command !== null) {
+      if (connection.send({ type: "conversation.run-command", conversationId: conversation.id, command })) setText("");
+      return;
+    }
+    const imageIds = images.referenced.map(({ imageId }) => imageId);
+    if (!connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds, afterTurn })) return;
+    setText("");
+    images.clear();
+  };
+  const closeTemplates = () => {
+    setPickingTemplate(false);
+    textarea.current?.focus();
+  };
+  const sendTemplate = (message: string) => {
+    if (connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds: [], afterTurn: enterWhileBusy === "after-turn" })) closeTemplates();
+  };
+  const insertTemplate = (message: string) => {
+    setText((current) => joinDrafts(current, message));
+    closeTemplates();
   };
   const cancel = () => connection.send({ type: "conversation.cancel", conversationId: conversation.id });
   const remove = (message: QueuedMessage) =>
     connection.send({ type: "conversation.queue.remove", conversationId: conversation.id, messageId: message.id });
   const pullBack = (message: QueuedMessage) => {
     remove(message);
-    setText((current) => joinDrafts(current, message.text));
+    const restoredText = images.restore(message.text, message.imageIds);
+    setText((current) => joinDrafts(current, restoredText));
     textarea.current?.focus();
   };
+  const afterTurnFor = (event: KeyboardEvent<HTMLTextAreaElement>) => (enterWhileBusy === "after-turn") !== event.altKey;
+  const slashCommands = useSlashCommandMenu({
+    conversationId: conversation.id,
+    events,
+    text,
+    setText,
+    run: (message, event) => send(afterTurnFor(event), message),
+  });
+  const [caret, setCaret] = useState(0);
+  const mentions = useMentionMenu({ conversationId: conversation.id, text, caret, setText, setCaret, textarea });
+  const history = usePromptHistory({
+    conversationId: conversation.id,
+    events,
+    inTheBox: { text, attachments: images.attachments },
+    put: (content) => {
+      images.replace(content.attachments);
+      setText(content.text);
+      setCaret(content.text.length);
+    },
+  });
+  const suggestions = history.showing ? noSuggestions : slashCommands.menu ? slashCommands : mentions;
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (suggestions.onKeyDown(event)) return;
     const lastQueued = queued.at(-1);
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      send();
+      send(afterTurnFor(event));
     } else if (event.key === "ArrowUp" && !text && lastQueued) {
       event.preventDefault();
       pullBack(lastQueued);
     } else if (event.key === "Escape" && busy) {
+      event.preventDefault();
       cancel();
-    }
+    } else history.onKeyDown(event);
   };
 
   return (
     <div className="composer-area">
-      {queued.length > 0 && <QueuedMessages messages={queued} onEdit={pullBack} onRemove={remove} />}
+      {conversation.usageLimit && <UsageLimitNotice conversationId={conversation.id} wait={conversation.usageLimit} />}
+      {queued.length > 0 && <QueuedMessages conversationId={conversation.id} harness={conversation.harness} messages={queued} onEdit={pullBack} onRemove={remove} />}
       <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />
-      <div className={command === null ? "composer" : "composer shell-mode"}>
+      <PastedImages conversationId={conversation.id} attachments={images.referenced} onRemove={images.detach} />
+      {images.problem && (
+        <div className="composer-problem" role="alert">
+          {images.problem}
+        </div>
+      )}
+      <div className={command === null ? "composer" : "composer shell-mode"} onDragOver={images.onDragOver} onDrop={images.onDrop}>
+        {suggestions.menu}
         <textarea
+          {...typingAidAttributes}
+          {...suggestions.textareaAttributes}
           ref={textarea}
           value={text}
           rows={Math.min(10, Math.max(2, text.split("\n").length))}
           placeholder={
             busy
-              ? "The agent is working… Enter queues your message, Esc stops the agent"
-              : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, ! to run a command)`
+              ? busyPlaceholder(canSteer, enterWhileBusy)
+              : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, / for its commands, @ for a path, ! to run a shell command)`
           }
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            setCaret(event.target.selectionStart);
+          }}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
+          onPaste={images.onPaste}
         />
+        {pickingTemplate && (
+          <TemplatePicker
+            templates={promptTemplates}
+            opener={templatesButton}
+            onSend={sendTemplate}
+            onInsert={insertTemplate}
+            onManage={() => {
+              setPickingTemplate(false);
+              onManageTemplates();
+            }}
+            onClose={closeTemplates}
+          />
+        )}
+        {command === null && (
+          <button
+            ref={templatesButton}
+            type="button"
+            className="templates"
+            aria-haspopup="dialog"
+            aria-expanded={pickingTemplate}
+            data-hint={hints.promptTemplates}
+            onClick={() => setPickingTemplate((open) => !open)}
+          >
+            Templates
+          </button>
+        )}
         {command !== null ? (
-          <button className="run-command" data-hint={hints.runCommand} onClick={send} disabled={!command}>
+          <button className="run-command" data-hint={hints.runCommand} data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!command}>
             Run
           </button>
         ) : (
-          busy &&
-          text.trim() && (
-            <button className="queue-message" onClick={send}>
-              Queue
-            </button>
-          )
+          busy && text.trim() && <BusySendButtons canSteer={canSteer} enterWhileBusy={enterWhileBusy} onSend={send} />
         )}
         {busy ? (
-          <button className="stop" onClick={cancel}>
+          <button className="stop" data-shortcut={shortcutKeys().stop} onClick={cancel}>
             Stop
           </button>
         ) : (
           command === null && (
-            <button className="send" onClick={send} disabled={!text.trim()}>
+            <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || images.uploading}>
               Send
             </button>
           )
@@ -653,6 +1011,8 @@ function Composer({ conversation, pendingCommands }: { conversation: Conversatio
 export function ChatPanel({
   conversation,
   profiles,
+  promptTemplates,
+  onManageTemplates,
   open,
   canvasVisible,
   onToggleCanvas,
@@ -661,6 +1021,8 @@ export function ChatPanel({
 }: {
   conversation: Conversation;
   profiles: Profile[];
+  promptTemplates: PromptTemplate[];
+  onManageTemplates: () => void;
   open: OpenConversation;
   canvasVisible: boolean;
   onToggleCanvas: () => void;
@@ -670,40 +1032,59 @@ export function ChatPanel({
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
-  const { ref, onScroll } = useStickToBottom(open.events.length);
+  const { ref, onScroll } = useScrollAnchor(open.events.length);
+  const busy = isBusy(conversation);
+  const subagents = useMemo(() => subagentsIn(timeline), [timeline]);
+  const subagentStates = useMemo(() => new Map(subagents.map((block) => [block.toolCallId, subagentState(block, busy)])), [subagents, busy]);
+  const runningSubagents = subagents.filter((block) => subagentStates.get(block.toolCallId) === "running");
+  const showRunningSubagent = () => {
+    const first = runningSubagents[0];
+    if (!first) return;
+    ref.current?.querySelector(`[data-tool-call-id="${CSS.escape(first.toolCallId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
-      <ChatHeader
-        conversation={conversation}
-        profiles={profiles}
-        canvasVisible={canvasVisible}
-        onToggleCanvas={onToggleCanvas}
-        terminalVisible={terminalVisible}
-        onToggleTerminal={onToggleTerminal}
-      />
-      <div className="timeline" ref={ref} onScroll={onScroll}>
-        {!open.loaded && <div className="notice-line">Loading…</div>}
-        {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas on the right.</div>}
-        {timeline.map((block, index) => (
-          <TimestampedEntry
-            key={block.key}
-            block={block}
-            startsGroup={startsAuthorGroup(timeline, index)}
-            harness={conversation.harness}
-            conversationId={conversation.id}
-          />
-        ))}
-        {conversation.status === "running" && <div className="working">Working…</div>}
-      </div>
-      {conversation.openInTerminal && (
-        <div className="terminal-warning" role="status">
-          This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
-          there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
-          it there first.
+      <SubagentStates.Provider value={subagentStates}>
+        <ChatHeader
+          conversation={conversation}
+          profiles={profiles}
+          canvasVisible={canvasVisible}
+          onToggleCanvas={onToggleCanvas}
+          terminalVisible={terminalVisible}
+          onToggleTerminal={onToggleTerminal}
+          runningSubagents={runningSubagents.length}
+          onShowRunningSubagent={showRunningSubagent}
+        />
+        <div className="timeline" ref={ref} onScroll={onScroll}>
+          {!open.loaded && <div className="notice-line">Loading…</div>}
+          {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
+          {timeline.map((block, index) => (
+            <TimestampedEntry
+              key={block.key}
+              block={block}
+              startsGroup={startsAuthorGroup(timeline, index)}
+              harness={conversation.harness}
+              conversationId={conversation.id}
+            />
+          ))}
+          {conversation.status === "running" && <div className="working">Working…</div>}
         </div>
-      )}
-      <Composer conversation={conversation} pendingCommands={pendingCommands} />
-      <Statusline conversation={conversation} profiles={profiles} />
+        {conversation.openInTerminal && (
+          <div className="terminal-warning" role="status">
+            This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
+            there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
+            it there first.
+          </div>
+        )}
+        <Composer
+          conversation={conversation}
+          events={open.events}
+          pendingCommands={pendingCommands}
+          promptTemplates={promptTemplates}
+          onManageTemplates={onManageTemplates}
+        />
+        <Statusline conversation={conversation} profiles={profiles} />
+      </SubagentStates.Provider>
     </ToolCallsAwaitingPermission.Provider>
   );
 }

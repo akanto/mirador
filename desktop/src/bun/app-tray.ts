@@ -1,11 +1,14 @@
 import { Tray } from "electrobun/main";
-import { trayMenu, type TrayAction, type TrayState } from "../core/tray-menu.ts";
+import { isTrayAction, trayMenu, type TrayAction, type TrayState } from "../core/tray-menu.ts";
 
-const trayActions: readonly string[] = ["open", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
-const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
+/** macOS tints the black template image to suit the menu bar; Linux panels are light or dark, so they get the colour icon. */
+const trayIcon =
+  process.platform === "darwin"
+    ? { image: "views://assets/tray-icon.png", template: true, width: 18, height: 18 }
+    : { image: "views://assets/app-icon.png", template: false, width: 22, height: 22 };
 
 export class AppTray {
-  private readonly tray = new Tray({ image: "views://assets/tray-icon.png", template: true, width: 18, height: 18 });
+  private readonly tray = new Tray(trayIcon);
 
   constructor(onAction: (action: TrayAction) => void) {
     this.tray.on("tray-clicked", (event) => {

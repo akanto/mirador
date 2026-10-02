@@ -1,9 +1,50 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { buildCanvasDocument, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import type { AskOption, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { shortcutKeys } from "./shortcuts.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
+import { ReviewView, type ReviewItem } from "./Review.tsx";
+import { currentReviewPlacement, takeArrivedReview } from "./review-placement.ts";
+import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
+
+/** Content as wide as the viewport would otherwise widen the frame that measures it without end. */
+const MAX_CONTENT_WIDTH = 2400;
+
+interface ContentSize {
+  height: number;
+  /** The width the content asked for when it overflowed; kept once known, as the frame drawn that wide reports no overflow. */
+  width: number | null;
+}
+
+function useElementWidth(element: RefObject<HTMLElement | null>) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const target = element.current;
+    if (!target) return;
+    const observer = new ResizeObserver(() => setWidth(target.clientWidth));
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+  return width;
+}
+
+/** The fitted frames (a question's page and its option previews) have a 1px border. */
+const FRAME_BORDERS = 2;
+
+/** Sized to its content; content wider than the room is drawn at its own width and scaled down to fit, so none of it is cut off. */
+function fittedStyles(contentSize: ContentSize | undefined, roomWidth: number): { box?: CSSProperties; frame?: CSSProperties } {
+  if (!contentSize) return {};
+  const { width, height } = contentSize;
+  if (!width || !roomWidth || width + FRAME_BORDERS <= roomWidth) return { frame: { height } };
+  const scale = roomWidth / (width + FRAME_BORDERS);
+  return {
+    box: { height: Math.ceil((height + FRAME_BORDERS) * scale) },
+    frame: { position: "absolute", width, height, maxHeight: "none", transform: `scale(${scale})`, transformOrigin: "0 0" },
+  };
+}
 
 function CanvasFrame({
   frameId,
@@ -12,6 +53,7 @@ function CanvasFrame({
   className,
   fitsContent = false,
   onRendered,
+  onContentWidth,
 }: {
   frameId: string;
   html: string;
@@ -19,37 +61,44 @@ function CanvasFrame({
   className?: string;
   fitsContent?: boolean;
   onRendered?: (errors: string[]) => void;
+  onContentWidth?: (width: number) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const roomWidth = useElementWidth(box);
   const [errors, setErrors] = useState<string[]>([]);
-  const [contentHeight, setContentHeight] = useState<number>();
+  const [contentSize, setContentSize] = useState<ContentSize>();
   const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin), [html, frameId, assetsOrigin]);
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
+  const onContentWidthRef = useRef(onContentWidth);
+  onContentWidthRef.current = onContentWidth;
 
   useEffect(() => {
     setErrors([]);
-    setContentHeight(undefined);
+    setContentSize(undefined);
     const listener = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || !isCanvasFrameMessage(event.data)) return;
       const message = event.data;
       if (message.kind === "error") setErrors((current) => [...current, message.message]);
       if (message.kind === "rendered") onRenderedRef.current?.(message.errors);
-      if (message.kind === "size") setContentHeight(message.height);
+      if (message.kind === "size") {
+        const askedWidth = message.overflowWidth && Math.min(message.overflowWidth, MAX_CONTENT_WIDTH);
+        setContentSize((current) => ({ height: message.height, width: askedWidth || current?.width || null }));
+      }
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
   }, [document]);
 
+  useEffect(() => {
+    if (contentSize?.width) onContentWidthRef.current?.(contentSize.width);
+  }, [contentSize?.width]);
+
+  const fitted = fitsContent ? fittedStyles(contentSize, roomWidth) : {};
   return (
-    <div className={`canvas-frame ${className ?? ""}`}>
-      <iframe
-        ref={frame}
-        sandbox="allow-scripts"
-        srcDoc={document}
-        title={frameId}
-        style={fitsContent && contentHeight ? { height: contentHeight } : undefined}
-      />
+    <div ref={box} className={`canvas-frame ${className ?? ""}`} style={fitted.box}>
+      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} style={fitted.frame} />
       {errors.length > 0 && (
         <ul className="frame-errors">
           {errors.map((error, index) => (
@@ -67,13 +116,17 @@ function reportRender(itemId: string) {
 
 const SOMETHING_ELSE = Symbol("something else");
 
-function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: string }) {
+function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesBefore: CanvasItem[]; assetsOrigin: string }) {
   const [choice, setChoice] = useState<string | typeof SOMETHING_ELSE | null>(null);
   const [other, setOther] = useState("");
   const [note, setNote] = useState("");
+  const typingAidAttributes = useTypingAidAttributes();
   const waiting = item.status === "waiting";
   const options: AskOption[] = item.options ?? [];
   const answer = choice === SOMETHING_ELSE ? other.trim() : choice;
+  const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
+  const widestPreview = Math.max(0, ...Object.values(previewWidths));
+  const optionsStyle = widestPreview > 0 ? ({ "--preview-width": `${widestPreview}px` } as CSSProperties) : undefined;
   const isChosen = (label: string) => (waiting ? choice === label : item.answer?.label === label);
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -93,8 +146,16 @@ function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: strin
         </div>
       )}
       {item.status === "cancelled" && <div className="ask-answer">This question was withdrawn.</div>}
+      {pagesBefore.map((page) => (
+        <section key={page.id} className="ask-page-before" aria-label={`Shown before the question: ${page.title}`}>
+          <div className="ask-page-before-title" data-hint={hints.askPageBefore}>
+            Shown just before: {page.title}
+          </div>
+          <CanvasFrame frameId={`${item.id}-before-${page.id}`} html={page.html ?? ""} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />
+        </section>
+      ))}
       {item.html && <CanvasFrame frameId={`${item.id}-context`} html={item.html} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />}
-      <div className="ask-options" role="radiogroup" aria-label={item.question}>
+      <div className="ask-options" role="radiogroup" aria-label={item.question} style={optionsStyle}>
         {options.map((option, index) => (
           <label key={option.label} className={`ask-option ${isChosen(option.label) ? "chosen" : ""}`}>
             <span className="ask-option-head">
@@ -110,7 +171,14 @@ function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: strin
             </span>
             {option.description && <span className="ask-option-description">{option.description}</span>}
             {option.html && (
-              <CanvasFrame frameId={`${item.id}-option-${index}`} html={option.html} assetsOrigin={assetsOrigin} className="ask-preview" fitsContent />
+              <CanvasFrame
+                frameId={`${item.id}-option-${index}`}
+                html={option.html}
+                assetsOrigin={assetsOrigin}
+                className="ask-preview"
+                fitsContent
+                onContentWidth={(width) => setPreviewWidths((current) => ({ ...current, [option.label]: width }))}
+              />
             )}
           </label>
         ))}
@@ -127,6 +195,7 @@ function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: strin
                 onChange={() => setChoice(SOMETHING_ELSE)}
               />
               <input
+                {...typingAidAttributes}
                 value={other}
                 placeholder="Something else…"
                 aria-label="Your own answer"
@@ -135,7 +204,7 @@ function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: strin
               />
             </label>
           )}
-          <textarea value={note} placeholder="Optional note for the agent (sent with your answer)" onChange={(event) => setNote(event.target.value)} />
+          <textarea {...typingAidAttributes} value={note} placeholder="Optional note for the agent (sent with your answer)" onChange={(event) => setNote(event.target.value)} />
         </div>
       )}
       {waiting && (
@@ -150,9 +219,10 @@ function AskView({ item, assetsOrigin }: { item: CanvasItem; assetsOrigin: strin
   );
 }
 
-const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?" };
+const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄" };
 
 function outcomeOf(item: CanvasItem) {
+  if (item.review) return item.review.verdict;
   if (item.status === "waiting") return "needs your answer";
   if (item.status === "cancelled") return "withdrawn";
   if (item.status === "answered" && item.answer) return `→ ${item.answer.label}`;
@@ -205,31 +275,64 @@ function CanvasHistory({ items, selectedId, onPick }: { items: CanvasItem[]; sel
   );
 }
 
-export function CanvasPanel({ items, assetsOrigin }: { items: CanvasItem[]; assetsOrigin: string }) {
+/** Opens a review full screen or beside the chat, as Settings say; moving on from it gives back the layout it took. */
+function useReviewPlacement() {
+  const fullscreen = usePaneFullscreen("canvas");
+  const tookFullscreen = useRef(false);
+  return (item: CanvasItem | undefined) => {
+    if (!fullscreen) return;
+    if (item?.kind === "review") {
+      const wanted = currentReviewPlacement() === "fullscreen";
+      fullscreen.setFullscreen(wanted);
+      tookFullscreen.current = wanted;
+    } else if (tookFullscreen.current) {
+      fullscreen.setFullscreen(false);
+      tookFullscreen.current = false;
+    }
+  };
+}
+
+export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem[]; assetsOrigin: string; onHide: () => void }) {
   const newestFirst = useMemo(() => [...items].sort((a, b) => b.createdAt - a.createdAt), [items]);
   const newest = newestFirst[0];
   const onCanvasByDefault = newest && !isSettledQuestion(newest) ? newest.id : null;
   const [selectedId, setSelectedId] = useState<string | null>(onCanvasByDefault);
   const [historyOpen, setHistoryOpen] = useState(false);
-  useEffect(() => setSelectedId(onCanvasByDefault), [newest?.id]);
+  const placeForReview = useReviewPlacement();
+  useEffect(() => {
+    setSelectedId(onCanvasByDefault);
+    if (takeArrivedReview(newest)) placeForReview(newest);
+  }, [newest?.id]);
   const selectedIndex = newestFirst.findIndex(({ id }) => id === selectedId);
   const selected = newestFirst[selectedIndex];
+  const outcome = selected && outcomeOf(selected);
   const settledNote = useClearWhenSettled(selected, () => setSelectedId(null));
   const older = selected ? newestFirst[selectedIndex + 1] : newest;
   const newer = selected ? newestFirst[selectedIndex - 1] : undefined;
   const pick = (id: string) => {
     setSelectedId(id);
     setHistoryOpen(false);
+    placeForReview(items.find((item) => item.id === id));
+  };
+  const closeHistoryOnEscape = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Escape" || !historyOpen) return;
+    event.preventDefault();
+    setHistoryOpen(false);
   };
 
   return (
-    <aside className="canvas-panel" onKeyDown={(event) => event.key === "Escape" && setHistoryOpen(false)}>
-      <div className="canvas-header">
+    <aside className="canvas-panel" onKeyDown={closeHistoryOnEscape}>
+      <div className="canvas-header" data-pane-bar>
+        <PaneGrip pane="canvas" />
         {selected ? (
           <>
             <span className="canvas-kind">{kindIcons[selected.kind]}</span>
             <span className="canvas-title">{selected.title}</span>
-            {outcomeOf(selected) && <span className={`canvas-outcome status-${selected.status}`}>{outcomeOf(selected)}</span>}
+            {outcome && (
+              <span className={`canvas-outcome status-${selected.status}${selected.review ? " verdict" : ""}`} title={outcome}>
+                {outcome}
+              </span>
+            )}
           </>
         ) : (
           <span className="canvas-title empty-title">Canvas</span>
@@ -251,8 +354,21 @@ export function CanvasPanel({ items, assetsOrigin }: { items: CanvasItem[]; asse
         >
           History ({items.length})
         </button>
-        <button type="button" className="canvas-clear" data-hint={hints.canvasClear} disabled={!selected} onClick={() => setSelectedId(null)}>
+        <button
+          type="button"
+          className="canvas-clear"
+          data-hint={hints.canvasClear}
+          disabled={!selected}
+          onClick={() => {
+            setSelectedId(null);
+            placeForReview(undefined);
+          }}
+        >
           Clear
+        </button>
+        <FullscreenToggle pane="canvas" />
+        <button type="button" className="link canvas-hide" data-hint={hints.canvasHide} data-shortcut={shortcutKeys().toggleCanvas} onClick={onHide}>
+          Hide
         </button>
       </div>
       {historyOpen && <CanvasHistory items={newestFirst} selectedId={selected?.id ?? null} onPick={pick} />}
@@ -279,7 +395,17 @@ export function CanvasPanel({ items, assetsOrigin }: { items: CanvasItem[]; asse
             onRendered={reportRender(selected.id)}
           />
         )}
-        {selected?.kind === "ask" && <AskView key={selected.id} item={selected} assetsOrigin={assetsOrigin} />}
+        {selected?.kind === "review" && selected.review && (
+          <ReviewView key={selected.id} item={selected as ReviewItem} conversationId={selected.conversationId} />
+        )}
+        {selected?.kind === "ask" && (
+          <AskView
+            key={selected.id}
+            item={selected}
+            pagesBefore={items.filter(({ id }) => selected.shownBefore?.includes(id))}
+            assetsOrigin={assetsOrigin}
+          />
+        )}
       </div>
     </aside>
   );

@@ -6,13 +6,15 @@ const EDGE = 8;
 
 interface Hint {
   text: string;
+  shortcut: string | null;
   anchor: DOMRect;
 }
 
-const hintedElementAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>("[data-hint]") : null);
+const hintedElementAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>("[data-hint], [data-shortcut]") : null);
 
 /**
- * Shows the `data-hint` text of whatever is pointed at or focused with the keyboard, one hint at a time.
+ * Shows the `data-hint` text of whatever is pointed at or focused with the keyboard, one hint at a time, with the
+ * key that does the same (`data-shortcut`) when there is one.
  * Pressing an element puts its hint away until the pointer moves to something else or the element loses focus.
  */
 export function HintLayer() {
@@ -34,10 +36,11 @@ export function HintLayer() {
       clearTimeout(timer);
       current = element;
       timer = setTimeout(() => {
-        const text = element.dataset.hint;
-        if (!text || !element.isConnected) return;
+        const text = element.dataset.hint ?? "";
+        const shortcut = element.dataset.shortcut ?? null;
+        if ((!text && !shortcut) || !element.isConnected) return;
         visible = true;
-        setHint({ text, anchor: element.getBoundingClientRect() });
+        setHint({ text, shortcut, anchor: element.getBoundingClientRect() });
       }, delay);
     };
     const onPointerDown = (event: PointerEvent) => {
@@ -97,7 +100,10 @@ export function HintLayer() {
   const [summary, ...details] = hint.text.split("\n\n");
   return (
     <div ref={bubble} className="hint-bubble" role="tooltip" style={{ visibility: "hidden" }}>
-      {details.length > 0 ? <strong>{summary}</strong> : summary}
+      <div className="hint-summary">
+        {summary && (details.length > 0 ? <strong>{summary}</strong> : <span>{summary}</span>)}
+        {hint.shortcut && <kbd>{hint.shortcut}</kbd>}
+      </div>
       {details.map((paragraph) => (
         <p key={paragraph}>{paragraph}</p>
       ))}

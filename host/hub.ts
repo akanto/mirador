@@ -1,22 +1,40 @@
 import type { ServerWebSocket } from "bun";
 import type { ServerMessage } from "../shared/protocol.ts";
+import type { SystemNotification } from "../shared/system-notifications.ts";
 
+export interface Presence {
+  conversationId: string | null;
+  attentive: boolean;
+}
+
+/** A page is the app open in a browser tab or the desktop window; a notifier is the desktop app, listening for system notifications only. */
 export interface SocketData {
+  role: "page" | "notifier";
   subscriptions: Set<string>;
   terminalWorkspaceId: string | null;
+  presence: Presence;
 }
+
+export const socketData = (role: SocketData["role"]): SocketData => ({
+  role,
+  subscriptions: new Set<string>(),
+  terminalWorkspaceId: null,
+  presence: { conversationId: null, attentive: false },
+});
 
 export type BrowserSocket = ServerWebSocket<SocketData>;
 
 export class Hub {
   private readonly sockets = new Set<BrowserSocket>();
+  private readonly notifiers = new Set<BrowserSocket>();
 
   add(socket: BrowserSocket) {
-    this.sockets.add(socket);
+    (socket.data.role === "notifier" ? this.notifiers : this.sockets).add(socket);
   }
 
   remove(socket: BrowserSocket) {
     this.sockets.delete(socket);
+    this.notifiers.delete(socket);
   }
 
   send(socket: BrowserSocket, message: ServerMessage) {
@@ -30,6 +48,16 @@ export class Hub {
 
   hasSubscribers(conversationId: string) {
     return [...this.sockets].some((socket) => socket.data.subscriptions.has(conversationId));
+  }
+
+  isWatched(conversationId: string) {
+    return [...this.sockets].some(({ data: { presence } }) => presence.attentive && presence.conversationId === conversationId);
+  }
+
+  /** Through the desktop app when it listens, so open pages don't repeat it; otherwise through every open page. */
+  notify(notification: SystemNotification) {
+    const payload = JSON.stringify({ type: "system-notification", notification } satisfies ServerMessage);
+    (this.notifiers.size > 0 ? this.notifiers : this.sockets).forEach((socket) => socket.send(payload));
   }
 
   publishWhere(isRecipient: (socket: BrowserSocket) => boolean, message: ServerMessage) {

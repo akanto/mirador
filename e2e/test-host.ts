@@ -1,5 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -26,6 +26,10 @@ export class TestHost {
   readonly root = join(tmpdir(), `mirador-e2e-${crypto.randomUUID().slice(0, 8)}`);
   readonly dataDir = join(this.root, "data");
   readonly projectDir = join(this.root, "project");
+  /** With the fakePrograms option, programs here come first on the host's PATH (stand-ins for gh, idea, …). */
+  readonly fakeProgramsDir = join(this.root, "fake-programs");
+  /** Where the host runs from: the repository, or a copy of its source that the spec may edit. */
+  readonly sourceDir: string;
   private starts = 0;
   private logFile?: import("node:fs").WriteStream;
   private readonly markersBefore = new Set(appMuteMarkers());
@@ -37,14 +41,31 @@ export class TestHost {
   /** Test hosts share the user's home directory, so only a host that opts in runs statusline commands from Claude settings; its spec points a profile at settings of its own. */
   constructor(
     readonly port: number,
-    private readonly options: { runsUserStatusLine?: boolean; shell?: string } = {},
+    private readonly options: { runsUserStatusLine?: boolean; shell?: string; copiesSource?: boolean; fakePrograms?: boolean } = {},
   ) {
     this.origin = `http://127.0.0.1:${port}`;
+    this.sourceDir = options.copiesSource ? join(this.root, "source") : repoRoot;
+  }
+
+  get pid() {
+    return this.process?.pid;
+  }
+
+  private copySource() {
+    if (existsSync(this.sourceDir)) return;
+    ["host", "shared", "web"].forEach((directory) => cpSync(join(repoRoot, directory), join(this.sourceDir, directory), { recursive: true }));
+    ["package.json", "tsconfig.json", "bun.lock"].forEach((file) => cpSync(join(repoRoot, file), join(this.sourceDir, file)));
+    symlinkSync(join(repoRoot, "node_modules"), join(this.sourceDir, "node_modules"));
   }
 
   /** A fresh token per start, like production, so resume must re-supply it to the agent. */
   get mcpToken() {
     return `e2e-mcp-token-${this.starts}`;
+  }
+
+  /** Written by the host on its first start and kept, like the browser token. */
+  get scriptToken() {
+    return readFileSync(join(this.dataDir, "script-token"), "utf8").trim();
   }
 
   /** MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
@@ -65,10 +86,11 @@ export class TestHost {
       mkdirSync(this.projectDir, { recursive: true });
       writeFileSync(join(this.projectDir, "README.md"), "# e2e project\n");
     }
+    if (this.options.copiesSource) this.copySource();
     this.starts += 1;
     this.output = "";
     const child = spawn(process.env.MIRADOR_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun", ["host/main.ts"], {
-      cwd: repoRoot,
+      cwd: this.sourceDir,
       env: {
         ...this.baseEnvironment(),
         MIRADOR_PORT: String(this.port),
@@ -78,6 +100,7 @@ export class TestHost {
         MIRADOR_TEST_EFFORT: process.env.MIRADOR_TEST_EFFORT ?? "low",
         MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
         ...(this.options.shell && { SHELL: this.options.shell }),
+        ...(this.options.fakePrograms && { PATH: `${this.fakeProgramsDir}:${this.baseEnvironment().PATH}` }),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

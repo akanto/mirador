@@ -13,7 +13,8 @@ import {
   openAtLoginLabel,
   openAtLoginPlist,
 } from "../desktop/src/core/launch-agents.ts";
-import { LaunchAgent, type CommandRunner } from "../desktop/src/core/launchd.ts";
+import type { CommandRunner } from "../desktop/src/core/commands.ts";
+import { LaunchAgent } from "../desktop/src/core/launchd.ts";
 import { OpenAtLogin } from "../desktop/src/core/open-at-login.ts";
 import { defaultSettings } from "../desktop/src/core/settings.ts";
 

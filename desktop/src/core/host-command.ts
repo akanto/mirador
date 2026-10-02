@@ -1,7 +1,7 @@
 const HOST_ENTRY = "host/main.ts";
 
 export function loginShell(env: Record<string, string | undefined>, accountShell: string | undefined) {
-  return env.SHELL || accountShell || "/bin/zsh";
+  return env.SHELL || accountShell || "/bin/sh";
 }
 
 export function hostArgv(shell: string, bun: string, overrides: Record<string, string>) {

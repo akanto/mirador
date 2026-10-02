@@ -11,16 +11,26 @@ import type {
   Launch,
   QueuedMessage,
   TerminalActivity,
+  UsageLimitWait,
+  WaitingFor,
   Workspace,
 } from "../shared/model.ts";
-import { awaitingDelivery, userCommandsIn, withCommandOutputs } from "../shared/user-commands.ts";
+import { historyEntry } from "../shared/prompt-history.ts";
+import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
+import { toSlashCommand } from "../shared/slash-commands.ts";
+import { mentionSuggestions } from "./mentions.ts";
+import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
+import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
+import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
+import type { ImageStore } from "./images.ts";
 import type { NotifierMute } from "./notifier.ts";
 import { assertLaunchable } from "./profiles.ts";
-import type { Store } from "./store.ts";
+import type { Store, UnseenTurnEnd } from "./store.ts";
+import type { SystemNotifications } from "./system-notifications.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 
@@ -28,6 +38,11 @@ const UNTITLED = "New conversation";
 const MAX_TITLE_LENGTH = 200;
 const LISTED_SESSIONS = 30;
 const TITLE_LENGTH = 60;
+const CONTINUE_AFTER_INTERRUPTION = "Continue where you left off.";
+const TURN_STOP_TIMEOUT_MS = 10_000;
+/** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
+const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
+const AUTOMATIC_CONTINUES_IN_A_ROW = 2;
 
 type PermissionResolver = (optionId: string | null) => void;
 
@@ -40,8 +55,19 @@ interface Runtime {
   sessionId?: Promise<string>;
   harness?: HarnessProcess;
   running: boolean;
+  /** Settles once the running turn has ended. */
+  turnEnded?: Promise<void>;
+  /** While a profile switch stops the running turn, queued messages wait for the new profile. */
+  holdingQueue: boolean;
+  /** The latest profile switch; the next one starts after it. */
+  profileSwitch?: Promise<void>;
   pendingPermissions: Map<string, PendingPermission>;
   queuedMessages: QueuedMessage[];
+  /** The running turn's tool calls that have not finished yet. */
+  openToolCalls: Set<string>;
+  usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
+  /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
+  automaticContinues: number;
 }
 
 export class ConversationService {
@@ -53,15 +79,23 @@ export class ConversationService {
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
   private readonly contextUsage = new Map<string, ContextUsage>();
+  private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
+  private readonly conversationsWithQuestions: Set<string>;
   private readonly commands = new UserCommandRunner();
+  /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
+  private stopping = false;
 
   constructor(
     private readonly store: Store,
     private readonly hub: Hub,
     private readonly config: HostConfig,
     private readonly notifier: NotifierMute,
+    private readonly images: ImageStore,
+    private readonly notifications: SystemNotifications,
   ) {
     this.cancelPermissionsOrphanedByRestart();
+    this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
+    this.conversationsWithQuestions = new Set(store.listCanvasItemsWithStatus("waiting").map(({ conversationId }) => conversationId));
   }
 
   list(): Conversation[] {
@@ -72,6 +106,19 @@ export class ConversationService {
     const conversation = this.store.findConversation(conversationId);
     if (!conversation) throw new Error(`Unknown conversation ${conversationId}`);
     return this.withRuntimeStatus(conversation);
+  }
+
+  slashCommands(conversationId: string) {
+    return this.store.latestAvailableCommands(this.get(conversationId)).map(toSlashCommand);
+  }
+
+  typedElsewhere(conversationId: string) {
+    const { id, workspaceId } = this.get(conversationId);
+    return this.store.typedInWorkspace(workspaceId, id).flatMap((event) => historyEntry(event)?.text ?? []);
+  }
+
+  async mentionSuggestions(conversationId: string, query: string) {
+    return mentionSuggestions(this.existingWorkspace(this.get(conversationId).workspaceId).path, query);
   }
 
   create(workspaceId: string, launch: Launch): Conversation {
@@ -114,8 +161,9 @@ export class ConversationService {
   private insertConversation(workspaceId: string, launch: Launch, title: string): Conversation {
     this.existingWorkspace(workspaceId);
     assertLaunchable(this.store, launch);
+    const profile = launch.profileId === null ? undefined : this.existingProfile(launch.profileId);
     const now = Date.now();
-    const conversation: Conversation = {
+    const conversation = this.store.insertConversation({
       id: crypto.randomUUID(),
       workspaceId,
       harness: launch.harness,
@@ -123,20 +171,36 @@ export class ConversationService {
       title,
       titleSetByUser: false,
       acpSessionId: null,
-      askMode: "wait",
-      bypassPermissions: false,
+      askMode: profile?.askMode ?? "wait",
+      bypassPermissions: profile?.bypassPermissions ?? false,
       status: "idle",
       statusDetail: null,
       openInTerminal: null,
       contextUsage: null,
       queuedMessages: [],
+      usageLimit: null,
+      waitingFor: null,
       configOptions: [],
       createdAt: now,
       updatedAt: now,
-    };
-    this.store.insertConversation(conversation);
+    });
     this.publish(conversation);
     return conversation;
+  }
+
+  /** Reorders the conversation among its workspace's; the others it shifts are published too. */
+  move(conversationId: string, beforeConversationId: string | null) {
+    const { workspaceId } = this.get(conversationId);
+    const siblings = this.store
+      .listConversations()
+      .filter((conversation) => conversation.workspaceId === workspaceId)
+      .sort(inSidebarOrder);
+    this.store.setConversationOrder(movedBefore(siblings.map(({ id }) => id), conversationId, beforeConversationId));
+    const positionBefore = new Map(siblings.map(({ id, position }) => [id, position]));
+    this.store
+      .listConversations()
+      .filter(({ id, position }) => positionBefore.has(id) && positionBefore.get(id) !== position)
+      .forEach((conversation) => this.publish(conversation));
   }
 
   delete(conversationId: string) {
@@ -146,11 +210,16 @@ export class ConversationService {
       this.notifier.unmute(conversation.acpSessionId);
       this.conversationBySession.delete(conversation.acpSessionId);
     }
+    const runtime = this.runtimes.get(conversationId);
+    if (runtime) this.endUsageLimitWait(runtime);
     this.runtimes.delete(conversationId);
     this.statusOverrides.delete(conversationId);
     this.terminalActivity.delete(conversationId);
     this.contextUsage.delete(conversationId);
+    this.unseenTurnEnds.delete(conversationId);
+    this.conversationsWithQuestions.delete(conversationId);
     this.store.deleteConversation(conversationId);
+    this.images.deleteConversation(conversationId);
     this.hub.broadcast({ type: "conversation.deleted", conversationId });
   }
 
@@ -171,17 +240,32 @@ export class ConversationService {
    * Moves the conversation to another profile of the same agent. The old agent process lets go of
    * the session first, then the new one resumes it, with the new profile's model rather than the old choice.
    */
-  async setProfile(conversationId: string, profileId: string | null) {
+  /**
+   * Moves the conversation's session to the agent process of another profile of its agent. A turn in progress
+   * is stopped first and, once the session is back, continued under the new profile; queued messages follow.
+   */
+  setProfile(conversationId: string, profileId: string | null) {
+    const runtime = this.runtime(conversationId);
+    const switched = (runtime.profileSwitch ?? Promise.resolve()).then(() => this.switchProfile(conversationId, profileId));
+    runtime.profileSwitch = switched.catch(() => {});
+    return switched;
+  }
+
+  private async switchProfile(conversationId: string, profileId: string | null) {
     const runtime = this.runtime(conversationId);
     await runtime.sessionId?.catch(() => {});
-    if (runtime.running) throw new Error("Stop the current turn before changing the profile.");
+    if (this.get(conversationId).profileId === profileId) return;
+    assertLaunchable(this.store, { harness: this.get(conversationId).harness, profileId });
+    const interrupted = runtime.running;
+    runtime.holdingQueue = interrupted;
+    if (interrupted) await this.stopTurn(conversationId);
     const conversation = this.get(conversationId);
-    if (conversation.profileId === profileId) return;
-    assertLaunchable(this.store, { harness: conversation.harness, profileId });
     const released = this.releaseSession(runtime, conversation.acpSessionId);
+    const profile = profileId === null ? undefined : this.existingProfile(profileId);
     this.save({
       ...conversation,
       profileId,
+      ...(profile && { askMode: profile.askMode, bypassPermissions: profile.bypassPermissions }),
       acpSessionId: this.agentHasRecorded(conversationId) ? conversation.acpSessionId : null,
       configOptions: conversation.configOptions.filter(({ id }) => id !== "model"),
     });
@@ -190,9 +274,24 @@ export class ConversationService {
       this.setStatus(conversationId, "starting", "Switching profile…");
       await released;
       const sessionId = await this.openSession(conversationId);
+      await this.applyProfileMode(conversationId, sessionId);
       this.setStatus(conversationId, "idle");
       return sessionId;
-    }).catch(() => {});
+    })
+      .finally(() => (runtime.holdingQueue = false))
+      .then((sessionId) => {
+        if (runtime.running) return;
+        const sameSession = sessionId === conversation.acpSessionId;
+        if (interrupted && sameSession) return this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION);
+        this.sendNextQueuedMessage(conversationId);
+      })
+      .catch(() => {});
+  }
+
+  private async stopTurn(conversationId: string) {
+    const { turnEnded } = this.runtime(conversationId);
+    await this.cancel(conversationId);
+    await turnEnded;
   }
 
   setAskMode(conversationId: string, askMode: AskMode) {
@@ -212,35 +311,76 @@ export class ConversationService {
     this.save({ ...this.get(conversationId), configOptions: response.configOptions });
   }
 
-  async prompt(conversationId: string, text: string) {
+  async prompt(conversationId: string, text: string, imageIds: string[] = [], fromScript = false) {
     const runtime = this.runtime(conversationId);
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
     runtime.running = true;
+    this.endUsageLimitWait(runtime);
+    let endTurn = () => {};
+    runtime.turnEnded = new Promise((resolve) => (endTurn = resolve));
+    runtime.openToolCalls.clear();
+    this.forgetUnseenTurnEnd(conversationId);
     this.retitleFromFirstMessage(conversationId, text);
     const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
-    const attachedCommandIds = commands.map(({ commandId }) => commandId);
-    this.append(conversationId, { type: "user-message", text, ...(attachedCommandIds.length > 0 && { attachedCommandIds }) });
+    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }) }, commands);
     try {
       this.setStatus(conversationId, "starting");
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
-      const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, withCommandOutputs(commands, text));
+      const prompt = await this.promptContent(conversationId, withCommandOutputs(commands, text), imageIds);
+      const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, prompt);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
+      runtime.automaticContinues = 0;
+      this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
     } catch (error) {
-      this.append(conversationId, { type: "error", message: errorMessage(error) });
+      this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error) });
     } finally {
       runtime.running = false;
       this.setStatus(conversationId, "idle");
+      endTurn();
     }
     this.sendNextQueuedMessage(conversationId);
   }
 
-  /** Sends `text` as the next user message, queueing it while a turn is running. */
-  async send(conversationId: string, text: string) {
+  /**
+   * Sends `text` as the next user message. While a turn is running it waits in the queue: like in Claude Code it joins
+   * the turn once the tools the agent is waiting on have finished, or, sent `afterTurn`, it goes out when the turn ends.
+   */
+  async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, afterTurn = false } = {}) {
     const runtime = this.runtime(conversationId);
-    if (!runtime.running) return this.prompt(conversationId, text);
-    runtime.queuedMessages = [...runtime.queuedMessages, { id: crypto.randomUUID(), text }];
+    if (!runtime.running && !this.stopping && !runtime.usageLimit) return this.prompt(conversationId, text, imageIds, fromScript);
+    const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(afterTurn && { afterTurn }) };
+    this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
     this.publish(this.get(conversationId));
+  }
+
+  /** Continues before the usage limit's reset, e.g. after switching to a profile that signs in to another account. */
+  continueAfterUsageLimit(conversationId: string, { automatically = false } = {}) {
+    const runtime = this.runtime(conversationId);
+    if (!runtime.usageLimit || this.stopping) return;
+    runtime.automaticContinues = automatically ? runtime.automaticContinues + 1 : 0;
+    this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION).catch(() => {});
+  }
+
+  /** The agent does not continue by itself after all; messages queued meanwhile go out now. */
+  stopWaitingForUsageLimit(conversationId: string) {
+    if (!this.endUsageLimitWait(this.runtime(conversationId))) return;
+    this.append(conversationId, { type: "usage-limit-wait-stopped" });
+    this.publish(this.get(conversationId));
+    this.sendNextQueuedMessage(conversationId);
+  }
+
+  /** A focused window shows the conversation, so the turn that ended there has been seen. */
+  markSeen(conversationId: string) {
+    if (this.forgetUnseenTurnEnd(conversationId) && this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
+  }
+
+  /** The canvas reports each question it opens, has answered or withdraws. */
+  questionsChanged(conversationId: string) {
+    const waiting = this.store.listCanvasItems(conversationId).some(({ status }) => status === "waiting");
+    if (waiting) this.conversationsWithQuestions.add(conversationId);
+    else this.conversationsWithQuestions.delete(conversationId);
+    if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
   }
 
   /** Runs a `!` command from the message box in the conversation's workspace, with the environment its agent gets. */
@@ -266,6 +406,11 @@ export class ConversationService {
   editQueuedMessage(conversationId: string, messageId: string, text: string) {
     if (!text.trim()) return this.removeQueuedMessage(conversationId, messageId);
     this.replaceQueue(conversationId, (queue) => queue.map((message) => (message.id === messageId ? { ...message, text } : message)), messageId);
+  }
+
+  setQueuedMessageAfterTurn(conversationId: string, messageId: string, afterTurn: boolean) {
+    const switched = ({ afterTurn: _, ...message }: QueuedMessage): QueuedMessage => ({ ...message, ...(afterTurn && { afterTurn }) });
+    this.replaceQueue(conversationId, (queue) => queue.map((message) => (message.id === messageId ? switched(message) : message)), messageId);
   }
 
   removeQueuedMessage(conversationId: string, messageId: string) {
@@ -313,9 +458,29 @@ export class ConversationService {
     harness?.stop("was restarted because its profile changed");
   }
 
+  /** Stops running turns the way Stop does and holds every queue; returns the conversations whose turn was stopped. */
+  async prepareForRestart(): Promise<string[]> {
+    this.stopping = true;
+    const running = [...this.runtimes].filter(([, runtime]) => runtime.running).map(([conversationId]) => conversationId);
+    await Promise.all(running.map((conversationId) => Promise.race([this.stopTurn(conversationId), Bun.sleep(TURN_STOP_TIMEOUT_MS)])));
+    return running;
+  }
+
+  /**
+   * Picks up where the previous host stopped: a turn it stopped for a restart continues where it left off, if the agent
+   * recorded it. Otherwise messages still queued (also after a crash) go out, as they would have when the turn ended.
+   */
+  resumeAfterRestart(stoppedTurns: string[]) {
+    this.store.listConversations().forEach(({ id }) => {
+      if (stoppedTurns.includes(id) && this.agentHasRecorded(id)) this.prompt(id, CONTINUE_AFTER_INTERRUPTION).catch(() => {});
+      else if (!this.resumeUsageLimitWait(id)) this.sendNextQueuedMessage(id);
+    });
+  }
+
   shutdown() {
+    this.stopping = true;
     this.commands.shutdown();
-    this.harnessesByLaunch.forEach((harness) => harness.stop());
+    return Promise.all([...this.harnessesByLaunch.values()].map((harness) => harness.stop()));
   }
 
   private ensureSession(conversationId: string, open = () => this.openSession(conversationId)): Promise<string> {
@@ -347,6 +512,7 @@ export class ConversationService {
 
   private async openSession(conversationId: string): Promise<string> {
     const conversation = this.get(conversationId);
+    const isFirstSession = conversation.acpSessionId === null;
     const harness = this.harnessFor(conversation);
     this.runtime(conversationId).harness = harness;
     const capabilities = await harness.start();
@@ -370,6 +536,8 @@ export class ConversationService {
     const created = await harness.newSession(sessionRequest);
     this.muteNotifier(conversation, created.sessionId);
     this.bindSession(conversationId, created.sessionId, created.configOptions);
+    await this.restoreConfigChoices(conversationId, created.sessionId, conversation.configOptions);
+    if (isFirstSession) await this.applyProfileMode(conversationId, created.sessionId);
     if (conversation.harness === "claude" && conversation.profileId === null) {
       await this.applyTestModelOverride(conversationId, created.sessionId);
     }
@@ -395,6 +563,7 @@ export class ConversationService {
     this.conversationBySession.set(loadedId, conversationId);
     const loaded = await harness.loadSession({ ...sessionRequest, sessionId: loadedId });
     this.bindSession(conversationId, loadedId, loaded.configOptions);
+    await this.applyProfileMode(conversationId, loadedId);
     this.setStatus(conversationId, "idle");
     return loadedId;
   }
@@ -423,7 +592,15 @@ export class ConversationService {
     early.forEach((notification) => this.handleSessionUpdate(notification));
   }
 
-  /** A resumed session starts from the agent's defaults, so re-apply what the user had chosen. */
+  /** A conversation takes its profile's mode when it starts with the profile or moves to it; after that its own choice stands. */
+  private async applyProfileMode(conversationId: string, sessionId: string) {
+    const { profileId, configOptions } = this.get(conversationId);
+    const mode = profileId === null ? null : this.store.findProfile(profileId)?.mode;
+    const modeOption = configOptions.find(({ category }) => category === "mode");
+    if (mode && modeOption) await this.trySetConfigOption(conversationId, sessionId, modeOption.id, mode);
+  }
+
+  /** A resumed or replacement session starts from the agent's defaults, so re-apply what the user had chosen. */
   private async restoreConfigChoices(conversationId: string, sessionId: string, chosen: acp.SessionConfigOption[]) {
     for (const option of chosen) {
       await this.trySetConfigOption(conversationId, sessionId, option.id, option.currentValue);
@@ -464,8 +641,9 @@ export class ConversationService {
     const key = launch.profileId ?? launch.harness;
     const existing = this.harnessesByLaunch.get(key);
     if (existing) return existing;
+    const spec = harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId));
     const harness = new HarnessProcess(
-      harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId)),
+      { ...spec, environment: { ...spec.environment, ...this.scriptMessageEnvironment() } },
       {
         onSessionUpdate: (notification) => this.handleSessionUpdate(notification),
         onPermissionRequest: (request, signal) => this.handlePermissionRequest(request, signal),
@@ -475,6 +653,11 @@ export class ConversationService {
     );
     this.harnessesByLaunch.set(key, harness);
     return harness;
+  }
+
+  /** Where scripts the agent starts post their messages back (scripts/mirador-message). */
+  private scriptMessageEnvironment() {
+    return { MIRADOR_URL: this.config.appOrigin, MIRADOR_SCRIPT_TOKEN: this.config.scriptToken };
   }
 
   private existingProfile(profileId: string) {
@@ -503,6 +686,48 @@ export class ConversationService {
       this.save({ ...this.get(conversationId), title: update.title });
     }
     this.append(conversationId, { type: "acp", update });
+    this.followToolCalls(conversationId, update);
+  }
+
+  private followToolCalls(conversationId: string, update: acp.SessionUpdate) {
+    const runtime = this.runtime(conversationId);
+    if (!runtime.running) return;
+    if (update.sessionUpdate === "tool_call" && !hasFinished(update.status)) runtime.openToolCalls.add(update.toolCallId);
+    if (update.sessionUpdate !== "tool_call_update" || !hasFinished(update.status)) return;
+    runtime.openToolCalls.delete(update.toolCallId);
+    if (runtime.openToolCalls.size === 0) this.steerQueuedMessages(conversationId).catch(() => {});
+  }
+
+  /** Messages that join the running turn; those the agent cannot take go back to the front of the queue, to go out when it ends. */
+  private async steerQueuedMessages(conversationId: string) {
+    const runtime = this.runtime(conversationId);
+    const { harness } = runtime;
+    const sessionId = this.get(conversationId).acpSessionId;
+    if (!harness || !sessionId || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
+    const messages = runtime.queuedMessages.filter((message) => !message.afterTurn);
+    const [first, ...rest] = messages;
+    if (!first) return;
+    this.setQueue(conversationId, runtime, runtime.queuedMessages.filter((message) => message.afterTurn));
+    this.publish(this.get(conversationId));
+    const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
+    const text = messages.map((message) => message.text).join("\n\n");
+    const imageIds = messages.flatMap((message) => message.imageIds);
+    const injected = await this.promptContent(conversationId, withCommandOutputs(commands, text), imageIds)
+      .then((prompt) => harness.steer(sessionId, prompt))
+      .catch(() => false);
+    if (!injected) {
+      this.setQueue(conversationId, runtime, [...messages, ...runtime.queuedMessages]);
+      this.publish(this.get(conversationId));
+      if (!runtime.running) this.sendNextQueuedMessage(conversationId);
+      return;
+    }
+    this.appendUserMessage(conversationId, first, commands);
+    rest.forEach((message) => this.appendUserMessage(conversationId, message, []));
+  }
+
+  private async promptContent(conversationId: string, text: string, imageIds: string[]): Promise<acp.ContentBlock[]> {
+    const images = await Promise.all(imageIds.map((imageId) => this.images.contentBlock(conversationId, imageId)));
+    return [{ type: "text", text }, ...images];
   }
 
   private handlePermissionRequest(
@@ -523,13 +748,16 @@ export class ConversationService {
       toolCall: request.toolCall,
       options: request.options,
     });
+    this.notifications.notify(conversationId, { kind: "permission", tool: request.toolCall.title });
     return new Promise((resolve) => {
       const settle: PermissionResolver = (optionId) => {
         if (!runtime.pendingPermissions.delete(permissionId)) return;
         this.append(conversationId, { type: "permission-resolved", permissionId, optionId });
+        if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
         resolve(optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } });
       };
       runtime.pendingPermissions.set(permissionId, { settle, allowOptionId });
+      this.publish(this.get(conversationId));
       signal.addEventListener("abort", () => settle(null), { once: true });
     });
   }
@@ -561,19 +789,81 @@ export class ConversationService {
     });
   }
 
+  /** The queue is kept in the database too, so messages waiting for the agent survive a host restart or crash. */
+  private setQueue(conversationId: string, runtime: Runtime, queue: QueuedMessage[]) {
+    runtime.queuedMessages = queue;
+    this.store.saveQueuedMessages(conversationId, queue);
+  }
+
+  private holdsQueue(runtime: Runtime) {
+    return runtime.holdingQueue || this.stopping || runtime.usageLimit !== undefined;
+  }
+
+  /** Returns the failure's message. A turn Claude's usage limit stopped holds the queue until the limit resets. */
+  private recordTurnFailure(conversationId: string, error: unknown) {
+    if (!isUsageLimitError(error)) {
+      this.append(conversationId, { type: "error", message: errorMessage(error) });
+      return errorMessage(error);
+    }
+    const message = usageLimitMessage(error);
+    const resetsAt = usageLimitResetIn(message);
+    this.append(conversationId, { type: "error", message, usageLimit: { resetsAt } });
+    this.waitForUsageLimitReset(conversationId, resetsAt);
+    return message;
+  }
+
+  private waitForUsageLimitReset(conversationId: string, resetsAt: number | null) {
+    const runtime = this.runtime(conversationId);
+    const continuesAt =
+      resetsAt !== null && runtime.automaticContinues < AUTOMATIC_CONTINUES_IN_A_ROW ? resetsAt + USAGE_LIMIT_RESET_MARGIN_MS : null;
+    const timer =
+      continuesAt === null
+        ? undefined
+        : setTimeout(() => this.continueAfterUsageLimit(conversationId, { automatically: true }), Math.max(0, continuesAt - Date.now()));
+    runtime.usageLimit = { wait: { resetsAt, continuesAt }, timer };
+  }
+
+  /** Returns whether it was waiting. */
+  private endUsageLimitWait(runtime: Runtime) {
+    if (!runtime.usageLimit) return false;
+    clearTimeout(runtime.usageLimit.timer);
+    runtime.usageLimit = undefined;
+    return true;
+  }
+
+  /** A conversation the previous host left waiting for a usage limit's reset waits for it again. */
+  private resumeUsageLimitWait(conversationId: string) {
+    const latest = this.store.latestTurnEvent(conversationId);
+    if (latest?.type !== "error" || !latest.usageLimit) return false;
+    this.waitForUsageLimitReset(conversationId, latest.usageLimit.resetsAt);
+    this.publish(this.get(conversationId));
+    return true;
+  }
+
   private replaceQueue(conversationId: string, change: (queue: QueuedMessage[]) => QueuedMessage[], messageId: string) {
     const runtime = this.runtime(conversationId);
     if (!runtime.queuedMessages.some(({ id }) => id === messageId)) throw new Error("That message was already sent.");
-    runtime.queuedMessages = change(runtime.queuedMessages);
+    this.setQueue(conversationId, runtime, change(runtime.queuedMessages));
     this.publish(this.get(conversationId));
   }
 
   private sendNextQueuedMessage(conversationId: string) {
-    const runtime = this.runtimes.get(conversationId);
+    const runtime = this.store.hasConversation(conversationId) ? this.runtime(conversationId) : undefined;
     const [next, ...rest] = runtime?.queuedMessages ?? [];
-    if (!runtime || !next) return;
-    runtime.queuedMessages = rest;
-    this.prompt(conversationId, next.text).catch(() => {});
+    if (!runtime || !next || this.holdsQueue(runtime)) return;
+    this.setQueue(conversationId, runtime, rest);
+    this.prompt(conversationId, next.text, next.imageIds, next.fromScript).catch(() => {});
+  }
+
+  private appendUserMessage(conversationId: string, { text, imageIds, fromScript }: Omit<QueuedMessage, "id">, commands: UserCommand[]) {
+    const attachedCommandIds = commands.map(({ commandId }) => commandId);
+    this.append(conversationId, {
+      type: "user-message",
+      text,
+      ...(attachedCommandIds.length > 0 && { attachedCommandIds }),
+      ...(imageIds.length > 0 && { imageIds }),
+      ...(fromScript && { fromScript }),
+    });
   }
 
   private retitleFromFirstMessage(conversationId: string, text: string) {
@@ -587,7 +877,8 @@ export class ConversationService {
   private runtime(conversationId: string): Runtime {
     let runtime = this.runtimes.get(conversationId);
     if (!runtime) {
-      runtime = { running: false, pendingPermissions: new Map(), queuedMessages: [] };
+      const queuedMessages = this.store.findConversation(conversationId)?.queuedMessages ?? [];
+      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new Set(), automaticContinues: 0 };
       this.runtimes.set(conversationId, runtime);
     }
     return runtime;
@@ -598,6 +889,27 @@ export class ConversationService {
     if (!this.store.hasConversation(conversationId)) return;
     const stored = this.store.appendEvent(conversationId, event);
     this.hub.publishToConversation(conversationId, { type: "conversation.event", conversationId, event: stored });
+  }
+
+  private notifyTurnEnded(conversationId: string, outcome: TurnOutcome) {
+    const reason = turnEndReason(outcome, this.runtime(conversationId).queuedMessages.length > 0);
+    if (!reason || this.stopping) return;
+    this.notifications.notify(conversationId, reason);
+    if (this.hub.isWatched(conversationId)) return;
+    this.unseenTurnEnds.set(conversationId, reason.kind);
+    this.store.setUnseenTurnEnd(conversationId, reason.kind);
+  }
+
+  private forgetUnseenTurnEnd(conversationId: string) {
+    if (!this.unseenTurnEnds.delete(conversationId)) return false;
+    this.store.setUnseenTurnEnd(conversationId, null);
+    return true;
+  }
+
+  private waitingFor(conversationId: string): WaitingFor | null {
+    if ((this.runtimes.get(conversationId)?.pendingPermissions.size ?? 0) > 0) return "permission";
+    if (this.conversationsWithQuestions.has(conversationId)) return "question";
+    return this.unseenTurnEnds.get(conversationId) ?? null;
   }
 
   private setStatus(conversationId: string, status: ConversationStatus, statusDetail: string | null = null) {
@@ -612,7 +924,9 @@ export class ConversationService {
       ...this.statusOverrides.get(conversation.id),
       openInTerminal: this.terminalActivity.get(conversation.id) ?? null,
       contextUsage: this.contextUsage.get(conversation.id) ?? null,
-      queuedMessages: this.runtimes.get(conversation.id)?.queuedMessages ?? [],
+      queuedMessages: this.runtimes.get(conversation.id)?.queuedMessages ?? conversation.queuedMessages,
+      usageLimit: this.runtimes.get(conversation.id)?.usageLimit?.wait ?? null,
+      waitingFor: this.waitingFor(conversation.id),
     };
   }
 
@@ -626,6 +940,8 @@ export class ConversationService {
     this.hub.broadcast({ type: "conversation.upserted", conversation: this.withRuntimeStatus(conversation) });
   }
 }
+
+const hasFinished = (status: acp.ToolCallStatus | null | undefined) => status === "completed" || status === "failed";
 
 const updatesTheAgentRecords = new Set<string>(["user_message_chunk", "agent_message_chunk", "agent_thought_chunk", "tool_call"]);
 

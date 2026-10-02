@@ -1,7 +1,9 @@
-import { userInfo } from "node:os";
+import { accountShell } from "../../shared/login-shell.ts";
 
-/** The shell the user logs in with, even when the host was started without $SHELL (e.g. by launchd). */
-export const loginShell = () => process.env.SHELL || userInfo().shell || "/bin/sh";
+let lookedUpShell: string | undefined;
+
+/** The shell the user logs in with, even when the host was started without $SHELL (e.g. by launchd or systemd). */
+export const loginShell = () => process.env.SHELL || (lookedUpShell ??= accountShell() ?? "/bin/sh");
 
 const sessionScopedPrefixes = ["CMUX_", "TMUX", "CLAUDE_CODE_SESSION", "CLAUDE_CODE_MESSAGING"];
 
@@ -16,13 +18,15 @@ const sessionScopedNames = new Set([
   "CLAUDE_JOB_DIR",
   "ANTHROPIC_MODEL",
   "NODE_OPTIONS",
+  "MIRADOR_URL",
+  "MIRADOR_SCRIPT_TOKEN",
 ]);
 
 const isSessionScoped = (name: string) =>
   sessionScopedNames.has(name) || sessionScopedPrefixes.some((prefix) => name.startsWith(prefix));
 
 /**
- * The host may itself be launched from inside a Claude Code or cmux session; those
+ * The host may itself be launched from inside a Claude Code, cmux or Mirador session; those
  * sessions export variables that would make the spawned agents believe they are
  * nested children of that session.
  */

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
 export async function callCanvasTool(host: TestHost, conversationId: string, name: string, args: Record<string, unknown>) {
@@ -31,7 +31,14 @@ export async function addWorkspace(page: Page, directory: string) {
   const input = page.getByLabel("Workspace directory");
   await input.fill(directory);
   await input.press("Enter");
-  await expect(page.locator(".workspace-path", { hasText: directory })).toBeVisible();
+  await expect(workspaceCard(page, directory)).toBeVisible();
+}
+
+export const workspaceCard = (page: Page, directory: string) => page.locator(".workspace", { has: page.locator(`.workspace-heading[title="${directory}"]`) });
+
+export async function openSettings(page: Page) {
+  await page.getByRole("button", { name: "Settings…" }).click();
+  return page.getByRole("dialog", { name: "Settings" });
 }
 
 export async function startConversation(page: Page) {
@@ -42,6 +49,8 @@ export async function startConversation(page: Page) {
   await expect(page.getByLabel("Model", { exact: true })).toBeVisible({ timeout: 60_000 });
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
+
+export const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");
 
 export async function sendMessage(page: Page, text: string) {
   const composer = page.locator(".composer textarea");
@@ -91,4 +100,20 @@ export async function openCanvasHistory(page: Page) {
 export async function openFromCanvasHistory(page: Page, title: string) {
   const history = await openCanvasHistory(page);
   await history.locator(".history-entry", { hasText: title }).click();
+}
+
+/** What ⌘V does with a screenshot on the clipboard: a paste event that carries the image as a file. */
+export async function pasteImage(target: Locator, { width, height, color = "#5b5bd6" }: { width: number; height: number; color?: string }) {
+  await target.evaluate(
+    async (element, image) => {
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = image.color;
+      context.fillRect(0, 0, image.width, image.height);
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([await canvas.convertToBlob({ type: "image/png" })], "screenshot.png", { type: "image/png" }));
+      element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }));
+    },
+    { width, height, color },
+  );
 }

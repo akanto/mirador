@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4760);
@@ -12,8 +12,10 @@ test.afterAll(async () => {
 
 const widthOf = (page: Page, selector: string) => page.locator(selector).evaluate((element) => element.getBoundingClientRect().width);
 
+const paneSplitter = (page: Page) => page.getByRole("separator", { name: "Resize the left and right panes" });
+
 async function dragSplitterBy(page: Page, deltaX: number) {
-  const box = (await page.locator(".splitter").boundingBox())!;
+  const box = (await paneSplitter(page).boundingBox())!;
   const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -40,10 +42,10 @@ test("chat and canvas can be resized, stay above a minimum width and remember th
   const chatAtMinimum = await widthOf(page, ".chat-column");
 
   await page.reload();
-  await expect(page.locator(".splitter")).toBeVisible();
+  await expect(paneSplitter(page)).toBeVisible();
   expect(Math.abs((await widthOf(page, ".chat-column")) - chatAtMinimum)).toBeLessThan(2);
 
-  await page.locator(".splitter").dblclick();
+  await paneSplitter(page).dblclick();
   expect(Math.abs((await widthOf(page, ".canvas-panel")) - canvasBefore)).toBeLessThan(2);
 });
 
@@ -53,17 +55,23 @@ test.describe("on a system in dark mode", () => {
   const LIGHT = "rgb(255, 255, 255)";
   const DARK = "rgb(18, 19, 23)";
 
+  const theme = (page: Page, name: string) => page.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name });
+
   test("the theme is light unless the user picks dark or matching the system, and the choice is remembered", async ({ page }) => {
     await signIn(page, host);
     expect(await background(page)).toBe(LIGHT);
-    await page.getByLabel("Theme").selectOption("dark");
+    await openSettings(page);
+    const previewBackground = (name: string) => theme(page, name).locator(".preview-window").first().evaluate((window) => getComputedStyle(window).backgroundColor);
+    expect([await previewBackground("Light"), await previewBackground("Dark")]).toEqual([LIGHT, DARK]);
+    await theme(page, "Dark").click();
     expect(await background(page)).toBe(DARK);
     await page.reload();
-    await expect(page.getByLabel("Theme")).toHaveValue("dark");
+    await openSettings(page);
+    await expect(theme(page, "Dark")).toHaveAttribute("aria-checked", "true");
     expect(await background(page)).toBe(DARK);
-    await page.getByLabel("Theme").selectOption("system");
+    await theme(page, "Match system").click();
     expect(await background(page)).toBe(DARK);
-    await page.getByLabel("Theme").selectOption("light");
+    await theme(page, "Light").click();
     expect(await background(page)).toBe(LIGHT);
   });
 });

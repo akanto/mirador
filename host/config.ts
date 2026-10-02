@@ -9,6 +9,8 @@ export interface HostConfig {
   databasePath: string;
   browserToken: string;
   mcpToken: string;
+  /** Lets scripts an agent started post messages back to its conversation; kept across restarts so waiting scripts still get through. */
+  scriptToken: string;
   appOrigin: string;
   canvasAssetsOrigin: string;
   notifierDir: string | null;
@@ -20,8 +22,8 @@ export interface HostConfig {
   runsUserStatusLine: boolean;
 }
 
-function loadOrCreateBrowserToken(dataDir: string) {
-  const tokenFile = join(dataDir, "browser-token");
+function loadOrCreateToken(dataDir: string, fileName: string) {
+  const tokenFile = join(dataDir, fileName);
   if (existsSync(tokenFile)) return readFileSync(tokenFile, "utf8").trim();
   const token = crypto.randomUUID().replaceAll("-", "");
   writeFileSync(tokenFile, token, { mode: 0o600 });
@@ -44,8 +46,9 @@ export function loadConfig(env = process.env): HostConfig {
     canvasAssetsPort,
     dataDir,
     databasePath: join(dataDir, "state.sqlite"),
-    browserToken: loadOrCreateBrowserToken(dataDir),
+    browserToken: loadOrCreateToken(dataDir, "browser-token"),
     mcpToken: env.MIRADOR_MCP_TOKEN ?? crypto.randomUUID().replaceAll("-", ""),
+    scriptToken: loadOrCreateToken(dataDir, "script-token"),
     appOrigin: `http://127.0.0.1:${port}`,
     canvasAssetsOrigin: `http://127.0.0.1:${canvasAssetsPort}`,
     notifierDir: env.MIRADOR_NOTIFIER_DIR ?? notifierDirIfInstalled(),

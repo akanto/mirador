@@ -104,9 +104,9 @@ export const SPARE_MODELS = 24;
 export function scriptedOpencodeEnvironment(model: ScriptedModel, root: string) {
   const scriptedModel = (name: string) => ({
     name,
-    modalities: { input: ["text"], output: ["text"] },
+    modalities: { input: ["text", "image"], output: ["text"] },
     supportsToolCalls: true,
-    attachment: false,
+    attachment: true,
     limit: { context: 100_000, output: 4_096 },
   });
   const spareModels = Object.fromEntries(Array.from({ length: SPARE_MODELS }, (_, index) => [`spare-${index + 1}`, scriptedModel(`Spare model ${index + 1}`)]));

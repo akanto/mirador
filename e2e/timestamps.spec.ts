@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
-import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, openSettings, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4900);
@@ -50,13 +50,17 @@ test("each author's name carries the time; later lines show theirs while pointed
   await expect(laterLineTime).toBeHidden();
 
   const toggle = page.getByLabel("Show timestamps");
+  await openSettings(page);
   await expect(toggle).not.toBeChecked();
   await toggle.check();
+  await page.keyboard.press("Escape");
   await expect(laterLineTime).toBeVisible();
   expect(await indentOf()).toBe(indentWithTimeHidden);
   await page.reload();
-  await expect(page.getByLabel("Show timestamps")).toBeChecked();
   await expect(laterLineTime).toBeVisible();
-  await page.getByLabel("Show timestamps").uncheck();
+  await openSettings(page);
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await page.keyboard.press("Escape");
   await expect(laterLineTime).toBeHidden();
 });

@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import type { AvailableCommand } from "@agentclientprotocol/sdk";
 import type {
   AskMode,
   CanvasItem,
@@ -7,9 +8,15 @@ import type {
   HarnessId,
   Launch,
   Profile,
+  PromptTemplate,
+  QueuedMessage,
   StoredEvent,
   Workspace,
 } from "../shared/model.ts";
+import { isWorkspaceColor, type WorkspaceColor } from "../shared/model.ts";
+import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
+
+const TYPED_IN_WORKSPACE_LIMIT = 100;
 
 const schema = `
   CREATE TABLE IF NOT EXISTS workspaces (
@@ -21,11 +28,14 @@ const schema = `
   CREATE TABLE IF NOT EXISTS events (
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     seq INTEGER NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL, PRIMARY KEY (conversation_id, seq));
+  CREATE INDEX IF NOT EXISTS events_by_type ON events (json_extract(event, '$.type'));
   CREATE TABLE IF NOT EXISTS canvas_items (
     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL, item TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS profiles (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL, prelaunch TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS prompt_templates (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
 `;
 
 const addedColumns = [
@@ -35,7 +45,18 @@ const addedColumns = [
   { table: "profiles", column: "harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
   { table: "conversations", column: "title_set_by_user", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "conversations", column: "bypass_permissions", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "conversations", column: "queued_messages", definition: "TEXT NOT NULL DEFAULT '[]'" },
+  { table: "conversations", column: "unseen_turn_end", definition: "TEXT" },
+  { table: "workspaces", column: "position", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "conversations", column: "position", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "profiles", column: "mode", definition: "TEXT" },
+  { table: "profiles", column: "bypass_permissions", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "profiles", column: "ask_mode", definition: "TEXT NOT NULL DEFAULT 'wait'" },
+  { table: "workspaces", column: "color", definition: "TEXT" },
 ];
+
+/** A turn that ended while nobody looked at its conversation, until someone opens it. */
+export type UnseenTurnEnd = "finished" | "error";
 
 type WorkspaceRow = {
   id: string;
@@ -43,10 +64,22 @@ type WorkspaceRow = {
   path: string;
   default_harness: HarnessId;
   default_profile_id: string | null;
+  color: string | null;
+  position: number;
   created_at: number;
 };
 
-type ProfileRow = { id: string; name: string; harness: HarnessId; environment: string; prelaunch: string; created_at: number };
+type ProfileRow = {
+  id: string;
+  name: string;
+  harness: HarnessId;
+  environment: string;
+  prelaunch: string;
+  mode: string | null;
+  bypass_permissions: number;
+  ask_mode: AskMode;
+  created_at: number;
+};
 
 type ConversationRow = {
   id: string;
@@ -59,6 +92,8 @@ type ConversationRow = {
   ask_mode: AskMode;
   bypass_permissions: number;
   config_options: string;
+  queued_messages: string;
+  position: number;
   created_at: number;
   updated_at: number;
 };
@@ -68,6 +103,8 @@ const toWorkspace = (row: WorkspaceRow): Workspace => ({
   name: row.name,
   path: row.path,
   defaultLaunch: { harness: row.default_harness, profileId: row.default_profile_id },
+  color: isWorkspaceColor(row.color) ? row.color : null,
+  position: row.position,
   createdAt: row.created_at,
 });
 
@@ -77,6 +114,9 @@ const toProfile = (row: ProfileRow): Profile => ({
   harness: row.harness,
   environment: row.environment,
   prelaunch: row.prelaunch,
+  mode: row.mode,
+  bypassPermissions: row.bypass_permissions === 1,
+  askMode: row.ask_mode,
   createdAt: row.created_at,
 });
 
@@ -94,8 +134,11 @@ const toConversation = (row: ConversationRow): Conversation => ({
   statusDetail: null,
   openInTerminal: null,
   contextUsage: null,
-  queuedMessages: [],
+  queuedMessages: JSON.parse(row.queued_messages),
+  usageLimit: null,
+  waitingFor: null,
   configOptions: JSON.parse(row.config_options),
+  position: row.position,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -108,8 +151,14 @@ export class Store {
     this.db = new Database(path, { create: true, strict: true });
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA foreign_keys = ON");
+    const hadPromptTemplates = this.hasTable("prompt_templates");
     this.db.run(schema);
     this.addMissingColumns();
+    if (!hadPromptTemplates) defaultPromptTemplates.forEach((template) => this.savePromptTemplate({ ...template, createdAt: Date.now() }));
+  }
+
+  private hasTable(name: string) {
+    return this.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== null;
   }
 
   close() {
@@ -117,7 +166,7 @@ export class Store {
   }
 
   listWorkspaces(): Workspace[] {
-    return this.db.query("SELECT * FROM workspaces ORDER BY created_at").all().map((row) => toWorkspace(row as WorkspaceRow));
+    return this.db.query("SELECT * FROM workspaces ORDER BY position, created_at").all().map((row) => toWorkspace(row as WorkspaceRow));
   }
 
   findWorkspace(id: string): Workspace | undefined {
@@ -130,16 +179,28 @@ export class Store {
     return row ? toWorkspace(row) : undefined;
   }
 
-  insertWorkspace(workspace: Workspace) {
+  /** Adds the workspace after the others. */
+  insertWorkspace(workspace: Omit<Workspace, "position" | "color">): Workspace {
+    const { next: position } = this.db.query("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM workspaces").get() as { next: number };
     this.db
-      .query("INSERT INTO workspaces (id, name, path, default_harness, default_profile_id, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(workspace.id, workspace.name, workspace.path, workspace.defaultLaunch.harness, workspace.defaultLaunch.profileId, workspace.createdAt);
+      .query("INSERT INTO workspaces (id, name, path, default_harness, default_profile_id, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(workspace.id, workspace.name, workspace.path, workspace.defaultLaunch.harness, workspace.defaultLaunch.profileId, position, workspace.createdAt);
+    return { ...workspace, color: null, position };
+  }
+
+  /** Numbers the workspaces' positions in the given order. */
+  setWorkspaceOrder(workspaceIds: string[]) {
+    this.setPositions("workspaces", workspaceIds);
   }
 
   setWorkspaceDefaultLaunch(workspaceId: string, launch: Launch) {
     this.db
       .query("UPDATE workspaces SET default_harness = ?, default_profile_id = ? WHERE id = ?")
       .run(launch.harness, launch.profileId, workspaceId);
+  }
+
+  setWorkspaceColor(workspaceId: string, color: WorkspaceColor | null) {
+    this.db.query("UPDATE workspaces SET color = ? WHERE id = ?").run(color, workspaceId);
   }
 
   deleteWorkspace(id: string) {
@@ -162,11 +223,15 @@ export class Store {
     return row ? toConversation(row) : undefined;
   }
 
-  insertConversation(conversation: Conversation) {
+  /** Adds the conversation after the others of its workspace. */
+  insertConversation(conversation: Omit<Conversation, "position">): Conversation {
+    const { next: position } = this.db
+      .query("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM conversations WHERE workspace_id = ?")
+      .get(conversation.workspaceId) as { next: number };
     this.db
       .query(
-        `INSERT INTO conversations (id, workspace_id, harness, profile_id, title, title_set_by_user, acp_session_id, ask_mode, bypass_permissions, config_options, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO conversations (id, workspace_id, harness, profile_id, title, title_set_by_user, acp_session_id, ask_mode, bypass_permissions, config_options, position, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         conversation.id,
@@ -179,9 +244,16 @@ export class Store {
         conversation.askMode,
         Number(conversation.bypassPermissions),
         JSON.stringify(conversation.configOptions),
+        position,
         conversation.createdAt,
         conversation.updatedAt,
       );
+    return { ...conversation, position };
+  }
+
+  /** Numbers the conversations' positions in the given order. */
+  setConversationOrder(conversationIds: string[]) {
+    this.setPositions("conversations", conversationIds);
   }
 
   updateConversation(conversation: Conversation) {
@@ -202,6 +274,20 @@ export class Store {
       );
   }
 
+  saveQueuedMessages(conversationId: string, messages: QueuedMessage[]) {
+    this.db.query("UPDATE conversations SET queued_messages = ? WHERE id = ?").run(JSON.stringify(messages), conversationId);
+  }
+
+  setUnseenTurnEnd(conversationId: string, turnEnd: UnseenTurnEnd | null) {
+    this.db.query("UPDATE conversations SET unseen_turn_end = ? WHERE id = ?").run(turnEnd, conversationId);
+  }
+
+  listUnseenTurnEnds(): [conversationId: string, turnEnd: UnseenTurnEnd][] {
+    return (this.db.query("SELECT id, unseen_turn_end FROM conversations WHERE unseen_turn_end IS NOT NULL").all() as { id: string; unseen_turn_end: UnseenTurnEnd }[]).map(
+      ({ id, unseen_turn_end }) => [id, unseen_turn_end],
+    );
+  }
+
   deleteConversation(id: string) {
     this.db.query("DELETE FROM conversations WHERE id = ?").run(id);
     this.nextSeq.delete(id);
@@ -219,15 +305,50 @@ export class Store {
   saveProfile(profile: Profile) {
     this.db
       .query(
-        `INSERT INTO profiles (id, name, harness, environment, prelaunch, created_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, environment = excluded.environment, prelaunch = excluded.prelaunch`,
+        `INSERT INTO profiles (id, name, harness, environment, prelaunch, mode, bypass_permissions, ask_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, environment = excluded.environment, prelaunch = excluded.prelaunch,
+           mode = excluded.mode, bypass_permissions = excluded.bypass_permissions, ask_mode = excluded.ask_mode`,
       )
-      .run(profile.id, profile.name, profile.harness, profile.environment, profile.prelaunch, profile.createdAt);
+      .run(
+        profile.id,
+        profile.name,
+        profile.harness,
+        profile.environment,
+        profile.prelaunch,
+        profile.mode,
+        Number(profile.bypassPermissions),
+        profile.askMode,
+        profile.createdAt,
+      );
   }
 
   deleteProfile(id: string) {
     this.db.query("DELETE FROM profiles WHERE id = ?").run(id);
     this.db.query("UPDATE workspaces SET default_profile_id = NULL WHERE default_profile_id = ?").run(id);
+  }
+
+  listPromptTemplates(): PromptTemplate[] {
+    return this.db
+      .query("SELECT id, name, text, created_at AS createdAt FROM prompt_templates ORDER BY name COLLATE NOCASE")
+      .all() as PromptTemplate[];
+  }
+
+  findPromptTemplate(id: string): PromptTemplate | undefined {
+    return (this.db.query("SELECT id, name, text, created_at AS createdAt FROM prompt_templates WHERE id = ?").get(id) as PromptTemplate | null) ?? undefined;
+  }
+
+  /** Creates the template, or changes the name and text of the one with its id. */
+  savePromptTemplate({ id, name, text, createdAt }: PromptTemplate) {
+    this.db
+      .query(
+        `INSERT INTO prompt_templates (id, name, text, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, text = excluded.text`,
+      )
+      .run(id, name, text, createdAt);
+  }
+
+  deletePromptTemplate(id: string) {
+    this.db.query("DELETE FROM prompt_templates WHERE id = ?").run(id);
   }
 
   appendEvent(conversationId: string, event: ConversationEvent): StoredEvent {
@@ -244,6 +365,51 @@ export class Store {
       .query("SELECT seq, at, event FROM events WHERE conversation_id = ? ORDER BY seq")
       .all(conversationId)
       .map((row: any) => ({ seq: row.seq, at: row.at, event: JSON.parse(row.event) }));
+  }
+
+  /**
+   * The commands the agent last listed in this conversation, or else in another with the same agent and profile,
+   * this workspace's first: an agent lists them only once a session starts, which is after the first message.
+   */
+  latestAvailableCommands({ id, workspaceId, harness, profileId }: Pick<Conversation, "id" | "workspaceId" | "harness" | "profileId">): AvailableCommand[] {
+    const row = this.db
+      .query(
+        `SELECT e.event FROM events e JOIN conversations c ON c.id = e.conversation_id
+         WHERE c.harness = ? AND c.profile_id IS ? AND json_extract(e.event, '$.update.sessionUpdate') = 'available_commands_update'
+         ORDER BY c.id = ? DESC, c.workspace_id = ? DESC, e.at DESC, e.seq DESC LIMIT 1`,
+      )
+      .get(harness, profileId, id, workspaceId) as { event: string } | null;
+    return row ? JSON.parse(row.event).update.availableCommands : [];
+  }
+
+  /** The messages and shell commands typed in the workspace's conversations other than this one, newest first. */
+  typedInWorkspace(workspaceId: string, exceptConversationId: string, limit = TYPED_IN_WORKSPACE_LIMIT): ConversationEvent[] {
+    const rows = this.db
+      .query(
+        `SELECT e.event FROM events e JOIN conversations c ON c.id = e.conversation_id
+         WHERE c.workspace_id = ? AND c.id != ? AND json_extract(e.event, '$.type') IN ('user-message', 'user-command')
+         ORDER BY e.at DESC, e.seq DESC LIMIT ?`,
+      )
+      .all(workspaceId, exceptConversationId, limit) as { event: string }[];
+    return rows.map(({ event }) => JSON.parse(event));
+  }
+
+  /** The newest event that starts or ends a turn, or ends a wait for a usage limit's reset. */
+  latestTurnEvent(conversationId: string): ConversationEvent | null {
+    const row = this.db
+      .query(
+        `SELECT event FROM events WHERE conversation_id = ?
+         AND json_extract(event, '$.type') IN ('user-message', 'turn-end', 'error', 'usage-limit-wait-stopped') ORDER BY seq DESC LIMIT 1`,
+      )
+      .get(conversationId) as { event: string } | null;
+    return row ? JSON.parse(row.event) : null;
+  }
+
+  lastUserMessageAt(conversationId: string): number | null {
+    const row = this.db
+      .query("SELECT at FROM events WHERE conversation_id = ? AND json_extract(event, '$.type') = 'user-message' ORDER BY seq DESC LIMIT 1")
+      .get(conversationId) as { at: number } | null;
+    return row?.at ?? null;
   }
 
   saveCanvasItem(item: CanvasItem) {
@@ -273,6 +439,11 @@ export class Store {
       .all()
       .map((row: any) => JSON.parse(row.item) as CanvasItem)
       .filter((item) => item.status === status);
+  }
+
+  private setPositions(table: "workspaces" | "conversations", ids: string[]) {
+    const setPosition = this.db.query(`UPDATE ${table} SET position = ? WHERE id = ?`);
+    this.db.transaction(() => ids.forEach((id, position) => setPosition.run(position, id)))();
   }
 
   private addMissingColumns() {

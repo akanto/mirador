@@ -4,7 +4,7 @@ import { Store } from "../host/store.ts";
 
 describe("assertLaunchable", () => {
   const store = new Store(":memory:");
-  store.saveProfile({ id: "p1", name: "home llama", harness: "opencode", environment: "", prelaunch: "", createdAt: 1 });
+  store.saveProfile({ id: "p1", name: "home llama", harness: "opencode", environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
 
   test("accepts an agent on its own and a profile on its own agent", () => {
     expect(() => assertLaunchable(store, { harness: "claude", profileId: null })).not.toThrow();

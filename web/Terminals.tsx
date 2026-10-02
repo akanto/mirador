@@ -7,7 +7,9 @@ import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { Splitter } from "./Splitter.tsx";
+import { terminalKeyAction } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
+import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 
 const INITIAL_COLUMNS = 80;
 const INITIAL_ROWS = 24;
@@ -58,6 +60,10 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
   return { tabs, opened, open };
 }
 
+function copySelection(view: Terminal) {
+  if (view.hasSelection()) void navigator.clipboard.writeText(view.getSelection());
+}
+
 function TerminalView({ terminalId, focus }: { terminalId: string; focus: FocusRequest | undefined }) {
   const screen = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -66,8 +72,21 @@ function TerminalView({ terminalId, focus }: { terminalId: string; focus: FocusR
     const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: 12, cursorBlink: true, scrollback: 5_000, theme: terminalTheme });
     const fit = new FitAddon();
     view.loadAddon(fit);
-    view.attachCustomKeyEventHandler((event) => !event.defaultPrevented);
+    view.attachCustomKeyEventHandler((event) => {
+      if (event.defaultPrevented) return false;
+      const action = terminalKeyAction(event);
+      if (!action) return true;
+      if (action.type === "browser-paste") return false;
+      if (event.type === "keydown") {
+        event.preventDefault();
+        if (action.type === "clear") connection.send({ type: "terminal.clear", terminalId });
+        else if (action.type === "copy") copySelection(view);
+        else view.input(action.data);
+      }
+      return false;
+    });
     view.open(screen.current!);
+    view.textarea?.setAttribute("writingsuggestions", "false");
 
     const stopListening = connection.onMessage((message) => {
       if (!("terminalId" in message) || message.terminalId !== terminalId) return;
@@ -75,6 +94,7 @@ function TerminalView({ terminalId, focus }: { terminalId: string; focus: FocusR
         view.reset();
         view.write(message.data);
       } else if (message.type === "terminal.output") view.write(message.data);
+      else if (message.type === "terminal.cleared") view.write("", () => view.clear());
     });
     const typed = view.onData((data) => connection.send({ type: "terminal.input", terminalId, data }));
     const resized = view.onResize(({ cols, rows }) => connection.send({ type: "terminal.resize", terminalId, columns: cols, rows }));
@@ -132,7 +152,7 @@ function TabSplits({ tab, focus }: { tab: TerminalTab; focus: FocusRequest | nul
                 onChange={(share) => resize(previous, terminal.id, share)}
                 label="Resize terminals"
                 resetShare={0.5}
-                minimumWidth={MIN_SPLIT_WIDTH}
+                minimumSize={MIN_SPLIT_WIDTH}
               />
             )}
             <div className="terminal-split" style={{ flex: `${shareOf(terminal.id)} 1 0` }}>
@@ -190,7 +210,8 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
 
   return (
     <section className="terminal-pane" aria-label={`Terminals in ${workspace.name}`}>
-      <header className="terminal-bar">
+      <header className="terminal-bar" data-pane-bar>
+        <PaneGrip pane="terminals" />
         <div className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
           {tabs?.map((tab) => (
             <div key={tab.id} className={`terminal-tab ${tab.id === activeTab?.id ? "active" : ""}`}>
@@ -225,6 +246,7 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
         >
           ◫
         </button>
+        <FullscreenToggle pane="terminals" />
         <button type="button" className="link" data-hint={hints.terminalHide} onClick={onHide}>
           Hide
         </button>

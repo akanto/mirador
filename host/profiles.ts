@@ -1,4 +1,4 @@
-import { harnessIds, harnessLabels, type Launch, type Profile } from "../shared/model.ts";
+import { askModeLabels, harnessIds, harnessLabels, type Launch, type Profile } from "../shared/model.ts";
 import { parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import type { ConversationService } from "./conversations.ts";
@@ -31,12 +31,16 @@ export class ProfileService {
     const existing = draft.id ? this.store.findProfile(draft.id) : undefined;
     if (draft.id && !existing) throw new Error("That profile no longer exists.");
     if (!harnessIds.includes(draft.harness)) throw new Error(`Unknown agent ${draft.harness}.`);
+    if (!(draft.askMode in askModeLabels)) throw new Error(`Unknown Questions setting ${draft.askMode}.`);
     const profile: Profile = {
       id: existing?.id ?? crypto.randomUUID(),
       name,
       harness: existing?.harness ?? draft.harness,
       environment: draft.environment,
       prelaunch: draft.prelaunch,
+      mode: draft.mode || null,
+      bypassPermissions: draft.bypassPermissions,
+      askMode: draft.askMode,
       createdAt: existing?.createdAt ?? Date.now(),
     };
     this.store.saveProfile(profile);

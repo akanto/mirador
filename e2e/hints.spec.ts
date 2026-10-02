@@ -30,6 +30,19 @@ test("clicking a hinted dropdown hides its hint, which stays away until the poin
   await expect(hint).toBeVisible();
 });
 
+test("the hint of a button that has a shortcut shows its key", async ({ page }) => {
+  await signIn(page, host);
+  const hint = page.getByRole("tooltip");
+
+  await page.getByRole("button", { name: "Add workspace" }).hover();
+  await expect(hint).toContainText("Add a project directory.");
+  await expect(hint.locator("kbd")).toHaveText(/^(⌥⇧T|Alt\+Shift\+T)$/);
+
+  await page.getByRole("button", { name: "+ New conversation" }).hover();
+  await expect(hint).toContainText("Start a conversation in this workspace");
+  await expect(hint.locator("kbd")).toHaveText(/^(⌥T|Alt\+T)$/);
+});
+
 test("help text in the app stays where it is written, unlike the hint bubble", async ({ page }) => {
   await signIn(page, host);
   await page.getByRole("button", { name: "Continue a session…" }).click();

@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4820);
@@ -48,7 +48,11 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   const directory = page.getByLabel("Workspace directory");
   await directory.fill(secondProjectDir);
   await directory.press("Enter");
-  await expect(page.locator(".workspace-path", { hasText: secondProjectDir })).toBeVisible();
+  await expect(workspaceCard(page, secondProjectDir)).toBeVisible();
+  await page.keyboard.press("Alt+Shift+KeyT");
+  await expect(directory).toBeFocused();
+  await directory.press("Escape");
+  await expect(directory).toHaveCount(0);
 
   const first = await pressAndAwaitNewConversation(page, () => page.keyboard.press("Alt+KeyT"));
   const second = await pressAndAwaitNewConversation(page, () => page.keyboard.press("Alt+KeyT"));
@@ -61,14 +65,14 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   await expect(page.locator(".workspace").nth(0).locator("li")).toHaveCount(2);
 
   await page.keyboard.press("Alt+ArrowDown");
-  await expectSelected(page, second);
-  await page.keyboard.press("Alt+ArrowDown");
   await expectSelected(page, first);
+  await page.keyboard.press("Alt+ArrowDown");
+  await expectSelected(page, second);
   await page.keyboard.press("Alt+Shift+ArrowDown");
   await expectSelected(page, inSecondProject);
   await page.keyboard.press("Alt+Shift+ArrowUp");
   await expectSelected(page, second);
-  await page.keyboard.press("Alt+Digit2");
+  await page.keyboard.press("Alt+Digit1");
   await expectSelected(page, first);
 
   await page.keyboard.press(`${primary}+KeyK`);
@@ -84,6 +88,7 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   await page.keyboard.press(`${primary}+Shift+ArrowRight`);
   await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
   await expect.poll(() => focusedTag(page)).toBe("IFRAME");
+  await expect(page.frameLocator(".canvas-frame.show iframe").getByText("canvas page")).toBeVisible();
   await page.keyboard.press(`${primary}+Shift+ArrowLeft`);
   await expect.poll(() => focusedTag(page)).toBe("TEXTAREA");
 

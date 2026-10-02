@@ -2,6 +2,9 @@ import type { HostStatus } from "./host-supervisor.ts";
 
 export type TrayAction = "open" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
 
+const trayActions: readonly string[] = ["open", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
+export const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
+
 export type TrayItem =
   | { type: "separator" }
   | { type: "normal"; label: string; action?: TrayAction; enabled?: boolean; checked?: boolean };

@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     ...devices["Desktop Chrome"],
-    channel: "chrome",
+    channel: process.platform === "darwin" ? "chrome" : undefined,
     viewport: { width: 1600, height: 1000 },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

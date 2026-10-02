@@ -9,6 +9,7 @@ import {
   lastAgentMessage,
   openCanvasHistory,
   openFromCanvasHistory,
+  pasteImage,
   sendMessage,
   signIn,
   startConversation,
@@ -250,4 +251,30 @@ test("deleting a conversation while its agent works ends the turn quietly", asyn
   await expect(page.locator(".chat-header")).toHaveCount(0);
   await page.waitForTimeout(1_000);
   await expect(page.locator(".notice")).toHaveCount(0);
+});
+
+test("an image pasted into the message box goes to the agent with the message and stays in the transcript", async ({ page }) => {
+  await signIn(page, host);
+  await chooseScriptedOpencode(page);
+  await startConversation(page);
+  const composer = page.locator(".composer textarea");
+  await composer.fill("what is in ");
+  await pasteImage(composer, { width: 300, height: 200 });
+  await expect(composer).toHaveValue("what is in [Image #1] ");
+  await expect(page.locator(".pasted-images img")).toHaveJSProperty("naturalWidth", 300);
+  await page.keyboard.type("this picture?");
+  await composer.press("Enter");
+
+  await expect(lastAgentMessage(page)).toContainText("Echo: what is in [Image #1] this picture?", { timeout: 60_000 });
+  expect(JSON.stringify(model.requests.at(-1))).toContain("data:image/png;base64,");
+  await expect(page.locator(".pasted-images")).toHaveCount(0);
+  const sent = page.locator(".message.user .message-images img");
+  await expect(sent).toHaveJSProperty("naturalWidth", 300);
+  await page.locator(".message.user .thumbnail").click();
+  await expect(page.getByRole("dialog", { name: "Image" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Image" })).toHaveCount(0);
+
+  await page.reload();
+  await expect(sent).toHaveJSProperty("naturalWidth", 300);
 });

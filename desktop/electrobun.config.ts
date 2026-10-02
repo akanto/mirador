@@ -20,8 +20,12 @@ export default {
         BUILD_BUN: JSON.stringify(bun),
       },
     },
-    copy: { "assets/tray-icon.png": "views/assets/tray-icon.png" },
+    copy: {
+      "assets/tray-icon.png": "views/assets/tray-icon.png",
+      "icon.iconset/icon_32x32@2x.png": "views/assets/app-icon.png",
+    },
     mac: { createDmg: false, icons: "icon.iconset" },
+    linux: { icon: "icon.iconset/icon_512x512.png" },
   },
   runtime: { exitOnLastWindowClosed: false },
 } satisfies ElectrobunConfig;

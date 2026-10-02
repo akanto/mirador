@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { appBundlePath } from "../desktop/src/core/app-bundle.ts";
+import { installedAppPath } from "../desktop/src/core/app-bundle.ts";
 import { hostArgv, isHostCommandLine, loginShell } from "../desktop/src/core/host-command.ts";
 import { authUrl, dataPaths, hostEnvironmentOverrides, resolveRuntime } from "../desktop/src/core/runtime.ts";
 
@@ -62,10 +62,10 @@ describe("host command", () => {
     ]);
   });
 
-  test("uses the environment's shell, then the account's, then zsh", () => {
+  test("uses the environment's shell, then the account's, then sh", () => {
     expect(loginShell({ SHELL: "/bin/bash" }, "/bin/fish")).toBe("/bin/bash");
     expect(loginShell({}, "/bin/fish")).toBe("/bin/fish");
-    expect(loginShell({}, undefined)).toBe("/bin/zsh");
+    expect(loginShell({}, undefined)).toBe("/bin/sh");
   });
 
   test("recognises a running host by its command line, before and after the shell hands over", () => {
@@ -83,13 +83,20 @@ describe("host command", () => {
   });
 });
 
-describe("app bundle", () => {
-  test("is the .app around the running executable", () => {
-    expect(appBundlePath("/Applications/Mirador.app/Contents/MacOS/bun")).toBe("/Applications/Mirador.app");
-    expect(appBundlePath("/a/b.app/Contents/Resources/c.app/Contents/MacOS/bun")).toBe("/a/b.app/Contents/Resources/c.app");
+describe("installed app", () => {
+  test("is the .app around the running executable on macOS", () => {
+    expect(installedAppPath("/Applications/Mirador.app/Contents/MacOS/bun", "darwin")).toBe("/Applications/Mirador.app");
+    expect(installedAppPath("/a/b.app/Contents/Resources/c.app/Contents/MacOS/bun", "darwin")).toBe("/a/b.app/Contents/Resources/c.app");
   });
 
-  test("is absent when bun runs outside a bundle", () => {
-    expect(appBundlePath("/Users/me/.bun/bin/bun")).toBeNull();
+  test("is the launcher beside the runtime on Linux", () => {
+    expect(installedAppPath("/home/me/.local/share/com.sodre90.mirador/stable/app/bin/bun", "linux")).toBe(
+      "/home/me/.local/share/com.sodre90.mirador/stable/app/bin/launcher",
+    );
+  });
+
+  test("is absent when bun runs outside an installed app", () => {
+    expect(installedAppPath("/Users/me/.bun/bin/bun", "darwin")).toBeNull();
+    expect(installedAppPath("/home/me/.bun/bin/bun", "linux")).toBeNull();
   });
 });

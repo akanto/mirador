@@ -21,16 +21,36 @@ test("rejects browsers and clients without the right credentials", async ({ page
   expect(signedIn.headers.get("set-cookie")).toContain("HttpOnly");
   expect(signedIn.headers.get("set-cookie")).toContain("SameSite=Strict");
 
-  const upgrade = (headers: Record<string, string>) => fetch(`${host.origin}/ws`, { headers }).then(({ status }) => status);
-  expect(await upgrade({ Origin: "http://evil.example", Cookie: cookie })).toBe(403);
-  expect(await upgrade({ Origin: "null", Cookie: cookie })).toBe(403);
-  expect(await upgrade({ Origin: host.origin })).toBe(401);
+  for (const socketPath of ["/ws", "/notifications"]) {
+    const upgrade = (headers: Record<string, string>) => fetch(`${host.origin}${socketPath}`, { headers }).then(({ status }) => status);
+    expect(await upgrade({ Origin: "http://evil.example", Cookie: cookie })).toBe(403);
+    expect(await upgrade({ Origin: "null", Cookie: cookie })).toBe(403);
+    expect(await upgrade({ Origin: host.origin })).toBe(401);
+  }
 
   const mcp = (headers: Record<string, string>) =>
     fetch(`${host.origin}/mcp/anything`, { method: "POST", headers, body: "{}" }).then(({ status }) => status);
   expect(await mcp({})).toBe(401);
   expect(await mcp({ Authorization: "Bearer wrong" })).toBe(401);
   expect(await mcp({ Authorization: `Bearer ${host.mcpToken}`, Origin: host.origin })).toBe(403);
+
+  const scriptMessage = (headers: Record<string, string>) =>
+    fetch(`${host.origin}/sessions/anything/messages`, { method: "POST", headers, body: "hello" }).then(({ status }) => status);
+  expect(await scriptMessage({})).toBe(401);
+  expect(await scriptMessage({ Authorization: `Bearer ${host.mcpToken}` })).toBe(401);
+  expect(await scriptMessage({ Authorization: `Bearer ${host.scriptToken}`, Origin: host.origin })).toBe(403);
+  expect(await scriptMessage({ Authorization: `Bearer ${host.scriptToken}` })).toBe(404);
+
+  const images = `${host.origin}/conversations/00000000-0000-0000-0000-000000000000/images`;
+  const addImage = (headers: Record<string, string>) =>
+    fetch(images, { method: "POST", headers: { "Content-Type": "image/png", ...headers }, body: "png" }).then(({ status }) => status);
+  const readImage = (headers: Record<string, string>) => fetch(`${images}/x.png`, { headers }).then(({ status }) => status);
+  expect(await addImage({ Origin: host.origin })).toBe(401);
+  expect(await addImage({ Origin: "http://evil.example", Cookie: cookie })).toBe(403);
+  expect(await addImage({ Cookie: cookie })).toBe(403);
+  expect(await readImage({})).toBe(401);
+  expect(await readImage({ Cookie: cookie, "Sec-Fetch-Site": "cross-site" })).toBe(403);
+  expect(await readImage({ Cookie: cookie })).toBe(404);
 });
 
 test("a hostile canvas page cannot reach the host, the parent page or the network", async ({ page }) => {

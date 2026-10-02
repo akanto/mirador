@@ -86,6 +86,21 @@ test("a browser that attaches later gets the tabs and can replay what each termi
   expect(replayed).toMatchObject({ terminalId, data: expect.stringContaining("before-reload\r\n") });
 });
 
+test("clearing a terminal forgets the output above the cursor's line, in every window and in what a reload replays", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const { terminalId } = terminals.open("w1", 100, 30);
+  terminals.input(terminalId, "echo above-the-cursor; printf on-the-cursor-line\n");
+  await outputContaining(browser.received, "above-the-cursor\r\non-the-cursor-line");
+
+  terminals.clear(terminalId);
+  expect(browser.received.at(-1)).toEqual({ type: "terminal.cleared", terminalId });
+  terminals.replay(browser.socket, terminalId);
+  const replayed = browser.received.findLast((message) => message.type === "terminal.replayed");
+  expect(replayed).toMatchObject({ data: expect.stringContaining("on-the-cursor-line") });
+  expect(replayed).not.toMatchObject({ data: expect.stringContaining("above-the-cursor") });
+});
+
 test("new tabs are named after the shell with the lowest free number, and a tab splits into at most four terminals", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "w1");

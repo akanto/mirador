@@ -2,20 +2,23 @@ import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import index from "../web/index.html";
-import type { Workspace } from "../shared/model.ts";
-import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
+import { isWorkspaceColor, type PromptTemplate, type Workspace, type WorkspaceColor } from "../shared/model.ts";
+import { promptTemplateProblem } from "../shared/prompt-templates.ts";
+import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
+import { isImageId } from "../shared/images.ts";
+import { movedBefore } from "../shared/sidebar-order.ts";
 import type { HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
-import type { BrowserSocket, Hub, SocketData } from "./hub.ts";
+import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
+import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import type { ProfileService } from "./profiles.ts";
+import type { HostRestart } from "./restart.ts";
 import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
-
-const TOKEN_COOKIE = "mirador_token";
 
 export interface HostServices {
   config: HostConfig;
@@ -27,7 +30,12 @@ export interface HostServices {
   profiles: ProfileService;
   statusline: StatuslineService;
   terminals: TerminalService;
+  images: ImageStore;
+  restart: HostRestart;
 }
+
+const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
+const hostRunId = crypto.randomUUID();
 
 function sameSecret(candidate: string | null | undefined, secret: string) {
   if (!candidate) return false;
@@ -44,7 +52,7 @@ function cookieValue(request: Request, name: string) {
 }
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart } = services;
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
 
@@ -64,21 +72,75 @@ export function startServer(services: HostServices) {
     });
   }
 
-  function serveMcp(request: Request, conversationId: string) {
+  /** Agents and the scripts they start call with the host's token and, unlike a browser's POST, no Origin header. */
+  function refusedAgentRequest(request: Request, token: string) {
     if (!hasAllowedHost(request) || request.headers.has("origin")) return new Response("forbidden", { status: 403 });
     const bearer = request.headers.get("authorization")?.replace(/^Bearer /, "");
-    if (!sameSecret(bearer, config.mcpToken)) return new Response("unauthorized", { status: 401 });
+    return sameSecret(bearer, token) ? null : new Response("unauthorized", { status: 401 });
+  }
+
+  function serveMcp(request: Request, conversationId: string) {
+    const refused = refusedAgentRequest(request, config.mcpToken);
+    if (refused) return refused;
     if (!store.findConversation(conversationId)) return new Response("unknown conversation", { status: 404 });
     return mcp.handle(conversationId, request);
   }
 
-  function upgradeBrowser(request: Request, server: Bun.Server<SocketData>) {
+  /** A script knows only the agent session it was started from, so the message goes to the conversation running that session. */
+  async function receiveScriptMessage(request: Bun.BunRequest<"/sessions/:sessionId/messages">) {
+    const refused = refusedAgentRequest(request, config.scriptToken);
+    if (refused) return refused;
+    const conversation = store.listConversations().find(({ acpSessionId }) => acpSessionId === request.params.sessionId);
+    if (!conversation) return new Response("No Mirador conversation runs this agent session.", { status: 404 });
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_SCRIPT_MESSAGE_BYTES) return new Response("message too long", { status: 413 });
+    const text = await request.text();
+    if (text.length > MAX_SCRIPT_MESSAGE_BYTES) return new Response("message too long", { status: 413 });
+    if (!text.trim()) return new Response("empty message", { status: 400 });
+    conversations.send(conversation.id, text, [], { fromScript: true }).catch(() => {});
+    return Response.json({ conversationId: conversation.id }, { status: 202 });
+  }
+
+  /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images. */
+  function refusedImageRequest(request: Request, conversationId: string) {
+    if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
+    if (!sameSecret(cookieValue(request, TOKEN_COOKIE), config.browserToken)) return new Response("unauthorized", { status: 401 });
+    const site = request.headers.get("sec-fetch-site");
+    if (site && site !== "same-origin") return new Response("forbidden", { status: 403 });
+    if (request.method !== "GET" && request.headers.get("origin") !== config.appOrigin) return new Response("forbidden origin", { status: 403 });
+    if (!store.findConversation(conversationId)) return new Response("unknown conversation", { status: 404 });
+    return null;
+  }
+
+  async function addImage(request: Bun.BunRequest<"/conversations/:conversationId/images">) {
+    const { conversationId } = request.params;
+    const refused = refusedImageRequest(request, conversationId);
+    if (refused) return refused;
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) return new Response("image too large", { status: 413 });
+    try {
+      const imageId = await images.save(conversationId, request.headers.get("content-type") ?? "", await request.arrayBuffer());
+      return Response.json({ imageId });
+    } catch (error) {
+      return new Response(errorMessage(error), { status: 400 });
+    }
+  }
+
+  async function serveImage(request: Bun.BunRequest<"/conversations/:conversationId/images/:imageId">) {
+    const { conversationId, imageId } = request.params;
+    const refused = refusedImageRequest(request, conversationId);
+    if (refused) return refused;
+    const file = isImageId(imageId) ? images.file(conversationId, imageId) : null;
+    if (!file || !(await file.exists())) return new Response("not found", { status: 404 });
+    return new Response(file, { headers: { "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" } });
+  }
+
+  /** The desktop app listens on /notifications with the same token and origin as the pages, and hears only system notifications. */
+  function upgradeBrowser(request: Request, server: Bun.Server<SocketData>, role: SocketData["role"]) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
     if (!sameSecret(cookieValue(request, TOKEN_COOKIE), config.browserToken)) {
       return new Response("unauthorized", { status: 401 });
     }
     if (request.headers.get("origin") !== config.appOrigin) return new Response("forbidden origin", { status: 403 });
-    const upgraded = server.upgrade(request, { data: { subscriptions: new Set<string>(), terminalWorkspaceId: null } });
+    const upgraded = server.upgrade(request, { data: socketData(role) });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 
@@ -88,19 +150,47 @@ export function startServer(services: HostServices) {
     mcp.forget(conversationId);
   }
 
+  function moveWorkspace(workspaceId: string, beforeWorkspaceId: string | null) {
+    const before = store.listWorkspaces();
+    store.setWorkspaceOrder(movedBefore(before.map(({ id }) => id), workspaceId, beforeWorkspaceId));
+    const positionBefore = new Map(before.map(({ id, position }) => [id, position]));
+    store
+      .listWorkspaces()
+      .filter(({ id, position }) => positionBefore.get(id) !== position)
+      .forEach((workspace) => hub.broadcast({ type: "workspace.upserted", workspace }));
+  }
+
+  function savePromptTemplate(draft: Pick<PromptTemplate, "id" | "name" | "text">) {
+    const problem = promptTemplateProblem(draft);
+    if (problem) throw new Error(problem);
+    const { id, name, text } = draft;
+    store.savePromptTemplate({ id, name: name.trim(), text, createdAt: Date.now() });
+    hub.broadcast({ type: "prompt-template.upserted", template: store.findPromptTemplate(id)! });
+  }
+
+  function deletePromptTemplate(templateId: string) {
+    store.deletePromptTemplate(templateId);
+    hub.broadcast({ type: "prompt-template.deleted", templateId });
+  }
+
+  function colorWorkspace(workspaceId: string, color: WorkspaceColor | null) {
+    if (color !== null && !isWorkspaceColor(color)) throw new Error(`Unknown workspace colour ${color}`);
+    store.setWorkspaceColor(workspaceId, color);
+    const workspace = store.findWorkspace(workspaceId);
+    if (workspace) hub.broadcast({ type: "workspace.upserted", workspace });
+  }
+
   async function createWorkspace(path: string): Promise<Workspace> {
     const directory = await existingDirectory(path);
     const existing = store.findWorkspaceByPath(directory);
     if (existing) return existing;
-    const workspace: Workspace = {
+    return store.insertWorkspace({
       id: crypto.randomUUID(),
       name: basename(directory) || directory,
       path: directory,
       defaultLaunch: { harness: "claude", profileId: null },
       createdAt: Date.now(),
-    };
-    store.insertWorkspace(workspace);
-    return workspace;
+    });
   }
 
   async function dispatch(socket: BrowserSocket, message: ClientMessage) {
@@ -118,10 +208,18 @@ export function startServer(services: HostServices) {
         return hub.broadcast({ type: "workspace.deleted", workspaceId: message.workspaceId });
       case "workspace.set-default-launch":
         return profiles.setWorkspaceDefault(message.workspaceId, message.launch);
+      case "workspace.move":
+        return moveWorkspace(message.workspaceId, message.beforeWorkspaceId);
+      case "workspace.set-color":
+        return colorWorkspace(message.workspaceId, message.color);
       case "profile.save":
         return reply({ type: "profile.saved", requestId: message.requestId, profileId: profiles.save(message.profile).id });
       case "profile.delete":
         return profiles.delete(message.profileId);
+      case "prompt-template.save":
+        return savePromptTemplate(message.template);
+      case "prompt-template.delete":
+        return deletePromptTemplate(message.templateId);
       case "conversation.create":
         conversations.create(message.workspaceId, message.launch);
         return;
@@ -131,6 +229,12 @@ export function startServer(services: HostServices) {
           .then((sessions) => reply({ type: "sessions.listed", requestId: message.requestId, sessions }))
           .catch((error) => reply({ type: "sessions.failed", requestId: message.requestId, message: errorMessage(error) }));
         return;
+      case "mentions.suggest":
+        return reply({ type: "mentions.suggested", requestId: message.requestId, suggestions: await conversations.mentionSuggestions(message.conversationId, message.query) });
+      case "slash-commands.list":
+        return reply({ type: "slash-commands.listed", requestId: message.requestId, commands: conversations.slashCommands(message.conversationId) });
+      case "prompt-history.list":
+        return reply({ type: "prompt-history.listed", requestId: message.requestId, prompts: conversations.typedElsewhere(message.conversationId) });
       case "conversation.rename":
         return conversations.rename(message.conversationId, message.title);
       case "conversation.set-profile":
@@ -140,6 +244,8 @@ export function startServer(services: HostServices) {
         return;
       case "conversation.delete":
         return deleteConversation(message.conversationId);
+      case "conversation.move":
+        return conversations.move(message.conversationId, message.beforeConversationId);
       case "conversation.subscribe":
         socket.data.subscriptions = new Set([message.conversationId]);
         return reply({
@@ -149,7 +255,7 @@ export function startServer(services: HostServices) {
           canvas: canvas.list(message.conversationId),
         });
       case "conversation.prompt":
-        conversations.send(message.conversationId, message.text).catch((error) => reply({ type: "error", message: errorMessage(error) }));
+        conversations.send(message.conversationId, message.text, message.imageIds, { afterTurn: message.afterTurn }).catch((error) => reply({ type: "error", message: errorMessage(error) }));
         return;
       case "conversation.run-command":
         return conversations.runCommand(message.conversationId, message.command);
@@ -161,6 +267,12 @@ export function startServer(services: HostServices) {
         return conversations.editQueuedMessage(message.conversationId, message.messageId, message.text);
       case "conversation.queue.remove":
         return conversations.removeQueuedMessage(message.conversationId, message.messageId);
+      case "conversation.queue.set-after-turn":
+        return conversations.setQueuedMessageAfterTurn(message.conversationId, message.messageId, message.afterTurn);
+      case "conversation.usage-limit.continue":
+        return conversations.continueAfterUsageLimit(message.conversationId);
+      case "conversation.usage-limit.stop-waiting":
+        return conversations.stopWaitingForUsageLimit(message.conversationId);
       case "conversation.cancel":
         canvas.withdrawWaitingAsks(message.conversationId);
         return conversations.cancel(message.conversationId);
@@ -176,6 +288,20 @@ export function startServer(services: HostServices) {
         return canvas.answer(message.itemId, message.label, message.note);
       case "canvas.report":
         return canvas.reportRender(message.itemId, { errors: message.errors });
+      case "review.update-finding":
+        return canvas.updateFinding(message.itemId, message.findingId, { decision: message.decision, body: message.body });
+      case "review.update-answer":
+        return canvas.updateAnswer(message.itemId, message.answerId, { decision: message.decision, body: message.body, resolve: message.resolve });
+      case "review.post":
+        return canvas.postReview(message.itemId);
+      case "review.open-in-editor":
+        return canvas.openInEditor(message.itemId, message.path, message.line);
+      case "review.read-file":
+        canvas
+          .readReviewedFile(message.itemId, message.path)
+          .then((lines) => reply({ type: "review.file-read", requestId: message.requestId, lines }))
+          .catch((error) => reply({ type: "review.file-failed", requestId: message.requestId, message: errorMessage(error) }));
+        return;
       case "fs.complete":
         return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
       case "statusline.render":
@@ -197,12 +323,20 @@ export function startServer(services: HostServices) {
         return terminals.close(message.terminalId);
       case "terminal.close-tab":
         return terminals.closeTab(message.tabId);
+      case "presence":
+        socket.data.presence = { conversationId: message.conversationId, attentive: message.attentive };
+        if (message.attentive && message.conversationId) conversations.markSeen(message.conversationId);
+        return;
+      case "terminal.clear":
+        return terminals.clear(message.terminalId);
+      case "host.restart":
+        return restart.restart();
       default:
         return message satisfies never;
     }
   }
 
-  return Bun.serve<SocketData>({
+  const options = serveOptions({
     hostname: "127.0.0.1",
     port: config.port,
     idleTimeout: 0,
@@ -211,21 +345,30 @@ export function startServer(services: HostServices) {
       "/": index,
       "/auth": authenticate,
       "/mcp/:conversationId": (request: Bun.BunRequest<"/mcp/:conversationId">) => serveMcp(request, request.params.conversationId),
+      "/conversations/:conversationId/images": { POST: addImage },
+      "/conversations/:conversationId/images/:imageId": { GET: serveImage },
+      "/sessions/:sessionId/messages": { POST: receiveScriptMessage },
     },
     fetch(request, server) {
-      if (new URL(request.url).pathname === "/ws") return upgradeBrowser(request, server);
+      const { pathname } = new URL(request.url);
+      if (pathname === "/ws") return upgradeBrowser(request, server, "page");
+      if (pathname === "/notifications") return upgradeBrowser(request, server, "notifier");
       return new Response("not found", { status: 404 });
     },
     websocket: {
       open(socket) {
         hub.add(socket);
+        if (socket.data.role === "notifier") return;
         hub.send(socket, {
           type: "snapshot",
           workspaces: store.listWorkspaces(),
           conversations: conversations.list(),
           profiles: store.listProfiles(),
+          promptTemplates: store.listPromptTemplates(),
           canvasAssetsOrigin: config.canvasAssetsOrigin,
           homeDir: homedir(),
+          hostRunId,
+          hostCodeChanged: restart.codeChanged,
         });
       },
       close(socket, code, reason) {
@@ -233,6 +376,7 @@ export function startServer(services: HostServices) {
         if (code !== 1000 && code !== 1001) console.log(`${new Date().toISOString()} browser socket closed: ${code} ${reason}`);
       },
       async message(socket, raw) {
+        if (socket.data.role === "notifier") return;
         try {
           await dispatch(socket, JSON.parse(String(raw)) as ClientMessage);
         } catch (error) {
@@ -241,4 +385,13 @@ export function startServer(services: HostServices) {
       },
     },
   });
+  const server = Bun.serve(options);
+  /** The page bundle is built once per set of routes, so setting the same routes again rebuilds it from the current source. */
+  const rebuildUi = () => void server.reload(options);
+  return { server, rebuildUi };
+}
+
+/** Types the options where they are written, so they can be passed to both Bun.serve and server.reload. */
+function serveOptions<R extends string>(options: Bun.Serve.Options<SocketData, R>) {
+  return options;
 }

@@ -1,5 +1,6 @@
-import type { CanvasItem, Conversation, Profile, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, Conversation, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
+import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
 export interface OpenConversation {
   conversationId: string;
@@ -13,12 +14,18 @@ export type Overlay =
   | { kind: "help" }
   | { kind: "profiles" }
   | { kind: "sessions"; workspaceId: string }
-  | { kind: "add-workspace" };
+  | { kind: "workspace-color"; workspaceId: string }
+  | { kind: "add-workspace" }
+  | { kind: "settings"; section?: SettingsSection };
+
+/** A part of Settings to open at, rather than at the top. */
+export type SettingsSection = "prompt-templates";
 
 export interface AppState {
   workspaces: Workspace[];
   conversations: Conversation[];
   profiles: Profile[];
+  promptTemplates: PromptTemplate[];
   canvasAssetsOrigin: string;
   homeDir: string;
   selectedConversationId: string | null;
@@ -26,6 +33,10 @@ export interface AppState {
   awaitingConversationIn: string | null;
   overlay: Overlay | null;
   notices: { id: number; text: string }[];
+  /** The host process run this page last heard from; another one means the host restarted, maybe with new code. */
+  hostRunId: string | null;
+  hostCodeChanged: boolean;
+  hostRestarting: boolean;
 }
 
 export type AppAction =
@@ -40,12 +51,16 @@ export const initialState: AppState = {
   workspaces: [],
   conversations: [],
   profiles: [],
+  promptTemplates: [],
   canvasAssetsOrigin: "",
   homeDir: "",
   selectedConversationId: null,
   open: null,
   awaitingConversationIn: null,
   overlay: null,
+  hostRunId: null,
+  hostCodeChanged: false,
+  hostRestarting: false,
   notices: [],
 };
 
@@ -79,16 +94,19 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       const selectionStillExists = message.conversations.some(({ id }) => id === state.selectedConversationId);
       const next = {
         ...state,
-        workspaces: message.workspaces,
+        workspaces: [...message.workspaces].sort(inSidebarOrder),
         conversations: message.conversations,
         profiles: message.profiles,
+        promptTemplates: message.promptTemplates,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
         homeDir: message.homeDir,
+        hostRunId: message.hostRunId,
+        hostCodeChanged: message.hostCodeChanged,
       };
       return selectionStillExists ? next : select(next, null);
     }
     case "workspace.upserted":
-      return { ...state, workspaces: upsert(state.workspaces, message.workspace) };
+      return { ...state, workspaces: upsert(state.workspaces, message.workspace).sort(inSidebarOrder) };
     case "workspace.deleted":
       return { ...state, workspaces: state.workspaces.filter(({ id }) => id !== message.workspaceId) };
     case "conversation.upserted": {
@@ -121,19 +139,34 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, profiles: upsert(state.profiles, message.profile).sort((a, b) => a.name.localeCompare(b.name)) };
     case "profile.deleted":
       return { ...state, profiles: state.profiles.filter(({ id }) => id !== message.profileId) };
+    case "prompt-template.upserted":
+      return { ...state, promptTemplates: upsert(state.promptTemplates, message.template).sort((a, b) => a.name.localeCompare(b.name)) };
+    case "prompt-template.deleted":
+      return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":
       return { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.message }] };
     case "fs.completions":
     case "profile.saved":
     case "sessions.listed":
     case "sessions.failed":
+    case "review.file-read":
+    case "review.file-failed":
+    case "slash-commands.listed":
+    case "prompt-history.listed":
+    case "mentions.suggested":
     case "statusline.rendered":
     case "terminals.listed":
     case "terminal.opened":
     case "terminal.replayed":
     case "terminal.output":
     case "terminal.exited":
+    case "terminal.cleared":
+    case "system-notification":
       return state;
+    case "host.code-changed":
+      return { ...state, hostCodeChanged: true };
+    case "host.restarting":
+      return { ...state, hostRestarting: true };
   }
 }
 

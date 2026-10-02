@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Sends a message to the Mirador conversation of the Claude Code session this runs in, as the user's
+# next message: right away when the agent is idle, else queued behind its turn. A job the agent left
+# running in the background can end with it, so the agent picks up where the job leaves off.
+#
+# Mirador gives its agents MIRADOR_URL and MIRADOR_SCRIPT_TOKEN, and Claude Code gives every command it
+# runs CLAUDE_CODE_SESSION_ID; a script started from there inherits all three. opencode has no session
+# id to inherit, so its conversations can only be reached with --session.
+#
+# Usage:
+#   mirador-message [--session <agent session id>] "<message>"
+#   some-command | mirador-message [--session <agent session id>]
+set -euo pipefail
+
+usage() {
+  [ $# -gt 0 ] && echo "mirador-message: $1" >&2
+  echo "usage: mirador-message [--session <agent session id>] [\"<message>\"]   (no message: read it from stdin)" >&2
+  exit 2
+}
+
+session="${CLAUDE_CODE_SESSION_ID:-}"
+message=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --session) [ $# -ge 2 ] || usage "--session needs an agent session id"
+               session="$2"; shift 2 ;;
+    -h|--help) usage ;;
+    --*)       usage "unknown option: $1" ;;
+    *)         message="${message:+$message }$1"; shift ;;
+  esac
+done
+
+[ -n "${MIRADOR_URL:-}" ] && [ -n "${MIRADOR_SCRIPT_TOKEN:-}" ] \
+  || usage "MIRADOR_URL and MIRADOR_SCRIPT_TOKEN are not set; run this from an agent in Mirador, or a script it started"
+[ -n "$session" ] || usage "CLAUDE_CODE_SESSION_ID is not set; pass --session"
+if [ -z "$message" ]; then
+  [ -t 0 ] && usage "no message given"
+  message=$(cat)
+fi
+[ -n "$message" ] || usage "the message is empty"
+
+# The token goes in through a file descriptor rather than the command line, where other users' ps would see it,
+# and the message through stdin, as curl would read a message starting with @ as a file name.
+if ! response=$(printf '%s' "$message" | curl -sS --fail-with-body -X POST \
+  -H @<(printf 'Authorization: Bearer %s\n' "$MIRADOR_SCRIPT_TOKEN") \
+  -H "Content-Type: text/plain; charset=utf-8" \
+  --data-binary @- \
+  "$MIRADOR_URL/sessions/$session/messages"); then
+  echo "mirador-message: ${response:-could not reach Mirador at $MIRADOR_URL}" >&2
+  exit 1
+fi

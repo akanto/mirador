@@ -1,5 +1,6 @@
 import Electrobun, { BrowserWindow, Utils } from "electrobun/main";
 import { blockedNavigationUrl, navigationRules, openedWindowUrl } from "../core/navigation.ts";
+import { setDockIconVisible } from "./dock.ts";
 
 interface WebviewEvent {
   data?: { detail?: unknown };
@@ -14,6 +15,7 @@ export class MainWindow {
     private readonly title: string,
     private readonly appOrigin: string,
     private readonly canvasOrigin: string,
+    private readonly onPageMessage: (detail: unknown) => void,
   ) {}
 
   get isOpen() {
@@ -26,7 +28,7 @@ export class MainWindow {
   }
 
   open(url: string) {
-    Utils.setDockIconVisible(true);
+    setDockIconVisible(true);
     if (this.window) return this.bringToFront();
     // sandbox keeps Electrobun's bridge secret out of every frame, including the agents' canvas iframes.
     const window = new BrowserWindow({ title: this.title, url, frame: WINDOW_SIZE, sandbox: true });
@@ -34,11 +36,16 @@ export class MainWindow {
     window.webview.setNavigationRules(navigationRules([this.appOrigin, this.canvasOrigin]));
     window.on("close", () => {
       this.window = null;
-      Utils.setDockIconVisible(false);
+      setDockIconVisible(false);
     });
     window.webview.on("will-navigate", (event) => this.openInBrowser(blockedNavigationUrl((event as WebviewEvent).data?.detail)));
     Electrobun.events.on(`new-window-open-${window.webview.id}`, (event: unknown) => this.openInBrowser(openedWindowUrl((event as WebviewEvent).data?.detail)));
+    Electrobun.events.on(`host-message-${window.webview.id}`, (event: unknown) => this.onPageMessage((event as WebviewEvent).data?.detail));
     this.window = window;
+  }
+
+  runInPage(script: string) {
+    this.window?.webview.executeJavascript(script);
   }
 
   private openInBrowser(url: string | null) {

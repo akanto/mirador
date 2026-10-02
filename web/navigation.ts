@@ -1,4 +1,5 @@
 import type { Conversation, Workspace } from "../shared/model.ts";
+import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
 export interface NavigationState {
   workspaces: Workspace[];
@@ -6,12 +7,12 @@ export interface NavigationState {
   selectedConversationId: string | null;
 }
 
-const newestFirst = (a: Conversation, b: Conversation) => b.createdAt - a.createdAt;
-
-/** A workspace's conversations in the order the sidebar lists them. */
+/** A workspace's conversations in the order the sidebar lists them: where the user put them, a new one last, next to the button that made it. */
 export function conversationsIn(state: Pick<NavigationState, "conversations">, workspaceId: string): Conversation[] {
-  return state.conversations.filter((conversation) => conversation.workspaceId === workspaceId).sort(newestFirst);
+  return state.conversations.filter((conversation) => conversation.workspaceId === workspaceId).sort(inSidebarOrder);
 }
+
+const newest = (conversations: Conversation[]) => conversations.reduce((newest, each) => (each.createdAt > newest.createdAt ? each : newest));
 
 const sidebarOrder = (state: NavigationState) => state.workspaces.flatMap(({ id }) => conversationsIn(state, id));
 
@@ -38,7 +39,7 @@ export function adjacentWorkspaceConversation(state: NavigationState, step: 1 | 
   const current = currentWorkspace(state);
   const index = withConversations.findIndex(({ id }) => id === current?.id);
   const target = index === -1 ? withConversations[0]! : wrapped(withConversations, index + step)!;
-  return conversationsIn(state, target.id)[0]!.id;
+  return newest(conversationsIn(state, target.id)).id;
 }
 
 export function numberedConversation(state: NavigationState, number: number): string | null {

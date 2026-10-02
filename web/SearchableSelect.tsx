@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { filterChoiceGroups, type Choice, type ChoiceGroup } from "./choices.ts";
+import { useTypingAidAttributes } from "./typing-aids.ts";
 
 /** A select for long lists: opens a search box over the choices, grouped, and chosen from the keyboard or the pointer. */
 export function SearchableSelect({
@@ -17,6 +18,7 @@ export function SearchableSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const typingAidAttributes = useTypingAidAttributes();
   const [activeValue, setActiveValue] = useState(value);
   const root = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -87,6 +89,7 @@ export function SearchableSelect({
       {open && (
         <div className="picker-popover">
           <input
+            {...typingAidAttributes}
             autoFocus
             className="picker-search"
             role="combobox"

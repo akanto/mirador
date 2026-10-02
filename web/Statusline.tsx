@@ -13,6 +13,9 @@ const REQUEST_DELAY_MS = 300;
 const REFRESH_MS = 30_000;
 const PREFERENCE_KEY = "mirador-statusline";
 
+/** Shown again at once when the user comes back to a conversation, while a fresh render is made. */
+const lastRenders = new Map<string, StatuslineRender>();
+
 export function ContextMeter({ usage }: { usage: ContextUsage }) {
   const share = usedShare(usage);
   return (
@@ -65,8 +68,8 @@ function useColumns(element: RefObject<HTMLElement | null>) {
 
 /** Asks the host again whenever the conversation changes, and now and then for clocks and quotas the command may show. */
 function useStatuslineRender(conversation: Conversation, columns: number | null, runCommand: boolean) {
-  const [render, setRender] = useState<StatuslineRender | null>(null);
-  useEffect(() => setRender(null), [conversation.id]);
+  const [render, setRender] = useState(() => lastRenders.get(conversation.id) ?? null);
+  useEffect(() => setRender(lastRenders.get(conversation.id) ?? null), [conversation.id]);
   useEffect(() => {
     if (!columns) return;
     let latestRequest: string | null = null;
@@ -75,7 +78,9 @@ function useStatuslineRender(conversation: Conversation, columns: number | null,
       connection.send({ type: "statusline.render", requestId: latestRequest, conversationId: conversation.id, columns, runCommand });
     };
     const stopListening = connection.onMessage((message) => {
-      if (message.type === "statusline.rendered" && message.requestId === latestRequest) setRender(message.statusline);
+      if (message.type !== "statusline.rendered" || message.requestId !== latestRequest) return;
+      lastRenders.set(conversation.id, message.statusline);
+      setRender(message.statusline);
     });
     const delayed = setTimeout(request, REQUEST_DELAY_MS);
     const refresh = setInterval(request, REFRESH_MS);
@@ -165,7 +170,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
   return (
     <section className="statusline" aria-label="Statusline">
       <div className="statusline-content" ref={content}>
-        {commandOutput !== null && columns ? (
+        {commandOutput !== null ? (
           <TerminalText text={commandOutput} />
         ) : (
           <BuiltInStatusline conversation={conversation} profiles={profiles} gitBranch={render?.gitBranch ?? null} />

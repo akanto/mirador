@@ -43,7 +43,11 @@ export function ConfirmButton({
         if (armed) onConfirm();
       }}
       onBlur={() => setArmed(false)}
-      onKeyDown={(event) => event.key === "Escape" && setArmed(false)}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !armed) return;
+        event.preventDefault();
+        setArmed(false);
+      }}
     >
       {armed ? armedText : children}
     </button>
