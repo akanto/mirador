@@ -1,4 +1,4 @@
-import type { Conversation } from "./model.ts";
+import type { Conversation, JoinRequest } from "./model.ts";
 
 /** Why a conversation needs you: everything that makes it your move. */
 export type NotificationReason =
@@ -10,7 +10,8 @@ export type NotificationReason =
 export interface SystemNotification {
   /** Set when another machine sent it on through this host; the conversation is that machine's. */
   machineId?: string;
-  conversationId: string;
+  /** None when it is about this machine itself, e.g. a device asking to join it. */
+  conversationId?: string;
   title: string;
   workspace: string;
   body: string;
@@ -49,6 +50,13 @@ export function turnEndReason(outcome: TurnOutcome, messagesQueued: boolean): Ex
   if ("error" in outcome) return { kind: "error", message: outcome.error };
   return outcome.stopReason === "cancelled" ? null : { kind: "finished" };
 }
+
+/** On this machine's own screen, so whoever sits there can let the device in, typing the number it shows. */
+export const joinRequestNotification = ({ name, fromAddress, tailscaleUser }: JoinRequest): SystemNotification => ({
+  title: `${name} asks to join Mirador`,
+  workspace: "",
+  body: `From ${fromAddress}${tailscaleUser ? `, signed in to Tailscale as ${tailscaleUser}` : ""}. Open Mirador to approve it by typing the number it shows.`,
+});
 
 /** Where a notification has no subtitle line (browsers, Linux), the workspace leads the body. */
 export const bodyWithWorkspace = ({ workspace, body }: SystemNotification) => (workspace ? `${workspace} · ${body}` : body);

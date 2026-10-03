@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hub, socketData, type BrowserSocket, type SocketData } from "../host/hub.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
-import { bodyWithWorkspace, systemNotification, turnEndReason, type SystemNotification } from "../shared/system-notifications.ts";
+import { bodyWithWorkspace, joinRequestNotification, systemNotification, turnEndReason, type SystemNotification } from "../shared/system-notifications.ts";
 
 const conversation = { id: "c1", title: "Fix the tray menu" };
 
@@ -107,4 +107,16 @@ test("without a subtitle line the workspace leads the body", () => {
   const notification = systemNotification(conversation, "mirador", { kind: "finished" });
   expect(bodyWithWorkspace(notification)).toBe("mirador · Finished, waiting for you");
   expect(bodyWithWorkspace({ ...notification, workspace: "" })).toBe("Finished, waiting for you");
+});
+
+test("a device asking to join says where it asks from, and who it is signed in to Tailscale as when it asked through tailscale serve", () => {
+  const request = { id: "r", name: "Phone", fromAddress: "100.64.0.7", tailscaleUser: null, expiresAt: 0 };
+  expect(joinRequestNotification(request)).toEqual({
+    title: "Phone asks to join Mirador",
+    workspace: "",
+    body: "From 100.64.0.7. Open Mirador to approve it by typing the number it shows.",
+  });
+  expect(joinRequestNotification({ ...request, tailscaleUser: "me@example.com" }).body).toBe(
+    "From 100.64.0.7, signed in to Tailscale as me@example.com. Open Mirador to approve it by typing the number it shows.",
+  );
 });

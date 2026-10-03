@@ -50,10 +50,10 @@ export async function setNotificationsWanted(wanted: boolean) {
 function show(notification: SystemNotification, open: OpenConversation) {
   refresh();
   if (!notifies(setting)) return;
-  const shown = new Notification(notification.title, { body: bodyWithWorkspace(notification), tag: notification.conversationId });
+  const shown = new Notification(notification.title, { body: bodyWithWorkspace(notification), tag: notification.conversationId ?? "about-this-machine" });
   shown.onclick = () => {
     window.focus();
-    open(notification.conversationId, notification.machineId);
+    if (notification.conversationId) open(notification.conversationId, notification.machineId);
     shown.close();
   };
 }

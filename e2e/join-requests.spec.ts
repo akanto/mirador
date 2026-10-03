@@ -1,7 +1,7 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { openSettings, signIn } from "./helpers.ts";
+import { allowNotifications, notificationsShown, openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const networkOrigin = "https://127.0.0.1:5206";
@@ -29,6 +29,7 @@ const anotherNumber = (number: string) => number.replace(/\d$/, (digit) => Strin
 
 test("another Mirador asks to join over HTTPS, and gets in once someone at the machine types the number it shows", async ({ page, browser }) => {
   const serverPage = await browser.newPage();
+  await allowNotifications(serverPage);
   await signIn(serverPage, server);
   const prompt = serverPage.getByRole("alertdialog", { name: /^Mirador on .+ asks to join$/ });
 
@@ -42,10 +43,18 @@ test("another Mirador asks to join over HTTPS, and gets in once someone at the m
   const join = page.getByRole("region", { name: "Join Server" });
   const askToJoin = join.getByRole("button", { name: "Ask to join" });
 
-  await test.step("the machine can deny the request", async () => {
+  await test.step("the machine's own screen gets a notification, and can deny the request", async () => {
     await askToJoin.click();
     await numberShownIn(join);
     await expect(prompt).toContainText("From 127.0.0.1");
+    expect(await notificationsShown(serverPage)).toEqual([
+      {
+        title: expect.stringMatching(/^Mirador on .+ asks to join Mirador$/),
+        body: "From 127.0.0.1. Open Mirador to approve it by typing the number it shows.",
+        tag: "about-this-machine",
+        closed: false,
+      },
+    ]);
     await prompt.getByRole("button", { name: "Deny" }).click();
     await expect(prompt).toHaveCount(0);
     await expect(join.locator(".join-problem")).toHaveText("Server denied the request. If the number was typed there wrongly, ask again.");

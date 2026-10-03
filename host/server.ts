@@ -12,6 +12,7 @@ import {
   type WorkspaceColor,
 } from "../shared/model.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
+import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
@@ -177,8 +178,9 @@ export function startServer(services: HostServices) {
 
   const revealJoinRequestNonce = (request: Bun.BunRequest<"/join-requests/:id/reveal">) =>
     answerAboutJoining(request, async ({ secret, nonce }) => {
-      await joinRequests.reveal(request.params.id, secret, nonce);
+      const waiting = await joinRequests.reveal(request.params.id, secret, nonce);
       sendJoinRequestsToEveryPage();
+      hub.notifyThisComputer(joinRequestNotification(waiting));
       return new Response(null, { status: 204 });
     });
 

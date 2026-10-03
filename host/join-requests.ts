@@ -71,12 +71,13 @@ export class JoinRequestService {
   }
 
   /** The device asking shows its nonce only once it knows the machine's; from then on the request waits for approval. */
-  async reveal(id: string, secret: unknown, nonce: unknown) {
+  async reveal(id: string, secret: unknown, nonce: unknown): Promise<JoinRequest> {
     const request = this.askedBy(id, secret);
     if (request.requesterNonce !== null || typeof nonce !== "string" || (await commitmentTo(nonce)) !== request.commitment) {
       throw new JoinRequestRefused(400, "That is not the nonce the request committed to.");
     }
     this.store.setJoinRequestNonce(id, nonce);
+    return shownToApprovers(request);
   }
 
   /** The machine's answer so far; an approved device gets its token here, once. */
