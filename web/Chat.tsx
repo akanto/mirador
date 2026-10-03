@@ -455,6 +455,9 @@ function SubagentCard({ block, conversationId }: { block: SubagentBlock; convers
   );
 }
 
+/** Where a subagent's work has got to: its latest entry, or its card while it has done nothing yet. */
+const latestWorkIn = (card: HTMLDetailsElement) => card.querySelector(":scope > .subagent-work > :last-child") ?? card;
+
 const subagentTask = (block: SubagentBlock) => {
   const { description } = subagentInput(block);
   return typeof description === "string" ? description : readableToolTitle(block.title);
@@ -1216,7 +1219,7 @@ export function ChatPanel({
     const card = ref.current?.querySelector<HTMLDetailsElement>(`[data-tool-call-id="${CSS.escape(subagentToShow)}"]`);
     if (card) {
       card.open = true;
-      card.scrollIntoView({ block: "center", behavior: "smooth" });
+      latestWorkIn(card).scrollIntoView({ block: "end", behavior: "smooth" });
     }
     setSubagentToShow(null);
   }, [subagentToShow]);

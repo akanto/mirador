@@ -38,6 +38,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
   const [explore, watch] = [cards.nth(0), cards.nth(1)];
   const chip = page.locator(".chat-header .subagents-running");
   const dock = page.getByRole("status", { name: "Subagents at work" });
+  const watchLatest = watch.locator(".subagent-work > *").last();
 
   await test.step("each subagent is one card with what it is, and what it did is inside it", async () => {
     await expect(cards).toHaveCount(2);
@@ -65,11 +66,12 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(watch.locator(".subagent-now")).toHaveText("now: bun run build");
     await page.locator(".timeline").evaluate((timeline) => timeline.scrollTo(0, 0));
     await chip.click();
-    await expect(watch).toBeInViewport();
+    await expect(watchLatest).toContainText("bun run build");
+    await expect(watchLatest, "the subagent's latest work, at the end of its long card").toBeInViewport();
     await expect(watch).toHaveAttribute("open");
   });
 
-  await test.step("above the message box, the subagents at work stay in sight wherever the conversation is scrolled", async () => {
+  await test.step("above the message box, the subagents at work stay in sight wherever the conversation is scrolled, and open at their latest work", async () => {
     await expect(dock.getByRole("button")).toHaveCount(1);
     await expect(dock.locator(".subagent-task")).toHaveText("Watch the build");
     await expect(dock.locator(".subagent-now")).toHaveText("now: bun run build");
@@ -77,7 +79,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(watch).not.toHaveAttribute("open");
     await page.locator(".timeline").evaluate((timeline) => timeline.scrollTo(0, 0));
     await dock.getByRole("button").click();
-    await expect(watch).toBeInViewport();
+    await expect(watchLatest).toBeInViewport();
     await expect(watch).toHaveAttribute("open");
   });
 
