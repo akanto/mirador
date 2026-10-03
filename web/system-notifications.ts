@@ -47,16 +47,19 @@ export async function setNotificationsWanted(wanted: boolean) {
   refresh();
 }
 
-function show(notification: SystemNotification, open: (conversationId: string) => void) {
+function show(notification: SystemNotification, open: OpenConversation) {
   refresh();
   if (!notifies(setting)) return;
   const shown = new Notification(notification.title, { body: bodyWithWorkspace(notification), tag: notification.conversationId });
   shown.onclick = () => {
     window.focus();
-    open(notification.conversationId);
+    open(notification.conversationId, notification.machineId);
     shown.close();
   };
 }
+
+/** A conversation of this machine, or of another one when the notification came from there. */
+type OpenConversation = (conversationId: string, machineId?: string) => void;
 
 const isLookedAt = () => document.visibilityState === "visible" && document.hasFocus();
 
@@ -65,7 +68,7 @@ const isLookedAt = () => document.visibilityState === "visible" && document.hasF
  * notifications the host sends about the others. Focus moving into the canvas frame blurs the window for a moment, so
  * the report waits for focus to settle.
  */
-export function useSystemNotifications(selectedConversationId: string | null, connected: boolean, open: (conversationId: string) => void) {
+export function useSystemNotifications(selectedConversationId: string | null, connected: boolean, open: OpenConversation) {
   useEffect(() => {
     if (!connected) return;
     const report = () => connection.send({ type: "presence", conversationId: selectedConversationId, attentive: isLookedAt() });

@@ -8,6 +8,7 @@ import type {
   Device,
   ExternalSession,
   Machine,
+  MachineStatus,
   Launch,
   Profile,
   PromptTemplate,
@@ -119,6 +120,7 @@ export type ServerMessage =
       canvasUse: CanvasUse;
       canvasAssetsOrigin: string;
       machines: Machine[];
+      machineStatuses: MachineStatus[];
       homeDir: string;
       /** Fresh for each start of the host process. */
       hostRunId: string;
@@ -162,5 +164,6 @@ export type ServerMessage =
   | { type: "devices.listed"; devices: Device[]; thisDeviceId: string | null; publicOrigin: string | null }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   | { type: "machines.changed"; machines: Machine[] }
+  | { type: "machine.status"; status: MachineStatus }
   /** The conversation with the newest hit first. */
   | { type: "search.results"; requestId: string; conversations: ConversationMatches[] };

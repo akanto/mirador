@@ -6,6 +6,7 @@ import { loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
 import { DeviceService } from "./devices.ts";
 import { MachineRelays } from "./machine-relays.ts";
+import { MachineWatch } from "./machine-watch.ts";
 import { ConversationSearch } from "./search.ts";
 import { signedInWith } from "./sign-in.ts";
 import { Hub } from "./hub.ts";
@@ -37,11 +38,18 @@ const restart = new HostRestart(hub, conversations, config.dataDir, stopServices
 const devices = new DeviceService(store);
 const search = new ConversationSearch(store);
 const signedIn = signedInWith(config.browserToken, devices);
-const relays = new MachineRelays(store, config.firstRelayPort, (request) => signedIn(request) !== null, () =>
-  hub.broadcast({ type: "machines.changed", machines: store.listMachines() }),
+const watch = new MachineWatch(
+  store,
+  (status) => hub.broadcast({ type: "machine.status", status }),
+  (notification) => hub.notify(notification),
 );
+const relays = new MachineRelays(store, config.firstRelayPort, (request) => signedIn(request) !== null, (machineId) => {
+  hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+  watch.start(machineId);
+});
 relays.startAll();
-const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays });
+watch.startAll();
+const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch });
 const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
@@ -62,6 +70,7 @@ async function stopServices() {
   server.stop(true);
   assetsServer.stop(true);
   relays.stopAll();
+  watch.stopAll();
   store.close();
   await agentsExited;
 }

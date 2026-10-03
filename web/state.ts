@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, Conversation, Machine, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, Conversation, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
@@ -31,6 +31,7 @@ export interface AppState {
   canvasUse: CanvasUse;
   canvasAssetsOrigin: string;
   machines: Machine[];
+  machineStatuses: MachineStatus[];
   homeDir: string;
   selectedConversationId: string | null;
   /** The conversations opened last, the selected one first: they stay subscribed and drawn, so switching back is instant. */
@@ -60,6 +61,7 @@ export const initialState: AppState = {
   canvasUse: "often",
   canvasAssetsOrigin: "",
   machines: [],
+  machineStatuses: [],
   homeDir: "",
   selectedConversationId: null,
   kept: [],
@@ -113,6 +115,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         canvasUse: message.canvasUse,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
         machines: message.machines,
+        machineStatuses: message.machineStatuses,
         homeDir: message.homeDir,
         hostRunId: message.hostRunId,
         hostCodeChanged: message.hostCodeChanged,
@@ -189,6 +192,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return state;
     case "machines.changed":
       return { ...state, machines: message.machines };
+    case "machine.status":
+      return { ...state, machineStatuses: [...state.machineStatuses.filter(({ machineId }) => machineId !== message.status.machineId), message.status] };
     case "host.code-changed":
       return { ...state, hostCodeChanged: true };
     case "host.restarting":

@@ -189,6 +189,7 @@ export function App() {
   }, []);
   const showMachine = (machine: Machine) => (showsMachinesHere() ? machines.show(machine.id) : openMachine(machine.origin));
   const railShown = showsMachinesHere() && state.machines.length > 0;
+  const shownMachine = railShown ? machines.shown : null;
   const status = useConnectionStatus();
   useReloadWhenHostRestarted(state.hostRunId);
   const conversationLayouts = useConversationLayouts();
@@ -272,8 +273,25 @@ export function App() {
 
   useKeptConversationsSubscribed(status, state.kept);
 
-  const openConversation = useCallback((conversationId: string) => dispatch({ type: "select", conversationId }), []);
-  useSystemNotifications(machines.shown ? null : state.selectedConversationId, status === "open", openConversation);
+  const openConversation = useCallback(
+    (conversationId: string, machineId?: string) => {
+      const machine = state.machines.find(({ id }) => id === machineId);
+      if (!machine) return dispatch({ type: "select", conversationId });
+      if (showsMachinesHere()) return machines.openIn(machine.id, conversationId);
+      openMachine(machine.origin, conversationId);
+    },
+    [state.machines],
+  );
+  useSystemNotifications(shownMachine ? null : state.selectedConversationId, status === "open", openConversation);
+
+  useEffect(() => {
+    const selectFromHash = () => {
+      const conversationId = conversationFromHash();
+      if (conversationId) dispatch({ type: "select", conversationId });
+    };
+    window.addEventListener("hashchange", selectFromHash);
+    return () => window.removeEventListener("hashchange", selectFromHash);
+  }, []);
 
   useEffect(() => {
     const hash = machines.shownId ? `#/m/${machines.shownId}` : state.selectedConversationId ? `#/c/${state.selectedConversationId}` : "";
@@ -326,12 +344,13 @@ export function App() {
       {railShown && (
         <MachineRail
           machines={state.machines}
-          shownId={machines.shown?.id ?? null}
+          statuses={state.machineStatuses}
+          shownId={shownMachine?.id ?? null}
           onShow={machines.show}
           onManage={() => dispatch({ type: "open-overlay", overlay: { kind: "machines" } })}
         />
       )}
-      <div ref={layoutElement} className={`layout ${machines.shown ? "covered" : ""}`} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+      <div ref={layoutElement} className={`layout ${shownMachine ? "covered" : ""}`} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
         <Sidebar state={state} dispatch={dispatch} />
         <Splitter
           label="Resize the sidebar"
@@ -352,7 +371,7 @@ export function App() {
           }}
         />
       </div>
-      {railShown && <MachineFrames machines={state.machines} shownId={machines.shown?.id ?? null} visited={machines.visited} />}
+      {railShown && <MachineFrames machines={state.machines} shownId={shownMachine?.id ?? null} visited={machines.visited} opening={machines.opening} />}
       <HintLayer />
       <div className="notices">
         {state.notices.map((notice) => (

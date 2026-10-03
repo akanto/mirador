@@ -147,3 +147,47 @@ export const currentMatch = (page: Page) =>
     const match = range.getBoundingClientRect();
     return { text: range.toString(), entry: entry.textContent, inView: match.height > 0 && match.top >= view.top && match.bottom <= view.bottom };
   });
+
+interface RecordedNotification {
+  title: string;
+  body?: string;
+  tag?: string;
+  closed: boolean;
+  onclick: (() => void) | null;
+}
+
+type WithRecordedNotifications = { recordedNotifications: RecordedNotification[] };
+
+/** Stands in for the browser's notifications, already allowed, keeping each one shown. */
+export async function allowNotifications(page: Page) {
+  await page.addInitScript(() => {
+    const recorded: unknown[] = [];
+    class RecordingNotification {
+      static permission = "granted";
+      static requestPermission = async () => "granted";
+      onclick = null;
+      closed = false;
+      body?: string;
+      tag?: string;
+
+      constructor(
+        readonly title: string,
+        options: NotificationOptions = {},
+      ) {
+        this.body = options.body;
+        this.tag = options.tag;
+        recorded.push(this);
+      }
+
+      close() {
+        this.closed = true;
+      }
+    }
+    Object.assign(window, { Notification: RecordingNotification, recordedNotifications: recorded });
+  });
+}
+
+export const notificationsShown = (page: Page) =>
+  page.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.map(({ title, body, tag, closed }) => ({ title, body, tag, closed })));
+
+export const clickLatestNotification = (page: Page) => page.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.at(-1)!.onclick!());

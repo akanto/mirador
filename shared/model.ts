@@ -36,6 +36,13 @@ export interface Machine {
   joined: boolean;
 }
 
+/** What this host last heard from a joined machine: whether it answers, and what each conversation waiting for you there waits for. */
+export interface MachineStatus {
+  machineId: string;
+  reachable: boolean;
+  waiting: WaitingFor[];
+}
+
 /** Another browser or app that joined this machine with an invite; it signs in with a token of its own, which revoking it ends. */
 export interface Device {
   id: string;

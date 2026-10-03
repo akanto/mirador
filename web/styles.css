@@ -4752,6 +4752,30 @@ body.reordering * {
   background: var(--rail-hover);
 }
 
+.rail-machine {
+  position: relative;
+}
+
+.rail-machine.away {
+  border-style: dashed;
+  color: var(--faint);
+}
+
+.rail-waiting {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 16px;
+  padding: 0 4px;
+  border: 2px solid var(--rail);
+  border-radius: 9px;
+  background: var(--tone);
+  color: var(--bg);
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+}
+
 .rail-machine.shown {
   border-color: var(--accent);
   background: var(--accent-soft);

@@ -15,6 +15,7 @@ import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
 import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
 import type { MachineRelays } from "./machine-relays.ts";
+import type { MachineWatch } from "./machine-watch.ts";
 import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
@@ -39,6 +40,7 @@ export interface HostServices {
   devices: DeviceService;
   search: ConversationSearch;
   relays: MachineRelays;
+  watch: MachineWatch;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -49,7 +51,7 @@ const tokenCookie = (token: string, secure: boolean) =>
 
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch } = services;
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`, ...publicHost]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
@@ -122,6 +124,7 @@ export function startServer(services: HostServices) {
 
   function removeMachine(machineId: string) {
     relays.stop(machineId);
+    watch.stop(machineId);
     store.deleteMachine(machineId);
     broadcastMachines();
   }
@@ -458,6 +461,7 @@ export function startServer(services: HostServices) {
           canvasUse: store.canvasUse(),
           canvasAssetsOrigin: config.canvasAssetsOrigin,
           machines: store.listMachines(),
+          machineStatuses: watch.statuses(),
           homeDir: homedir(),
           hostRunId,
           hostCodeChanged: restart.codeChanged,

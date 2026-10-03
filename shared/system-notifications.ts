@@ -8,6 +8,8 @@ export type NotificationReason =
   | { kind: "error"; message: string };
 
 export interface SystemNotification {
+  /** Set when another machine sent it on through this host; the conversation is that machine's. */
+  machineId?: string;
   conversationId: string;
   title: string;
   workspace: string;

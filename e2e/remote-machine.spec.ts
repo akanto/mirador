@@ -2,7 +2,17 @@ import { connect, createServer, type Server } from "node:net";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { addWorkspace, addWorkspaceFromSidebar, openSettings, signIn, workspaceCard } from "./helpers.ts";
+import {
+  addWorkspace,
+  addWorkspaceFromSidebar,
+  allowNotifications,
+  callCanvasTool,
+  clickLatestNotification,
+  notificationsShown,
+  openSettings,
+  signIn,
+  workspaceCard,
+} from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const PUBLIC_PORT = 5163;
@@ -48,6 +58,13 @@ async function inviteLinkFrom(page: Page) {
   return { settings, link: (await settings.locator(".invite-link").textContent())! };
 }
 
+/** The conversation the machine's own page in the frame shows, from that page's address. */
+const conversationInFrame = (page: Page) =>
+  page
+    .frames()
+    .map((frame) => frame.url().match(/#\/c\/(.+)$/)?.[1])
+    .find(Boolean);
+
 test("another device joins the machine at its public address with an invite, and revoking it signs it out", async ({ page, browser }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
@@ -89,12 +106,15 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
   await addWorkspaceFromSidebar(server, serverOnly);
   const { settings, link } = await inviteLinkFrom(server);
 
+  await allowNotifications(page);
   await signIn(page, laptop);
   const rail = page.getByRole("navigation", { name: "Machines" });
+  const serverButton = rail.getByRole("button", { name: "Home server" });
   await expect(rail).toHaveCount(0);
   await page.getByRole("button", { name: "Machines…" }).click();
   const machines = page.getByRole("dialog", { name: "Machines" });
   const frame = page.frameLocator('iframe[title="Home server"]');
+  let serverConversation = "";
 
   await test.step("the invite link joins this computer's host to the server, as one of its devices", async () => {
     await machines.getByLabel("Name").fill("Home server");
@@ -112,12 +132,14 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
   await test.step("opening it shows the server's own Mirador next to the rail, which works there as at the server", async () => {
     await machines.getByRole("button", { name: "Open", exact: true }).click();
     await expect(machines).toHaveCount(0);
-    await expect(rail.getByRole("button", { name: "Home server" })).toHaveAttribute("aria-current", "true");
+    await expect(serverButton).toHaveAttribute("aria-current", "true");
     await expect(page).toHaveURL(/#\/m\/[\w-]+$/);
     const card = workspaceCard(frame, serverOnly);
     await card.getByRole("button", { name: "+ New conversation" }).click();
     await expect(frame.locator(".chat-header:visible").getByLabel("Model", { exact: true })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("No conversation selected")).toBeHidden();
+    await expect.poll(() => conversationInFrame(page)).toBeTruthy();
+    serverConversation = conversationInFrame(page)!;
   });
 
   await test.step("the page shows the server again after a reload, and this computer's own view at a click", async () => {
@@ -129,6 +151,17 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     await expect(page).not.toHaveURL(/#\/m\//);
   });
 
+  await test.step("a question at the server shows on its rail button, and its notification here opens the conversation in the frame", async () => {
+    void callCanvasTool(host, serverConversation, "ask", { question: "Ship it?", options: [{ label: "Yes" }, { label: "No" }] }).catch(() => {});
+    await expect(serverButton.locator(".rail-waiting")).toHaveText("1");
+    await expect
+      .poll(() => notificationsShown(page))
+      .toEqual([{ title: "New conversation", body: "Home server · server-only · Asks: Ship it?", tag: serverConversation, closed: false }]);
+    await clickLatestNotification(page);
+    await expect(serverButton).toHaveAttribute("aria-current", "true");
+    await expect(frame.locator(".ask")).toContainText("Ship it?");
+  });
+
   await test.step("the relay serves only this computer's signed-in pages, and only the machine's own page in the frame", async () => {
     const relay = new URL((await page.locator('iframe[title="Home server"]').getAttribute("src"))!).origin;
     expect((await fetch(`${relay}/ws`)).status).toBe(401);
@@ -138,7 +171,8 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
   await test.step("revoked on the server, it asks for a new code in the frame, which joins this computer's host again", async () => {
     await settings.locator(".device-list li", { hasText: "Mirador on " }).getByRole("button", { name: /^Revoke / }).click();
     await settings.getByRole("button", { name: /^Confirm: Revoke / }).click();
-    await rail.getByRole("button", { name: "Home server" }).click();
+    await expect(serverButton).toHaveClass(/\baway\b/);
+    await serverButton.click();
     await expect(frame.getByRole("heading", { name: "Join this machine" })).toBeVisible();
     await settings.getByRole("button", { name: "Invite a device" }).click();
     await expect(settings.locator(".invite-link")).not.toHaveText(link);
@@ -146,6 +180,7 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     await frame.getByLabel("Invite code").fill(newLink.split("/join/")[1]!);
     await frame.getByRole("button", { name: "Join", exact: true }).click();
     await expect(workspaceCard(frame, serverOnly)).toBeVisible();
+    await expect(serverButton).not.toHaveClass(/\baway\b/);
   });
 });
 

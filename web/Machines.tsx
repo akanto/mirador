@@ -6,8 +6,8 @@ import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 
 /** Where this host cannot show the machine (a page opened from another device), a tab of its own, used again next time. */
-export function openMachine(origin: string) {
-  window.open(`${origin}/`, `mirador-machine-${origin}`);
+export function openMachine(origin: string, conversationId: string | null = null) {
+  window.open(`${origin}/${conversationId ? `#/c/${conversationId}` : ""}`, `mirador-machine-${origin}`);
 }
 
 function AddMachine({ machines }: { machines: Machine[] }) {

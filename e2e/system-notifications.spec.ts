@@ -1,8 +1,18 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { SystemNotification } from "../shared/system-notifications.ts";
-import { addWorkspace, answerCanvasQuestion, callCanvasTool, sendMessage, signIn, startConversation } from "./helpers.ts";
+import {
+  addWorkspace,
+  allowNotifications,
+  answerCanvasQuestion,
+  callCanvasTool,
+  clickLatestNotification,
+  notificationsShown,
+  sendMessage,
+  signIn,
+  startConversation,
+} from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4830);
@@ -12,50 +22,6 @@ test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
 });
-
-interface RecordedNotification {
-  title: string;
-  body?: string;
-  tag?: string;
-  closed: boolean;
-  onclick: (() => void) | null;
-}
-
-type WithRecordedNotifications = { recordedNotifications: RecordedNotification[] };
-
-/** Stands in for the browser's notifications, already allowed, keeping each one shown. */
-async function allowNotifications(page: Page) {
-  await page.addInitScript(() => {
-    const recorded: unknown[] = [];
-    class RecordingNotification {
-      static permission = "granted";
-      static requestPermission = async () => "granted";
-      onclick = null;
-      closed = false;
-      body?: string;
-      tag?: string;
-
-      constructor(
-        readonly title: string,
-        options: NotificationOptions = {},
-      ) {
-        this.body = options.body;
-        this.tag = options.tag;
-        recorded.push(this);
-      }
-
-      close() {
-        this.closed = true;
-      }
-    }
-    Object.assign(window, { Notification: RecordingNotification, recordedNotifications: recorded });
-  });
-}
-
-const notificationsShown = (page: Page) =>
-  page.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.map(({ title, body, tag, closed }) => ({ title, body, tag, closed })));
-
-const clickLatestNotification = (page: Page) => page.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.at(-1)!.onclick!());
 
 /** The agent waits on its question until it is answered, so the call is left running. */
 const askInBackground = (conversationId: string, question: string) =>

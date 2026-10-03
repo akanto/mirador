@@ -70,7 +70,7 @@ export class MachineRelays {
     private readonly store: Store,
     private readonly firstPort: number,
     private readonly isSignedIn: (request: Request) => boolean,
-    private readonly machinesChanged: () => void,
+    private readonly joined: (machineId: string) => void,
   ) {}
 
   startAll() {
@@ -108,7 +108,7 @@ export class MachineRelays {
     const { token } = (await response.json()) as { token?: unknown };
     if (typeof token !== "string") throw new Error(`${machine.name} let this computer in without a token.`);
     this.store.setMachineDeviceToken(machineId, token);
-    this.machinesChanged();
+    this.joined(machineId);
   }
 
   private listenOnFreePort(machineId: string) {
