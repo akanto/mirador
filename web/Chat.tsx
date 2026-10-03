@@ -412,7 +412,7 @@ const callsLabel = (count: number) => (count === 1 ? "1 call" : `${count} calls`
 function SubagentCard({ block, conversationId }: { block: SubagentBlock; conversationId: string }) {
   const state = useContext(SubagentStates).get(block.toolCallId) ?? "done";
   const now = useClock(state === "running");
-  const { description, subagent_type, model } = subagentInput(block);
+  const { subagent_type, model } = subagentInput(block);
   const calls = block.subagent.blocks.filter((child) => child.kind === "tool");
   const latestCall = calls.at(-1);
   const facts = [
@@ -428,7 +428,8 @@ function SubagentCard({ block, conversationId }: { block: SubagentBlock; convers
         <span className="tool-status" aria-label={state}>
           {subagentIcons[state]}
         </span>
-        <span className="subagent-task">{typeof description === "string" ? description : readableToolTitle(block.title)}</span>
+        <span className="subagent-label">Subagent</span>
+        <span className="subagent-task">{subagentTask(block)}</span>
         <span className="subagent-facts">{facts.join(" · ")}</span>
         {state === "running" && latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
       </summary>
@@ -443,6 +444,32 @@ function SubagentCard({ block, conversationId }: { block: SubagentBlock; convers
       <RawJson label="input" value={block.rawInput} />
       <RawJson label="output" value={block.rawOutput} />
     </details>
+  );
+}
+
+const subagentTask = (block: SubagentBlock) => {
+  const { description } = subagentInput(block);
+  return typeof description === "string" ? description : readableToolTitle(block.title);
+};
+
+/** Pinned under the conversation while subagents work, however far the timeline has moved on since they started. */
+function RunningSubagents({ subagents, onShow }: { subagents: SubagentBlock[]; onShow: (block: SubagentBlock) => void }) {
+  const now = useClock(true);
+  return (
+    <div className="running-subagents" role="status" aria-label="Subagents at work">
+      {subagents.map((block) => {
+        const { subagent_type } = subagentInput(block);
+        const latestCall = block.subagent.blocks.filter((child) => child.kind === "tool").at(-1);
+        return (
+          <button key={block.toolCallId} type="button" className="running-subagent" data-hint={hints.runningSubagent} onClick={() => onShow(block)}>
+            <span className="subagent-pulse" />
+            <span className="subagent-task">{subagentTask(block)}</span>
+            <span className="subagent-facts">{[typeof subagent_type === "string" && subagent_type, formatDuration(now - block.at)].filter(Boolean).join(" · ")}</span>
+            {latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1178,7 +1205,11 @@ export function ChatPanel({
   const [subagentToShow, setSubagentToShow] = useState<string | null>(null);
   useEffect(() => {
     if (!subagentToShow) return;
-    ref.current?.querySelector(`[data-tool-call-id="${CSS.escape(subagentToShow)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const card = ref.current?.querySelector<HTMLDetailsElement>(`[data-tool-call-id="${CSS.escape(subagentToShow)}"]`);
+    if (card) {
+      card.open = true;
+      card.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
     setSubagentToShow(null);
   }, [subagentToShow]);
   const onTimelineScroll = () => {
@@ -1189,11 +1220,12 @@ export function ChatPanel({
   const subagents = useMemo(() => subagentsIn(timeline), [timeline]);
   const subagentStates = useMemo(() => new Map(subagents.map((block) => [block.toolCallId, subagentState(block, busy)])), [subagents, busy]);
   const runningSubagents = subagents.filter((block) => subagentStates.get(block.toolCallId) === "running");
+  const showSubagent = (subagent: SubagentBlock) => {
+    loadFrom(timeline.findIndex((block) => subagentsIn([block]).includes(subagent)));
+    setSubagentToShow(subagent.toolCallId);
+  };
   const showRunningSubagent = () => {
-    const first = runningSubagents[0];
-    if (!first) return;
-    loadFrom(timeline.findIndex((block) => subagentsIn([block]).includes(first)));
-    setSubagentToShow(first.toolCallId);
+    if (runningSubagents[0]) showSubagent(runningSubagents[0]);
   };
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
@@ -1227,6 +1259,7 @@ export function ChatPanel({
           ))}
           {conversation.status === "running" && <div className="working">Working…</div>}
         </div>
+        {runningSubagents.length > 0 && <RunningSubagents subagents={runningSubagents} onShow={showSubagent} />}
         {conversation.openInTerminal && (
           <div className="terminal-warning" role="status">
             This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens

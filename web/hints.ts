@@ -48,7 +48,8 @@ export const hints = {
   terminalCloseSplit: "End this shell and close its split.",
   terminalCloseSplitArmed: "Click again to end this shell and whatever it is running.",
   subagentsRunning:
-    "Subagents the agent started that are still at work; click to scroll to the first one. One started in the background counts until the turn that started it ends, since nothing tells when it finished before that.",
+    "Subagents the agent started that are still at work, also listed above the message box; click to open the first one. One started in the background counts until the turn that started it ends, since nothing tells when it finished before that.",
+  runningSubagent: "A subagent at work. Click to open its card in the conversation and see what it has done so far.",
   inTerminal:
     "This Claude Code session is also running in a terminal. The host sees that in Claude Code's session registry (<config dir>/sessions/<pid>.json) and shows what the terminal is doing.",
   launch:

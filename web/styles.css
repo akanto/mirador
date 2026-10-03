@@ -1591,6 +1591,70 @@ input.picker-search {
 
 .subagent-running .tool-status {
   color: var(--accent);
+  animation: pulse 1.4s infinite;
+}
+
+.tool.subagent-running {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-left: 3px solid var(--accent);
+}
+
+.subagent-label {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.running-subagents {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 9.5em;
+  overflow-y: auto;
+  margin: 0 16px 8px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+
+button.running-subagent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.running-subagent:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.running-subagent .subagent-now {
+  padding-left: 16px;
+}
+
+.subagent-pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.4s infinite;
 }
 
 .subagent-done .tool-status {
