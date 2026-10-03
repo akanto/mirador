@@ -70,6 +70,8 @@ describe("buildTimeline", () => {
 const launch = (toolCallId: string, input: Record<string, unknown>) =>
   acp({ sessionUpdate: "tool_call", toolCallId, title: "Task", kind: "think", status: "pending", rawInput: input, _meta: { claudeCode: { toolName: "Agent" } } });
 const finish = (toolCallId: string, status: "completed" | "failed" = "completed") => acp({ sessionUpdate: "tool_call_update", toolCallId, status });
+const answeredAtOnce = (toolCallId: string) =>
+  acp({ sessionUpdate: "tool_call_update", toolCallId, _meta: { claudeCode: { toolName: "Agent", toolResponse: { isAsync: true, status: "async_launched" } } } });
 const byParent = (parent: string) => ({ claudeCode: { parentToolUseId: parent } });
 const read = (toolCallId: string, parent: string) =>
   acp({ sessionUpdate: "tool_call", toolCallId, title: `Read ${toolCallId}.ts`, status: "pending", _meta: { claudeCode: { parentToolUseId: parent, toolName: "Read" } } });
@@ -98,11 +100,11 @@ describe("subagents", () => {
 
   test("one runs until its call completes, and one in the background until the turn that started it ends", () => {
     const states = (events: ConversationEvent[], busy = true) => subagentsIn(buildTimeline(stored(events))).map((block) => subagentState(block, busy));
-    const background = launch("b1", { description: "Watch the build", run_in_background: true });
-    expect(states([launch("s1", {}), background, finish("b1")])).toEqual(["running", "running"]);
-    expect(states([launch("s1", {}), finish("s1"), background, finish("b1"), read("r1", "b1")])).toEqual(["done", "running"]);
-    expect(states([background, finish("b1"), { type: "turn-end", stopReason: "end_turn" }])).toEqual(["done"]);
-    expect(states([launch("s1", {}), background, { type: "turn-end", stopReason: "cancelled" }])).toEqual(["stopped", "stopped"]);
+    const background = [launch("b1", { description: "Watch the build" }), answeredAtOnce("b1"), finish("b1")];
+    expect(states([launch("s1", {}), ...background])).toEqual(["running", "running"]);
+    expect(states([launch("s1", {}), finish("s1"), ...background, read("r1", "b1")])).toEqual(["done", "running"]);
+    expect(states([...background, { type: "turn-end", stopReason: "end_turn" }])).toEqual(["done"]);
+    expect(states([launch("s1", {}), launch("b1", {}), { type: "turn-end", stopReason: "cancelled" }])).toEqual(["stopped", "stopped"]);
     expect(states([launch("s1", {}), finish("s1", "failed")])).toEqual(["failed"]);
     expect(states([launch("s1", {})], false)).toEqual(["stopped"]);
     expect(states([{ type: "turn-end", stopReason: "end_turn" }, launch("s2", {})])).toEqual(["running"]);
@@ -110,10 +112,10 @@ describe("subagents", () => {
 
   test("ends when its call completes, or at its last activity when it ran in the background", () => {
     const [sync, background] = subagentsIn(
-      buildTimeline(stored([launch("s1", {}), launch("b1", { run_in_background: true }), finish("b1"), read("r1", "b1"), finish("s1"), read("r2", "b1")])),
+      buildTimeline(stored([launch("s1", {}), launch("b1", {}), answeredAtOnce("b1"), finish("b1"), read("r1", "b1"), finish("s1"), read("r2", "b1")])),
     );
-    expect(subagentEndedAt(sync!)).toBe(5000);
-    expect(subagentEndedAt(background!)).toBe(6000);
+    expect(subagentEndedAt(sync!)).toBe(6000);
+    expect(subagentEndedAt(background!)).toBe(7000);
   });
 });
 

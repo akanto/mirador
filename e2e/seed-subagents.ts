@@ -49,8 +49,16 @@ const turn: [seconds: number, event: Record<string, unknown>][] = [
       title: "Task",
       kind: "think",
       status: "pending",
-      rawInput: { description: "Watch the build", prompt: "Run the build and report.", model: "sonnet", run_in_background: true },
+      rawInput: { description: "Watch the build", prompt: "Run the build and report.", model: "sonnet" },
       _meta: agentCall,
+    }),
+  ],
+  [
+    51,
+    update({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "toolu_watch",
+      _meta: { claudeCode: { toolName: "Agent", toolResponse: { isAsync: true, status: "async_launched", agentId: "a1b2c3" } } },
     }),
   ],
   [51, update({ sessionUpdate: "tool_call_update", toolCallId: "toolu_watch", status: "completed", _meta: agentCall })],

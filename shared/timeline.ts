@@ -32,6 +32,8 @@ export interface ToolBlock extends Origin {
   endedAt?: number;
   /** Set on the Agent (or Task) tool call that started a subagent. */
   subagent?: Subagent;
+  /** Claude Code answered the call at once and left its subagent working on, as it does for subagents by default. */
+  launchedInBackground?: true;
 }
 
 /** What a subagent did, kept under the tool call that started it: claude-agent-acp marks its updates with that call's id. */
@@ -49,9 +51,9 @@ export type SubagentState = "running" | "done" | "failed" | "stopped";
 const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
 
 export const subagentInput = (block: ToolBlock) =>
-  (block.rawInput ?? {}) as { description?: unknown; subagent_type?: unknown; model?: unknown; run_in_background?: unknown };
+  (block.rawInput ?? {}) as { description?: unknown; subagent_type?: unknown; model?: unknown };
 
-export const runsInBackground = (block: ToolBlock) => subagentInput(block).run_in_background === true;
+export const runsInBackground = (block: ToolBlock) => block.launchedInBackground === true;
 
 /**
  * A subagent works until its tool call completes; one started in the background, whose call completes at once, works
@@ -132,10 +134,11 @@ function isInformational(meta: { [key: string]: unknown } | null | undefined) {
 }
 
 function claudeCodeMeta(update: { _meta?: { [key: string]: unknown } | null }) {
-  const claudeCode = (update._meta?.claudeCode ?? {}) as { toolName?: unknown; parentToolUseId?: unknown };
+  const claudeCode = (update._meta?.claudeCode ?? {}) as { toolName?: unknown; parentToolUseId?: unknown; toolResponse?: { isAsync?: unknown } | null };
   return {
     toolName: typeof claudeCode.toolName === "string" ? claudeCode.toolName : undefined,
     parentToolUseId: typeof claudeCode.parentToolUseId === "string" ? claudeCode.parentToolUseId : undefined,
+    launchedInBackground: claudeCode.toolResponse?.isAsync === true,
   };
 }
 
@@ -261,7 +264,9 @@ class TimelineBuilder {
   private upsertTool(origin: Origin, update: ToolCallUpdate & { title?: string | null }, into: TimelineBlock[]) {
     const existing = this.toolBlocks.get(update.toolCallId);
     const ends = update.status === "completed" || update.status === "failed";
+    const { toolName, launchedInBackground } = claudeCodeMeta(update);
     if (existing) {
+      if (launchedInBackground) existing.launchedInBackground = true;
       if (update.title) existing.title = update.title;
       if (update.kind) existing.toolKind = update.kind;
       if (update.status) existing.status = update.status;
@@ -284,8 +289,8 @@ class TimelineBuilder {
       rawInput: update.rawInput,
       rawOutput: update.rawOutput,
       ...(ends && { endedAt: origin.at }),
+      ...(launchedInBackground && { launchedInBackground }),
     };
-    const { toolName } = claudeCodeMeta(update);
     if (toolName) block.toolName = toolName;
     if (toolName && SUBAGENT_TOOLS.has(toolName)) {
       block.subagent = { blocks: [], lastActivityAt: origin.at, turnEnded: null };
