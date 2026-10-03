@@ -1,4 +1,6 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -85,4 +87,20 @@ test("a browser on the network asks to join, and is signed in once someone at th
   await prompt.getByRole("button", { name: "Approve" }).click();
   await expect(phone.getByRole("button", { name: "Settings…" })).toBeVisible();
   await expect(prompt).toHaveCount(0);
+});
+
+test("mirador approve on the machine lets in a browser that asks, while no page of the machine is open", async ({ browser }) => {
+  const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
+  await phone.goto(networkOrigin);
+  await phone.getByLabel("Name this device").fill("Tablet");
+  await phone.getByRole("button", { name: "Ask to join" }).click();
+  const number = await numberShownIn(phone.locator(".join-machine"));
+
+  const approve = spawnSync(join(import.meta.dirname, "..", "bin", "mirador"), ["approve"], {
+    env: { ...process.env, MIRADOR_DATA_DIR: server.dataDir },
+    input: `${number}\n`,
+    encoding: "utf8",
+  });
+  expect(approve.stdout).toContain("Approved. Tablet gets in when it next checks, within seconds.");
+  await expect(phone.getByRole("button", { name: "Settings…" })).toBeVisible();
 });

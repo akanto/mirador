@@ -1,4 +1,7 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DeviceService } from "../host/devices.ts";
 import { JoinRequestService, SenderLimit } from "../host/join-requests.ts";
 import { Store } from "../host/store.ts";
@@ -39,11 +42,12 @@ test("the approver types the number the device shows, and the device gets its ke
   expect(requests.waiting()).toEqual([]);
 });
 
+const anotherNumber = (number: string) => String((Number(number) + 1) % 1_000_000).padStart(6, "0");
+
 test("a wrong number denies the request", async () => {
   const { requests } = machine();
   const asked = await askToJoin(requests);
-  const wrong = String((Number(asked.number) + 1) % 1_000_000).padStart(6, "0");
-  expect(await requests.approve(asked.id, wrong)).toBe(false);
+  expect(await requests.approve(asked.id, anotherNumber(asked.number))).toBe(false);
   expect(requests.poll(asked.id, asked.secret)).toEqual({ answer: "denied" });
   await expect(requests.approve(asked.id, asked.number)).rejects.toThrow("That request to join is no longer waiting.");
 });
@@ -97,4 +101,38 @@ test("one sender asks at most five times a minute", () => {
 test("the number has six digits, and is shown in two groups of three", async () => {
   expect(await matchingNumber(null, "a", "b")).toMatch(/^\d{6}$/);
   expect(spacedNumber("012345")).toBe("012 345");
+});
+
+const launcher = join(import.meta.dir, "..", "bin", "mirador");
+let dataDir: string;
+beforeEach(() => {
+  dataDir = mkdtempSync(join(tmpdir(), "mirador-approve-"));
+});
+afterEach(() => rmSync(dataDir, { recursive: true, force: true }));
+
+function approveTyping(...lines: string[]) {
+  const result = Bun.spawnSync([launcher, "approve"], { env: { ...process.env, MIRADOR_DATA_DIR: dataDir }, stdin: Buffer.from(lines.map((line) => `${line}\n`).join("")) });
+  return `${result.stdout}${result.stderr}`;
+}
+
+test("mirador approve asks for the number each waiting device shows, and approves, denies or leaves each as typed", async () => {
+  expect(approveTyping()).toContain("No device is asking to join this Mirador.");
+  const store = new Store(join(dataDir, "state.sqlite"));
+  const requests = new JoinRequestService(store, new DeviceService(store), null);
+  const approved = await askToJoin(requests, null);
+  const mistyped = await askToJoin(requests, null);
+  const answeredLater = await askToJoin(requests, null);
+
+  const output = approveTyping(spacedNumber(approved.number), anotherNumber(mistyped.number), "");
+  expect(output).toContain("Laptop asks to join, from 192.168.1.23 (5 minutes left).");
+  expect(output).toContain("Approved. Laptop gets in when it next checks, within seconds.");
+  expect(output).toContain("That is not the number it shows, so its request was denied.");
+  expect(output).toContain("Left waiting.");
+  expect(requests.poll(approved.id, approved.secret)).toMatchObject({ answer: "approved" });
+  expect(requests.poll(mistyped.id, mistyped.secret)).toEqual({ answer: "denied" });
+  expect(requests.poll(answeredLater.id, answeredLater.secret)).toEqual({ answer: "waiting" });
+
+  expect(approveTyping("d")).toContain("Denied.");
+  expect(requests.poll(answeredLater.id, answeredLater.secret)).toEqual({ answer: "denied" });
+  store.close();
 });

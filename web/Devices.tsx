@@ -98,7 +98,9 @@ export function JoinMachine() {
             Waiting for approval on <strong>{location.hostname}</strong>. Type this number there:
           </p>
           <p className="join-number">{spacedNumber(askedNumber)}</p>
-          <p className="hint">Its Mirador shows the request on its own screen, and on the devices that have joined it.</p>
+          <p className="hint">
+            Its Mirador shows the request on its own screen, and on the devices that have joined it; or run <code>mirador approve</code> there.
+          </p>
         </div>
       ) : (
         <>
