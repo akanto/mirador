@@ -41,7 +41,7 @@ const signedIn = signedInWith(config.browserToken, devices);
 const watch = new MachineWatch(
   store,
   (status) => hub.broadcast({ type: "machine.status", status }),
-  (notification) => hub.notify(notification),
+  (notification) => hub.notifyThisComputer(notification),
 );
 const relays = new MachineRelays(store, config.firstRelayPort, (request) => signedIn(request) !== null, (machineId) => {
   hub.broadcast({ type: "machines.changed", machines: store.listMachines() });

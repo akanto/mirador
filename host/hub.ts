@@ -58,10 +58,24 @@ export class Hub {
     return [...this.sockets].some(({ data: { presence } }) => presence.attentive && presence.conversationId === conversationId);
   }
 
-  /** Through the desktop app when it listens, so open pages don't repeat it; otherwise through every open page. */
+  /**
+   * Once on each device, this computer counting as one: through its desktop app, or the host that shows this machine
+   * there, while one listens, so its pages don't repeat it; otherwise through each of its open pages.
+   */
   notify(notification: SystemNotification) {
+    this.notifyEachDevice([...this.sockets, ...this.notifiers], notification);
+  }
+
+  /** What this host passes on from its other machines; a device that wants those joins the machine itself. */
+  notifyThisComputer(notification: SystemNotification) {
+    this.notifyEachDevice([...this.sockets, ...this.notifiers].filter(({ data }) => data.deviceId === null), notification);
+  }
+
+  private notifyEachDevice(sockets: BrowserSocket[], notification: SystemNotification) {
     const payload = JSON.stringify({ type: "system-notification", notification } satisfies ServerMessage);
-    (this.notifiers.size > 0 ? this.notifiers : this.sockets).forEach((socket) => socket.send(payload));
+    const isNotifier = ({ data }: BrowserSocket) => data.role === "notifier";
+    const listenersOn = (device: BrowserSocket[]) => (device.some(isNotifier) ? device.filter(isNotifier) : device);
+    [...Map.groupBy(sockets, ({ data }) => data.deviceId).values()].flatMap(listenersOn).forEach((socket) => socket.send(payload));
   }
 
   /** Each page gets a message of its own. */

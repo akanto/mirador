@@ -1,4 +1,4 @@
-import { expect, type FrameLocator, type Locator, type Page } from "@playwright/test";
+import { expect, type Frame, type FrameLocator, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
 /** Presses on the item and moves to just inside the top or bottom edge of the target, leaving the button down. */
@@ -187,7 +187,7 @@ export async function allowNotifications(page: Page) {
   });
 }
 
-export const notificationsShown = (page: Page) =>
-  page.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.map(({ title, body, tag, closed }) => ({ title, body, tag, closed })));
+export const notificationsShown = (scope: Page | Frame) =>
+  scope.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.map(({ title, body, tag, closed }) => ({ title, body, tag, closed })));
 
 export const clickLatestNotification = (page: Page) => page.evaluate(() => (window as unknown as WithRecordedNotifications).recordedNotifications.at(-1)!.onclick!());

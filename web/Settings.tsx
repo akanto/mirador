@@ -290,7 +290,7 @@ function NotificationSettings() {
     <>
       <h3>Notifications</h3>
       <p className="hint">
-        This browser notifies you {WHEN_NOTIFIED}; click one to open the conversation. While the desktop app runs, it notifies instead.
+        This browser notifies you {WHEN_NOTIFIED}; click one to open the conversation. While the desktop app runs on this computer, it notifies instead.
       </p>
       <div className="notification-settings">
         <label>

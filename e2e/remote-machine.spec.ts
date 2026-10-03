@@ -100,6 +100,7 @@ test("another device joins the machine at its public address with an invite, and
 
 test("the laptop joins the server with an invite link and shows its own Mirador in the rail, through a relay only its pages can use", async ({ page, browser }) => {
   const server = await browser.newPage();
+  await allowNotifications(server);
   await signIn(server, host);
   const serverOnly = join(host.root, "server-only");
   mkdirSync(serverOnly, { recursive: true });
@@ -160,6 +161,14 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     await clickLatestNotification(page);
     await expect(serverButton).toHaveAttribute("aria-current", "true");
     await expect(frame.locator(".ask")).toContainText("Ship it?");
+  });
+
+  await test.step("the server's own pages are notified too, but not its page in this computer's frame", async () => {
+    await expect
+      .poll(() => notificationsShown(server))
+      .toEqual([{ title: "New conversation", body: "server-only · Asks: Ship it?", tag: serverConversation, closed: false }]);
+    const serverPageInFrame = page.frames().find((candidate) => candidate.url().endsWith(`#/c/${serverConversation}`))!;
+    expect(await notificationsShown(serverPageInFrame)).toEqual([]);
   });
 
   await test.step("the relay serves only this computer's signed-in pages, and only the machine's own page in the frame", async () => {

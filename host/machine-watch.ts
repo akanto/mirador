@@ -59,7 +59,7 @@ const waitingOf = (conversations: Conversation[]) =>
 /**
  * Keeps up with each joined machine while this host runs: whether it answers, which of its conversations wait for
  * you, and its notifications, which it passes on as this host's own. It listens as a page for the conversations and
- * as a desktop app for the notifications, so the machine tells this host instead of its own pages.
+ * as a desktop app for the notifications, so the machine tells this host instead of the frames this host shows it in.
  */
 export class MachineWatch {
   private readonly watched = new Map<string, WatchedMachine>();

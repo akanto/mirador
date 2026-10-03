@@ -41,9 +41,9 @@ describe("a turn that ends makes it your move", () => {
 });
 
 describe("delivery", () => {
-  function connect(hub: Hub, role: SocketData["role"]) {
+  function connect(hub: Hub, role: SocketData["role"], deviceId: string | null = null) {
     const received: ServerMessage[] = [];
-    const socket = { data: socketData(role), send: (payload: string) => received.push(JSON.parse(payload)) } as unknown as BrowserSocket;
+    const socket = { data: socketData(role, deviceId), send: (payload: string) => received.push(JSON.parse(payload)) } as unknown as BrowserSocket;
     hub.add(socket);
     return { socket, received };
   }
@@ -70,6 +70,25 @@ describe("delivery", () => {
     hub.remove(desktop.socket);
     hub.notify(notification);
     expect(notificationsIn(page.received)).toHaveLength(1);
+  });
+
+  test("goes once to each device: through what listens on it for notifications, else to each of its pages", () => {
+    const hub = new Hub();
+    const [phoneTab, otherPhoneTab] = [connect(hub, "page", "phone"), connect(hub, "page", "phone")];
+    const laptopHost = connect(hub, "notifier", "laptop");
+    const frameOnLaptop = connect(hub, "page", "laptop");
+    const [ownPage, ownDesktop] = [connect(hub, "page"), connect(hub, "notifier")];
+    hub.notify(notification);
+    expect([phoneTab, otherPhoneTab, laptopHost, ownDesktop].map(({ received }) => notificationsIn(received).length)).toEqual([1, 1, 1, 1]);
+    expect([frameOnLaptop, ownPage].map(({ received }) => notificationsIn(received).length)).toEqual([0, 0]);
+  });
+
+  test("what it passes on from other machines stays on this computer", () => {
+    const hub = new Hub();
+    const [phone, ownPage] = [connect(hub, "page", "phone"), connect(hub, "page")];
+    hub.notifyThisComputer(notification);
+    expect(notificationsIn(phone.received)).toEqual([]);
+    expect(notificationsIn(ownPage.received)).toHaveLength(1);
   });
 
   test("a conversation counts as watched only while a focused page shows it", () => {
