@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, currentMatch, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -119,5 +119,60 @@ test("Cmd+F finds text anywhere in the conversation, in entries not loaded yet a
     await page.locator(".chat-header").getByRole("button", { name: "Find" }).click();
     await expect(input).toBeFocused();
     await expect(input).toHaveValue("");
+  });
+});
+
+/** The matches highlighted, and how many of them are in the conversation's view. */
+const highlighted = (page: Page) =>
+  page.evaluate(() => {
+    const view = document.querySelector(".timeline")!.getBoundingClientRect();
+    const ranges = [...(CSS.highlights.get("find-match") ?? [])] as Range[];
+    const inView = ranges.filter((range) => {
+      const box = range.getBoundingClientRect();
+      return box.bottom > view.top && box.top < view.bottom;
+    });
+    return { count: ranges.length, inView: inView.length };
+  });
+
+test("a single letter in a long, busy conversation is found at once, highlighted where you look", async ({ page }) => {
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  await host.stop();
+  execFileSync("bun", [join(import.meta.dirname, "seed-busy-conversation.ts"), join(host.dataDir, "state.sqlite"), conversationId, "30", "35"]);
+  await host.start();
+  await page.reload();
+  await expect(page.locator(".timeline .load-earlier")).toBeVisible();
+
+  await page.keyboard.press("Control+KeyF");
+  const input = page.getByRole("search").getByLabel("Find in this conversation");
+  await input.fill("e");
+  const tally = page.getByRole("search").locator(".find-tally");
+  await expect(tally).toHaveText(/^\d+ of \d+$/);
+  const [position, total] = (await tally.textContent())!.split(" of ").map(Number);
+  expect(position).toBe(total);
+  expect(total).toBeGreaterThan(100_000);
+
+  await test.step("only the matches in view are highlighted, at most a thousand", async () => {
+    const shown = await highlighted(page);
+    expect(shown.count).toBeLessThanOrEqual(1_000);
+    expect(shown.inView).toBeGreaterThan(0);
+  });
+
+  await test.step("scrolling highlights the matches that come into view", async () => {
+    const scrolledTo = await page.locator(".timeline").evaluate((timeline) => {
+      timeline.scrollTop = Math.max(2 * timeline.clientHeight, timeline.scrollTop - 3 * timeline.clientHeight);
+      return timeline.scrollTop;
+    });
+    expect(scrolledTo).toBeGreaterThan(0);
+    await expect.poll(async () => (await highlighted(page)).inView).toBeGreaterThan(0);
+  });
+
+  await test.step("stepping up goes to the match before, also from a long run of them", async () => {
+    await input.press("Enter");
+    const stepsFromNewest = async () => {
+      const [shownPosition, shownTotal] = (await tally.textContent())!.split(" of ").map(Number);
+      return shownTotal! - shownPosition!;
+    };
+    await expect.poll(stepsFromNewest).toBe(1);
   });
 });

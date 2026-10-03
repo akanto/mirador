@@ -4,10 +4,21 @@ export const MIN_SEARCH_LENGTH = 2;
 
 const escapedForRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const patternFor = (query: string) => new RegExp(escapedForRegExp(query), "gi");
+
 /** Where the query occurs in the text, ignoring case: [start, end) offsets of each occurrence, in order. */
 export function matchOffsets(text: string, query: string): [number, number][] {
   if (query === "") return [];
-  return [...text.matchAll(new RegExp(escapedForRegExp(query), "gi"))].map((match) => [match.index, match.index + match[0].length]);
+  return [...text.matchAll(patternFor(query))].map((match) => [match.index, match.index + match[0].length]);
+}
+
+/** How often the query occurs in the text, ignoring case; a one-letter query can occur millions of times, so none is kept. */
+export function matchCount(text: string, query: string) {
+  if (query === "") return 0;
+  const pattern = patternFor(query);
+  let count = 0;
+  while (pattern.exec(text)) count++;
+  return count;
 }
 
 const rawText = (raw: unknown) => (raw === undefined || raw === null ? [] : [typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)]);
@@ -50,4 +61,4 @@ export function textsOf(block: TimelineBlock): string[] {
 }
 
 /** How often an entry not in the page holds the query; once in the page, its rendered text counts instead. */
-export const occurrencesIn = (block: TimelineBlock, query: string) => matchOffsets(textsOf(block).join("\n"), query).length;
+export const occurrencesIn = (block: TimelineBlock, query: string) => matchCount(textsOf(block).join("\n"), query);

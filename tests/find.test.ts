@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { matchOffsets, occurrencesIn } from "../shared/find.ts";
+import { matchCount, matchOffsets, occurrencesIn } from "../shared/find.ts";
 import { buildTimeline } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
@@ -26,6 +26,15 @@ describe("matchOffsets", () => {
 
   test("finds nothing for an empty query", () => {
     expect(matchOffsets("anything", "")).toEqual([]);
+  });
+});
+
+describe("matchCount", () => {
+  test("counts what matchOffsets finds, also a letter that occurs a million times", () => {
+    expect(matchCount("Needle, needle, NEEDLE", "needle")).toBe(3);
+    expect(matchCount("a.b axb (c)", "a.b")).toBe(1);
+    expect(matchCount("anything", "")).toBe(0);
+    expect(matchCount("e".repeat(1_000_000), "E")).toBe(1_000_000);
   });
 });
 
