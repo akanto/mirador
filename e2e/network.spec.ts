@@ -13,13 +13,15 @@ const host = new TestHost(5190, {
   environment: { MIRADOR_NETWORK: "on", MIRADOR_PUBLIC_ORIGIN: networkOrigin, MIRADOR_PUBLIC_CANVAS_ORIGIN: networkCanvasOrigin },
 });
 const hostSwitchedInSettings = new TestHost(5196);
+/** Another computer's Mirador, which shows the host as one of its machines. */
+const laptop = new TestHost(5200);
 
 test.beforeAll(async () => {
-  await Promise.all([host.start(), hostSwitchedInSettings.start()]);
+  await Promise.all([host.start(), hostSwitchedInSettings.start(), laptop.start()]);
 });
 test.afterAll(async () => {
-  await Promise.all([host.stop(), hostSwitchedInSettings.stop()]);
-  await Promise.all([host.cleanUp(), hostSwitchedInSettings.cleanUp()]);
+  await Promise.all([host.stop(), hostSwitchedInSettings.stop(), laptop.stop()]);
+  await Promise.all([host.cleanUp(), hostSwitchedInSettings.cleanUp(), laptop.cleanUp()]);
 });
 
 const authorityOf = (testHost: TestHost) => readFileSync(join(testHost.dataDir, "tls", "authority.pem"), "utf8");
@@ -106,4 +108,38 @@ test("turning the network on in Settings takes effect when the host restarts", a
 
   await networkSwitch().uncheck();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
+});
+
+test("another Mirador joins over HTTPS only with the certificate authority the invite link names, then shows the host through it", async ({ page, browser }) => {
+  const server = await browser.newPage();
+  await signIn(server, host);
+  const settings = await openSettings(server);
+  await settings.getByRole("button", { name: "Invite a device" }).click();
+  const link = (await settings.locator(".invite-link").textContent())!;
+
+  await signIn(page, laptop);
+  await page.locator(".sidebar").getByRole("button", { name: "Machines…" }).click();
+  const machines = page.getByRole("dialog", { name: "Machines" });
+  await machines.getByLabel("Name").fill("Network box");
+  await machines.getByLabel("Address or invite link").fill(networkOrigin);
+  await machines.getByRole("button", { name: "Add", exact: true }).click();
+  await machines.locator(".machine-list li", { hasText: "Network box" }).getByRole("button", { name: "Open", exact: true }).click();
+  const join = page.getByRole("region", { name: "Join Network box" });
+  const code = join.getByLabel("Invite code or link");
+
+  await test.step("a link naming another certificate authority sends no code", async () => {
+    await code.fill(link.replace(/[\w-]{43}$/, "A".repeat(43)));
+    await join.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(join.locator(".join-problem")).toHaveText(
+      "Network box's certificate authority is not the one in the invite link, so the code was not sent. Something on the network may be posing as Network box.",
+    );
+  });
+
+  await test.step("the real link joins, and the host shows in the rail over its pinned certificate authority", async () => {
+    await code.fill(link);
+    await join.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(page.frameLocator('iframe[title="Network box"]').getByRole("button", { name: "Settings…" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Machines" }).getByRole("button", { name: "Network box" }), "the laptop keeps up with the host").not.toHaveClass(/away/);
+    await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toBeVisible();
+  });
 });

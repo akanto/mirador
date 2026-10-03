@@ -1,4 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { authorityFingerprint, ownServingCertificate } from "../host/certificates.ts";
 import { forwardedHeaders, MachineRelays, relayedHeaders } from "../host/machine-relays.ts";
 import { Store } from "../host/store.ts";
 
@@ -61,5 +65,75 @@ describe("relay ports", () => {
     } finally {
       relays.stopAll();
     }
+  });
+});
+
+describe("joining a machine that made its own certificate", () => {
+  const cleanUps: (() => void)[] = [];
+  afterEach(() => cleanUps.splice(0).forEach((cleanUp) => cleanUp()));
+
+  function ownAuthority() {
+    const dataDir = mkdtempSync(join(tmpdir(), "mirador-machine-"));
+    cleanUps.push(() => rmSync(dataDir, { recursive: true, force: true }));
+    return ownServingCertificate(dataDir, ["127.0.0.1"]);
+  }
+
+  /** A machine's Mirador on the network, which lets in every code it is sent. */
+  function machineOnTheNetwork(certificate = ownAuthority(), offeredAuthority = certificate.authority) {
+    const codesReceived: string[] = [];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      tls: { cert: certificate.chain, key: certificate.key },
+      routes: {
+        "/mirador-ca.pem": new Response(offeredAuthority),
+        "/join": {
+          POST: async (request) => {
+            codesReceived.push(((await request.json()) as { code: string }).code);
+            return Response.json({ token: "device-token" });
+          },
+        },
+      },
+      fetch: () => new Response("join page"),
+    });
+    cleanUps.push(() => server.stop(true));
+    const store = new Store(":memory:");
+    store.insertMachine({ id: "box", name: "Box", origin: `https://127.0.0.1:${server.port}`, createdAt: 1 });
+    const relays = new MachineRelays(store, [], () => true, () => {});
+    return { authority: offeredAuthority!, codesReceived, store, join: relays.join.bind(relays, "box") };
+  }
+
+  test("trusts the certificate authority the invite link names, and sends no code to a machine with another one", async () => {
+    const machine = machineOnTheNetwork();
+    await expect(machine.join("WRONG-LINK", authorityFingerprint(ownAuthority().authority!))).rejects.toThrow(
+      "Box's certificate authority is not the one in the invite link, so the code was not sent.",
+    );
+    expect(machine.codesReceived).toEqual([]);
+
+    await machine.join("FROM-LINK", authorityFingerprint(machine.authority));
+    expect(machine.codesReceived).toEqual(["FROM-LINK"]);
+    expect(machine.store.machineAuthority("box")).toBe(machine.authority);
+    expect(machine.store.machineDeviceToken("box")).toBe("device-token");
+  });
+
+  test("with a bare code, trusts the authority it first joined by, and an invite link's alone once it changed", async () => {
+    const machine = machineOnTheNetwork();
+    await machine.join("FIRST");
+    expect(machine.store.machineAuthority("box")).toBe(machine.authority);
+
+    machine.store.setMachineAuthority("box", ownAuthority().authority);
+    await expect(machine.join("AFTER-CHANGE")).rejects.toThrow("Box's certificate authority changed since this computer joined it, so the code was not sent.");
+    await machine.join("FROM-LINK", authorityFingerprint(machine.authority));
+    expect(machine.codesReceived).toEqual(["FIRST", "FROM-LINK"]);
+    expect(machine.store.machineAuthority("box")).toBe(machine.authority);
+  });
+
+  test("sends no code to a machine whose certificate is not from the authority it offers", async () => {
+    const machine = machineOnTheNetwork(ownAuthority(), ownAuthority().authority);
+    await expect(machine.join("CODE", authorityFingerprint(machine.authority))).rejects.toThrow(
+      "Box's certificate is not from its own certificate authority, or does not name 127.0.0.1.",
+    );
+    expect(machine.codesReceived).toEqual([]);
+    expect(machine.store.machineAuthority("box")).toBeNull();
   });
 });

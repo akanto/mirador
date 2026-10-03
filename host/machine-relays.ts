@@ -1,6 +1,8 @@
 import { hostname } from "node:os";
 import type { Machine } from "../shared/model.ts";
 import { TOKEN_COOKIE } from "../shared/protocol.ts";
+import { authorityFingerprint } from "./certificates.ts";
+import { offeredAuthority, trusting } from "./machine-trust.ts";
 import type { Store } from "./store.ts";
 
 const UPSTREAM_OPEN_TIMEOUT_MS = 10_000;
@@ -38,8 +40,8 @@ export function relayedHeaders(upstream: Headers, machineOrigin: string, relayOr
   return headers;
 }
 
-function openUpstream(url: string, headers: Headers) {
-  const upstream = new WebSocket(url, { headers } as unknown as string[]);
+function openUpstream(url: string, headers: Headers, authority: string | null) {
+  const upstream = new WebSocket(url, { headers, ...trusting(authority) } as unknown as string[]);
   upstream.binaryType = "arraybuffer";
   return new Promise<WebSocket | null>((resolve) => {
     const timer = setTimeout(() => {
@@ -94,21 +96,47 @@ export class MachineRelays {
     [...this.servers.keys()].forEach((machineId) => this.stop(machineId));
   }
 
-  /** Joins the machine as this host's device with a code from one of its invites. */
-  async join(machineId: string, code: string) {
+  /**
+   * Joins the machine as this host's device with a code from one of its invites, and from then on trusts the
+   * certificate authority it joined it by. The code is sent only once the machine's certificate checks out.
+   */
+  async join(machineId: string, code: string, linkFingerprint: string | null = null) {
     const machine = this.store.findMachine(machineId);
     if (!machine) throw new Error("That machine is no longer among your machines.");
+    const authority = await this.authorityToTrust(machine, linkFingerprint);
     const response = await fetch(`${machine.origin}/join`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code, name: thisHostAsDevice() }),
+      ...trusting(authority),
     }).catch(() => null);
+    if (!response && authority) throw new Error(`${machine.name}'s certificate is not from its own certificate authority, or does not name ${new URL(machine.origin).hostname}.`);
     if (!response) throw new Error(`${machine.name} did not answer. Is its Mirador running?`);
     if (!response.ok) throw new Error(await response.text());
     const { token } = (await response.json()) as { token?: unknown };
     if (typeof token !== "string") throw new Error(`${machine.name} let this computer in without a token.`);
+    this.store.setMachineAuthority(machineId, authority);
     this.store.setMachineDeviceToken(machineId, token);
     this.joined(machineId);
+  }
+
+  /**
+   * The machine's own certificate authority, when the computer's ones don't vouch for it. It must be the one the
+   * invite link names, else the one trusted when this host joined before; with neither, it is trusted on first use.
+   */
+  private async authorityToTrust(machine: Machine, linkFingerprint: string | null) {
+    const offered = await offeredAuthority(machine);
+    if (!offered) return null;
+    const trustedBefore = this.store.machineAuthority(machine.id);
+    const expected = linkFingerprint ?? (trustedBefore && authorityFingerprint(trustedBefore));
+    if (expected && offered.fingerprint !== expected) {
+      throw new Error(
+        linkFingerprint
+          ? `${machine.name}'s certificate authority is not the one in the invite link, so the code was not sent. Something on the network may be posing as ${machine.name}.`
+          : `${machine.name}'s certificate authority changed since this computer joined it, so the code was not sent. If its Mirador was set up again, join with an invite link from it.`,
+      );
+    }
+    return offered.authority;
   }
 
   private listenOnFreePort(machineId: string) {
@@ -165,6 +193,7 @@ export class MachineRelays {
       headers,
       body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
       redirect: "manual",
+      ...trusting(this.store.machineAuthority(machineId)),
     }).catch(() => null);
     if (!response) return new Response(`${machine.name} did not answer.`, { status: 502 });
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers: relayedHeaders(response.headers, machine.origin, relayOrigin) });
@@ -172,7 +201,7 @@ export class MachineRelays {
 
   /** The machine's end opens first, so a page the machine turns away sees its socket fail, as it would there. */
   private async relaySocket(machine: Machine, url: URL, headers: Headers, request: Request, server: Bun.Server<RelayedSocket>) {
-    const upstream = await openUpstream(`${machine.origin.replace(/^http/, "ws")}${url.pathname}${url.search}`, headers);
+    const upstream = await openUpstream(`${machine.origin.replace(/^http/, "ws")}${url.pathname}${url.search}`, headers, this.store.machineAuthority(machine.id));
     if (!upstream) return new Response(`${machine.name} did not open the socket.`, { status: 502 });
     const data: RelayedSocket = { upstream, page: null, waiting: [] };
     upstream.onmessage = (event) => (data.page ? data.page.send(event.data) : data.waiting.push(event.data));

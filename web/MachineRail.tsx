@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { inviteCodeIn } from "../shared/machines.ts";
+import { inviteIn } from "../shared/machines.ts";
 import type { Machine, MachineStatus } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
@@ -140,7 +140,7 @@ function JoinMachinePanel({ machine }: { machine: Machine }) {
       setProblem(message.problem);
       setJoining(false);
     });
-    if (!connection.send({ type: "machine.join", requestId, machineId: machine.id, code: inviteCodeIn(text) })) return stopListening();
+    if (!connection.send({ type: "machine.join", requestId, machineId: machine.id, ...inviteIn(text) })) return stopListening();
     setJoining(true);
   };
 

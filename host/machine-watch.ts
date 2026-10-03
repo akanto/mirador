@@ -1,6 +1,7 @@
 import type { Conversation, Machine, MachineStatus, WaitingFor } from "../shared/model.ts";
 import { TOKEN_COOKIE, type ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
+import { trusting } from "./machine-trust.ts";
 import type { Store } from "./store.ts";
 
 /** Waits longer after each failed try in a row, so a machine that is off is asked about once a minute at most. */
@@ -18,14 +19,14 @@ class MachineSocket {
 
   constructor(
     private readonly url: string,
-    private readonly signIn: () => Record<string, string> | null,
+    private readonly signIn: () => Bun.WebSocketOptions | null,
     private readonly events: { opened?: () => void; message: (message: ServerMessage) => void; closed?: () => void },
   ) {}
 
   start() {
-    const headers = this.signIn();
-    if (!headers || this.stopped) return;
-    const socket = new (WebSocket as unknown as BunWebSocket)(this.url, { headers });
+    const options = this.signIn();
+    if (!options || this.stopped) return;
+    const socket = new (WebSocket as unknown as BunWebSocket)(this.url, options);
     this.socket = socket;
     socket.onopen = () => {
       this.failures = 0;
@@ -82,7 +83,7 @@ export class MachineWatch {
     const watched: WatchedMachine = { sockets: [], status: { machineId, reachable: false, waiting: [] }, waitingIn: new Map() };
     const signIn = () => {
       const token = this.store.machineDeviceToken(machineId);
-      return token ? { Origin: machine.origin, Cookie: `${TOKEN_COOKIE}=${token}` } : null;
+      return token ? { headers: { Origin: machine.origin, Cookie: `${TOKEN_COOKIE}=${token}` }, ...trusting(this.store.machineAuthority(machineId)) } : null;
     };
     const socketUrl = (path: string) => `${machine.origin.replace(/^http/, "ws")}${path}`;
     watched.sockets = [

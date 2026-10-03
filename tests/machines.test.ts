@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { authorityFingerprintIn, inviteCodeIn, inviteLink, joinCodeIn, machineAddress } from "../shared/machines.ts";
+import { authorityFingerprintIn, inviteIn, inviteLink, joinCodeIn, machineAddress } from "../shared/machines.ts";
 
 test("a machine is added by its name on the network, its address or an invite link from it", () => {
   expect(machineAddress("home-server.tailnet.ts.net")).toEqual({ origin: "https://home-server.tailnet.ts.net", joinCode: null, authorityFingerprint: null });
@@ -35,7 +35,8 @@ test("only an invite link's #part carries a code", () => {
   expect(joinCodeIn("")).toBeNull();
 });
 
-test("takes the invite code out of a pasted invite link, or the code as typed", () => {
-  expect(inviteCodeIn("https://home-server.example.ts.net/#/join/ABCD-EFGH-JKLM")).toBe("ABCD-EFGH-JKLM");
-  expect(inviteCodeIn("  ABCD-EFGH-JKLM \n")).toBe("ABCD-EFGH-JKLM");
+test("takes the invite code and certificate authority's fingerprint out of a pasted invite link, or the code as typed", () => {
+  expect(inviteIn("https://home-server.example.ts.net/#/join/ABCD-EFGH-JKLM")).toEqual({ code: "ABCD-EFGH-JKLM", authorityFingerprint: null });
+  expect(inviteIn(`https://home-server.local:4602/#/join/ABCD-EFGH-JKLM/${fingerprint}`)).toEqual({ code: "ABCD-EFGH-JKLM", authorityFingerprint: fingerprint });
+  expect(inviteIn("  ABCD-EFGH-JKLM \n")).toEqual({ code: "ABCD-EFGH-JKLM", authorityFingerprint: null });
 });

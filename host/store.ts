@@ -51,6 +51,7 @@ const addedColumns = [
   { table: "workspaces", column: "default_profile_id", definition: "TEXT" },
   { table: "machines", column: "relay_port", definition: "INTEGER" },
   { table: "machines", column: "device_token", definition: "TEXT" },
+  { table: "machines", column: "authority", definition: "TEXT" },
   { table: "conversations", column: "profile_id", definition: "TEXT" },
   { table: "workspaces", column: "default_harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
   { table: "profiles", column: "harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
@@ -439,6 +440,15 @@ export class Store {
 
   setMachineDeviceToken(id: string, token: string) {
     this.db.query("UPDATE machines SET device_token = ? WHERE id = ?").run(token, id);
+  }
+
+  /** The certificate authority this host checks the machine's certificate against, when the computer's own don't vouch for it. */
+  machineAuthority(id: string): string | null {
+    return (this.db.query("SELECT authority FROM machines WHERE id = ?").get(id) as { authority: string | null } | null)?.authority ?? null;
+  }
+
+  setMachineAuthority(id: string, authority: string | null) {
+    this.db.query("UPDATE machines SET authority = ? WHERE id = ?").run(authority, id);
   }
 
   deleteMachine(id: string) {

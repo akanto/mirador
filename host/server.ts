@@ -181,14 +181,14 @@ export function startServer(services: HostServices) {
   async function addMachine(name: string, address: string) {
     const parsed = machineAddress(address);
     if (!parsed) throw new Error(`"${address}" is not a machine's address.`);
-    const { origin, joinCode } = parsed;
+    const { origin, joinCode, authorityFingerprint } = parsed;
     if (pageOrigins.includes(origin)) throw new Error("That is this machine.");
     if (store.findMachineByOrigin(origin)) throw new Error(`${origin} is already among your machines.`);
     const id = crypto.randomUUID();
     store.insertMachine({ id, name: name.trim() || new URL(origin).hostname, origin, createdAt: Date.now() });
     relays.start(store.findMachine(id)!);
     broadcastMachines();
-    if (joinCode) await relays.join(id, joinCode);
+    if (joinCode) await relays.join(id, joinCode, authorityFingerprint);
   }
 
   function removeMachine(machineId: string) {
@@ -491,7 +491,7 @@ export function startServer(services: HostServices) {
       case "machine.remove":
         return removeMachine(message.machineId);
       case "machine.join": {
-        const problem = await relays.join(message.machineId, message.code).then(() => null, errorMessage);
+        const problem = await relays.join(message.machineId, message.code, message.authorityFingerprint).then(() => null, errorMessage);
         return reply({ type: "machine.join-answered", requestId: message.requestId, problem });
       }
       case "search":

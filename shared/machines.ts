@@ -10,7 +10,10 @@ export const inviteLink = (origin: string, code: string, authorityFingerprint: s
   `${origin}/#/join/${code}${authorityFingerprint ? `/${authorityFingerprint}` : ""}`;
 
 /** What someone pastes to join a machine: the invite code itself, or the whole invite link. */
-export const inviteCodeIn = (text: string) => machineAddress(text)?.joinCode ?? text.trim();
+export function inviteIn(text: string) {
+  const link = machineAddress(text);
+  return { code: link?.joinCode ?? text.trim(), authorityFingerprint: link?.authorityFingerprint ?? null };
+}
 
 /** What someone types or pastes for a machine: its name on the network, its address, or an invite link from it. */
 export function machineAddress(text: string): { origin: string; joinCode: string | null; authorityFingerprint: string | null } | null {
