@@ -87,7 +87,7 @@ test("a prompt template asks for its parameters, then goes out or into the messa
     await picker(otherWindow).getByLabel("Path").fill("web/App.tsx");
     await expect(picker(otherWindow).getByLabel("Message to send")).toHaveText("Explain web/App.tsx line by line, then web/App.tsx again.");
     await settings.getByLabel("Template name").fill("Explain a path");
-    await settings.getByRole("button", { name: "Save" }).click();
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
     await expect(templateList.locator("li")).toHaveText(["Deep PR review", "Explain a path", "+ New template"]);
     await templateList.getByText("Deep PR review").click();
     await settings.getByRole("button", { name: "Delete template" }).click();

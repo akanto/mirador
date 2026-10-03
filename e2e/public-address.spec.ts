@@ -32,13 +32,13 @@ test("an address saved in Settings goes to config.json, and invite links use it 
 
   await test.step("both addresses are needed", async () => {
     await form.getByLabel("Address", { exact: true }).fill("https://box.example.ts.net/");
-    await form.getByRole("button", { name: "Save" }).click();
+    await form.getByRole("button", { name: "Save address" }).click();
     await expect(form.getByText("Set both Address and Canvas address, or neither.")).toBeVisible();
   });
 
   await test.step("saving writes config.json, and the host keeps its old address until it restarts", async () => {
     await form.getByLabel("Canvas address").fill("https://box.example.ts.net:8443");
-    await form.getByRole("button", { name: "Save" }).click();
+    await form.getByRole("button", { name: "Save address" }).click();
     await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
     await expect(form.getByLabel("Address", { exact: true })).toHaveValue("https://box.example.ts.net");
     expect(configFile()).toEqual({ publicOrigin: "https://box.example.ts.net", publicCanvasOrigin: "https://box.example.ts.net:8443" });
@@ -58,7 +58,7 @@ test("an address saved in Settings goes to config.json, and invite links use it 
   await test.step("emptying both takes the address out of config.json", async () => {
     await form.getByLabel("Address", { exact: true }).fill("");
     await form.getByLabel("Canvas address").fill("");
-    await form.getByRole("button", { name: "Save" }).click();
+    await form.getByRole("button", { name: "Save address" }).click();
     await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
     expect(configFile()).toEqual({});
   });
@@ -71,5 +71,5 @@ test("an address the host's environment sets can't be changed in Settings", asyn
   await expect(form.getByLabel("Address", { exact: true })).toHaveValue("https://env.example.com");
   await expect(form.getByLabel("Address", { exact: true })).toBeDisabled();
   await expect(form.getByLabel("Canvas address")).toHaveValue("https://env.example.com:8443");
-  await expect(form.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(form.getByRole("button", { name: "Save address" })).toBeDisabled();
 });

@@ -266,7 +266,7 @@ function PublicAddressSettings({ settings }: { settings: ReachabilitySettings })
         />
       </label>
       <button type="submit" disabled={setByEnvironment || !edited}>
-        Save
+        Save address
       </button>
       {problem && <p className="setting-problem">{problem}</p>}
     </form>
