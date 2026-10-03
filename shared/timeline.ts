@@ -191,6 +191,8 @@ class TimelineBuilder {
         return this.push({ kind: "notice", ...origin, text: event.signedIn ? "Signed in. Send your message again." : "Signing in did not finish." });
       case "usage-limit-wait-stopped":
         return this.push({ kind: "notice", ...origin, text: "Stopped waiting for the usage limit to reset" });
+      case "context-cleared":
+        return this.push({ kind: "notice", ...origin, text: "Context cleared: the agent starts afresh" });
       case "profile-changed":
         return this.push({ kind: "notice", ...origin, text: event.profileName ? `Now using the profile “${event.profileName}”` : "Now using the agent's own setup, without a profile" });
       case "permission": {

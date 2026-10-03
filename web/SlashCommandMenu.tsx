@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { StoredEvent } from "../shared/model.ts";
-import { latestSlashCommands, matchingCommands, slashQuery, type SlashCommand } from "../shared/slash-commands.ts";
+import { clearSlashCommand, latestSlashCommands, matchingCommands, slashQuery, type SlashCommand } from "../shared/slash-commands.ts";
 import { connection } from "./connection.ts";
 import { loginSlashCommand } from "./login-request.ts";
 import { SuggestionList, suggestionAttributes, suggestionKey, usePickedSuggestion } from "./SuggestionList.tsx";
@@ -29,7 +29,12 @@ function useSlashCommands(conversationId: string, events: StoredEvent[], wanted:
   return listed ?? (hasGuess ? guessed.commands : []);
 }
 
-const withMiradorCommands = (commands: SlashCommand[]) => [...commands.filter(({ name }) => name !== loginSlashCommand.name), loginSlashCommand];
+const miradorCommands = [clearSlashCommand, loginSlashCommand];
+
+const withMiradorCommands = (commands: SlashCommand[]) => [
+  ...commands.filter(({ name }) => !miradorCommands.some((own) => own.name === name)),
+  ...miradorCommands,
+];
 
 /**
  * Suggests the agent's slash commands while the message is a / and the start of a name, as Claude Code does: ↑/↓

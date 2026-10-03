@@ -267,6 +267,8 @@ export type ConversationEvent =
   | { type: "permission-resolved"; permissionId: string; optionId: string | null }
   | { type: "turn-end"; stopReason: StopReason }
   | { type: "profile-changed"; profileName: string | null }
+  /** From here on the agent works in a fresh session, with nothing of the conversation before in its context. */
+  | { type: "context-cleared" }
   /**
    * `usageLimit`: Claude's usage limit stopped the turn; it resets at `resetsAt`, when the message names a time.
    * `authRequired`: the agent refused the prompt until the user signs in again.

@@ -33,6 +33,18 @@ export function latestSlashCommands(events: StoredEvent[]): SlashCommand[] | nul
   return latest.event.update.availableCommands.map(toSlashCommand);
 }
 
+/**
+ * Mirador's own /clear. Claude Code's would carry on under a new session id that the conversation does not know, so
+ * the cleared context would come back when the host next resumes the session.
+ */
+export const clearSlashCommand: SlashCommand = {
+  name: "clear",
+  description: "Start the agent afresh, without the conversation so far in its context; it stays on screen",
+  hint: null,
+};
+
+export const isClearCommand = (message: string) => message.trim() === `/${clearSlashCommand.name}`;
+
 export const toSlashCommand = ({ name, description, input }: AvailableCommand): SlashCommand => ({
   name,
   description,

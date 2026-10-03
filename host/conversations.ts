@@ -11,6 +11,7 @@ import {
   type ExternalSession,
   type Launch,
   type QueuedMessage,
+  type StoredEvent,
   type TerminalActivity,
   type UsageLimitWait,
   type WaitingFor,
@@ -18,7 +19,7 @@ import {
 } from "../shared/model.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
-import { toSlashCommand } from "../shared/slash-commands.ts";
+import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
@@ -290,6 +291,24 @@ export class ConversationService {
       .catch(() => {});
   }
 
+  /** Like /clear in Claude Code: the agent goes on in a fresh session, while the conversation so far stays on screen. */
+  private async clearContext(conversationId: string) {
+    const runtime = this.runtime(conversationId);
+    await runtime.sessionId?.catch(() => {});
+    const released = this.releaseSession(runtime, this.get(conversationId).acpSessionId);
+    this.contextUsage.delete(conversationId);
+    this.save({ ...this.get(conversationId), acpSessionId: null });
+    this.append(conversationId, { type: "context-cleared" });
+    await this.ensureSession(conversationId, async () => {
+      this.setStatus(conversationId, "starting", "Clearing the context…");
+      await released;
+      const sessionId = await this.openSession(conversationId);
+      this.setStatus(conversationId, "idle");
+      return sessionId;
+    }).catch(() => {});
+    this.sendNextQueuedMessage(conversationId);
+  }
+
   private async stopTurn(conversationId: string) {
     const { turnEnded } = this.runtime(conversationId);
     await this.cancel(conversationId);
@@ -316,6 +335,7 @@ export class ConversationService {
   async prompt(conversationId: string, text: string, imageIds: string[] = [], fromScript = false) {
     const runtime = this.runtime(conversationId);
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
+    if (isClearCommand(text)) return this.clearContext(conversationId);
     runtime.running = true;
     this.endUsageLimitWait(runtime);
     let endTurn = () => {};
@@ -528,14 +548,8 @@ export class ConversationService {
     return harness && sessionId ? harness.closeSession(sessionId).catch(() => {}) : Promise.resolve();
   }
 
-  /**
-   * Claude Code keeps no record of a session until the agent works on a message in it, so a session
-   * without a finished turn, agent output or replayed history cannot be resumed.
-   */
   private agentHasRecorded(conversationId: string) {
-    return this.store
-      .listEvents(conversationId)
-      .some(({ event }) => event.type === "turn-end" || (event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate)));
+    return sessionHasRecord(this.store.listEvents(conversationId));
   }
 
   private async openSession(conversationId: string): Promise<string> {
@@ -732,10 +746,10 @@ export class ConversationService {
     const { harness } = runtime;
     const sessionId = this.get(conversationId).acpSessionId;
     if (!harness || !sessionId || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
-    const messages = runtime.queuedMessages.filter((message) => !message.afterTurn);
+    const messages = queuedBeforeClear(runtime.queuedMessages).filter((message) => !message.afterTurn);
     const [first, ...rest] = messages;
     if (!first) return;
-    this.setQueue(conversationId, runtime, runtime.queuedMessages.filter((message) => message.afterTurn));
+    this.setQueue(conversationId, runtime, runtime.queuedMessages.filter((message) => !messages.includes(message)));
     this.publish(this.get(conversationId));
     const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
     const text = messages.map((message) => message.text).join("\n\n");
@@ -972,6 +986,21 @@ export class ConversationService {
 const hasFinished = (status: acp.ToolCallStatus | null | undefined) => status === "completed" || status === "failed";
 
 const updatesTheAgentRecords = new Set<string>(["user_message_chunk", "agent_message_chunk", "agent_thought_chunk", "tool_call"]);
+
+/**
+ * Claude Code keeps no record of a session until the agent works on a message in it, so a session without a finished
+ * turn, agent output or replayed history cannot be resumed. Since a /clear, only what came after it counts.
+ */
+export function sessionHasRecord(events: StoredEvent[]) {
+  const sinceCleared = events.slice(events.findLastIndex(({ event }) => event.type === "context-cleared") + 1);
+  return sinceCleared.some(({ event }) => event.type === "turn-end" || (event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate)));
+}
+
+/** Messages queued after a /clear wait for it, rather than join the turn in the session it ends. */
+export const queuedBeforeClear = (queue: QueuedMessage[]) => {
+  const clearAt = queue.findIndex(({ text }) => isClearCommand(text));
+  return clearAt === -1 ? queue : queue.slice(0, clearAt);
+};
 
 /** Allowing once leaves no trace behind; Claude Code saves an "always" answer into the project's settings. */
 export function optionThatAllows(options: acp.PermissionOption[]): string | null {

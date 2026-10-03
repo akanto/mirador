@@ -58,6 +58,12 @@ export class ScriptedModel {
     return this.requests.flatMap(({ messages }) => messages.map(textOf));
   }
 
+  /** The user's messages in the latest request for a reply, not a title: what the agent's context holds of the conversation. */
+  userMessagesInContext() {
+    const latestReply = this.requests.findLast(({ tools }) => (tools ?? []).length > 0);
+    return (latestReply?.messages ?? []).filter(({ role }) => role === "user").map(textOf);
+  }
+
   private reply(request: ChatRequest, response: ServerResponse) {
     const tools = (request.tools ?? []).map(({ function: { name } }) => name);
     const last = request.messages.at(-1);
