@@ -1928,8 +1928,8 @@ button.running-subagent:hover {
 .composer {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   margin: 0 16px 14px;
   padding: 6px 6px 6px 4px;
   border: 1px solid var(--border);
@@ -2032,7 +2032,6 @@ button.running-subagent:hover {
 }
 
 .composer textarea {
-  flex: 1;
   resize: none;
   border: none;
   background: transparent;
@@ -2041,6 +2040,14 @@ button.running-subagent:hover {
 
 .composer textarea:focus-visible {
   outline: none;
+}
+
+/* Under the message rather than beside it, so the buttons a busy agent adds leave the message its full width. */
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
 }
 
 .composer .templates {

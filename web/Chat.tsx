@@ -1151,37 +1151,39 @@ function Composer({
             onClose={closeTemplates}
           />
         )}
-        {command === null && (
-          <button
-            ref={templatesButton}
-            type="button"
-            className="templates"
-            aria-haspopup="dialog"
-            aria-expanded={pickingTemplate}
-            data-hint={hints.promptTemplates}
-            onClick={() => setPickingTemplate((open) => !open)}
-          >
-            Templates
-          </button>
-        )}
-        {command !== null ? (
-          <button className="run-command" data-hint={hints.runCommand} data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!command}>
-            Run
-          </button>
-        ) : (
-          busy && text.trim() && <BusySendButtons canSteer={canSteer} enterWhileBusy={enterWhileBusy} onSend={send} />
-        )}
-        {busy ? (
-          <button className="stop" data-shortcut={shortcutKeys().stop} onClick={cancel}>
-            Stop
-          </button>
-        ) : (
-          command === null && (
-            <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || images.uploading}>
-              Send
+        <div className="composer-actions">
+          {command === null && (
+            <button
+              ref={templatesButton}
+              type="button"
+              className="templates"
+              aria-haspopup="dialog"
+              aria-expanded={pickingTemplate}
+              data-hint={hints.promptTemplates}
+              onClick={() => setPickingTemplate((open) => !open)}
+            >
+              Templates
             </button>
-          )
-        )}
+          )}
+          {command !== null ? (
+            <button className="run-command" data-hint={hints.runCommand} data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!command}>
+              Run
+            </button>
+          ) : (
+            busy && text.trim() && <BusySendButtons canSteer={canSteer} enterWhileBusy={enterWhileBusy} onSend={send} />
+          )}
+          {busy ? (
+            <button className="stop" data-shortcut={shortcutKeys().stop} onClick={cancel}>
+              Stop
+            </button>
+          ) : (
+            command === null && (
+              <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || images.uploading}>
+                Send
+              </button>
+            )
+          )}
+        </div>
       </div>
     </div>
   );

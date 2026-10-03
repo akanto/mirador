@@ -46,6 +46,9 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
     await settings.getByRole("button", { name: "Close" }).click();
     await composer.fill(AFTER_TURN);
     await expect(page.locator(".composer .queue-message")).toHaveText(["After turn", "Steer"]);
+    const [message, buttons] = await Promise.all([composer.boundingBox(), page.locator(".composer-actions").boundingBox()]);
+    expect(buttons!.y, "the buttons sit under the message").toBeGreaterThanOrEqual(message!.y + message!.height);
+    expect(message!.width, "and leave the message the box's full width").toBeCloseTo(buttons!.width, 0);
     await expect(composer).toHaveAttribute("placeholder", /Enter sends your message after its turn/);
     await composer.press("Enter");
     const afterTurnTag = page.locator(".queued", { hasText: AFTER_TURN }).locator(".queued-delivery");
