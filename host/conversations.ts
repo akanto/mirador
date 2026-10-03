@@ -413,6 +413,18 @@ export class ConversationService {
     this.replaceQueue(conversationId, (queue) => queue.map((message) => (message.id === messageId ? switched(message) : message)), messageId);
   }
 
+  /** Messages leave the queue from the front, so this changes when one goes out. */
+  moveQueuedMessage(conversationId: string, messageId: string, beforeMessageId: string | null) {
+    this.replaceQueue(
+      conversationId,
+      (queue) => {
+        const byId = new Map(queue.map((message) => [message.id, message]));
+        return movedBefore([...byId.keys()], messageId, beforeMessageId).map((id) => byId.get(id)!);
+      },
+      messageId,
+    );
+  }
+
   removeQueuedMessage(conversationId: string, messageId: string) {
     this.replaceQueue(conversationId, (queue) => queue.filter(({ id }) => id !== messageId), messageId);
   }

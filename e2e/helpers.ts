@@ -1,6 +1,15 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
+/** Presses on the item and moves to just inside the top or bottom edge of the target, leaving the button down. */
+export async function dragOnto(page: Page, item: Locator, target: Locator, edge: "top" | "bottom") {
+  const from = (await item.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, edge === "top" ? to.y + 3 : to.y + to.height - 3, { steps: 10 });
+}
+
 export async function callCanvasTool(host: TestHost, conversationId: string, name: string, args: Record<string, unknown>) {
   const response = await fetch(`${host.origin}/mcp/${conversationId}`, {
     method: "POST",

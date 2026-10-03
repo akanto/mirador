@@ -66,6 +66,7 @@ export type ClientMessage =
   | { type: "conversation.drop-command-outputs"; conversationId: string; commandIds: string[] }
   | { type: "conversation.queue.edit"; conversationId: string; messageId: string; text: string }
   | { type: "conversation.queue.remove"; conversationId: string; messageId: string }
+  | { type: "conversation.queue.move"; conversationId: string; messageId: string; beforeMessageId: string | null }
   | { type: "conversation.queue.set-after-turn"; conversationId: string; messageId: string; afterTurn: boolean }
   | { type: "conversation.usage-limit.continue"; conversationId: string }
   | { type: "conversation.usage-limit.stop-waiting"; conversationId: string }

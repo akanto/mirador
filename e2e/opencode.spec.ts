@@ -6,6 +6,7 @@ import {
   addWorkspace,
   answerCanvasQuestion,
   createProfile,
+  dragOnto,
   lastAgentMessage,
   openCanvasHistory,
   openFromCanvasHistory,
@@ -196,7 +197,7 @@ test("with YOLO on, tools run without asking, and switching it on approves the r
   await expect(page.getByLabel("YOLO", { exact: true })).toBeChecked();
 });
 
-test("messages sent while the agent works wait in an editable queue and go out when the turn ends", async ({ page }) => {
+test("messages sent while the agent works wait in a queue that can be edited and reordered, and go out when the turn ends", async ({ page }) => {
   await signIn(page, host);
   await chooseScriptedOpencode(page);
   await startConversation(page);
@@ -221,7 +222,12 @@ test("messages sent while the agent works wait in an editable queue and go out w
   await composer.fill("first queued, edited");
   await composer.press("Enter");
   await expect(queued).toHaveText(["second queued", "first queued, edited"]);
-  await page.locator(".queued", { hasText: "second queued" }).getByRole("button", { name: "Remove" }).click();
+  const queuedMessage = (text: string) => page.locator(".queued", { hasText: text });
+  await dragOnto(page, queuedMessage("first queued, edited").locator(".queued-grip"), queuedMessage("second queued"), "top");
+  await expect(queuedMessage("second queued")).toHaveClass(/drop-before/);
+  await page.mouse.up();
+  await expect(queued).toHaveText(["first queued, edited", "second queued"]);
+  await queuedMessage("second queued").getByRole("button", { name: "Remove" }).click();
   await expect(queued).toHaveText(["first queued, edited"]);
 
   await answerCanvasQuestion(page, "Blue");

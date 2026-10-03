@@ -23,6 +23,7 @@ import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
+import { useDragToReorder } from "./drag-to-reorder.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
@@ -768,12 +769,20 @@ function QueuedMessages({
   onEdit: (message: QueuedMessage) => void;
   onRemove: (message: QueuedMessage) => void;
 }) {
+  const list = useRef<HTMLOListElement>(null);
+  const drag = useDragToReorder((messageId, beforeMessageId) => connection.send({ type: "conversation.queue.move", conversationId, messageId, beforeMessageId }));
+  const reorderable = messages.length > 1;
   return (
     <section className="queue" aria-label="Queued messages">
       <header data-hint={hints.queue}>Queued · {queuedMessagesGoOut[harness]}</header>
-      <ol>
-        {messages.map((message) => (
-          <li key={message.id} className="queued">
+      <ol ref={list}>
+        {messages.map((message, index) => (
+          <li key={message.id} data-reorder-id={message.id} className={["queued", ...drag.classesOf(message.id, index === messages.length - 1)].join(" ")}>
+            {reorderable && (
+              <span className="queued-grip" data-hint={hints.queuedGrip} onPointerDown={(event) => drag.startDrag(message.id, list.current, event)}>
+                ⋮⋮
+              </span>
+            )}
             {message.fromScript && (
               <span className="queued-source" data-hint={hints.scriptMessage}>
                 script

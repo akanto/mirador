@@ -277,6 +277,8 @@ export function startServer(services: HostServices) {
         return conversations.dropCommandOutputs(message.conversationId, message.commandIds);
       case "conversation.queue.edit":
         return conversations.editQueuedMessage(message.conversationId, message.messageId, message.text);
+      case "conversation.queue.move":
+        return conversations.moveQueuedMessage(message.conversationId, message.messageId, message.beforeMessageId);
       case "conversation.queue.remove":
         return conversations.removeQueuedMessage(message.conversationId, message.messageId);
       case "conversation.queue.set-after-turn":

@@ -2877,6 +2877,18 @@ button.shell-more:hover {
   background: var(--row-hover);
 }
 
+.queued-grip {
+  flex-shrink: 0;
+  padding: 0 3px;
+  cursor: grab;
+  touch-action: none;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: -3px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .queued-text {
   flex: 1;
   min-width: 0;
@@ -4310,19 +4322,24 @@ body.reordering * {
 }
 
 .workspace.dragged,
-.workspace li.dragged {
+.workspace li.dragged,
+.queued.dragged {
   opacity: 0.45;
 }
 
 .workspace.drop-before,
-.workspace.drop-after {
+.workspace.drop-after,
+.queued.drop-before,
+.queued.drop-after {
   position: relative;
 }
 
 .workspace.drop-before::after,
 .workspace.drop-after::after,
 .workspace li.drop-before::after,
-.workspace li.drop-after::after {
+.workspace li.drop-after::after,
+.queued.drop-before::after,
+.queued.drop-after::after {
   content: "";
   position: absolute;
   left: 4px;
@@ -4341,10 +4358,12 @@ body.reordering * {
   bottom: -7px;
 }
 
-.workspace li.drop-before::after {
+.workspace li.drop-before::after,
+.queued.drop-before::after {
   top: -1px;
 }
 
-.workspace li.drop-after::after {
+.workspace li.drop-after::after,
+.queued.drop-after::after {
   bottom: -1px;
 }

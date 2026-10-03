@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, dragOnto, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5110);
@@ -20,15 +20,6 @@ test.afterAll(async () => {
 const idsOf = (items: Locator) => items.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).dataset.reorderId));
 const workspaceIds = (page: Page) => idsOf(page.locator(".sidebar > section.workspace"));
 const conversationIds = (page: Page, directory: string) => idsOf(workspaceCard(page, directory).locator("li[data-reorder-id]"));
-
-/** Presses on the item and moves to just inside the top or bottom edge of the target, leaving the button down. */
-async function dragOnto(page: Page, item: Locator, target: Locator, edge: "top" | "bottom") {
-  const from = (await item.boundingBox())!;
-  const to = (await target.boundingBox())!;
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(to.x + to.width / 2, edge === "top" ? to.y + 3 : to.y + to.height - 3, { steps: 10 });
-}
 
 test("workspaces, and conversations within theirs, are dragged into an order every window keeps", async ({ page }) => {
   await signIn(page, host);
