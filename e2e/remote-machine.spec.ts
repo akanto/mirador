@@ -175,6 +175,8 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     const relay = new URL((await page.locator('iframe[title="Home server"]').getAttribute("src"))!).origin;
     expect((await fetch(`${relay}/ws`)).status).toBe(401);
     expect(await (await page.request.get(`${relay}/`, { headers: { origin: laptop.origin } })).text()).toBe("forbidden origin");
+    const askedThroughRelay = await page.request.post(`${relay}/join-requests`, { data: {}, failOnStatusCode: false });
+    expect(await askedThroughRelay.text()).toBe("This computer asks to join its machines itself, from its own window.");
   });
 
   await test.step("revoked on the server, it asks for a new code in the frame, which joins this computer's host again", async () => {
@@ -183,6 +185,7 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     await expect(serverButton).toHaveClass(/\baway\b/);
     await serverButton.click();
     await expect(frame.getByRole("heading", { name: "Join this machine" })).toBeVisible();
+    await expect(frame.getByRole("button", { name: "Ask to join" }), "this computer asks to join its machines itself").toHaveCount(0);
     await settings.getByRole("button", { name: "Invite a device" }).click();
     await expect(settings.locator(".invite-link")).not.toHaveText(link);
     const newLink = (await settings.locator(".invite-link").textContent())!;

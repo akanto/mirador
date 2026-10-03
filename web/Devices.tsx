@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { askToJoin, spacedNumber } from "../shared/join-requests.ts";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
 import type { ReachabilitySettings } from "../shared/model.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
@@ -35,6 +36,11 @@ function guessedDeviceName() {
 }
 
 const isThisMachine = () => ["127.0.0.1", "localhost"].includes(location.hostname);
+/** In the rail of another computer's Mirador, which joins its machines itself. */
+const shownInAnotherMirador = () => window.self !== window.top;
+
+const postToThisMachine = (path: string, body: object) =>
+  fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
 
 /** Shown instead of the app until this browser has signed in, with the host's own link or by joining with an invite code. */
 export function JoinMachine() {
@@ -42,6 +48,20 @@ export function JoinMachine() {
   const [name, setName] = useState(guessedDeviceName);
   const [problem, setProblem] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [askedNumber, setAskedNumber] = useState<string | null>(null);
+
+  const ask = async () => {
+    setJoining(true);
+    setProblem(null);
+    try {
+      await askToJoin(postToThisMachine, { name, authorityFingerprint: null, machineName: location.hostname }, setAskedNumber);
+      location.replace("/");
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+      setAskedNumber(null);
+      setJoining(false);
+    }
+  };
 
   const join = async (codeToUse: string) => {
     setJoining(true);
@@ -72,28 +92,45 @@ export function JoinMachine() {
   return (
     <div className="gate join-machine">
       <h1>Join this machine</h1>
-      <p>
-        Mirador on <strong>{location.host}</strong> lets in devices with an invite code. Get one in Settings → Devices on a device that has joined, or
-        run <code>mirador invite</code> on the machine.
-      </p>
-      <form
-        onSubmit={(event: FormEvent) => {
-          event.preventDefault();
-          void join(code);
-        }}
-      >
-        <label>
-          Invite code
-          <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
-        </label>
-        <label>
-          Name this device
-          <input value={name} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <button type="submit" className="primary" disabled={joining || !code.trim()}>
-          {joining ? "Joining…" : "Join"}
-        </button>
-      </form>
+      {askedNumber ? (
+        <div className="join-asked" role="status" aria-label="Waiting for approval">
+          <p>
+            Waiting for approval on <strong>{location.hostname}</strong>. Type this number there:
+          </p>
+          <p className="join-number">{spacedNumber(askedNumber)}</p>
+          <p className="hint">Its Mirador shows the request on its own screen, and on the devices that have joined it.</p>
+        </div>
+      ) : (
+        <>
+          <p>
+            Mirador on <strong>{location.host}</strong> lets in devices that someone there approves, or that have an invite code. Get one in Settings →
+            Devices on a device that has joined, or run <code>mirador invite</code> on the machine.
+          </p>
+          <form
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              void join(code);
+            }}
+          >
+            <label>
+              Name this device
+              <input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            {!shownInAnotherMirador() && (
+              <button type="button" className="primary" disabled={joining || !name.trim()} onClick={() => void ask()}>
+                Ask to join
+              </button>
+            )}
+            <label>
+              Invite code
+              <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
+            </label>
+            <button type="submit" className="primary" disabled={joining || !code.trim()}>
+              {joining ? "Joining…" : "Join"}
+            </button>
+          </form>
+        </>
+      )}
       {problem && <p className="join-problem">{problem}</p>}
       {isThisMachine() && (
         <p className="hint">

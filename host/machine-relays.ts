@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { commitmentTo, matchingNumber, newNonce, type JoinRequestAnswer, type JoinRequestOpened } from "../shared/join-requests.ts";
+import { askToJoin as askToJoinThere } from "../shared/join-requests.ts";
 import type { Machine } from "../shared/model.ts";
 import { TOKEN_COOKIE } from "../shared/protocol.ts";
 import { authorityFingerprint } from "./certificates.ts";
@@ -7,7 +7,6 @@ import { offeredAuthority, trusting } from "./machine-trust.ts";
 import type { Store } from "./store.ts";
 
 const UPSTREAM_OPEN_TIMEOUT_MS = 10_000;
-const JOIN_REQUEST_POLL_INTERVAL_MS = 2_000;
 /** About the hop to the relay, or this host's own sign-in, rather than what the page asks the machine for. */
 const UNFORWARDED_REQUEST_HEADERS = new Set(["host", "cookie", "origin", "referer", "connection", "upgrade", "keep-alive", "transfer-encoding", "content-length"]);
 /**
@@ -130,38 +129,15 @@ export class MachineRelays {
     if (!machine) throw new Error("That machine is no longer among your machines.");
     const offered = await offeredAuthority(machine);
     const authority = offered?.authority ?? null;
-    const fingerprint = offered?.fingerprint ?? null;
-    const send = (path: string, body: unknown) =>
+    const send = (path: string, body: object) =>
       fetch(`${machine.origin}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
         ...trusting(authority),
       }).catch(() => null);
-    const answered = async (response: Response | null) => {
-      if (!response) throw new Error(`${machine.name} did not answer. Is its Mirador running?`);
-      if (!response.ok) throw new Error(await response.text());
-      return response;
-    };
-
-    const nonce = newNonce();
-    const opened = (await (
-      await answered(await send("/join-requests", { name: thisHostAsDevice(), commitment: await commitmentTo(nonce), authorityFingerprint: fingerprint }))
-    ).json()) as JoinRequestOpened;
-    const sendAbout = (step: string, body: object) => send(`/join-requests/${opened.id}/${step}`, { secret: opened.secret, ...body });
-    await answered(await sendAbout("reveal", { nonce }));
-    asked(await matchingNumber(fingerprint, nonce, opened.machineNonce));
-
-    const giveUpAt = Date.now() + opened.expiresIn;
-    while (Date.now() < giveUpAt) {
-      await Bun.sleep(JOIN_REQUEST_POLL_INTERVAL_MS);
-      const response = await sendAbout("poll", {});
-      if (!response) continue;
-      const answer = (await (await answered(response)).json()) as JoinRequestAnswer;
-      if (answer.answer === "denied") throw new Error(`${machine.name} denied the request. If the number was typed there wrongly, ask again.`);
-      if (answer.answer === "approved") return this.signInFromNowOn(machine, authority, answer.token);
-    }
-    throw new Error(`Nobody approved the request on ${machine.name} in time. Ask again.`);
+    const token = await askToJoinThere(send, { name: thisHostAsDevice(), authorityFingerprint: offered?.fingerprint ?? null, machineName: machine.name }, asked);
+    this.signInFromNowOn(machine, authority, token);
   }
 
   private signInFromNowOn(machine: Machine, authority: string | null, token: string) {
@@ -235,6 +211,7 @@ export class MachineRelays {
 
     const url = new URL(request.url);
     if (url.pathname === "/join" && request.method === "POST") return this.joinFromPage(machine, request);
+    if (url.pathname.startsWith("/join-requests")) return new Response("This computer asks to join its machines itself, from its own window.", { status: 403 });
     const headers = forwardedHeaders(request.headers, machine.origin, this.store.machineDeviceToken(machineId));
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") return this.relaySocket(machine, url, headers, request, server);
 

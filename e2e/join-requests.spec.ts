@@ -70,3 +70,19 @@ test("another Mirador asks to join over HTTPS, and gets in once someone at the m
     await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toHaveCount(1);
   });
 });
+
+test("a browser on the network asks to join, and is signed in once someone at the machine types the number it shows", async ({ browser }) => {
+  const serverPage = await browser.newPage();
+  await signIn(serverPage, server);
+  const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
+  await phone.goto(networkOrigin);
+  await phone.getByLabel("Name this device").fill("Phone");
+  await phone.getByRole("button", { name: "Ask to join" }).click();
+  const number = await numberShownIn(phone.locator(".join-machine"));
+
+  const prompt = serverPage.getByRole("alertdialog", { name: "Phone asks to join" });
+  await prompt.getByLabel("Number it shows").fill(number.replace(" ", ""));
+  await prompt.getByRole("button", { name: "Approve" }).click();
+  await expect(phone.getByRole("button", { name: "Settings…" })).toBeVisible();
+  await expect(prompt).toHaveCount(0);
+});

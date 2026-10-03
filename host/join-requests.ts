@@ -19,7 +19,7 @@ export class JoinRequestRefused extends Error {
   }
 }
 
-export interface Asking {
+export interface Opening {
   name: unknown;
   commitment: unknown;
   authorityFingerprint: unknown;
@@ -42,7 +42,7 @@ export class JoinRequestService {
     private readonly now: () => number = Date.now,
   ) {}
 
-  open({ name, commitment, authorityFingerprint, fromAddress, tailscaleUser }: Asking): JoinRequestOpened {
+  open({ name, commitment, authorityFingerprint, fromAddress, tailscaleUser }: Opening): JoinRequestOpened {
     if (typeof commitment !== "string" || !SHA256_IN_BASE64URL.test(commitment)) throw new JoinRequestRefused(400, "The request has no commitment to a nonce.");
     const checkedAgainst = (authorityFingerprint ?? null) as string | null;
     if (checkedAgainst !== null && checkedAgainst !== this.ownAuthorityFingerprint) {
