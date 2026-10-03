@@ -327,6 +327,12 @@ export function startServer(services: HostServices) {
         return terminals.attach(socket, message.workspaceId);
       case "terminal.open":
         return reply({ type: "terminal.opened", requestId: message.requestId, ...terminals.open(message.workspaceId, message.columns, message.rows, message.tabId) });
+      case "terminal.open-login": {
+        const { workspaceId, program } = conversations.loginProgram(message.conversationId);
+        const { exited, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
+        void exited.then((exitCode) => conversations.loginEnded(message.conversationId, exitCode === 0));
+        return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
+      }
       case "terminal.replay":
         return terminals.replay(socket, message.terminalId);
       case "terminal.input":

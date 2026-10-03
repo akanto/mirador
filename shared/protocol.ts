@@ -88,6 +88,8 @@ export type ClientMessage =
   | { type: "terminals.attach"; workspaceId: string | null }
   | { type: "terminal.open"; requestId: string; workspaceId: string; tabId: string | null; columns: number; rows: number }
   | { type: "terminal.replay"; terminalId: string }
+  /** Signs the conversation's agent in again, in a new terminal tab of its workspace. */
+  | { type: "terminal.open-login"; requestId: string; conversationId: string; columns: number; rows: number }
   | { type: "terminal.input"; terminalId: string; data: string }
   | { type: "terminal.resize"; terminalId: string; columns: number; rows: number }
   | { type: "terminal.close"; terminalId: string }

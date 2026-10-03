@@ -20,6 +20,13 @@ interface Shell {
   title: string | null;
 }
 
+/** A program to run in a terminal tab of its own instead of the login shell. */
+export interface TerminalProgram {
+  tabName: string;
+  command: string[];
+  environment: Record<string, string>;
+}
+
 interface Tab {
   id: string;
   workspaceId: string;
@@ -68,6 +75,18 @@ export class TerminalService {
     return { tabId: tab.id, terminalId: shell.id };
   }
 
+  /** Runs `program` in a new tab; the tab closes when it exits. */
+  openProgram(workspaceId: string, columns: number, rows: number, program: TerminalProgram) {
+    const cwd = this.workspacePath(workspaceId);
+    if (!cwd) throw new Error("This workspace no longer exists.");
+    const tab = this.newTab(workspaceId, program.tabName);
+    const shell = this.spawn(workspaceId, tab.id, cwd, columns, rows, program);
+    tab.terminalIds.push(shell.id);
+    this.tabs.set(tab.id, tab);
+    this.publishListing(workspaceId);
+    return { tabId: tab.id, terminalId: shell.id, exited: shell.child.exited };
+  }
+
   input(terminalId: string, data: string) {
     this.shells.get(terminalId)?.child.terminal?.write(data);
   }
@@ -109,22 +128,21 @@ export class TerminalService {
     return tab;
   }
 
-  /** Named after the shell, numbered from 2 with the lowest number no open tab uses: zsh, zsh 2, zsh 3… */
-  private newTab(workspaceId: string): Tab {
-    const shellName = basename(loginShell());
+  /** Named after the shell (or the program), numbered from 2 with the lowest number no open tab uses: zsh, zsh 2, zsh 3… */
+  private newTab(workspaceId: string, baseName = basename(loginShell())): Tab {
     const taken = new Set(this.tabsIn(workspaceId).map(({ name }) => name));
-    const numbered = (number: number) => (number === 1 ? shellName : `${shellName} ${number}`);
+    const numbered = (number: number) => (number === 1 ? baseName : `${baseName} ${number}`);
     let number = 1;
     while (taken.has(numbered(number))) number++;
     return { id: crypto.randomUUID(), workspaceId, name: numbered(number), terminalIds: [] };
   }
 
-  private spawn(workspaceId: string, tabId: string, cwd: string, columns: number, rows: number) {
+  private spawn(workspaceId: string, tabId: string, cwd: string, columns: number, rows: number, program?: TerminalProgram) {
     const decoder = new TextDecoder();
     const shell: Shell = { id: crypto.randomUUID(), workspaceId, tabId, child: undefined!, scrollback: [], scrollbackLength: 0, title: null };
-    shell.child = Bun.spawn([loginShell(), "-l"], {
+    shell.child = Bun.spawn(program?.command ?? [loginShell(), "-l"], {
       cwd,
-      env: { ...agentEnvironment(), TERM: "xterm-256color", COLORTERM: "truecolor" },
+      env: { ...(program?.environment ?? agentEnvironment()), TERM: "xterm-256color", COLORTERM: "truecolor" },
       terminal: {
         cols: dimension(columns),
         rows: dimension(rows),

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { StoredEvent } from "../shared/model.ts";
 import { latestSlashCommands, matchingCommands, slashQuery, type SlashCommand } from "../shared/slash-commands.ts";
 import { connection } from "./connection.ts";
+import { loginSlashCommand } from "./login-request.ts";
 import { SuggestionList, suggestionAttributes, suggestionKey, usePickedSuggestion } from "./SuggestionList.tsx";
 
 const LIST_ID = "slash-commands";
@@ -28,6 +29,8 @@ function useSlashCommands(conversationId: string, events: StoredEvent[], wanted:
   return listed ?? (hasGuess ? guessed.commands : []);
 }
 
+const withMiradorCommands = (commands: SlashCommand[]) => [...commands.filter(({ name }) => name !== loginSlashCommand.name), loginSlashCommand];
+
 /**
  * Suggests the agent's slash commands while the message is a / and the start of a name, as Claude Code does: ↑/↓
  * pick, Tab writes the command out, Enter runs it (or writes it out to type its arguments after), Esc puts it away.
@@ -47,7 +50,7 @@ export function useSlashCommandMenu({
 }) {
   const query = slashQuery(text);
   const commands = useSlashCommands(conversationId, events, query !== null);
-  const matches = useMemo(() => (query === null ? [] : matchingCommands(commands, query)), [commands, query]);
+  const matches = useMemo(() => (query === null ? [] : matchingCommands(withMiradorCommands(commands), query)), [commands, query]);
   const [dismissedAt, setDismissedAt] = useState<string | null>(null);
   const { pickedIndex, move } = usePickedSuggestion(matches.length, query);
   const open = matches.length > 0 && dismissedAt !== text;

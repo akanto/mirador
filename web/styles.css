@@ -1799,6 +1799,16 @@ input.picker-search {
   white-space: pre-wrap;
 }
 
+.sign-in-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sign-in-line > span {
+  flex: 1;
+}
+
 .terminal-warning {
   margin: 0 16px 8px;
   padding: 8px 10px;

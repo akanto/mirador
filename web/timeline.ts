@@ -92,7 +92,10 @@ export type TimelineBlock =
   | PlanBlock
   | PermissionBlock
   | (Origin & { kind: "command"; command: UserCommand })
-  | (Origin & { kind: "error"; message: string; usageLimit?: true });
+  | ErrorBlock;
+
+/** `authRequired` until a sign-in started from the conversation succeeds, then `signedInSince`. */
+type ErrorBlock = Origin & { kind: "error"; message: string; usageLimit?: true; authRequired?: true; signedInSince?: true };
 
 export type Author = "user" | "script" | "agent";
 
@@ -143,6 +146,7 @@ class TimelineBuilder {
   private currentPlan: PlanBlock | null = null;
   private readonly subagentsOfThisTurn: Subagent[] = [];
   private readonly commands = new UserCommandLog();
+  private readonly errorsAwaitingSignIn: ErrorBlock[] = [];
 
   add({ seq, at, event }: StoredEvent) {
     const origin = { key: String(seq), at };
@@ -168,8 +172,20 @@ class TimelineBuilder {
         this.subagentsOfThisTurn.splice(0).forEach((subagent) => (subagent.turnEnded = event.stopReason));
         if (event.stopReason === "end_turn") return;
         return this.push({ kind: "notice", ...origin, text: `Turn ended: ${event.stopReason.replaceAll("_", " ")}` });
-      case "error":
-        return this.push({ kind: "error", ...origin, message: event.message, ...(event.usageLimit && { usageLimit: true as const }) });
+      case "error": {
+        const block: ErrorBlock = {
+          kind: "error",
+          ...origin,
+          message: event.message,
+          ...(event.usageLimit && { usageLimit: true as const }),
+          ...(event.authRequired && { authRequired: true as const }),
+        };
+        if (block.authRequired) this.errorsAwaitingSignIn.push(block);
+        return this.push(block);
+      }
+      case "login-ended":
+        if (event.signedIn) this.errorsAwaitingSignIn.splice(0).forEach((block) => (block.signedInSince = true));
+        return this.push({ kind: "notice", ...origin, text: event.signedIn ? "Signed in. Send your message again." : "Signing in did not finish." });
       case "usage-limit-wait-stopped":
         return this.push({ kind: "notice", ...origin, text: "Stopped waiting for the usage limit to reset" });
       case "profile-changed":

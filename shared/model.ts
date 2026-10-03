@@ -191,8 +191,13 @@ export type ConversationEvent =
   | { type: "permission-resolved"; permissionId: string; optionId: string | null }
   | { type: "turn-end"; stopReason: StopReason }
   | { type: "profile-changed"; profileName: string | null }
-  /** `usageLimit`: Claude's usage limit stopped the turn; it resets at `resetsAt`, when the message names a time. */
-  | { type: "error"; message: string; usageLimit?: { resetsAt: number | null } }
+  /**
+   * `usageLimit`: Claude's usage limit stopped the turn; it resets at `resetsAt`, when the message names a time.
+   * `authRequired`: the agent refused the prompt until the user signs in again.
+   */
+  | { type: "error"; message: string; usageLimit?: { resetsAt: number | null }; authRequired?: true }
+  /** The agent's sign-in, started from the conversation in a terminal tab, ended. */
+  | { type: "login-ended"; signedIn: boolean }
   | { type: "usage-limit-wait-stopped" };
 
 /** A harness session in a workspace directory, possibly started outside the app. */

@@ -6,6 +6,7 @@ import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { HintLayer } from "./Hint.tsx";
 import { hints } from "./hints.ts";
+import { useLoginRequest } from "./login-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
 import { DEFAULT_SIDEBAR_WIDTH, sidebarWidthWithinLimits, type PaneLayout } from "./layout.ts";
@@ -180,6 +181,10 @@ export function App() {
   const toggleTerminal = () => setHidden("terminals", (wasHidden) => !wasHidden);
 
   const open = selectedOpen(state);
+  const loginRequest = useLoginRequest();
+  useEffect(() => {
+    if (loginRequest) setHidden("terminals", () => false);
+  }, [loginRequest]);
   useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
 
   const closeOverlay = useCallback(() => {

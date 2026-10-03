@@ -81,6 +81,8 @@ export const hints = {
   stopWaitingForUsageLimit: "Stop waiting for the reset: the agent does not continue by itself, and messages you queued go out now.",
   canvasUse:
     "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
+  logIn:
+    "Opens the agent's own sign-in in a terminal tab of this workspace, with this conversation's profile, so a profile with an account of its own signs that one in. Once it says you are signed in, send your message again.",
   queuedGrip: "Drag to change the order queued messages go out in: they leave from the top.",
   queuedDelivery: "How this message goes out: into the running turn once the agent's tools finish, or after the turn ends. Click to switch.",
   steerMessage: "Adds the message to the running turn: Claude Code reads it as soon as the tools it is running finish, before its next step.",

@@ -6,6 +6,7 @@ import { MAX_TERMINALS_PER_TAB, type TabTerminal, type TerminalTab, type Workspa
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { takeLoginRequest, useLoginRequest } from "./login-request.ts";
 import { Splitter } from "./Splitter.tsx";
 import { terminalKeyAction } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
@@ -29,6 +30,12 @@ function requestTerminal(workspaceId: string, tabId: string | null) {
   return requestId;
 }
 
+function requestLoginTerminal(conversationId: string) {
+  const requestId = crypto.randomUUID();
+  connection.send({ type: "terminal.open-login", requestId, conversationId, columns: INITIAL_COLUMNS, rows: INITIAL_ROWS });
+  return requestId;
+}
+
 /**
  * The workspace's terminal tabs as the host lists them, and the shell this window opened last.
  * A pane that opens onto no tabs starts one; after the last shell exits, the user decides.
@@ -38,6 +45,13 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
   const [opened, setOpened] = useState<{ tabId: string; terminalId: string } | null>(null);
   const requests = useRef(new Set<string>());
   const open = (tabId: string | null) => requests.current.add(requestTerminal(workspaceId, tabId));
+  const loginRequest = useLoginRequest();
+
+  useEffect(() => {
+    if (status !== "open" || tabs === null || loginRequest === null) return;
+    const conversationId = takeLoginRequest();
+    if (conversationId) requests.current.add(requestLoginTerminal(conversationId));
+  }, [status, tabs, loginRequest]);
 
   useEffect(() => {
     if (status !== "open") return;

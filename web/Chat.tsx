@@ -25,6 +25,7 @@ import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
 import { useDragToReorder } from "./drag-to-reorder.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
+import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
@@ -617,6 +618,16 @@ function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conver
         </div>
       );
     case "error":
+      if (block.authRequired && !block.signedInSince) {
+        return (
+          <div className="error-line sign-in-line">
+            <span>{block.message}</span>
+            <button type="button" data-hint={hints.logIn} onClick={() => requestLogin(conversationId)}>
+              Log in
+            </button>
+          </div>
+        );
+      }
       return <div className={block.usageLimit ? "usage-limit-line" : "error-line"}>{block.message}</div>;
   }
 }
@@ -985,6 +996,11 @@ function Composer({
 
   const send = (afterTurn = false, message = text) => {
     if (!message.trim() || command === "" || images.uploading) return;
+    if (isLoginCommand(message)) {
+      requestLogin(conversation.id);
+      setText("");
+      return;
+    }
     if (command !== null) {
       if (connection.send({ type: "conversation.run-command", conversationId: conversation.id, command })) setText("");
       return;

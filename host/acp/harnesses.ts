@@ -1,3 +1,4 @@
+import { RequestError } from "@agentclientprotocol/sdk";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
@@ -24,6 +25,27 @@ const commandFor: Record<HarnessId, () => string[]> = {
   claude: () => [process.execPath, claudeAgentEntry],
   opencode: opencodeCommand,
 };
+
+const AUTH_REQUIRED_CODE = RequestError.authRequired().code;
+
+/** The agent refuses prompts until the user signs in again. */
+export const isAuthRequiredError = (error: unknown) =>
+  typeof error === "object" && error !== null && (error as { code?: unknown }).code === AUTH_REQUIRED_CODE;
+
+/** Claude Code's own sign-in, run by claude-agent-acp's bundled CLI so it signs in the same installation the agent uses. */
+const loginCommandFor: Record<HarnessId, () => string[]> = {
+  claude: () => [process.execPath, claudeAgentEntry, "--cli", "auth", "login"],
+  opencode: () => [opencodeCommand()[0]!, "auth", "login"],
+};
+
+/**
+ * A failed sign-in keeps its tab open until Enter, so its output can be read; one that worked closes it. The command
+ * comes in as arguments, so nothing in it is quoted for the shell.
+ */
+export function loginCommand(harness: HarnessId): string[] {
+  const keepOpenOnFailure = '"$@" && exit 0; status=$?; printf "\\nSigning in ended with status %s. Press Enter to close this tab." "$status"; read -r _; exit "$status"';
+  return ["/bin/sh", "-c", keepOpenOnFailure, "mirador-login", ...loginCommandFor[harness]()];
+}
 
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 

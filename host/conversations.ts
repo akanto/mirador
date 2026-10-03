@@ -1,19 +1,20 @@
 import { realpath } from "node:fs/promises";
 import type * as acp from "@agentclientprotocol/sdk";
-import type {
-  AdoptMode,
-  AskMode,
-  ContextUsage,
-  Conversation,
-  ConversationEvent,
-  ConversationStatus,
-  ExternalSession,
-  Launch,
-  QueuedMessage,
-  TerminalActivity,
-  UsageLimitWait,
-  WaitingFor,
-  Workspace,
+import {
+  harnessLabels,
+  type AdoptMode,
+  type AskMode,
+  type ContextUsage,
+  type Conversation,
+  type ConversationEvent,
+  type ConversationStatus,
+  type ExternalSession,
+  type Launch,
+  type QueuedMessage,
+  type TerminalActivity,
+  type UsageLimitWait,
+  type WaitingFor,
+  type Workspace,
 } from "../shared/model.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
@@ -22,7 +23,7 @@ import { mentionSuggestions } from "./mentions.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
-import { CANVAS_SERVER_NAME, harnessSpec, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
+import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
@@ -31,6 +32,7 @@ import type { NotifierMute } from "./notifier.ts";
 import { assertLaunchable } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
+import type { TerminalProgram } from "./terminals.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 
@@ -411,6 +413,20 @@ export class ConversationService {
   setQueuedMessageAfterTurn(conversationId: string, messageId: string, afterTurn: boolean) {
     const switched = ({ afterTurn: _, ...message }: QueuedMessage): QueuedMessage => ({ ...message, ...(afterTurn && { afterTurn }) });
     this.replaceQueue(conversationId, (queue) => queue.map((message) => (message.id === messageId ? switched(message) : message)), messageId);
+  }
+
+  /** The agent's own sign-in, with the environment of the conversation's profile, so a profile with its own account signs that one in. */
+  loginProgram(conversationId: string): { workspaceId: string; program: TerminalProgram } {
+    const conversation = this.get(conversationId);
+    const profile = conversation.profileId === null ? null : this.existingProfile(conversation.profileId);
+    return {
+      workspaceId: conversation.workspaceId,
+      program: { tabName: `${harnessLabels[conversation.harness]} sign-in`, command: loginCommand(conversation.harness), environment: profileEnvironment(profile) },
+    };
+  }
+
+  loginEnded(conversationId: string, signedIn: boolean) {
+    if (this.store.hasConversation(conversationId)) this.append(conversationId, { type: "login-ended", signedIn });
   }
 
   /** Messages leave the queue from the front, so this changes when one goes out. */
@@ -814,7 +830,7 @@ export class ConversationService {
   /** Returns the failure's message. A turn Claude's usage limit stopped holds the queue until the limit resets. */
   private recordTurnFailure(conversationId: string, error: unknown) {
     if (!isUsageLimitError(error)) {
-      this.append(conversationId, { type: "error", message: errorMessage(error) });
+      this.append(conversationId, { type: "error", message: errorMessage(error), ...(isAuthRequiredError(error) && { authRequired: true as const }) });
       return errorMessage(error);
     }
     const message = usageLimitMessage(error);
