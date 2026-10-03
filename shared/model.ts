@@ -34,8 +34,8 @@ export interface Machine {
   relayPort: number | null;
   /** This host has joined the machine and signs in there as one of its devices. */
   joined: boolean;
-  /** One of the workspace pastels, to tell the machine apart in the rail. */
-  color: WorkspaceColor | null;
+  /** To tell the machine apart in the rail. */
+  color: Pastel | null;
 }
 
 /** What this host last heard from a joined machine: whether it answers, and what each conversation waiting for you there waits for. */
@@ -142,9 +142,9 @@ export type TerminalActivity = "working" | "waiting" | "idle";
 
 export const terminalActivityLabels: Record<TerminalActivity, string> = { working: "working", waiting: "waiting for you", idle: "idle" };
 
-export type WorkspaceColor = "rose" | "peach" | "butter" | "mint" | "teal" | "sky" | "lavender" | "lilac";
+export type Pastel = "rose" | "peach" | "butter" | "mint" | "teal" | "sky" | "lavender" | "lilac";
 
-export const workspaceColorLabels: Record<WorkspaceColor, string> = {
+export const pastelLabels: Record<Pastel, string> = {
   rose: "Rose",
   peach: "Peach",
   butter: "Butter",
@@ -155,7 +155,7 @@ export const workspaceColorLabels: Record<WorkspaceColor, string> = {
   lilac: "Lilac",
 };
 
-export const isWorkspaceColor = (value: unknown): value is WorkspaceColor => typeof value === "string" && Object.hasOwn(workspaceColorLabels, value);
+export const isPastel = (value: unknown): value is Pastel => typeof value === "string" && Object.hasOwn(pastelLabels, value);
 
 /** How readily Claude Code puts things on the canvas: "often" adds guidance to its system prompt. */
 export type CanvasUse = "as-needed" | "often";
@@ -170,7 +170,7 @@ export interface Workspace {
   path: string;
   defaultLaunch: Launch;
   /** Picked by the user to tell workspaces apart in the sidebar. */
-  color: WorkspaceColor | null;
+  color: Pastel | null;
   /** Its place among the workspaces in the sidebar. */
   position: number;
   createdAt: number;

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { machineAddress } from "../shared/machines.ts";
-import type { Machine, WorkspaceColor } from "../shared/model.ts";
+import type { Machine, Pastel } from "../shared/model.ts";
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
@@ -51,7 +51,7 @@ function AddMachine({ machines }: { machines: Machine[] }) {
 
 function MachineRow({ machine, onOpen }: { machine: Machine; onOpen: (machine: Machine) => void }) {
   const [pickingColor, setPickingColor] = useState(false);
-  const choose = (color: WorkspaceColor | null) => {
+  const choose = (color: Pastel | null) => {
     connection.send({ type: "machine.set-color", machineId: machine.id, color });
     setPickingColor(false);
   };

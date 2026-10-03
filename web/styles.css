@@ -533,21 +533,21 @@ body.resizing iframe {
 }
 
 :root[data-workspace-colors="card"] .workspace[data-color] {
-  background: var(--workspace-tint);
-  border-color: color-mix(in srgb, var(--workspace-tint), var(--text) 10%);
+  background: var(--pastel-tint);
+  border-color: color-mix(in srgb, var(--pastel-tint), var(--text) 10%);
 }
 
 :root[data-workspace-colors="heading"] .workspace[data-color] > header {
   margin: -8px -6px 6px;
   padding: 8px 8px 6px;
   border-radius: 9px 9px 0 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--workspace-tint), var(--text) 10%);
-  background: var(--workspace-tint);
+  border-bottom: 1px solid color-mix(in srgb, var(--pastel-tint), var(--text) 10%);
+  background: var(--pastel-tint);
 }
 
 :root[data-workspace-colors="stripe"] .workspace[data-color] {
-  background: color-mix(in srgb, var(--workspace-tint) 55%, var(--rail-card));
-  box-shadow: inset 4px 0 0 var(--workspace-stripe);
+  background: color-mix(in srgb, var(--pastel-tint) 55%, var(--rail-card));
+  box-shadow: inset 4px 0 0 var(--pastel-stripe);
 }
 
 :root[data-workspace-colors="stripe"] .workspace[data-color] li.selected::before {
@@ -576,9 +576,9 @@ body.resizing iframe {
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 2px solid var(--workspace-stripe, color-mix(in srgb, var(--text) 15%, transparent));
+  border: 2px solid var(--pastel-stripe, color-mix(in srgb, var(--text) 15%, transparent));
   border-radius: 6px;
-  background: var(--workspace-tint);
+  background: var(--pastel-tint);
 }
 
 .color-swatches .swatch.no-color {
@@ -3735,21 +3735,21 @@ button.picture-option.chosen {
 }
 
 .preview-card.coloured-card {
-  border-color: color-mix(in srgb, var(--workspace-tint), var(--text) 10%);
-  background: var(--workspace-tint);
+  border-color: color-mix(in srgb, var(--pastel-tint), var(--text) 10%);
+  background: var(--pastel-tint);
 }
 
 .preview-card.coloured-heading > .heading {
   margin: -5px -6px 0;
   padding: 5px 6px 4px;
-  border-bottom: 1px solid color-mix(in srgb, var(--workspace-tint), var(--text) 10%);
+  border-bottom: 1px solid color-mix(in srgb, var(--pastel-tint), var(--text) 10%);
   border-radius: 5px 5px 0 0;
-  background: var(--workspace-tint);
+  background: var(--pastel-tint);
 }
 
 .preview-card.coloured-stripe {
-  background: color-mix(in srgb, var(--workspace-tint) 55%, var(--rail-card));
-  box-shadow: inset 3px 0 0 var(--workspace-stripe);
+  background: color-mix(in srgb, var(--pastel-tint) 55%, var(--rail-card));
+  box-shadow: inset 3px 0 0 var(--pastel-stripe);
 }
 
 .preview-machine-rail {
@@ -3771,12 +3771,12 @@ button.picture-option.chosen {
 }
 
 .preview-rail-button.coloured {
-  border-color: var(--workspace-stripe);
-  background: var(--workspace-tint);
+  border-color: var(--pastel-stripe);
+  background: var(--pastel-tint);
 }
 
 .preview-chat.striped {
-  box-shadow: inset 0 3px 0 var(--workspace-stripe);
+  box-shadow: inset 0 3px 0 var(--pastel-stripe);
 }
 
 /* Code review */
@@ -4827,7 +4827,7 @@ body.reordering * {
 }
 
 .machine-frame[data-color] {
-  border-top: 4px solid var(--workspace-stripe);
+  border-top: 4px solid var(--pastel-stripe);
 }
 
 .machine-frame.shown {
@@ -4901,13 +4901,13 @@ body.reordering * {
 
 .rail-machine[data-color],
 .machine-mark[data-color] {
-  border-color: var(--workspace-stripe);
-  background: var(--workspace-tint);
+  border-color: var(--pastel-stripe);
+  background: var(--pastel-tint);
 }
 
 .rail-machine[data-color]:hover,
 .machine-mark[data-color]:hover {
-  background: color-mix(in srgb, var(--workspace-tint), var(--text) 8%);
+  background: color-mix(in srgb, var(--pastel-tint), var(--text) 8%);
 }
 
 /* The machine's own colour stays on, so a ring around it says which machine shows. */

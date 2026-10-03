@@ -1,7 +1,8 @@
 import type { MachineColorStyle } from "./machine-colors.ts";
+import { pastelVariables } from "./pastels.ts";
 import type { Theme } from "./theme.ts";
 import type { WaitingStyle } from "./waiting.ts";
-import { workspaceColorVariables, type WorkspaceColorStyle } from "./workspace-colors.ts";
+import type { WorkspaceColorStyle } from "./workspace-colors.ts";
 
 const Line = ({ width, strong = false }: { width: number; strong?: boolean }) => (
   <span className={`preview-line ${strong ? "strong" : ""}`} style={{ width: `${width}%` }} />
@@ -70,7 +71,7 @@ export function WaitingPreview({ style }: { style: WaitingStyle }) {
 export function WorkspaceColorPreview({ style }: { style: WorkspaceColorStyle }) {
   return (
     <span className="preview-sidebar">
-      <span className={`preview-card coloured-${style}`} style={workspaceColorVariables("lavender")}>
+      <span className={`preview-card coloured-${style}`} style={pastelVariables("lavender")}>
         <span className="preview-row heading">
           <span className="preview-mark">Mi</span>
           <Line width={50} strong />
@@ -89,7 +90,7 @@ export function WorkspaceColorPreview({ style }: { style: WorkspaceColorStyle })
 /** A sky machine shown next to the rail, marked the way the style marks it. */
 export function MachineColorPreview({ style }: { style: MachineColorStyle }) {
   return (
-    <span className="preview-window" style={workspaceColorVariables("sky")}>
+    <span className="preview-window" style={pastelVariables("sky")}>
       <span className="preview-machine-rail">
         <span className="preview-rail-button" />
         <span className="preview-rail-button coloured" />

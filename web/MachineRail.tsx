@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { spacedNumber } from "../shared/join-requests.ts";
 import { inviteIn } from "../shared/machines.ts";
-import type { Machine, MachineStatus, WorkspaceColor } from "../shared/model.ts";
+import type { Machine, MachineStatus, Pastel } from "../shared/model.ts";
 import type { ClientMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { useMachineColorStyle } from "./machine-colors.ts";
+import { pastelVariables } from "./pastels.ts";
 import { mostUrgentTone } from "./waiting.ts";
-import { workspaceColorVariables } from "./workspace-colors.ts";
 
 const machineFromHash = () => location.hash.match(/^#\/m\/([\w-]+)$/)?.[1] ?? null;
 
@@ -25,7 +25,7 @@ export const machineInitials = (name: string) =>
     .join("");
 
 /** For the stylesheet: the machine's pastel, which its rail button, mark and strip draw with. */
-export const colorAttributes = (color: WorkspaceColor | null) => (color ? { "data-color": color, style: workspaceColorVariables(color) } : {});
+export const colorAttributes = (color: Pastel | null) => (color ? { "data-color": color, style: pastelVariables(color) } : {});
 
 /** A conversation to open in a machine's frame, e.g. from that machine's notification; each request is a new object. */
 export interface ConversationToOpen {

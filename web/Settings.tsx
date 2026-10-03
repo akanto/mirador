@@ -17,7 +17,7 @@ import { themeLabels, useTheme } from "./theme.ts";
 import { useTimestampsShown } from "./timestamps.ts";
 import { setTypingAids, useTypingAids, type TypingAids } from "./typing-aids.ts";
 import { useWaitingStyle, waitingStyleLabels } from "./waiting.ts";
-import { useWorkspaceColorStyle, workspaceColorStyleLabels } from "./workspace-colors.ts";
+import { setWorkspaceColorStyle, useWorkspaceColorStyle, workspaceColorStyleLabels } from "./workspace-colors.ts";
 
 const thumbnailLabels: Record<PaneId, string> = { conversation: "Chat", canvas: "Canvas", terminals: "Terminals" };
 const startHiddenLabels: Record<HideablePane, string> = { canvas: "Canvas starts hidden", terminals: "Terminals start hidden" };
@@ -169,7 +169,7 @@ function AppearanceSettings() {
   const [theme, setTheme] = useTheme();
   const [timestampsShown, setTimestampsShown] = useTimestampsShown();
   const [waitingStyle, setWaitingStyle] = useWaitingStyle();
-  const [workspaceColorStyle, setWorkspaceColorStyle] = useWorkspaceColorStyle();
+  const workspaceColorStyle = useWorkspaceColorStyle();
   const machineColorStyle = useMachineColorStyle();
   return (
     <>

@@ -3,13 +3,13 @@ import { basename } from "node:path";
 import index from "../web/index.html";
 import {
   isCanvasUse,
-  isWorkspaceColor,
+  isPastel,
   type CanvasUse,
   type PromptTemplate,
   type PublicAddress,
   type ReachabilitySettings,
   type Workspace,
-  type WorkspaceColor,
+  type Pastel,
 } from "../shared/model.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
@@ -262,8 +262,8 @@ export function startServer(services: HostServices) {
     if (joinCode) await relays.join(id, joinCode, authorityFingerprint);
   }
 
-  function colorMachine(machineId: string, color: WorkspaceColor | null) {
-    if (color !== null && !isWorkspaceColor(color)) throw new Error(`Unknown machine colour ${color}`);
+  function colorMachine(machineId: string, color: Pastel | null) {
+    if (color !== null && !isPastel(color)) throw new Error(`Unknown machine colour ${color}`);
     store.setMachineColor(machineId, color);
     broadcastMachines();
   }
@@ -382,8 +382,8 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "prompt-template.deleted", templateId });
   }
 
-  function colorWorkspace(workspaceId: string, color: WorkspaceColor | null) {
-    if (color !== null && !isWorkspaceColor(color)) throw new Error(`Unknown workspace colour ${color}`);
+  function colorWorkspace(workspaceId: string, color: Pastel | null) {
+    if (color !== null && !isPastel(color)) throw new Error(`Unknown workspace colour ${color}`);
     store.setWorkspaceColor(workspaceId, color);
     const workspace = store.findWorkspace(workspaceId);
     if (workspace) hub.broadcast({ type: "workspace.upserted", workspace });

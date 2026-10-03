@@ -17,7 +17,7 @@ import type {
   StoredEvent,
   Workspace,
 } from "../shared/model.ts";
-import { isCanvasUse, isWorkspaceColor, type CanvasUse, type WorkspaceColor } from "../shared/model.ts";
+import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
@@ -134,7 +134,7 @@ const toWorkspace = (row: WorkspaceRow): Workspace => ({
   name: row.name,
   path: row.path,
   defaultLaunch: { harness: row.default_harness, profileId: row.default_profile_id },
-  color: isWorkspaceColor(row.color) ? row.color : null,
+  color: isPastel(row.color) ? row.color : null,
   position: row.position,
   createdAt: row.created_at,
 });
@@ -157,7 +157,7 @@ const MACHINE_COLUMNS = "SELECT id, name, origin, created_at, relay_port, device
 
 const toMachine = (row: unknown): Machine => {
   const { id, name, origin, created_at, relay_port, joined, color } = row as MachineRow;
-  return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1, color: isWorkspaceColor(color) ? color : null };
+  return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1, color: isPastel(color) ? color : null };
 };
 
 const toConversation = (row: ConversationRow): Conversation => ({
@@ -241,7 +241,7 @@ export class Store {
       .run(launch.harness, launch.profileId, workspaceId);
   }
 
-  setWorkspaceColor(workspaceId: string, color: WorkspaceColor | null) {
+  setWorkspaceColor(workspaceId: string, color: Pastel | null) {
     this.db.query("UPDATE workspaces SET color = ? WHERE id = ?").run(color, workspaceId);
   }
 
@@ -470,7 +470,7 @@ export class Store {
     this.db.query("UPDATE machines SET authority = ? WHERE id = ?").run(authority, id);
   }
 
-  setMachineColor(id: string, color: WorkspaceColor | null) {
+  setMachineColor(id: string, color: Pastel | null) {
     this.db.query("UPDATE machines SET color = ? WHERE id = ?").run(color, id);
   }
 

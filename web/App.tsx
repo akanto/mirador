@@ -1,5 +1,5 @@
 import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
-import { launchLabel, workspaceColorLabels, type CanvasItem, type Conversation, type Machine } from "../shared/model.ts";
+import { launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine } from "../shared/model.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
@@ -110,7 +110,7 @@ function paletteEntries(
     {
       id: `color-${workspace.id}`,
       label: `Colour ${workspace.name}…`,
-      detail: workspace.color ? workspaceColorLabels[workspace.color] : "no colour",
+      detail: workspace.color ? pastelLabels[workspace.color] : "no colour",
       kind: "action",
       run: () => dispatch({ type: "open-overlay", overlay: { kind: "workspace-color", workspaceId: workspace.id } }),
     },

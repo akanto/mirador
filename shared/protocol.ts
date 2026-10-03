@@ -19,7 +19,7 @@ import type {
   StoredEvent,
   TerminalTab,
   Workspace,
-  WorkspaceColor,
+  Pastel,
 } from "./model.ts";
 import type { FindingDecision } from "./review.ts";
 import type { MentionSuggestion } from "./mentions.ts";
@@ -37,7 +37,7 @@ export type ClientMessage =
   | { type: "workspace.set-default-launch"; workspaceId: string; launch: Launch }
   /** Puts the workspace just before another in the sidebar, or last. */
   | { type: "workspace.move"; workspaceId: string; beforeWorkspaceId: string | null }
-  | { type: "workspace.set-color"; workspaceId: string; color: WorkspaceColor | null }
+  | { type: "workspace.set-color"; workspaceId: string; color: Pastel | null }
   | { type: "profile.save"; requestId: string; profile: ProfileDraft }
   | { type: "profile.delete"; profileId: string }
   /** Creates the template, or changes the one with this id. */
@@ -117,7 +117,7 @@ export type ClientMessage =
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
-  | { type: "machine.set-color"; machineId: string; color: WorkspaceColor | null }
+  | { type: "machine.set-color"; machineId: string; color: Pastel | null }
   | { type: "machine.join"; requestId: string; machineId: string; code: string; authorityFingerprint: string | null }
   | { type: "machine.ask-to-join"; requestId: string; machineId: string }
   | { type: "search"; requestId: string; query: string };

@@ -8,7 +8,7 @@ import {
   type Profile,
   type WaitingFor,
   type Workspace,
-  type WorkspaceColor,
+  type Pastel,
 } from "../shared/model.ts";
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
@@ -19,11 +19,11 @@ import { useDragToReorder } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
+import { pastelVariables } from "./pastels.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
-import { workspaceColorVariables } from "./workspace-colors.ts";
 import { parentFolder } from "./workspace-folder.ts";
 
 function useDirectoryCompletions(prefix: string) {
@@ -217,7 +217,7 @@ function WorkspaceColorPicker({ workspace, mark, onClose }: { workspace: Workspa
       window.removeEventListener("mousedown", closeOnPressElsewhere);
     };
   }, [onClose]);
-  const choose = (color: WorkspaceColor | null) => {
+  const choose = (color: Pastel | null) => {
     connection.send({ type: "workspace.set-color", workspaceId: workspace.id, color });
     onClose();
   };
@@ -265,7 +265,7 @@ function WorkspaceSection({
       aria-label={workspace.name}
       data-reorder-id={workspace.id}
       data-color={workspace.color ?? undefined}
-      style={workspace.color ? workspaceColorVariables(workspace.color) : undefined}
+      style={workspace.color ? pastelVariables(workspace.color) : undefined}
     >
       <header onPointerDown={onStartDrag}>
         <button

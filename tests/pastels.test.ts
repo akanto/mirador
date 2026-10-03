@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { workspaceColors, workspaceShades, type Hsl } from "../web/workspace-colors.ts";
+import { pastels, pastelShades, type Hsl } from "../web/pastels.ts";
 
 type Rgb = [number, number, number];
 type Theme = "light" | "dark";
@@ -45,11 +45,11 @@ const text = themeToken("--text");
 const rail = themeToken("--rail");
 const card: Record<Theme, Rgb> = { light: [255, 255, 255], dark: mixed([255, 255, 255], rail.dark, 0.035) };
 
-describe("workspace colours", () => {
+describe("pastels", () => {
   test("keep text readable in both themes: the theme's text, and the 70% text of folders and links, at 4.5:1 or more", () => {
-    const unreadable = workspaceColors.flatMap((color) =>
+    const unreadable = pastels.flatMap((color) =>
       (["light", "dark"] as const).flatMap((theme) => {
-        const tint = rgbOfHsl(workspaceShades(color).tint[theme]);
+        const tint = rgbOfHsl(pastelShades(color).tint[theme]);
         const softTint = mixed(tint, card[theme], 0.55);
         return [tint, softTint].flatMap((background) =>
           [text[theme], mixed(text[theme], background, 0.7)]
