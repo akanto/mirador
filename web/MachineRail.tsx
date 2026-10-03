@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { spacedNumber } from "../shared/join-requests.ts";
 import { inviteIn } from "../shared/machines.ts";
-import type { Machine, MachineStatus } from "../shared/model.ts";
+import type { Machine, MachineStatus, WorkspaceColor } from "../shared/model.ts";
 import type { ClientMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { useMachineColorStyle } from "./machine-colors.ts";
 import { mostUrgentTone } from "./waiting.ts";
+import { workspaceColorVariables } from "./workspace-colors.ts";
 
 const machineFromHash = () => location.hash.match(/^#\/m\/([\w-]+)$/)?.[1] ?? null;
 
@@ -14,13 +16,16 @@ export const showsMachinesHere = () => ["127.0.0.1", "localhost"].includes(locat
 
 const relayAddress = (machine: Machine) => `${location.protocol}//${location.hostname}:${machine.relayPort}/`;
 
-const initials = (name: string) =>
+export const machineInitials = (name: string) =>
   name
     .split(/[\s.\-_]+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((word) => word[0]!.toUpperCase())
     .join("");
+
+/** For the stylesheet: the machine's pastel, which its rail button, mark and strip draw with. */
+export const colorAttributes = (color: WorkspaceColor | null) => (color ? { "data-color": color, style: workspaceColorVariables(color) } : {});
 
 /** A conversation to open in a machine's frame, e.g. from that machine's notification; each request is a new object. */
 export interface ConversationToOpen {
@@ -98,12 +103,13 @@ export function MachineRail({
             key={machine.id}
             type="button"
             className={`rail-machine ${machine.id === shownId ? "shown" : ""} ${away ? "away" : ""}`}
+            {...colorAttributes(machine.color)}
             aria-label={machine.name}
             aria-current={machine.id === shownId}
             data-hint={machineHint(machine, status)}
             onClick={() => onShow(machine.id)}
           >
-            {initials(machine.name)}
+            {machineInitials(machine.name)}
             <WaitingBadge status={status} />
           </button>
         );
@@ -117,14 +123,23 @@ export function MachineRail({
 
 const conversationAddress = (machine: Machine, conversationId: string) => `${relayAddress(machine)}#/c/${conversationId}`;
 
-function MachineFrame({ machine, shown, opening }: { machine: Machine; shown: boolean; opening: ConversationToOpen | null }) {
+function MachineFrame({ machine, shown, opening, striped }: { machine: Machine; shown: boolean; opening: ConversationToOpen | null; striped: boolean }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const openedWith = useRef(opening);
   const [address] = useState(() => (opening ? conversationAddress(machine, opening.conversationId) : relayAddress(machine)));
   useEffect(() => {
     if (opening && opening !== openedWith.current) frame.current!.contentWindow!.location.href = conversationAddress(machine, opening.conversationId);
   }, [opening]);
-  return <iframe ref={frame} className={`machine-frame ${shown ? "shown" : ""}`} title={machine.name} src={address} allow="clipboard-read; clipboard-write" />;
+  return (
+    <iframe
+      ref={frame}
+      className={`machine-frame ${shown ? "shown" : ""}`}
+      {...colorAttributes(striped ? machine.color : null)}
+      title={machine.name}
+      src={address}
+      allow="clipboard-read; clipboard-write"
+    />
+  );
 }
 
 /** In a machine's place until this computer has joined it, as the machine shows nothing to a computer without an invite. */
@@ -208,11 +223,18 @@ export function MachineFrames({
   visited: Set<string>;
   opening: ConversationToOpen | null;
 }) {
+  const striped = useMachineColorStyle() === "strip";
   return machines
     .filter((machine) => visited.has(machine.id) && machine.relayPort !== null)
     .map((machine) =>
       machine.joined ? (
-        <MachineFrame key={machine.id} machine={machine} shown={machine.id === shownId} opening={opening?.machineId === machine.id ? opening : null} />
+        <MachineFrame
+          key={machine.id}
+          machine={machine}
+          shown={machine.id === shownId}
+          opening={opening?.machineId === machine.id ? opening : null}
+          striped={striped}
+        />
       ) : (
         machine.id === shownId && <JoinMachinePanel key={machine.id} machine={machine} />
       ),

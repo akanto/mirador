@@ -60,6 +60,13 @@ export async function openSettings(page: Page) {
   return page.getByRole("dialog", { name: "Settings" });
 }
 
+/** One of the pictures in a choice of Settings, e.g. Light under Theme. */
+export async function chooseInSettings(page: Page, label: string, option: string) {
+  const settings = await openSettings(page);
+  await settings.getByRole("radiogroup", { name: label }).getByRole("radio", { name: option }).click();
+  await settings.getByRole("button", { name: "Close" }).click();
+}
+
 export async function startConversation(page: Page) {
   const previousUrl = page.url();
   await page.getByRole("button", { name: "+ New conversation" }).click();

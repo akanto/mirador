@@ -106,6 +106,16 @@ describe("Store", () => {
     expect(store.listWorkspaces()[0]?.color).toBeNull();
   });
 
+  test("remembers a machine's colour until the user takes it away", () => {
+    const store = new Store(":memory:");
+    store.insertMachine({ id: "m1", name: "Home server", origin: "https://home-server.example", createdAt: 1 });
+    expect(store.findMachine("m1")?.color).toBeNull();
+    store.setMachineColor("m1", "teal");
+    expect(store.findMachine("m1")?.color).toBe("teal");
+    store.setMachineColor("m1", null);
+    expect(store.listMachines()[0]?.color).toBeNull();
+  });
+
   test("remembers that the user named a conversation", () => {
     const { store, conversation } = seededStore();
     store.updateConversation({ ...conversation, title: "Login bug", titleSetByUser: true });

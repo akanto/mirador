@@ -1,3 +1,4 @@
+import type { MachineColorStyle } from "./machine-colors.ts";
 import type { Theme } from "./theme.ts";
 import type { WaitingStyle } from "./waiting.ts";
 import { workspaceColorVariables, type WorkspaceColorStyle } from "./workspace-colors.ts";
@@ -80,6 +81,23 @@ export function WorkspaceColorPreview({ style }: { style: WorkspaceColorStyle })
         <span className="preview-row">
           <Line width={55} />
         </span>
+      </span>
+    </span>
+  );
+}
+
+/** A sky machine shown next to the rail, marked the way the style marks it. */
+export function MachineColorPreview({ style }: { style: MachineColorStyle }) {
+  return (
+    <span className="preview-window" style={workspaceColorVariables("sky")}>
+      <span className="preview-machine-rail">
+        <span className="preview-rail-button" />
+        <span className="preview-rail-button coloured" />
+      </span>
+      <span className={`preview-chat ${style === "strip" ? "striped" : ""}`}>
+        <span className="preview-bubble" />
+        <Line width={90} />
+        <Line width={70} />
       </span>
     </span>
   );

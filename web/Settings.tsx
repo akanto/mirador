@@ -1,12 +1,13 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { canvasUseLabels, type CanvasUse, type PromptTemplate } from "../shared/model.ts";
-import { ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
+import { MachineColorPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
+import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
 import { isMac } from "./shortcuts.ts";
@@ -169,6 +170,7 @@ function AppearanceSettings() {
   const [timestampsShown, setTimestampsShown] = useTimestampsShown();
   const [waitingStyle, setWaitingStyle] = useWaitingStyle();
   const [workspaceColorStyle, setWorkspaceColorStyle] = useWorkspaceColorStyle();
+  const machineColorStyle = useMachineColorStyle();
   return (
     <>
       <h3>Appearance</h3>
@@ -189,6 +191,14 @@ function AppearanceSettings() {
         chosen={workspaceColorStyle}
         onChoose={setWorkspaceColorStyle}
         preview={(option) => <WorkspaceColorPreview style={option} />}
+      />
+      <PictureChoice
+        name="Machine colours"
+        hint={hints.machineColorStyle}
+        labels={machineColorStyleLabels}
+        chosen={machineColorStyle}
+        onChoose={setMachineColorStyle}
+        preview={(option) => <MachineColorPreview style={option} />}
       />
       <div className="appearance-settings">
         <label data-hint={hints.timestamps}>

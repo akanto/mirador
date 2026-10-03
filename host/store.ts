@@ -70,6 +70,7 @@ const addedColumns = [
   { table: "machines", column: "relay_port", definition: "INTEGER" },
   { table: "machines", column: "device_token", definition: "TEXT" },
   { table: "machines", column: "authority", definition: "TEXT" },
+  { table: "machines", column: "color", definition: "TEXT" },
   { table: "conversations", column: "profile_id", definition: "TEXT" },
   { table: "workspaces", column: "default_harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
   { table: "profiles", column: "harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
@@ -150,13 +151,13 @@ const toProfile = (row: ProfileRow): Profile => ({
   createdAt: row.created_at,
 });
 
-type MachineRow = { id: string; name: string; origin: string; created_at: number; relay_port: number | null; joined: number };
+type MachineRow = { id: string; name: string; origin: string; created_at: number; relay_port: number | null; joined: number; color: string | null };
 
-const MACHINE_COLUMNS = "SELECT id, name, origin, created_at, relay_port, device_token IS NOT NULL AS joined FROM machines";
+const MACHINE_COLUMNS = "SELECT id, name, origin, created_at, relay_port, device_token IS NOT NULL AS joined, color FROM machines";
 
 const toMachine = (row: unknown): Machine => {
-  const { id, name, origin, created_at, relay_port, joined } = row as MachineRow;
-  return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1 };
+  const { id, name, origin, created_at, relay_port, joined, color } = row as MachineRow;
+  return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1, color: isWorkspaceColor(color) ? color : null };
 };
 
 const toConversation = (row: ConversationRow): Conversation => ({
@@ -467,6 +468,10 @@ export class Store {
 
   setMachineAuthority(id: string, authority: string | null) {
     this.db.query("UPDATE machines SET authority = ? WHERE id = ?").run(authority, id);
+  }
+
+  setMachineColor(id: string, color: WorkspaceColor | null) {
+    this.db.query("UPDATE machines SET color = ? WHERE id = ?").run(color, id);
   }
 
   deleteMachine(id: string) {

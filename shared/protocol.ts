@@ -117,6 +117,7 @@ export type ClientMessage =
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
+  | { type: "machine.set-color"; machineId: string; color: WorkspaceColor | null }
   | { type: "machine.join"; requestId: string; machineId: string; code: string; authorityFingerprint: string | null }
   | { type: "machine.ask-to-join"; requestId: string; machineId: string }
   | { type: "search"; requestId: string; query: string };

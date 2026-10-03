@@ -21,6 +21,9 @@ export const hints = {
   removeMachineArmed: "Click again to remove this machine from the list. It keeps running, and this computer stays among its devices until you revoke it there.",
   thisComputer: "This computer's own workspaces and conversations",
   manageMachines: "Add or remove machines",
+  machineColor: "Give this machine a colour, to tell it apart in the rail. Kept on this computer.",
+  machineColorStyle:
+    "Where a machine you gave a colour shows it: on its rail button only, or also as a strip along the top of its view, so you can tell at a glance which machine you work on. Give a machine a colour in Machines….",
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   askAndUpdateReview:

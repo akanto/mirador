@@ -262,6 +262,12 @@ export function startServer(services: HostServices) {
     if (joinCode) await relays.join(id, joinCode, authorityFingerprint);
   }
 
+  function colorMachine(machineId: string, color: WorkspaceColor | null) {
+    if (color !== null && !isWorkspaceColor(color)) throw new Error(`Unknown machine colour ${color}`);
+    store.setMachineColor(machineId, color);
+    broadcastMachines();
+  }
+
   function removeMachine(machineId: string) {
     relays.stop(machineId);
     watch.stop(machineId);
@@ -561,6 +567,8 @@ export function startServer(services: HostServices) {
         return await addMachine(message.name, message.address);
       case "machine.remove":
         return removeMachine(message.machineId);
+      case "machine.set-color":
+        return colorMachine(message.machineId, message.color);
       case "join-request.approve": {
         const problem = await joinRequests.approve(message.joinRequestId, message.number).then(
           (approved) => (approved ? null : "That is not the number the device shows, so its request was denied. It can ask again."),

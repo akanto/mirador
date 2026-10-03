@@ -3,7 +3,6 @@ import {
   harnessIds,
   launchLabel,
   terminalActivityLabels,
-  workspaceColorLabels,
   type Conversation,
   type Launch,
   type Profile,
@@ -11,6 +10,7 @@ import {
   type Workspace,
   type WorkspaceColor,
 } from "../shared/model.ts";
+import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
@@ -23,7 +23,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
-import { workspaceColors, workspaceColorVariables } from "./workspace-colors.ts";
+import { workspaceColorVariables } from "./workspace-colors.ts";
 import { parentFolder } from "./workspace-folder.ts";
 
 function useDirectoryCompletions(prefix: string) {
@@ -222,20 +222,8 @@ function WorkspaceColorPicker({ workspace, mark, onClose }: { workspace: Workspa
     onClose();
   };
   return (
-    <div className="workspace-color-picker" role="radiogroup" aria-label={`Colour of ${workspace.name}`} ref={picker}>
-      {[null, ...workspaceColors].map((color) => (
-        <button
-          key={color ?? "none"}
-          type="button"
-          role="radio"
-          aria-checked={workspace.color === color}
-          aria-label={color ? workspaceColorLabels[color] : "No colour"}
-          className={color ? "swatch" : "swatch no-color"}
-          style={color ? workspaceColorVariables(color) : undefined}
-          autoFocus={workspace.color === color}
-          onClick={() => choose(color)}
-        />
-      ))}
+    <div className="workspace-color-picker" ref={picker}>
+      <ColorSwatches label={`Colour of ${workspace.name}`} chosen={workspace.color} onChoose={choose} />
     </div>
   );
 }

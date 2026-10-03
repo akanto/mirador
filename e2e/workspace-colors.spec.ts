@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addWorkspace, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, chooseInSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5130);
@@ -43,12 +43,6 @@ async function expectReadable(texts: Locator[]) {
 }
 
 const backgroundOf = (element: Locator) => element.evaluate((each) => getComputedStyle(each).backgroundColor);
-
-async function chooseInSettings(page: Page, label: string, option: string) {
-  const settings = await openSettings(page);
-  await settings.getByRole("radiogroup", { name: label }).getByRole("radio", { name: option }).click();
-  await settings.getByRole("button", { name: "Close" }).click();
-}
 
 test("a workspace takes a pastel colour from its initials or the palette, every window shows it, and its text stays readable", async ({ page }) => {
   await signIn(page, host);

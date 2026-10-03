@@ -34,6 +34,8 @@ export interface Machine {
   relayPort: number | null;
   /** This host has joined the machine and signs in there as one of its devices. */
   joined: boolean;
+  /** One of the workspace pastels, to tell the machine apart in the rail. */
+  color: WorkspaceColor | null;
 }
 
 /** What this host last heard from a joined machine: whether it answers, and what each conversation waiting for you there waits for. */
