@@ -1,10 +1,11 @@
 import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
-import { launchLabel, workspaceColorLabels, type CanvasItem, type Conversation } from "../shared/model.ts";
+import { launchLabel, workspaceColorLabels, type CanvasItem, type Conversation, type Machine } from "../shared/model.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { JoinMachine } from "./Devices.tsx";
+import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
 import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { HintLayer } from "./Hint.tsx";
 import { SearchDialog } from "./Search.tsx";
@@ -71,7 +72,14 @@ interface PaneToggle {
   toggle: () => void;
 }
 
-function paletteEntries(state: AppState, dispatch: Dispatch<AppAction>, canvas: PaneToggle, terminal: PaneToggle, resetLayout: () => void): PaletteEntry[] {
+function paletteEntries(
+  state: AppState,
+  dispatch: Dispatch<AppAction>,
+  canvas: PaneToggle,
+  terminal: PaneToggle,
+  resetLayout: () => void,
+  showMachine: (machine: Machine) => void,
+): PaletteEntry[] {
   const workspaceName = (workspaceId: string) => state.workspaces.find(({ id }) => id === workspaceId)?.name ?? "";
   const conversations = recentConversations(state).map(
     (conversation): PaletteEntry => ({
@@ -117,7 +125,7 @@ function paletteEntries(state: AppState, dispatch: Dispatch<AppAction>, canvas: 
         ]
       : [];
   const machineActions = state.machines.map(
-    (machine): PaletteEntry => ({ id: `machine-${machine.id}`, label: `Open machine ${machine.name}`, detail: machine.origin, kind: "action", run: () => openMachine(machine.origin) }),
+    (machine): PaletteEntry => ({ id: `machine-${machine.id}`, label: `Open machine ${machine.name}`, detail: machine.origin, kind: "action", run: () => showMachine(machine) }),
   );
   return [
     ...conversations,
@@ -172,13 +180,26 @@ function useKeptConversationsSubscribed(status: ConnectionStatus, kept: OpenConv
 }
 
 export function App() {
-  const [state, dispatch] = useReducer(reducer, conversationFromHash(), initialStateFor);
+  const [state, dispatchToState] = useReducer(reducer, conversationFromHash(), initialStateFor);
+  const machines = useShownMachine(state.machines, state.hostRunId !== null);
+  /** Whatever selects a conversation here, from the palette to a notification, brings this computer's own view back. */
+  const dispatch = useCallback((action: AppAction) => {
+    if (action.type === "select") machines.show(null);
+    dispatchToState(action);
+  }, []);
+  const showMachine = (machine: Machine) => (showsMachinesHere() ? machines.show(machine.id) : openMachine(machine.origin));
+  const railShown = showsMachinesHere() && state.machines.length > 0;
   const status = useConnectionStatus();
   useReloadWhenHostRestarted(state.hostRunId);
   const conversationLayouts = useConversationLayouts();
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const layoutElement = useRef<HTMLDivElement>(null);
-  const showSidebarWidth = (share: number) => layoutElement.current?.style.setProperty("--sidebar-width", `${sidebarWidthWithinLimits(share * window.innerWidth)}px`);
+  const layoutArea = () => {
+    const { left, width } = layoutElement.current!.getBoundingClientRect();
+    return { start: left, size: width };
+  };
+  const showSidebarWidth = (share: number) =>
+    layoutElement.current?.style.setProperty("--sidebar-width", `${sidebarWidthWithinLimits(share * layoutArea().size)}px`);
   const workspace = currentWorkspace(state);
   const layout = conversationLayouts.layoutOf(state.selectedConversationId);
   const changeLayout = (update: (layout: PaneLayout) => PaneLayout) => conversationLayouts.change(state.selectedConversationId, update);
@@ -252,12 +273,12 @@ export function App() {
   useKeptConversationsSubscribed(status, state.kept);
 
   const openConversation = useCallback((conversationId: string) => dispatch({ type: "select", conversationId }), []);
-  useSystemNotifications(state.selectedConversationId, status === "open", openConversation);
+  useSystemNotifications(machines.shown ? null : state.selectedConversationId, status === "open", openConversation);
 
   useEffect(() => {
-    const hash = state.selectedConversationId ? `#/c/${state.selectedConversationId}` : "";
+    const hash = machines.shownId ? `#/m/${machines.shownId}` : state.selectedConversationId ? `#/c/${state.selectedConversationId}` : "";
     if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
-  }, [state.selectedConversationId]);
+  }, [state.selectedConversationId, machines.shownId]);
 
   if (status === "unauthorized") return <JoinMachine />;
 
@@ -299,27 +320,39 @@ export function App() {
       )}
     </main>
   );
+  const layoutWidth = layoutElement.current?.getBoundingClientRect().width ?? window.innerWidth;
   return (
-    <div ref={layoutElement} className="layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
-      <Sidebar state={state} dispatch={dispatch} />
-      <Splitter
-        label="Resize the sidebar"
-        share={sidebarWidth / window.innerWidth}
-        resetShare={DEFAULT_SIDEBAR_WIDTH / window.innerWidth}
-        minimumSize={0}
-        area={() => ({ start: 0, size: window.innerWidth })}
-        onDrag={showSidebarWidth}
-        onChange={(share) => setSidebarWidth(share * window.innerWidth)}
-      />
-      <WorkspaceArea
-        layout={layout}
-        onChange={changeLayout}
-        content={{
-          conversation: conversationPane,
-          canvas: showCanvas ? <CanvasPanel key={conversation!.id} items={open!.canvas} assetsOrigin={state.canvasAssetsOrigin} onHide={toggleCanvas} /> : null,
-          terminals: terminalWorkspace ? <TerminalPane key={terminalWorkspace.id} workspace={terminalWorkspace} status={status} onHide={toggleTerminal} /> : null,
-        }}
-      />
+    <div className={`app ${railShown ? "with-rail" : ""}`}>
+      {railShown && (
+        <MachineRail
+          machines={state.machines}
+          shownId={machines.shown?.id ?? null}
+          onShow={machines.show}
+          onManage={() => dispatch({ type: "open-overlay", overlay: { kind: "machines" } })}
+        />
+      )}
+      <div ref={layoutElement} className={`layout ${machines.shown ? "covered" : ""}`} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+        <Sidebar state={state} dispatch={dispatch} />
+        <Splitter
+          label="Resize the sidebar"
+          share={sidebarWidth / layoutWidth}
+          resetShare={DEFAULT_SIDEBAR_WIDTH / layoutWidth}
+          minimumSize={0}
+          area={layoutArea}
+          onDrag={showSidebarWidth}
+          onChange={(share) => setSidebarWidth(share * layoutArea().size)}
+        />
+        <WorkspaceArea
+          layout={layout}
+          onChange={changeLayout}
+          content={{
+            conversation: conversationPane,
+            canvas: showCanvas ? <CanvasPanel key={conversation!.id} items={open!.canvas} assetsOrigin={state.canvasAssetsOrigin} onHide={toggleCanvas} /> : null,
+            terminals: terminalWorkspace ? <TerminalPane key={terminalWorkspace.id} workspace={terminalWorkspace} status={status} onHide={toggleTerminal} /> : null,
+          }}
+        />
+      </div>
+      {railShown && <MachineFrames machines={state.machines} shownId={machines.shown?.id ?? null} visited={machines.visited} />}
       <HintLayer />
       <div className="notices">
         {state.notices.map((notice) => (
@@ -336,6 +369,7 @@ export function App() {
             { visible: canvasVisible, toggle: toggleCanvas },
             { visible: terminalVisible, toggle: toggleTerminal },
             () => state.selectedConversationId && conversationLayouts.reset(state.selectedConversationId),
+            showMachine,
           )}
           onClose={closeOverlay}
         />
@@ -345,7 +379,16 @@ export function App() {
         <SearchDialog workspaces={state.workspaces} conversations={state.conversations} onOpen={(conversationId) => select(conversationId)} onClose={closeOverlay} />
       )}
       {overlay?.kind === "profiles" && <ProfilesDialog profiles={state.profiles} conversations={state.conversations} onClose={closeOverlay} />}
-      {overlay?.kind === "machines" && <MachinesDialog machines={state.machines} onClose={closeOverlay} />}
+      {overlay?.kind === "machines" && (
+        <MachinesDialog
+          machines={state.machines}
+          onOpen={(machine) => {
+            closeOverlay();
+            showMachine(machine);
+          }}
+          onClose={closeOverlay}
+        />
+      )}
       {overlay?.kind === "settings" && (
         <SettingsDialog
           section={overlay.section}

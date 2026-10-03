@@ -18,7 +18,9 @@ export const hints = {
   deleteTemplateArmed: "Click again to delete this template. Defaults deleted here do not come back.",
   inviteDevice:
     "Makes a one-time code another browser or app joins this Mirador with, within 15 minutes. A joined device can do everything here, including run commands in terminals.",
-  removeMachineArmed: "Click again to remove this machine from the list. It keeps running, and this browser stays joined to it.",
+  removeMachineArmed: "Click again to remove this machine from the list. It keeps running, and this computer stays among its devices until you revoke it there.",
+  thisComputer: "This computer's own workspaces and conversations",
+  manageMachines: "Add or remove machines",
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   askAndUpdateReview:

@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type FrameLocator, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
 /** Presses on the item and moves to just inside the top or bottom edge of the target, leaving the button down. */
@@ -43,7 +43,17 @@ export async function addWorkspace(page: Page, directory: string) {
   await expect(workspaceCard(page, directory)).toBeVisible();
 }
 
-export const workspaceCard = (page: Page, directory: string) => page.locator(".workspace", { has: page.locator(`.workspace-heading[title="${directory}"]`) });
+export const workspaceCard = (scope: Page | FrameLocator, directory: string) =>
+  scope.locator(".workspace", { has: scope.locator(`.workspace-heading[title="${directory}"]`) });
+
+/** With the sidebar's button, which shows whether or not there are workspaces already. */
+export async function addWorkspaceFromSidebar(page: Page, directory: string) {
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const input = page.getByLabel("Workspace directory");
+  await input.fill(directory);
+  await input.press("Enter");
+  await expect(workspaceCard(page, directory)).toBeVisible();
+}
 
 export async function openSettings(page: Page) {
   await page.getByRole("button", { name: "Settings…" }).click();

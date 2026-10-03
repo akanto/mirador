@@ -1,0 +1,197 @@
+import { hostname } from "node:os";
+import type { Machine } from "../shared/model.ts";
+import { TOKEN_COOKIE } from "../shared/protocol.ts";
+import type { Store } from "./store.ts";
+
+const UPSTREAM_OPEN_TIMEOUT_MS = 10_000;
+const RELAY_PORTS_TRIED = 100;
+/** About the hop to the relay, or this host's own sign-in, rather than what the page asks the machine for. */
+const UNFORWARDED_REQUEST_HEADERS = new Set(["host", "cookie", "origin", "referer", "connection", "upgrade", "keep-alive", "transfer-encoding", "content-length"]);
+/**
+ * Cookies ignore ports, so a cookie the machine set would land on this host's own address and replace its sign-in.
+ * fetch has already decoded the body, so its encoding and length no longer apply.
+ */
+const UNRELAYED_RESPONSE_HEADERS = new Set(["set-cookie", "content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"]);
+
+export const thisHostAsDevice = () => `Mirador on ${hostname().replace(/\.local$/, "")}`;
+
+interface RelayedSocket {
+  upstream: WebSocket;
+  page: Bun.ServerWebSocket<RelayedSocket> | null;
+  /** What the machine sent before the page's end of the socket opened. */
+  waiting: (string | ArrayBuffer)[];
+}
+
+/** Only 1000 and 3000–4999 may be sent when closing; others describe how a socket broke. */
+const sendableCloseCode = (code: number) => (code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000);
+
+export function forwardedHeaders(incoming: Headers, machineOrigin: string, token: string | null) {
+  const headers = new Headers([...incoming].filter(([name]) => !UNFORWARDED_REQUEST_HEADERS.has(name) && !name.startsWith("sec-websocket-")));
+  if (incoming.has("origin")) headers.set("origin", machineOrigin);
+  if (token) headers.set("cookie", `${TOKEN_COOKIE}=${token}`);
+  return headers;
+}
+
+export function relayedHeaders(upstream: Headers, machineOrigin: string, relayOrigin: string) {
+  const headers = new Headers([...upstream].filter(([name]) => !UNRELAYED_RESPONSE_HEADERS.has(name)));
+  const location = headers.get("location");
+  if (location?.startsWith(machineOrigin)) headers.set("location", relayOrigin + location.slice(machineOrigin.length));
+  return headers;
+}
+
+function openUpstream(url: string, headers: Headers) {
+  const upstream = new WebSocket(url, { headers } as unknown as string[]);
+  upstream.binaryType = "arraybuffer";
+  return new Promise<WebSocket | null>((resolve) => {
+    const timer = setTimeout(() => {
+      upstream.close();
+      resolve(null);
+    }, UPSTREAM_OPEN_TIMEOUT_MS);
+    upstream.onopen = () => {
+      clearTimeout(timer);
+      resolve(upstream);
+    };
+    upstream.onerror = () => {
+      clearTimeout(timer);
+      resolve(null);
+    };
+  });
+}
+
+/**
+ * Shows another machine's Mirador at a port of this host, signed in there as this host's device. Pages on this
+ * computer open it in a frame with this host's own cookie, which the relay swaps for the device token, so no page
+ * ever holds that token.
+ */
+export class MachineRelays {
+  private readonly servers = new Map<string, Bun.Server<RelayedSocket>>();
+
+  constructor(
+    private readonly store: Store,
+    private readonly firstPort: number,
+    private readonly isSignedIn: (request: Request) => boolean,
+    private readonly machinesChanged: () => void,
+  ) {}
+
+  startAll() {
+    this.store.listMachines().forEach((machine) => this.start(machine));
+  }
+
+  /** On the machine's port from before when it is free, so its pages keep what they stored for their origin. */
+  start(machine: Machine) {
+    const server = (machine.relayPort && this.listen(machine.id, machine.relayPort)) || this.listenOnFreePort(machine.id);
+    if (!server) return console.error(`${new Date().toISOString()} no free port to show the machine ${machine.name} on`);
+    this.servers.set(machine.id, server);
+    if (server.port !== machine.relayPort) this.store.setMachineRelayPort(machine.id, server.port!);
+  }
+
+  stop(machineId: string) {
+    this.servers.get(machineId)?.stop(true);
+    this.servers.delete(machineId);
+  }
+
+  stopAll() {
+    [...this.servers.keys()].forEach((machineId) => this.stop(machineId));
+  }
+
+  /** Joins the machine as this host's device with a code from one of its invites. */
+  async join(machineId: string, code: string) {
+    const machine = this.store.findMachine(machineId);
+    if (!machine) throw new Error("That machine is no longer among your machines.");
+    const response = await fetch(`${machine.origin}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, name: thisHostAsDevice() }),
+    }).catch(() => null);
+    if (!response) throw new Error(`${machine.name} did not answer. Is its Mirador running?`);
+    if (!response.ok) throw new Error(await response.text());
+    const { token } = (await response.json()) as { token?: unknown };
+    if (typeof token !== "string") throw new Error(`${machine.name} let this computer in without a token.`);
+    this.store.setMachineDeviceToken(machineId, token);
+    this.machinesChanged();
+  }
+
+  private listenOnFreePort(machineId: string) {
+    const taken = new Set(this.store.listMachines().map(({ relayPort }) => relayPort));
+    const candidates = Array.from({ length: RELAY_PORTS_TRIED }, (_, index) => this.firstPort + index).filter((port) => !taken.has(port));
+    for (const port of candidates) {
+      const server = this.listen(machineId, port);
+      if (server) return server;
+    }
+    return null;
+  }
+
+  private listen(machineId: string, port: number) {
+    try {
+      return Bun.serve<RelayedSocket>({
+        hostname: "127.0.0.1",
+        port,
+        idleTimeout: 0,
+        fetch: (request, server) => this.relay(machineId, port, request, server),
+        websocket: {
+          open(socket) {
+            socket.data.page = socket;
+            socket.data.waiting.splice(0).forEach((message) => socket.send(message));
+          },
+          message(socket, message) {
+            socket.data.upstream.send(message);
+          },
+          close(socket, code, reason) {
+            socket.data.upstream.close(sendableCloseCode(code), reason);
+          },
+        },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private async relay(machineId: string, port: number, request: Request, server: Bun.Server<RelayedSocket>) {
+    const machine = this.store.findMachine(machineId);
+    if (!machine) return new Response("unknown machine", { status: 404 });
+    const relayOrigins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
+    const relayOrigin = relayOrigins.find((origin) => new URL(origin).host === request.headers.get("host"));
+    if (!relayOrigin) return new Response("forbidden host", { status: 403 });
+    if (!this.isSignedIn(request)) return new Response("unauthorized", { status: 401 });
+    const origin = request.headers.get("origin");
+    if (origin !== null && !relayOrigins.includes(origin)) return new Response("forbidden origin", { status: 403 });
+
+    const url = new URL(request.url);
+    if (url.pathname === "/join" && request.method === "POST") return this.joinFromPage(machine, request);
+    const headers = forwardedHeaders(request.headers, machine.origin, this.store.machineDeviceToken(machineId));
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") return this.relaySocket(machine, url, headers, request, server);
+
+    const response = await fetch(`${machine.origin}${url.pathname}${url.search}`, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+      redirect: "manual",
+    }).catch(() => null);
+    if (!response) return new Response(`${machine.name} did not answer.`, { status: 502 });
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers: relayedHeaders(response.headers, machine.origin, relayOrigin) });
+  }
+
+  /** The machine's end opens first, so a page the machine turns away sees its socket fail, as it would there. */
+  private async relaySocket(machine: Machine, url: URL, headers: Headers, request: Request, server: Bun.Server<RelayedSocket>) {
+    const upstream = await openUpstream(`${machine.origin.replace(/^http/, "ws")}${url.pathname}${url.search}`, headers);
+    if (!upstream) return new Response(`${machine.name} did not open the socket.`, { status: 502 });
+    const data: RelayedSocket = { upstream, page: null, waiting: [] };
+    upstream.onmessage = (event) => (data.page ? data.page.send(event.data) : data.waiting.push(event.data));
+    upstream.onclose = (event) => data.page?.close(sendableCloseCode(event.code), event.reason);
+    if (server.upgrade(request, { data })) return undefined;
+    upstream.close();
+    return new Response("upgrade failed", { status: 400 });
+  }
+
+  /** The machine's join page, shown in the frame when this host has no token there yet, joins this host instead of the page. */
+  private async joinFromPage(machine: Machine, request: Request) {
+    const { code } = (await request.json().catch(() => ({}))) as { code?: unknown };
+    if (typeof code !== "string") return new Response("The invite code is missing.", { status: 400 });
+    try {
+      await this.join(machine.id, code);
+      return Response.json({ joined: true });
+    } catch (error) {
+      return new Response(error instanceof Error ? error.message : String(error), { status: 403 });
+    }
+  }
+}

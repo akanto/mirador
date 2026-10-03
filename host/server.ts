@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import index from "../web/index.html";
@@ -15,6 +14,8 @@ import { deviceName, type DeviceService } from "./devices.ts";
 import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
 import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
+import type { MachineRelays } from "./machine-relays.ts";
+import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import type { ProfileService } from "./profiles.ts";
@@ -37,43 +38,25 @@ export interface HostServices {
   restart: HostRestart;
   devices: DeviceService;
   search: ConversationSearch;
+  relays: MachineRelays;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
 const hostRunId = crypto.randomUUID();
 
-function sameSecret(candidate: string | null | undefined, secret: string) {
-  if (!candidate) return false;
-  const [a, b] = [Buffer.from(candidate), Buffer.from(secret)];
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 const tokenCookie = (token: string, secure: boolean) =>
   `${TOKEN_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure ? "; Secure" : ""}`;
 
-function cookieValue(request: Request, name: string) {
-  const cookies = request.headers.get("cookie") ?? "";
-  return cookies
-    .split(";")
-    .map((part) => part.trim().split("="))
-    .find(([key]) => key === name)?.[1];
-}
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays } = services;
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`, ...publicHost]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
   const pageOrigins = [config.appOrigin, config.publicOrigin].filter((origin) => origin !== null);
   const isPageOrigin = (origin: string | null) => origin !== null && pageOrigins.includes(origin);
 
-  /** Whom the cookie signs in: the host's own link (no device), a joined device, or nobody. */
-  function signedInAs(request: Request): { deviceId: string | null } | null {
-    const token = cookieValue(request, TOKEN_COOKIE);
-    if (sameSecret(token, config.browserToken)) return { deviceId: null };
-    const device = token ? devices.deviceWithToken(token) : undefined;
-    return device ? { deviceId: device.id } : null;
-  }
+  const signedInAs = signedInWith(config.browserToken, devices);
 
   function authenticate(request: Request) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
@@ -121,18 +104,26 @@ export function startServer(services: HostServices) {
     sendDevicesToEveryPage();
   }
 
-  function addMachine(name: string, address: string) {
-    const origin = machineAddress(address)?.origin;
-    if (!origin) throw new Error(`"${address}" is not a machine's address.`);
+  const broadcastMachines = () => hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+
+  /** With an invite link, this host joins the machine right away; otherwise the machine's own page asks for a code. */
+  async function addMachine(name: string, address: string) {
+    const parsed = machineAddress(address);
+    if (!parsed) throw new Error(`"${address}" is not a machine's address.`);
+    const { origin, joinCode } = parsed;
     if (pageOrigins.includes(origin)) throw new Error("That is this machine.");
     if (store.findMachineByOrigin(origin)) throw new Error(`${origin} is already among your machines.`);
-    store.insertMachine({ id: crypto.randomUUID(), name: name.trim() || new URL(origin).hostname, origin, createdAt: Date.now() });
-    hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+    const id = crypto.randomUUID();
+    store.insertMachine({ id, name: name.trim() || new URL(origin).hostname, origin, createdAt: Date.now() });
+    relays.start(store.findMachine(id)!);
+    broadcastMachines();
+    if (joinCode) await relays.join(id, joinCode);
   }
 
   function removeMachine(machineId: string) {
+    relays.stop(machineId);
     store.deleteMachine(machineId);
-    hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+    broadcastMachines();
   }
 
   /** Agents and the scripts they start call with the host's token and, unlike a browser's POST, no Origin header. */
@@ -420,7 +411,7 @@ export function startServer(services: HostServices) {
       case "device.revoke":
         return revokeDevice(message.deviceId);
       case "machine.add":
-        return addMachine(message.name, message.address);
+        return await addMachine(message.name, message.address);
       case "machine.remove":
         return removeMachine(message.machineId);
       case "search":

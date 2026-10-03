@@ -5,6 +5,8 @@ import { join } from "node:path";
 export interface HostConfig {
   port: number;
   canvasAssetsPort: number;
+  /** Other machines are shown on this computer at ports from here on, one each. */
+  firstRelayPort: number;
   dataDir: string;
   databasePath: string;
   browserToken: string;
@@ -54,6 +56,7 @@ export function loadConfig(env = process.env): HostConfig {
   return {
     port,
     canvasAssetsPort,
+    firstRelayPort: Number(env.MIRADOR_RELAY_PORT ?? port + 20),
     dataDir,
     databasePath: join(dataDir, "state.sqlite"),
     browserToken: loadOrCreateToken(dataDir, "browser-token"),

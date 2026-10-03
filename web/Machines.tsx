@@ -1,13 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { inviteLink, machineAddress } from "../shared/machines.ts";
+import { machineAddress } from "../shared/machines.ts";
 import type { Machine } from "../shared/model.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 
-/** A tab (or the desktop app's browser) of its own per machine, used again when the machine is opened again. */
-export function openMachine(origin: string, joinCode: string | null = null) {
-  window.open(joinCode ? inviteLink(origin, joinCode) : `${origin}/`, `mirador-machine-${origin}`);
+/** Where this host cannot show the machine (a page opened from another device), a tab of its own, used again next time. */
+export function openMachine(origin: string) {
+  window.open(`${origin}/`, `mirador-machine-${origin}`);
 }
 
 function AddMachine({ machines }: { machines: Machine[] }) {
@@ -19,7 +19,6 @@ function AddMachine({ machines }: { machines: Machine[] }) {
   const add = (event: FormEvent) => {
     event.preventDefault();
     if (!parsed || known || !connection.send({ type: "machine.add", name, address })) return;
-    if (parsed.joinCode) openMachine(parsed.origin, parsed.joinCode);
     setName("");
     setAddress("");
   };
@@ -48,7 +47,7 @@ function AddMachine({ machines }: { machines: Machine[] }) {
   );
 }
 
-export function MachinesDialog({ machines, onClose }: { machines: Machine[]; onClose: () => void }) {
+export function MachinesDialog({ machines, onOpen, onClose }: { machines: Machine[]; onOpen: (machine: Machine) => void; onClose: () => void }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", closeOnEscape);
@@ -65,15 +64,17 @@ export function MachinesDialog({ machines, onClose }: { machines: Machine[]; onC
           </button>
         </header>
         <p className="hint">
-          Other computers running Mirador, such as a server whose agents keep working while this one sleeps. Each opens in a tab of its own. The first time, it
-          asks for an invite code: run <code>bun run invite</code> on the machine, or paste the invite link here instead of its address.
+          Other computers running Mirador, such as a server whose agents keep working while this one sleeps. Each shows in the rail on the left, as its own
+          Mirador. Paste an invite link from the machine to join it right away; get one in its Settings → Devices, or run <code>bun run invite</code> there.
+          With only its address, the machine asks for an invite code when you first open it.
         </p>
         <ul className="machine-list" aria-label="Machines">
           {machines.map((machine) => (
             <li key={machine.id}>
               <span className="machine-name">{machine.name}</span>
               <span className="machine-origin">{machine.origin}</span>
-              <button type="button" onClick={() => openMachine(machine.origin)}>
+              {!machine.joined && <span className="machine-not-joined">not joined yet</span>}
+              <button type="button" onClick={() => onOpen(machine)}>
                 Open
               </button>
               <ConfirmButton

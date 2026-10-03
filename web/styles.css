@@ -4686,6 +4686,89 @@ body.reordering * {
   color: var(--muted);
 }
 
+.machine-not-joined {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.app.with-rail {
+  --machine-rail-width: 52px;
+  display: grid;
+  grid-template-columns: var(--machine-rail-width) minmax(0, 1fr);
+  height: 100vh;
+}
+
+.app.with-rail > .layout,
+.app.with-rail > .machine-frame {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+/* Hidden rather than removed, so this computer's conversations keep their scroll positions underneath. */
+.layout.covered {
+  visibility: hidden;
+}
+
+.machine-frame {
+  width: 100%;
+  height: 100vh;
+  border: 0;
+  background: var(--bg);
+  visibility: hidden;
+}
+
+.machine-frame.shown {
+  visibility: visible;
+}
+
+.machine-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-right: 1px solid var(--rail-line);
+  background: var(--rail);
+}
+
+.rail-machine,
+.rail-manage {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--rail-line);
+  border-radius: 10px;
+  background: var(--rail-card);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rail-machine:hover,
+.rail-manage:hover {
+  background: var(--rail-hover);
+}
+
+.rail-machine.shown {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.rail-machine.this-computer {
+  font-size: 17px;
+}
+
+.rail-manage {
+  border-style: dashed;
+  color: var(--muted);
+  font-size: 17px;
+  font-weight: 400;
+}
+
 .add-machine {
   display: grid;
   grid-template-columns: 1fr 2fr auto;

@@ -48,6 +48,8 @@ const schema = `
 
 const addedColumns = [
   { table: "workspaces", column: "default_profile_id", definition: "TEXT" },
+  { table: "machines", column: "relay_port", definition: "INTEGER" },
+  { table: "machines", column: "device_token", definition: "TEXT" },
   { table: "conversations", column: "profile_id", definition: "TEXT" },
   { table: "workspaces", column: "default_harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
   { table: "profiles", column: "harness", definition: "TEXT NOT NULL DEFAULT 'claude'" },
@@ -127,6 +129,15 @@ const toProfile = (row: ProfileRow): Profile => ({
   askMode: row.ask_mode,
   createdAt: row.created_at,
 });
+
+type MachineRow = { id: string; name: string; origin: string; created_at: number; relay_port: number | null; joined: number };
+
+const MACHINE_COLUMNS = "SELECT id, name, origin, created_at, relay_port, device_token IS NOT NULL AS joined FROM machines";
+
+const toMachine = (row: unknown): Machine => {
+  const { id, name, origin, created_at, relay_port, joined } = row as MachineRow;
+  return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1 };
+};
 
 const toConversation = (row: ConversationRow): Conversation => ({
   id: row.id,
@@ -371,15 +382,34 @@ export class Store {
   }
 
   listMachines(): Machine[] {
-    return this.db.query("SELECT id, name, origin, created_at AS createdAt FROM machines ORDER BY name COLLATE NOCASE").all() as Machine[];
+    return this.db.query(`${MACHINE_COLUMNS} ORDER BY name COLLATE NOCASE`).all().map(toMachine);
+  }
+
+  findMachine(id: string): Machine | undefined {
+    const row = this.db.query(`${MACHINE_COLUMNS} WHERE id = ?`).get(id);
+    return row ? toMachine(row) : undefined;
   }
 
   findMachineByOrigin(origin: string): Machine | undefined {
-    return (this.db.query("SELECT id, name, origin, created_at AS createdAt FROM machines WHERE origin = ?").get(origin) as Machine | null) ?? undefined;
+    const row = this.db.query(`${MACHINE_COLUMNS} WHERE origin = ?`).get(origin);
+    return row ? toMachine(row) : undefined;
   }
 
-  insertMachine({ id, name, origin, createdAt }: Machine) {
+  insertMachine({ id, name, origin, createdAt }: Pick<Machine, "id" | "name" | "origin" | "createdAt">) {
     this.db.query("INSERT INTO machines (id, name, origin, created_at) VALUES (?, ?, ?, ?)").run(id, name, origin, createdAt);
+  }
+
+  setMachineRelayPort(id: string, port: number) {
+    this.db.query("UPDATE machines SET relay_port = ? WHERE id = ?").run(port, id);
+  }
+
+  /** The token this host signs in to the machine with; never sent to pages. */
+  machineDeviceToken(id: string): string | null {
+    return (this.db.query("SELECT device_token AS token FROM machines WHERE id = ?").get(id) as { token: string | null } | null)?.token ?? null;
+  }
+
+  setMachineDeviceToken(id: string, token: string) {
+    this.db.query("UPDATE machines SET device_token = ? WHERE id = ?").run(token, id);
   }
 
   deleteMachine(id: string) {

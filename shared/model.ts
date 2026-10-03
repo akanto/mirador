@@ -30,6 +30,10 @@ export interface Machine {
   name: string;
   origin: string;
   createdAt: number;
+  /** Where this host shows the machine on this computer; null until it first does. */
+  relayPort: number | null;
+  /** This host has joined the machine and signs in there as one of its devices. */
+  joined: boolean;
 }
 
 /** Another browser or app that joined this machine with an invite; it signs in with a token of its own, which revoking it ends. */

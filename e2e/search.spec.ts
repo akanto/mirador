@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, currentMatch, primaryModifier, signIn, workspaceCard } from "./helpers.ts";
+import { addWorkspace, addWorkspaceFromSidebar, currentMatch, primaryModifier, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5168);
@@ -16,14 +16,6 @@ test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
 });
-
-async function addAnotherWorkspace(page: Page, directory: string) {
-  await page.getByRole("button", { name: "Add workspace" }).click();
-  const input = page.getByLabel("Workspace directory");
-  await input.fill(directory);
-  await input.press("Enter");
-  await expect(workspaceCard(page, directory)).toBeVisible();
-}
 
 async function startConversationIn(page: Page, directory: string) {
   const previousUrl = page.url();
@@ -41,7 +33,7 @@ test("Cmd+Shift+F searches every workspace, and a match opens in its conversatio
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const older = await startConversationIn(page, host.projectDir);
-  await addAnotherWorkspace(page, secondDir);
+  await addWorkspaceFromSidebar(page, secondDir);
   const newer = await startConversationIn(page, secondDir);
   await host.stop();
   seed(older, [{ type: "user-message", text: "Where should I look?" }, agentSays("The needle is in the haystack, next to another needle."), { type: "turn-end", stopReason: "end_turn" }]);

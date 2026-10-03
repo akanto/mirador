@@ -5,7 +5,9 @@ import { CanvasService } from "./canvas/service.ts";
 import { loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
 import { DeviceService } from "./devices.ts";
+import { MachineRelays } from "./machine-relays.ts";
 import { ConversationSearch } from "./search.ts";
+import { signedInWith } from "./sign-in.ts";
 import { Hub } from "./hub.ts";
 import { ImageStore } from "./images.ts";
 import { NotifierMute } from "./notifier.ts";
@@ -34,7 +36,12 @@ const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
 const devices = new DeviceService(store);
 const search = new ConversationSearch(store);
-const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search });
+const signedIn = signedInWith(config.browserToken, devices);
+const relays = new MachineRelays(store, config.firstRelayPort, (request) => signedIn(request) !== null, () =>
+  hub.broadcast({ type: "machines.changed", machines: store.listMachines() }),
+);
+relays.startAll();
+const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays });
 const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
@@ -54,6 +61,7 @@ async function stopServices() {
   const agentsExited = conversations.shutdown();
   server.stop(true);
   assetsServer.stop(true);
+  relays.stopAll();
   store.close();
   await agentsExited;
 }
