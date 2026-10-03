@@ -1,6 +1,6 @@
 import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
 import { launchLabel, workspaceColorLabels, type CanvasItem, type Conversation } from "../shared/model.ts";
-import { focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
+import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
@@ -206,7 +206,7 @@ export function App() {
   const select = (conversationId: string | null) => conversationId && dispatch({ type: "select", conversationId });
 
   useShortcuts((command, fromCanvas) => {
-    if (fromCanvas && changesSomething(command)) return;
+    if (fromCanvas && (changesSomething(command) || command.type === "find")) return;
     if (command.type === "reload-page") return location.reload();
     if (command.type === "restart-host") return restartHost();
     if (isModal(state)) {
@@ -232,6 +232,8 @@ export function App() {
         return requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".add-workspace input")?.focus());
       case "toggle-canvas":
         return toggleCanvas();
+      case "find":
+        return findInOpenConversation();
       case "focus":
         if (command.pane === "canvas") setHidden("canvas", () => false);
         return requestAnimationFrame(() => focusPane(command.pane));

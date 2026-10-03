@@ -62,6 +62,13 @@ describe("commandFor", () => {
     expect(commandFor(press("KeyR", { metaKey: true, altKey: true }), "not-typing", true)).toBeNull();
   });
 
+  test("Cmd+F finds in the conversation, also while typing, but a terminal keeps Ctrl+F for moving the cursor", () => {
+    expect(commandFor(press("KeyF", { metaKey: true }), "typing", true)).toEqual({ type: "find" });
+    expect(commandFor(press("KeyF", { ctrlKey: true }), "not-typing", false)).toEqual({ type: "find" });
+    expect(commandFor(press("KeyF", { ctrlKey: true }), "terminal", false)).toBeNull();
+    expect(commandFor(press("KeyF", { metaKey: true, shiftKey: true }), "not-typing", true)).toBeNull();
+  });
+
   test("? opens the help only outside text fields", () => {
     const questionMark = press("Slash", { shiftKey: true }, "?");
     expect(commandFor(questionMark, "not-typing", true)).toEqual({ type: "help" });

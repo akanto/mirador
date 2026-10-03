@@ -23,6 +23,8 @@ import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
+import { matchOffsets } from "./find.ts";
+import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
 import { useDragToReorder } from "./drag-to-reorder.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
@@ -160,6 +162,7 @@ function ChatHeader({
   onToggleTerminal,
   runningSubagents,
   onShowRunningSubagent,
+  onFind,
 }: {
   conversation: Conversation;
   profiles: Profile[];
@@ -169,6 +172,7 @@ function ChatHeader({
   onToggleTerminal: () => void;
   runningSubagents: number;
   onShowRunningSubagent: () => void;
+  onFind: () => void;
 }) {
   return (
     <header className="chat-header" data-pane-bar>
@@ -191,6 +195,9 @@ function ChatHeader({
           </span>
         )}
         <span className="harness">{harnessLabels[conversation.harness]}</span>
+        <button type="button" className="find-trigger" data-hint={hints.find} data-shortcut={shortcutKeys().find} onClick={onFind}>
+          Find
+        </button>
         <button className="toggle-canvas" data-hint={hints.canvasToggle} data-shortcut={shortcutKeys().toggleCanvas} onClick={onToggleCanvas}>
           {canvasVisible ? "Hide canvas" : "Show canvas"}
         </button>
@@ -295,7 +302,8 @@ function CommandLine({ command, directory }: { command: string; directory?: stri
 function TerminalOutput({ output, finished, awaitingPermission }: { output: string; finished: boolean; awaitingPermission: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const lines = output ? output.split("\n") : [];
-  const hiddenCount = expanded ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
+  const foldedLinesMatch = matchOffsets(lines.slice(PREVIEW_LINES).join("\n"), useContext(FindQuery)).length > 0;
+  const hiddenCount = expanded || foldedLinesMatch ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
   if (lines.length === 0) {
     const quiet = finished ? "(no output)" : awaitingPermission ? "waiting for your approval…" : "running…";
     return <div className="shell-quiet">{quiet}</div>;
@@ -1227,6 +1235,7 @@ export function ChatPanel({
   const showRunningSubagent = () => {
     if (runningSubagents[0]) showSubagent(runningSubagents[0]);
   };
+  const find = useFind({ timeline, timelineRef: ref, firstLoaded, loadFrom });
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
       <SubagentStates.Provider value={subagentStates}>
@@ -1239,26 +1248,30 @@ export function ChatPanel({
           onToggleTerminal={onToggleTerminal}
           runningSubagents={runningSubagents.length}
           onShowRunningSubagent={showRunningSubagent}
+          onFind={find.open}
         />
-        <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
-          {!open.loaded && <div className="notice-line">Loading…</div>}
-          {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
-          {firstLoaded > 0 && (
-            <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
-              Show earlier entries ({firstLoaded.toLocaleString()} more)
-            </button>
-          )}
-          {timeline.slice(firstLoaded).map((block, offset) => (
-            <TimestampedEntry
-              key={block.key}
-              block={block}
-              startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
-              harness={conversation.harness}
-              conversationId={conversation.id}
-            />
-          ))}
-          {conversation.status === "running" && <div className="working">Working…</div>}
-        </div>
+        {find.query !== null && <FindBar find={find} />}
+        <FindQuery.Provider value={find.query ?? ""}>
+          <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
+            {!open.loaded && <div className="notice-line">Loading…</div>}
+            {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
+            {firstLoaded > 0 && (
+              <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
+                Show earlier entries ({firstLoaded.toLocaleString()} more)
+              </button>
+            )}
+            {timeline.slice(firstLoaded).map((block, offset) => (
+              <TimestampedEntry
+                key={block.key}
+                block={block}
+                startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
+                harness={conversation.harness}
+                conversationId={conversation.id}
+              />
+            ))}
+            {conversation.status === "running" && <div className="working">Working…</div>}
+          </div>
+        </FindQuery.Provider>
         {runningSubagents.length > 0 && <RunningSubagents subagents={runningSubagents} onShow={showSubagent} />}
         {conversation.openInTerminal && (
           <div className="terminal-warning" role="status">

@@ -19,6 +19,8 @@
   --ok: light-dark(#2e9e6b, #3fb57f);
   --warn: light-dark(#c4751f, #eba24a);
   --warn-soft: light-dark(#fdf4e8, #2a2116);
+  --find-match: light-dark(#ffe9a3, #5c4a0f);
+  --find-current: light-dark(#ffb340, #b8740f);
   --code-bg: light-dark(#f6f6f8, #1c1d22);
   --added: light-dark(#e9f6ee, #15281d);
   --removed: light-dark(#fcebec, #2e1719);
@@ -1152,6 +1154,7 @@ button.subagents-running {
   color: var(--warn);
 }
 
+button.find-trigger,
 button.toggle-canvas,
 button.toggle-terminal {
   font-size: 12px;
@@ -1875,6 +1878,38 @@ button.running-subagent:hover {
 
 .sign-in-line > span {
   flex: 1;
+}
+
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+.find-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.find-tally {
+  min-width: 5.5em;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+::highlight(find-match) {
+  background-color: var(--find-match);
+}
+
+::highlight(find-current) {
+  background-color: var(--find-current);
+  color: #1a1b20;
 }
 
 .terminal-warning {

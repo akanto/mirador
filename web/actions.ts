@@ -11,6 +11,10 @@ export function startConversationIn(workspace: Workspace, dispatch: Dispatch<App
 /** Hidden conversations kept in the page have the same elements as the one on screen. */
 const onScreen = <T extends Element>(selector: string) => [...document.querySelectorAll<T>(selector)].find((element) => element.checkVisibility());
 
+export function findInOpenConversation() {
+  onScreen<HTMLButtonElement>(".chat-header .find-trigger")?.click();
+}
+
 export function startRenamingOpenConversation() {
   onScreen<HTMLElement>('.chat-header [data-rename-trigger="click"]')?.click();
 }

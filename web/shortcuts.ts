@@ -7,6 +7,7 @@ export type ShortcutCommand =
   | { type: "new-conversation" }
   | { type: "new-workspace" }
   | { type: "toggle-canvas" }
+  | { type: "find" }
   | { type: "focus"; pane: "chat" | "canvas" }
   | { type: "reload-page" }
   | { type: "restart-host" };
@@ -38,6 +39,7 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyK" && !terminalClears) return { type: "palette" };
   if (primary && !press.altKey && press.code === "KeyR" && !terminalSearchesHistory) return press.shiftKey ? { type: "restart-host" } : { type: "reload-page" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "Backslash") return { type: "toggle-canvas" };
+  if (primary && !press.altKey && !press.shiftKey && press.code === "KeyF" && typing !== "terminal") return { type: "find" };
   if (primary && !press.altKey && press.shiftKey && typing !== "typing") {
     if (press.code === "ArrowLeft") return { type: "focus", pane: "chat" };
     if (press.code === "ArrowRight") return { type: "focus", pane: "canvas" };
@@ -77,6 +79,7 @@ export function shortcutKeys(mac = isMac) {
     newConversation: `${option}T`,
     newWorkspace: `${option}${shift}T`,
     toggleCanvas: `${primary}\\`,
+    find: `${primary}F`,
     restartHost: `${primary}${shift}R`,
     send: "Enter",
     sendTheOtherWay: `${option}Enter`,
@@ -95,6 +98,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.newConversation, action: "New conversation in this workspace (with its profile)" },
     { keys: keys.newWorkspace, action: "Add a workspace (a project directory)" },
     { keys: keys.toggleCanvas, action: "Show / hide the canvas" },
+    { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included (Enter: older match, Shift+Enter: newer)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
     { keys: `${primary}${shift}← / ${primary}${shift}→`, action: "Focus the message box / the canvas (not while editing text)" },
     { keys: `${primary}R`, action: "Reload the page, with the UI code as it is now" },
