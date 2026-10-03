@@ -40,6 +40,20 @@ export interface Device {
   lastSeenAt: number;
 }
 
+/** An entry of a conversation that holds the query, with the line around its first occurrence. */
+export interface SearchHit {
+  entryKey: string;
+  at: number;
+  snippet: { before: string; match: string; after: string };
+}
+
+/** Its newest hits first. */
+export interface ConversationMatches {
+  conversationId: string;
+  matches: number;
+  hits: SearchHit[];
+}
+
 /** A prompt the user sends often, with {{parameters}} filled in each time. */
 export interface PromptTemplate {
   id: string;

@@ -49,6 +49,7 @@ export const hints = {
   terminalCloseSplitArmed: "Click again to end this shell and whatever it is running.",
   subagentsRunning:
     "Subagents the agent started that are still at work, also listed above the message box; click to open the first one. One started in the background counts until the turn that started it ends, since nothing tells when it finished before that.",
+  searchAll: "Search every conversation in every workspace. Opening a match shows it in its conversation.",
   find: "Find text anywhere in this conversation: in earlier entries not loaded yet, and in folded cards, which unfold where it is found.",
   findOlder: "Previous match, further up (Enter)",
   findNewer: "Next match, further down (Shift+Enter)",

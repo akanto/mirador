@@ -126,3 +126,14 @@ export async function pasteImage(target: Locator, { width, height, color = "#5b5
     { width, height, color },
   );
 }
+
+/** The match the find bar is on: its text, the entry it is in, and whether it shows in its conversation's view. */
+export const currentMatch = (page: Page) =>
+  page.evaluate(() => {
+    const [range] = [...(CSS.highlights.get("find-current") ?? [])] as Range[];
+    if (!range) return null;
+    const entry = range.startContainer.parentElement!.closest(".timeline-entry")!;
+    const view = entry.closest(".timeline")!.getBoundingClientRect();
+    const match = range.getBoundingClientRect();
+    return { text: range.toString(), entry: entry.textContent, inView: match.height > 0 && match.top >= view.top && match.bottom <= view.bottom };
+  });

@@ -1,5 +1,5 @@
 import type { ContentBlock, ToolCallContent } from "@agentclientprotocol/sdk";
-import { contentText, type ToolBlock } from "./timeline.ts";
+import { contentText, type ToolBlock } from "../shared/timeline.ts";
 
 export interface ShellCommand {
   command: string;

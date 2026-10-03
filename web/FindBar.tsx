@@ -1,11 +1,36 @@
-import { createContext, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { createContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { focusPane } from "./actions.ts";
-import { matchOffsets, occurrencesIn } from "./find.ts";
+import { matchOffsets, occurrencesIn } from "../shared/find.ts";
 import { hints } from "./hints.ts";
-import type { TimelineBlock } from "./timeline.ts";
+import type { TimelineBlock } from "../shared/timeline.ts";
 
 /** The query while the find bar is open, so that output folded away unfolds where it matches. */
 export const FindQuery = createContext("");
+
+/** A search hit to show: its conversation opens with the find bar on the hit's entry. */
+interface FindRequest {
+  conversationId: string;
+  query: string;
+  entryKey: string;
+}
+
+let waitingRequest: FindRequest | null = null;
+const requestListeners = new Set<() => void>();
+const requestChanged = () => requestListeners.forEach((listener) => listener());
+const subscribeToRequests = (listener: () => void) => {
+  requestListeners.add(listener);
+  return () => requestListeners.delete(listener);
+};
+
+export function requestFind(request: FindRequest) {
+  waitingRequest = request;
+  requestChanged();
+}
+
+function takeFindRequest() {
+  waitingRequest = null;
+  requestChanged();
+}
 
 interface Place {
   entry: number;
@@ -87,11 +112,15 @@ function indexOf(matches: Match[], wanted: Place | null) {
  * their stored text, and loaded once a step reaches them. The first match shown is the newest.
  */
 export function useFind({
+  conversationId,
+  historyLoaded,
   timeline,
   timelineRef,
   firstLoaded,
   loadFrom,
 }: {
+  conversationId: string;
+  historyLoaded: boolean;
   timeline: TimelineBlock[];
   timelineRef: RefObject<HTMLDivElement | null>;
   firstLoaded: number;
@@ -105,6 +134,17 @@ export function useFind({
   const matches = useRef<Match[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const storedCounts = useMemo(() => new Map<string, number>(), [query]);
+
+  const request = useSyncExternalStore(subscribeToRequests, () => waitingRequest);
+  useEffect(() => {
+    if (request?.conversationId !== conversationId || !historyLoaded) return;
+    takeFindRequest();
+    const entry = timeline.findIndex(({ key }) => key === request.entryKey);
+    place.current = entry === -1 ? null : { entry, occurrence: 0 };
+    placeShown.current = null;
+    setQuery(request.query);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [request, historyLoaded]);
 
   const countStored = (block: TimelineBlock) => {
     if (!storedCounts.has(block.key)) storedCounts.set(block.key, occurrencesIn(block, query!));

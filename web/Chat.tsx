@@ -23,7 +23,7 @@ import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
-import { matchOffsets } from "./find.ts";
+import { matchOffsets } from "../shared/find.ts";
 import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
 import { useDragToReorder } from "./drag-to-reorder.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
@@ -56,7 +56,7 @@ import {
   type SubagentState,
   type TimelineBlock,
   type ToolBlock,
-} from "./timeline.ts";
+} from "../shared/timeline.ts";
 import { formatClockTime, formatDuration, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
@@ -1235,7 +1235,7 @@ export function ChatPanel({
   const showRunningSubagent = () => {
     if (runningSubagents[0]) showSubagent(runningSubagents[0]);
   };
-  const find = useFind({ timeline, timelineRef: ref, firstLoaded, loadFrom });
+  const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom });
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
       <SubagentStates.Provider value={subagentStates}>

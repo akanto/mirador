@@ -7,6 +7,7 @@ import { connection, type ConnectionStatus } from "./connection.ts";
 import { JoinMachine } from "./Devices.tsx";
 import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { HintLayer } from "./Hint.tsx";
+import { SearchDialog } from "./Search.tsx";
 import { hints } from "./hints.ts";
 import { useLoginRequest } from "./login-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
@@ -123,6 +124,7 @@ function paletteEntries(state: AppState, dispatch: Dispatch<AppAction>, canvas: 
     ...workspaceActions,
     ...openConversationActions,
     ...machineActions,
+    { id: "search", label: "Search all workspaces…", detail: "every conversation", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "search" } }) },
     { id: "add-workspace", label: "Add workspace…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace" } }) },
     { id: "profiles", label: "Profiles…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "profiles" } }) },
     { id: "machines", label: "Machines…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "machines" } }) },
@@ -210,12 +212,13 @@ export function App() {
     if (command.type === "reload-page") return location.reload();
     if (command.type === "restart-host") return restartHost();
     if (isModal(state)) {
-      if (command.type === "palette" && state.overlay?.kind === "palette") closeOverlay();
+      if ((command.type === "palette" || command.type === "search") && state.overlay?.kind === command.type) closeOverlay();
       return;
     }
     switch (command.type) {
       case "palette":
       case "help":
+      case "search":
         return dispatch({ type: "open-overlay", overlay: { kind: command.type } });
       case "adjacent-conversation":
         return select(adjacentConversation(state, command.step));
@@ -338,6 +341,9 @@ export function App() {
         />
       )}
       {overlay?.kind === "help" && <ShortcutHelp onClose={closeOverlay} />}
+      {overlay?.kind === "search" && (
+        <SearchDialog workspaces={state.workspaces} conversations={state.conversations} onOpen={(conversationId) => select(conversationId)} onClose={closeOverlay} />
+      )}
       {overlay?.kind === "profiles" && <ProfilesDialog profiles={state.profiles} conversations={state.conversations} onClose={closeOverlay} />}
       {overlay?.kind === "machines" && <MachinesDialog machines={state.machines} onClose={closeOverlay} />}
       {overlay?.kind === "settings" && (

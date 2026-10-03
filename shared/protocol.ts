@@ -4,6 +4,7 @@ import type {
   CanvasItem,
   CanvasUse,
   Conversation,
+  ConversationMatches,
   Device,
   ExternalSession,
   Machine,
@@ -105,7 +106,8 @@ export type ClientMessage =
   | { type: "device.revoke"; deviceId: string }
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
-  | { type: "machine.remove"; machineId: string };
+  | { type: "machine.remove"; machineId: string }
+  | { type: "search"; requestId: string; query: string };
 
 export type ServerMessage =
   | {
@@ -159,4 +161,6 @@ export type ServerMessage =
   /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
   | { type: "devices.listed"; devices: Device[]; thisDeviceId: string | null; publicOrigin: string | null }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
-  | { type: "machines.changed"; machines: Machine[] };
+  | { type: "machines.changed"; machines: Machine[] }
+  /** The conversation with the newest hit first. */
+  | { type: "search.results"; requestId: string; conversations: ConversationMatches[] };

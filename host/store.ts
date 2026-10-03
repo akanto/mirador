@@ -428,6 +428,10 @@ export class Store {
     return stored;
   }
 
+  lastEventSeq(conversationId: string): number {
+    return (this.db.query("SELECT MAX(seq) AS max FROM events WHERE conversation_id = ?").get(conversationId) as { max: number | null }).max ?? 0;
+  }
+
   listEvents(conversationId: string): StoredEvent[] {
     return this.db
       .query("SELECT seq, at, event FROM events WHERE conversation_id = ? ORDER BY seq")

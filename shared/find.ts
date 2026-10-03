@@ -1,5 +1,7 @@
 import { contentText, type TimelineBlock, type ToolBlock } from "./timeline.ts";
 
+export const MIN_SEARCH_LENGTH = 2;
+
 const escapedForRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Where the query occurs in the text, ignoring case: [start, end) offsets of each occurrence, in order. */

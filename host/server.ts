@@ -12,6 +12,7 @@ import { movedBefore } from "../shared/sidebar-order.ts";
 import type { HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
 import { deviceName, type DeviceService } from "./devices.ts";
+import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
 import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
@@ -35,6 +36,7 @@ export interface HostServices {
   images: ImageStore;
   restart: HostRestart;
   devices: DeviceService;
+  search: ConversationSearch;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -58,7 +60,7 @@ function cookieValue(request: Request, name: string) {
 }
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search } = services;
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
   const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`, ...publicHost]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
@@ -421,6 +423,8 @@ export function startServer(services: HostServices) {
         return addMachine(message.name, message.address);
       case "machine.remove":
         return removeMachine(message.machineId);
+      case "search":
+        return reply({ type: "search.results", requestId: message.requestId, conversations: search.find(message.query) });
       default:
         return message satisfies never;
     }

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
-import { authorOf, buildTimeline, startsAuthorGroup, subagentEndedAt, subagentsIn, subagentState, type TimelineBlock } from "../web/timeline.ts";
+import { authorOf, buildTimeline, startsAuthorGroup, subagentEndedAt, subagentsIn, subagentState, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));

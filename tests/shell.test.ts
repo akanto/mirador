@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isShellCommand, shellCommandOf } from "../web/shell.ts";
-import type { ToolBlock } from "../web/timeline.ts";
+import type { ToolBlock } from "../shared/timeline.ts";
 
 const text = (value: string) => ({ type: "content" as const, content: { type: "text" as const, text: value } });
 

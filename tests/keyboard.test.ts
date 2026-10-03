@@ -66,7 +66,11 @@ describe("commandFor", () => {
     expect(commandFor(press("KeyF", { metaKey: true }), "typing", true)).toEqual({ type: "find" });
     expect(commandFor(press("KeyF", { ctrlKey: true }), "not-typing", false)).toEqual({ type: "find" });
     expect(commandFor(press("KeyF", { ctrlKey: true }), "terminal", false)).toBeNull();
-    expect(commandFor(press("KeyF", { metaKey: true, shiftKey: true }), "not-typing", true)).toBeNull();
+  });
+
+  test("Cmd+Shift+F searches every workspace, from anywhere", () => {
+    expect(commandFor(press("KeyF", { metaKey: true, shiftKey: true }), "typing", true)).toEqual({ type: "search" });
+    expect(commandFor(press("KeyF", { ctrlKey: true, shiftKey: true }), "terminal", false)).toEqual({ type: "search" });
   });
 
   test("? opens the help only outside text fields", () => {

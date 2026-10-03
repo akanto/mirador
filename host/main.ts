@@ -5,6 +5,7 @@ import { CanvasService } from "./canvas/service.ts";
 import { loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
 import { DeviceService } from "./devices.ts";
+import { ConversationSearch } from "./search.ts";
 import { Hub } from "./hub.ts";
 import { ImageStore } from "./images.ts";
 import { NotifierMute } from "./notifier.ts";
@@ -32,7 +33,8 @@ const statusline = new StatuslineService(store, conversations, config.runsUserSt
 const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
 const devices = new DeviceService(store);
-const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices });
+const search = new ConversationSearch(store);
+const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search });
 const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));

@@ -12,6 +12,7 @@ export interface OpenConversation {
 export type Overlay =
   | { kind: "palette" }
   | { kind: "help" }
+  | { kind: "search" }
   | { kind: "profiles" }
   | { kind: "machines" }
   | { kind: "sessions"; workspaceId: string }
@@ -184,6 +185,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "system-notification":
     case "devices.listed":
     case "devices.invited":
+    case "search.results":
       return state;
     case "machines.changed":
       return { ...state, machines: message.machines };

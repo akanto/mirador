@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { expect, test } from "@playwright/test";
+import { addWorkspace, currentMatch, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5166);
@@ -48,20 +48,6 @@ const newestTurn = [
   agentSays("Done: one more needle."),
   turnEnd,
 ];
-
-/** The match find is on: its text, the entry it is in, and whether it shows in the conversation's view. */
-const currentMatch = (page: Page) =>
-  page.evaluate(() => {
-    const [range] = [...(CSS.highlights.get("find-current") ?? [])] as Range[];
-    if (!range) return null;
-    const view = document.querySelector(".timeline")!.getBoundingClientRect();
-    const match = range.getBoundingClientRect();
-    return {
-      text: range.toString(),
-      entry: range.startContainer.parentElement!.closest(".timeline-entry")!.textContent,
-      inView: match.height > 0 && match.top >= view.top && match.bottom <= view.bottom,
-    };
-  });
 
 test("Cmd+F finds text anywhere in the conversation, in entries not loaded yet and in folded cards too", async ({ page }) => {
   await signIn(page, host);

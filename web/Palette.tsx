@@ -20,7 +20,7 @@ export function matchesQuery(query: string, entry: Pick<PaletteEntry, "label" | 
     .every((word) => haystack.includes(word));
 }
 
-function Modal({ label, className, onClose, children }: { label: string; className: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ label, className, onClose, children }: { label: string; className: string; onClose: () => void; children: ReactNode }) {
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={`modal ${className}`} role="dialog" aria-label={label}>

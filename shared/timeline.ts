@@ -9,8 +9,8 @@ import type {
   ToolCallUpdate,
   ToolKind,
 } from "@agentclientprotocol/sdk";
-import type { StoredEvent } from "../shared/model.ts";
-import { UserCommandLog, type UserCommand } from "../shared/user-commands.ts";
+import type { StoredEvent } from "./model.ts";
+import { UserCommandLog, type UserCommand } from "./user-commands.ts";
 
 /** The stored event a block starts with: its sequence number keys the block, and its time is the block's time. */
 export interface Origin {
