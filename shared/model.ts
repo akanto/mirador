@@ -24,6 +24,22 @@ export const askModeLabels: Record<AskMode, string> = {
 };
 
 /** How to launch an agent: extra environment and a command to run first. No profile means the host's own environment. */
+/** Another machine's Mirador opened from this one, e.g. a server the agents keep working on while this computer sleeps. */
+export interface Machine {
+  id: string;
+  name: string;
+  origin: string;
+  createdAt: number;
+}
+
+/** Another browser or app that joined this machine with an invite; it signs in with a token of its own, which revoking it ends. */
+export interface Device {
+  id: string;
+  name: string;
+  joinedAt: number;
+  lastSeenAt: number;
+}
+
 /** A prompt the user sends often, with {{parameters}} filled in each time. */
 export interface PromptTemplate {
   id: string;

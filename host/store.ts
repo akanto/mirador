@@ -4,6 +4,8 @@ import type {
   AskMode,
   CanvasItem,
   Conversation,
+  Device,
+  Machine,
   ConversationEvent,
   HarnessId,
   Launch,
@@ -17,6 +19,7 @@ import { isCanvasUse, isWorkspaceColor, type CanvasUse, type WorkspaceColor } fr
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
+const deviceColumns = "id, name, joined_at AS joinedAt, last_seen_at AS lastSeenAt";
 
 const schema = `
   CREATE TABLE IF NOT EXISTS workspaces (
@@ -37,6 +40,10 @@ const schema = `
   CREATE TABLE IF NOT EXISTS prompt_templates (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS devices (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, joined_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS invites (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, name TEXT NOT NULL, origin TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);
 `;
 
 const addedColumns = [
@@ -152,6 +159,8 @@ export class Store {
     this.db = new Database(path, { create: true, strict: true });
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA foreign_keys = ON");
+    // bun run invite writes here while the host runs.
+    this.db.run("PRAGMA busy_timeout = 5000");
     const hadPromptTemplates = this.hasTable("prompt_templates");
     this.db.run(schema);
     this.addMissingColumns();
@@ -359,6 +368,55 @@ export class Store {
 
   deletePromptTemplate(id: string) {
     this.db.query("DELETE FROM prompt_templates WHERE id = ?").run(id);
+  }
+
+  listMachines(): Machine[] {
+    return this.db.query("SELECT id, name, origin, created_at AS createdAt FROM machines ORDER BY name COLLATE NOCASE").all() as Machine[];
+  }
+
+  findMachineByOrigin(origin: string): Machine | undefined {
+    return (this.db.query("SELECT id, name, origin, created_at AS createdAt FROM machines WHERE origin = ?").get(origin) as Machine | null) ?? undefined;
+  }
+
+  insertMachine({ id, name, origin, createdAt }: Machine) {
+    this.db.query("INSERT INTO machines (id, name, origin, created_at) VALUES (?, ?, ?, ?)").run(id, name, origin, createdAt);
+  }
+
+  deleteMachine(id: string) {
+    this.db.query("DELETE FROM machines WHERE id = ?").run(id);
+  }
+
+  addInvite(codeHash: string, expiresAt: number) {
+    this.db.query("INSERT INTO invites (code_hash, expires_at) VALUES (?, ?)").run(codeHash, expiresAt);
+  }
+
+  /** Removes the invite, and every expired one; whether it was there and still valid. */
+  takeInvite(codeHash: string, now: number) {
+    const { changes } = this.db.query("DELETE FROM invites WHERE code_hash = ? AND expires_at > ?").run(codeHash, now);
+    this.db.query("DELETE FROM invites WHERE expires_at <= ?").run(now);
+    return changes > 0;
+  }
+
+  listDevices(): Device[] {
+    return this.db.query(`SELECT ${deviceColumns} FROM devices ORDER BY joined_at`).all() as Device[];
+  }
+
+  findDeviceByTokenHash(tokenHash: string): Device | undefined {
+    return (this.db.query(`SELECT ${deviceColumns} FROM devices WHERE token_hash = ?`).get(tokenHash) as Device | null) ?? undefined;
+  }
+
+  insertDevice({ id, name, joinedAt, lastSeenAt }: Device, tokenHash: string) {
+    this.db
+      .query("INSERT INTO devices (id, name, token_hash, joined_at, last_seen_at) VALUES (?, ?, ?, ?, ?)")
+      .run(id, name, tokenHash, joinedAt, lastSeenAt);
+  }
+
+  setDeviceLastSeen(id: string, at: number) {
+    this.db.query("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(at, id);
+  }
+
+  deleteDevice(id: string) {
+    this.db.query("DELETE FROM devices WHERE id = ?").run(id);
   }
 
   appendEvent(conversationId: string, event: ConversationEvent): StoredEvent {

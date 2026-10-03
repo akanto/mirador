@@ -820,6 +820,10 @@ body.resizing iframe {
   border-top: 1px solid var(--rail-line);
 }
 
+.footer-buttons > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 .sidebar > footer button.link {
   overflow: hidden;
   padding: 5px 8px;
@@ -4376,4 +4380,133 @@ body.reordering * {
 .workspace li.drop-after::after,
 .queued.drop-after::after {
   bottom: -1px;
+}
+
+.join-machine form {
+  display: grid;
+  gap: 12px;
+  max-width: 320px;
+  margin: 24px auto 0;
+  text-align: left;
+}
+
+.join-machine label {
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+}
+
+.join-machine .join-problem {
+  color: var(--danger);
+}
+
+.device-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.device-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.device-name {
+  font-weight: 600;
+}
+
+.device-this {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.device-seen {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-list li.device-none {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.device-invite {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.invite {
+  display: grid;
+  gap: 4px;
+}
+
+.invite-code {
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+.invite-link {
+  user-select: all;
+  word-break: break-all;
+}
+
+.machine-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.machine-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.machine-name {
+  font-weight: 600;
+}
+
+.machine-origin {
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.machine-list li.machine-none {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.add-machine {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.add-machine label {
+  display: grid;
+  gap: 4px;
+}
+
+.add-machine .hint {
+  grid-column: 1 / -1;
+  margin: 0;
 }

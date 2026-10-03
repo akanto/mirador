@@ -4,7 +4,9 @@ import type {
   CanvasItem,
   CanvasUse,
   Conversation,
+  Device,
   ExternalSession,
+  Machine,
   Launch,
   Profile,
   PromptTemplate,
@@ -97,7 +99,13 @@ export type ClientMessage =
   | { type: "terminal.clear"; terminalId: string }
   /** What this page shows, and whether you are looking at it: the host notifies only about conversations nobody is looking at. */
   | { type: "presence"; conversationId: string | null; attentive: boolean }
-  | { type: "host.restart" };
+  | { type: "host.restart" }
+  | { type: "devices.list" }
+  | { type: "devices.invite"; requestId: string }
+  | { type: "device.revoke"; deviceId: string }
+  /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
+  | { type: "machine.add"; name: string; address: string }
+  | { type: "machine.remove"; machineId: string };
 
 export type ServerMessage =
   | {
@@ -108,6 +116,7 @@ export type ServerMessage =
       promptTemplates: PromptTemplate[];
       canvasUse: CanvasUse;
       canvasAssetsOrigin: string;
+      machines: Machine[];
       homeDir: string;
       /** Fresh for each start of the host process. */
       hostRunId: string;
@@ -146,4 +155,8 @@ export type ServerMessage =
   | { type: "host.code-changed" }
   /** The host is stopping to start again in place; pages reload once they reconnect. */
   | { type: "host.restarting" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
+  | { type: "devices.listed"; devices: Device[]; thisDeviceId: string | null; publicOrigin: string | null }
+  | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
+  | { type: "machines.changed"; machines: Machine[] };

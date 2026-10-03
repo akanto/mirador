@@ -4,6 +4,8 @@ import { focusPane, startConversationIn, startRenamingOpenConversation } from ".
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
+import { JoinMachine } from "./Devices.tsx";
+import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { HintLayer } from "./Hint.tsx";
 import { hints } from "./hints.ts";
 import { useLoginRequest } from "./login-request.ts";
@@ -113,12 +115,17 @@ function paletteEntries(state: AppState, dispatch: Dispatch<AppAction>, canvas: 
           { id: "reset-layout", label: "Reset layout to default", detail: openConversation.title, kind: "action", run: resetLayout },
         ]
       : [];
+  const machineActions = state.machines.map(
+    (machine): PaletteEntry => ({ id: `machine-${machine.id}`, label: `Open machine ${machine.name}`, detail: machine.origin, kind: "action", run: () => openMachine(machine.origin) }),
+  );
   return [
     ...conversations,
     ...workspaceActions,
     ...openConversationActions,
+    ...machineActions,
     { id: "add-workspace", label: "Add workspace…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace" } }) },
     { id: "profiles", label: "Profiles…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "profiles" } }) },
+    { id: "machines", label: "Machines…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "machines" } }) },
     { id: "settings", label: "Settings…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "settings" } }) },
     { id: "help", label: "Keyboard shortcuts", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "help" } }) },
     { id: "restart-host", label: "Restart the host", detail: "runs its code as it is now", kind: "action", run: restartHost },
@@ -247,14 +254,7 @@ export function App() {
     if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
   }, [state.selectedConversationId]);
 
-  if (status === "unauthorized") {
-    return (
-      <div className="gate">
-        <h1>Not signed in</h1>
-        <p>Open the link the host printed in your terminal (it ends with <code>/auth?token=…</code>).</p>
-      </div>
-    );
-  }
+  if (status === "unauthorized") return <JoinMachine />;
 
   const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId) ?? null;
   const showCanvas = canvasVisible && conversation !== null && open !== null;
@@ -337,6 +337,7 @@ export function App() {
       )}
       {overlay?.kind === "help" && <ShortcutHelp onClose={closeOverlay} />}
       {overlay?.kind === "profiles" && <ProfilesDialog profiles={state.profiles} conversations={state.conversations} onClose={closeOverlay} />}
+      {overlay?.kind === "machines" && <MachinesDialog machines={state.machines} onClose={closeOverlay} />}
       {overlay?.kind === "settings" && (
         <SettingsDialog
           section={overlay.section}

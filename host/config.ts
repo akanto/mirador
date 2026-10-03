@@ -12,6 +12,9 @@ export interface HostConfig {
   /** Lets scripts an agent started post messages back to its conversation; kept across restarts so waiting scripts still get through. */
   scriptToken: string;
   appOrigin: string;
+  /** Where other devices reach this host, e.g. through tailscale serve, while it listens on 127.0.0.1 only; null when only this machine does. */
+  publicOrigin: string | null;
+  /** Where canvas pages load D3, Mermaid and three from: the public one when there is one, so the agents' pages load for every viewer. */
   canvasAssetsOrigin: string;
   notifierDir: string | null;
   /** Test runs pin a cheap model; profiles are left alone because a profile chooses its own model. */
@@ -35,12 +38,19 @@ function notifierDirIfInstalled() {
   return existsSync(dir) ? dir : null;
 }
 
+function publicAddress({ MIRADOR_PUBLIC_ORIGIN: origin, MIRADOR_PUBLIC_CANVAS_ORIGIN: canvasOrigin }: NodeJS.ProcessEnv) {
+  if (!origin && !canvasOrigin) return null;
+  if (!origin || !canvasOrigin) throw new Error("Set both MIRADOR_PUBLIC_ORIGIN and MIRADOR_PUBLIC_CANVAS_ORIGIN, or neither.");
+  return { origin: new URL(origin).origin, canvasAssetsOrigin: new URL(canvasOrigin).origin };
+}
+
 export function loadConfig(env = process.env): HostConfig {
   const port = Number(env.MIRADOR_PORT ?? 4600);
   const canvasAssetsPort = Number(env.MIRADOR_CANVAS_PORT ?? port + 1);
   const dataDir = env.MIRADOR_DATA_DIR ?? join(homedir(), ".mirador");
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   chmodSync(dataDir, 0o700);
+  const publicAt = publicAddress(env);
   return {
     port,
     canvasAssetsPort,
@@ -50,7 +60,8 @@ export function loadConfig(env = process.env): HostConfig {
     mcpToken: env.MIRADOR_MCP_TOKEN ?? crypto.randomUUID().replaceAll("-", ""),
     scriptToken: loadOrCreateToken(dataDir, "script-token"),
     appOrigin: `http://127.0.0.1:${port}`,
-    canvasAssetsOrigin: `http://127.0.0.1:${canvasAssetsPort}`,
+    publicOrigin: publicAt?.origin ?? null,
+    canvasAssetsOrigin: publicAt?.canvasAssetsOrigin ?? `http://127.0.0.1:${canvasAssetsPort}`,
     notifierDir: env.MIRADOR_NOTIFIER_DIR ?? notifierDirIfInstalled(),
     testModelOverride: { model: env.MIRADOR_TEST_MODEL, effort: env.MIRADOR_TEST_EFFORT },
     developmentMode: env.MIRADOR_DEV === "1",

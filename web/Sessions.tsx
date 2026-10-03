@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch } from "react";
 import { harnessLabels, launchLabel, type AdoptMode, type ExternalSession, type Profile, type Workspace } from "../shared/model.ts";
 import { connection } from "./connection.ts";
+import { relativeTimeOf } from "./relative-time.ts";
 import type { AppAction } from "./state.ts";
 
 type Listing = { state: "loading" } | { state: "failed"; message: string } | { state: "listed"; sessions: ExternalSession[] };
@@ -19,15 +20,7 @@ function useWorkspaceSessions(workspace: Workspace) {
   return listing;
 }
 
-const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-function ago(isoTime: string | null) {
-  if (!isoTime) return "";
-  const minutes = Math.round((Date.parse(isoTime) - Date.now()) / 60_000);
-  if (Math.abs(minutes) < 60) return relativeTime.format(minutes, "minute");
-  if (Math.abs(minutes) < 48 * 60) return relativeTime.format(Math.round(minutes / 60), "hour");
-  return relativeTime.format(Math.round(minutes / (24 * 60)), "day");
-}
+const ago = (isoTime: string | null) => (isoTime ? relativeTimeOf(Date.parse(isoTime)) : "");
 
 export function SessionsDialog({
   workspace,

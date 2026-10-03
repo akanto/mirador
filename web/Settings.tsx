@@ -4,6 +4,7 @@ import { ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearanc
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
+import { DeviceSettings } from "./Devices.tsx";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
@@ -115,6 +116,7 @@ export function SettingsDialog({
             </label>
           ))}
         </div>
+        <DeviceSettings />
         <NotificationSettings />
         {isMac && <TypingSettings />}
       </div>

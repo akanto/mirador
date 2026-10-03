@@ -11,6 +11,8 @@ import { isImageId } from "../shared/images.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
 import type { HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
+import { deviceName, type DeviceService } from "./devices.ts";
+import { machineAddress } from "../shared/machines.ts";
 import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
@@ -32,6 +34,7 @@ export interface HostServices {
   terminals: TerminalService;
   images: ImageStore;
   restart: HostRestart;
+  devices: DeviceService;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -43,6 +46,9 @@ function sameSecret(candidate: string | null | undefined, secret: string) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+const tokenCookie = (token: string, secure: boolean) =>
+  `${TOKEN_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure ? "; Secure" : ""}`;
+
 function cookieValue(request: Request, name: string) {
   const cookies = request.headers.get("cookie") ?? "";
   return cookies
@@ -52,9 +58,20 @@ function cookieValue(request: Request, name: string) {
 }
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart } = services;
-  const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`]);
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices } = services;
+  const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
+  const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`, ...publicHost]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
+  const pageOrigins = [config.appOrigin, config.publicOrigin].filter((origin) => origin !== null);
+  const isPageOrigin = (origin: string | null) => origin !== null && pageOrigins.includes(origin);
+
+  /** Whom the cookie signs in: the host's own link (no device), a joined device, or nobody. */
+  function signedInAs(request: Request): { deviceId: string | null } | null {
+    const token = cookieValue(request, TOKEN_COOKIE);
+    if (sameSecret(token, config.browserToken)) return { deviceId: null };
+    const device = token ? devices.deviceWithToken(token) : undefined;
+    return device ? { deviceId: device.id } : null;
+  }
 
   function authenticate(request: Request) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
@@ -67,9 +84,53 @@ export function startServer(services: HostServices) {
       status: 302,
       headers: {
         Location: "/",
-        "Set-Cookie": `${TOKEN_COOKIE}=${config.browserToken}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`,
+        "Set-Cookie": tokenCookie(config.browserToken, false),
       },
     });
+  }
+
+  /** A browser joins with the cookie it gets here; an app without cookies keeps the token from the reply. */
+  async function join(request: Request) {
+    if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
+    const origin = request.headers.get("origin");
+    if (origin !== null && !isPageOrigin(origin)) return new Response("forbidden origin", { status: 403 });
+    const { code, name } = (await request.json().catch(() => ({}))) as { code?: unknown; name?: unknown };
+    if (typeof code !== "string") return new Response("The invite code is missing.", { status: 400 });
+    const joined = devices.join(code, deviceName(name));
+    if (!joined) return new Response("This invite code is wrong, used or expired. Ask for a new one.", { status: 403 });
+    sendDevicesToEveryPage();
+    return Response.json(
+      { deviceId: joined.device.id, token: joined.token },
+      { headers: { "Set-Cookie": tokenCookie(joined.token, origin?.startsWith("https://") ?? false) } },
+    );
+  }
+
+  const devicesListed = (socket: BrowserSocket): ServerMessage => ({
+    type: "devices.listed",
+    devices: devices.list(),
+    thisDeviceId: socket.data.deviceId,
+    publicOrigin: config.publicOrigin,
+  });
+  const sendDevicesToEveryPage = () => hub.sendEach(devicesListed);
+
+  function revokeDevice(deviceId: string) {
+    devices.revoke(deviceId);
+    hub.disconnectWhere((socket) => socket.data.deviceId === deviceId, "device revoked");
+    sendDevicesToEveryPage();
+  }
+
+  function addMachine(name: string, address: string) {
+    const origin = machineAddress(address)?.origin;
+    if (!origin) throw new Error(`"${address}" is not a machine's address.`);
+    if (pageOrigins.includes(origin)) throw new Error("That is this machine.");
+    if (store.findMachineByOrigin(origin)) throw new Error(`${origin} is already among your machines.`);
+    store.insertMachine({ id: crypto.randomUUID(), name: name.trim() || new URL(origin).hostname, origin, createdAt: Date.now() });
+    hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+  }
+
+  function removeMachine(machineId: string) {
+    store.deleteMachine(machineId);
+    hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
   }
 
   /** Agents and the scripts they start call with the host's token and, unlike a browser's POST, no Origin header. */
@@ -103,10 +164,10 @@ export function startServer(services: HostServices) {
   /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images. */
   function refusedImageRequest(request: Request, conversationId: string) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
-    if (!sameSecret(cookieValue(request, TOKEN_COOKIE), config.browserToken)) return new Response("unauthorized", { status: 401 });
+    if (!signedInAs(request)) return new Response("unauthorized", { status: 401 });
     const site = request.headers.get("sec-fetch-site");
     if (site && site !== "same-origin") return new Response("forbidden", { status: 403 });
-    if (request.method !== "GET" && request.headers.get("origin") !== config.appOrigin) return new Response("forbidden origin", { status: 403 });
+    if (request.method !== "GET" && !isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
     if (!store.findConversation(conversationId)) return new Response("unknown conversation", { status: 404 });
     return null;
   }
@@ -136,11 +197,10 @@ export function startServer(services: HostServices) {
   /** The desktop app listens on /notifications with the same token and origin as the pages, and hears only system notifications. */
   function upgradeBrowser(request: Request, server: Bun.Server<SocketData>, role: SocketData["role"]) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
-    if (!sameSecret(cookieValue(request, TOKEN_COOKIE), config.browserToken)) {
-      return new Response("unauthorized", { status: 401 });
-    }
-    if (request.headers.get("origin") !== config.appOrigin) return new Response("forbidden origin", { status: 403 });
-    const upgraded = server.upgrade(request, { data: socketData(role) });
+    const signedIn = signedInAs(request);
+    if (!signedIn) return new Response("unauthorized", { status: 401 });
+    if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
+    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId) });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 
@@ -351,6 +411,16 @@ export function startServer(services: HostServices) {
         return terminals.clear(message.terminalId);
       case "host.restart":
         return restart.restart();
+      case "devices.list":
+        return hub.send(socket, devicesListed(socket));
+      case "devices.invite":
+        return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });
+      case "device.revoke":
+        return revokeDevice(message.deviceId);
+      case "machine.add":
+        return addMachine(message.name, message.address);
+      case "machine.remove":
+        return removeMachine(message.machineId);
       default:
         return message satisfies never;
     }
@@ -364,6 +434,7 @@ export function startServer(services: HostServices) {
     routes: {
       "/": index,
       "/auth": authenticate,
+      "/join": { POST: join },
       "/mcp/:conversationId": (request: Bun.BunRequest<"/mcp/:conversationId">) => serveMcp(request, request.params.conversationId),
       "/conversations/:conversationId/images": { POST: addImage },
       "/conversations/:conversationId/images/:imageId": { GET: serveImage },
@@ -381,6 +452,7 @@ export function startServer(services: HostServices) {
       closeOnBackpressureLimit: true,
       open(socket) {
         hub.add(socket);
+        if (socket.data.deviceId) devices.seen(socket.data.deviceId);
         if (socket.data.role === "notifier") return;
         hub.send(socket, {
           type: "snapshot",
@@ -390,6 +462,7 @@ export function startServer(services: HostServices) {
           promptTemplates: store.listPromptTemplates(),
           canvasUse: store.canvasUse(),
           canvasAssetsOrigin: config.canvasAssetsOrigin,
+          machines: store.listMachines(),
           homeDir: homedir(),
           hostRunId,
           hostCodeChanged: restart.codeChanged,

@@ -16,6 +16,11 @@ export const hints = {
   findingDecision: "Kept findings go to the pull request when you post; dropped ones stay here. Click to switch.",
   promptTemplates: "Messages you send often, with the values you fill in each time. Settings adds, changes and deletes them.",
   deleteTemplateArmed: "Click again to delete this template. Defaults deleted here do not come back.",
+  inviteDevice:
+    "Makes a one-time code another browser or app joins this Mirador with, within 15 minutes. A joined device can do everything here, including run commands in terminals.",
+  removeMachineArmed: "Click again to remove this machine from the list. It keeps running, and this browser stays joined to it.",
+  machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
+  revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   askAndUpdateReview:
     "Ask, and tell the agent to publish the review again if its answer changes a finding, the tour, the summary or the verdict. Your choices on the findings carry over.",
   answerDecision: "Kept answers go to their conversations on the pull request when you post, as replies on your pending review; dropped ones stay here. Click to switch.",

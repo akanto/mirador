@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, Conversation, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, Conversation, Machine, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
@@ -13,6 +13,7 @@ export type Overlay =
   | { kind: "palette" }
   | { kind: "help" }
   | { kind: "profiles" }
+  | { kind: "machines" }
   | { kind: "sessions"; workspaceId: string }
   | { kind: "workspace-color"; workspaceId: string }
   | { kind: "add-workspace" }
@@ -28,6 +29,7 @@ export interface AppState {
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   canvasAssetsOrigin: string;
+  machines: Machine[];
   homeDir: string;
   selectedConversationId: string | null;
   /** The conversations opened last, the selected one first: they stay subscribed and drawn, so switching back is instant. */
@@ -56,6 +58,7 @@ export const initialState: AppState = {
   promptTemplates: [],
   canvasUse: "often",
   canvasAssetsOrigin: "",
+  machines: [],
   homeDir: "",
   selectedConversationId: null,
   kept: [],
@@ -108,6 +111,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
+        machines: message.machines,
         homeDir: message.homeDir,
         hostRunId: message.hostRunId,
         hostCodeChanged: message.hostCodeChanged,
@@ -178,7 +182,11 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "terminal.exited":
     case "terminal.cleared":
     case "system-notification":
+    case "devices.listed":
+    case "devices.invited":
       return state;
+    case "machines.changed":
+      return { ...state, machines: message.machines };
     case "host.code-changed":
       return { ...state, hostCodeChanged: true };
     case "host.restarting":

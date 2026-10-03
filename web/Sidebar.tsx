@@ -404,6 +404,9 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
           <button className="link" data-hint={hints.profiles} onClick={() => openOverlay({ kind: "profiles" })}>
             Profiles…
           </button>
+          <button className="link" data-hint={hints.machines} onClick={() => openOverlay({ kind: "machines" })}>
+            Machines…
+          </button>
           <button className="link" onClick={() => openOverlay({ kind: "palette" })}>
             Palette <kbd>{shortcutKeys().palette}</kbd>
           </button>

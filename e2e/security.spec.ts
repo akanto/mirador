@@ -12,7 +12,7 @@ test.afterAll(async () => {
 
 test("rejects browsers and clients without the right credentials", async ({ page }) => {
   await page.goto(`${host.origin}/`);
-  await expect(page.getByText("Not signed in")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Join this machine" })).toBeVisible();
 
   expect((await fetch(`${host.origin}/auth?token=wrong`, { redirect: "manual" })).status).toBe(403);
 
