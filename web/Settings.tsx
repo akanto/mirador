@@ -31,9 +31,9 @@ const describe = ([left, top, bottom]: Slots) =>
 function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hidden"] }) {
   const isHidden = (pane: PaneId) => pane !== "conversation" && hidden[pane];
   return (
-    <span className="thumbnail" aria-hidden="true">
+    <span className="layout-thumbnail" aria-hidden="true">
       {slots.map((pane, index) => (
-        <span key={pane} className={`thumbnail-pane slot-${index} pane-${pane} ${isHidden(pane) ? "starts-hidden" : ""}`}>
+        <span key={pane} className={`layout-thumbnail-pane slot-${index} pane-${pane} ${isHidden(pane) ? "starts-hidden" : ""}`}>
           {thumbnailLabels[pane]}
         </span>
       ))}

@@ -276,6 +276,8 @@ test("an image pasted into the message box goes to the agent with the message an
   await expect(page.locator(".pasted-images")).toHaveCount(0);
   const sent = page.locator(".message.user .message-images img");
   await expect(sent).toHaveJSProperty("naturalWidth", 300);
+  const overhang = await sent.evaluate((image) => image.getBoundingClientRect().bottom - image.closest(".timeline-entry")!.getBoundingClientRect().bottom);
+  expect(overhang).toBeLessThanOrEqual(0);
   await page.locator(".message.user .thumbnail").click();
   await expect(page.getByRole("dialog", { name: "Image" })).toBeVisible();
   await page.keyboard.press("Escape");

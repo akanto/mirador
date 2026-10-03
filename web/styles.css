@@ -3264,14 +3264,14 @@ button.arrangement.chosen {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.thumbnail {
+.layout-thumbnail {
   display: grid;
   grid-template: 1fr 1fr / 1fr 1fr;
   gap: 3px;
   height: 74px;
 }
 
-.thumbnail-pane {
+.layout-thumbnail-pane {
   display: grid;
   place-items: center;
   border-radius: 4px;
@@ -3281,21 +3281,21 @@ button.arrangement.chosen {
   background: var(--panel-2);
 }
 
-.thumbnail-pane.slot-0 {
+.layout-thumbnail-pane.slot-0 {
   grid-row: 1 / 3;
 }
 
-.thumbnail-pane.pane-terminals {
+.layout-thumbnail-pane.pane-terminals {
   background: #1b1c22;
   color: #b4b7c2;
 }
 
-.thumbnail-pane.pane-canvas {
+.layout-thumbnail-pane.pane-canvas {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.thumbnail-pane.starts-hidden {
+.layout-thumbnail-pane.starts-hidden {
   background: none;
   border: 1px dashed var(--faint);
   color: var(--faint);
