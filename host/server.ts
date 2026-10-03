@@ -1,14 +1,14 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import index from "../web/index.html";
-import { isCanvasUse, isWorkspaceColor, type CanvasUse, type PromptTemplate, type Workspace, type WorkspaceColor } from "../shared/model.ts";
+import { isCanvasUse, isWorkspaceColor, type CanvasUse, type PromptTemplate, type PublicAddress, type Workspace, type WorkspaceColor } from "../shared/model.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { isImageId } from "../shared/images.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
-import type { HostConfig } from "./config.ts";
+import { publicAddressOf, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
 import { deviceName, type DeviceService } from "./devices.ts";
 import type { ConversationSearch } from "./search.ts";
@@ -92,13 +92,29 @@ export function startServer(services: HostServices) {
     );
   }
 
+  const publicAddress = config.publicOrigin ? { origin: config.publicOrigin, canvasOrigin: config.canvasAssetsOrigin } : null;
   const devicesListed = (socket: BrowserSocket): ServerMessage => ({
     type: "devices.listed",
     devices: devices.list(),
     thisDeviceId: socket.data.deviceId,
-    publicOrigin: config.publicOrigin,
+    publicAddress,
+    savedPublicAddress: savedPublicAddress(config.dataDir),
+    publicAddressSetByEnvironment: config.publicAddressSetByEnvironment,
   });
   const sendDevicesToEveryPage = () => hub.sendEach(devicesListed);
+
+  /** Saves the address from Settings for the next start, or says what is wrong with it. */
+  function problemSavingPublicAddress(address: PublicAddress | null) {
+    if (config.publicAddressSetByEnvironment) return "The host's environment sets its address, so Settings can't change it.";
+    try {
+      const names = { origin: "Address", canvasOrigin: "Canvas address" };
+      savePublicAddress(config.dataDir, address && publicAddressOf(address.origin.trim(), address.canvasOrigin.trim(), names));
+    } catch (error) {
+      return errorMessage(error);
+    }
+    sendDevicesToEveryPage();
+    return null;
+  }
 
   function revokeDevice(deviceId: string) {
     devices.revoke(deviceId);
@@ -413,6 +429,8 @@ export function startServer(services: HostServices) {
         return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });
       case "device.revoke":
         return revokeDevice(message.deviceId);
+      case "settings.set-public-address":
+        return reply({ type: "settings.public-address-saved", requestId: message.requestId, problem: problemSavingPublicAddress(message.address) });
       case "machine.add":
         return await addMachine(message.name, message.address);
       case "machine.remove":

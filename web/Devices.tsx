@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
+import type { PublicAddress } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
@@ -73,7 +74,7 @@ export function JoinMachine() {
       <h1>Join this machine</h1>
       <p>
         Mirador on <strong>{location.host}</strong> lets in devices with an invite code. Get one in Settings → Devices on a device that has joined, or
-        run <code>bun run invite</code> on the machine.
+        run <code>mirador invite</code> on the machine.
       </p>
       <form
         onSubmit={(event: FormEvent) => {
@@ -108,6 +109,86 @@ type Invite = Extract<ServerMessage, { type: "devices.invited" }>;
 
 const joinedOn = (at: number) => new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const sameAddress = (one: PublicAddress | null, other: PublicAddress | null) => one?.origin === other?.origin && one?.canvasOrigin === other?.canvasOrigin;
+
+function PublicAddressSettings({ listed }: { listed: DevicesListed }) {
+  const { publicAddress, savedPublicAddress, publicAddressSetByEnvironment: setByEnvironment } = listed;
+  const shown = setByEnvironment ? publicAddress : savedPublicAddress;
+  const [origin, setOrigin] = useState(shown?.origin ?? "");
+  const [canvasOrigin, setCanvasOrigin] = useState(shown?.canvasOrigin ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    setOrigin(shown?.origin ?? "");
+    setCanvasOrigin(shown?.canvasOrigin ?? "");
+  }, [shown?.origin, shown?.canvasOrigin]);
+
+  const edited = origin.trim() !== (shown?.origin ?? "") || canvasOrigin.trim() !== (shown?.canvasOrigin ?? "");
+  const waitsForRestart = !setByEnvironment && !sameAddress(savedPublicAddress, publicAddress);
+
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    const requestId = crypto.randomUUID();
+    const unsubscribe = connection.onMessage((message) => {
+      if (message.type !== "settings.public-address-saved" || message.requestId !== requestId) return;
+      unsubscribe();
+      setProblem(message.problem);
+    });
+    const address = origin.trim() || canvasOrigin.trim() ? { origin, canvasOrigin } : null;
+    connection.send({ type: "settings.set-public-address", requestId, address });
+  };
+
+  return (
+    <form className="public-address" aria-label="Address on your network" onSubmit={save}>
+      <p className="hint">
+        {setByEnvironment ? (
+          <>
+            The host's environment sets its address on your network (<code>MIRADOR_PUBLIC_ORIGIN</code> and <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code>), so it
+            can't be changed here.
+          </>
+        ) : (
+          <>
+            Other devices reach this Mirador at its address on your network, and its canvas pages load their libraries from a second one, for example the two
+            that <code>tailscale serve</code> or a reverse proxy gives it. Leave both empty to keep it to this computer.
+          </>
+        )}
+      </p>
+      <label>
+        Address
+        <input
+          value={origin}
+          onChange={(event) => setOrigin(event.target.value)}
+          placeholder="https://box.example.ts.net"
+          disabled={setByEnvironment}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <label>
+        Canvas address
+        <input
+          value={canvasOrigin}
+          onChange={(event) => setCanvasOrigin(event.target.value)}
+          placeholder="https://box.example.ts.net:8443"
+          disabled={setByEnvironment}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <button type="submit" disabled={setByEnvironment || !edited}>
+        Save
+      </button>
+      {problem && <p className="public-address-problem">{problem}</p>}
+      {waitsForRestart && (
+        <p className="public-address-restart">
+          Saved. The host uses it from its next start.
+          <button type="button" data-hint={hints.restartHost} onClick={() => connection.send({ type: "host.restart" })}>
+            Restart host
+          </button>
+        </p>
+      )}
+    </form>
+  );
+}
 
 export function DeviceSettings() {
   const [listed, setListed] = useState<DevicesListed | null>(null);
@@ -131,19 +212,14 @@ export function DeviceSettings() {
     connection.send({ type: "devices.invite", requestId });
   };
 
-  const publicOrigin = listed?.publicOrigin ?? null;
+  const publicOrigin = listed?.publicAddress?.origin ?? null;
   return (
     <>
       <h3>Devices</h3>
       <p className="hint">
         Other browsers and apps that joined this Mirador with an invite code. Each signs in with a key of its own; revoking one signs it out at once.
       </p>
-      {listed && !publicOrigin && (
-        <p className="hint">
-          Other devices reach this Mirador once it has an address on your network: start the host with <code>MIRADOR_PUBLIC_ORIGIN</code> and{" "}
-          <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code>, for example the addresses <code>tailscale serve</code> gives it.
-        </p>
-      )}
+      {listed && <PublicAddressSettings listed={listed} />}
       <ul className="device-list" aria-label="Devices">
         {listed?.devices.map((device) => (
           <li key={device.id}>

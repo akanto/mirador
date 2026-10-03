@@ -11,6 +11,7 @@ import type {
   Launch,
   Profile,
   PromptTemplate,
+  PublicAddress,
   QueuedMessage,
   StoredEvent,
   Workspace,
@@ -170,7 +171,7 @@ export class Store {
     this.db = new Database(path, { create: true, strict: true });
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA foreign_keys = ON");
-    // bun run invite writes here while the host runs.
+    // mirador invite writes here while the host runs.
     this.db.run("PRAGMA busy_timeout = 5000");
     const hadPromptTemplates = this.hasTable("prompt_templates");
     this.db.run(schema);
@@ -355,6 +356,19 @@ export class Store {
 
   setCanvasUse(canvasUse: CanvasUse) {
     this.db.query("INSERT INTO settings (key, value) VALUES ('canvas_use', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(canvasUse);
+  }
+
+  /** The address the running host uses, for commands started from a shell that lacks its environment. */
+  rememberedPublicAddress(): PublicAddress | null {
+    const value = (this.db.query("SELECT value FROM settings WHERE key = 'public_address'").get() as { value: string } | null)?.value;
+    return value ? (JSON.parse(value) as PublicAddress) : null;
+  }
+
+  rememberPublicAddress(address: PublicAddress | null) {
+    if (!address) return void this.db.query("DELETE FROM settings WHERE key = 'public_address'").run();
+    this.db
+      .query("INSERT INTO settings (key, value) VALUES ('public_address', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(JSON.stringify(address));
   }
 
   listPromptTemplates(): PromptTemplate[] {

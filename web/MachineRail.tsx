@@ -149,7 +149,7 @@ function JoinMachinePanel({ machine }: { machine: Machine }) {
       <h1>Join {machine.name}</h1>
       <p>
         This computer has not joined <strong>{machine.name}</strong> at {new URL(machine.origin).host} yet. Get an invite code in its Settings → Devices,
-        from a device that has joined it, or run <code>bun run invite</code> on it.
+        from a device that has joined it, or run <code>mirador invite</code> on it.
       </p>
       <form onSubmit={join}>
         <label>

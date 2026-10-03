@@ -4650,6 +4650,36 @@ body.reordering * {
   word-break: break-all;
 }
 
+.public-address {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin: 8px 0 12px;
+}
+
+.public-address label {
+  display: grid;
+  gap: 4px;
+}
+
+.public-address .hint,
+.public-address-problem,
+.public-address-restart {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.public-address-problem {
+  color: var(--danger);
+}
+
+.public-address-restart {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .machine-list {
   display: grid;
   gap: 6px;

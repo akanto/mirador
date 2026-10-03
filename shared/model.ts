@@ -51,6 +51,12 @@ export interface Device {
   lastSeenAt: number;
 }
 
+/** Where other devices reach a host, and where its canvas pages load their libraries from. */
+export interface PublicAddress {
+  origin: string;
+  canvasOrigin: string;
+}
+
 /** An entry of a conversation that holds the query, with the line around its first occurrence. */
 export interface SearchHit {
   entryKey: string;

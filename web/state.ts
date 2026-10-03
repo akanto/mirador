@@ -190,6 +190,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "devices.invited":
     case "search.results":
     case "machine.join-answered":
+    case "settings.public-address-saved":
       return state;
     case "machines.changed":
       return { ...state, machines: message.machines };

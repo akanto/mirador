@@ -24,6 +24,7 @@ import { TerminalService } from "./terminals.ts";
 
 const config = loadConfig();
 const store = new Store(config.databasePath);
+store.rememberPublicAddress(config.publicOrigin ? { origin: config.publicOrigin, canvasOrigin: config.canvasAssetsOrigin } : null);
 const hub = new Hub();
 const images = new ImageStore(join(config.dataDir, "images"));
 const notifications = new SystemNotifications(store, hub);
