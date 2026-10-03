@@ -39,19 +39,19 @@ test("an address saved in Settings goes to config.json, and invite links use it 
   await test.step("saving writes config.json, and the host keeps its old address until it restarts", async () => {
     await form.getByLabel("Canvas address").fill("https://box.example.ts.net:8443");
     await form.getByRole("button", { name: "Save" }).click();
-    await expect(form.getByText("Saved. The host uses it from its next start.")).toBeVisible();
+    await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
     await expect(form.getByLabel("Address", { exact: true })).toHaveValue("https://box.example.ts.net");
     expect(configFile()).toEqual({ publicOrigin: "https://box.example.ts.net", publicCanvasOrigin: "https://box.example.ts.net:8443" });
     await expect(await invite(settings)).not.toContainText("Or open");
   });
 
   await test.step("after the restart, invites come with a link to the saved address", async () => {
-    await form.getByRole("button", { name: "Restart host" }).click();
+    await settings.getByRole("button", { name: "Restart host" }).click();
     await expect(settings, "the page reloads once the restarted host answers").toBeHidden({ timeout: 30_000 });
     await expect(page.getByText("No conversation selected")).toBeVisible();
     settings = await openSettings(page);
     form = addressForm(settings);
-    await expect(form.getByText("Saved. The host uses it from its next start.")).toHaveCount(0);
+    await expect(settings.getByText("Saved. The host uses it from its next start.")).toHaveCount(0);
     await expect((await invite(settings)).locator(".invite-link")).toHaveText(/^https:\/\/box\.example\.ts\.net\/#\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
   });
 
@@ -59,7 +59,7 @@ test("an address saved in Settings goes to config.json, and invite links use it 
     await form.getByLabel("Address", { exact: true }).fill("");
     await form.getByLabel("Canvas address").fill("");
     await form.getByRole("button", { name: "Save" }).click();
-    await expect(form.getByText("Saved. The host uses it from its next start.")).toBeVisible();
+    await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
     expect(configFile()).toEqual({});
   });
 });

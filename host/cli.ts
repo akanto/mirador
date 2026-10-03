@@ -13,11 +13,12 @@ function invite() {
   const store = new Store(config.databasePath);
   const { code, expiresAt } = new DeviceService(store).invite();
   const publicOrigin = config.publicOrigin ?? store.rememberedPublicAddress()?.origin ?? null;
+  const authorityFingerprint = store.rememberedAuthorityFingerprint();
   store.close();
 
   const minutesLeft = Math.round((expiresAt - Date.now()) / 60_000);
   console.log(`Invite code: ${code} (works once, for ${minutesLeft} minutes)`);
-  if (publicOrigin) console.log(`Open it on the device that joins: ${inviteLink(publicOrigin, code)}`);
+  if (publicOrigin) console.log(`Open it on the device that joins: ${inviteLink(publicOrigin, code, authorityFingerprint)}`);
   else console.log("Type it where the machine asks for an invite code. To get a link, give this machine its address in Settings → Devices.");
 }
 

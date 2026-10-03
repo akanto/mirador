@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
-import type { PublicAddress } from "../shared/model.ts";
-import type { ServerMessage } from "../shared/protocol.ts";
+import type { ReachabilitySettings } from "../shared/model.ts";
+import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
@@ -109,10 +109,62 @@ type Invite = Extract<ServerMessage, { type: "devices.invited" }>;
 
 const joinedOn = (at: number) => new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-const sameAddress = (one: PublicAddress | null, other: PublicAddress | null) => one?.origin === other?.origin && one?.canvasOrigin === other?.canvasOrigin;
+/** Sends a setting to the host, which saves it for its next start; null once saved, else what is wrong with it. */
+function saveSetting(send: (requestId: string) => ClientMessage, answered: (problem: string | null) => void) {
+  const requestId = crypto.randomUUID();
+  const unsubscribe = connection.onMessage((message) => {
+    if (message.type !== "settings.saved" || message.requestId !== requestId) return;
+    unsubscribe();
+    answered(message.problem);
+  });
+  if (!connection.send(send(requestId))) unsubscribe();
+}
 
-function PublicAddressSettings({ listed }: { listed: DevicesListed }) {
-  const { publicAddress, savedPublicAddress, publicAddressSetByEnvironment: setByEnvironment } = listed;
+function NetworkSwitch({ settings }: { settings: ReachabilitySettings }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const saved = settings.networkSetByEnvironment ? settings.network : settings.savedNetwork;
+  const [on, setOn] = useState(saved);
+  useEffect(() => setOn(saved), [saved]);
+
+  const switchTo = (wanted: boolean) => {
+    setOn(wanted);
+    saveSetting(
+      (requestId) => ({ type: "settings.set-network", requestId, on: wanted }),
+      (problemSaving) => {
+        setProblem(problemSaving);
+        if (problemSaving) setOn(saved);
+      },
+    );
+  };
+
+  return (
+    <div className="network-switch">
+      <label>
+        <input type="checkbox" checked={on} disabled={settings.networkSetByEnvironment} onChange={(event) => switchTo(event.target.checked)} />
+        Reachable on the network, over HTTPS at port {settings.networkPort}
+      </label>
+      <p className="hint">
+        {settings.networkSetByEnvironment ? (
+          <>
+            The host's environment sets this (<code>MIRADOR_NETWORK</code>), so it can't be changed here.{" "}
+          </>
+        ) : null}
+        Other devices on the same network, at home or at work, reach this Mirador directly, with no proxy or VPN. It makes its own certificate, which
+        browsers warn about once
+        {settings.network && settings.authorityFingerprint ? (
+          <>
+            , or trust for good once they install its <a href="/mirador-ca.pem">certificate authority</a>
+          </>
+        ) : null}
+        .
+      </p>
+      {problem && <p className="setting-problem">{problem}</p>}
+    </div>
+  );
+}
+
+function PublicAddressSettings({ settings }: { settings: ReachabilitySettings }) {
+  const { publicAddress, savedPublicAddress, publicAddressSetByEnvironment: setByEnvironment } = settings;
   const shown = setByEnvironment ? publicAddress : savedPublicAddress;
   const [origin, setOrigin] = useState(shown?.origin ?? "");
   const [canvasOrigin, setCanvasOrigin] = useState(shown?.canvasOrigin ?? "");
@@ -123,18 +175,12 @@ function PublicAddressSettings({ listed }: { listed: DevicesListed }) {
   }, [shown?.origin, shown?.canvasOrigin]);
 
   const edited = origin.trim() !== (shown?.origin ?? "") || canvasOrigin.trim() !== (shown?.canvasOrigin ?? "");
-  const waitsForRestart = !setByEnvironment && !sameAddress(savedPublicAddress, publicAddress);
+  const usesNetworkAddress = settings.network && !shown && publicAddress;
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    const requestId = crypto.randomUUID();
-    const unsubscribe = connection.onMessage((message) => {
-      if (message.type !== "settings.public-address-saved" || message.requestId !== requestId) return;
-      unsubscribe();
-      setProblem(message.problem);
-    });
     const address = origin.trim() || canvasOrigin.trim() ? { origin, canvasOrigin } : null;
-    connection.send({ type: "settings.set-public-address", requestId, address });
+    saveSetting((requestId) => ({ type: "settings.set-public-address", requestId, address }), setProblem);
   };
 
   return (
@@ -147,8 +193,14 @@ function PublicAddressSettings({ listed }: { listed: DevicesListed }) {
           </>
         ) : (
           <>
-            Other devices reach this Mirador at its address on your network, and its canvas pages load their libraries from a second one, for example the two
-            that <code>tailscale serve</code> or a reverse proxy gives it. Leave both empty to keep it to this computer.
+            The address other devices reach this Mirador at, and a second one its canvas pages load their libraries from. Set them when a proxy, such as{" "}
+            <code>tailscale serve</code>, gives it its addresses.
+            {usesNetworkAddress && (
+              <>
+                {" "}
+                On the network it now uses <code>{usesNetworkAddress.origin}</code>.
+              </>
+            )}
           </>
         )}
       </p>
@@ -177,16 +229,25 @@ function PublicAddressSettings({ listed }: { listed: DevicesListed }) {
       <button type="submit" disabled={setByEnvironment || !edited}>
         Save
       </button>
-      {problem && <p className="public-address-problem">{problem}</p>}
-      {waitsForRestart && (
-        <p className="public-address-restart">
+      {problem && <p className="setting-problem">{problem}</p>}
+    </form>
+  );
+}
+
+function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySettings }) {
+  return (
+    <section className="reachability" aria-label="How other devices reach this Mirador">
+      <NetworkSwitch settings={settings} />
+      <PublicAddressSettings settings={settings} />
+      {settings.restartNeeded && (
+        <p className="restart-needed">
           Saved. The host uses it from its next start.
           <button type="button" data-hint={hints.restartHost} onClick={() => connection.send({ type: "host.restart" })}>
             Restart host
           </button>
         </p>
       )}
-    </form>
+    </section>
   );
 }
 
@@ -212,14 +273,14 @@ export function DeviceSettings() {
     connection.send({ type: "devices.invite", requestId });
   };
 
-  const publicOrigin = listed?.publicAddress?.origin ?? null;
+  const publicOrigin = listed?.reachability.publicAddress?.origin ?? null;
   return (
     <>
       <h3>Devices</h3>
       <p className="hint">
         Other browsers and apps that joined this Mirador with an invite code. Each signs in with a key of its own; revoking one signs it out at once.
       </p>
-      {listed && <PublicAddressSettings listed={listed} />}
+      {listed && <ReachabilitySettingsSection settings={listed.reachability} />}
       <ul className="device-list" aria-label="Devices">
         {listed?.devices.map((device) => (
           <li key={device.id}>
@@ -252,7 +313,7 @@ export function DeviceSettings() {
             </span>
             {publicOrigin && (
               <span>
-                Or open <code className="invite-link">{inviteLink(publicOrigin, invite.code)}</code> on the device.
+                Or open <code className="invite-link">{inviteLink(publicOrigin, invite.code, listed?.reachability.authorityFingerprint)}</code> on the device.
               </span>
             )}
           </div>

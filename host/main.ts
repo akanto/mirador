@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { serveCanvasAssets } from "./canvas/assets.ts";
+import { authorityFingerprint, namesToCover, servingCertificate } from "./certificates.ts";
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { loadConfig } from "./config.ts";
@@ -23,8 +24,11 @@ import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
 
 const config = loadConfig();
+const { network } = config.reachability;
+const certificate = network && servingCertificate(config.dataDir, namesToCover(config.publicOrigin && new URL(config.publicOrigin).hostname), network.ownCertificate);
 const store = new Store(config.databasePath);
 store.rememberPublicAddress(config.publicOrigin ? { origin: config.publicOrigin, canvasOrigin: config.canvasAssetsOrigin } : null);
+store.rememberAuthorityFingerprint(certificate?.authority ? authorityFingerprint(certificate.authority) : null);
 const hub = new Hub();
 const images = new ImageStore(join(config.dataDir, "images"));
 const notifications = new SystemNotifications(store, hub);
@@ -32,6 +36,7 @@ const conversations = new ConversationService(store, hub, config, new NotifierMu
 const canvas = new CanvasService(store, hub, conversations, notifications);
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
+const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, certificate);
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
@@ -50,8 +55,8 @@ const relays = new MachineRelays(store, config.relayPorts, (request) => signedIn
 });
 relays.startAll();
 watch.startAll();
-const { server, rebuildUi } = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch });
-const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: rebuildUi, hostEdited: () => restart.hostCodeEdited() });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch, certificate });
+const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: server.rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
 const terminalSessions = new TerminalSessionWatcher(
@@ -62,14 +67,16 @@ terminalSessions.start();
 
 console.log(`Mirador is running. Open:\n\n  ${config.appOrigin}/auth?token=${config.browserToken}\n`);
 console.log(`data: ${config.dataDir}  agent logs: ${config.dataDir}/logs`);
+if (network) console.log(`other devices: ${config.publicOrigin} (HTTPS on port ${network.port} of every network this machine is on)`);
 
 async function stopServices() {
   terminalSessions.stop();
   sourceWatcher.stop();
   terminals.shutdown();
   const agentsExited = conversations.shutdown();
-  server.stop(true);
+  server.stop();
   assetsServer.stop(true);
+  networkAssetsServer?.stop(true);
   relays.stopAll();
   watch.stopAll();
   store.close();

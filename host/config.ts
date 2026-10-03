@@ -1,8 +1,24 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, hostname } from "node:os";
+import { join, resolve } from "node:path";
 import type { PublicAddress } from "../shared/model.ts";
 import { relayPorts } from "../shared/relay-ports.ts";
+
+/** Other devices reach the host over HTTPS on these ports of every network it is on. */
+export interface NetworkListening {
+  port: number;
+  canvasPort: number;
+  /** The owner's certificate and key, e.g. from a company CA or mkcert; null when Mirador makes its own. */
+  ownCertificate: { certificatePath: string; keyPath: string } | null;
+}
+
+/** How other devices reach the host. The environment wins over config.json, so Settings can't change what it sets. */
+export interface Reachability {
+  publicAddress: PublicAddress | null;
+  publicAddressSetByEnvironment: boolean;
+  network: NetworkListening | null;
+  networkSetByEnvironment: boolean;
+}
 
 export interface HostConfig {
   port: number;
@@ -15,12 +31,11 @@ export interface HostConfig {
   /** Lets scripts an agent started post messages back to its conversation; kept across restarts so waiting scripts still get through. */
   scriptToken: string;
   appOrigin: string;
-  /** Where other devices reach this host, e.g. through tailscale serve, while it listens on 127.0.0.1 only; null when only this machine does. */
+  /** Where other devices reach this host, through a proxy such as tailscale serve or on the network itself; null when only this machine does. */
   publicOrigin: string | null;
   /** Where canvas pages load D3, Mermaid and three from: the public one when there is one, so the agents' pages load for every viewer. */
   canvasAssetsOrigin: string;
-  /** The environment's public address wins over the one in config.json, so Settings can't change it then. */
-  publicAddressSetByEnvironment: boolean;
+  reachability: Reachability;
   notifierDir: string | null;
   /** Test runs pin a cheap model; profiles are left alone because a profile chooses its own model. */
   testModelOverride: { model?: string; effort?: string };
@@ -81,11 +96,66 @@ export function savedPublicAddress(dataDir: string) {
   }
 }
 
-/** Keeps whatever else config.json holds; the host uses the new address from its next start. */
-export function savePublicAddress(dataDir: string, address: PublicAddress | null) {
-  const { publicOrigin: _origin, publicCanvasOrigin: _canvasOrigin, ...otherSettings } = readConfigFile(dataDir);
-  const settings = address ? { ...otherSettings, publicOrigin: address.origin, publicCanvasOrigin: address.canvasOrigin } : otherSettings;
+/** Keeps whatever else config.json holds; the host uses the change from its next start. */
+function changeConfigFile(dataDir: string, change: Record<string, unknown>) {
+  const settings = Object.fromEntries(Object.entries({ ...readConfigFile(dataDir), ...change }).filter(([, value]) => value !== undefined));
   writeFileSync(configFilePath(dataDir), `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function savePublicAddress(dataDir: string, address: PublicAddress | null) {
+  changeConfigFile(dataDir, { publicOrigin: address?.origin, publicCanvasOrigin: address?.canvasOrigin });
+}
+
+export const savedNetwork = (dataDir: string) => switchIn(readConfigFile(dataDir).network, `network in ${configFilePath(dataDir)}`) ?? false;
+
+export function saveNetwork(dataDir: string, on: boolean) {
+  changeConfigFile(dataDir, { network: on || undefined });
+}
+
+const environmentSwitches: Record<string, boolean> = { "1": true, on: true, true: true, "0": false, off: false, false: false };
+
+function switchIn(value: unknown, name: string): boolean | undefined {
+  if (value === undefined || value === "") return undefined;
+  const on = typeof value === "boolean" ? value : environmentSwitches[String(value).toLowerCase()];
+  if (on === undefined) throw new Error(`${name} must be on or off.`);
+  return on;
+}
+
+/** The name this machine answers to on the local network: its own, or name.local through mDNS when it has no domain. */
+export const localNetworkName = (machineName = hostname()) => (machineName.includes(".") ? machineName : `${machineName}.local`);
+
+function certificateFiles(certificatePath: unknown, keyPath: unknown, names: { certificate: string; key: string; where: string }, dataDir: string) {
+  if (!certificatePath && !keyPath) return null;
+  if (typeof certificatePath !== "string" || typeof keyPath !== "string" || !certificatePath || !keyPath) {
+    throw new Error(`Set both ${names.certificate} and ${names.key}${names.where}, or neither.`);
+  }
+  return { certificatePath: resolve(dataDir, certificatePath), keyPath: resolve(dataDir, keyPath) };
+}
+
+export function reachability(env: NodeJS.ProcessEnv, dataDir: string, port: number): Reachability {
+  const publicAddressFromEnvironment = publicAddressInEnvironment(env);
+  const networkFromEnvironment = switchIn(env.MIRADOR_NETWORK, "MIRADOR_NETWORK");
+  const settings = readConfigFile(dataDir);
+  const networkPort = Number(env.MIRADOR_NETWORK_PORT ?? port + 2);
+  const network = (networkFromEnvironment ?? savedNetwork(dataDir))
+    ? {
+        port: networkPort,
+        canvasPort: networkPort + 1,
+        ownCertificate:
+          certificateFiles(env.MIRADOR_TLS_CERTIFICATE, env.MIRADOR_TLS_KEY, { certificate: "MIRADOR_TLS_CERTIFICATE", key: "MIRADOR_TLS_KEY", where: "" }, dataDir) ??
+          certificateFiles(settings.tlsCertificate, settings.tlsKey, { certificate: "tlsCertificate", key: "tlsKey", where: ` in ${configFilePath(dataDir)}` }, dataDir),
+      }
+    : null;
+  const addressOnTheNetwork = network && {
+    origin: `https://${localNetworkName()}:${network.port}`,
+    canvasOrigin: `https://${localNetworkName()}:${network.canvasPort}`,
+  };
+  return {
+    publicAddress: publicAddressFromEnvironment ?? savedPublicAddress(dataDir) ?? addressOnTheNetwork,
+    publicAddressSetByEnvironment: publicAddressFromEnvironment !== null,
+    network,
+    networkSetByEnvironment: networkFromEnvironment !== undefined,
+  };
 }
 
 export function loadConfig(env = process.env): HostConfig {
@@ -94,8 +164,7 @@ export function loadConfig(env = process.env): HostConfig {
   const dataDir = env.MIRADOR_DATA_DIR ?? join(homedir(), ".mirador");
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   chmodSync(dataDir, 0o700);
-  const publicAddressFromEnvironment = publicAddressInEnvironment(env);
-  const publicAt = publicAddressFromEnvironment ?? savedPublicAddress(dataDir);
+  const reachedAs = reachability(env, dataDir, port);
   return {
     port,
     canvasAssetsPort,
@@ -106,9 +175,9 @@ export function loadConfig(env = process.env): HostConfig {
     mcpToken: env.MIRADOR_MCP_TOKEN ?? crypto.randomUUID().replaceAll("-", ""),
     scriptToken: loadOrCreateToken(dataDir, "script-token"),
     appOrigin: `http://127.0.0.1:${port}`,
-    publicOrigin: publicAt?.origin ?? null,
-    canvasAssetsOrigin: publicAt?.canvasOrigin ?? `http://127.0.0.1:${canvasAssetsPort}`,
-    publicAddressSetByEnvironment: publicAddressFromEnvironment !== null,
+    publicOrigin: reachedAs.publicAddress?.origin ?? null,
+    canvasAssetsOrigin: reachedAs.publicAddress?.canvasOrigin ?? `http://127.0.0.1:${canvasAssetsPort}`,
+    reachability: reachedAs,
     notifierDir: env.MIRADOR_NOTIFIER_DIR ?? notifierDirIfInstalled(),
     testModelOverride: { model: env.MIRADOR_TEST_MODEL, effort: env.MIRADOR_TEST_EFFORT },
     developmentMode: env.MIRADOR_DEV === "1",

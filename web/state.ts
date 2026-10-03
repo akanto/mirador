@@ -30,6 +30,7 @@ export interface AppState {
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   canvasAssetsOrigin: string;
+  agentsCanvasAssetsOrigin: string;
   machines: Machine[];
   machineStatuses: MachineStatus[];
   homeDir: string;
@@ -60,6 +61,7 @@ export const initialState: AppState = {
   promptTemplates: [],
   canvasUse: "often",
   canvasAssetsOrigin: "",
+  agentsCanvasAssetsOrigin: "",
   machines: [],
   machineStatuses: [],
   homeDir: "",
@@ -102,6 +104,12 @@ function withOpen(state: AppState, conversationId: string, change: (open: OpenCo
 
 let noticeCounter = 0;
 
+/** Agents write the canvas library address they were given into their pages; this page may load them from another one. */
+function withThisPagesAssetsOrigin(state: AppState, item: CanvasItem): CanvasItem {
+  const { agentsCanvasAssetsOrigin: written, canvasAssetsOrigin: reachable } = state;
+  return !written || written === reachable ? item : (JSON.parse(JSON.stringify(item).replaceAll(written, reachable)) as CanvasItem);
+}
+
 function applyServerMessage(state: AppState, message: ServerMessage): AppState {
   switch (message.type) {
     case "snapshot": {
@@ -114,6 +122,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
+        agentsCanvasAssetsOrigin: message.agentsCanvasAssetsOrigin,
         machines: message.machines,
         machineStatuses: message.machineStatuses,
         homeDir: message.homeDir,
@@ -148,7 +157,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         conversationId: message.conversationId,
         loaded: true,
         events: message.events,
-        canvas: message.canvas,
+        canvas: message.canvas.map((item) => withThisPagesAssetsOrigin(state, item)),
       }));
     case "conversation.event":
       return withOpen(state, message.conversationId, (open) => {
@@ -156,7 +165,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         return message.event.seq <= lastSeq ? open : { ...open, events: [...open.events, message.event] };
       });
     case "canvas.upserted":
-      return withOpen(state, message.item.conversationId, (open) => ({ ...open, canvas: upsert(open.canvas, message.item) }));
+      return withOpen(state, message.item.conversationId, (open) => ({ ...open, canvas: upsert(open.canvas, withThisPagesAssetsOrigin(state, message.item)) }));
     case "profile.upserted":
       return { ...state, profiles: upsert(state.profiles, message.profile).sort((a, b) => a.name.localeCompare(b.name)) };
     case "profile.deleted":
@@ -190,7 +199,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "devices.invited":
     case "search.results":
     case "machine.join-answered":
-    case "settings.public-address-saved":
+    case "settings.saved":
       return state;
     case "machines.changed":
       return { ...state, machines: message.machines };

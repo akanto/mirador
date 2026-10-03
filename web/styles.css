@@ -4664,20 +4664,37 @@ body.reordering * {
 }
 
 .public-address .hint,
-.public-address-problem,
-.public-address-restart {
+.public-address .setting-problem {
   grid-column: 1 / -1;
   margin: 0;
 }
 
-.public-address-problem {
+.network-switch {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 4px;
+}
+
+.network-switch label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.network-switch .hint,
+.network-switch .setting-problem {
+  margin: 0;
+}
+
+.setting-problem {
   color: var(--danger);
 }
 
-.public-address-restart {
+.restart-needed {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin: 0 0 12px;
 }
 
 .machine-list {

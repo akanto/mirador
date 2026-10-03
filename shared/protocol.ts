@@ -13,6 +13,7 @@ import type {
   Profile,
   PromptTemplate,
   PublicAddress,
+  ReachabilitySettings,
   StatuslineRender,
   StoredEvent,
   TerminalTab,
@@ -108,6 +109,7 @@ export type ClientMessage =
   | { type: "device.revoke"; deviceId: string }
   /** Saved to config.json for the host's next start; null takes the address out. */
   | { type: "settings.set-public-address"; requestId: string; address: PublicAddress | null }
+  | { type: "settings.set-network"; requestId: string; on: boolean }
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
@@ -122,7 +124,9 @@ export type ServerMessage =
       profiles: Profile[];
       promptTemplates: PromptTemplate[];
       canvasUse: CanvasUse;
+      /** Where this page loads canvas libraries from: the address it reached the host at may differ from the one agents were given. */
       canvasAssetsOrigin: string;
+      agentsCanvasAssetsOrigin: string;
       machines: Machine[];
       machineStatuses: MachineStatus[];
       homeDir: string;
@@ -164,22 +168,12 @@ export type ServerMessage =
   /** The host is stopping to start again in place; pages reload once they reconnect. */
   | { type: "host.restarting" }
   | { type: "error"; message: string }
-  /**
-   * thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link.
-   * publicAddress is the one the host runs with; savedPublicAddress is in config.json and may wait for a restart.
-   */
-  | {
-      type: "devices.listed";
-      devices: Device[];
-      thisDeviceId: string | null;
-      publicAddress: PublicAddress | null;
-      savedPublicAddress: PublicAddress | null;
-      publicAddressSetByEnvironment: boolean;
-    }
+  /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
+  | { type: "devices.listed"; devices: Device[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   | { type: "machines.changed"; machines: Machine[] }
   | { type: "machine.status"; status: MachineStatus }
   | { type: "machine.join-answered"; requestId: string; problem: string | null }
-  | { type: "settings.public-address-saved"; requestId: string; problem: string | null }
+  | { type: "settings.saved"; requestId: string; problem: string | null }
   /** The conversation with the newest hit first. */
   | { type: "search.results"; requestId: string; conversations: ConversationMatches[] };

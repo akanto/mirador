@@ -358,17 +358,32 @@ export class Store {
     this.db.query("INSERT INTO settings (key, value) VALUES ('canvas_use', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(canvasUse);
   }
 
+  private setting(key: string) {
+    return (this.db.query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null)?.value ?? null;
+  }
+
+  private setSetting(key: string, value: string | null) {
+    if (value === null) return void this.db.query("DELETE FROM settings WHERE key = ?").run(key);
+    this.db.query("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+  }
+
   /** The address the running host uses, for commands started from a shell that lacks its environment. */
   rememberedPublicAddress(): PublicAddress | null {
-    const value = (this.db.query("SELECT value FROM settings WHERE key = 'public_address'").get() as { value: string } | null)?.value;
+    const value = this.setting("public_address");
     return value ? (JSON.parse(value) as PublicAddress) : null;
   }
 
   rememberPublicAddress(address: PublicAddress | null) {
-    if (!address) return void this.db.query("DELETE FROM settings WHERE key = 'public_address'").run();
-    this.db
-      .query("INSERT INTO settings (key, value) VALUES ('public_address', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
-      .run(JSON.stringify(address));
+    this.setSetting("public_address", address && JSON.stringify(address));
+  }
+
+  /** Of the certificate authority the running host serves with, for invite links that commands make. */
+  rememberedAuthorityFingerprint() {
+    return this.setting("authority_fingerprint");
+  }
+
+  rememberAuthorityFingerprint(fingerprint: string | null) {
+    this.setSetting("authority_fingerprint", fingerprint);
   }
 
   listPromptTemplates(): PromptTemplate[] {

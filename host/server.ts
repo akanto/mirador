@@ -1,14 +1,24 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import index from "../web/index.html";
-import { isCanvasUse, isWorkspaceColor, type CanvasUse, type PromptTemplate, type PublicAddress, type Workspace, type WorkspaceColor } from "../shared/model.ts";
+import {
+  isCanvasUse,
+  isWorkspaceColor,
+  type CanvasUse,
+  type PromptTemplate,
+  type PublicAddress,
+  type ReachabilitySettings,
+  type Workspace,
+  type WorkspaceColor,
+} from "../shared/model.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { isImageId } from "../shared/images.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
-import { publicAddressOf, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
+import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
+import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
 import { deviceName, type DeviceService } from "./devices.ts";
 import type { ConversationSearch } from "./search.ts";
@@ -41,6 +51,8 @@ export interface HostServices {
   search: ConversationSearch;
   relays: MachineRelays;
   watch: MachineWatch;
+  /** What the network listener serves with; null while the host listens on 127.0.0.1 only. */
+  certificate: ServingCertificate | null;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -51,12 +63,31 @@ const tokenCookie = (token: string, secure: boolean) =>
 
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch } = services;
+  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch, certificate } =
+    services;
+  const { network } = config.reachability;
+  const localHosts = [`127.0.0.1:${config.port}`, `localhost:${config.port}`];
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
-  const allowedHosts = new Set([`127.0.0.1:${config.port}`, `localhost:${config.port}`, ...publicHost]);
+  const networkHosts = network && certificate ? certificate.names.map((name) => `${name}:${network.port}`) : [];
+  const allowedHosts = new Set([...localHosts, ...publicHost, ...networkHosts]);
   const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
-  const pageOrigins = [config.appOrigin, config.publicOrigin].filter((origin) => origin !== null);
+  const pageOrigins = [config.appOrigin, config.publicOrigin, ...networkHosts.map((host) => `https://${host}`)].filter((origin) => origin !== null);
   const isPageOrigin = (origin: string | null) => origin !== null && pageOrigins.includes(origin);
+  const localCanvasAssetsOrigin = `http://127.0.0.1:${config.canvasAssetsPort}`;
+
+  /** Each page loads canvas libraries from the address it reached the host at, so it never needs to trust another. */
+  function canvasAssetsOriginFor(request: Request) {
+    const host = request.headers.get("host") ?? "";
+    if (localHosts.includes(host)) return localCanvasAssetsOrigin;
+    if (network && networkHosts.includes(host)) return `https://${host.slice(0, host.lastIndexOf(":"))}:${network.canvasPort}`;
+    return config.canvasAssetsOrigin;
+  }
+
+  /** Public, so devices can trust Mirador's own certificate authority before they join. */
+  const serveAuthority = () =>
+    certificate?.authority
+      ? new Response(certificate.authority, { headers: { "Content-Type": "application/x-pem-file", "Content-Disposition": 'attachment; filename="mirador-ca.pem"' } })
+      : new Response("This Mirador has no certificate authority of its own.", { status: 404 });
 
   const signedInAs = signedInWith(config.browserToken, devices);
 
@@ -92,28 +123,50 @@ export function startServer(services: HostServices) {
     );
   }
 
-  const publicAddress = config.publicOrigin ? { origin: config.publicOrigin, canvasOrigin: config.canvasAssetsOrigin } : null;
+  const authorityFingerprint = certificate?.authority ? fingerprintOf(certificate.authority) : null;
+  function reachabilitySettings(): ReachabilitySettings {
+    const running = config.reachability;
+    const afterRestart = reachability(process.env, config.dataDir, config.port);
+    return {
+      publicAddress: running.publicAddress,
+      savedPublicAddress: savedPublicAddress(config.dataDir),
+      publicAddressSetByEnvironment: running.publicAddressSetByEnvironment,
+      network: running.network !== null,
+      savedNetwork: savedNetwork(config.dataDir),
+      networkSetByEnvironment: running.networkSetByEnvironment,
+      networkPort: running.network?.port ?? config.port + 2,
+      restartNeeded: JSON.stringify(afterRestart) !== JSON.stringify(running),
+      authorityFingerprint,
+    };
+  }
   const devicesListed = (socket: BrowserSocket): ServerMessage => ({
     type: "devices.listed",
     devices: devices.list(),
     thisDeviceId: socket.data.deviceId,
-    publicAddress,
-    savedPublicAddress: savedPublicAddress(config.dataDir),
-    publicAddressSetByEnvironment: config.publicAddressSetByEnvironment,
+    reachability: reachabilitySettings(),
   });
   const sendDevicesToEveryPage = () => hub.sendEach(devicesListed);
 
-  /** Saves the address from Settings for the next start, or says what is wrong with it. */
-  function problemSavingPublicAddress(address: PublicAddress | null) {
-    if (config.publicAddressSetByEnvironment) return "The host's environment sets its address, so Settings can't change it.";
+  /** Saves a setting from Settings for the next start, or says what is wrong with it. */
+  function problemSaving(save: () => void) {
     try {
-      const names = { origin: "Address", canvasOrigin: "Canvas address" };
-      savePublicAddress(config.dataDir, address && publicAddressOf(address.origin.trim(), address.canvasOrigin.trim(), names));
+      save();
     } catch (error) {
       return errorMessage(error);
     }
     sendDevicesToEveryPage();
     return null;
+  }
+
+  function savePublicAddressFromSettings(address: PublicAddress | null) {
+    if (config.reachability.publicAddressSetByEnvironment) throw new Error("The host's environment sets its address, so Settings can't change it.");
+    const names = { origin: "Address", canvasOrigin: "Canvas address" };
+    savePublicAddress(config.dataDir, address && publicAddressOf(address.origin.trim(), address.canvasOrigin.trim(), names));
+  }
+
+  function saveNetworkFromSettings(on: boolean) {
+    if (config.reachability.networkSetByEnvironment) throw new Error("The host's environment sets whether it listens on the network, so Settings can't change it.");
+    saveNetwork(config.dataDir, on);
   }
 
   function revokeDevice(deviceId: string) {
@@ -212,7 +265,7 @@ export function startServer(services: HostServices) {
     const signedIn = signedInAs(request);
     if (!signedIn) return new Response("unauthorized", { status: 401 });
     if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
-    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId) });
+    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request)) });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 
@@ -430,7 +483,9 @@ export function startServer(services: HostServices) {
       case "device.revoke":
         return revokeDevice(message.deviceId);
       case "settings.set-public-address":
-        return reply({ type: "settings.public-address-saved", requestId: message.requestId, problem: problemSavingPublicAddress(message.address) });
+        return reply({ type: "settings.saved", requestId: message.requestId, problem: problemSaving(() => savePublicAddressFromSettings(message.address)) });
+      case "settings.set-network":
+        return reply({ type: "settings.saved", requestId: message.requestId, problem: problemSaving(() => saveNetworkFromSettings(message.on)) });
       case "machine.add":
         return await addMachine(message.name, message.address);
       case "machine.remove":
@@ -446,67 +501,100 @@ export function startServer(services: HostServices) {
     }
   }
 
+  /** All the network listener serves: what pages of other devices use. */
+  const routesForDevices = {
+    "/": index,
+    "/join": { POST: join },
+    "/conversations/:conversationId/images": { POST: addImage },
+    "/conversations/:conversationId/images/:imageId": { GET: serveImage },
+    "/mirador-ca.pem": serveAuthority,
+  };
+  /** Only this machine's own browser, agents and scripts sign in with these tokens, so they are served on 127.0.0.1 alone. */
+  const routesForThisMachine = {
+    "/auth": authenticate,
+    "/mcp/:conversationId": (request: Bun.BunRequest<"/mcp/:conversationId">) => serveMcp(request, request.params.conversationId),
+    "/sessions/:sessionId/messages": { POST: receiveScriptMessage },
+  };
+
+  function upgradeSockets(request: Request, server: Bun.Server<SocketData>) {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/ws") return upgradeBrowser(request, server, "page");
+    if (pathname === "/notifications") return upgradeBrowser(request, server, "notifier");
+    return new Response("not found", { status: 404 });
+  }
+
+  const websocket: Bun.WebSocketHandler<SocketData> = {
+    /** Bun drops what is sent while more than the limit waits to go out (16 MB by default, less than one long history), so the limit is far above that, and a client that falls further behind is disconnected to reconnect and fetch again instead of silently missing messages. */
+    backpressureLimit: 1024 * 1024 * 1024,
+    closeOnBackpressureLimit: true,
+    open(socket) {
+      hub.add(socket);
+      if (socket.data.deviceId) devices.seen(socket.data.deviceId);
+      if (socket.data.role === "notifier") return;
+      hub.send(socket, {
+        type: "snapshot",
+        workspaces: store.listWorkspaces(),
+        conversations: conversations.list(),
+        profiles: store.listProfiles(),
+        promptTemplates: store.listPromptTemplates(),
+        canvasUse: store.canvasUse(),
+        canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
+        agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,
+        machines: store.listMachines(),
+        machineStatuses: watch.statuses(),
+        homeDir: homedir(),
+        hostRunId,
+        hostCodeChanged: restart.codeChanged,
+      });
+    },
+    close(socket, code, reason) {
+      hub.remove(socket);
+      if (code !== 1000 && code !== 1001) console.log(`${new Date().toISOString()} browser socket closed: ${code} ${reason}`);
+    },
+    async message(socket, raw) {
+      if (socket.data.role === "notifier") return;
+      try {
+        await dispatch(socket, JSON.parse(String(raw)) as ClientMessage);
+      } catch (error) {
+        hub.send(socket, { type: "error", message: errorMessage(error) });
+      }
+    },
+  };
+
   const options = serveOptions({
     hostname: "127.0.0.1",
     port: config.port,
     idleTimeout: 0,
     development: config.developmentMode,
-    routes: {
-      "/": index,
-      "/auth": authenticate,
-      "/join": { POST: join },
-      "/mcp/:conversationId": (request: Bun.BunRequest<"/mcp/:conversationId">) => serveMcp(request, request.params.conversationId),
-      "/conversations/:conversationId/images": { POST: addImage },
-      "/conversations/:conversationId/images/:imageId": { GET: serveImage },
-      "/sessions/:sessionId/messages": { POST: receiveScriptMessage },
-    },
-    fetch(request, server) {
-      const { pathname } = new URL(request.url);
-      if (pathname === "/ws") return upgradeBrowser(request, server, "page");
-      if (pathname === "/notifications") return upgradeBrowser(request, server, "notifier");
-      return new Response("not found", { status: 404 });
-    },
-    websocket: {
-      /** Bun drops what is sent while more than the limit waits to go out (16 MB by default, less than one long history), so the limit is far above that, and a client that falls further behind is disconnected to reconnect and fetch again instead of silently missing messages. */
-      backpressureLimit: 1024 * 1024 * 1024,
-      closeOnBackpressureLimit: true,
-      open(socket) {
-        hub.add(socket);
-        if (socket.data.deviceId) devices.seen(socket.data.deviceId);
-        if (socket.data.role === "notifier") return;
-        hub.send(socket, {
-          type: "snapshot",
-          workspaces: store.listWorkspaces(),
-          conversations: conversations.list(),
-          profiles: store.listProfiles(),
-          promptTemplates: store.listPromptTemplates(),
-          canvasUse: store.canvasUse(),
-          canvasAssetsOrigin: config.canvasAssetsOrigin,
-          machines: store.listMachines(),
-          machineStatuses: watch.statuses(),
-          homeDir: homedir(),
-          hostRunId,
-          hostCodeChanged: restart.codeChanged,
-        });
-      },
-      close(socket, code, reason) {
-        hub.remove(socket);
-        if (code !== 1000 && code !== 1001) console.log(`${new Date().toISOString()} browser socket closed: ${code} ${reason}`);
-      },
-      async message(socket, raw) {
-        if (socket.data.role === "notifier") return;
-        try {
-          await dispatch(socket, JSON.parse(String(raw)) as ClientMessage);
-        } catch (error) {
-          hub.send(socket, { type: "error", message: errorMessage(error) });
-        }
-      },
-    },
+    routes: { ...routesForDevices, ...routesForThisMachine },
+    fetch: upgradeSockets,
+    websocket,
   });
+  const networkOptions =
+    network && certificate
+      ? serveOptions({
+          hostname: "0.0.0.0",
+          port: network.port,
+          tls: { cert: certificate.chain, key: certificate.key },
+          idleTimeout: 0,
+          development: config.developmentMode,
+          routes: routesForDevices,
+          fetch: upgradeSockets,
+          websocket,
+        })
+      : null;
   const server = Bun.serve(options);
+  const networkServer = networkOptions && Bun.serve(networkOptions);
   /** The page bundle is built once per set of routes, so setting the same routes again rebuilds it from the current source. */
-  const rebuildUi = () => void server.reload(options);
-  return { server, rebuildUi };
+  const rebuildUi = () => {
+    server.reload(options);
+    if (networkServer && networkOptions) networkServer.reload(networkOptions);
+  };
+  const stop = () => {
+    server.stop(true);
+    networkServer?.stop(true);
+  };
+  return { stop, rebuildUi };
 }
 
 /** Types the options where they are written, so they can be passed to both Bun.serve and server.reload. */

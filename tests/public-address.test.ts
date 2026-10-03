@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configFilePath, loadConfig, savedPublicAddress, savePublicAddress } from "../host/config.ts";
+import { configFilePath, loadConfig, localNetworkName, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress } from "../host/config.ts";
 import { Store } from "../host/store.ts";
 
 const box = { origin: "https://box.example.ts.net", canvasOrigin: "https://box.example.ts.net:8443" };
@@ -28,12 +28,12 @@ test("the host takes its public address from config.json, unless the environment
   expect(loadConfig({ MIRADOR_DATA_DIR: dataDir })).toMatchObject({
     publicOrigin: box.origin,
     canvasAssetsOrigin: box.canvasOrigin,
-    publicAddressSetByEnvironment: false,
+    reachability: { publicAddressSetByEnvironment: false },
   });
   expect(loadConfig({ MIRADOR_DATA_DIR: dataDir, ...environmentAddress })).toMatchObject({
     publicOrigin: "https://env.example.com",
     canvasAssetsOrigin: "https://env.example.com:8443",
-    publicAddressSetByEnvironment: true,
+    reachability: { publicAddressSetByEnvironment: true },
   });
 });
 
@@ -87,4 +87,35 @@ test("mirador without a known command shows its usage", () => {
   const unknown = mirador(["frobnicate"]);
   expect(unknown.exitCode).toBe(2);
   expect(unknown.output).toContain('mirador: unknown command "frobnicate"');
+});
+
+test("on the network, the host listens on its port plus 2 and 3 and is reached at its local network name, unless an address is set", () => {
+  expect(reachability({}, dataDir, 4600).network).toBeNull();
+  saveNetwork(dataDir, true);
+  expect(savedNetwork(dataDir)).toBe(true);
+  const onTheNetwork = reachability({}, dataDir, 4600);
+  expect(onTheNetwork).toMatchObject({ network: { port: 4602, canvasPort: 4603, ownCertificate: null }, networkSetByEnvironment: false });
+  expect(onTheNetwork.publicAddress).toEqual({ origin: `https://${localNetworkName()}:4602`, canvasOrigin: `https://${localNetworkName()}:4603` });
+
+  savePublicAddress(dataDir, box);
+  expect(reachability({}, dataDir, 4600).publicAddress).toEqual(box);
+  expect(reachability({ MIRADOR_NETWORK: "off" }, dataDir, 4600)).toMatchObject({ network: null, networkSetByEnvironment: true });
+  expect(reachability({ MIRADOR_NETWORK: "on", MIRADOR_NETWORK_PORT: "7000" }, dataDir, 4600).network).toMatchObject({ port: 7000, canvasPort: 7001 });
+
+  saveNetwork(dataDir, false);
+  expect(JSON.parse(readFileSync(configFilePath(dataDir), "utf8"))).toEqual({ publicOrigin: box.origin, publicCanvasOrigin: box.canvasOrigin });
+});
+
+test("the owner's certificate needs both files, found from the data directory when the paths are relative", () => {
+  writeConfigFile({ network: true, tlsCertificate: "tls/mine.pem", tlsKey: "/etc/mirador/mine-key.pem" });
+  expect(reachability({}, dataDir, 4600).network?.ownCertificate).toEqual({ certificatePath: join(dataDir, "tls/mine.pem"), keyPath: "/etc/mirador/mine-key.pem" });
+  writeConfigFile({ network: true, tlsCertificate: "tls/mine.pem" });
+  expect(() => reachability({}, dataDir, 4600)).toThrow(`Set both tlsCertificate and tlsKey in ${configFilePath(dataDir)}, or neither.`);
+  expect(() => reachability({ MIRADOR_NETWORK: "maybe" }, dataDir, 4600)).toThrow("MIRADOR_NETWORK must be on or off.");
+});
+
+test("a machine without a domain is reached at its name with .local on the local network", () => {
+  expect(localNetworkName("home-server")).toBe("home-server.local");
+  expect(localNetworkName("perdos-mac.local")).toBe("perdos-mac.local");
+  expect(localNetworkName("devbox.corp.example.com")).toBe("devbox.corp.example.com");
 });

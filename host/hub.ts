@@ -15,11 +15,14 @@ export interface SocketData {
   subscriptions: Set<string>;
   terminalWorkspaceId: string | null;
   presence: Presence;
+  /** Where the page loads canvas libraries from, fitting the address it reached the host at. */
+  canvasAssetsOrigin: string;
 }
 
-export const socketData = (role: SocketData["role"], deviceId: string | null = null): SocketData => ({
+export const socketData = (role: SocketData["role"], deviceId: string | null = null, canvasAssetsOrigin = ""): SocketData => ({
   role,
   deviceId,
+  canvasAssetsOrigin,
   subscriptions: new Set<string>(),
   terminalWorkspaceId: null,
   presence: { conversationId: null, attentive: false },

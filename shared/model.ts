@@ -57,6 +57,22 @@ export interface PublicAddress {
   canvasOrigin: string;
 }
 
+/** How other devices reach a host, as it runs and as saved for its next start; the environment's settings can't be changed in Settings. */
+export interface ReachabilitySettings {
+  publicAddress: PublicAddress | null;
+  savedPublicAddress: PublicAddress | null;
+  publicAddressSetByEnvironment: boolean;
+  /** Whether the host listens for other devices over HTTPS itself, and on which port. */
+  network: boolean;
+  savedNetwork: boolean;
+  networkSetByEnvironment: boolean;
+  networkPort: number;
+  /** What is saved differs from what the host runs with. */
+  restartNeeded: boolean;
+  /** Of the certificate authority Mirador made for itself; invite links carry it so joining machines can pin it. */
+  authorityFingerprint: string | null;
+}
+
 /** An entry of a conversation that holds the query, with the line around its first occurrence. */
 export interface SearchHit {
   entryKey: string;

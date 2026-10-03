@@ -24,10 +24,12 @@ export function resolveAsset(pathname: string): string | null {
   return file.startsWith(root + sep) ? file : null;
 }
 
-export function serveCanvasAssets(port: number) {
+/** On 127.0.0.1 for this machine's pages; with a certificate, on every network for other devices' pages. */
+export function serveCanvasAssets(port: number, certificate: { chain: string; key: string } | null = null) {
   return Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: certificate ? "0.0.0.0" : "127.0.0.1",
     port,
+    ...(certificate && { tls: { cert: certificate.chain, key: certificate.key } }),
     async fetch(request) {
       if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
       const file = resolveAsset(new URL(request.url).pathname);
