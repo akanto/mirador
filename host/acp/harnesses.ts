@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
 import { canvasUseGuidance } from "../canvas/guidance.ts";
+import { jobWaitGuidance } from "../job-waits.ts";
 import { applyEnvironment, parseEnvironment } from "../../shared/profile-environment.ts";
 import { agentEnvironment } from "./environment.ts";
 import type { HarnessSpec } from "./harness.ts";
@@ -89,7 +90,7 @@ export const CANVAS_SERVER_NAME = "canvas";
 export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse) {
   if (harness !== "claude") return undefined;
   return {
-    ...(canvasUse === "often" && { systemPrompt: { append: canvasUseGuidance } }),
+    systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance] : []), jobWaitGuidance].join("\n\n") },
     claudeCode: {
       options: {
         env: { CLAUDE_NOTIFIER: "0" },

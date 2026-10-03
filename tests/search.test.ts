@@ -26,6 +26,7 @@ function storeWithTwoConversations() {
     contextUsage: null,
     queuedMessages: [],
     usageLimit: null,
+    jobWaits: [],
     waitingFor: null,
     configOptions: [],
     createdAt: 1,

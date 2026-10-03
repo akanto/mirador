@@ -32,6 +32,7 @@ const conversation: Conversation = {
   contextUsage: { used: 86_000, size: 200_000, cost: { amount: 0.25, currency: "USD" } },
   queuedMessages: [],
   usageLimit: null,
+  jobWaits: [],
   waitingFor: null,
   configOptions: [modelOption],
   position: 0,

@@ -9,6 +9,7 @@ import type {
   ToolCallUpdate,
   ToolKind,
 } from "@agentclientprotocol/sdk";
+import { jobWaitEndedNotice } from "./job-waits.ts";
 import type { StoredEvent } from "./model.ts";
 import { UserCommandLog, type UserCommand } from "./user-commands.ts";
 
@@ -191,6 +192,8 @@ class TimelineBuilder {
         return this.push({ kind: "notice", ...origin, text: event.signedIn ? "Signed in. Send your message again." : "Signing in did not finish." });
       case "usage-limit-wait-stopped":
         return this.push({ kind: "notice", ...origin, text: "Stopped waiting for the usage limit to reset" });
+      case "job-wait-ended":
+        return this.push({ kind: "notice", ...origin, text: jobWaitEndedNotice(event.wait, event.end) });
       case "context-cleared":
         return this.push({ kind: "notice", ...origin, text: "Context cleared: the agent starts afresh" });
       case "profile-changed":

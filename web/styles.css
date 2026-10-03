@@ -3061,6 +3061,36 @@ button.shell-more:hover {
   min-width: 12em;
 }
 
+.job-waits ul {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 12.5px;
+}
+
+.job-waits li {
+  display: flex;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 10px;
+}
+
+.job-waits li + li {
+  border-top: 1px solid var(--border);
+}
+
+.job-wait-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .queue {
   margin-bottom: 6px;
   border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));

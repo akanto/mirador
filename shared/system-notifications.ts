@@ -5,7 +5,9 @@ export type NotificationReason =
   | { kind: "question"; question: string }
   | { kind: "permission"; tool?: string | null }
   | { kind: "finished" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string }
+  /** A job the agent left running ended, and its message is for you rather than the agent. */
+  | { kind: "job-ended"; message: string };
 
 export interface SystemNotification {
   /** Set when another machine sent it on through this host; the conversation is that machine's. */
@@ -29,6 +31,8 @@ function reasonText(reason: NotificationReason) {
       return "Finished, waiting for you";
     case "error":
       return `Stopped with an error: ${reason.message}`;
+    case "job-ended":
+      return reason.message;
   }
 }
 

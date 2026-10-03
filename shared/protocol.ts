@@ -77,6 +77,7 @@ export type ClientMessage =
   | { type: "conversation.queue.set-after-turn"; conversationId: string; messageId: string; afterTurn: boolean }
   | { type: "conversation.usage-limit.continue"; conversationId: string }
   | { type: "conversation.usage-limit.stop-waiting"; conversationId: string }
+  | { type: "conversation.job-wait.stop"; conversationId: string; waitId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }
   | { type: "conversation.set-bypass-permissions"; conversationId: string; bypassPermissions: boolean }
   | { type: "conversation.set-config"; conversationId: string; configId: string; value: string | boolean }

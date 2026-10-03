@@ -135,6 +135,7 @@ const conversation = (id: string, workspaceId: string, createdAt: number, positi
     contextUsage: null,
     queuedMessages: [],
     usageLimit: null,
+    jobWaits: [],
     waitingFor: null,
   configOptions: [],
   position,

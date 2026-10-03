@@ -1,0 +1,213 @@
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
+import { checkJob, jobCheckCommand, JobWaitRefused, JobWaits, type JobState } from "../host/job-waits.ts";
+import { Store } from "../host/store.ts";
+import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, type JobWaitRequest } from "../shared/job-waits.ts";
+import type { JobWait, JobWaitEnd } from "../shared/model.ts";
+
+const sleepProcess: JobWaitRequest = { job: { kind: "process", pid: 4242 }, sshHost: null, message: "Slept, carry on", resume: true };
+const remoteBuild: JobWait = { id: "j1", job: { kind: "container", name: "build" }, sshHost: "me@fedora", message: "Build done", resume: false, since: 1 };
+
+describe("readJobWaitRequest", () => {
+  test("takes a process or a container, on this machine or over ssh, and resumes the agent unless told not to", () => {
+    expect(readJobWaitRequest({ job: { kind: "process", pid: 4242 } })).toEqual({ job: { kind: "process", pid: 4242 }, sshHost: null, message: null, resume: true });
+    expect(readJobWaitRequest({ job: { kind: "container", name: "build_1.x" }, sshHost: "me@fedora.tail-net", message: "  Done  ", resume: false })).toEqual({
+      job: { kind: "container", name: "build_1.x" },
+      sshHost: "me@fedora.tail-net",
+      message: "Done",
+      resume: false,
+    });
+  });
+
+  test("refuses jobs and hosts that would not be safe to put in a command, and requests that are not what they say", () => {
+    for (const job of [{ kind: "process", pid: 0 }, { kind: "process", pid: 1.5 }, { kind: "process", pid: "12" }, { kind: "container", name: "x; rm -rf ~" }, { kind: "container", name: "-x" }, { kind: "pod" }]) {
+      expect(readJobWaitRequest({ job })).toBeString();
+    }
+    for (const sshHost of ["-oProxyCommand=touch /tmp/x", "fedora; ls", "me@fedora ls", ""]) {
+      expect(readJobWaitRequest({ job: { kind: "process", pid: 1 }, sshHost })).toBeString();
+    }
+    expect(readJobWaitRequest({ job: { kind: "process", pid: 1 }, message: 5 })).toBeString();
+    expect(readJobWaitRequest({ job: { kind: "process", pid: 1 }, resume: "no" })).toBeString();
+    expect(readJobWaitRequest(null)).toBeString();
+  });
+
+  test("an ended wait says how it ended; one that gave up tells the agent the job may still run", () => {
+    expect(jobWaitEndedNotice(remoteBuild, "ended")).toBe("Container build on me@fedora ended: Build done");
+    expect(jobWaitEndedNotice({ ...remoteBuild, resume: true }, "ended")).toBe("Container build on me@fedora ended");
+    expect(jobWaitEndedNotice(remoteBuild, "stopped")).toBe("Stopped waiting for container build on me@fedora");
+    expect(jobWaitEndedNotice(remoteBuild, "gave-up")).toBe("Stopped waiting for container build on me@fedora: it could not be checked for 10 minutes, so it may still run");
+    expect(messageAtEnd(remoteBuild, "ended")).toBe("Build done");
+    expect(messageAtEnd(remoteBuild, "gave-up")).toStartWith("Build done\n\n(Mirador stopped waiting for container build on me@fedora: it could not be checked");
+  });
+});
+
+function storeWithConversation() {
+  const store = new Store(":memory:");
+  store.insertWorkspace({ id: "w1", name: "project", path: "/tmp/project", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+  store.insertConversation({
+    id: "c1",
+    workspaceId: "w1",
+    harness: "claude",
+    profileId: null,
+    title: "t",
+    titleSetByUser: false,
+    acpSessionId: null,
+    askMode: "wait",
+    bypassPermissions: false,
+    status: "idle",
+    statusDetail: null,
+    openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
+    usageLimit: null,
+    jobWaits: [],
+    waitingFor: null,
+    configOptions: [],
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  return store;
+}
+
+/** Waits whose checks answer with the states given, in turn, one millisecond apart; the last state repeats. */
+function waitsAnswering(states: JobState[], store = storeWithConversation()) {
+  const changed: string[] = [];
+  let checks = 0;
+  let reportEnd: (end: { conversationId: string; wait: JobWait; end: JobWaitEnd }) => void;
+  const ended = new Promise<{ conversationId: string; wait: JobWait; end: JobWaitEnd }>((resolve) => (reportEnd = resolve));
+  const check = async () => states[Math.min(checks++, states.length - 1)]!;
+  const waits = new JobWaits(store, { changed: (conversationId) => changed.push(conversationId), ended: (conversationId, wait, end) => reportEnd({ conversationId, wait, end }) }, check, () => 1);
+  return { waits, store, changed, ended, checks: () => checks };
+}
+
+describe("JobWaits", () => {
+  test("refuses a job that does not run, and one it cannot check, saying why", async () => {
+    await expect(waitsAnswering(["ended"]).waits.add("c1", sleepProcess)).rejects.toThrow(new JobWaitRefused("There is no running process 4242."));
+    await expect(waitsAnswering(["unknown"]).waits.add("c1", { ...sleepProcess, sshHost: "me@fedora" })).rejects.toThrow(/is me@fedora reachable with ssh/);
+  });
+
+  test("checks the job until it ends, then forgets the wait and reports the end", async () => {
+    const { waits, store, changed, ended, checks } = waitsAnswering(["running", "running", "unknown", "running", "ended"]);
+    const wait = await waits.add("c1", sleepProcess);
+    expect(waits.in("c1")).toEqual([wait]);
+    expect(store.listJobWaits()).toEqual([{ conversationId: "c1", wait }]);
+
+    expect(await ended).toEqual({ conversationId: "c1", wait, end: "ended" });
+    expect(checks()).toBe(5);
+    expect(waits.in("c1")).toEqual([]);
+    expect(store.listJobWaits()).toEqual([]);
+    expect(changed).toEqual(["c1", "c1"]);
+  });
+
+  test("without a message, the agent is told which job ended", async () => {
+    const { waits } = waitsAnswering(["running"]);
+    expect((await waits.add("c1", { ...sleepProcess, message: null })).message).toBe("Process 4242 ended.");
+    waits.stopAll();
+  });
+
+  test("gives up after enough failed checks in a row; a check that sees the job running starts the count again", async () => {
+    const failing = (count: number): JobState[] => Array(count).fill("unknown");
+    const { waits, ended, checks } = waitsAnswering(["running", ...failing(FAILED_CHECKS_BEFORE_GIVING_UP - 1), "running", ...failing(FAILED_CHECKS_BEFORE_GIVING_UP)]);
+    await waits.add("c1", sleepProcess);
+    expect((await ended).end).toBe("gave-up");
+    expect(checks()).toBe(1 + (FAILED_CHECKS_BEFORE_GIVING_UP - 1) + 1 + FAILED_CHECKS_BEFORE_GIVING_UP);
+  });
+
+  test("a stopped wait ends quietly, even when its job ends during a check already under way", async () => {
+    const store = storeWithConversation();
+    let answerCheck: (state: JobState) => void = () => {};
+    let checkStarted: () => void;
+    const checking = new Promise<void>((resolve) => (checkStarted = resolve));
+    const endsReported: JobWaitEnd[] = [];
+    const check = (): Promise<JobState> => {
+      checkStarted();
+      return new Promise((resolve) => (answerCheck = resolve));
+    };
+    const waits = new JobWaits(store, { changed: () => {}, ended: (_, __, end) => endsReported.push(end) }, check, () => 1);
+    const adding = waits.add("c1", sleepProcess);
+    answerCheck("running");
+    const wait = await adding;
+    await checking;
+
+    expect(waits.stop("c2", wait.id)).toBeUndefined();
+    expect(waits.stop("c1", wait.id)).toEqual(wait);
+    answerCheck("ended");
+    await Bun.sleep(5);
+    expect(endsReported).toEqual([]);
+    expect(store.listJobWaits()).toEqual([]);
+    expect(waits.stop("c1", wait.id)).toBeUndefined();
+  });
+
+  test("stored waits go on when the host starts again; a stopping host leaves them stored", async () => {
+    const before = waitsAnswering(["running"]);
+    const wait = await before.waits.add("c1", sleepProcess);
+    before.waits.stopAll();
+    await Bun.sleep(5);
+    expect(before.store.listJobWaits()).toEqual([{ conversationId: "c1", wait }]);
+
+    const after = waitsAnswering(["running", "ended"], before.store);
+    after.waits.startAll();
+    expect(after.waits.in("c1")).toEqual([wait]);
+    expect(await after.ended).toEqual({ conversationId: "c1", wait, end: "ended" });
+  });
+
+  test("forgets the waits of a deleted conversation without reporting them", async () => {
+    const { waits, store, changed, checks } = waitsAnswering(["running"]);
+    await waits.add("c1", sleepProcess);
+    store.deleteConversation("c1");
+    waits.forget("c1");
+    const checksBefore = checks();
+    await Bun.sleep(5);
+    expect(checks()).toBe(checksBefore);
+    expect(waits.in("c1")).toEqual([]);
+    expect(changed).toEqual(["c1"]);
+  });
+});
+
+describe("checkJob", () => {
+  test("a process of this machine runs until it exits", async () => {
+    const sleeping = Bun.spawn(["sleep", "30"]);
+    const job = { job: { kind: "process" as const, pid: sleeping.pid }, sshHost: null };
+    expect(await checkJob(job)).toBe("running");
+    sleeping.kill();
+    await sleeping.exited;
+    expect(await checkJob(job)).toBe("ended");
+  });
+
+  test("another user's process runs too, though this user may not signal it", async () => {
+    const init = { kind: "process" as const, pid: 1 };
+    expect(await checkJob({ job: init, sshHost: null })).toBe("running");
+    const checking = Bun.spawn(["/bin/sh", "-c", jobCheckCommand(init)], { stdout: "pipe" });
+    expect((await new Response(checking.stdout).text()).trim()).toBe("running");
+  });
+
+  const fakeDocker = `#!/bin/sh
+case "$*" in
+  "inspect --type container -f {{.State.Running}} up") echo true ;;
+  "inspect --type container -f {{.State.Running}} exited") echo false ;;
+  "inspect --type container -f {{.State.Running}} removed") echo "Error: No such object: removed" >&2; exit 1 ;;
+  *) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock" >&2; exit 1 ;;
+esac
+`;
+
+  const checkContainer = async (name: string, path: string) => {
+    const checking = Bun.spawn(["/bin/sh", "-c", jobCheckCommand({ kind: "container", name })], { env: { PATH: path }, stdout: "pipe" });
+    return (await new Response(checking.stdout).text()).trim();
+  };
+
+  test("a container has ended once it stopped or is gone; a Docker that does not answer leaves it unknown", async () => {
+    const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
+    writeFileSync(join(bin, "docker"), fakeDocker);
+    chmodSync(join(bin, "docker"), 0o755);
+    expect(await checkContainer("up", bin)).toBe("running");
+    expect(await checkContainer("exited", bin)).toBe("ended");
+    expect(await checkContainer("removed", bin)).toBe("ended");
+    expect(await checkContainer("stuck", bin)).toBe("unknown");
+  });
+
+  test("without Docker or Podman a container cannot be checked", async () => {
+    expect(await checkContainer("up", mkdtempSync(join(tmpdir(), "no-docker-")))).toBe("unknown");
+  });
+});

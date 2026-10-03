@@ -211,6 +211,24 @@ export interface UsageLimitWait {
   continuesAt: number | null;
 }
 
+/** A job an agent left running: a process, or a Docker or Podman container. */
+export type WaitedJob = { kind: "process"; pid: number } | { kind: "container"; name: string };
+
+/** Set up by `mirador when-done`: once the job ends, its message goes to the agent as your next message, or only to you. */
+export interface JobWait {
+  id: string;
+  job: WaitedJob;
+  /** The machine the job runs on, reached over ssh; null for this one. */
+  sshHost: string | null;
+  message: string;
+  /** The agent gets the message and carries on; otherwise only you are told. */
+  resume: boolean;
+  since: number;
+}
+
+/** `gave-up`: the job could not be checked for too long, e.g. its machine stopped answering, so it may still run. */
+export type JobWaitEnd = "ended" | "gave-up" | "stopped";
+
 export interface Conversation {
   id: string;
   workspaceId: string;
@@ -231,6 +249,7 @@ export interface Conversation {
   /** Messages sent while the agent was busy, oldest first: each joins the running turn at the agent's next step, or waits for the turn to end. */
   queuedMessages: QueuedMessage[];
   usageLimit: UsageLimitWait | null;
+  jobWaits: JobWait[];
   /** Kept in memory, except for questions, so a host restart forgets the turns that ended unseen. */
   waitingFor: WaitingFor | null;
   configOptions: SessionConfigOption[];
@@ -276,7 +295,8 @@ export type ConversationEvent =
   | { type: "error"; message: string; usageLimit?: { resetsAt: number | null }; authRequired?: true }
   /** The agent's sign-in, started from the conversation in a terminal tab, ended. */
   | { type: "login-ended"; signedIn: boolean }
-  | { type: "usage-limit-wait-stopped" };
+  | { type: "usage-limit-wait-stopped" }
+  | { type: "job-wait-ended"; wait: JobWait; end: JobWaitEnd };
 
 /** A harness session in a workspace directory, possibly started outside the app. */
 export interface ExternalSession {

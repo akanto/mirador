@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { accountShell } from "../../shared/login-shell.ts";
 
 let lookedUpShell: string | undefined;
@@ -37,3 +38,10 @@ export function agentEnvironment(base: NodeJS.ProcessEnv = process.env): Record<
     ),
   );
 }
+
+/** By URL rather than Bun's import.meta.dir, since e2e specs load this file in Node. */
+const miradorCommandDirectory = fileURLToPath(new URL("../../bin", import.meta.url));
+
+/** Last, so the agent's own commands keep their names. */
+export const withMiradorCommand = (path: string | undefined) =>
+  path?.split(":").includes(miradorCommandDirectory) ? path : [path, miradorCommandDirectory].filter(Boolean).join(":");

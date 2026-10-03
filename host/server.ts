@@ -11,6 +11,7 @@ import {
   type Workspace,
   type Pastel,
 } from "../shared/model.ts";
+import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
@@ -22,6 +23,7 @@ import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
 import { deviceName, type DeviceService } from "./devices.ts";
+import { JobWaitRefused } from "./job-waits.ts";
 import { JoinRequestRefused, SenderLimit, type JoinRequestService } from "./join-requests.ts";
 import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
@@ -60,6 +62,14 @@ export interface HostServices {
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
 const hostRunId = crypto.randomUUID();
+
+const parsedJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
 
 const isLoopback = (address: string) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
 
@@ -289,18 +299,44 @@ export function startServer(services: HostServices) {
     return mcp.handle(conversationId, request);
   }
 
-  /** A script knows only the agent session it was started from, so the message goes to the conversation running that session. */
+  /** A script knows only the agent session it was started from, so it reaches the conversation running that session. */
+  const conversationRunning = (sessionId: string) => store.listConversations().find(({ acpSessionId }) => acpSessionId === sessionId);
+  const noConversationRuns = () => new Response("No Mirador conversation runs this agent session.", { status: 404 });
+
+  async function scriptRequestText(request: Request) {
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_SCRIPT_MESSAGE_BYTES) return null;
+    const text = await request.text();
+    return text.length > MAX_SCRIPT_MESSAGE_BYTES ? null : text;
+  }
+
   async function receiveScriptMessage(request: Bun.BunRequest<"/sessions/:sessionId/messages">) {
     const refused = refusedAgentRequest(request, config.scriptToken);
     if (refused) return refused;
-    const conversation = store.listConversations().find(({ acpSessionId }) => acpSessionId === request.params.sessionId);
-    if (!conversation) return new Response("No Mirador conversation runs this agent session.", { status: 404 });
-    if (Number(request.headers.get("content-length") ?? 0) > MAX_SCRIPT_MESSAGE_BYTES) return new Response("message too long", { status: 413 });
-    const text = await request.text();
-    if (text.length > MAX_SCRIPT_MESSAGE_BYTES) return new Response("message too long", { status: 413 });
+    const conversation = conversationRunning(request.params.sessionId);
+    if (!conversation) return noConversationRuns();
+    const text = await scriptRequestText(request);
+    if (text === null) return new Response("message too long", { status: 413 });
     if (!text.trim()) return new Response("empty message", { status: 400 });
     conversations.send(conversation.id, text, [], { fromScript: true }).catch(() => {});
     return Response.json({ conversationId: conversation.id }, { status: 202 });
+  }
+
+  /** From `mirador when-done`, which an agent runs after starting a job it leaves running. */
+  async function receiveJobWait(request: Bun.BunRequest<"/sessions/:sessionId/job-waits">) {
+    const refused = refusedAgentRequest(request, config.scriptToken);
+    if (refused) return refused;
+    const conversation = conversationRunning(request.params.sessionId);
+    if (!conversation) return noConversationRuns();
+    const body = await scriptRequestText(request);
+    if (body === null) return new Response("message too long", { status: 413 });
+    const waitRequest = readJobWaitRequest(parsedJson(body));
+    if (typeof waitRequest === "string") return new Response(waitRequest, { status: 400 });
+    try {
+      const wait = await conversations.waitForJob(conversation.id, waitRequest);
+      return Response.json({ conversationId: conversation.id, wait }, { status: 201 });
+    } catch (error) {
+      return new Response(errorMessage(error), { status: error instanceof JobWaitRefused ? 400 : 500 });
+    }
   }
 
   /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images. */
@@ -489,6 +525,8 @@ export function startServer(services: HostServices) {
         return conversations.continueAfterUsageLimit(message.conversationId);
       case "conversation.usage-limit.stop-waiting":
         return conversations.stopWaitingForUsageLimit(message.conversationId);
+      case "conversation.job-wait.stop":
+        return conversations.stopWaitingForJob(message.conversationId, message.waitId);
       case "conversation.cancel":
         canvas.withdrawWaitingAsks(message.conversationId);
         return conversations.cancel(message.conversationId);
@@ -612,6 +650,7 @@ export function startServer(services: HostServices) {
     "/auth": authenticate,
     "/mcp/:conversationId": (request: Bun.BunRequest<"/mcp/:conversationId">) => serveMcp(request, request.params.conversationId),
     "/sessions/:sessionId/messages": { POST: receiveScriptMessage },
+    "/sessions/:sessionId/job-waits": { POST: receiveJobWait },
   };
 
   function upgradeSockets(request: Request, server: Bun.Server<SocketData>) {

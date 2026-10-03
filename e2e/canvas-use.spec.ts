@@ -49,5 +49,6 @@ test("Settings choose how often Claude Code uses the canvas: Often puts guidance
     await expect(lastAgentMessage(page)).toHaveText("Answered: second conversation", { timeout: 120_000 });
     expect(api.systemPrompts.get("second conversation")).toContain("You are");
     expect(api.systemPrompts.get("second conversation")).not.toContain(GUIDANCE);
+    expect(api.systemPrompts.get("second conversation"), "the guidance for jobs left running stays").toContain("mirador when-done");
   });
 });

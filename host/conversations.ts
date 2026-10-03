@@ -9,6 +9,8 @@ import {
   type ConversationEvent,
   type ConversationStatus,
   type ExternalSession,
+  type JobWait,
+  type JobWaitEnd,
   type Launch,
   type QueuedMessage,
   type StoredEvent,
@@ -17,6 +19,7 @@ import {
   type WaitingFor,
   type Workspace,
 } from "../shared/model.ts";
+import { messageAtEnd, type JobWaitRequest } from "../shared/job-waits.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
@@ -24,11 +27,13 @@ import { mentionSuggestions } from "./mentions.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
+import { withMiradorCommand } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
 import type { ImageStore } from "./images.ts";
+import { JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
 import { assertLaunchable } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
@@ -85,6 +90,7 @@ export class ConversationService {
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
   private readonly conversationsWithQuestions: Set<string>;
   private readonly commands = new UserCommandRunner();
+  private readonly jobWaits: JobWaits;
   /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
   private stopping = false;
 
@@ -99,6 +105,10 @@ export class ConversationService {
     this.cancelPermissionsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
     this.conversationsWithQuestions = new Set(store.listCanvasItemsWithStatus("waiting").map(({ conversationId }) => conversationId));
+    this.jobWaits = new JobWaits(store, {
+      changed: (conversationId) => this.republish(conversationId),
+      ended: (conversationId, wait, end) => this.jobWaitEnded(conversationId, wait, end),
+    });
   }
 
   list(): Conversation[] {
@@ -182,6 +192,7 @@ export class ConversationService {
       contextUsage: null,
       queuedMessages: [],
       usageLimit: null,
+      jobWaits: [],
       waitingFor: null,
       configOptions: [],
       createdAt: now,
@@ -215,6 +226,7 @@ export class ConversationService {
     }
     const runtime = this.runtimes.get(conversationId);
     if (runtime) this.endUsageLimitWait(runtime);
+    this.jobWaits.forget(conversationId);
     this.runtimes.delete(conversationId);
     this.statusOverrides.delete(conversationId);
     this.terminalActivity.delete(conversationId);
@@ -392,9 +404,26 @@ export class ConversationService {
     this.sendNextQueuedMessage(conversationId);
   }
 
+  /** `mirador when-done`: once the job ends, the agent gets the message as your next one, or only you are told. */
+  waitForJob(conversationId: string, request: JobWaitRequest) {
+    return this.jobWaits.add(conversationId, request);
+  }
+
+  stopWaitingForJob(conversationId: string, waitId: string) {
+    const wait = this.jobWaits.stop(conversationId, waitId);
+    if (wait) this.append(conversationId, { type: "job-wait-ended", wait, end: "stopped" });
+  }
+
+  private jobWaitEnded(conversationId: string, wait: JobWait, end: Exclude<JobWaitEnd, "stopped">) {
+    this.append(conversationId, { type: "job-wait-ended", wait, end });
+    const message = messageAtEnd(wait, end);
+    if (wait.resume) this.send(conversationId, message, [], { fromScript: true }).catch(() => {});
+    else this.notifications.notify(conversationId, { kind: "job-ended", message });
+  }
+
   /** A focused window shows the conversation, so the turn that ended there has been seen. */
   markSeen(conversationId: string) {
-    if (this.forgetUnseenTurnEnd(conversationId) && this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
+    if (this.forgetUnseenTurnEnd(conversationId)) this.republish(conversationId);
   }
 
   /** The canvas reports each question it opens, has answered or withdraws. */
@@ -523,11 +552,13 @@ export class ConversationService {
       if (stoppedTurns.includes(id) && this.agentHasRecorded(id)) this.prompt(id, CONTINUE_AFTER_INTERRUPTION).catch(() => {});
       else if (!this.resumeUsageLimitWait(id)) this.sendNextQueuedMessage(id);
     });
+    this.jobWaits.startAll();
   }
 
   shutdown() {
     this.stopping = true;
     this.commands.shutdown();
+    this.jobWaits.stopAll();
     return Promise.all([...this.harnessesByLaunch.values()].map((harness) => harness.stop()));
   }
 
@@ -685,7 +716,7 @@ export class ConversationService {
     if (existing) return existing;
     const spec = harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId));
     const harness = new HarnessProcess(
-      { ...spec, environment: { ...spec.environment, ...this.scriptMessageEnvironment() } },
+      { ...spec, environment: { ...spec.environment, ...this.scriptEnvironment(spec.environment.PATH) } },
       {
         onSessionUpdate: (notification) => this.handleSessionUpdate(notification),
         onPermissionRequest: (request, signal) => this.handlePermissionRequest(request, signal),
@@ -697,9 +728,9 @@ export class ConversationService {
     return harness;
   }
 
-  /** Where scripts the agent starts post their messages back (scripts/mirador-message). */
-  private scriptMessageEnvironment() {
-    return { MIRADOR_URL: this.config.appOrigin, MIRADOR_SCRIPT_TOKEN: this.config.scriptToken };
+  /** Where scripts the agent starts reach the host (scripts/mirador-message), and the mirador command they do it with. */
+  private scriptEnvironment(path: string | undefined) {
+    return { MIRADOR_URL: this.config.appOrigin, MIRADOR_SCRIPT_TOKEN: this.config.scriptToken, PATH: withMiradorCommand(path) };
   }
 
   private existingProfile(profileId: string) {
@@ -968,6 +999,7 @@ export class ConversationService {
       contextUsage: this.contextUsage.get(conversation.id) ?? null,
       queuedMessages: this.runtimes.get(conversation.id)?.queuedMessages ?? conversation.queuedMessages,
       usageLimit: this.runtimes.get(conversation.id)?.usageLimit?.wait ?? null,
+      jobWaits: this.jobWaits.in(conversation.id),
       waitingFor: this.waitingFor(conversation.id),
     };
   }
@@ -976,6 +1008,10 @@ export class ConversationService {
     const updated = { ...conversation, updatedAt: Date.now() };
     this.store.updateConversation(updated);
     this.publish(updated);
+  }
+
+  private republish(conversationId: string) {
+    if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
   }
 
   private publish(conversation: Conversation) {

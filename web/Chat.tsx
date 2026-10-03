@@ -1,6 +1,7 @@
 import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { flatSelectOptions } from "../shared/config-options.ts";
+import { describeJob } from "../shared/job-waits.ts";
 import {
   harnessLabels,
   terminalActivityLabels,
@@ -8,6 +9,7 @@ import {
   type AskMode,
   type Conversation,
   type HarnessId,
+  type JobWait,
   type Profile,
   type PromptTemplate,
   type QueuedMessage,
@@ -862,6 +864,34 @@ function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {
   return "Claude's usage limit is reached";
 }
 
+function JobWaits({ conversationId, waits }: { conversationId: string; waits: JobWait[] }) {
+  return (
+    <section className="job-waits" aria-label="Jobs waited for">
+      <ul>
+        {waits.map((wait) => (
+          <li key={wait.id}>
+            <span className="job-wait-status" data-hint={hints.jobWait}>
+              Waiting for {describeJob(wait)} to end, since {formatClockTime(wait.since)}
+            </span>
+            <span className="job-wait-message" title={wait.message}>
+              {wait.resume ? "Then the agent gets: " : "Then you are told: "}
+              {wait.message}
+            </span>
+            <button
+              type="button"
+              className="link"
+              data-hint={hints.stopWaitingForJob}
+              onClick={() => connection.send({ type: "conversation.job-wait.stop", conversationId, waitId: wait.id })}
+            >
+              Stop waiting
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wait: UsageLimitWait }) {
   return (
     <section className="usage-limit" aria-label="Usage limit">
@@ -1108,6 +1138,7 @@ function Composer({
     <div className="composer-area">
       <ComposerGrip textarea={textarea} />
       {conversation.usageLimit && <UsageLimitNotice conversationId={conversation.id} wait={conversation.usageLimit} />}
+      {conversation.jobWaits.length > 0 && <JobWaits conversationId={conversation.id} waits={conversation.jobWaits} />}
       {queued.length > 0 && <QueuedMessages conversationId={conversation.id} harness={conversation.harness} messages={queued} onEdit={pullBack} onRemove={remove} />}
       <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />
       <PastedImages conversationId={conversation.id} attachments={images.referenced} onRemove={images.detach} />

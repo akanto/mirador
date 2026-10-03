@@ -8,6 +8,7 @@ import type {
   Machine,
   ConversationEvent,
   HarnessId,
+  JobWait,
   JoinRequest,
   Launch,
   Profile,
@@ -63,6 +64,9 @@ const schema = `
     id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, name TEXT NOT NULL, from_address TEXT NOT NULL, tailscale_user TEXT,
     authority_fingerprint TEXT, commitment TEXT NOT NULL, machine_nonce TEXT NOT NULL, requester_nonce TEXT, answer TEXT, expires_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, name TEXT NOT NULL, origin TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS job_waits (
+    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    job TEXT NOT NULL, ssh_host TEXT, message TEXT NOT NULL, resume INTEGER NOT NULL, since INTEGER NOT NULL);
 `;
 
 const addedColumns = [
@@ -155,6 +159,8 @@ type MachineRow = { id: string; name: string; origin: string; created_at: number
 
 const MACHINE_COLUMNS = "SELECT id, name, origin, created_at, relay_port, device_token IS NOT NULL AS joined, color FROM machines";
 
+type JobWaitRow = { id: string; conversation_id: string; job: string; ssh_host: string | null; message: string; resume: number; since: number };
+
 const toMachine = (row: unknown): Machine => {
   const { id, name, origin, created_at, relay_port, joined, color } = row as MachineRow;
   return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1, color: isPastel(color) ? color : null };
@@ -176,6 +182,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   contextUsage: null,
   queuedMessages: JSON.parse(row.queued_messages),
   usageLimit: null,
+  jobWaits: [],
   waitingFor: null,
   configOptions: JSON.parse(row.config_options),
   position: row.position,
@@ -476,6 +483,26 @@ export class Store {
 
   deleteMachine(id: string) {
     this.db.query("DELETE FROM machines WHERE id = ?").run(id);
+  }
+
+  addJobWait(conversationId: string, { id, job, sshHost, message, resume, since }: JobWait) {
+    this.db
+      .query("INSERT INTO job_waits (id, conversation_id, job, ssh_host, message, resume, since) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, conversationId, JSON.stringify(job), sshHost, message, resume ? 1 : 0, since);
+  }
+
+  listJobWaits(): { conversationId: string; wait: JobWait }[] {
+    return this.db
+      .query("SELECT * FROM job_waits ORDER BY since")
+      .all()
+      .map((row) => {
+        const { id, conversation_id, job, ssh_host, message, resume, since } = row as JobWaitRow;
+        return { conversationId: conversation_id, wait: { id, job: JSON.parse(job), sshHost: ssh_host, message, resume: resume === 1, since } };
+      });
+  }
+
+  deleteJobWait(id: string) {
+    this.db.query("DELETE FROM job_waits WHERE id = ?").run(id);
   }
 
   addInvite(codeHash: string, expiresAt: number) {

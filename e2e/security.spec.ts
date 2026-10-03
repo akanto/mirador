@@ -34,12 +34,17 @@ test("rejects browsers and clients without the right credentials", async ({ page
   expect(await mcp({ Authorization: "Bearer wrong" })).toBe(401);
   expect(await mcp({ Authorization: `Bearer ${host.mcpToken}`, Origin: host.origin })).toBe(403);
 
-  const scriptMessage = (headers: Record<string, string>) =>
-    fetch(`${host.origin}/sessions/anything/messages`, { method: "POST", headers, body: "hello" }).then(({ status }) => status);
-  expect(await scriptMessage({})).toBe(401);
-  expect(await scriptMessage({ Authorization: `Bearer ${host.mcpToken}` })).toBe(401);
-  expect(await scriptMessage({ Authorization: `Bearer ${host.scriptToken}`, Origin: host.origin })).toBe(403);
-  expect(await scriptMessage({ Authorization: `Bearer ${host.scriptToken}` })).toBe(404);
+  for (const [path, body] of [
+    ["messages", "hello"],
+    ["job-waits", JSON.stringify({ job: { kind: "process", pid: process.pid } })],
+  ]) {
+    const scriptRequest = (headers: Record<string, string>) =>
+      fetch(`${host.origin}/sessions/anything/${path}`, { method: "POST", headers, body }).then(({ status }) => status);
+    expect(await scriptRequest({})).toBe(401);
+    expect(await scriptRequest({ Authorization: `Bearer ${host.mcpToken}` })).toBe(401);
+    expect(await scriptRequest({ Authorization: `Bearer ${host.scriptToken}`, Origin: host.origin })).toBe(403);
+    expect(await scriptRequest({ Authorization: `Bearer ${host.scriptToken}` })).toBe(404);
+  }
 
   const images = `${host.origin}/conversations/00000000-0000-0000-0000-000000000000/images`;
   const addImage = (headers: Record<string, string>) =>

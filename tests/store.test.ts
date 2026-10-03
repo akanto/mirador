@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import type { CanvasItem, Conversation, Profile } from "../shared/model.ts";
+import type { CanvasItem, Conversation, JobWait, Profile } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 
@@ -26,6 +26,7 @@ function seededStore() {
     contextUsage: null,
     queuedMessages: [],
     usageLimit: null,
+    jobWaits: [],
     waitingFor: null,
     configOptions: [],
     position: 0,
@@ -114,6 +115,22 @@ describe("Store", () => {
     expect(store.findMachine("m1")?.color).toBe("teal");
     store.setMachineColor("m1", null);
     expect(store.listMachines()[0]?.color).toBeNull();
+  });
+
+  test("keeps job waits until they end, and drops them with their conversation", () => {
+    const { store, conversation } = seededStore();
+    store.insertConversation({ ...conversation, id: "c2" });
+    const build: JobWait = { id: "j1", job: { kind: "container", name: "build" }, sshHost: "me@fedora", message: "Build done", resume: false, since: 5 };
+    const sleep: JobWait = { id: "j2", job: { kind: "process", pid: 42 }, sshHost: null, message: "Slept", resume: true, since: 7 };
+    store.addJobWait("c1", build);
+    store.addJobWait("c2", sleep);
+    expect(store.listJobWaits()).toEqual([
+      { conversationId: "c1", wait: build },
+      { conversationId: "c2", wait: sleep },
+    ]);
+    store.deleteJobWait("j1");
+    store.deleteConversation("c2");
+    expect(store.listJobWaits()).toEqual([]);
   });
 
   test("remembers that the user named a conversation", () => {
