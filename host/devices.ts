@@ -8,7 +8,7 @@ const INVITE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
 const INVITE_LENGTH = 12;
 const DEVICE_NAME_LENGTH = 80;
 
-const hashed = (secret: string) => createHash("sha256").update(secret).digest("hex");
+export const hashed = (secret: string) => createHash("sha256").update(secret).digest("hex");
 const withoutSeparators = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 const inGroupsOfFour = (code: string) => code.match(/.{1,4}/g)!.join("-");
 
@@ -34,9 +34,13 @@ export class DeviceService {
   }
 
   /** Uses the invite up and gives the new device its token; null if the code is wrong, used or expired. */
-  join(code: string, name: string): { device: Device; token: string } | null {
+  join(code: string, name: string) {
+    return this.store.takeInvite(hashed(withoutSeparators(code)), this.now()) ? this.admit(name) : null;
+  }
+
+  /** Lets a new device in, with the token it signs in with from now on; only its hash is kept. */
+  admit(name: string): { device: Device; token: string } {
     const now = this.now();
-    if (!this.store.takeInvite(hashed(withoutSeparators(code)), now)) return null;
     const token = randomBytes(32).toString("base64url");
     const device = { id: crypto.randomUUID(), name, joinedAt: now, lastSeenAt: now };
     this.store.insertDevice(device, hashed(token));

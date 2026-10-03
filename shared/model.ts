@@ -43,6 +43,17 @@ export interface MachineStatus {
   waiting: WaitingFor[];
 }
 
+/** A device that asked to join this machine, waiting for someone to approve it by typing the number it shows. */
+export interface JoinRequest {
+  id: string;
+  name: string;
+  /** The network address it asked from. */
+  fromAddress: string;
+  /** Who it is signed in to Tailscale as, when it asked through tailscale serve. */
+  tailscaleUser: string | null;
+  expiresAt: number;
+}
+
 /** Another browser or app that joined this machine with an invite; it signs in with a token of its own, which revoking it ends. */
 export interface Device {
   id: string;

@@ -7,6 +7,7 @@ import type {
   ConversationMatches,
   Device,
   ExternalSession,
+  JoinRequest,
   Machine,
   MachineStatus,
   Launch,
@@ -107,6 +108,9 @@ export type ClientMessage =
   | { type: "devices.list" }
   | { type: "devices.invite"; requestId: string }
   | { type: "device.revoke"; deviceId: string }
+  /** number is what the approver typed: the number the device asking shows. */
+  | { type: "join-request.approve"; requestId: string; joinRequestId: string; number: string }
+  | { type: "join-request.deny"; joinRequestId: string }
   /** Saved to config.json for the host's next start; null takes the address out. */
   | { type: "settings.set-public-address"; requestId: string; address: PublicAddress | null }
   | { type: "settings.set-network"; requestId: string; on: boolean }
@@ -114,6 +118,7 @@ export type ClientMessage =
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
   | { type: "machine.join"; requestId: string; machineId: string; code: string; authorityFingerprint: string | null }
+  | { type: "machine.ask-to-join"; requestId: string; machineId: string }
   | { type: "search"; requestId: string; query: string };
 
 export type ServerMessage =
@@ -173,7 +178,12 @@ export type ServerMessage =
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   | { type: "machines.changed"; machines: Machine[] }
   | { type: "machine.status"; status: MachineStatus }
+  /** The machine has the request; it waits there until someone types the number this host shows. */
+  | { type: "machine.join-asked"; requestId: string; number: string }
   | { type: "machine.join-answered"; requestId: string; problem: string | null }
+  | { type: "join-requests.listed"; joinRequests: JoinRequest[] }
+  /** problem says why it was not approved, e.g. a wrong number, which denies it. */
+  | { type: "join-request.answered"; requestId: string; problem: string | null }
   | { type: "settings.saved"; requestId: string; problem: string | null }
   /** The conversation with the newest hit first. */
   | { type: "search.results"; requestId: string; conversations: ConversationMatches[] };

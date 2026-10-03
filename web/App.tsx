@@ -5,6 +5,7 @@ import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { JoinMachine } from "./Devices.tsx";
+import { JoinRequestPrompts } from "./JoinRequests.tsx";
 import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
 import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { HintLayer } from "./Hint.tsx";
@@ -373,6 +374,7 @@ export function App() {
       </div>
       {railShown && <MachineFrames machines={state.machines} shownId={shownMachine?.id ?? null} visited={machines.visited} opening={machines.opening} />}
       <HintLayer />
+      <JoinRequestPrompts joinRequests={state.joinRequests} />
       <div className="notices">
         {state.notices.map((notice) => (
           <div key={notice.id} className="notice" onClick={() => dispatch({ type: "dismiss-notice", id: notice.id })}>

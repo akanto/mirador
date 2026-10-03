@@ -8,6 +8,7 @@ import type {
   Machine,
   ConversationEvent,
   HarnessId,
+  JoinRequest,
   Launch,
   Profile,
   PromptTemplate,
@@ -21,6 +22,20 @@ import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
 const deviceColumns = "id, name, joined_at AS joinedAt, last_seen_at AS lastSeenAt";
+const joinRequestColumns = `id, secret_hash AS secretHash, name, from_address AS fromAddress, tailscale_user AS tailscaleUser,
+  authority_fingerprint AS authorityFingerprint, commitment, machine_nonce AS machineNonce, requester_nonce AS requesterNonce, answer, expires_at AS expiresAt`;
+
+/** What the machine keeps about a join request; only the hash of the secret the device asking polls with. */
+export interface StoredJoinRequest extends JoinRequest {
+  secretHash: string;
+  /** Of the certificate authority the device asking checked this machine's certificate against; null when it trusted it otherwise. */
+  authorityFingerprint: string | null;
+  commitment: string;
+  machineNonce: string;
+  /** Null until the device asking reveals it; only then does the request wait for approval. */
+  requesterNonce: string | null;
+  answer: "approved" | "denied" | null;
+}
 
 const schema = `
   CREATE TABLE IF NOT EXISTS workspaces (
@@ -44,6 +59,9 @@ const schema = `
   CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, joined_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS invites (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS join_requests (
+    id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, name TEXT NOT NULL, from_address TEXT NOT NULL, tailscale_user TEXT,
+    authority_fingerprint TEXT, commitment TEXT NOT NULL, machine_nonce TEXT NOT NULL, requester_nonce TEXT, answer TEXT, expires_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS machines (id TEXT PRIMARY KEY, name TEXT NOT NULL, origin TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL);
 `;
 
@@ -464,6 +482,40 @@ export class Store {
     const { changes } = this.db.query("DELETE FROM invites WHERE code_hash = ? AND expires_at > ?").run(codeHash, now);
     this.db.query("DELETE FROM invites WHERE expires_at <= ?").run(now);
     return changes > 0;
+  }
+
+  addJoinRequest(request: StoredJoinRequest) {
+    const { id, secretHash, name, fromAddress, tailscaleUser, authorityFingerprint, commitment, machineNonce, expiresAt } = request;
+    this.db
+      .query(
+        `INSERT INTO join_requests (id, secret_hash, name, from_address, tailscale_user, authority_fingerprint, commitment, machine_nonce, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, secretHash, name, fromAddress, tailscaleUser, authorityFingerprint, commitment, machineNonce, expiresAt);
+  }
+
+  /** Unless it expired; every expired one goes. */
+  findJoinRequest(id: string, now: number): StoredJoinRequest | undefined {
+    this.db.query("DELETE FROM join_requests WHERE expires_at <= ?").run(now);
+    return (this.db.query(`SELECT ${joinRequestColumns} FROM join_requests WHERE id = ?`).get(id) as StoredJoinRequest | null) ?? undefined;
+  }
+
+  /** Not yet approved or denied, oldest first; every expired one goes. */
+  unansweredJoinRequests(now: number): StoredJoinRequest[] {
+    this.db.query("DELETE FROM join_requests WHERE expires_at <= ?").run(now);
+    return this.db.query(`SELECT ${joinRequestColumns} FROM join_requests WHERE answer IS NULL ORDER BY expires_at`).all() as StoredJoinRequest[];
+  }
+
+  setJoinRequestNonce(id: string, nonce: string) {
+    this.db.query("UPDATE join_requests SET requester_nonce = ? WHERE id = ?").run(nonce, id);
+  }
+
+  answerJoinRequest(id: string, answer: "approved" | "denied") {
+    this.db.query("UPDATE join_requests SET answer = ? WHERE id = ?").run(answer, id);
+  }
+
+  deleteJoinRequest(id: string) {
+    this.db.query("DELETE FROM join_requests WHERE id = ?").run(id);
   }
 
   listDevices(): Device[] {

@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, Conversation, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, Conversation, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
@@ -33,6 +33,8 @@ export interface AppState {
   agentsCanvasAssetsOrigin: string;
   machines: Machine[];
   machineStatuses: MachineStatus[];
+  /** Devices asking to join this host, for this page to approve. */
+  joinRequests: JoinRequest[];
   homeDir: string;
   selectedConversationId: string | null;
   /** The conversations opened last, the selected one first: they stay subscribed and drawn, so switching back is instant. */
@@ -64,6 +66,7 @@ export const initialState: AppState = {
   agentsCanvasAssetsOrigin: "",
   machines: [],
   machineStatuses: [],
+  joinRequests: [],
   homeDir: "",
   selectedConversationId: null,
   kept: [],
@@ -198,9 +201,14 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "devices.listed":
     case "devices.invited":
     case "search.results":
+    case "machine.join-asked":
     case "machine.join-answered":
     case "settings.saved":
       return state;
+    case "join-request.answered":
+      return message.problem ? { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.problem }] } : state;
+    case "join-requests.listed":
+      return { ...state, joinRequests: message.joinRequests };
     case "machines.changed":
       return { ...state, machines: message.machines };
     case "machine.status":

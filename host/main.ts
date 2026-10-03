@@ -6,6 +6,7 @@ import { CanvasService } from "./canvas/service.ts";
 import { loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
 import { DeviceService } from "./devices.ts";
+import { JoinRequestService } from "./join-requests.ts";
 import { MachineRelays } from "./machine-relays.ts";
 import { MachineWatch } from "./machine-watch.ts";
 import { ConversationSearch } from "./search.ts";
@@ -28,7 +29,8 @@ const { network } = config.reachability;
 const certificate = network && servingCertificate(config.dataDir, namesToCover(config.publicOrigin && new URL(config.publicOrigin).hostname), network.ownCertificate);
 const store = new Store(config.databasePath);
 store.rememberPublicAddress(config.publicOrigin ? { origin: config.publicOrigin, canvasOrigin: config.canvasAssetsOrigin } : null);
-store.rememberAuthorityFingerprint(certificate?.authority ? authorityFingerprint(certificate.authority) : null);
+const ownAuthorityFingerprint = certificate?.authority ? authorityFingerprint(certificate.authority) : null;
+store.rememberAuthorityFingerprint(ownAuthorityFingerprint);
 const hub = new Hub();
 const images = new ImageStore(join(config.dataDir, "images"));
 const notifications = new SystemNotifications(store, hub);
@@ -42,6 +44,7 @@ const statusline = new StatuslineService(store, conversations, config.runsUserSt
 const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
 const devices = new DeviceService(store);
+const joinRequests = new JoinRequestService(store, devices, ownAuthorityFingerprint);
 const search = new ConversationSearch(store);
 const signedIn = signedInWith(config.browserToken, devices);
 const watch = new MachineWatch(
@@ -55,7 +58,7 @@ const relays = new MachineRelays(store, config.relayPorts, (request) => signedIn
 });
 relays.startAll();
 watch.startAll();
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, joinRequests, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: server.rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));

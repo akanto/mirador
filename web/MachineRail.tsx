@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { spacedNumber } from "../shared/join-requests.ts";
 import { inviteIn } from "../shared/machines.ts";
 import type { Machine, MachineStatus } from "../shared/model.ts";
+import type { ClientMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { mostUrgentTone } from "./waiting.ts";
@@ -130,36 +132,63 @@ function JoinMachinePanel({ machine }: { machine: Machine }) {
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [askedNumber, setAskedNumber] = useState<string | null>(null);
 
-  const join = (event: FormEvent) => {
-    event.preventDefault();
+  /** Follows the host's answers until the last, as asking to join waits there until someone approves it. */
+  const tryToJoin = (send: (requestId: string) => ClientMessage) => {
     const requestId = crypto.randomUUID();
     const stopListening = connection.onMessage((message) => {
+      if (message.type === "machine.join-asked" && message.requestId === requestId) return setAskedNumber(message.number);
       if (message.type !== "machine.join-answered" || message.requestId !== requestId) return;
       stopListening();
       setProblem(message.problem);
       setJoining(false);
+      setAskedNumber(null);
     });
-    if (!connection.send({ type: "machine.join", requestId, machineId: machine.id, ...inviteIn(text) })) return stopListening();
+    if (!connection.send(send(requestId))) return stopListening();
+    setProblem(null);
     setJoining(true);
   };
+  const join = (event: FormEvent) => {
+    event.preventDefault();
+    tryToJoin((requestId) => ({ type: "machine.join", requestId, machineId: machine.id, ...inviteIn(text) }));
+  };
+  const askToJoin = () => tryToJoin((requestId) => ({ type: "machine.ask-to-join", requestId, machineId: machine.id }));
 
   return (
     <section className="machine-join gate join-machine" aria-label={`Join ${machine.name}`}>
       <h1>Join {machine.name}</h1>
-      <p>
-        This computer has not joined <strong>{machine.name}</strong> at {new URL(machine.origin).host} yet. Get an invite code in its Settings → Devices,
-        from a device that has joined it, or run <code>mirador invite</code> on it.
-      </p>
-      <form onSubmit={join}>
-        <label>
-          Invite code or link
-          <input value={text} onChange={(event) => setText(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
-        </label>
-        <button type="submit" className="primary" disabled={joining || !text.trim()}>
-          {joining ? "Joining…" : "Join"}
-        </button>
-      </form>
+      {askedNumber ? (
+        <div className="join-asked" role="status" aria-label="Waiting for approval">
+          <p>
+            Waiting for approval on <strong>{machine.name}</strong>. Type this number there:
+          </p>
+          <p className="join-number">{spacedNumber(askedNumber)}</p>
+          <p className="hint">Its Mirador shows the request on its own screen, and on the devices that have joined it.</p>
+        </div>
+      ) : (
+        <>
+          <p>
+            This computer has not joined <strong>{machine.name}</strong> at {new URL(machine.origin).host} yet. Ask to join, and approve it there by typing
+            the number this computer then shows.
+          </p>
+          <button type="button" className="primary" disabled={joining} onClick={askToJoin}>
+            Ask to join
+          </button>
+          <p>
+            Or join with an invite code. Get one in its Settings → Devices, from a device that has joined it, or run <code>mirador invite</code> on it.
+          </p>
+          <form onSubmit={join}>
+            <label>
+              Invite code or link
+              <input value={text} onChange={(event) => setText(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
+            </label>
+            <button type="submit" className="primary" disabled={joining || !text.trim()}>
+              {joining ? "Joining…" : "Join"}
+            </button>
+          </form>
+        </>
+      )}
       {problem && <p className="join-problem">{problem}</p>}
     </section>
   );

@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { authorityFingerprint, ownServingCertificate } from "../host/certificates.ts";
+import { DeviceService } from "../host/devices.ts";
+import { JoinRequestService } from "../host/join-requests.ts";
 import { forwardedHeaders, MachineRelays, relayedHeaders } from "../host/machine-relays.ts";
 import { Store } from "../host/store.ts";
 
@@ -135,5 +137,38 @@ describe("joining a machine that made its own certificate", () => {
     );
     expect(machine.codesReceived).toEqual([]);
     expect(machine.store.machineAuthority("box")).toBeNull();
+  });
+
+  test("asking to join trusts the machine's certificate authority, even a new one, once someone there types the number this host shows", async () => {
+    const certificate = ownAuthority();
+    const machineStore = new Store(":memory:");
+    const requests = new JoinRequestService(machineStore, new DeviceService(machineStore), authorityFingerprint(certificate.authority!));
+    const body = async (request: Request) => (await request.json()) as Record<string, unknown>;
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      tls: { cert: certificate.chain, key: certificate.key },
+      routes: {
+        "/mirador-ca.pem": new Response(certificate.authority),
+        "/join-requests": { POST: async (request) => Response.json(requests.open({ ...(await body(request)), fromAddress: "a", tailscaleUser: null } as never)) },
+        "/join-requests/:id/reveal": {
+          POST: async (request) => {
+            const { secret, nonce } = await body(request);
+            await requests.reveal(request.params.id, secret, nonce);
+            return new Response(null, { status: 204 });
+          },
+        },
+        "/join-requests/:id/poll": { POST: async (request) => Response.json(requests.poll(request.params.id, (await body(request)).secret)) },
+      },
+      fetch: () => new Response("join page"),
+    });
+    cleanUps.push(() => server.stop(true));
+    const store = new Store(":memory:");
+    store.insertMachine({ id: "box", name: "Box", origin: `https://127.0.0.1:${server.port}`, createdAt: 1 });
+    store.setMachineAuthority("box", ownAuthority().authority);
+
+    await new MachineRelays(store, [], () => true, () => {}).askToJoin("box", (number) => void requests.approve(requests.waiting()[0]!.id, number));
+    expect(store.machineAuthority("box")).toBe(certificate.authority);
+    expect(machineStore.listDevices().map(({ name }) => name)).toEqual([expect.stringMatching(/^Mirador on /)]);
   });
 });

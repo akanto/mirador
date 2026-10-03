@@ -4861,3 +4861,57 @@ body.reordering * {
   grid-column: 1 / -1;
   margin: 0;
 }
+
+.join-machine > .primary {
+  margin-top: 8px;
+}
+
+.join-asked .join-number {
+  margin: 16px 0;
+  color: var(--text);
+  font-size: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.join-requests {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: min(460px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+
+.join-request {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.join-request h2 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.join-request p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.join-request form {
+  display: flex;
+  gap: 8px;
+}
+
+.join-request input {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}

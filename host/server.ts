@@ -21,6 +21,7 @@ import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
 import { deviceName, type DeviceService } from "./devices.ts";
+import { JoinRequestRefused, SenderLimit, type JoinRequestService } from "./join-requests.ts";
 import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
 import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
@@ -48,6 +49,7 @@ export interface HostServices {
   images: ImageStore;
   restart: HostRestart;
   devices: DeviceService;
+  joinRequests: JoinRequestService;
   search: ConversationSearch;
   relays: MachineRelays;
   watch: MachineWatch;
@@ -58,13 +60,32 @@ export interface HostServices {
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
 const hostRunId = crypto.randomUUID();
 
+const isLoopback = (address: string) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+
 const tokenCookie = (token: string, secure: boolean) =>
   `${TOKEN_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure ? "; Secure" : ""}`;
 
 
 export function startServer(services: HostServices) {
-  const { config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, search, relays, watch, certificate } =
-    services;
+  const {
+    config,
+    store,
+    hub,
+    conversations,
+    canvas,
+    mcp,
+    profiles,
+    statusline,
+    terminals,
+    images,
+    restart,
+    devices,
+    joinRequests,
+    search,
+    relays,
+    watch,
+    certificate,
+  } = services;
   const { network } = config.reachability;
   const localHosts = [`127.0.0.1:${config.port}`, `localhost:${config.port}`];
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
@@ -107,21 +128,69 @@ export function startServer(services: HostServices) {
     });
   }
 
-  /** A browser joins with the cookie it gets here; an app without cookies keeps the token from the reply. */
-  async function join(request: Request) {
+  /** From a page of this host, or from no page at all, as when another Mirador joins. */
+  function refusedSender(request: Request) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
     const origin = request.headers.get("origin");
     if (origin !== null && !isPageOrigin(origin)) return new Response("forbidden origin", { status: 403 });
+    return null;
+  }
+
+  /** A browser joins with the cookie it gets here; an app without cookies keeps the token from the reply. */
+  const admittedWith = (request: Request, token: string) => ({ "Set-Cookie": tokenCookie(token, request.headers.get("origin")?.startsWith("https://") ?? false) });
+
+  async function join(request: Request) {
+    const refused = refusedSender(request);
+    if (refused) return refused;
     const { code, name } = (await request.json().catch(() => ({}))) as { code?: unknown; name?: unknown };
     if (typeof code !== "string") return new Response("The invite code is missing.", { status: 400 });
     const joined = devices.join(code, deviceName(name));
     if (!joined) return new Response("This invite code is wrong, used or expired. Ask for a new one.", { status: 403 });
     sendDevicesToEveryPage();
-    return Response.json(
-      { deviceId: joined.device.id, token: joined.token },
-      { headers: { "Set-Cookie": tokenCookie(joined.token, origin?.startsWith("https://") ?? false) } },
-    );
+    return Response.json({ deviceId: joined.device.id, token: joined.token }, { headers: admittedWith(request, joined.token) });
   }
+
+  const askingToJoin = new SenderLimit();
+  const sendJoinRequestsToEveryPage = () => hub.broadcast({ type: "join-requests.listed", joinRequests: joinRequests.waiting() });
+
+  async function answerAboutJoining(request: Request, answer: (body: Record<string, unknown>) => Response | Promise<Response>) {
+    const refused = refusedSender(request);
+    if (refused) return refused;
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    try {
+      return await answer(body);
+    } catch (error) {
+      if (error instanceof JoinRequestRefused) return new Response(error.message, { status: error.status });
+      throw error;
+    }
+  }
+
+  const openJoinRequest = (request: Request, server: Bun.Server<SocketData>) =>
+    answerAboutJoining(request, ({ name, commitment, authorityFingerprint }) => {
+      const peer = server.requestIP(request)?.address ?? "an unknown address";
+      const viaProxyHere = isLoopback(peer);
+      const fromAddress = (viaProxyHere && request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()) || peer;
+      const tailscaleUser = viaProxyHere ? request.headers.get("tailscale-user-login") : null;
+      if (!askingToJoin.allows(tailscaleUser ?? fromAddress)) throw new JoinRequestRefused(429, "This device asked to join too often. Try again in a minute.");
+      return Response.json(joinRequests.open({ name, commitment, authorityFingerprint, fromAddress, tailscaleUser }), { status: 201 });
+    });
+
+  const revealJoinRequestNonce = (request: Bun.BunRequest<"/join-requests/:id/reveal">) =>
+    answerAboutJoining(request, async ({ secret, nonce }) => {
+      await joinRequests.reveal(request.params.id, secret, nonce);
+      sendJoinRequestsToEveryPage();
+      return new Response(null, { status: 204 });
+    });
+
+  const pollJoinRequest = (request: Bun.BunRequest<"/join-requests/:id/poll">) =>
+    answerAboutJoining(request, ({ secret }) => {
+      const answer = joinRequests.poll(request.params.id, secret);
+      if (answer.answer === "waiting") return Response.json(answer);
+      sendJoinRequestsToEveryPage();
+      if (answer.answer === "denied") return Response.json(answer);
+      sendDevicesToEveryPage();
+      return Response.json(answer, { headers: admittedWith(request, answer.token) });
+    });
 
   const authorityFingerprint = certificate?.authority ? fingerprintOf(certificate.authority) : null;
   function reachabilitySettings(): ReachabilitySettings {
@@ -490,6 +559,22 @@ export function startServer(services: HostServices) {
         return await addMachine(message.name, message.address);
       case "machine.remove":
         return removeMachine(message.machineId);
+      case "join-request.approve": {
+        const problem = await joinRequests.approve(message.joinRequestId, message.number).then(
+          (approved) => (approved ? null : "That is not the number the device shows, so its request was denied. It can ask again."),
+          errorMessage,
+        );
+        sendJoinRequestsToEveryPage();
+        return reply({ type: "join-request.answered", requestId: message.requestId, problem });
+      }
+      case "join-request.deny":
+        joinRequests.deny(message.joinRequestId);
+        return sendJoinRequestsToEveryPage();
+      case "machine.ask-to-join":
+        return void relays
+          .askToJoin(message.machineId, (number) => reply({ type: "machine.join-asked", requestId: message.requestId, number }))
+          .then(() => null, errorMessage)
+          .then((problem) => reply({ type: "machine.join-answered", requestId: message.requestId, problem }));
       case "machine.join": {
         const problem = await relays.join(message.machineId, message.code, message.authorityFingerprint).then(() => null, errorMessage);
         return reply({ type: "machine.join-answered", requestId: message.requestId, problem });
@@ -505,6 +590,9 @@ export function startServer(services: HostServices) {
   const routesForDevices = {
     "/": index,
     "/join": { POST: join },
+    "/join-requests": { POST: openJoinRequest },
+    "/join-requests/:id/reveal": { POST: revealJoinRequestNonce },
+    "/join-requests/:id/poll": { POST: pollJoinRequest },
     "/conversations/:conversationId/images": { POST: addImage },
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/mirador-ca.pem": serveAuthority,
@@ -546,6 +634,7 @@ export function startServer(services: HostServices) {
         hostRunId,
         hostCodeChanged: restart.codeChanged,
       });
+      hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
     },
     close(socket, code, reason) {
       hub.remove(socket);
