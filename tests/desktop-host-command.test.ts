@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { installedAppPath } from "../desktop/src/core/app-bundle.ts";
 import { hostArgv, isHostCommandLine, loginShell } from "../desktop/src/core/host-command.ts";
 import { authUrl, dataPaths, hostEnvironmentOverrides, resolveRuntime } from "../desktop/src/core/runtime.ts";
+import { relayPorts } from "../shared/relay-ports.ts";
 
 const home = "/Users/someone";
 
@@ -13,7 +14,14 @@ describe("runtime", () => {
       dataDir: "/Users/someone/.mirador",
       origin: "http://127.0.0.1:4600",
       canvasOrigin: "http://127.0.0.1:4601",
+      relayOrigins: expect.any(Array),
     });
+  });
+
+  test("lets the window show the host's other machines at every port the host may relay them on", () => {
+    const { relayOrigins } = resolveRuntime({ MIRADOR_PORT: "4790" }, home);
+    expect(relayOrigins).toEqual(relayPorts(4790).map((port) => `http://127.0.0.1:${port}`));
+    expect(relayOrigins).toContain("http://127.0.0.1:4810");
   });
 
   test("follows the host's environment overrides, the canvas port tracking the port", () => {

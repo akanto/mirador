@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { relayPorts } from "../../../shared/relay-ports.ts";
 
 export const DEFAULT_PORT = 4600;
 
@@ -10,6 +11,8 @@ export interface Runtime {
   dataDir: string;
   origin: string;
   canvasOrigin: string;
+  /** Where the host shows its other machines, each in a frame of the window. */
+  relayOrigins: string[];
 }
 
 function portFrom(value: string | undefined, fallback: number) {
@@ -28,6 +31,7 @@ export function resolveRuntime(env: Environment, home: string): Runtime {
     dataDir: env.MIRADOR_DATA_DIR || defaultDataDir(home),
     origin: `http://127.0.0.1:${port}`,
     canvasOrigin: `http://127.0.0.1:${canvasPort}`,
+    relayOrigins: relayPorts(port).map((relayPort) => `http://127.0.0.1:${relayPort}`),
   };
 }
 

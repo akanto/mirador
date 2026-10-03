@@ -1,12 +1,12 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { relayPorts } from "../shared/relay-ports.ts";
 
 export interface HostConfig {
   port: number;
   canvasAssetsPort: number;
-  /** Other machines are shown on this computer at ports from here on, one each. */
-  firstRelayPort: number;
+  relayPorts: number[];
   dataDir: string;
   databasePath: string;
   browserToken: string;
@@ -56,7 +56,7 @@ export function loadConfig(env = process.env): HostConfig {
   return {
     port,
     canvasAssetsPort,
-    firstRelayPort: Number(env.MIRADOR_RELAY_PORT ?? port + 20),
+    relayPorts: relayPorts(port),
     dataDir,
     databasePath: join(dataDir, "state.sqlite"),
     browserToken: loadOrCreateToken(dataDir, "browser-token"),

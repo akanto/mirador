@@ -4,7 +4,6 @@ import { TOKEN_COOKIE } from "../shared/protocol.ts";
 import type { Store } from "./store.ts";
 
 const UPSTREAM_OPEN_TIMEOUT_MS = 10_000;
-const RELAY_PORTS_TRIED = 100;
 /** About the hop to the relay, or this host's own sign-in, rather than what the page asks the machine for. */
 const UNFORWARDED_REQUEST_HEADERS = new Set(["host", "cookie", "origin", "referer", "connection", "upgrade", "keep-alive", "transfer-encoding", "content-length"]);
 /**
@@ -68,7 +67,7 @@ export class MachineRelays {
 
   constructor(
     private readonly store: Store,
-    private readonly firstPort: number,
+    private readonly ports: number[],
     private readonly isSignedIn: (request: Request) => boolean,
     private readonly joined: (machineId: string) => void,
   ) {}
@@ -79,7 +78,8 @@ export class MachineRelays {
 
   /** On the machine's port from before when it is free, so its pages keep what they stored for their origin. */
   start(machine: Machine) {
-    const server = (machine.relayPort && this.listen(machine.id, machine.relayPort)) || this.listenOnFreePort(machine.id);
+    const portBefore = machine.relayPort !== null && this.ports.includes(machine.relayPort) ? machine.relayPort : null;
+    const server = (portBefore && this.listen(machine.id, portBefore)) || this.listenOnFreePort(machine.id);
     if (!server) return console.error(`${new Date().toISOString()} no free port to show the machine ${machine.name} on`);
     this.servers.set(machine.id, server);
     if (server.port !== machine.relayPort) this.store.setMachineRelayPort(machine.id, server.port!);
@@ -113,8 +113,7 @@ export class MachineRelays {
 
   private listenOnFreePort(machineId: string) {
     const taken = new Set(this.store.listMachines().map(({ relayPort }) => relayPort));
-    const candidates = Array.from({ length: RELAY_PORTS_TRIED }, (_, index) => this.firstPort + index).filter((port) => !taken.has(port));
-    for (const port of candidates) {
+    for (const port of this.ports.filter((port) => !taken.has(port))) {
       const server = this.listen(machineId, port);
       if (server) return server;
     }

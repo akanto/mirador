@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { forwardedHeaders, relayedHeaders } from "../host/machine-relays.ts";
+import { forwardedHeaders, MachineRelays, relayedHeaders } from "../host/machine-relays.ts";
+import { Store } from "../host/store.ts";
 
 const machine = "https://home-server.example.ts.net";
 
@@ -32,5 +33,33 @@ describe("relayedHeaders", () => {
       "content-type": "text/html",
       location: "http://127.0.0.1:4620/#/c/1",
     });
+  });
+});
+
+describe("relay ports", () => {
+  const freePorts = (count: number) =>
+    Array.from({ length: count }, () => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })).map((server) => {
+      const { port } = server;
+      server.stop(true);
+      return port!;
+    });
+
+  test("keep a machine on its port from before, and move it into the range the desktop app lets its window load", () => {
+    const [kept, inRange, outside] = freePorts(3) as [number, number, number];
+    const store = new Store(":memory:");
+    store.insertMachine({ id: "kept", name: "Kept", origin: "https://kept.example", createdAt: 1 });
+    store.insertMachine({ id: "moved", name: "Moved", origin: "https://moved.example", createdAt: 2 });
+    store.setMachineRelayPort("kept", kept);
+    store.setMachineRelayPort("moved", outside);
+    const relays = new MachineRelays(store, [inRange, kept], () => true, () => {});
+    relays.startAll();
+    try {
+      expect(store.listMachines().map(({ id, relayPort }) => [id, relayPort])).toEqual([
+        ["kept", kept],
+        ["moved", inRange],
+      ]);
+    } finally {
+      relays.stopAll();
+    }
   });
 });

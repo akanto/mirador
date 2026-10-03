@@ -14,7 +14,8 @@ export class MainWindow {
   constructor(
     private readonly title: string,
     private readonly appOrigin: string,
-    private readonly canvasOrigin: string,
+    /** The canvas and the other machines, which the page shows in frames. */
+    private readonly framedOrigins: string[],
     private readonly onPageMessage: (detail: unknown) => void,
   ) {}
 
@@ -33,7 +34,7 @@ export class MainWindow {
     // sandbox keeps Electrobun's bridge secret out of every frame, including the agents' canvas iframes.
     const window = new BrowserWindow({ title: this.title, url, frame: WINDOW_SIZE, sandbox: true });
     // The navigationRules constructor option is ignored by Electrobun 2.0.2; only this call takes effect.
-    window.webview.setNavigationRules(navigationRules([this.appOrigin, this.canvasOrigin]));
+    window.webview.setNavigationRules(navigationRules([this.appOrigin, ...this.framedOrigins]));
     window.on("close", () => {
       this.window = null;
       setDockIconVisible(false);

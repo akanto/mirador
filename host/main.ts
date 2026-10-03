@@ -43,7 +43,7 @@ const watch = new MachineWatch(
   (status) => hub.broadcast({ type: "machine.status", status }),
   (notification) => hub.notifyThisComputer(notification),
 );
-const relays = new MachineRelays(store, config.firstRelayPort, (request) => signedIn(request) !== null, (machineId) => {
+const relays = new MachineRelays(store, config.relayPorts, (request) => signedIn(request) !== null, (machineId) => {
   hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
   watch.start(machineId);
 });

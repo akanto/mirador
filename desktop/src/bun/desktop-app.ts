@@ -68,7 +68,7 @@ export class DesktopApp {
       background,
       pause: Bun.sleep,
     });
-    this.window = new MainWindow(environment.appName, runtime.origin, runtime.canvasOrigin, (detail) => this.answerPage(detail));
+    this.window = new MainWindow(environment.appName, runtime.origin, [runtime.canvasOrigin, ...runtime.relayOrigins], (detail) => this.answerPage(detail));
     this.tray = new AppTray((action) => void this.handle(action));
     this.notifications = new HostNotifications({
       origin: runtime.origin,
