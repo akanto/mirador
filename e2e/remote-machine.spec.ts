@@ -193,6 +193,42 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
   });
 });
 
+test("a machine added by its address alone asks for an invite code in this computer's own window", async ({ page, browser }) => {
+  const server = await browser.newPage();
+  await signIn(server, host);
+  await signIn(page, laptop);
+  await page.locator(".sidebar").getByRole("button", { name: "Machines…" }).click();
+  const machines = page.getByRole("dialog", { name: "Machines" });
+  await machines.getByLabel("Name").fill("Server nearby");
+  await machines.getByLabel("Address or invite link").fill(host.origin);
+  await machines.getByRole("button", { name: "Add", exact: true }).click();
+  const added = machines.locator(".machine-list li", { hasText: "Server nearby" });
+  await expect(added.locator(".machine-not-joined")).toBeVisible();
+  await added.getByRole("button", { name: "Open", exact: true }).click();
+
+  const join = page.getByRole("region", { name: "Join Server nearby" });
+  const code = join.getByLabel("Invite code or link");
+  await test.step("it shows a place for the code instead of the machine, which has nothing to show yet", async () => {
+    await expect(join).toBeVisible();
+    await expect(code).toBeFocused();
+    await expect(page.locator('iframe[title="Server nearby"]')).toHaveCount(0);
+  });
+
+  await test.step("a wrong code says why it did not join", async () => {
+    await code.fill("AAAA-AAAA-AAAA");
+    await join.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(join.locator(".join-problem")).toHaveText("This invite code is wrong, used or expired. Ask for a new one.");
+  });
+
+  await test.step("a pasted invite link joins, and the machine shows in its place", async () => {
+    const { link } = await inviteLinkFrom(server);
+    await code.fill(link);
+    await join.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(page.frameLocator('iframe[title="Server nearby"]').getByRole("button", { name: "Settings…" })).toBeVisible();
+    await expect(join).toHaveCount(0);
+  });
+});
+
 test("pages of other sites cannot join for their visitors", async () => {
   const otherOrigin = await fetch(`${publicOrigin}/join`, {
     method: "POST",

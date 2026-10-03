@@ -108,7 +108,7 @@ export function startServer(services: HostServices) {
 
   const broadcastMachines = () => hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
 
-  /** With an invite link, this host joins the machine right away; otherwise the machine's own page asks for a code. */
+  /** With an invite link, this host joins the machine right away; otherwise its place in the window asks for a code. */
   async function addMachine(name: string, address: string) {
     const parsed = machineAddress(address);
     if (!parsed) throw new Error(`"${address}" is not a machine's address.`);
@@ -417,6 +417,10 @@ export function startServer(services: HostServices) {
         return await addMachine(message.name, message.address);
       case "machine.remove":
         return removeMachine(message.machineId);
+      case "machine.join": {
+        const problem = await relays.join(message.machineId, message.code).then(() => null, errorMessage);
+        return reply({ type: "machine.join-answered", requestId: message.requestId, problem });
+      }
       case "search":
         return reply({ type: "search.results", requestId: message.requestId, conversations: search.find(message.query) });
       default:

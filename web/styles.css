@@ -4699,9 +4699,14 @@ body.reordering * {
 }
 
 .app.with-rail > .layout,
-.app.with-rail > .machine-frame {
+.app.with-rail > .machine-frame,
+.app.with-rail > .machine-join {
   grid-row: 1;
   grid-column: 2;
+}
+
+.machine-join {
+  align-self: center;
 }
 
 /* Hidden rather than removed, so this computer's conversations keep their scroll positions underneath. */

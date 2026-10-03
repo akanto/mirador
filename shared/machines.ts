@@ -5,6 +5,9 @@ export const joinCodeIn = (hash: string) => joinPath.exec(hash)?.[1] ?? null;
 
 export const inviteLink = (origin: string, code: string) => `${origin}/#/join/${code}`;
 
+/** What someone pastes to join a machine: the invite code itself, or the whole invite link. */
+export const inviteCodeIn = (text: string) => machineAddress(text)?.joinCode ?? text.trim();
+
 /** What someone types or pastes for a machine: its name on the network, its address, or an invite link from it. */
 export function machineAddress(text: string): { origin: string; joinCode: string | null } | null {
   const trimmed = text.trim();

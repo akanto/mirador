@@ -108,6 +108,7 @@ export type ClientMessage =
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
+  | { type: "machine.join"; requestId: string; machineId: string; code: string }
   | { type: "search"; requestId: string; query: string };
 
 export type ServerMessage =
@@ -165,5 +166,6 @@ export type ServerMessage =
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   | { type: "machines.changed"; machines: Machine[] }
   | { type: "machine.status"; status: MachineStatus }
+  | { type: "machine.join-answered"; requestId: string; problem: string | null }
   /** The conversation with the newest hit first. */
   | { type: "search.results"; requestId: string; conversations: ConversationMatches[] };

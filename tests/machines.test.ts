@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { joinCodeIn, machineAddress } from "../shared/machines.ts";
+import { inviteCodeIn, joinCodeIn, machineAddress } from "../shared/machines.ts";
 
 test("a machine is added by its name on the network, its address or an invite link from it", () => {
   expect(machineAddress("home-server.tailnet.ts.net")).toEqual({ origin: "https://home-server.tailnet.ts.net", joinCode: null });
@@ -21,4 +21,9 @@ test("only an invite link's #part carries a code", () => {
   expect(joinCodeIn("#/join/ABCD-EFGH-JKLM")).toBe("ABCD-EFGH-JKLM");
   expect(joinCodeIn("#/c/some-conversation")).toBeNull();
   expect(joinCodeIn("")).toBeNull();
+});
+
+test("takes the invite code out of a pasted invite link, or the code as typed", () => {
+  expect(inviteCodeIn("https://home-server.example.ts.net/#/join/ABCD-EFGH-JKLM")).toBe("ABCD-EFGH-JKLM");
+  expect(inviteCodeIn("  ABCD-EFGH-JKLM \n")).toBe("ABCD-EFGH-JKLM");
 });

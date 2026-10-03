@@ -66,7 +66,7 @@ export function MachinesDialog({ machines, onOpen, onClose }: { machines: Machin
         <p className="hint">
           Other computers running Mirador, such as a server whose agents keep working while this one sleeps. Each shows in the rail on the left, as its own
           Mirador. Paste an invite link from the machine to join it right away; get one in its Settings → Devices, or run <code>bun run invite</code> there.
-          With only its address, the machine asks for an invite code when you first open it.
+          With only its address, you paste an invite code when you first open it.
         </p>
         <ul className="machine-list" aria-label="Machines">
           {machines.map((machine) => (

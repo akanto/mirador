@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { inviteCodeIn } from "../shared/machines.ts";
 import type { Machine, MachineStatus } from "../shared/model.ts";
+import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { mostUrgentTone } from "./waiting.ts";
 
@@ -123,6 +125,46 @@ function MachineFrame({ machine, shown, opening }: { machine: Machine; shown: bo
   return <iframe ref={frame} className={`machine-frame ${shown ? "shown" : ""}`} title={machine.name} src={address} allow="clipboard-read; clipboard-write" />;
 }
 
+/** In a machine's place until this computer has joined it, as the machine shows nothing to a computer without an invite. */
+function JoinMachinePanel({ machine }: { machine: Machine }) {
+  const [text, setText] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+
+  const join = (event: FormEvent) => {
+    event.preventDefault();
+    const requestId = crypto.randomUUID();
+    const stopListening = connection.onMessage((message) => {
+      if (message.type !== "machine.join-answered" || message.requestId !== requestId) return;
+      stopListening();
+      setProblem(message.problem);
+      setJoining(false);
+    });
+    if (!connection.send({ type: "machine.join", requestId, machineId: machine.id, code: inviteCodeIn(text) })) return stopListening();
+    setJoining(true);
+  };
+
+  return (
+    <section className="machine-join gate join-machine" aria-label={`Join ${machine.name}`}>
+      <h1>Join {machine.name}</h1>
+      <p>
+        This computer has not joined <strong>{machine.name}</strong> at {new URL(machine.origin).host} yet. Get an invite code in its Settings → Devices,
+        from a device that has joined it, or run <code>bun run invite</code> on it.
+      </p>
+      <form onSubmit={join}>
+        <label>
+          Invite code or link
+          <input value={text} onChange={(event) => setText(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
+        </label>
+        <button type="submit" className="primary" disabled={joining || !text.trim()}>
+          {joining ? "Joining…" : "Join"}
+        </button>
+      </form>
+      {problem && <p className="join-problem">{problem}</p>}
+    </section>
+  );
+}
+
 /** Each machine's own Mirador, as its host serves it; once shown it stays loaded so going back to it is instant. */
 export function MachineFrames({
   machines,
@@ -137,7 +179,11 @@ export function MachineFrames({
 }) {
   return machines
     .filter((machine) => visited.has(machine.id) && machine.relayPort !== null)
-    .map((machine) => (
-      <MachineFrame key={machine.id} machine={machine} shown={machine.id === shownId} opening={opening?.machineId === machine.id ? opening : null} />
-    ));
+    .map((machine) =>
+      machine.joined ? (
+        <MachineFrame key={machine.id} machine={machine} shown={machine.id === shownId} opening={opening?.machineId === machine.id ? opening : null} />
+      ) : (
+        machine.id === shownId && <JoinMachinePanel key={machine.id} machine={machine} />
+      ),
+    );
 }
