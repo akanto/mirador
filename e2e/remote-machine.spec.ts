@@ -11,6 +11,7 @@ import {
   notificationsShown,
   openSettings,
   signIn,
+  startConversation,
   workspaceCard,
 } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -200,6 +201,10 @@ test("a machine added by its address alone asks for an invite code in this compu
   const server = await browser.newPage();
   await signIn(server, host);
   await signIn(page, laptop);
+  await addWorkspaceFromSidebar(page, laptop.projectDir);
+  await startConversation(page);
+  const deleteSelectedHere = page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" });
+  await expect(deleteSelectedHere).toBeVisible();
   await page.locator(".sidebar").getByRole("button", { name: "Machines…" }).click();
   const machines = page.getByRole("dialog", { name: "Machines" });
   await machines.getByLabel("Name").fill("Server nearby");
@@ -215,6 +220,7 @@ test("a machine added by its address alone asks for an invite code in this compu
     await expect(join).toBeVisible();
     await expect(code).toBeFocused();
     await expect(page.locator('iframe[title="Server nearby"]')).toHaveCount(0);
+    await expect(deleteSelectedHere, "nothing of this computer's own view shows through, not even buttons that show themselves").toBeHidden();
   });
 
   await test.step("a wrong code says why it did not join", async () => {

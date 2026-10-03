@@ -4756,9 +4756,13 @@ body.reordering * {
   align-self: center;
 }
 
-/* Hidden rather than removed, so this computer's conversations keep their scroll positions underneath. */
-.layout.covered {
-  visibility: hidden;
+/*
+ * Hidden rather than removed, so this computer's conversations keep their scroll positions underneath. Every part
+ * of it, as buttons shown on hover or for the selected row set visibility: visible, which would show and take clicks.
+ */
+.layout.covered,
+.layout.covered * {
+  visibility: hidden !important;
 }
 
 .machine-frame {
