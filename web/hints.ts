@@ -26,6 +26,8 @@ export const hints = {
     "Where a machine you gave a colour shows it: on its rail button only, or also as a strip along the top of its view, so you can tell at a glance which machine you work on. Give a machine a colour in Machines….",
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
+  connectedDevicesInSidebar: "While devices are connected, a line at the bottom of the sidebar says how many; click it to see which. Remembered in this browser.",
+  connectedDevices: (names: string[]) => `Connected now: ${names.join(", ")}. Click to see all devices in Settings → Devices.`,
   askAndUpdateReview:
     "Ask, and tell the agent to publish the review again if its answer changes a finding, the tour, the summary or the verdict. Your choices on the findings carry over.",
   answerDecision: "Kept answers go to their conversations on the pull request when you post, as replies on your pending review; dropped ones stay here. Click to switch.",

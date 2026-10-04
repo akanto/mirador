@@ -62,7 +62,24 @@ export interface Device {
   id: string;
   name: string;
   joinedAt: number;
+  /** When it last connected or left. */
   lastSeenAt: number;
+}
+
+/** Where a device reaches the host from: its address, and its Tailscale login when it comes through `tailscale serve`. */
+export interface ClientAddress {
+  fromAddress: string;
+  tailscaleUser: string | null;
+}
+
+/** A joined device's connections to the host right now, and where the latest one comes from. */
+export interface DeviceConnection extends ClientAddress {
+  /** Pages of the app open on it; none while only the desktop or phone app listens in the background. */
+  pages: number;
+}
+
+export interface ListedDevice extends Device {
+  connection: DeviceConnection | null;
 }
 
 /** Where other devices reach a host, and where its canvas pages load their libraries from. */

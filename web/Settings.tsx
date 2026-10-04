@@ -11,7 +11,7 @@ import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } f
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
 import { isMac } from "./shortcuts.ts";
-import type { SettingsPage } from "./state.ts";
+import type { DevicesListed, SettingsPage } from "./state.ts";
 import { notifies, setNotificationsWanted, useNotificationSetting, type NotificationSetting } from "./system-notifications.ts";
 import { themeLabels, useTheme } from "./theme.ts";
 import { useTimestampsShown } from "./timestamps.ts";
@@ -56,6 +56,7 @@ const pageSteps: Partial<Record<string, 1 | -1>> = { ArrowDown: 1, ArrowUp: -1 }
 
 export function SettingsDialog({
   page: openedAt,
+  devices,
   promptTemplates,
   canvasUse,
   layoutDefault,
@@ -63,6 +64,7 @@ export function SettingsDialog({
   onClose,
 }: {
   page: SettingsPage | undefined;
+  devices: DevicesListed | null;
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   layoutDefault: LayoutDefault;
@@ -92,7 +94,7 @@ export function SettingsDialog({
       </>
     ),
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
-    devices: () => <DeviceSettings />,
+    devices: () => <DeviceSettings listed={devices} />,
     notifications: () => <NotificationSettings />,
   };
 

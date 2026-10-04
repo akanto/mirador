@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
 import { askToJoin, spacedNumber } from "../shared/join-requests.ts";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
 import type { ReachabilitySettings } from "../shared/model.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
+import { setConnectedDevicesInSidebar, useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
-import { relativeTimeOf } from "./relative-time.ts";
+import type { DevicesListed } from "./state.ts";
 
 /** Read before the app first draws: it then replaces the address's #part with the open conversation's. */
 const joinCodeInLink = joinCodeIn(location.hash);
@@ -143,10 +145,8 @@ export function JoinMachine() {
   );
 }
 
-type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
 type Invite = Extract<ServerMessage, { type: "devices.invited" }>;
 
-const joinedOn = (at: number) => new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 /** Sends a setting to the host, which saves it for its next start; null once saved, else what is wrong with it. */
 function saveSetting(send: (requestId: string) => ClientMessage, answered: (problem: string | null) => void) {
@@ -290,17 +290,9 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
   );
 }
 
-export function DeviceSettings() {
-  const [listed, setListed] = useState<DevicesListed | null>(null);
+export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
-
-  useEffect(() => {
-    const unsubscribe = connection.onMessage((message) => {
-      if (message.type === "devices.listed") setListed(message);
-    });
-    connection.send({ type: "devices.list" });
-    return unsubscribe;
-  }, []);
+  const shownInSidebar = useConnectedDevicesInSidebar();
 
   const createInvite = () => {
     const requestId = crypto.randomUUID();
@@ -319,14 +311,19 @@ export function DeviceSettings() {
       <p className="hint">
         Other browsers and apps that joined this Mirador with an invite code. Each signs in with a key of its own; revoking one signs it out at once.
       </p>
-      {listed && <ReachabilitySettingsSection settings={listed.reachability} />}
+      <label className="connected-devices-switch" data-hint={hints.connectedDevicesInSidebar}>
+        <input type="checkbox" checked={shownInSidebar} onChange={(event) => setConnectedDevicesInSidebar(event.target.checked)} />
+        Show the connected devices in the sidebar
+      </label>
       <ul className="device-list" aria-label="Devices">
         {listed?.devices.map((device) => (
-          <li key={device.id}>
+          <li key={device.id} className={device.connection ? "connected" : undefined}>
+            <span className="device-dot" aria-hidden="true" />
             <span className="device-name">{device.name}</span>
             {device.id === listed.thisDeviceId && <span className="device-this">this device</span>}
             <span className="device-seen">
-              joined {joinedOn(device.joinedAt)} · last seen {relativeTimeOf(device.lastSeenAt)}
+              {deviceStatus(device)}
+              {device.connection && ` · ${connectedFrom(device.connection)}`} · joined {joinedOn(device.joinedAt)}
             </span>
             <ConfirmButton
               className="danger"
@@ -358,6 +355,7 @@ export function DeviceSettings() {
           </div>
         )}
       </div>
+      {listed && <ReachabilitySettingsSection settings={listed.reachability} />}
     </>
   );
 }

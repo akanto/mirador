@@ -413,6 +413,7 @@ export function App() {
       {overlay?.kind === "settings" && (
         <SettingsDialog
           page={overlay.page}
+          devices={state.devices}
           promptTemplates={state.promptTemplates}
           canvasUse={state.canvasUse}
           layoutDefault={conversationLayouts.layoutDefault}

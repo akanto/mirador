@@ -4773,6 +4773,42 @@ body.reordering * {
   font-size: 12px;
 }
 
+.device-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--faint);
+}
+
+.device-list li.connected .device-dot {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.connected-devices-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.sidebar .connected-devices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--ok);
+}
+
+.sidebar .connected-devices::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
 .device-list li.device-none {
   border-style: dashed;
   color: var(--muted);

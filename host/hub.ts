@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from "bun";
+import type { ClientAddress, DeviceConnection } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 
@@ -17,12 +18,16 @@ export interface SocketData {
   presence: Presence;
   /** Where the page loads canvas libraries from, fitting the address it reached the host at. */
   canvasAssetsOrigin: string;
+  from: ClientAddress;
 }
 
-export const socketData = (role: SocketData["role"], deviceId: string | null = null, canvasAssetsOrigin = ""): SocketData => ({
+const thisMachine: ClientAddress = { fromAddress: "127.0.0.1", tailscaleUser: null };
+
+export const socketData = (role: SocketData["role"], deviceId: string | null = null, canvasAssetsOrigin = "", from = thisMachine): SocketData => ({
   role,
   deviceId,
   canvasAssetsOrigin,
+  from,
   subscriptions: new Set<string>(),
   terminalWorkspaceId: null,
   presence: { conversationId: null, attentive: false },
@@ -84,6 +89,17 @@ export class Hub {
   /** Each page gets a message of its own. */
   sendEach(messageFor: (socket: BrowserSocket) => ServerMessage) {
     this.sockets.forEach((socket) => this.send(socket, messageFor(socket)));
+  }
+
+  /** Each joined device with a connection open now; the latest one says where it connects from. */
+  deviceConnections(): Map<string, DeviceConnection> {
+    const ofDevices = [...this.notifiers, ...this.sockets].filter(({ data }) => data.deviceId !== null);
+    return new Map(
+      [...Map.groupBy(ofDevices, ({ data }) => data.deviceId!)].map(([deviceId, sockets]) => [
+        deviceId,
+        { ...sockets.at(-1)!.data.from, pages: sockets.filter(({ data }) => data.role === "page").length },
+      ]),
+    );
   }
 
   disconnectWhere(isTarget: (socket: BrowserSocket) => boolean, reason: string) {

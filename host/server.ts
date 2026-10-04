@@ -5,6 +5,8 @@ import {
   isCanvasUse,
   isPastel,
   type CanvasUse,
+  type ClientAddress,
+  type ListedDevice,
   type PromptTemplate,
   type PublicAddress,
   type ReachabilitySettings,
@@ -176,12 +178,17 @@ export function startServer(services: HostServices) {
     }
   }
 
+  /** Behind a proxy on this machine, such as `tailscale serve`, the device's own address is the one the proxy forwards. */
+  function clientAddressOf(request: Request, server: Bun.Server<SocketData>): ClientAddress {
+    const peer = server.requestIP(request)?.address ?? "an unknown address";
+    const viaProxyHere = isLoopback(peer);
+    const fromAddress = (viaProxyHere && request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()) || peer;
+    return { fromAddress, tailscaleUser: viaProxyHere ? request.headers.get("tailscale-user-login") : null };
+  }
+
   const openJoinRequest = (request: Request, server: Bun.Server<SocketData>) =>
     answerAboutJoining(request, ({ name, commitment, authorityFingerprint }) => {
-      const peer = server.requestIP(request)?.address ?? "an unknown address";
-      const viaProxyHere = isLoopback(peer);
-      const fromAddress = (viaProxyHere && request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()) || peer;
-      const tailscaleUser = viaProxyHere ? request.headers.get("tailscale-user-login") : null;
+      const { fromAddress, tailscaleUser } = clientAddressOf(request, server);
       if (!askingToJoin.allows(tailscaleUser ?? fromAddress)) throw new JoinRequestRefused(429, "This device asked to join too often. Try again in a minute.");
       return Response.json(joinRequests.open({ name, commitment, authorityFingerprint, fromAddress, tailscaleUser }), { status: 201 });
     });
@@ -220,9 +227,13 @@ export function startServer(services: HostServices) {
       authorityFingerprint,
     };
   }
+  const listedDevices = (): ListedDevice[] => {
+    const connections = hub.deviceConnections();
+    return devices.list().map((device) => ({ ...device, connection: connections.get(device.id) ?? null }));
+  };
   const devicesListed = (socket: BrowserSocket): ServerMessage => ({
     type: "devices.listed",
-    devices: devices.list(),
+    devices: listedDevices(),
     thisDeviceId: socket.data.deviceId,
     reachability: reachabilitySettings(),
   });
@@ -378,7 +389,7 @@ export function startServer(services: HostServices) {
     const signedIn = signedInAs(request);
     if (!signedIn) return new Response("unauthorized", { status: 401 });
     if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
-    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request)) });
+    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server)) });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 
@@ -651,7 +662,38 @@ export function startServer(services: HostServices) {
     "/mcp/:conversationId": (request: Bun.BunRequest<"/mcp/:conversationId">) => serveMcp(request, request.params.conversationId),
     "/sessions/:sessionId/messages": { POST: receiveScriptMessage },
     "/sessions/:sessionId/job-waits": { POST: receiveJobWait },
+    "/devices": { GET: listDevicesForCommandLine },
   };
+
+  function sendSnapshot(socket: BrowserSocket) {
+    hub.send(socket, {
+      type: "snapshot",
+      workspaces: store.listWorkspaces(),
+      conversations: conversations.list(),
+      profiles: store.listProfiles(),
+      promptTemplates: store.listPromptTemplates(),
+      canvasUse: store.canvasUse(),
+      canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
+      agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,
+      machines: store.listMachines(),
+      machineStatuses: watch.statuses(),
+      homeDir: homedir(),
+      hostRunId,
+      hostCodeChanged: restart.codeChanged,
+    });
+    hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
+  }
+
+  /** Every page's list of devices shows who is connected now, and when the others were last seen. */
+  function deviceCameOrLeft(deviceId: string) {
+    devices.seen(deviceId);
+    sendDevicesToEveryPage();
+  }
+
+  /** For `mirador devices`, which signs in with the host's own token, as this machine's browser does. */
+  function listDevicesForCommandLine(request: Request) {
+    return refusedAgentRequest(request, config.browserToken) ?? Response.json({ devices: listedDevices() });
+  }
 
   function upgradeSockets(request: Request, server: Bun.Server<SocketData>) {
     const { pathname } = new URL(request.url);
@@ -666,27 +708,13 @@ export function startServer(services: HostServices) {
     closeOnBackpressureLimit: true,
     open(socket) {
       hub.add(socket);
-      if (socket.data.deviceId) devices.seen(socket.data.deviceId);
-      if (socket.data.role === "notifier") return;
-      hub.send(socket, {
-        type: "snapshot",
-        workspaces: store.listWorkspaces(),
-        conversations: conversations.list(),
-        profiles: store.listProfiles(),
-        promptTemplates: store.listPromptTemplates(),
-        canvasUse: store.canvasUse(),
-        canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
-        agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,
-        machines: store.listMachines(),
-        machineStatuses: watch.statuses(),
-        homeDir: homedir(),
-        hostRunId,
-        hostCodeChanged: restart.codeChanged,
-      });
-      hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
+      if (socket.data.role === "page") sendSnapshot(socket);
+      if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
+      else if (socket.data.role === "page") hub.send(socket, devicesListed(socket));
     },
     close(socket, code, reason) {
       hub.remove(socket);
+      if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
       if (code !== 1000 && code !== 1001) console.log(`${new Date().toISOString()} browser socket closed: ${code} ${reason}`);
     },
     async message(socket, raw) {

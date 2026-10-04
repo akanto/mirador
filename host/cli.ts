@@ -3,7 +3,8 @@ import { loadConfig } from "./config.ts";
 import { DeviceService } from "./devices.ts";
 import { JoinRequestService } from "./join-requests.ts";
 import { Store } from "./store.ts";
-import type { JoinRequest } from "../shared/model.ts";
+import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
+import type { JoinRequest, ListedDevice } from "../shared/model.ts";
 import { describeJob, isContainerName, isPid, isSshHost, type JobWaitRequest } from "../shared/job-waits.ts";
 import { inviteLink } from "../shared/machines.ts";
 
@@ -11,6 +12,7 @@ const usage = `usage: mirador <command>
 
   invite     Make a one-time code another browser or app joins this Mirador with
   approve    Let in the devices that ask to join this Mirador, by typing the number each shows
+  devices    List the devices that joined this Mirador, and which are connected now
   when-done  Have Mirador wait for a job an agent left running, then send the agent a message (run it from the agent)`;
 
 const whenDoneUsage = `usage: mirador when-done (--pid <pid> | --container <name>) [--host <user@host>] [--no-resume] [--session <agent session id>] ["<message>"]
@@ -58,6 +60,31 @@ async function approve() {
     else console.log("That is not the number it shows, so its request was denied. It can ask again.");
   }
   store.close();
+}
+
+/** The running host knows who is connected; without it, the database still knows when each device was last seen. */
+async function listDevices() {
+  const config = loadConfig();
+  const response = await fetch(`${config.appOrigin}/devices`, { headers: { Authorization: `Bearer ${config.browserToken}` } }).catch(() => null);
+  if (!response) console.log(`Mirador is not running at ${config.appOrigin}, so no device is connected to it.`);
+  else if (!response.ok) console.log(`Mirador at ${config.appOrigin} would not say which devices are connected (${response.status} ${await response.text()}).`);
+  const devices = response?.ok ? ((await response.json()) as { devices: ListedDevice[] }).devices : storedDevices(config.databasePath);
+  if (devices.length === 0) return console.log("No device has joined this Mirador yet. Let one in with mirador invite.");
+  printColumns(devices.map((device) => [device.name, deviceStatus(device), device.connection ? connectedFrom(device.connection) : "", `joined ${joinedOn(device.joinedAt)}`]));
+}
+
+function storedDevices(databasePath: string): ListedDevice[] {
+  const store = new Store(databasePath);
+  const devices = new DeviceService(store).list();
+  store.close();
+  return devices.map((device) => ({ ...device, connection: null }));
+}
+
+/** Lined up, leaving out a column nobody has a value in. */
+function printColumns(rows: string[][]) {
+  const widths = rows[0]!.map((_, column) => Math.max(...rows.map((row) => row[column]!.length)));
+  const filled = (row: string[]) => row.flatMap((cell, column) => (widths[column] ? [cell.padEnd(widths[column])] : []));
+  rows.forEach((row) => console.log(filled(row).join("   ").trimEnd()));
 }
 
 function jobWaitRequest(args: string[]): { session: string | undefined; request: JobWaitRequest } {
@@ -108,6 +135,7 @@ async function whenDone(args: string[]) {
 const commands = new Map<string, (args: string[]) => void | Promise<void>>([
   ["invite", invite],
   ["approve", approve],
+  ["devices", listDevices],
   ["when-done", whenDone],
 ]);
 const asksForHelp = (command: string | undefined) => command === undefined || ["help", "--help", "-h"].includes(command);

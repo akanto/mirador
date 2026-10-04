@@ -5,9 +5,9 @@ import type {
   CanvasUse,
   Conversation,
   ConversationMatches,
-  Device,
   ExternalSession,
   JoinRequest,
+  ListedDevice,
   Machine,
   MachineStatus,
   Launch,
@@ -186,7 +186,7 @@ export type ServerMessage =
   | { type: "host.restarting" }
   | { type: "error"; message: string }
   /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
-  | { type: "devices.listed"; devices: Device[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
+  | { type: "devices.listed"; devices: ListedDevice[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   | { type: "machines.changed"; machines: Machine[] }
   | { type: "machine.status"; status: MachineStatus }

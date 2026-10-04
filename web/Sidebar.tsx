@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { connectedDevicesLabel, otherConnectedDevices } from "../shared/devices.ts";
 import {
   harnessIds,
   launchLabel,
@@ -12,6 +13,7 @@ import {
 } from "../shared/model.ts";
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
+import { useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { DesktopMenu } from "./DesktopMenu.tsx";
@@ -21,7 +23,7 @@ import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
 import { pastelVariables } from "./pastels.ts";
 import { shortcutKeys } from "./shortcuts.ts";
-import type { AppAction, AppState, Overlay } from "./state.ts";
+import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
 import { parentFolder } from "./workspace-folder.ts";
@@ -348,6 +350,18 @@ function WorkspaceSection({
   );
 }
 
+/** How many devices are connected now, besides the one looking; nothing while none is, or when switched off in Settings. */
+function ConnectedDevices({ listed, onOpen }: { listed: DevicesListed | null; onOpen: () => void }) {
+  const shown = useConnectedDevicesInSidebar();
+  const connected = listed ? otherConnectedDevices(listed.devices, listed.thisDeviceId) : [];
+  if (!shown || !listed || connected.length === 0) return null;
+  return (
+    <button type="button" className="link connected-devices" data-hint={hints.connectedDevices(connected.map(({ name }) => name))} onClick={onOpen}>
+      {connectedDevicesLabel(connected.length, listed.thisDeviceId !== null)}
+    </button>
+  );
+}
+
 export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispatch<AppAction> }) {
   const adding = state.overlay?.kind === "add-workspace";
   const setAdding = (open: boolean) => dispatch(open ? { type: "open-overlay", overlay: { kind: "add-workspace" } } : { type: "close-overlay" });
@@ -384,6 +398,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         />
       ))}
       <footer>
+        <ConnectedDevices listed={state.devices} onOpen={() => openOverlay({ kind: "settings", page: "devices" })} />
         <DesktopMenu />
         <div className="footer-buttons">
           <button className="link" data-hint={hints.settings} onClick={() => openOverlay({ kind: "settings" })}>

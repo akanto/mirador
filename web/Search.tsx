@@ -4,7 +4,7 @@ import type { Conversation, ConversationMatches, SearchHit, Workspace } from "..
 import { connection } from "./connection.ts";
 import { requestFind } from "./FindBar.tsx";
 import { Modal } from "./Palette.tsx";
-import { relativeTimeOf } from "./relative-time.ts";
+import { relativeTimeOf } from "../shared/relative-time.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
 const TYPING_PAUSE_MS = 150;

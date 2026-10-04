@@ -23,6 +23,8 @@ export type Overlay =
 /** A part of Settings to open at, rather than at the top. */
 export type SettingsPage = "appearance" | "conversations" | "canvas" | "layout" | "devices" | "notifications";
 
+export type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
+
 export interface AppState {
   workspaces: Workspace[];
   conversations: Conversation[];
@@ -35,6 +37,8 @@ export interface AppState {
   machineStatuses: MachineStatus[];
   /** Devices asking to join this host, for this page to approve. */
   joinRequests: JoinRequest[];
+  /** The devices that joined this host, who is connected now, and how other devices reach it. */
+  devices: DevicesListed | null;
   homeDir: string;
   selectedConversationId: string | null;
   /** The conversations opened last, the selected one first: they stay subscribed and drawn, so switching back is instant. */
@@ -67,6 +71,7 @@ export const initialState: AppState = {
   machines: [],
   machineStatuses: [],
   joinRequests: [],
+  devices: null,
   homeDir: "",
   selectedConversationId: null,
   kept: [],
@@ -199,7 +204,6 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "terminal.cleared":
     case "terminal.busy":
     case "system-notification":
-    case "devices.listed":
     case "devices.invited":
     case "search.results":
     case "machine.join-asked":
@@ -210,6 +214,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return message.problem ? { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.problem }] } : state;
     case "join-requests.listed":
       return { ...state, joinRequests: message.joinRequests };
+    case "devices.listed":
+      return { ...state, devices: message };
     case "machines.changed":
       return { ...state, machines: message.machines };
     case "machine.status":

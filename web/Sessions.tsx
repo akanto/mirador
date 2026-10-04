@@ -1,7 +1,7 @@
 import { useEffect, useState, type Dispatch } from "react";
 import { harnessLabels, launchLabel, type AdoptMode, type ExternalSession, type Profile, type Workspace } from "../shared/model.ts";
 import { connection } from "./connection.ts";
-import { relativeTimeOf } from "./relative-time.ts";
+import { relativeTimeOf } from "../shared/relative-time.ts";
 import type { AppAction } from "./state.ts";
 
 type Listing = { state: "loading" } | { state: "failed"; message: string } | { state: "listed"; sessions: ExternalSession[] };
