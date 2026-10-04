@@ -68,6 +68,10 @@ test("mirador when-done has the host wait for a job the agent left running, then
     await expect(waits.locator("li")).toHaveCount(1);
     await expect(waits).toContainText(`Waiting for process ${job.pid} to end`);
     await expect(waits).toContainText("Then the agent gets: build-finished check the output");
+    await waits.locator(".job-wait-message").hover();
+    await page.waitForTimeout(800);
+    await expect(page.locator(".hint-bubble"), "a message shown whole needs no hint").toHaveCount(0);
+    await page.mouse.move(0, 0);
 
     await test.step("when the job ends, the agent gets the message as your next one and carries on", async () => {
       job.kill();

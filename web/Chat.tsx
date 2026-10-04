@@ -867,7 +867,7 @@ function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {
 
 const whoHears = (wait: JobWait) => (wait.resume ? "Then the agent gets: " : "Then you are told: ");
 
-/** A long message shows its first lines; its hint has all of it. */
+/** A long message shows its first lines; then its hint has all of it. */
 function JobWaits({ conversationId, waits }: { conversationId: string; waits: JobWait[] }) {
   return (
     <section className="job-waits" aria-label="Jobs waited for">
@@ -878,7 +878,7 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
               <span className="job-wait-status" data-hint={hints.jobWait}>
                 Waiting for {describeJob(wait)} to end, since {formatClockTime(wait.since)}
               </span>
-              <span className="job-wait-message" data-hint={`${whoHears(wait)}${wait.message}`}>
+              <span className="job-wait-message" data-hint={`${whoHears(wait)}${wait.message}`} data-hint-when-cut-off="">
                 {whoHears(wait)}
                 {wait.message}
               </span>
