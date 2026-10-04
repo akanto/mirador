@@ -21,7 +21,7 @@ export type Overlay =
   | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
-export type SettingsPage = "appearance" | "conversations" | "canvas" | "layout" | "devices" | "notifications";
+export type SettingsPage = "appearance" | "conversations" | "terminal" | "canvas" | "layout" | "devices" | "notifications";
 
 export type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
 

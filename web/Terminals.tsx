@@ -13,6 +13,7 @@ import { terminalShortcutKeys } from "./shortcuts.ts";
 import { Splitter } from "./Splitter.tsx";
 import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
+import { copiesOnSelect } from "./terminal-settings.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 
@@ -96,6 +97,14 @@ function copySelection(view: Terminal) {
   if (view.hasSelection()) void navigator.clipboard.writeText(view.getSelection());
 }
 
+/**
+ * Copy on select copies when the mouse is released after selecting, by dragging or double- or triple-clicking. The
+ * browser lets a page write to the clipboard only while handling such an input, so not later, when the selection changes.
+ */
+function copySelectionWhenReleased(view: Terminal) {
+  document.addEventListener("mouseup", () => copiesOnSelect() && copySelection(view), { once: true });
+}
+
 /** A split hidden behind a zoomed one has no size; fitting it then would shrink its shell to two columns. */
 const isShown = (element: HTMLElement) => element.offsetWidth > 0 && element.offsetHeight > 0;
 
@@ -122,7 +131,10 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       }
       return false;
     });
-    view.open(screen.current!);
+    const screenElement = screen.current!;
+    view.open(screenElement);
+    const startSelecting = () => copySelectionWhenReleased(view);
+    screenElement.addEventListener("mousedown", startSelecting);
     view.textarea?.setAttribute("writingsuggestions", "false");
     view.textarea?.addEventListener("focus", () => events.current.focused(terminalId));
 
@@ -145,6 +157,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     terminal.current = view;
     return () => {
       terminal.current = null;
+      screenElement.removeEventListener("mousedown", startSelecting);
       observer.disconnect();
       typed.dispose();
       resized.dispose();

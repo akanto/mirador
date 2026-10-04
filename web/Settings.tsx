@@ -14,6 +14,7 @@ import { isMac } from "./shortcuts.ts";
 import type { DevicesListed, SettingsPage } from "./state.ts";
 import { notifies, setNotificationsWanted, useNotificationSetting, type NotificationSetting } from "./system-notifications.ts";
 import { themeLabels, useTheme } from "./theme.ts";
+import { setCopyOnSelect, useCopyOnSelect } from "./terminal-settings.ts";
 import { useTimestampsShown } from "./timestamps.ts";
 import { setTypingAids, useTypingAids, type TypingAids } from "./typing-aids.ts";
 import { useWaitingStyle, waitingStyleLabels } from "./waiting.ts";
@@ -46,6 +47,7 @@ function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hid
 const pageLabels: Record<SettingsPage, string> = {
   appearance: "Appearance",
   conversations: "Conversations",
+  terminal: "Terminal",
   canvas: "Canvas",
   layout: "Layout",
   devices: "Devices",
@@ -87,6 +89,7 @@ export function SettingsDialog({
         {isMac && <TypingSettings />}
       </>
     ),
+    terminal: () => <TerminalSettings />,
     canvas: () => (
       <>
         <CanvasSettings canvasUse={canvasUse} />
@@ -288,6 +291,22 @@ function SendingSettings() {
               </option>
             ))}
           </select>
+        </label>
+      </div>
+    </>
+  );
+}
+
+function TerminalSettings() {
+  const copyOnSelect = useCopyOnSelect();
+  return (
+    <>
+      <h3>Terminal</h3>
+      <p className="hint">Remembered in this browser.</p>
+      <div className="terminal-settings">
+        <label data-hint={hints.copyOnSelect}>
+          <input type="checkbox" checked={copyOnSelect} onChange={(event) => setCopyOnSelect(event.target.checked)} />
+          Copy on select
         </label>
       </div>
     </>

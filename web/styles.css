@@ -3641,6 +3641,7 @@ button.arrangement.chosen {
 
 .appearance-settings,
 .sending-settings,
+.terminal-settings,
 .start-hidden,
 .notification-settings,
 .typing-aids {
@@ -3652,6 +3653,7 @@ button.arrangement.chosen {
 
 .appearance-settings label,
 .sending-settings label,
+.terminal-settings label,
 .start-hidden label,
 .notification-settings label,
 .typing-aids label {
