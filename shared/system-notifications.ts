@@ -9,7 +9,12 @@ export type NotificationReason =
   /** A job the agent left running ended, and its message is for you rather than the agent. */
   | { kind: "job-ended"; message: string };
 
+/** What a notification is about, so a device can let through only the kinds its owner wants. */
+export type NotificationKind = NotificationReason["kind"] | "join-request";
+
 export interface SystemNotification {
+  /** Absent from hosts before devices could choose which kinds they get. */
+  kind?: NotificationKind;
   /** Set when another machine sent it on through this host; the conversation is that machine's. */
   machineId?: string;
   /** None when it is about this machine itself, e.g. a device asking to join it. */
@@ -40,6 +45,7 @@ const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 const shortened = (text: string) => (text.length > BODY_LENGTH ? `${text.slice(0, BODY_LENGTH - 1)}…` : text);
 
 export const systemNotification = (conversation: Pick<Conversation, "id" | "title">, workspace: string, reason: NotificationReason): SystemNotification => ({
+  kind: reason.kind,
   conversationId: conversation.id,
   title: conversation.title,
   workspace,
@@ -57,6 +63,7 @@ export function turnEndReason(outcome: TurnOutcome, messagesQueued: boolean): Ex
 
 /** On this machine's own screen, so whoever sits there can let the device in, typing the number it shows. */
 export const joinRequestNotification = ({ name, fromAddress, tailscaleUser }: JoinRequest): SystemNotification => ({
+  kind: "join-request",
   title: `${name} asks to join Mirador`,
   workspace: "",
   body: `From ${fromAddress}${tailscaleUser ? `, signed in to Tailscale as ${tailscaleUser}` : ""}. Open Mirador to approve it by typing the number it shows.`,

@@ -6,8 +6,9 @@ import { bodyWithWorkspace, joinRequestNotification, systemNotification, turnEnd
 const conversation = { id: "c1", title: "Fix the tray menu" };
 
 describe("system notification text", () => {
-  test("names the conversation and its workspace, and says why", () => {
+  test("names the conversation and its workspace, and says why and what kind it is", () => {
     expect(systemNotification(conversation, "mirador", { kind: "question", question: "Which layout?" })).toEqual({
+      kind: "question",
       conversationId: "c1",
       title: "Fix the tray menu",
       workspace: "mirador",
@@ -112,6 +113,7 @@ test("without a subtitle line the workspace leads the body", () => {
 test("a device asking to join says where it asks from, and who it is signed in to Tailscale as when it asked through tailscale serve", () => {
   const request = { id: "r", name: "Phone", fromAddress: "100.64.0.7", tailscaleUser: null, expiresAt: 0 };
   expect(joinRequestNotification(request)).toEqual({
+    kind: "join-request",
     title: "Phone asks to join Mirador",
     workspace: "",
     body: "From 100.64.0.7. Open Mirador to approve it by typing the number it shows.",
