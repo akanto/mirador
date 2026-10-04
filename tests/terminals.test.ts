@@ -186,6 +186,28 @@ test("closing unless busy closes a terminal at its prompt, and keeps one running
   expect(left?.terminals.map(({ id }) => id)).toEqual([working.terminalId]);
 });
 
+test("closing a tab unless busy closes it when every shell sits at its prompt, and otherwise names what runs and keeps it", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const idle = terminals.open("w1", 80, 24);
+  const working = terminals.open("w1", 80, 24);
+  const split = terminals.open("w1", 80, 24, beside(working.terminalId));
+  terminals.input(split.terminalId, "echo started; sleep 30\n");
+  await outputContaining(browser.received, "started\r\n");
+  await Bun.sleep(200);
+
+  await terminals.closeTabUnlessBusy(browser.socket, working.tabId);
+  expect(browser.received.findLast((message) => message.type === "terminal.busy")).toEqual({
+    type: "terminal.busy",
+    terminalId: split.terminalId,
+    command: "sleep",
+    tabId: working.tabId,
+  });
+  await terminals.closeTabUnlessBusy(browser.socket, idle.tabId);
+  const left = await tabsOnceSettled(browser.received, (tabs) => tabs.length === 1);
+  expect(left.map(({ id }) => id)).toEqual([working.tabId]);
+});
+
 test("a program with a key runs once: opening it again while it runs shows its terminal, and after it ends starts it anew", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "w1");

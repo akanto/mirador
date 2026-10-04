@@ -144,6 +144,17 @@ export class TerminalService {
     if (tab) terminalIdsOf(tab).forEach((terminalId) => this.close(terminalId));
   }
 
+  /** The tab closes when every shell in it sits at its prompt; otherwise it stays, and the first command running is named. */
+  async closeTabUnlessBusy(socket: BrowserSocket, tabId: string) {
+    const tab = this.tabs.get(tabId);
+    if (!tab) return;
+    const shells = terminalIdsOf(tab).flatMap((terminalId) => this.shells.get(terminalId) ?? []);
+    const commands = await Promise.all(shells.map(async (shell) => ({ shell, command: await foregroundCommand(shell.child.pid) })));
+    const [running] = commands.flatMap(({ shell, command }) => (command === null ? [] : [{ terminalId: shell.id, command }]));
+    if (running) this.hub.send(socket, { type: "terminal.busy", ...running, tabId });
+    else this.closeTab(tabId);
+  }
+
   closeWorkspace(workspaceId: string) {
     this.shellsIn(workspaceId).forEach(({ id }) => this.close(id));
   }

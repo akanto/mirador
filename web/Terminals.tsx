@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { Fragment, useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useReducer, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { MAX_TERMINALS_PER_TAB, type TabTerminal, type TerminalTab, type Workspace } from "../shared/model.ts";
 import type { TerminalSplit } from "../shared/protocol.ts";
 import { isTerminal, layoutKey, terminalsIn, type TerminalLayout } from "../shared/terminal-layout.ts";
@@ -29,7 +29,15 @@ interface FocusRequest {
 interface BusyClose {
   terminalId: string;
   command: string;
+  /** Set when closing this whole tab was asked, as a middle-click does. */
+  tabId?: string;
 }
+
+/** ⌘W on a tab's only terminal asks again on the tab's close, as a middle-click on the tab does. */
+const tabCloseAsksAgain = (tab: TerminalTab, busy: BusyClose | null): busy is BusyClose =>
+  busy !== null && (busy.tabId === undefined ? tab.terminals.length === 1 && tab.terminals[0]!.id === busy.terminalId : busy.tabId === tab.id);
+
+const isMiddleButton = (event: MouseEvent) => event.button === 1;
 
 /** What a terminal tells its pane: a pane key pressed in it, and that it got the keyboard focus. */
 interface TerminalEvents {
@@ -76,7 +84,7 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
     let firstListing = true;
     const stopListening = connection.onMessage((message) => {
       if (message.type === "terminal.opened" && requests.current.delete(message.requestId)) setOpened({ tabId: message.tabId, terminalId: message.terminalId });
-      if (message.type === "terminal.busy") setBusy({ terminalId: message.terminalId, command: message.command });
+      if (message.type === "terminal.busy") setBusy({ terminalId: message.terminalId, command: message.command, tabId: message.tabId });
       if (message.type !== "terminals.listed" || message.workspaceId !== workspaceId) return;
       if (firstListing && message.tabs.length === 0) requests.current.add(requestTerminal(workspaceId, null));
       firstListing = false;
@@ -218,7 +226,7 @@ function TabLayout({
 
   const split = (terminalId: string, style: CSSProperties) => {
     const index = tab.terminals.findIndex(({ id }) => id === terminalId);
-    const asksAgain = busy?.terminalId === terminalId;
+    const asksAgain = busy?.terminalId === terminalId && busy.tabId === undefined;
     return (
       <div className={`terminal-split${zoomedAway({ terminalId })}`} data-terminal-id={terminalId} style={style}>
         {isSplit && (
@@ -288,6 +296,7 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
   const [activeTabId, setActiveTabId] = useState(() => lastActiveTabs.get(workspace.id) ?? null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [zoomed, setZoomed] = useState<string | null>(null);
+  const [armedTabClose, setArmedTabClose] = useState<string | null>(null);
   /** The terminal each tab had the keyboard focus in last, which the buttons and a tab shown again go to. */
   const focusedIn = useRef(new Map<string, string>());
   /** Where the focus goes once the terminal ⌘W closes is gone: the split before it, or after it. */
@@ -339,6 +348,12 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
     connection.send({ type: "terminal.close", terminalId, unlessBusy: true });
   };
 
+  const closeTabOnMiddleClick = (tab: TerminalTab) => (event: MouseEvent) => {
+    if (!isMiddleButton(event)) return;
+    event.preventDefault();
+    connection.send({ type: "terminal.close-tab", tabId: tab.id, unlessBusy: armedTabClose !== tab.id });
+  };
+
   const showTabAt = (index: number) => {
     const tab = tabs?.[index];
     if (tab) show(tab);
@@ -385,9 +400,9 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
         <PaneGrip pane="terminals" />
         <div className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
           {tabs?.map((tab) => {
-            const asksAgain = busy !== null && tab.terminals.length === 1 && tab.terminals[0]!.id === busy.terminalId;
+            const asksAgain = tabCloseAsksAgain(tab, busy);
             return (
-              <div key={tab.id} className={`terminal-tab ${tab.id === activeTab?.id ? "active" : ""}`}>
+              <div key={tab.id} className={`terminal-tab ${tab.id === activeTab?.id ? "active" : ""}`} onMouseDown={closeTabOnMiddleClick(tab)}>
                 <button type="button" role="tab" aria-selected={tab.id === activeTab?.id} data-hint={tabLabel(tab)} onClick={() => show(tab)}>
                   {tabLabel(tab)}
                 </button>
@@ -396,8 +411,9 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
                   label={`Close ${tabLabel(tab)}`}
                   hint={hints.terminalCloseTab}
                   armedText="Close?"
-                  armedHint={asksAgain ? hints.terminalCloseBusy(busy.command) : hints.terminalCloseTabArmed}
+                  armedHint={asksAgain ? (busy.tabId ? hints.terminalCloseTabBusy(busy.command) : hints.terminalCloseBusy(busy.command)) : hints.terminalCloseTabArmed}
                   armRequest={asksAgain ? busy : null}
+                  onArmedChange={(armed) => setArmedTabClose((current) => (armed ? tab.id : current === tab.id ? null : current))}
                   onConfirm={() => connection.send({ type: "terminal.close-tab", tabId: tab.id })}
                 >
                   ×

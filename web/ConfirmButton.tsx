@@ -14,6 +14,7 @@ export function ConfirmButton({
   armedHint,
   onConfirm,
   armRequest,
+  onArmedChange,
   children,
 }: {
   className: string;
@@ -24,9 +25,14 @@ export function ConfirmButton({
   onConfirm: () => void;
   /** Each new request arms it and gives it the focus, so Enter confirms, e.g. after ⌘W met a terminal running a command. */
   armRequest?: object | null;
+  onArmedChange?: (armed: boolean) => void;
   children: ReactNode;
 }) {
-  const [armed, setArmed] = useState(false);
+  const [armed, setArmedState] = useState(false);
+  const setArmed = (next: boolean) => {
+    setArmedState(next);
+    onArmedChange?.(next);
+  };
   const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {

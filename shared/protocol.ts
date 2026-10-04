@@ -120,7 +120,8 @@ export type ClientMessage =
   | { type: "terminal.resize"; terminalId: string; columns: number; rows: number }
   /** With `unlessBusy`, a terminal running a command stays open, and the host answers terminal.busy. */
   | { type: "terminal.close"; terminalId: string; unlessBusy?: boolean }
-  | { type: "terminal.close-tab"; tabId: string }
+  /** With `unlessBusy`, a tab where a command runs stays open, and the host answers terminal.busy with its `tabId`. */
+  | { type: "terminal.close-tab"; tabId: string; unlessBusy?: boolean }
   | { type: "terminal.clear"; terminalId: string }
   /** What this page shows, and whether you are looking at it: the host notifies only about conversations nobody is looking at. */
   | { type: "presence"; conversationId: string | null; attentive: boolean }
@@ -202,8 +203,8 @@ export type ServerMessage =
   | { type: "terminal.replayed"; terminalId: string; data: string }
   | { type: "terminal.output"; terminalId: string; data: string }
   | { type: "terminal.exited"; terminalId: string; exitCode: number }
-  /** The terminal was left open: `command` runs in it. */
-  | { type: "terminal.busy"; terminalId: string; command: string }
+  /** The terminal was left open: `command` runs in it. With `tabId`, closing that whole tab was asked. */
+  | { type: "terminal.busy"; terminalId: string; command: string; tabId?: string }
   | { type: "terminal.cleared"; terminalId: string }
   | { type: "system-notification"; notification: SystemNotification }
   | { type: "host.code-changed" }

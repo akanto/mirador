@@ -648,7 +648,7 @@ export function startServer(services: HostServices) {
       case "terminal.close":
         return message.unlessBusy ? terminals.closeUnlessBusy(socket, message.terminalId) : terminals.close(message.terminalId);
       case "terminal.close-tab":
-        return terminals.closeTab(message.tabId);
+        return message.unlessBusy ? terminals.closeTabUnlessBusy(socket, message.tabId) : terminals.closeTab(message.tabId);
       case "presence":
         socket.data.presence = { conversationId: message.conversationId, attentive: message.attentive };
         if (message.attentive && message.conversationId) conversations.markSeen(message.conversationId);

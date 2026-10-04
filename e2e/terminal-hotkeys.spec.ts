@@ -139,4 +139,26 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
     await page.keyboard.press("Enter");
     await expect(tabs(page)).toHaveCount(1);
   });
+
+  await test.step("a middle-click closes a tab whose shells run nothing, and asks first when one runs a command", async () => {
+    const newTab = page.getByRole("button", { name: "New terminal tab" });
+    await newTab.click();
+    await expect(tabs(page)).toHaveCount(2);
+    await tabs(page).nth(1).click({ button: "middle" });
+    await expect(tabs(page)).toHaveCount(1);
+
+    await newTab.click();
+    await expect(tabs(page)).toHaveCount(2);
+    await page.locator(".terminal-pane .xterm").click();
+    await page.keyboard.press("Meta+D");
+    await expect(splits(page)).toHaveCount(2);
+    await page.keyboard.type("sleep 30\n");
+    await tabs(page).nth(1).click({ button: "middle" });
+    const closeTab = page.locator(".terminal-tab.active .close-tab");
+    await expect(closeTab).toHaveText("Close?");
+    await expect(closeTab).toHaveAttribute("data-hint", /^sleep runs in this tab/);
+    await expect(splits(page)).toHaveCount(2);
+    await tabs(page).nth(1).click({ button: "middle" });
+    await expect(tabs(page)).toHaveCount(1);
+  });
 });
