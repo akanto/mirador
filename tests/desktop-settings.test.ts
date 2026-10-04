@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultSettings, loadSettings, parseSettings, SettingsStore } from "../desktop/src/core/settings.ts";
+import { defaultSettings, loadSettings, parseSettings, SettingsStore, withHostLocation } from "../desktop/src/core/settings.ts";
 
 const build = { hostDirectory: "/repo", bun: "/bin/bun" };
+const releaseBuild = { hostDirectory: null, bun: null };
+const insideApp = { hostDirectory: "/Applications/Mirador.app/Contents/Resources/app/mirador", bun: "/Applications/Mirador.app/Contents/MacOS/bun" };
 const directories: string[] = [];
 
 function scratchFile() {
@@ -48,9 +50,25 @@ describe("desktop settings", () => {
 
   test("the store persists each update", () => {
     const file = scratchFile();
-    const store = new SettingsStore(file, build);
+    const store = new SettingsStore(file, build, insideApp);
     store.update({ hostRunsInBackground: true });
     expect(store.current().hostRunsInBackground).toBe(true);
-    expect(new SettingsStore(file, build).current().hostRunsInBackground).toBe(true);
+    expect(new SettingsStore(file, build, insideApp).current().hostRunsInBackground).toBe(true);
+  });
+
+  test("a release build runs the Mirador inside the app wherever it is, and never writes that path down", () => {
+    const file = scratchFile();
+    const store = new SettingsStore(file, releaseBuild, insideApp);
+    expect(store.current()).toMatchObject(insideApp);
+    store.update({ openAtLogin: false });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ hostDirectory: null, bun: null, openAtLogin: false });
+    const moved = { hostDirectory: "/Users/me/Applications/Mirador.app/Contents/Resources/app/mirador", bun: "/Users/me/Applications/Mirador.app/Contents/MacOS/bun" };
+    expect(new SettingsStore(file, releaseBuild, moved).current()).toMatchObject(moved);
+  });
+
+  test("a folder or bun set in the file wins over the copy inside the app, and null asks for that copy", () => {
+    const defaults = defaultSettings(releaseBuild);
+    expect(withHostLocation(parseSettings(JSON.stringify({ hostDirectory: "/my/clone", bun: "/my/bun" }), defaults), insideApp)).toMatchObject({ hostDirectory: "/my/clone", bun: "/my/bun" });
+    expect(parseSettings(JSON.stringify({ hostDirectory: null, bun: null }), defaultSettings(build))).toMatchObject(releaseBuild);
   });
 });

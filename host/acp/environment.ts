@@ -43,5 +43,8 @@ export function agentEnvironment(base: NodeJS.ProcessEnv = process.env): Record<
 const miradorCommandDirectory = fileURLToPath(new URL("../../bin", import.meta.url));
 
 /** Last, so the agent's own commands keep their names. */
-export const withMiradorCommand = (path: string | undefined) =>
+const withMiradorCommand = (path: string | undefined) =>
   path?.split(":").includes(miradorCommandDirectory) ? path : [path, miradorCommandDirectory].filter(Boolean).join(":");
+
+/** The mirador command on the agent's PATH, run on the host's own Bun: the desktop app's, where no other is installed. */
+export const miradorCommandEnvironment = (path: string | undefined) => ({ PATH: withMiradorCommand(path), MIRADOR_BUN: process.execPath });

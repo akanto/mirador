@@ -11,7 +11,7 @@ bun start
 
 Open the `http://127.0.0.1:4600/auth?token=…` link the host prints (once per browser; it sets a cookie). Stop with Ctrl+C, which also stops the agent processes.
 
-Runs on macOS and Linux (x64 and arm64). [`desktop/`](desktop/README.md) wraps it in a menu bar / tray app with its own window on both.
+Runs on macOS and Linux (x64 and arm64). [`desktop/`](desktop/README.md) wraps it in a menu bar / tray app with its own window on both. A release's `Mirador-macos-arm64.zip` is that app carrying Mirador, for a Mac without Bun or a checkout ([installing it](desktop/README.md#install)).
 
 - **Workspaces** are project directories (sidebar `+`; Tab completes paths), each a card in the sidebar with its conversations oldest first, so a new one appears at the bottom, next to *+ New*. The chip beside *+ New* chooses the agent (Claude Code, opencode, or a profile, which belongs to one of them); each workspace remembers it. Agents run in that directory with your normal settings: Claude Code with `~/.claude` (settings, hooks, MCP servers; claude-notifier is muted for app sessions), opencode with `~/.config/opencode` (providers, agents, plugins, MCP servers, **and its permission settings**: the app forces nothing, so with opencode's defaults most tools run without asking). Approvals the agent asks for appear in the browser.
 - **opencode** is found on `PATH`, else in `/opt/homebrew/bin`, `/usr/local/bin` or `~/.opencode/bin`. The chat header lists all its models and modes (build, plan, your agents).

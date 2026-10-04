@@ -1,4 +1,4 @@
-import Electrobun, { Utils } from "electrobun/main";
+import Electrobun, { PATHS, Utils } from "electrobun/main";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { accountShell } from "../../../shared/login-shell.ts";
@@ -16,6 +16,8 @@ const home = homedir();
 const runtime = resolveRuntime(process.env, home);
 const paths = dataPaths(runtime.dataDir);
 
+const miradorInsideApp = { hostDirectory: join(PATHS.RESOURCES_FOLDER, "app", "mirador"), bun: process.execPath };
+
 let app: DesktopApp | undefined;
 
 async function isLaunchedAgain() {
@@ -29,7 +31,7 @@ async function launch() {
     appName: APP_NAME,
     runtime,
     paths,
-    settings: new SettingsStore(paths.settings, { hostDirectory: BUILD_HOST_DIRECTORY, bun: BUILD_BUN }),
+    settings: new SettingsStore(paths.settings, { hostDirectory: BUILD_HOST_DIRECTORY, bun: BUILD_BUN }, miradorInsideApp),
     shell: loginShell(process.env, accountShell()),
     home,
     configHome: process.env.XDG_CONFIG_HOME || join(home, ".config"),

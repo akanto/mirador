@@ -3,7 +3,7 @@
 A native shell around the localhost host, built with [Electrobun](https://electrobun.dev) 2.0.2 (pinned), for macOS and Linux.
 On macOS it is a menu bar app that opens the UI in its own window. Closing the window leaves the app in the menu bar; the Dock icon is hidden while no window is open and comes back when you reopen it (menu bar item, or a Dock/app reopen).
 
-The app adds no server of its own. The UI and the host are the existing `bun host/main.ts`.
+The app adds no server of its own. The UI and the host are the existing `bun host/main.ts`: your checkout's, or, in a release build, the copy of Mirador the app carries, run on the app's own Bun.
 
 ## Build
 
@@ -15,14 +15,27 @@ bun install
 bun run typecheck
 bun run build:dev      # build/dev-macos-arm64/Mirador-dev.app
 bun run build          # build/stable-macos-arm64/Mirador.app (self-expanding, about 20 MB)
+bun run build:release  # the same app carrying Mirador (about 135 MB), for people without a checkout
 bun run dev            # run from source with Electrobun's dev runner
 ```
+
+`build:release` stages the committed host, web, shared, bin and `scripts/mirador-message` files with their production dependencies in `release/mirador` (`scripts/stage-mirador.sh`), and the app carries them in `Contents/Resources/app/mirador`. Such an app needs neither Bun nor a checkout: it runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, so build it on the platform it is for.
 
 Icons: `assets/app-icon.svg` (app icon) and `assets/tray-icon.svg` (menu bar, drawn black and shown by macOS as a template image) are the sources. `scripts/render-icons.sh` renders `icon.iconset/` and `assets/tray-icon.png` from them; rerun it after editing either SVG. The page's favicon is `web/favicon.svg`.
 
 The stable build is a small stub. The first launch expands it in place and writes Electrobun's uninstall manifest to `~/Library/Application Support/com.sodre90.mirador/stable/`.
 
 ## Install
+
+A release build from GitHub (unsigned, so macOS quarantines the download; clearing that once lets it open):
+
+```bash
+unzip Mirador-macos-arm64.zip -d /Applications
+xattr -dr com.apple.quarantine /Applications/Mirador.app
+open /Applications/Mirador.app
+```
+
+A build of your own:
 
 ```bash
 ditto "<repo>/desktop/build/stable-macos-arm64/Mirador.app" "/Applications/Mirador.app"
@@ -37,15 +50,15 @@ Launch it once from its installed location. "Open at login" (on by default) regi
 
 ```json
 {
-  "hostDirectory": "<repo path at build time>",
-  "bun": "<absolute bun path at build time>",
+  "hostDirectory": "<repo path at build time>, or null in a release build",
+  "bun": "<absolute bun path at build time>, or null in a release build",
   "hostRunsInBackground": false,
   "openAtLogin": true
 }
 ```
 
-- `hostDirectory`: the checkout the host runs from (`bun host/main.ts`, working directory).
-- `bun`: absolute path of the Bun that runs the host.
+- `hostDirectory`: the checkout the host runs from (`bun host/main.ts`, working directory); null for the copy of Mirador the app carries, wherever the app is.
+- `bun`: absolute path of the Bun that runs the host; null for the app's own Bun.
 - `hostRunsInBackground` and `openAtLogin` are toggled from the menu bar item; edit the file only while the app is quit.
 
 The data directory, port and canvas port follow the host's own environment variables (`MIRADOR_DATA_DIR`, `MIRADOR_PORT`, `MIRADOR_CANVAS_PORT`; defaults `~/.mirador`, 4600, port + 1).
