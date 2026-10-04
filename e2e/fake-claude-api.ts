@@ -36,6 +36,7 @@ export class FakeClaudeApi {
   readonly systemPrompts = new Map<string, string>();
   readonly refused: string[] = [];
   private server?: Server;
+  private heldReplies: (() => void)[] | null = null;
 
   async start() {
     this.server = createServer((request, response) => {
@@ -57,7 +58,20 @@ export class FakeClaudeApi {
     this.server?.close();
   }
 
+  /** Keeps every reply from now on waiting, so a turn stays running until `answerHeld`. */
+  hold() {
+    this.heldReplies ??= [];
+  }
+
+  /** Sends the replies held since `hold`, and answers at once again. */
+  answerHeld() {
+    const held = this.heldReplies ?? [];
+    this.heldReplies = null;
+    held.forEach((answer) => answer());
+  }
+
   private reply(body: MessagesRequest, response: ServerResponse) {
+    if (this.heldReplies) return void this.heldReplies.push(() => this.reply(body, response));
     const typed = lastTypedText(body);
     this.systemPrompts.set(typed, systemTextOf(body));
     if (this.limited) {
