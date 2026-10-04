@@ -24,6 +24,7 @@ import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { mentionSuggestions } from "./mentions.ts";
+import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
@@ -87,6 +88,7 @@ export class ConversationService {
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
   private readonly contextUsage = new Map<string, ContextUsage>();
+  private readonly planQuotas = new PlanQuotasByProfile();
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
   private readonly conversationsWithQuestions: Set<string>;
   private readonly commands = new UserCommandRunner();
@@ -119,6 +121,10 @@ export class ConversationService {
     const conversation = this.store.findConversation(conversationId);
     if (!conversation) throw new Error(`Unknown conversation ${conversationId}`);
     return this.withRuntimeStatus(conversation);
+  }
+
+  planQuotasOf(conversationId: string, now: number) {
+    return this.planQuotas.of(this.get(conversationId).profileId, now);
   }
 
   slashCommands(conversationId: string) {
@@ -760,6 +766,8 @@ export class ConversationService {
     const update = notification.update;
     if (update.sessionUpdate === "usage_update") {
       this.contextUsage.set(conversationId, { used: update.used, size: update.size, cost: update.cost ? { amount: update.cost.amount, currency: update.cost.currency } : null });
+      const quotas = reportedQuotas(update._meta);
+      if (quotas) this.planQuotas.record(this.get(conversationId).profileId, quotas);
       this.publish(this.get(conversationId));
       return;
     }

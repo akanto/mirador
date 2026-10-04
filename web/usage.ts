@@ -1,4 +1,4 @@
-import type { ContextUsage } from "../shared/model.ts";
+import type { ContextUsage, PlanQuotas, QuotaWindow } from "../shared/model.ts";
 
 export type ContextLevel = "ok" | "high" | "full";
 
@@ -29,4 +29,26 @@ export function contextHint(usage: ContextUsage) {
     "The agent reports this after each response (ACP usage_update). Close to the limit it compacts the conversation: older turns are replaced by a summary.",
     ...(usage.cost ? [`Cost so far, as the agent reports it: ${formatCost(usage.cost)}.`] : []),
   ].join("\n\n");
+}
+
+export type QuotaName = keyof PlanQuotas;
+
+export const QUOTA_NAMES: readonly QuotaName[] = ["fiveHour", "sevenDay"];
+
+export const quotaLabels: Record<QuotaName, string> = { fiveHour: "5h", sevenDay: "7d" };
+
+export const quotaLimitNames: Record<QuotaName, string> = { fiveHour: "Five-hour", sevenDay: "Weekly" };
+
+export const quotaShare = ({ usedPercent }: QuotaWindow) => Math.min(1, Math.max(0, usedPercent / 100));
+
+export const quotaPercentLabel = ({ usedPercent }: QuotaWindow) => `${Math.round(usedPercent)}%`;
+
+const MINUTE_MS = 60_000;
+
+/** "2d 15h", "2h 28m" or "12m" from now until then. */
+export function timeUntil(at: number, now: number) {
+  const minutes = Math.max(0, Math.ceil((at - now) / MINUTE_MS));
+  const [days, hours, restMinutes] = [Math.floor(minutes / 1440), Math.floor((minutes % 1440) / 60), minutes % 60];
+  if (days > 0) return `${days}d ${hours}h`;
+  return hours > 0 ? `${hours}h ${restMinutes}m` : `${restMinutes}m`;
 }

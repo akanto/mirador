@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chosenModel } from "../shared/config-options.ts";
-import { harnessLabels, type Conversation, type StatuslineRender } from "../shared/model.ts";
+import { harnessLabels, type Conversation, type PlanQuotas, type QuotaWindow, type StatuslineRender } from "../shared/model.ts";
 import { profileEnvironment } from "./acp/harnesses.ts";
 import type { ConversationService } from "./conversations.ts";
 import type { Store } from "./store.ts";
@@ -28,8 +28,16 @@ export async function statusLineCommandIn(configDir: string): Promise<string | n
 export const claudeTranscriptPath = (configDir: string, directory: string, sessionId: string) =>
   join(configDir, "projects", directory.replace(/[^a-zA-Z0-9]/g, "-"), `${sessionId}.jsonl`);
 
+const rateLimitWindow = ({ usedPercent, resetsAt }: QuotaWindow) => ({ used_percentage: usedPercent, resets_at: Math.floor(resetsAt / 1000) });
+
+/** Claude Code's `rate_limits`, with only the windows it knows. */
+const rateLimits = ({ fiveHour, sevenDay }: PlanQuotas) => ({
+  ...(fiveHour && { five_hour: rateLimitWindow(fiveHour) }),
+  ...(sevenDay && { seven_day: rateLimitWindow(sevenDay) }),
+});
+
 /** The JSON Claude Code feeds its statusline command, as far as the app knows the same facts. */
-export function statuslineInput(conversation: Conversation, directory: string, transcriptPath: string | null, now: number) {
+export function statuslineInput(conversation: Conversation, directory: string, transcriptPath: string | null, quotas: PlanQuotas | null, now: number) {
   const usage = conversation.contextUsage;
   const usedPercentage = usage && usage.size > 0 ? Math.round((usage.used / usage.size) * 100) : null;
   const model = chosenModel(conversation.configOptions);
@@ -56,6 +64,7 @@ export function statuslineInput(conversation: Conversation, directory: string, t
       current_usage: usage ? { input_tokens: usage.used, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } : null,
     },
     exceeds_200k_tokens: (usage?.used ?? 0) > 200_000,
+    ...(quotas && { rate_limits: rateLimits(quotas) }),
   };
 }
 
@@ -130,22 +139,26 @@ export class StatuslineService {
     const conversation = this.conversations.get(conversationId);
     const directory = this.store.findWorkspace(conversation.workspaceId)?.path;
     if (!directory) throw new Error(`Unknown workspace ${conversation.workspaceId}`);
+    const now = Date.now();
+    const quotas = this.conversations.planQuotasOf(conversationId, now);
     const environment = this.environmentOf(conversation);
     const configDir = environment && claudeConfigDir(environment);
     const [gitBranch, command] = await Promise.all([
       currentGitBranch(directory),
       configDir && this.runsUserCommands ? statusLineCommandIn(configDir) : null,
     ]);
-    if (!command || !configDir || !environment || !runCommand) return { gitBranch, command, output: null, error: null };
+    if (!command || !configDir || !environment || !runCommand) return { gitBranch, command, output: null, error: null, quotas };
     const transcriptPath =
       conversation.harness === "claude" && conversation.acpSessionId ? claudeTranscriptPath(configDir, directory, conversation.acpSessionId) : null;
     const result = await runStatusLineCommand(command, {
-      input: statuslineInput(conversation, directory, transcriptPath, Date.now()),
+      input: statuslineInput(conversation, directory, transcriptPath, quotas, now),
       directory,
       environment,
       columns: clampColumns(columns),
     });
-    return "output" in result ? { gitBranch, command, output: result.output, error: null } : { gitBranch, command, output: null, error: result.error };
+    return "output" in result
+      ? { gitBranch, command, output: result.output, error: null, quotas }
+      : { gitBranch, command, output: null, error: result.error, quotas };
   }
 
   /** A profile whose environment does not parse cannot run anything; its conversation says why elsewhere. */

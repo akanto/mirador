@@ -29,6 +29,8 @@ export class FakeClaudeApi {
   limited = true;
   /** When the limit resets, in epoch seconds; Claude Code shows it as "resets 6:20pm (Europe/Budapest)". */
   resetsAt = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
+  /** The plan's usage limits each answer reports, as shares of 0 to 1, and when they start over, in epoch seconds. */
+  planUsage: { fiveHour: number; fiveHourResetsAt: number; sevenDay: number; sevenDayResetsAt: number } | null = null;
   readonly answered: string[] = [];
   /** The system prompt each request carried, by the text the user typed last. */
   readonly systemPrompts = new Map<string, string>();
@@ -67,10 +69,10 @@ export class FakeClaudeApi {
     const text = `Answered: ${typed}`;
     const usage = { input_tokens: 10, output_tokens: 5 };
     if (!body.stream) {
-      response.writeHead(200, { "content-type": "application/json" });
+      response.writeHead(200, { "content-type": "application/json", ...this.planUsageHeaders() });
       return response.end(JSON.stringify({ id: "msg_fake", type: "message", role: "assistant", model: body.model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null, usage }));
     }
-    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.writeHead(200, { "content-type": "text/event-stream", ...this.planUsageHeaders() });
     const send = (event: { type: string } & Record<string, unknown>) => response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
     send({ type: "message_start", message: { id: "msg_fake", type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage } });
     send({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
@@ -79,6 +81,22 @@ export class FakeClaudeApi {
     send({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 5 } });
     send({ type: "message_stop" });
     response.end();
+  }
+
+  private planUsageHeaders(): Record<string, string> {
+    if (!this.planUsage) return {};
+    const { fiveHour, fiveHourResetsAt, sevenDay, sevenDayResetsAt } = this.planUsage;
+    return {
+      "anthropic-ratelimit-unified-status": "allowed",
+      "anthropic-ratelimit-unified-reset": String(fiveHourResetsAt),
+      "anthropic-ratelimit-unified-representative-claim": "five_hour",
+      "anthropic-ratelimit-unified-5h-status": "allowed",
+      "anthropic-ratelimit-unified-5h-reset": String(fiveHourResetsAt),
+      "anthropic-ratelimit-unified-5h-utilization": String(fiveHour),
+      "anthropic-ratelimit-unified-7d-status": "allowed",
+      "anthropic-ratelimit-unified-7d-reset": String(sevenDayResetsAt),
+      "anthropic-ratelimit-unified-7d-utilization": String(sevenDay),
+    };
   }
 
   private limitHeaders() {

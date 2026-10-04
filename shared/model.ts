@@ -210,6 +210,18 @@ export interface ContextUsage {
   cost: { amount: number; currency: string } | null;
 }
 
+/** How much of a plan usage limit's window is used, 0 to 100, and when the window starts over, in epoch milliseconds. */
+export interface QuotaWindow {
+  usedPercent: number;
+  resetsAt: number;
+}
+
+/** The usage limits of a Claude subscription: the rolling five-hour window and the weekly one. */
+export interface PlanQuotas {
+  fiveHour: QuotaWindow | null;
+  sevenDay: QuotaWindow | null;
+}
+
 /** The host's part of a conversation's statusline; the page adds what it already knows. */
 export interface StatuslineRender {
   gitBranch: string | null;
@@ -218,6 +230,8 @@ export interface StatuslineRender {
   /** What the command printed, ANSI colours and all; null when it was not run or did not succeed. */
   output: string | null;
   error: string | null;
+  /** The plan's usage limits as the agent last reported them for the conversation's profile; null until it has. */
+  quotas: PlanQuotas | null;
 }
 
 /** Why the agent waits for you: a tool to approve, a canvas question to answer, or a turn that ended (or failed) while you looked elsewhere. */

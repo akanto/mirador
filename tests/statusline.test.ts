@@ -63,7 +63,7 @@ describe("statusline", () => {
   });
 
   test("the input carries what Claude Code's statusline scripts read", () => {
-    const input = statuslineInput(conversation, "/work", "/t.jsonl", 61_000);
+    const input = statuslineInput(conversation, "/work", "/t.jsonl", null, 61_000);
     expect(input).toMatchObject({
       session_id: "s1",
       transcript_path: "/t.jsonl",
@@ -77,7 +77,13 @@ describe("statusline", () => {
         current_usage: { input_tokens: 86_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
       },
     });
-    expect(statuslineInput({ ...conversation, contextUsage: null }, "/work", null, 0).context_window.current_usage).toBeNull();
+    expect(statuslineInput({ ...conversation, contextUsage: null }, "/work", null, null, 0).context_window.current_usage).toBeNull();
+    expect(input).not.toHaveProperty("rate_limits");
+  });
+
+  test("the plan's usage limits reach the command as Claude Code's rate_limits, with only the windows known", () => {
+    const quotas = { fiveHour: { usedPercent: 37, resetsAt: 1_791_149_400_000 }, sevenDay: null };
+    expect(statuslineInput(conversation, "/work", null, quotas, 0).rate_limits).toEqual({ five_hour: { used_percentage: 37, resets_at: 1_791_149_400 } });
   });
 
   test("the command reads the input on stdin and sees the width in COLUMNS", async () => {

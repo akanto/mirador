@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { chosenModel } from "../shared/config-options.ts";
-import type { ContextUsage, Conversation, Profile, StatuslineRender } from "../shared/model.ts";
+import type { ContextUsage, Conversation, PlanQuotas, Profile, QuotaWindow, StatuslineRender } from "../shared/model.ts";
 import { parseAnsi, plainTextOf, type AnsiStyle } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { TERMINAL_FONT } from "./terminal-look.ts";
-import { compactTokenCount, contextHint, contextLevel, formatCost, usedPercentLabel, usedShare } from "./usage.ts";
+import {
+  compactTokenCount,
+  contextHint,
+  contextLevel,
+  formatCost,
+  QUOTA_NAMES,
+  quotaLabels,
+  quotaLimitNames,
+  quotaPercentLabel,
+  quotaShare,
+  timeUntil,
+  usedPercentLabel,
+  usedShare,
+  type QuotaName,
+} from "./usage.ts";
 
 const TERMINAL_FONT_SIZE = 12;
 const TERMINAL_PADDING_X = 8;
@@ -19,14 +33,37 @@ const lastRenders = new Map<string, StatuslineRender>();
 export function ContextMeter({ usage }: { usage: ContextUsage }) {
   const share = usedShare(usage);
   return (
-    <span className={`context-meter level-${contextLevel(share)}`} data-hint={contextHint(usage)} aria-label={`Context ${usedPercentLabel(usage)} used`}>
-      <span className="context-bar" aria-hidden="true">
+    <span className={`usage-meter context-meter level-${contextLevel(share)}`} data-hint={contextHint(usage)} aria-label={`Context ${usedPercentLabel(usage)} used`}>
+      <span className="usage-bar" aria-hidden="true">
         <span style={{ width: `${share * 100}%` }} />
       </span>
       {usedPercentLabel(usage)} · {compactTokenCount(usage.used)} / {compactTokenCount(usage.size)}
     </span>
   );
 }
+
+function QuotaMeter({ name, window }: { name: QuotaName; window: QuotaWindow }) {
+  const share = quotaShare(window);
+  const percent = quotaPercentLabel(window);
+  return (
+    <span
+      className={`usage-meter quota-meter level-${contextLevel(share)}`}
+      data-hint={hints.quota(quotaLimitNames[name], percent, timeUntil(window.resetsAt, Date.now()))}
+      aria-label={`${quotaLimitNames[name]} limit ${percent} used`}
+    >
+      <span className="usage-bar" aria-hidden="true">
+        <span style={{ width: `${share * 100}%` }} />
+      </span>
+      {quotaLabels[name]} {percent}
+    </span>
+  );
+}
+
+const knownWindows = (quotas: PlanQuotas | null) =>
+  QUOTA_NAMES.flatMap((name) => {
+    const window = quotas?.[name];
+    return window ? [{ name, window }] : [];
+  });
 
 function usePrefersCommand() {
   const [prefersCommand, setPrefersCommand] = useState(() => {
@@ -129,7 +166,17 @@ function TerminalText({ text }: { text: string }) {
   );
 }
 
-function BuiltInStatusline({ conversation, profiles, gitBranch }: { conversation: Conversation; profiles: Profile[]; gitBranch: string | null }) {
+function BuiltInStatusline({
+  conversation,
+  profiles,
+  gitBranch,
+  quotas,
+}: {
+  conversation: Conversation;
+  profiles: Profile[];
+  gitBranch: string | null;
+  quotas: PlanQuotas | null;
+}) {
   const model = chosenModel(conversation.configOptions);
   const profile = profiles.find(({ id }) => id === conversation.profileId);
   const usage = conversation.contextUsage;
@@ -146,6 +193,9 @@ function BuiltInStatusline({ conversation, profiles, gitBranch }: { conversation
         </span>
       )}
       {usage && <ContextMeter usage={usage} />}
+      {knownWindows(quotas).map(({ name, window }) => (
+        <QuotaMeter key={name} name={name} window={window} />
+      ))}
       {usage?.cost && (
         <span className="chip" data-hint={hints.cost}>
           {formatCost(usage.cost)}
@@ -173,7 +223,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
         {commandOutput !== null ? (
           <TerminalText text={commandOutput} />
         ) : (
-          <BuiltInStatusline conversation={conversation} profiles={profiles} gitBranch={render?.gitBranch ?? null} />
+          <BuiltInStatusline conversation={conversation} profiles={profiles} gitBranch={render?.gitBranch ?? null} quotas={render?.quotas ?? null} />
         )}
       </div>
       {prefersCommand && render?.error && (

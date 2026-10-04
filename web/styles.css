@@ -2919,7 +2919,7 @@ button.shell-more:hover {
   text-decoration: underline;
 }
 
-.context-meter {
+.usage-meter {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2930,7 +2930,7 @@ button.shell-more:hover {
   white-space: nowrap;
 }
 
-.context-bar {
+.usage-bar {
   position: relative;
   width: 44px;
   height: 5px;
@@ -2940,26 +2940,26 @@ button.shell-more:hover {
   overflow: hidden;
 }
 
-.context-bar > span {
+.usage-bar > span {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 3px;
   background: var(--accent);
 }
 
-.context-meter.level-high .context-bar > span {
+.usage-meter.level-high .usage-bar > span {
   background: var(--warn);
 }
 
-.context-meter.level-high {
+.usage-meter.level-high {
   color: var(--warn);
 }
 
-.context-meter.level-full .context-bar > span {
+.usage-meter.level-full .usage-bar > span {
   background: var(--danger);
 }
 
-.context-meter.level-full {
+.usage-meter.level-full {
   color: var(--danger);
 }
 
@@ -3017,9 +3017,14 @@ button.shell-more:hover {
 
 .statusline-chips {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   white-space: nowrap;
+}
+
+.quota-meter .usage-bar {
+  width: 28px;
 }
 
 .statusline-chips > * + *::before {
@@ -3036,8 +3041,8 @@ button.shell-more:hover {
   border-radius: 6px;
   padding-block: 3px;
   line-height: 1.4;
-  white-space: pre;
-  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .statusline-line {
