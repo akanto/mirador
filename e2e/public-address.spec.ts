@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import jsQR from "jsqr";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { openSettings, signIn } from "./helpers.ts";
@@ -25,6 +26,26 @@ async function invite(settings: Locator) {
   return settings.getByLabel("Invite");
 }
 
+const inviteQrCode = (invite: Locator) => invite.getByRole("img", { name: "Link as a QR code" });
+
+/** What a phone's camera reads off the QR code: the page draws it on a canvas, and its pixels are decoded here. */
+async function scanned(qrCode: Locator) {
+  const side = 400;
+  const pixels = await qrCode.evaluate(async (svg, side) => {
+    const sized = svg.cloneNode(true) as SVGSVGElement;
+    sized.setAttribute("width", String(side));
+    sized.setAttribute("height", String(side));
+    const image = new Image();
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(sized))}`;
+    await image.decode();
+    const canvas = Object.assign(document.createElement("canvas"), { width: side, height: side });
+    const context = canvas.getContext("2d")!;
+    context.drawImage(image, 0, 0);
+    return Array.from(context.getImageData(0, 0, side, side).data);
+  }, side);
+  return jsQR(Uint8ClampedArray.from(pixels), side, side)?.data ?? null;
+}
+
 test("an address saved in Settings goes to config.json, and invite links use it once the host restarts", async ({ page }) => {
   await signIn(page, host);
   let settings = await openSettings(page, "Devices");
@@ -42,7 +63,10 @@ test("an address saved in Settings goes to config.json, and invite links use it 
     await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
     await expect(form.getByLabel("Address", { exact: true })).toHaveValue("https://box.example.ts.net");
     expect(configFile()).toEqual({ publicOrigin: "https://box.example.ts.net", publicCanvasOrigin: "https://box.example.ts.net:8443" });
-    await expect(await invite(settings)).not.toContainText("Or open");
+    const shownInvite = await invite(settings);
+    await expect(shownInvite.locator(".invite-code")).toBeVisible();
+    await expect(shownInvite.locator(".invite-link")).toHaveCount(0);
+    await expect(inviteQrCode(shownInvite)).toHaveCount(0);
   });
 
   await test.step("after the restart, invites come with a link to the saved address", async () => {
@@ -72,4 +96,12 @@ test("an address the host's environment sets can't be changed in Settings", asyn
   await expect(form.getByLabel("Address", { exact: true })).toBeDisabled();
   await expect(form.getByLabel("Canvas address")).toHaveValue("https://env.example.com:8443");
   await expect(form.getByRole("button", { name: "Save address" })).toBeDisabled();
+});
+
+test("an invite link also shows as a QR code, which reads back as the link for the phone app to scan", async ({ page }) => {
+  await signIn(page, hostAddressedByEnvironment);
+  const shownInvite = await invite(await openSettings(page, "Devices"));
+  const link = await shownInvite.locator(".invite-link").textContent();
+  expect(link).toMatch(/^https:\/\/env\.example\.com\/#\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  expect(await scanned(inviteQrCode(shownInvite))).toBe(link);
 });

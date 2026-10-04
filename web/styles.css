@@ -4835,6 +4835,12 @@ body.reordering * {
   word-break: break-all;
 }
 
+.qr-code {
+  width: 176px;
+  height: 176px;
+  border-radius: 6px;
+}
+
 .public-address {
   display: grid;
   grid-template-columns: 1fr 1fr auto;

@@ -9,6 +9,7 @@ import { setConnectedDevicesInSidebar, useConnectedDevicesInSidebar } from "./co
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
+import { QrCode } from "./QrCode.tsx";
 import type { DevicesListed } from "./state.ts";
 
 /** Read before the app first draws: it then replaces the address's #part with the open conversation's. */
@@ -290,6 +291,17 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
   );
 }
 
+function InviteLink({ link }: { link: string }) {
+  return (
+    <>
+      <QrCode text={link} label="Link as a QR code" />
+      <span>
+        Or scan this with the Mirador app on a phone, or open <code className="invite-link">{link}</code> on the device.
+      </span>
+    </>
+  );
+}
+
 export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
   const shownInSidebar = useConnectedDevicesInSidebar();
@@ -347,11 +359,7 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
             <span>
               Code <code className="invite-code">{invite.code}</code>, works once until {timeOf(invite.expiresAt)}.
             </span>
-            {publicOrigin && (
-              <span>
-                Or open <code className="invite-link">{inviteLink(publicOrigin, invite.code, listed?.reachability.authorityFingerprint)}</code> on the device.
-              </span>
-            )}
+            {publicOrigin && <InviteLink link={inviteLink(publicOrigin, invite.code, listed?.reachability.authorityFingerprint)} />}
           </div>
         )}
       </div>
