@@ -35,13 +35,13 @@ test("Settings choose how often Claude Code uses the canvas: Often puts guidance
   });
 
   await test.step("As needed shows in every window and leaves the guidance out of a session started after", async () => {
-    const settings = await openSettings(page);
+    const settings = await openSettings(page, "Canvas");
     const canvasUse = settings.getByLabel("Claude Code uses the canvas");
     await expect(canvasUse).toHaveValue("often");
     await canvasUse.selectOption({ label: "As needed" });
     const otherWindow = await page.context().newPage();
     await otherWindow.goto(page.url());
-    await expect((await openSettings(otherWindow)).getByLabel("Claude Code uses the canvas")).toHaveValue("as-needed");
+    await expect((await openSettings(otherWindow, "Canvas")).getByLabel("Claude Code uses the canvas")).toHaveValue("as-needed");
     await otherWindow.close();
     await settings.getByRole("button", { name: "Close" }).click();
     await startConversation(page);

@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4770);
@@ -31,8 +31,7 @@ test.describe("on macOS", () => {
     await expectTypingAids(composer, "off", "false");
     await expectTypingAids(terminalInput, "off", "false");
 
-    await page.getByRole("button", { name: "Settings…" }).click();
-    const settings = page.getByRole("dialog", { name: "Settings" });
+    const settings = await openSettings(page, "Conversations");
     await settings.getByRole("checkbox", { name: "Correct spelling automatically" }).check();
     await settings.getByRole("checkbox", { name: "Inline predictions" }).check();
     await page.keyboard.press("Escape");
@@ -42,7 +41,7 @@ test.describe("on macOS", () => {
     await expectTypingAids(composer, "on", "true");
     await expectTypingAids(terminalInput, "off", "false");
 
-    await page.getByRole("button", { name: "Settings…" }).click();
+    await openSettings(page, "Conversations");
     await settings.getByRole("checkbox", { name: "Inline predictions" }).uncheck();
     await expectTypingAids(composer, "on", "false");
   });
@@ -53,9 +52,8 @@ test.describe("elsewhere", () => {
 
   test("Settings offer no macOS typing switches", async ({ page }) => {
     await signIn(page, host);
-    await page.getByRole("button", { name: "Settings…" }).click();
-    const settings = page.getByRole("dialog", { name: "Settings" });
-    await expect(settings.getByRole("heading", { name: "Default layout" })).toBeVisible();
+    const settings = await openSettings(page, "Conversations");
+    await expect(settings.getByRole("heading", { name: "Prompt templates" })).toBeVisible();
     await expect(settings.getByRole("heading", { name: "Typing" })).toHaveCount(0);
   });
 });

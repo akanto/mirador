@@ -18,10 +18,10 @@ export type Overlay =
   | { kind: "sessions"; workspaceId: string }
   | { kind: "workspace-color"; workspaceId: string }
   | { kind: "add-workspace" }
-  | { kind: "settings"; section?: SettingsSection };
+  | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
-export type SettingsSection = "prompt-templates";
+export type SettingsPage = "appearance" | "conversations" | "canvas" | "layout" | "devices" | "notifications";
 
 export interface AppState {
   workspaces: Workspace[];

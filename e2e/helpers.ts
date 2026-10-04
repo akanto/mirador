@@ -55,9 +55,12 @@ export async function addWorkspaceFromSidebar(page: Page, directory: string) {
   await expect(workspaceCard(page, directory)).toBeVisible();
 }
 
-export async function openSettings(page: Page) {
+/** Settings opens at Appearance; another page is chosen from its list on the left. */
+export async function openSettings(page: Page, pageName = "Appearance") {
   await page.getByRole("button", { name: "Settings…" }).click();
-  return page.getByRole("dialog", { name: "Settings" });
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: pageName }).click();
+  return settings;
 }
 
 /** One of the pictures in a choice of Settings, e.g. Light under Theme. */

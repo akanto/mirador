@@ -77,7 +77,7 @@ test("another Mirador asks to join over HTTPS, and gets in once someone at the m
     await prompt.getByRole("button", { name: "Approve" }).click();
     await expect(page.frameLocator('iframe[title="Server"]').getByRole("button", { name: "Settings…" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Machines" }).getByRole("button", { name: "Server" })).not.toHaveClass(/away/);
-    const settings = await openSettings(serverPage);
+    const settings = await openSettings(serverPage, "Devices");
     await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toHaveCount(1);
   });
 });

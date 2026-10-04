@@ -49,7 +49,7 @@ test("a device joins over HTTPS with an invite link that names the host's certif
 }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const settings = await openSettings(page);
+  const settings = await openSettings(page, "Devices");
   const networkSwitch = settings.getByLabel("Reachable on the network, over HTTPS at port 5192");
   await expect(networkSwitch).toBeChecked();
   await expect(networkSwitch).toBeDisabled();
@@ -91,7 +91,7 @@ test("the host's own page loads canvas libraries from this machine, though agent
 
 test("turning the network on in Settings takes effect when the host restarts", async ({ page }) => {
   await signIn(page, hostSwitchedInSettings);
-  let settings = await openSettings(page);
+  let settings = await openSettings(page, "Devices");
   const networkSwitch = () => settings.getByLabel("Reachable on the network, over HTTPS at port 5198");
   await networkSwitch().check();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
@@ -99,7 +99,7 @@ test("turning the network on in Settings takes effect when the host restarts", a
 
   await settings.getByRole("button", { name: "Restart host" }).click();
   await expect(settings, "the page reloads once the restarted host answers").toBeHidden({ timeout: 30_000 });
-  settings = await openSettings(page);
+  settings = await openSettings(page, "Devices");
   await expect(networkSwitch()).toBeChecked();
   await expect(settings.getByRole("link", { name: "certificate authority" })).toHaveAttribute("href", "/mirador-ca.pem");
   await expect(settings.getByText(/On the network it now uses https:\/\/.+:5198\./)).toBeVisible();
@@ -113,7 +113,7 @@ test("turning the network on in Settings takes effect when the host restarts", a
 test("another Mirador joins over HTTPS only with the certificate authority the invite link names, then shows the host through it", async ({ page, browser }) => {
   const server = await browser.newPage();
   await signIn(server, host);
-  const settings = await openSettings(server);
+  const settings = await openSettings(server, "Devices");
   await settings.getByRole("button", { name: "Invite a device" }).click();
   const link = (await settings.locator(".invite-link").textContent())!;
 

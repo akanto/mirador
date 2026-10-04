@@ -54,7 +54,7 @@ test.afterAll(async () => {
 });
 
 async function inviteLinkFrom(page: Page) {
-  const settings = await openSettings(page);
+  const settings = await openSettings(page, "Devices");
   await settings.getByRole("button", { name: "Invite a device" }).click();
   return { settings, link: (await settings.locator(".invite-link").textContent())! };
 }

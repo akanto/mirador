@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { canvasUseLabels, type CanvasUse, type PromptTemplate } from "../shared/model.ts";
 import { MachineColorPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
@@ -11,7 +11,7 @@ import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } f
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
 import { isMac } from "./shortcuts.ts";
-import type { SettingsSection } from "./state.ts";
+import type { SettingsPage } from "./state.ts";
 import { notifies, setNotificationsWanted, useNotificationSetting, type NotificationSetting } from "./system-notifications.ts";
 import { themeLabels, useTheme } from "./theme.ts";
 import { useTimestampsShown } from "./timestamps.ts";
@@ -43,85 +43,145 @@ function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hid
   );
 }
 
+const pageLabels: Record<SettingsPage, string> = {
+  appearance: "Appearance",
+  conversations: "Conversations",
+  canvas: "Canvas",
+  layout: "Layout",
+  devices: "Devices",
+  notifications: "Notifications",
+};
+const settingsPages = Object.keys(pageLabels) as SettingsPage[];
+const pageSteps: Partial<Record<string, 1 | -1>> = { ArrowDown: 1, ArrowUp: -1 };
+
 export function SettingsDialog({
-  section,
+  page: openedAt,
   promptTemplates,
   canvasUse,
   layoutDefault,
   onChange,
   onClose,
 }: {
-  section: SettingsSection | undefined;
+  page: SettingsPage | undefined;
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   layoutDefault: LayoutDefault;
   onChange: (layoutDefault: LayoutDefault) => void;
   onClose: () => void;
 }) {
-  const sections = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (section) sections.current?.querySelector(`[data-section="${section}"]`)?.scrollIntoView({ block: "start" });
-  }, [section]);
+  const [page, setPage] = useState<SettingsPage>(openedAt ?? "appearance");
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
-  const startHidden = (pane: HideablePane, hidden: boolean) => onChange({ ...layoutDefault, hidden: { ...layoutDefault.hidden, [pane]: hidden } });
+  const pages: Record<SettingsPage, () => ReactNode> = {
+    appearance: () => <AppearanceSettings />,
+    conversations: () => (
+      <>
+        <SendingSettings />
+        <PromptTemplateSettings templates={promptTemplates} />
+        {isMac && <TypingSettings />}
+      </>
+    ),
+    canvas: () => (
+      <>
+        <CanvasSettings canvasUse={canvasUse} />
+        <ReviewSettings />
+      </>
+    ),
+    layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
+    devices: () => <DeviceSettings />,
+    notifications: () => <NotificationSettings />,
+  };
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div ref={sections} className="modal settings" role="dialog" aria-label="Settings">
+      <div className="modal settings" role="dialog" aria-label="Settings">
         <header>
           <h2>Settings</h2>
           <button className="icon" title="Close" aria-label="Close" onClick={onClose}>
             ×
           </button>
         </header>
-        <AppearanceSettings />
-        <SendingSettings />
-        <div data-section="prompt-templates">
-          <PromptTemplateSettings templates={promptTemplates} />
+        <div className="settings-body">
+          <PageList page={page} onChoose={setPage} />
+          <div className="settings-page" role="tabpanel" id="settings-page" aria-labelledby={`settings-tab-${page}`}>
+            {pages[page]()}
+          </div>
         </div>
-        <CanvasSettings canvasUse={canvasUse} />
-        <ReviewSettings />
-        <h3>Default layout</h3>
-        <p className="hint">
-          New conversations start with it, and so do those whose panes you haven't moved, resized, hidden or made fullscreen.{" "}
-          <em>Reset layout to default</em> in the palette brings the open conversation back to it.
-        </p>
-        <div className="arrangements" role="radiogroup" aria-label="Default arrangement">
-          {arrangements.map((slots) => {
-            const chosen = sameSlots(slots, layoutDefault.slots);
-            return (
-              <button
-                key={slots.join()}
-                type="button"
-                role="radio"
-                aria-checked={chosen}
-                aria-label={describe(slots)}
-                className={`arrangement ${chosen ? "chosen" : ""}`}
-                onClick={() => onChange({ ...layoutDefault, slots })}
-              >
-                <Thumbnail slots={slots} hidden={layoutDefault.hidden} />
-              </button>
-            );
-          })}
-        </div>
-        <div className="start-hidden">
-          {(["canvas", "terminals"] as const).map((pane) => (
-            <label key={pane}>
-              <input type="checkbox" checked={layoutDefault.hidden[pane]} onChange={(event) => startHidden(pane, event.target.checked)} />
-              {startHiddenLabels[pane]}
-            </label>
-          ))}
-        </div>
-        <DeviceSettings />
-        <NotificationSettings />
-        {isMac && <TypingSettings />}
       </div>
     </div>
+  );
+}
+
+/** Up and Down move between the pages, as in a list of tabs. */
+function PageList({ page, onChoose }: { page: SettingsPage; onChoose: (page: SettingsPage) => void }) {
+  const chooseWithArrows = (event: ReactKeyboardEvent<HTMLElement>) => {
+    const step = pageSteps[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const next = settingsPages[(settingsPages.indexOf(page) + step + settingsPages.length) % settingsPages.length]!;
+    onChoose(next);
+    event.currentTarget.querySelector<HTMLElement>(`#settings-tab-${next}`)?.focus();
+  };
+  return (
+    <nav className="settings-pages" role="tablist" aria-orientation="vertical" aria-label="Settings pages" onKeyDown={chooseWithArrows}>
+      {settingsPages.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          id={`settings-tab-${id}`}
+          aria-selected={id === page}
+          aria-controls="settings-page"
+          tabIndex={id === page ? 0 : -1}
+          onClick={() => onChoose(id)}
+        >
+          {pageLabels[id]}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function LayoutSettings({ layoutDefault, onChange }: { layoutDefault: LayoutDefault; onChange: (layoutDefault: LayoutDefault) => void }) {
+  const startHidden = (pane: HideablePane, hidden: boolean) => onChange({ ...layoutDefault, hidden: { ...layoutDefault.hidden, [pane]: hidden } });
+  return (
+    <>
+      <h3>Default layout</h3>
+      <p className="hint">
+        New conversations start with it, and so do those whose panes you haven't moved, resized, hidden or made fullscreen.{" "}
+        <em>Reset layout to default</em> in the palette brings the open conversation back to it.
+      </p>
+      <div className="arrangements" role="radiogroup" aria-label="Default arrangement">
+        {arrangements.map((slots) => {
+          const chosen = sameSlots(slots, layoutDefault.slots);
+          return (
+            <button
+              key={slots.join()}
+              type="button"
+              role="radio"
+              aria-checked={chosen}
+              aria-label={describe(slots)}
+              className={`arrangement ${chosen ? "chosen" : ""}`}
+              onClick={() => onChange({ ...layoutDefault, slots })}
+            >
+              <Thumbnail slots={slots} hidden={layoutDefault.hidden} />
+            </button>
+          );
+        })}
+      </div>
+      <div className="start-hidden">
+        {(["canvas", "terminals"] as const).map((pane) => (
+          <label key={pane}>
+            <input type="checkbox" checked={layoutDefault.hidden[pane]} onChange={(event) => startHidden(pane, event.target.checked)} />
+            {startHiddenLabels[pane]}
+          </label>
+        ))}
+      </div>
+    </>
   );
 }
 

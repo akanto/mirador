@@ -3498,7 +3498,69 @@ button.shell-more:hover {
 /* Settings */
 
 .modal.settings {
-  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  height: min(640px, 100%);
+  overflow: hidden;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 12px;
+}
+
+.settings-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-pages [role="tab"] {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.settings-pages [role="tab"]:hover {
+  background: var(--panel-2);
+}
+
+.settings-pages [role="tab"][aria-selected="true"] {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.settings-page {
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.settings-page > h3:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 640px) {
+  .settings-body {
+    grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .settings-pages {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .settings-pages [role="tab"] {
+    white-space: nowrap;
+  }
 }
 
 .modal.settings h3 {

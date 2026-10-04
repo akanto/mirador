@@ -334,7 +334,7 @@ test("a review opens full screen; the user tours the flow, moves through changes
 
   await test.step("with Settings set to open reviews beside the chat, the next review leaves the chat in view", async () => {
     await waitForTurnToEnd(page);
-    const settings = await openSettings(page);
+    const settings = await openSettings(page, "Canvas");
     await settings.getByLabel("Open reviews").selectOption({ label: "In the canvas pane, beside the chat" });
     await settings.getByRole("button", { name: "Close" }).click();
     await callCanvasTool(host, conversationId, "review", review({ title: "Second look", pullRequest: undefined, findings: [] }));

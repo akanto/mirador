@@ -19,7 +19,7 @@ const borderOf = (element: Locator) => element.evaluate((each) => getComputedSty
 test("a machine takes a pastel colour on its rail button, and a strip along the top of its view unless Settings keep it to the button", async ({ page, browser }) => {
   const serverPage = await browser.newPage();
   await signIn(serverPage, server);
-  const invite = await openSettings(serverPage);
+  const invite = await openSettings(serverPage, "Devices");
   await invite.getByRole("button", { name: "Invite a device" }).click();
   const code = (await invite.locator(".invite-code").textContent())!;
 

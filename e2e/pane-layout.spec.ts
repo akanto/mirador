@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4950, { shell: "/bin/sh" });
@@ -119,8 +119,7 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   await page.getByRole("button", { name: "Exit fullscreen" }).click();
   expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right", terminals: "hidden" });
 
-  await page.getByRole("button", { name: "Settings…" }).click();
-  const settings = page.getByRole("dialog", { name: "Settings" });
+  const settings = await openSettings(page, "Layout");
   await settings.getByRole("radio", { name: "Canvas on the left, conversation top right, terminals bottom right" }).click();
   await settings.getByLabel("Terminals start hidden").uncheck();
   await settings.getByRole("button", { name: "Close" }).click();

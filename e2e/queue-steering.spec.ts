@@ -41,7 +41,7 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
   await expect(page.locator(".queued-delivery")).toHaveText(["joins the turn"]);
 
   await test.step("with Enter set to wait for the turn, Enter and the buttons swap roles", async () => {
-    const settings = await openSettings(page);
+    const settings = await openSettings(page, "Conversations");
     await settings.getByLabel("Enter").selectOption({ label: "Sends the message after the turn ends" });
     await settings.getByRole("button", { name: "Close" }).click();
     await composer.fill(AFTER_TURN);

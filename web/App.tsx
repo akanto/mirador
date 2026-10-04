@@ -319,7 +319,7 @@ export function App() {
                   conversation={keptConversation}
                   profiles={state.profiles}
                   promptTemplates={state.promptTemplates}
-                  onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", section: "prompt-templates" } })}
+                  onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", page: "conversations" } })}
                   open={kept}
                   canvasVisible={canvasVisible}
                   onToggleCanvas={toggleCanvas}
@@ -412,7 +412,7 @@ export function App() {
       )}
       {overlay?.kind === "settings" && (
         <SettingsDialog
-          section={overlay.section}
+          page={overlay.page}
           promptTemplates={state.promptTemplates}
           canvasUse={state.canvasUse}
           layoutDefault={conversationLayouts.layoutDefault}
