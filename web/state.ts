@@ -195,6 +195,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "slash-commands.listed":
     case "prompt-history.listed":
     case "mentions.suggested":
+    case "conversation.earlier":
+    case "tool-output.got":
     case "statusline.rendered":
     case "terminals.listed":
     case "terminal.opened":

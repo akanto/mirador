@@ -1,3 +1,4 @@
+import type { ToolCallContent } from "@agentclientprotocol/sdk";
 import type {
   AdoptMode,
   AskMode,
@@ -22,6 +23,7 @@ import type {
   Pastel,
 } from "./model.ts";
 import type { FindingDecision } from "./review.ts";
+import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { SlashCommand } from "./slash-commands.ts";
 import type { SplitAxis } from "./terminal-layout.ts";
@@ -70,7 +72,11 @@ export type ClientMessage =
   | { type: "conversation.delete"; conversationId: string }
   | { type: "conversation.rename"; conversationId: string; title: string }
   | { type: "conversation.set-profile"; conversationId: string; profileId: string | null }
-  | { type: "conversation.subscribe"; conversationId: string }
+  | { type: "conversation.subscribe"; conversationId: string; lowData?: LowDataSubscription }
+  /** The turns before the earliest event a low-data subscriber holds. */
+  | { type: "conversation.load-earlier"; requestId: string; conversationId: string; beforeSeq: number; turns: number }
+  /** Tool output the low-data form shortened, whole: the content of the stored event its mark names, images still as links. */
+  | { type: "tool-output.get"; requestId: string; conversationId: string; seq: number }
   | { type: "conversation.unsubscribe"; conversationId: string }
   | { type: "conversation.prompt"; conversationId: string; text: string; imageIds: string[]; afterTurn?: boolean }
   | { type: "conversation.cancel"; conversationId: string }
@@ -160,7 +166,18 @@ export type ServerMessage =
   | { type: "workspace.deleted"; workspaceId: string }
   | { type: "conversation.upserted"; conversation: Conversation }
   | { type: "conversation.deleted"; conversationId: string }
-  | { type: "conversation.history"; conversationId: string; events: StoredEvent[]; canvas: CanvasItem[] }
+  | {
+      type: "conversation.history";
+      conversationId: string;
+      events: StoredEvent[];
+      canvas: CanvasItem[];
+      /** For a low-data subscriber that held events up to this one: these continue them rather than replace them. */
+      continuesAfter?: number;
+      /** For a low-data subscriber: the conversation has turns before these events. */
+      hasEarlier?: boolean;
+    }
+  | { type: "conversation.earlier"; requestId: string; conversationId: string; events: StoredEvent[]; hasEarlier: boolean }
+  | { type: "tool-output.got"; requestId: string; content: ToolCallContent[] }
   | { type: "conversation.event"; conversationId: string; event: StoredEvent }
   | { type: "canvas.upserted"; item: CanvasItem }
   | { type: "fs.completions"; requestId: string; directories: string[] }

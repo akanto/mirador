@@ -61,6 +61,23 @@ describe("Store", () => {
     expect(store.listEvents("c1").map(({ seq }) => seq)).toEqual([1, 2]);
   });
 
+  test("the latest turns start at a user message, and the first turn takes along what came before it", () => {
+    const { store } = seededStore();
+    const reply = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } } } as const;
+    store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "available_commands_update", availableCommands: [] } });
+    ["first", "second", "third"].forEach((text) => {
+      store.appendEvent("c1", { type: "user-message", text });
+      store.appendEvent("c1", reply);
+    });
+    expect(store.latestTurns("c1", 2)).toEqual({ fromSeq: 4, hasEarlier: true });
+    expect(store.latestTurns("c1", 3)).toEqual({ fromSeq: 0, hasEarlier: false });
+    expect(store.latestTurns("c1", 10)).toEqual({ fromSeq: 0, hasEarlier: false });
+    expect(store.turnsBefore("c1", 4, 1)).toEqual({ fromSeq: 0, hasEarlier: false });
+    expect(store.listEventsBetween("c1", 4, 6).map(({ seq }) => seq)).toEqual([4, 5]);
+    expect(store.findEvent("c1", 6)?.event).toEqual({ type: "user-message", text: "third" });
+    expect(store.findEvent("c1", 99)).toBeNull();
+  });
+
   test("updates a conversation's persisted fields but always loads it idle", () => {
     const { store, conversation } = seededStore();
     store.saveProfile({ id: "p1", name: "work", harness: "claude", environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });

@@ -10,6 +10,7 @@ import {
   type PromptTemplate,
   type PublicAddress,
   type ReachabilitySettings,
+  type StoredEvent,
   type Workspace,
   type Pastel,
 } from "../shared/model.ts";
@@ -19,7 +20,8 @@ import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
-import { isImageId } from "../shared/images.ts";
+import { extensionFor, isImageId } from "../shared/images.ts";
+import type { LowDataSubscription } from "../shared/low-data.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
 import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
@@ -34,6 +36,7 @@ import type { MachineRelays } from "./machine-relays.ts";
 import type { MachineWatch } from "./machine-watch.ts";
 import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
+import { imagesOf, lowDataEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import type { ProfileService } from "./profiles.ts";
 import type { HostRestart } from "./restart.ts";
@@ -383,6 +386,30 @@ export function startServer(services: HostServices) {
     return new Response(file, { headers: { "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" } });
   }
 
+  /** An image an agent's tool returned, which the low-data form of its event links to. */
+  function serveEventImage(request: Bun.BunRequest<"/conversations/:conversationId/events/:seq/images/:index">) {
+    const { conversationId, seq, index } = request.params;
+    const refused = refusedImageRequest(request, conversationId);
+    if (refused) return refused;
+    const stored = store.findEvent(conversationId, Number(seq));
+    const image = stored ? imagesOf(stored)[Number(index)] : undefined;
+    if (!image || !extensionFor(image.mimeType)) return new Response("not found", { status: 404 });
+    return new Response(Buffer.from(image.data, "base64"), {
+      headers: { "Content-Type": image.mimeType, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
+    });
+  }
+
+  /** A phone that held events before gets only the ones after them; otherwise the latest turns, and earlier ones when it asks. */
+  function lowDataHistory(conversationId: string, { latestTurns, afterSeq }: LowDataSubscription): ServerMessage {
+    const inLowData = (events: StoredEvent[]) => events.map((event) => lowDataEvent(conversationId, event));
+    const history = { type: "conversation.history", conversationId, canvas: canvas.list(conversationId) } as const;
+    if (afterSeq !== undefined && afterSeq <= store.lastEventSeq(conversationId)) {
+      return { ...history, events: inLowData(store.listEventsFrom(conversationId, afterSeq + 1)), continuesAfter: afterSeq };
+    }
+    const { fromSeq, hasEarlier } = store.latestTurns(conversationId, latestTurns);
+    return { ...history, events: inLowData(store.listEventsFrom(conversationId, fromSeq)), hasEarlier };
+  }
+
   /** The desktop app listens on /notifications with the same token and origin as the pages, and hears only system notifications. */
   function upgradeBrowser(request: Request, server: Bun.Server<SocketData>, role: SocketData["role"]) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
@@ -506,6 +533,11 @@ export function startServer(services: HostServices) {
         return conversations.move(message.conversationId, message.beforeConversationId);
       case "conversation.subscribe":
         socket.data.subscriptions.add(message.conversationId);
+        if (message.lowData) {
+          socket.data.lowDataSubscriptions.add(message.conversationId);
+          return reply(lowDataHistory(message.conversationId, message.lowData));
+        }
+        socket.data.lowDataSubscriptions.delete(message.conversationId);
         return reply({
           type: "conversation.history",
           conversationId: message.conversationId,
@@ -514,7 +546,18 @@ export function startServer(services: HostServices) {
         });
       case "conversation.unsubscribe":
         socket.data.subscriptions.delete(message.conversationId);
+        socket.data.lowDataSubscriptions.delete(message.conversationId);
         return;
+      case "conversation.load-earlier": {
+        const { conversationId, beforeSeq, turns } = message;
+        const { fromSeq, hasEarlier } = store.turnsBefore(conversationId, beforeSeq, turns);
+        const events = store.listEventsBetween(conversationId, fromSeq, beforeSeq).map((event) => lowDataEvent(conversationId, event));
+        return reply({ type: "conversation.earlier", requestId: message.requestId, conversationId, events, hasEarlier });
+      }
+      case "tool-output.get": {
+        const stored = store.findEvent(message.conversationId, message.seq);
+        return reply({ type: "tool-output.got", requestId: message.requestId, content: stored ? wholeToolOutput(message.conversationId, stored) : [] });
+      }
       case "conversation.prompt":
         conversations.send(message.conversationId, message.text, message.imageIds, { afterTurn: message.afterTurn }).catch((error) => reply({ type: "error", message: errorMessage(error) }));
         return;
@@ -654,6 +697,7 @@ export function startServer(services: HostServices) {
     "/join-requests/:id/poll": { POST: pollJoinRequest },
     "/conversations/:conversationId/images": { POST: addImage },
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
+    "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
     "/mirador-ca.pem": serveAuthority,
   };
   /** Only this machine's own browser, agents and scripts sign in with these tokens, so they are served on 127.0.0.1 alone. */
@@ -706,6 +750,7 @@ export function startServer(services: HostServices) {
     /** Bun drops what is sent while more than the limit waits to go out (16 MB by default, less than one long history), so the limit is far above that, and a client that falls further behind is disconnected to reconnect and fetch again instead of silently missing messages. */
     backpressureLimit: 1024 * 1024 * 1024,
     closeOnBackpressureLimit: true,
+    perMessageDeflate: true,
     open(socket) {
       hub.add(socket);
       if (socket.data.role === "page") sendSnapshot(socket);

@@ -961,7 +961,7 @@ export class ConversationService {
   private append(conversationId: string, event: ConversationEvent) {
     if (!this.store.hasConversation(conversationId)) return;
     const stored = this.store.appendEvent(conversationId, event);
-    this.hub.publishToConversation(conversationId, { type: "conversation.event", conversationId, event: stored });
+    this.hub.publishEvent(conversationId, stored);
   }
 
   private notifyTurnEnded(conversationId: string, outcome: TurnOutcome) {

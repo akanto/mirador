@@ -586,10 +586,41 @@ export class Store {
   }
 
   listEvents(conversationId: string): StoredEvent[] {
+    return this.listEventsFrom(conversationId, 0);
+  }
+
+  listEventsFrom(conversationId: string, fromSeq: number): StoredEvent[] {
+    return this.listEventsBetween(conversationId, fromSeq, Number.MAX_SAFE_INTEGER);
+  }
+
+  /** The events from `fromSeq` up to, not including, `beforeSeq`. */
+  listEventsBetween(conversationId: string, fromSeq: number, beforeSeq: number): StoredEvent[] {
     return this.db
-      .query("SELECT seq, at, event FROM events WHERE conversation_id = ? ORDER BY seq")
-      .all(conversationId)
+      .query("SELECT seq, at, event FROM events WHERE conversation_id = ? AND seq >= ? AND seq < ? ORDER BY seq")
+      .all(conversationId, fromSeq, beforeSeq)
       .map((row: any) => ({ seq: row.seq, at: row.at, event: JSON.parse(row.event) }));
+  }
+
+  findEvent(conversationId: string, seq: number): StoredEvent | null {
+    return this.listEventsBetween(conversationId, seq, seq + 1)[0] ?? null;
+  }
+
+  /**
+   * Where the last `turns` turns before `beforeSeq` start, each turn at the user's message. When no turn comes before
+   * them, they start with the conversation itself, so what precedes its first message comes along.
+   */
+  latestTurns(conversationId: string, turns: number) {
+    return this.turnsBefore(conversationId, Number.MAX_SAFE_INTEGER, turns);
+  }
+
+  turnsBefore(conversationId: string, beforeSeq: number, turns: number): { fromSeq: number; hasEarlier: boolean } {
+    const [firstTurn, earlierTurn] = this.db
+      .query(
+        `SELECT seq FROM events WHERE conversation_id = ? AND seq < ? AND json_extract(event, '$.type') = 'user-message'
+         ORDER BY seq DESC LIMIT 2 OFFSET ?`,
+      )
+      .all(conversationId, beforeSeq, turns - 1) as { seq: number }[];
+    return earlierTurn ? { fromSeq: firstTurn!.seq, hasEarlier: true } : { fromSeq: 0, hasEarlier: false };
   }
 
   /**
