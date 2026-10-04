@@ -43,7 +43,7 @@ test("the plan's five-hour and weekly usage show after the context meter once th
   test.setTimeout(240_000);
   const now = Math.floor(Date.now() / 1000);
   api.limited = false;
-  api.planUsage = { fiveHour: 0.37, fiveHourResetsAt: now + 2 * HOUR + 28 * MINUTE + 30, sevenDay: 0.88, sevenDayResetsAt: now + 2 * 24 * HOUR + 15 * HOUR + 30 };
+  api.planUsage = { fiveHour: 0.3, fiveHourResetsAt: now + 2 * HOUR + 28 * MINUTE + 30, sevenDay: 0.8, sevenDayResetsAt: now + 2 * 24 * HOUR + 15 * HOUR + 30 };
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, PROFILE, `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${claudeSettingsWithStatusline()}`);
@@ -56,6 +56,11 @@ test("the plan's five-hour and weekly usage show after the context meter once th
   await test.step("the statusline command gets them as Claude Code's rate_limits, and a line wider than the statusline wraps", async () => {
     await expect(printed).toContainText("5h=none 7d=none");
     await sendMessage(page, "hello");
+    await waitForTurnToEnd(page);
+    // Claude Code reports the usage only when it changed, and claude-agent-acp passes on none before a session's first
+    // answer, which the usage Claude Code learns on starting may come before.
+    api.planUsage = { ...api.planUsage!, fiveHour: 0.37, sevenDay: 0.88 };
+    await sendMessage(page, "again");
     await waitForTurnToEnd(page);
     await expect(printed).toContainText("5h=37 7d=88", { timeout: 30_000 });
     await expect(printed.getByText("past-the-edge")).toBeInViewport();
