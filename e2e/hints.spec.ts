@@ -19,15 +19,25 @@ test("clicking a hinted dropdown hides its hint, which stays away until the poin
   await picker.hover();
   await expect(hint).toBeVisible();
   await picker.click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1_000);
   await expect(hint).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1_000);
   await expect(hint).toHaveCount(0);
 
   await page.getByRole("button", { name: "+ New conversation" }).hover();
   await picker.hover();
   await expect(hint).toBeVisible();
+});
+
+test("a hint waits a moment, so the pointer passing over something does not flash its hint", async ({ page }) => {
+  await signIn(page, host);
+  const hint = page.getByRole("tooltip");
+
+  await page.getByRole("button", { name: "Add workspace" }).hover();
+  await page.waitForTimeout(400);
+  await expect(hint).toHaveCount(0);
+  await expect(hint).toContainText("Add a project directory.");
 });
 
 test("the hint of a button that has a shortcut shows its key", async ({ page }) => {

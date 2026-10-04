@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-const SHOW_DELAY_MS = 350;
+const SHOW_DELAY_MS = 700;
 const GAP = 6;
 const EDGE = 8;
 
