@@ -16,6 +16,7 @@ import {
   type StoredEvent,
   type UsageLimitWait,
 } from "../shared/model.ts";
+import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
 import { parseAnsi, plainTextOf } from "./ansi.ts";
 import { harnessSteers, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
@@ -42,6 +43,7 @@ import { noSuggestions } from "./SuggestionList.tsx";
 import { movedCaretToLineEdge } from "./line-edge-keys.ts";
 import { keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
+import { useShellOutputStyle } from "./shell-output.ts";
 import { Statusline } from "./Statusline.tsx";
 import type { OpenConversation } from "./state.ts";
 import {
@@ -331,22 +333,27 @@ function TerminalOutput({ output, finished, awaitingPermission }: { output: stri
 
 function ShellCard({ block }: { block: ToolBlock }) {
   const { command, description, output, exitCode, directory } = shellCommandOf(block);
+  const style = useShellOutputStyle();
   const status = block.status ?? "pending";
   const failed = status === "failed" || (exitCode !== null && exitCode !== 0);
   const finished = status === "completed" || status === "failed";
   const awaitingPermission = useContext(ToolCallsAwaitingPermission).has(block.toolCallId);
+  const commandLine = <CommandLine command={command} directory={directory} />;
   return (
-    <div className={`shell tool-${status}`}>
-      <div className="shell-header">
-        <span className="tool-status">{statusIcons[status]}</span>
-        <span className="shell-description">{description ?? "Shell command"}</span>
-        {failed && <span className="shell-exit">{exitCode !== null ? `exit ${exitCode}` : "failed"}</span>}
-      </div>
-      <div className="shell-body">
-        <CommandLine command={command} directory={directory} />
+    <details className={`shell tool-${status}`} open={outputStartsOpen(style, failed)}>
+      <summary>
+        <div className="shell-header">
+          <span className="tool-status">{statusIcons[status]}</span>
+          <span className="shell-description">{description ?? "Shell command"}</span>
+          {failed && <span className="shell-exit">{exitCode !== null ? `exit ${exitCode}` : "failed"}</span>}
+        </div>
+        {commandShownClosed(style) && <div className="shell-body">{commandLine}</div>}
+      </summary>
+      <div className={`shell-body ${commandShownClosed(style) ? "below-command" : ""}`}>
+        {!commandShownClosed(style) && commandLine}
         {(status !== "pending" || awaitingPermission) && <TerminalOutput output={output} finished={finished} awaitingPermission={awaitingPermission} />}
       </div>
-    </div>
+    </details>
   );
 }
 

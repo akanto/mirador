@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { canvasUseLabels, type CanvasUse, type PromptTemplate } from "../shared/model.ts";
-import { MachineColorPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
+import { shellOutputStyleLabels } from "../shared/shell-output.ts";
+import { MachineColorPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
@@ -10,6 +11,7 @@ import { hints } from "./hints.ts";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
+import { setShellOutputStyle, useShellOutputStyle } from "./shell-output.ts";
 import { isMac } from "./shortcuts.ts";
 import type { DevicesListed, SettingsPage } from "./state.ts";
 import { notifies, setNotificationsWanted, useNotificationSetting, type NotificationSetting } from "./system-notifications.ts";
@@ -236,6 +238,7 @@ function AppearanceSettings() {
   const [waitingStyle, setWaitingStyle] = useWaitingStyle();
   const workspaceColorStyle = useWorkspaceColorStyle();
   const machineColorStyle = useMachineColorStyle();
+  const shellOutputStyle = useShellOutputStyle();
   return (
     <>
       <h3>Appearance</h3>
@@ -264,6 +267,14 @@ function AppearanceSettings() {
         chosen={machineColorStyle}
         onChoose={setMachineColorStyle}
         preview={(option) => <MachineColorPreview style={option} />}
+      />
+      <PictureChoice
+        name="Shell commands"
+        hint={hints.shellOutputStyle}
+        labels={shellOutputStyleLabels}
+        chosen={shellOutputStyle}
+        onChoose={setShellOutputStyle}
+        preview={(option) => <ShellOutputPreview style={option} />}
       />
       <div className="appearance-settings">
         <label data-hint={hints.timestamps}>

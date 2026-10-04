@@ -72,6 +72,8 @@ export const hints = {
   continueSession:
     "Pick up a Claude Code or opencode session that was started in a terminal in this directory. Continue it in place, or fork its history into a new conversation and leave the original alone.",
   profiles: "Named setups for an agent: environment variables and a pre-launch command, applied to the agent process the profile starts.",
+  shellOutputStyle:
+    "How each shell command the agent runs shows in a conversation until you open or close it: its command with the output a click away, the output open only when the command failed, one line with the command too a click away, or everything open. Commands you run with ! always show their output.",
   timestamps: "Off: the time shows next to each author's name, and on a later line while you point at it.\nOn: every line shows its time.",
   theme: "Light, dark, or follow the system setting.",
   waitingStyle:

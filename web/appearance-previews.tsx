@@ -1,3 +1,4 @@
+import { commandShownClosed, outputStartsOpen, type ShellOutputStyle } from "../shared/shell-output.ts";
 import type { MachineColorStyle } from "./machine-colors.ts";
 import { pastelVariables } from "./pastels.ts";
 import type { Theme } from "./theme.ts";
@@ -100,6 +101,39 @@ export function MachineColorPreview({ style }: { style: MachineColorStyle }) {
         <Line width={90} />
         <Line width={70} />
       </span>
+    </span>
+  );
+}
+
+function ShellRow({ style, failed }: { style: ShellOutputStyle; failed: boolean }) {
+  return (
+    <span className="preview-shell">
+      <span className="preview-row">
+        <span className={`preview-dot ${failed ? "failed" : "done"}`} />
+        <Line width={55} strong />
+      </span>
+      {commandShownClosed(style) && (
+        <span className="preview-shell-body">
+          <Line width={60} />
+        </span>
+      )}
+      {outputStartsOpen(style, failed) && (
+        <span className="preview-shell-body output">
+          {!commandShownClosed(style) && <Line width={60} />}
+          <Line width={80} />
+          <Line width={45} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** A command that worked and one that failed, each shown as the style shows it before it is opened. */
+export function ShellOutputPreview({ style }: { style: ShellOutputStyle }) {
+  return (
+    <span className="preview-sidebar">
+      <ShellRow style={style} failed={false} />
+      <ShellRow style={style} failed />
     </span>
   );
 }

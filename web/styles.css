@@ -2815,6 +2815,24 @@ input.rename {
   border-bottom: 1px solid var(--border);
 }
 
+.shell > summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+}
+
+.shell > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shell:not([open]) > summary > .shell-header:last-child {
+  border-bottom: none;
+}
+
+.shell-body.below-command {
+  padding-top: 0;
+}
+
 .shell-description {
   flex: 1;
   min-width: 0;
@@ -3821,6 +3839,40 @@ button.picture-option.chosen {
   height: 5px;
   border: 1px solid var(--faint);
   border-radius: 50%;
+}
+
+.preview-shell {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rail-line);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--rail-card);
+}
+
+.preview-shell > .preview-row {
+  padding: 2px 5px;
+}
+
+.preview-shell-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 5px;
+  background: #16171c;
+}
+
+.preview-shell-body + .preview-shell-body {
+  padding-top: 0;
+}
+
+.preview-dot.done {
+  border-color: var(--ok);
+}
+
+.preview-dot.failed {
+  border-color: var(--danger);
+  background: var(--danger);
 }
 
 .preview-dot.waiting {
