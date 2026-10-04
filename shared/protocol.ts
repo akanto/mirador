@@ -176,7 +176,10 @@ export type ServerMessage =
       conversationId: string;
       events: StoredEvent[];
       canvas: CanvasItem[];
-      /** For a low-data subscriber that held events up to this one: these continue them rather than replace them. */
+      /**
+       * For a low-data subscriber that held events up to this one: these continue them rather than replace them, and the
+       * canvas items, only those changed since the newest change it held, update its own.
+       */
       continuesAfter?: number;
       /** For a low-data subscriber: the conversation has turns before these events. */
       hasEarlier?: boolean;

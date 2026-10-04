@@ -1,4 +1,5 @@
 import type { ContentBlock, ToolCallContent } from "@agentclientprotocol/sdk";
+import type { CanvasItem } from "./model.ts";
 
 /**
  * How a phone on mobile data follows a conversation: the latest turns first, after a reconnect only the events it
@@ -9,7 +10,16 @@ export interface LowDataSubscription {
   latestTurns: number;
   /** The last event the phone holds: only the events after it are sent. */
   afterSeq?: number;
+  /** With `afterSeq`, the newest change among the canvas items the phone holds: only items changed since are sent. */
+  canvasChangedAfter?: number;
 }
+
+/** The canvas items that changed at or after the given time; an item that changed twice within one millisecond comes again. */
+export const canvasChangedSince = (items: CanvasItem[], changedAfter: number) => items.filter(({ updatedAt }) => updatedAt !== undefined && updatedAt >= changedAfter);
+
+/** The newest change among the canvas items, if any carries one. */
+export const newestCanvasChange = (items: CanvasItem[]) =>
+  items.reduce<number | undefined>((newest, { updatedAt }) => (updatedAt !== undefined && (newest === undefined || updatedAt > newest) ? updatedAt : newest), undefined);
 
 const SHORTENED_KEY = "mirador/shortened";
 

@@ -21,7 +21,7 @@ import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
-import type { LowDataSubscription } from "../shared/low-data.ts";
+import { canvasChangedSince, type LowDataSubscription } from "../shared/low-data.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
 import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
@@ -400,11 +400,12 @@ export function startServer(services: HostServices) {
   }
 
   /** A phone that held events before gets only the ones after them; otherwise the latest turns, and earlier ones when it asks. */
-  function lowDataHistory(conversationId: string, { latestTurns, afterSeq }: LowDataSubscription): ServerMessage {
+  function lowDataHistory(conversationId: string, { latestTurns, afterSeq, canvasChangedAfter }: LowDataSubscription): ServerMessage {
     const inLowData = (events: StoredEvent[]) => events.map((event) => lowDataEvent(conversationId, event));
     const history = { type: "conversation.history", conversationId, canvas: canvas.list(conversationId) } as const;
     if (afterSeq !== undefined && afterSeq <= store.lastEventSeq(conversationId)) {
-      return { ...history, events: inLowData(store.listEventsFrom(conversationId, afterSeq + 1)), continuesAfter: afterSeq };
+      const changedCanvas = canvasChangedAfter === undefined ? history.canvas : canvasChangedSince(history.canvas, canvasChangedAfter);
+      return { ...history, canvas: changedCanvas, events: inLowData(store.listEventsFrom(conversationId, afterSeq + 1)), continuesAfter: afterSeq };
     }
     const { fromSeq, hasEarlier } = store.latestTurns(conversationId, latestTurns);
     return { ...history, events: inLowData(store.listEventsFrom(conversationId, fromSeq)), hasEarlier };

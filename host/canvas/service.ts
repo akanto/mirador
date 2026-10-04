@@ -262,13 +262,14 @@ export class CanvasService {
     this.save({ ...item, review: { ...item.review, ...change } });
   }
 
-  /** A host that stopped while posting a review left it marked as posting. */
+  /** A host that stopped while posting a review left it marked as posting; a client may still hold it so. */
   private withoutInterruptedPost(item: CanvasItem): CanvasItem {
     if (!item.review?.posting || this.reviewsBeingPosted.has(item.id)) return item;
-    return { ...item, review: { ...item.review, posting: false } };
+    return { ...item, review: { ...item.review, posting: false }, updatedAt: Date.now() };
   }
 
-  private save(item: CanvasItem): CanvasItem {
+  private save(change: CanvasItem): CanvasItem {
+    const item = { ...change, updatedAt: Date.now() };
     this.store.saveCanvasItem(item);
     this.hub.publishToConversation(item.conversationId, { type: "canvas.upserted", item });
     if (item.kind === "ask") this.conversations.questionsChanged(item.conversationId);

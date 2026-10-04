@@ -129,6 +129,18 @@ describe("CanvasService", () => {
     expect(stored()).toMatchObject({ body: "The user's second words.", agentBody: "The agent's words.", decision: "drop" });
   });
 
+  test("each change to an item stamps when it changed, and a review a stopped host left posting counts as changed when listed", () => {
+    const { store, canvas } = setUp();
+    const finding = { id: "finding-1", body: "The agent's words.", decision: "keep" } as ReviewFinding;
+    store.saveCanvasItem({ id: "r1", conversationId: "c1", kind: "review", title: "PR", review: { findings: [finding], posting: true } as Review, status: "shown", createdAt: 1 });
+    setSystemTime(new Date(5_000));
+    expect(canvas.list("c1")[0]).toMatchObject({ review: { posting: false }, updatedAt: 5_000 });
+    setSystemTime(new Date(6_000));
+    canvas.updateFinding("r1", "finding-1", { decision: "drop" });
+    expect(store.findCanvasItem("r1")!.updatedAt).toBe(6_000);
+    setSystemTime();
+  });
+
   test("an answer the user rewords or marks to resolve remembers it, unless GitHub would not let them resolve it", () => {
     const { store, canvas } = setUp();
     const answer = (id: string, canResolve: boolean) => ({ id, body: "The agent's words.", decision: "keep", resolve: false, canResolve }) as ReviewAnswer;

@@ -4,8 +4,8 @@ import { inflateRawSync } from "node:zlib";
 import type { SessionUpdate, ToolCallContent } from "@agentclientprotocol/sdk";
 import { Hub, socketData, webSocketCompression, type BrowserSocket } from "../host/hub.ts";
 import { imagesOf, lowDataEvent, wholeToolOutput } from "../host/low-data.ts";
-import { eventImagePath, shortenedOutputOf } from "../shared/low-data.ts";
-import type { StoredEvent } from "../shared/model.ts";
+import { canvasChangedSince, eventImagePath, newestCanvasChange, shortenedOutputOf } from "../shared/low-data.ts";
+import type { CanvasItem, StoredEvent } from "../shared/model.ts";
 import { buildTimeline, type ToolBlock } from "../shared/timeline.ts";
 import { shellCommandOf } from "../web/shell.ts";
 
@@ -79,6 +79,20 @@ describe("lowDataEvent", () => {
   test("events other than the agent's updates are left as they are", () => {
     const message: StoredEvent = { seq: 1, at: 1, event: { type: "user-message", text: "hi", imageIds: ["x.png"] } };
     expect(lowDataEvent("c1", message)).toBe(message);
+  });
+});
+
+describe("canvas changes", () => {
+  const item = (id: string, updatedAt?: number): CanvasItem => ({ id, conversationId: "c1", kind: "show", title: id, status: "shown", createdAt: 1, updatedAt });
+  const items = [item("before the change tracking"), item("seen", 10), item("same millisecond", 20), item("later", 30)];
+
+  test("a reconnecting phone gets the items changed since the newest change it holds, again those of that same millisecond", () => {
+    expect(canvasChangedSince(items, 20).map(({ id }) => id)).toEqual(["same millisecond", "later"]);
+  });
+
+  test("the newest change is the latest stamp among the items, and none when no item carries one", () => {
+    expect(newestCanvasChange(items)).toBe(30);
+    expect(newestCanvasChange([item("before the change tracking")])).toBeUndefined();
   });
 });
 

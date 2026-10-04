@@ -364,4 +364,6 @@ export interface CanvasItem {
   shownBefore?: string[];
   review?: Review;
   createdAt: number;
+  /** When the item last changed, so a client catching up after a reconnect gets only the items that changed since. */
+  updatedAt?: number;
 }
