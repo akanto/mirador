@@ -2829,7 +2829,13 @@ input.rename {
   border-bottom: none;
 }
 
+.shell[open] > summary > .shell-body {
+  padding-bottom: 0;
+}
+
+/* flow-root keeps the output's top margin inside the dark body instead of collapsing through it as a light gap. */
 .shell-body.below-command {
+  display: flow-root;
   padding-top: 0;
 }
 

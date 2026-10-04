@@ -53,6 +53,9 @@ test("a shell command the agent ran shows what ran with its output a click away,
     await expect(typeCheck.locator(".shell-output")).toBeHidden();
     await tests.locator("summary").click();
     await expect(tests.locator(".shell-output")).toHaveText("12 pass");
+    const command = (await tests.locator("summary").boundingBox())!;
+    const output = (await tests.locator(".shell-body.below-command").boundingBox())!;
+    expect(output.y).toBeCloseTo(command.y + command.height, 0);
   });
 
   await test.step("output open when it failed opens the failed command", async () => {
