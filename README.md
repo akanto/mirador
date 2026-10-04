@@ -11,7 +11,7 @@ bun start
 
 Open the `http://127.0.0.1:4600/auth?token=…` link the host prints (once per browser; it sets a cookie). Stop with Ctrl+C, which also stops the agent processes.
 
-Runs on macOS and Linux (x64 and arm64). [`desktop/`](desktop/README.md) wraps it in a menu bar / tray app with its own window on both. A release's `Mirador-macos-arm64.zip` is that app carrying Mirador, for a Mac without Bun or a checkout ([installing it](desktop/README.md#install)).
+Runs on macOS and Linux (x64 and arm64). [`desktop/`](desktop/README.md) wraps it in a menu bar / tray app with its own window on both. A release's `Mirador-macos-arm64.zip`, `Mirador-linux-x64-Setup.tar.gz` and `Mirador-linux-arm64-Setup.tar.gz` are that app carrying Mirador, for a computer without Bun or a checkout ([installing them](desktop/README.md#install)).
 
 - **Workspaces** are project directories (sidebar `+`; Tab completes paths), each a card in the sidebar with its conversations oldest first, so a new one appears at the bottom, next to *+ New*. The chip beside *+ New* chooses the agent (Claude Code, opencode, or a profile, which belongs to one of them); each workspace remembers it. Agents run in that directory with your normal settings: Claude Code with `~/.claude` (settings, hooks, MCP servers; claude-notifier is muted for app sessions), opencode with `~/.config/opencode` (providers, agents, plugins, MCP servers, **and its permission settings**: the app forces nothing, so with opencode's defaults most tools run without asking). Approvals the agent asks for appear in the browser.
 - **opencode** is found on `PATH`, else in `/opt/homebrew/bin`, `/usr/local/bin` or `~/.opencode/bin`. The chat header lists all its models and modes (build, plan, your agents).
@@ -50,6 +50,7 @@ On Linux, from any machine with Docker (`MIRADOR_LINUX_ARCH=x64` or `arm64`, def
 ```bash
 scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu 24.04; export ANTHROPIC_API_KEY for the tests that need a real Claude reply
 scripts/linux-desktop.sh   # builds the desktop app's installer, installs it and checks it starts, opens at login and stays single-instance
+MIRADOR_LINUX_RELEASE=1 scripts/linux-desktop.sh   # the same for the release installer, which carries Mirador
 ```
 
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and the canvas document builder), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).

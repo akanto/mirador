@@ -19,7 +19,7 @@ bun run build:release  # the same app carrying Mirador (about 135 MB), for peopl
 bun run dev            # run from source with Electrobun's dev runner
 ```
 
-`build:release` stages the committed host, web, shared, bin and `scripts/mirador-message` files with their production dependencies in `release/mirador` (`scripts/stage-mirador.sh`), and the app carries them in `Contents/Resources/app/mirador`. Such an app needs neither Bun nor a checkout: it runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, so build it on the platform it is for.
+`build:release` stages the committed host, web, shared, bin and `scripts/mirador-message` files with their production dependencies in `release/mirador` (`scripts/stage-mirador.sh`), and the app carries them in `Contents/Resources/app/mirador`. Such an app needs neither Bun nor a checkout: it runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, so build it on the platform it is for. On Linux it is carried in `Resources/app/mirador` of the installed app, and the payload is written as POSIX ustar (`TAR_OPTIONS=--format=ustar`): GNU tar's default writes `node_modules`' long paths as long-name entries, which Electrobun's Linux installer refuses with `TarUnsupportedFileType`.
 
 Icons: `assets/app-icon.svg` (app icon) and `assets/tray-icon.svg` (menu bar, drawn black and shown by macOS as a template image) are the sources. `scripts/render-icons.sh` renders `icon.iconset/` and `assets/tray-icon.png` from them; rerun it after editing either SVG. The page's favicon is `web/favicon.svg`.
 
@@ -34,6 +34,14 @@ unzip Mirador-macos-arm64.zip -d /Applications
 xattr -dr com.apple.quarantine /Applications/Mirador.app
 open /Applications/Mirador.app
 ```
+
+On Linux, a release's `Mirador-linux-x64-Setup.tar.gz` or `Mirador-linux-arm64-Setup.tar.gz` (`uname -m` says which: `x86_64` or `aarch64`) installs for your user, after the libraries listed under [Linux](#linux):
+
+```bash
+mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup && mirador-setup/installer
+```
+
+Then start *Mirador* from your applications menu.
 
 A build of your own:
 
@@ -117,7 +125,7 @@ Where it differs from macOS:
 - **Quit**: from the tray menu or *Desktop app…*; there is no keyboard shortcut.
 - **Notifications**: shown through `notify-send` (`libnotify-bin` on Debian and Ubuntu, `libnotify` on Fedora); without it there are none, and the app's output says `notify-send failed`.
 
-`scripts/linux-desktop.sh` (repository root, needs Docker) builds the installer in an Ubuntu 24.04 container, installs it there and checks the above on a virtual display; `MIRADOR_LINUX_ARCH=x64` or `arm64` picks the architecture. Its installer has the container's paths baked in, so it is a test artifact rather than one to hand out. Checked so far only under X11 (Xvfb with openbox); the tray icon and Wayland sessions are untested.
+`scripts/linux-desktop.sh` (repository root, needs Docker) builds the installer in an Ubuntu 24.04 container, installs it there and checks the above on a virtual display; `MIRADOR_LINUX_ARCH=x64` or `arm64` picks the architecture. Its installer has the container's paths baked in, so it is a test artifact rather than one to hand out. `MIRADOR_LINUX_RELEASE=1` builds the one to hand out instead (the release's `*-Setup.tar.gz`): from the committed files only, so run it from the main checkout or a clone, as the container clones it; it carries Mirador with Linux dependencies, and the checks also see its host run that copy. Docker Desktop on a Mac runs only arm64 here; build x64 on an x64 Linux machine (Podman works too). Checked so far only under X11 (Xvfb with openbox); the tray icon and Wayland sessions are untested.
 
 ## Tests
 

@@ -6,7 +6,7 @@
     "dev": "electrobun dev",
     "build:dev": "electrobun build --env=dev",
     "build": "electrobun build --env=stable",
-    "build:release": "scripts/stage-mirador.sh && MIRADOR_DESKTOP_RELEASE=1 electrobun build --env=stable",
+    "build:release": "scripts/stage-mirador.sh && MIRADOR_DESKTOP_RELEASE=1 TAR_OPTIONS=--format=ustar electrobun build --env=stable",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
