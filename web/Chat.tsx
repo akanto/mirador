@@ -864,19 +864,24 @@ function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {
   return "Claude's usage limit is reached";
 }
 
+const whoHears = (wait: JobWait) => (wait.resume ? "Then the agent gets: " : "Then you are told: ");
+
+/** A long message shows its first lines; its hint has all of it. */
 function JobWaits({ conversationId, waits }: { conversationId: string; waits: JobWait[] }) {
   return (
     <section className="job-waits" aria-label="Jobs waited for">
       <ul>
         {waits.map((wait) => (
           <li key={wait.id}>
-            <span className="job-wait-status" data-hint={hints.jobWait}>
-              Waiting for {describeJob(wait)} to end, since {formatClockTime(wait.since)}
-            </span>
-            <span className="job-wait-message" title={wait.message}>
-              {wait.resume ? "Then the agent gets: " : "Then you are told: "}
-              {wait.message}
-            </span>
+            <div className="job-wait-text">
+              <span className="job-wait-status" data-hint={hints.jobWait}>
+                Waiting for {describeJob(wait)} to end, since {formatClockTime(wait.since)}
+              </span>
+              <span className="job-wait-message" data-hint={`${whoHears(wait)}${wait.message}`}>
+                {whoHears(wait)}
+                {wait.message}
+              </span>
+            </div>
             <button
               type="button"
               className="link"

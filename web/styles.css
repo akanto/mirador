@@ -2768,6 +2768,7 @@ input.rename {
   font-size: 12.5px;
   line-height: 1.45;
   white-space: pre-line;
+  overflow-wrap: anywhere;
   pointer-events: none;
 }
 
@@ -3074,8 +3075,17 @@ button.shell-more:hover {
 .job-waits li {
   display: flex;
   align-items: center;
-  gap: 4px 10px;
+  gap: 10px;
   padding: 6px 10px;
+}
+
+.job-wait-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
 }
 
 .job-waits li + li {
@@ -3083,12 +3093,11 @@ button.shell-more:hover {
 }
 
 .job-wait-message {
-  flex: 1;
-  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   overflow: hidden;
   color: var(--muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .queue {
