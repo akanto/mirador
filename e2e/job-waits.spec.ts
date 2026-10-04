@@ -68,10 +68,7 @@ test("mirador when-done has the host wait for a job the agent left running, then
     await expect(waits.locator("li")).toHaveCount(1);
     await expect(waits).toContainText(`Waiting for process ${job.pid} to end`);
     await expect(waits).toContainText("Then the agent gets: build-finished check the output");
-    await waits.locator(".job-wait-message").hover();
-    await page.waitForTimeout(800);
-    await expect(page.locator(".hint-bubble"), "a message shown whole needs no hint").toHaveCount(0);
-    await page.mouse.move(0, 0);
+    await expect(waits.locator(".job-wait-message"), "a message shown whole opens no further").not.toHaveAttribute("role", "button");
 
     await test.step("when the job ends, the agent gets the message as your next one and carries on", async () => {
       job.kill();
@@ -94,7 +91,7 @@ test("mirador when-done has the host wait for a job the agent left running, then
     await expect(page.locator(".timeline .message.user")).toHaveCount(messagesBefore);
   });
 
-  await test.step("a long message wraps over a few lines instead of being cut off, and hovering it shows all of it", async () => {
+  await test.step("a long message shows its first lines, without a hint; a click shows all of it, and another its first lines again", async () => {
     const job = startJob();
     const longMessage = `dl-glm GLM-5.3-Flash UD-IQ4_XS download to /mnt/backup/${"a-long-folder-name/".repeat(12)}model.gguf finished, check its checksum and start llama-server with it on port 8080, then run the benchmark`;
     await whenDone(job, longMessage);
@@ -102,9 +99,24 @@ test("mirador when-done has the host wait for a job the agent left running, then
     const message = waits.locator(".job-wait-message");
     expect(await status.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     const heightOf = (element: Element) => element.getBoundingClientRect().height;
-    expect(await message.evaluate(heightOf)).toBeGreaterThan(2.5 * (await status.evaluate(heightOf)));
+    const clampedHeight = await message.evaluate(heightOf);
+    expect(clampedHeight).toBeGreaterThan(2.5 * (await status.evaluate(heightOf)));
+    const showsAllOfIt = () => message.evaluate((element) => element.scrollHeight <= element.clientHeight);
+    expect(await showsAllOfIt()).toBe(false);
     await message.hover();
-    await expect(page.locator(".hint-bubble")).toContainText(`Then the agent gets: ${longMessage}`);
+    await expect(message).toHaveCSS("cursor", "pointer");
+    await page.waitForTimeout(1_000);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+    await message.click();
+    await expect(message).toHaveAttribute("aria-expanded", "true");
+    expect(await showsAllOfIt()).toBe(true);
+    expect(await message.evaluate(heightOf)).toBeGreaterThan(clampedHeight);
+    await expect(message).toContainText(`Then the agent gets: ${longMessage}`);
+
+    await message.click();
+    await expect(message).toHaveAttribute("aria-expanded", "false");
+    expect(await message.evaluate(heightOf)).toBe(clampedHeight);
     await waits.getByRole("button", { name: "Stop waiting" }).click();
     await expect(waits).toHaveCount(0);
     job.kill();

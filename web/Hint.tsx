@@ -12,10 +12,6 @@ interface Hint {
 
 const hintedElementAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>("[data-hint], [data-shortcut]") : null);
 
-/** One with `data-hint-when-cut-off`, such as text clamped to a few lines, has its hint only while its text doesn't all fit. */
-const showsAllItsText = (element: HTMLElement) => element.scrollHeight <= element.clientHeight && element.scrollWidth <= element.clientWidth;
-const needsNoHint = (element: HTMLElement) => element.dataset.hintWhenCutOff !== undefined && showsAllItsText(element);
-
 /**
  * Shows the `data-hint` text of whatever is pointed at or focused with the keyboard, one hint at a time, with the
  * key that does the same (`data-shortcut`) when there is one.
@@ -42,7 +38,7 @@ export function HintLayer() {
       timer = setTimeout(() => {
         const text = element.dataset.hint ?? "";
         const shortcut = element.dataset.shortcut ?? null;
-        if ((!text && !shortcut) || !element.isConnected || needsNoHint(element)) return;
+        if ((!text && !shortcut) || !element.isConnected) return;
         visible = true;
         setHint({ text, shortcut, anchor: element.getBoundingClientRect() });
       }, delay);

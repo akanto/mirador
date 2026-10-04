@@ -875,7 +875,48 @@ function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {
 
 const whoHears = (wait: JobWait) => (wait.resume ? "Then the agent gets: " : "Then you are told: ");
 
-/** A long message shows its first lines; then its hint has all of it. */
+/** A long message shows its first lines; a click shows all of it, and another its first lines again. */
+function JobWaitMessage({ text }: { text: string }) {
+  const element = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const cutOff = useCutOff(element);
+  const toggle = () => setOpen((wasOpen) => !wasOpen);
+  const opensOnClick = open || cutOff;
+  return (
+    <div
+      ref={element}
+      className={`job-wait-message ${open ? "open" : ""}`}
+      {...(opensOnClick && {
+        role: "button",
+        tabIndex: 0,
+        "aria-expanded": open,
+        onClick: toggle,
+        onKeyDown: (event: KeyboardEvent) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          toggle();
+        },
+      })}
+    >
+      {text}
+    </div>
+  );
+}
+
+/** Whether the element's text runs past the lines it is clamped to. */
+function useCutOff(element: RefObject<HTMLElement | null>) {
+  const [cutOff, setCutOff] = useState(false);
+  useLayoutEffect(() => {
+    const target = element.current!;
+    const measure = () => setCutOff(target.scrollHeight > target.clientHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [element]);
+  return cutOff;
+}
+
 function JobWaits({ conversationId, waits }: { conversationId: string; waits: JobWait[] }) {
   return (
     <section className="job-waits" aria-label="Jobs waited for">
@@ -895,10 +936,7 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
                 </button>{" "}
                 to end, since {formatClockTime(wait.since)}
               </span>
-              <span className="job-wait-message" data-hint={`${whoHears(wait)}${wait.message}`} data-hint-when-cut-off="">
-                {whoHears(wait)}
-                {wait.message}
-              </span>
+              <JobWaitMessage text={`${whoHears(wait)}${wait.message}`} />
             </div>
             <button
               type="button"

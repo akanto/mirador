@@ -3136,6 +3136,18 @@ button.shell-more:hover {
   color: var(--muted);
 }
 
+.job-wait-message[role="button"] {
+  cursor: pointer;
+}
+
+.job-wait-message[role="button"]:hover {
+  color: var(--text);
+}
+
+.job-wait-message.open {
+  -webkit-line-clamp: none;
+}
+
 .queue {
   margin-bottom: 6px;
   border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
