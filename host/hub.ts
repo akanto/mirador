@@ -1,5 +1,7 @@
 import type { ServerWebSocket } from "bun";
+import { deflateRawSync } from "node:zlib";
 import type { ClientAddress, DeviceConnection, StoredEvent } from "../shared/model.ts";
+import { DEFLATED_MESSAGE_MIN_LENGTH } from "../shared/low-data.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 import { lowDataEvent } from "./low-data.ts";
@@ -17,6 +19,8 @@ export interface SocketData {
   subscriptions: Set<string>;
   /** The subscribed conversations the socket follows in their low-data form, as a phone does. */
   lowDataSubscriptions: Set<string>;
+  /** The socket's client reads long messages deflated, in binary frames. */
+  readsDeflatedMessages: boolean;
   terminalWorkspaceId: string | null;
   presence: Presence;
   /** Where the page loads canvas libraries from, fitting the address it reached the host at. */
@@ -26,11 +30,12 @@ export interface SocketData {
 
 const thisMachine: ClientAddress = { fromAddress: "127.0.0.1", tailscaleUser: null };
 
-export const socketData = (role: SocketData["role"], deviceId: string | null = null, canvasAssetsOrigin = "", from = thisMachine): SocketData => ({
+export const socketData = (role: SocketData["role"], deviceId: string | null = null, canvasAssetsOrigin = "", from = thisMachine, readsDeflatedMessages = false): SocketData => ({
   role,
   deviceId,
   canvasAssetsOrigin,
   from,
+  readsDeflatedMessages,
   subscriptions: new Set<string>(),
   lowDataSubscriptions: new Set<string>(),
   terminalWorkspaceId: null,
@@ -43,7 +48,10 @@ export type BrowserSocket = ServerWebSocket<SocketData>;
 export const webSocketCompression = { compress: "dedicated", decompress: true } as const;
 
 /** Other devices reach the host over a network, often a phone's mobile data; this machine's own pages don't, and skip the work. */
-const deliver = (socket: BrowserSocket, payload: string) => socket.send(payload, socket.data.deviceId !== null);
+function deliver(socket: BrowserSocket, payload: string) {
+  if (socket.data.readsDeflatedMessages && payload.length > DEFLATED_MESSAGE_MIN_LENGTH) socket.sendBinary(deflateRawSync(payload), false);
+  else socket.send(payload, socket.data.deviceId !== null);
+}
 
 const once = (make: () => string) => {
   let made: string | undefined;

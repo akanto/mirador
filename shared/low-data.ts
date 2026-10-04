@@ -21,6 +21,12 @@ export const canvasChangedSince = (items: CanvasItem[], changedAfter: number) =>
 export const newestCanvasChange = (items: CanvasItem[]) =>
   items.reduce<number | undefined>((newest, { updatedAt }) => (updatedAt !== undefined && (newest === undefined || updatedAt > newest) ? updatedAt : newest), undefined);
 
+/** A phone opens its socket with this header to say it reads long messages sent deflated, in binary frames. */
+export const DEFLATED_MESSAGES_HEADER = "mirador-deflated-messages";
+
+/** Longer messages go to such a phone deflated: the permessage-deflate OkHttp can read from Bun compresses them a quarter as well. */
+export const DEFLATED_MESSAGE_MIN_LENGTH = 16_384;
+
 const SHORTENED_KEY = "mirador/shortened";
 
 /** Marks tool output that the low-data form shortened, naming the stored event whose content `tool-output.get` sends whole. */

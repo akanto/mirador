@@ -21,7 +21,7 @@ import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
-import { canvasChangedSince, type LowDataSubscription } from "../shared/low-data.ts";
+import { canvasChangedSince, DEFLATED_MESSAGES_HEADER, type LowDataSubscription } from "../shared/low-data.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
 import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
@@ -417,7 +417,8 @@ export function startServer(services: HostServices) {
     const signedIn = signedInAs(request);
     if (!signedIn) return new Response("unauthorized", { status: 401 });
     if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
-    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server)) });
+    const readsDeflatedMessages = request.headers.has(DEFLATED_MESSAGES_HEADER);
+    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages) });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 

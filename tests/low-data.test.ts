@@ -6,6 +6,7 @@ import { Hub, socketData, webSocketCompression, type BrowserSocket } from "../ho
 import { imagesOf, lowDataEvent, wholeToolOutput } from "../host/low-data.ts";
 import { canvasChangedSince, eventImagePath, newestCanvasChange, shortenedOutputOf } from "../shared/low-data.ts";
 import type { CanvasItem, StoredEvent } from "../shared/model.ts";
+import type { ServerMessage } from "../shared/protocol.ts";
 import { buildTimeline, type ToolBlock } from "../shared/timeline.ts";
 import { shellCommandOf } from "../web/shell.ts";
 
@@ -116,6 +117,37 @@ describe("Hub.publishEvent", () => {
     expect(JSON.parse(page[0]!.payload).event).toEqual(event);
     expect(phone.map(({ compressed }) => compressed)).toEqual([true]);
     expect(JSON.parse(phone[0]!.payload).event).toEqual(lowDataEvent("c1", event));
+  });
+});
+
+describe("deflated messages", () => {
+  function connect(readsDeflatedMessages: boolean) {
+    const sent: { text: string; binary: boolean; compressed: boolean }[] = [];
+    const socket = {
+      data: socketData("page", "phone", "", undefined, readsDeflatedMessages),
+      send: (text: string, compressed: boolean) => sent.push({ text, binary: false, compressed }),
+      sendBinary: (data: Buffer, compressed: boolean) => sent.push({ text: inflateRawSync(data).toString(), binary: true, compressed }),
+    } as unknown as BrowserSocket;
+    return { socket, sent };
+  }
+  const longHistory: ServerMessage = { type: "conversation.history", conversationId: "c1", events: [stored(1, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "é".repeat(20_000) } })], canvas: [] };
+  const short: ServerMessage = { type: "conversation.deleted", conversationId: "c1" };
+
+  test("a phone that reads them gets long messages deflated in binary frames, left alone by the socket's own compression, and short ones as text", () => {
+    const { socket, sent } = connect(true);
+    new Hub().send(socket, longHistory);
+    new Hub().send(socket, short);
+    expect(sent.map(({ binary, compressed }) => ({ binary, compressed }))).toEqual([
+      { binary: true, compressed: false },
+      { binary: false, compressed: true },
+    ]);
+    expect(sent.map(({ text }) => JSON.parse(text))).toEqual([longHistory, short]);
+  });
+
+  test("a client that didn't say it reads them gets long messages as text", () => {
+    const { socket, sent } = connect(false);
+    new Hub().send(socket, longHistory);
+    expect(sent.map(({ binary }) => binary)).toEqual([false]);
   });
 });
 
