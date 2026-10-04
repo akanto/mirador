@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const DISARM_AFTER_MS = 4_000;
 
@@ -13,6 +13,7 @@ export function ConfirmButton({
   armedText,
   armedHint,
   onConfirm,
+  armRequest,
   children,
 }: {
   className: string;
@@ -21,9 +22,18 @@ export function ConfirmButton({
   armedText: string;
   armedHint: string;
   onConfirm: () => void;
+  /** Each new request arms it and gives it the focus, so Enter confirms, e.g. after ⌘W met a terminal running a command. */
+  armRequest?: object | null;
   children: ReactNode;
 }) {
   const [armed, setArmed] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!armRequest) return;
+    setArmed(true);
+    button.current?.focus();
+  }, [armRequest]);
 
   useEffect(() => {
     if (!armed) return;
@@ -33,6 +43,7 @@ export function ConfirmButton({
 
   return (
     <button
+      ref={button}
       type="button"
       className={armed ? `${className} armed` : className}
       aria-label={armed ? `Confirm: ${label}` : label}

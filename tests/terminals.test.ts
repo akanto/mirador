@@ -38,6 +38,9 @@ async function eventually<T>(read: () => T, isDone: (value: T) => boolean, timeo
 const outputContaining = (received: ServerMessage[], text: string) =>
   eventually(() => outputOf(received), (output) => output.includes(text));
 
+const beside = (terminalId: string) => ({ terminalId, axis: "columns" as const });
+const below = (terminalId: string) => ({ terminalId, axis: "rows" as const });
+
 const tabsOnceSettled = (received: ServerMessage[], isSettled: (tabs: TerminalTab[]) => boolean) =>
   eventually(() => lastTabs(received) ?? [], isSettled);
 
@@ -81,7 +84,7 @@ test("a browser that attaches later gets the tabs and can replay what each termi
   const reloaded = fakeBrowser();
   terminals.attach(reloaded.socket, "w1");
   terminals.replay(reloaded.socket, terminalId);
-  expect(lastTabs(reloaded.received)).toEqual([{ id: tabId, name: "sh", terminals: [{ id: terminalId, title: null }] }]);
+  expect(lastTabs(reloaded.received)).toEqual([{ id: tabId, name: "sh", terminals: [{ id: terminalId, title: null }], layout: { terminalId } }]);
   const replayed = reloaded.received.find((message) => message.type === "terminal.replayed");
   expect(replayed).toMatchObject({ terminalId, data: expect.stringContaining("before-reload\r\n") });
 });
@@ -106,18 +109,18 @@ test("new tabs are named after the shell with the lowest free number, and a tab 
   terminals.attach(browser.socket, "w1");
   const first = terminals.open("w1", 80, 24);
   const second = terminals.open("w1", 80, 24);
-  const splits = Array.from({ length: MAX_TERMINALS_PER_TAB - 1 }, () => terminals.open("w1", 80, 24, first.tabId));
+  const splits = Array.from({ length: MAX_TERMINALS_PER_TAB - 1 }, () => terminals.open("w1", 80, 24, beside(first.terminalId)));
 
   expect(splits.every(({ tabId }) => tabId === first.tabId)).toBe(true);
   expect(lastTabs(browser.received)?.map(({ name, terminals }) => [name, terminals.length])).toEqual([
     ["sh", MAX_TERMINALS_PER_TAB],
     ["sh 2", 1],
   ]);
-  expect(() => terminals.open("w1", 80, 24, first.tabId)).toThrow(`A tab holds at most ${MAX_TERMINALS_PER_TAB} terminals.`);
+  expect(() => terminals.open("w1", 80, 24, beside(first.terminalId))).toThrow(`A tab holds at most ${MAX_TERMINALS_PER_TAB} terminals.`);
 
   terminals.closeTab(second.tabId);
   expect((await tabsOnceSettled(browser.received, (tabs) => tabs.length === 1)).map(({ name }) => name)).toEqual(["sh"]);
-  expect(() => terminals.open("w1", 80, 24, second.tabId)).toThrow("That terminal tab is closed.");
+  expect(() => terminals.open("w1", 80, 24, beside(second.terminalId))).toThrow("That terminal is closed.");
   terminals.open("w1", 80, 24);
   expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual(["sh", "sh 2"]);
 });
@@ -126,7 +129,7 @@ test("a terminal that exits leaves its tab, and the tab goes with its last termi
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "w1");
   const kept = terminals.open("w1", 80, 24);
-  const exiting = terminals.open("w1", 80, 24, kept.tabId);
+  const exiting = terminals.open("w1", 80, 24, beside(kept.terminalId));
   terminals.input(exiting.terminalId, "exit 3\n");
   const exited = await eventually(() => browser.received.find((message) => message.type === "terminal.exited"), (message) => message !== undefined);
   expect(exited).toEqual({ type: "terminal.exited", terminalId: exiting.terminalId, exitCode: 3 });
@@ -140,13 +143,47 @@ test("each terminal in a tab carries the title its shell sets", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "w1");
   const { tabId, terminalId } = terminals.open("w1", 80, 24);
-  const split = terminals.open("w1", 80, 24, tabId);
+  const split = terminals.open("w1", 80, 24, beside(terminalId));
   terminals.input(split.terminalId, "printf '\\033]0;my-title\\007'\n");
   const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[1]?.title === "my-title");
   expect(tab?.terminals).toEqual([
     { id: terminalId, title: null },
     { id: split.terminalId, title: "my-title" },
   ]);
+});
+
+test("a terminal splits beside or below itself, and the others close up when one exits", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const left = terminals.open("w1", 80, 24);
+  const right = terminals.open("w1", 80, 24, beside(left.terminalId));
+  const belowRight = terminals.open("w1", 80, 24, below(right.terminalId));
+  const [tab] = lastTabs(browser.received)!;
+  expect(tab?.layout).toEqual({
+    axis: "columns",
+    children: [{ terminalId: left.terminalId }, { axis: "rows", children: [{ terminalId: right.terminalId }, { terminalId: belowRight.terminalId }] }],
+  });
+  expect(tab?.terminals.map(({ id }) => id)).toEqual([left.terminalId, right.terminalId, belowRight.terminalId]);
+
+  terminals.close(right.terminalId);
+  const [closedUp] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals.length === 2);
+  expect(closedUp?.layout).toEqual({ axis: "columns", children: [{ terminalId: left.terminalId }, { terminalId: belowRight.terminalId }] });
+});
+
+test("closing unless busy closes a terminal at its prompt, and keeps one running a command, naming it", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const idle = terminals.open("w1", 80, 24);
+  const working = terminals.open("w1", 80, 24, beside(idle.terminalId));
+  terminals.input(working.terminalId, "echo started; sleep 30\n");
+  await outputContaining(browser.received, "started\r\n");
+  await Bun.sleep(200);
+
+  await terminals.closeUnlessBusy(browser.socket, working.terminalId);
+  expect(browser.received.findLast((message) => message.type === "terminal.busy")).toEqual({ type: "terminal.busy", terminalId: working.terminalId, command: "sleep" });
+  await terminals.closeUnlessBusy(browser.socket, idle.terminalId);
+  const [left] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals.length === 1);
+  expect(left?.terminals.map(({ id }) => id)).toEqual([working.terminalId]);
 });
 
 test("opening a terminal in a workspace that no longer exists fails", () => {

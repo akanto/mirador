@@ -6,6 +6,7 @@ import type {
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
 import type { Review } from "./review.ts";
+import type { TerminalLayout } from "./terminal-layout.ts";
 
 export type HarnessId = "claude" | "opencode";
 
@@ -272,7 +273,9 @@ export interface TabTerminal {
 export interface TerminalTab {
   id: string;
   name: string;
+  /** In reading order. */
   terminals: TabTerminal[];
+  layout: TerminalLayout;
 }
 
 export type ConversationEvent =

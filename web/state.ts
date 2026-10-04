@@ -197,6 +197,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "terminal.output":
     case "terminal.exited":
     case "terminal.cleared":
+    case "terminal.busy":
     case "system-notification":
     case "devices.listed":
     case "devices.invited":

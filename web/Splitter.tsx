@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
+import type { SplitAxis } from "../shared/terminal-layout.ts";
 import { hints } from "./hints.ts";
 
 const MIN_PANEL_WIDTH = 240;
 const KEYBOARD_STEP = 0.03;
 
-export type SplitAxis = "columns" | "rows";
+export type { SplitAxis };
 
 /** Where the two panes start and how much room they take together with the divider, along the axis. */
 export interface SplitArea {

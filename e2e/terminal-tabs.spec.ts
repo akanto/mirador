@@ -53,7 +53,7 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(screenOf(page, 0)).toContainText("second-4");
   await expect(screenOf(page, 0)).not.toContainText("first-2");
 
-  await page.getByRole("button", { name: "Split terminal" }).click();
+  await page.getByRole("button", { name: "Split right" }).click();
   await expect(views(page)).toHaveCount(2);
   await expect(typingInto(page, 1)).toBeFocused();
   await page.keyboard.type("echo right-$((3+3))\n");
@@ -62,7 +62,7 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
 
   const leftWidth = () => page.locator(".terminal-split").first().evaluate((element) => element.getBoundingClientRect().width);
   const evenWidth = await leftWidth();
-  await dragBy(page, ".terminal-splits > .splitter", -80);
+  await dragBy(page, ".terminal-group > .splitter", -80);
   expect(await leftWidth()).toBeLessThan(evenWidth - 60);
 
   await typeInto(page, 0, "printf '\\033]0;my-title\\007'");
@@ -87,7 +87,7 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(tabs(page)).toHaveText(["sh"]);
   await expect(tabs(other)).toHaveText(["sh"]);
 
-  const split = page.getByRole("button", { name: "Split terminal" });
+  const split = page.getByRole("button", { name: "Split right" });
   for (const count of [2, 3, 4]) {
     await split.click();
     await expect(views(page)).toHaveCount(count);

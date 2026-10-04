@@ -1,7 +1,8 @@
 import type { Subprocess } from "bun";
 import { basename } from "node:path";
 import { MAX_TERMINALS_PER_TAB, type TerminalTab } from "../shared/model.ts";
-import type { ServerMessage } from "../shared/protocol.ts";
+import type { ServerMessage, TerminalSplit } from "../shared/protocol.ts";
+import { splitTerminal, terminalsIn, withoutTerminal, type TerminalLayout } from "../shared/terminal-layout.ts";
 import { agentEnvironment, loginShell } from "./acp/environment.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 
@@ -31,15 +32,31 @@ interface Tab {
   id: string;
   workspaceId: string;
   name: string;
-  terminalIds: string[];
+  /** Null only until its first terminal starts. */
+  layout: TerminalLayout | null;
 }
+
+const terminalIdsOf = (tab: Tab) => (tab.layout ? terminalsIn(tab.layout) : []);
 
 const dimension = (value: number) => Math.min(Math.max(1, Math.floor(value) || 1), MAX_DIMENSION);
 
 const lastTitleIn = (text: string) => [...text.matchAll(titleSequence)].at(-1)?.[1];
 
 /**
- * Login shells on pseudo-terminals, started in a workspace's folder and grouped into tabs of side-by-side splits.
+ * What runs in the foreground of the shell's terminal, or null while the shell itself waits at its prompt: the
+ * terminal's foreground process group is then the shell's own.
+ */
+async function foregroundCommand(shellPid: number): Promise<string | null> {
+  const groups = Bun.spawn(["ps", "-o", "tpgid=,pgid=", "-p", String(shellPid)], { stdout: "pipe", stderr: "ignore" });
+  const [foregroundGroup, shellGroup] = (await new Response(groups.stdout).text()).trim().split(/\s+/);
+  if (!foregroundGroup || foregroundGroup === shellGroup || Number(foregroundGroup) <= 0) return null;
+  const command = Bun.spawn(["ps", "-o", "comm=", "-p", foregroundGroup], { stdout: "pipe", stderr: "ignore" });
+  return basename((await new Response(command.stdout).text()).trim()) || "a command";
+}
+
+/**
+ * Login shells on pseudo-terminals, started in a workspace's folder and grouped into tabs of splits, side by side and
+ * one above the other.
  * They live in the host, so every window shows the same tabs and reloading the page reattaches to them (the recent
  * output is replayed); they end when the host stops. Their output is only ever sent to browsers, never logged or stored.
  */
@@ -62,14 +79,13 @@ export class TerminalService {
     if (shell) this.hub.send(socket, { type: "terminal.replayed", terminalId, data: shell.scrollback.join("") });
   }
 
-  /** Starts a shell in a new tab, or as another split of `tabId`. */
-  open(workspaceId: string, columns: number, rows: number, tabId: string | null = null) {
+  /** Starts a shell in a new tab, or beside or below the terminal `split` names. */
+  open(workspaceId: string, columns: number, rows: number, split: TerminalSplit | null = null) {
     const cwd = this.workspacePath(workspaceId);
     if (!cwd) throw new Error("This workspace no longer exists.");
-    const existingTab = tabId === null ? null : this.splittableTab(tabId);
-    const tab = existingTab ?? this.newTab(workspaceId);
+    const tab = split ? this.splittableTabOf(split.terminalId) : this.newTab(workspaceId);
     const shell = this.spawn(workspaceId, tab.id, cwd, columns, rows);
-    tab.terminalIds.push(shell.id);
+    tab.layout = split && tab.layout ? splitTerminal(tab.layout, split.terminalId, shell.id, split.axis) : { terminalId: shell.id };
     this.tabs.set(tab.id, tab);
     this.publishListing(workspaceId);
     return { tabId: tab.id, terminalId: shell.id };
@@ -81,7 +97,7 @@ export class TerminalService {
     if (!cwd) throw new Error("This workspace no longer exists.");
     const tab = this.newTab(workspaceId, program.tabName);
     const shell = this.spawn(workspaceId, tab.id, cwd, columns, rows, program);
-    tab.terminalIds.push(shell.id);
+    tab.layout = { terminalId: shell.id };
     this.tabs.set(tab.id, tab);
     this.publishListing(workspaceId);
     return { tabId: tab.id, terminalId: shell.id, exited: shell.child.exited };
@@ -109,8 +125,18 @@ export class TerminalService {
     this.shells.get(terminalId)?.child.kill("SIGHUP");
   }
 
+  /** Like iTerm2's ⌘W: a terminal at its shell's prompt closes, one running a command stays and the command is named. */
+  async closeUnlessBusy(socket: BrowserSocket, terminalId: string) {
+    const shell = this.shells.get(terminalId);
+    if (!shell) return;
+    const command = await foregroundCommand(shell.child.pid);
+    if (command === null) this.close(terminalId);
+    else this.hub.send(socket, { type: "terminal.busy", terminalId, command });
+  }
+
   closeTab(tabId: string) {
-    this.tabs.get(tabId)?.terminalIds.forEach((terminalId) => this.close(terminalId));
+    const tab = this.tabs.get(tabId);
+    if (tab) terminalIdsOf(tab).forEach((terminalId) => this.close(terminalId));
   }
 
   closeWorkspace(workspaceId: string) {
@@ -121,10 +147,10 @@ export class TerminalService {
     this.shells.forEach(({ id }) => this.close(id));
   }
 
-  private splittableTab(tabId: string) {
-    const tab = this.tabs.get(tabId);
-    if (!tab) throw new Error("That terminal tab is closed.");
-    if (tab.terminalIds.length >= MAX_TERMINALS_PER_TAB) throw new Error(`A tab holds at most ${MAX_TERMINALS_PER_TAB} terminals.`);
+  private splittableTabOf(terminalId: string) {
+    const tab = this.tabs.get(this.shells.get(terminalId)?.tabId ?? "");
+    if (!tab) throw new Error("That terminal is closed.");
+    if (terminalIdsOf(tab).length >= MAX_TERMINALS_PER_TAB) throw new Error(`A tab holds at most ${MAX_TERMINALS_PER_TAB} terminals.`);
     return tab;
   }
 
@@ -134,7 +160,7 @@ export class TerminalService {
     const numbered = (number: number) => (number === 1 ? baseName : `${baseName} ${number}`);
     let number = 1;
     while (taken.has(numbered(number))) number++;
-    return { id: crypto.randomUUID(), workspaceId, name: numbered(number), terminalIds: [] };
+    return { id: crypto.randomUUID(), workspaceId, name: numbered(number), layout: null };
   }
 
   private spawn(workspaceId: string, tabId: string, cwd: string, columns: number, rows: number, program?: TerminalProgram) {
@@ -181,9 +207,9 @@ export class TerminalService {
 
   private removeFromTab(shell: Shell) {
     const tab = this.tabs.get(shell.tabId);
-    if (!tab) return;
-    tab.terminalIds = tab.terminalIds.filter((terminalId) => terminalId !== shell.id);
-    if (tab.terminalIds.length === 0) this.tabs.delete(tab.id);
+    if (!tab?.layout) return;
+    tab.layout = withoutTerminal(tab.layout, shell.id);
+    if (tab.layout === null) this.tabs.delete(tab.id);
   }
 
   private shellsIn(workspaceId: string) {
@@ -195,11 +221,11 @@ export class TerminalService {
   }
 
   private listing(workspaceId: string): ServerMessage {
-    const tabs: TerminalTab[] = this.tabsIn(workspaceId).map(({ id, name, terminalIds }) => ({
-      id,
-      name,
-      terminals: terminalIds.map((terminalId) => ({ id: terminalId, title: this.shells.get(terminalId)?.title ?? null })),
-    }));
+    const tabs: TerminalTab[] = this.tabsIn(workspaceId).flatMap((tab) =>
+      tab.layout
+        ? [{ id: tab.id, name: tab.name, layout: tab.layout, terminals: terminalIdsOf(tab).map((terminalId) => ({ id: terminalId, title: this.shells.get(terminalId)?.title ?? null })) }]
+        : [],
+    );
     return { type: "terminals.listed", workspaceId, tabs };
   }
 

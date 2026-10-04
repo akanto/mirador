@@ -24,7 +24,13 @@ import type {
 import type { FindingDecision } from "./review.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { SlashCommand } from "./slash-commands.ts";
+import type { SplitAxis } from "./terminal-layout.ts";
 import type { SystemNotification } from "./system-notifications.ts";
+
+export interface TerminalSplit {
+  terminalId: string;
+  axis: SplitAxis;
+}
 
 /** The cookie a signed-in page carries; the desktop app sends it too when it listens for system notifications. */
 export const TOKEN_COOKIE = "mirador_token";
@@ -94,13 +100,15 @@ export type ClientMessage =
   | { type: "fs.complete"; requestId: string; prefix: string }
   | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
   | { type: "terminals.attach"; workspaceId: string | null }
-  | { type: "terminal.open"; requestId: string; workspaceId: string; tabId: string | null; columns: number; rows: number }
+  /** Opens a terminal in a new tab, or beside or below the one `split` names, in its tab. */
+  | { type: "terminal.open"; requestId: string; workspaceId: string; split: TerminalSplit | null; columns: number; rows: number }
   | { type: "terminal.replay"; terminalId: string }
   /** Signs the conversation's agent in again, in a new terminal tab of its workspace. */
   | { type: "terminal.open-login"; requestId: string; conversationId: string; columns: number; rows: number }
   | { type: "terminal.input"; terminalId: string; data: string }
   | { type: "terminal.resize"; terminalId: string; columns: number; rows: number }
-  | { type: "terminal.close"; terminalId: string }
+  /** With `unlessBusy`, a terminal running a command stays open, and the host answers terminal.busy. */
+  | { type: "terminal.close"; terminalId: string; unlessBusy?: boolean }
   | { type: "terminal.close-tab"; tabId: string }
   | { type: "terminal.clear"; terminalId: string }
   /** What this page shows, and whether you are looking at it: the host notifies only about conversations nobody is looking at. */
@@ -169,6 +177,8 @@ export type ServerMessage =
   | { type: "terminal.replayed"; terminalId: string; data: string }
   | { type: "terminal.output"; terminalId: string; data: string }
   | { type: "terminal.exited"; terminalId: string; exitCode: number }
+  /** The terminal was left open: `command` runs in it. */
+  | { type: "terminal.busy"; terminalId: string; command: string }
   | { type: "terminal.cleared"; terminalId: string }
   | { type: "system-notification"; notification: SystemNotification }
   | { type: "host.code-changed" }

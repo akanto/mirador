@@ -90,6 +90,17 @@ export function shortcutKeys(mac = isMac) {
   };
 }
 
+/** The keys cmux and iTerm2 share, which a focused terminal takes on macOS; Linux terminals have no such convention. */
+export const terminalShortcutKeys = (mac = isMac) => (mac ? { splitRight: "⌘D", splitDown: "⌘⇧D", newTab: "⌘T", close: "⌘W", zoom: "⌘⇧↩" } : null);
+
+const terminalHelp = (keys: NonNullable<ReturnType<typeof terminalShortcutKeys>>) => [
+  { keys: `${keys.splitRight} / ${keys.splitDown}`, action: "In a terminal: split it, the new shell right of it / below it" },
+  { keys: "⌥⌘← ⌥⌘→ ⌥⌘↑ ⌥⌘↓ · ⌘[ / ⌘]", action: "In a terminal: go to the split that way · the previous / next split" },
+  { keys: "⌘⇧[ / ⌘⇧] · ⌘1 … ⌘9, ⌃1 … ⌃9", action: "In a terminal: previous / next terminal tab · terminal tab by number" },
+  { keys: `${keys.newTab} / ${keys.close}`, action: "In a terminal: new terminal tab / close this terminal; one running a command asks first" },
+  { keys: keys.zoom, action: "In a terminal: let it fill its tab, and back" },
+];
+
 export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
   const { primary, option, shift } = keyLabels(mac);
   const keys = shortcutKeys(mac);
@@ -110,5 +121,6 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: `${keys.send} / ${keys.sendTheOtherWay}`, action: "While the agent works: add the message to its running turn, or send it after the turn ends (Settings picks which key does which)" },
     { keys: "Esc", action: "Close a dialog; in the message box, stop the running turn" },
     { keys: keys.help, action: "This list (outside text fields)" },
+    ...(mac ? terminalHelp(terminalShortcutKeys(mac)!) : []),
   ];
 }

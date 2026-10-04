@@ -98,6 +98,36 @@ describe("terminalKeyAction", () => {
     expect(terminalKeyAction(press("ArrowRight", { altKey: true }), true)).toEqual({ type: "send", data: "\x1bf" });
   });
 
+  test("takes the pane keys cmux and iTerm2 share on macOS", () => {
+    const paneCommand = (code: string, modifiers: Partial<KeyPress>) => {
+      const action = terminalKeyAction(press(code, modifiers), true);
+      return action?.type === "pane" ? action.command : action;
+    };
+    const command = { metaKey: true };
+    expect(paneCommand("KeyD", command)).toEqual({ type: "split", axis: "columns" });
+    expect(paneCommand("KeyD", { ...command, shiftKey: true })).toEqual({ type: "split", axis: "rows" });
+    expect(paneCommand("KeyT", command)).toEqual({ type: "new-tab" });
+    expect(paneCommand("KeyW", command)).toEqual({ type: "close" });
+    expect(paneCommand("ArrowUp", { ...command, altKey: true })).toEqual({ type: "focus-toward", direction: "up" });
+    expect(paneCommand("ArrowLeft", { ...command, altKey: true })).toEqual({ type: "focus-toward", direction: "left" });
+    expect(paneCommand("BracketLeft", command)).toEqual({ type: "focus-step", step: -1 });
+    expect(paneCommand("BracketRight", command)).toEqual({ type: "focus-step", step: 1 });
+    expect(paneCommand("BracketLeft", { ...command, shiftKey: true })).toEqual({ type: "tab-step", step: -1 });
+    expect(paneCommand("BracketRight", { ...command, shiftKey: true })).toEqual({ type: "tab-step", step: 1 });
+    expect(paneCommand("Digit3", command)).toEqual({ type: "tab-number", number: 3 });
+    expect(paneCommand("Digit3", { ctrlKey: true })).toEqual({ type: "tab-number", number: 3 });
+    expect(paneCommand("Enter", { ...command, shiftKey: true })).toEqual({ type: "zoom" });
+  });
+
+  test("leaves the pane keys to the shell elsewhere, and keeps the page's own ⌘⇧← and ⌘⇧→", () => {
+    expect(terminalKeyAction(press("KeyD", { metaKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("Digit3", { ctrlKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("Digit3", { ctrlKey: true, metaKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("Digit0", { metaKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("ArrowRight", { metaKey: true, shiftKey: true }), true)).toBeNull();
+    expect(terminalKeyAction(press("KeyD", { ctrlKey: true }), true)).toBeNull();
+  });
+
   test("elsewhere, copies with Ctrl+Shift+C and leaves Ctrl+Shift+V to the browser's paste, as in a Linux terminal", () => {
     expect(terminalKeyAction(press("KeyC", { ctrlKey: true, shiftKey: true }), false)).toEqual({ type: "copy" });
     expect(terminalKeyAction(press("KeyV", { ctrlKey: true, shiftKey: true }), false)).toEqual({ type: "browser-paste" });

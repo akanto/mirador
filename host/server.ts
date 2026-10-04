@@ -566,7 +566,7 @@ export function startServer(services: HostServices) {
       case "terminals.attach":
         return terminals.attach(socket, message.workspaceId);
       case "terminal.open":
-        return reply({ type: "terminal.opened", requestId: message.requestId, ...terminals.open(message.workspaceId, message.columns, message.rows, message.tabId) });
+        return reply({ type: "terminal.opened", requestId: message.requestId, ...terminals.open(message.workspaceId, message.columns, message.rows, message.split) });
       case "terminal.open-login": {
         const { workspaceId, program } = conversations.loginProgram(message.conversationId);
         const { exited, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
@@ -580,7 +580,7 @@ export function startServer(services: HostServices) {
       case "terminal.resize":
         return terminals.resize(message.terminalId, message.columns, message.rows);
       case "terminal.close":
-        return terminals.close(message.terminalId);
+        return message.unlessBusy ? terminals.closeUnlessBusy(socket, message.terminalId) : terminals.close(message.terminalId);
       case "terminal.close-tab":
         return terminals.closeTab(message.tabId);
       case "presence":

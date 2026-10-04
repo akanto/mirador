@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { shortcutHelp } from "./shortcuts.ts";
+import { shortcutHelp, terminalShortcutKeys } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
 export interface PaletteEntry {
@@ -118,6 +118,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
         </tbody>
       </table>
       <p className="hint">They also work while a canvas page has focus, except those that create things.</p>
+      {terminalShortcutKeys() && <p className="hint">In Chrome, ⌘T, ⌘W, ⌘⇧[ ⌘⇧] and ⌥⌘← ⌥⌘→ stay Chrome's.</p>}
     </Modal>
   );
 }
