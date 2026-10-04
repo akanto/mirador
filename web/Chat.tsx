@@ -38,6 +38,7 @@ import { usePromptHistory } from "./PromptHistory.ts";
 import { TemplatePicker } from "./PromptTemplates.tsx";
 import { useSlashCommandMenu } from "./SlashCommandMenu.tsx";
 import { noSuggestions } from "./SuggestionList.tsx";
+import { movedCaretToLineEdge } from "./line-edge-keys.ts";
 import { keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
 import { Statusline } from "./Statusline.tsx";
@@ -1125,7 +1126,7 @@ function Composer({
   });
   const suggestions = history.showing ? noSuggestions : slashCommands.menu ? slashCommands : mentions;
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (suggestions.onKeyDown(event)) return;
+    if (suggestions.onKeyDown(event) || movedCaretToLineEdge(event.nativeEvent)) return;
     const lastQueued = queued.at(-1);
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
