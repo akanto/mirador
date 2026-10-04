@@ -211,5 +211,6 @@ function overSsh(sshHost: string, script: string) {
 
 export function followJobProgram(wait: Pick<JobWait, "job" | "sshHost">): TerminalProgram {
   const script = followJobScript(wait.job);
-  return { tabName: describeJob(wait), command: ["sh", "-c", wait.sshHost ? overSsh(wait.sshHost, script) : script] };
+  const job = describeJob(wait);
+  return { tabName: job, key: `follow ${job}`, command: ["sh", "-c", wait.sshHost ? overSsh(wait.sshHost, script) : script] };
 }

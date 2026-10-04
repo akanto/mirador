@@ -82,6 +82,14 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
     await expect(terminalScreen).toContainText("tick 2");
     await expect(terminalScreen).toContainText("tick 8");
 
+    await test.step("clicking the job again shows its tab rather than opening another", async () => {
+      await page.locator(".terminal-tab").filter({ hasNotText: `process ${job.pid}` }).first().click();
+      await expect(followTab(job)).not.toHaveClass(/active/);
+      await waits.getByRole("button", { name: `process ${job.pid}` }).click();
+      await expect(followTab(job)).toHaveClass(/active/);
+      await expect(followTab(job)).toHaveCount(1);
+    });
+
     await test.step("when the job ends, the tab says so and stays until Enter", async () => {
       job.kill();
       await expect(terminalScreen).toContainText(`Process ${job.pid} ended.`);

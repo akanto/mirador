@@ -19,6 +19,7 @@ interface Shell {
   scrollback: string[];
   scrollbackLength: number;
   title: string | null;
+  programKey: string | undefined;
 }
 
 /** A program to run in a terminal tab of its own instead of the login shell; without an environment, it gets the shell's. */
@@ -26,6 +27,8 @@ export interface TerminalProgram {
   tabName: string;
   command: string[];
   environment?: Record<string, string>;
+  /** While a program with the same key runs in the workspace, opening this one shows that one instead. */
+  key?: string;
 }
 
 interface Tab {
@@ -91,8 +94,10 @@ export class TerminalService {
     return { tabId: tab.id, terminalId: shell.id };
   }
 
-  /** Runs `program` in a new tab; the tab closes when it exits. */
+  /** Runs `program` in a new tab, which closes when it exits, unless the program's key says it already runs. */
   openProgram(workspaceId: string, columns: number, rows: number, program: TerminalProgram) {
+    const running = program.key === undefined ? undefined : this.shellsIn(workspaceId).find(({ programKey }) => programKey === program.key);
+    if (running) return { tabId: running.tabId, terminalId: running.id, exited: running.child.exited };
     const cwd = this.workspacePath(workspaceId);
     if (!cwd) throw new Error("This workspace no longer exists.");
     const tab = this.newTab(workspaceId, program.tabName);
@@ -165,7 +170,7 @@ export class TerminalService {
 
   private spawn(workspaceId: string, tabId: string, cwd: string, columns: number, rows: number, program?: TerminalProgram) {
     const decoder = new TextDecoder();
-    const shell: Shell = { id: crypto.randomUUID(), workspaceId, tabId, child: undefined!, scrollback: [], scrollbackLength: 0, title: null };
+    const shell: Shell = { id: crypto.randomUUID(), workspaceId, tabId, child: undefined!, scrollback: [], scrollbackLength: 0, title: null, programKey: program?.key };
     shell.child = Bun.spawn(program?.command ?? [loginShell(), "-l"], {
       cwd,
       env: { ...(program?.environment ?? agentEnvironment()), TERM: "xterm-256color", COLORTERM: "truecolor" },

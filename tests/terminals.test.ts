@@ -186,6 +186,22 @@ test("closing unless busy closes a terminal at its prompt, and keeps one running
   expect(left?.terminals.map(({ id }) => id)).toEqual([working.terminalId]);
 });
 
+test("a program with a key runs once: opening it again while it runs shows its terminal, and after it ends starts it anew", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const follow = { tabName: "follow", key: "follow job", command: ["sh", "-c", "read line"] };
+  const first = terminals.openProgram("w1", 80, 24, follow);
+  const again = terminals.openProgram("w1", 80, 24, follow);
+  expect({ tabId: again.tabId, terminalId: again.terminalId }).toEqual({ tabId: first.tabId, terminalId: first.terminalId });
+  const unkeyed = terminals.openProgram("w1", 80, 24, { tabName: "follow", command: ["sh", "-c", "read line"] });
+  expect(lastTabs(browser.received)?.map(({ id }) => id)).toEqual([first.tabId, unkeyed.tabId]);
+
+  terminals.input(first.terminalId, "\n");
+  await first.exited;
+  const afterEnding = terminals.openProgram("w1", 80, 24, follow);
+  expect(afterEnding.terminalId).not.toBe(first.terminalId);
+});
+
 test("opening a terminal in a workspace that no longer exists fails", () => {
   expect(() => terminals.open("gone", 80, 24)).toThrow("This workspace no longer exists.");
 });
