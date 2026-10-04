@@ -130,6 +130,10 @@ export class ConversationService {
     return this.store.typedInWorkspace(workspaceId, id).flatMap((event) => historyEntry(event)?.text ?? []);
   }
 
+  typedEarlierIn(conversationId: string, beforeSeq: number) {
+    return this.store.typedBefore(this.get(conversationId).id, beforeSeq).flatMap((event) => historyEntry(event) ?? []);
+  }
+
   async mentionSuggestions(conversationId: string, query: string) {
     return mentionSuggestions(this.existingWorkspace(this.get(conversationId).workspaceId).path, query);
   }

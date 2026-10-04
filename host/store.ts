@@ -650,6 +650,17 @@ export class Store {
     return rows.map(({ event }) => JSON.parse(event));
   }
 
+  /** The messages and shell commands typed in the conversation before the given event, newest first. */
+  typedBefore(conversationId: string, beforeSeq: number, limit = TYPED_IN_WORKSPACE_LIMIT): ConversationEvent[] {
+    const rows = this.db
+      .query(
+        `SELECT event FROM events WHERE conversation_id = ? AND seq < ? AND json_extract(event, '$.type') IN ('user-message', 'user-command')
+         ORDER BY seq DESC LIMIT ?`,
+      )
+      .all(conversationId, beforeSeq, limit) as { event: string }[];
+    return rows.map(({ event }) => JSON.parse(event));
+  }
+
   /** The newest event that starts or ends a turn, or ends a wait for a usage limit's reset. */
   latestTurnEvent(conversationId: string): ConversationEvent | null {
     const row = this.db

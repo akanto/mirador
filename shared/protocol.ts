@@ -25,6 +25,7 @@ import type {
 import type { FindingDecision } from "./review.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
+import type { PromptHistoryEntry } from "./prompt-history.ts";
 import type { SlashCommand } from "./slash-commands.ts";
 import type { SplitAxis } from "./terminal-layout.ts";
 import type { SystemNotification } from "./system-notifications.ts";
@@ -58,8 +59,11 @@ export type ClientMessage =
   | { type: "sessions.list"; requestId: string; workspaceId: string; launch: Launch }
   /** The slash commands the conversation's agent takes, as it last listed them. */
   | { type: "slash-commands.list"; requestId: string; conversationId: string }
-  /** What the user typed in the conversation's workspace's other conversations, newest first, for ↑ in the message box. */
-  | { type: "prompt-history.list"; requestId: string; conversationId: string }
+  /**
+   * What the user typed in the conversation's workspace's other conversations, newest first, for ↑ in the message box;
+   * with `ownBeforeSeq`, also what they typed in this conversation before that event, for a client holding only its latest turns.
+   */
+  | { type: "prompt-history.list"; requestId: string; conversationId: string; ownBeforeSeq?: number }
   /** Paths for the @mention being written: what follows the @, completed as a path or searched for in the workspace. */
   | { type: "mentions.suggest"; requestId: string; conversationId: string; query: string }
   | {
@@ -187,7 +191,7 @@ export type ServerMessage =
   | { type: "sessions.failed"; requestId: string; message: string }
   | { type: "review.file-read"; requestId: string; lines: string[] }
   | { type: "slash-commands.listed"; requestId: string; commands: SlashCommand[] }
-  | { type: "prompt-history.listed"; requestId: string; prompts: string[] }
+  | { type: "prompt-history.listed"; requestId: string; prompts: string[]; ownEarlier?: PromptHistoryEntry[] }
   | { type: "mentions.suggested"; requestId: string; suggestions: MentionSuggestion[] }
   | { type: "review.file-failed"; requestId: string; message: string }
   | { type: "terminals.listed"; workspaceId: string; tabs: TerminalTab[] }

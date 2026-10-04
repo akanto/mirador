@@ -519,7 +519,12 @@ export function startServer(services: HostServices) {
       case "slash-commands.list":
         return reply({ type: "slash-commands.listed", requestId: message.requestId, commands: conversations.slashCommands(message.conversationId) });
       case "prompt-history.list":
-        return reply({ type: "prompt-history.listed", requestId: message.requestId, prompts: conversations.typedElsewhere(message.conversationId) });
+        return reply({
+          type: "prompt-history.listed",
+          requestId: message.requestId,
+          prompts: conversations.typedElsewhere(message.conversationId),
+          ...(message.ownBeforeSeq !== undefined && { ownEarlier: conversations.typedEarlierIn(message.conversationId, message.ownBeforeSeq) }),
+        });
       case "conversation.rename":
         return conversations.rename(message.conversationId, message.title);
       case "conversation.set-profile":

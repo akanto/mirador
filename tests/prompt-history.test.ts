@@ -27,6 +27,19 @@ describe("prompt history", () => {
     expect(texts(events, ["elsewhere", "mine", "older elsewhere"])).toEqual(["again", "mine", "elsewhere", "older elsewhere"]);
   });
 
+  test("puts the conversation's messages from before the events held after its held ones, before the other conversations'", () => {
+    const held: ConversationEvent[] = [{ type: "user-message", text: "latest" }];
+    const ownEarlier = [
+      { text: "earlier", imageIds: ["i1"] },
+      { text: "latest", imageIds: [] },
+    ];
+    expect(promptHistory(stored(held), ["elsewhere", "earlier"], ownEarlier)).toEqual([
+      { text: "latest", imageIds: [] },
+      { text: "earlier", imageIds: ["i1"] },
+      { text: "elsewhere", imageIds: [] },
+    ]);
+  });
+
   test("keeps the images of the conversation's own messages", () => {
     const [entry] = promptHistory(stored([{ type: "user-message", text: "[Image #1] what is this?", imageIds: ["i1"] }]), []);
     expect(entry).toEqual({ text: "[Image #1] what is this?", imageIds: ["i1"] });

@@ -13,14 +13,14 @@ export function historyEntry(event: ConversationEvent): PromptHistoryEntry | nul
 }
 
 /**
- * Newest first, each text once: the conversation's own messages, then the ones typed in the workspace's other
- * conversations (whose images stay with them).
+ * Newest first, each text once: the conversation's own messages, those from before the events held, then the ones
+ * typed in the workspace's other conversations (whose images stay with them).
  */
-export function promptHistory(events: StoredEvent[], typedElsewhere: string[]): PromptHistoryEntry[] {
+export function promptHistory(events: StoredEvent[], typedElsewhere: string[], ownEarlier: PromptHistoryEntry[] = []): PromptHistoryEntry[] {
   const own = events.flatMap(({ event }) => historyEntry(event) ?? []).reverse();
   const elsewhere = typedElsewhere.map((text) => ({ text, imageIds: [] }));
   const newestOfEachText = new Map<string, PromptHistoryEntry>();
-  [...own, ...elsewhere]
+  [...own, ...ownEarlier, ...elsewhere]
     .filter(({ text }) => text.trim())
     .forEach((entry) => {
       if (!newestOfEachText.has(entry.text)) newestOfEachText.set(entry.text, entry);

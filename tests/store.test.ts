@@ -274,4 +274,18 @@ describe("Store", () => {
     ]);
     store.close();
   });
+
+  test("what was typed in a conversation before an event comes newest first, without its other events or later ones", () => {
+    const { store } = seededStore();
+    store.appendEvent("c1", { type: "user-message", text: "first", imageIds: ["i1"] });
+    store.appendEvent("c1", { type: "turn-end", stopReason: "end_turn" });
+    store.appendEvent("c1", { type: "user-command", commandId: "u1", command: "ls" });
+    const held = store.appendEvent("c1", { type: "user-message", text: "held" });
+
+    expect(store.typedBefore("c1", held.seq)).toEqual([
+      { type: "user-command", commandId: "u1", command: "ls" },
+      { type: "user-message", text: "first", imageIds: ["i1"] },
+    ]);
+    store.close();
+  });
 });
