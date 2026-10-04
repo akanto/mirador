@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { connect } from "node:net";
+import { inflateRawSync } from "node:zlib";
 import type { SessionUpdate, ToolCallContent } from "@agentclientprotocol/sdk";
-import { Hub, socketData, type BrowserSocket } from "../host/hub.ts";
+import { Hub, socketData, webSocketCompression, type BrowserSocket } from "../host/hub.ts";
 import { imagesOf, lowDataEvent, wholeToolOutput } from "../host/low-data.ts";
 import { eventImagePath, shortenedOutputOf } from "../shared/low-data.ts";
 import type { StoredEvent } from "../shared/model.ts";
@@ -100,5 +102,47 @@ describe("Hub.publishEvent", () => {
     expect(JSON.parse(page[0]!.payload).event).toEqual(event);
     expect(phone.map(({ compressed }) => compressed)).toEqual([true]);
     expect(JSON.parse(phone[0]!.payload).event).toEqual(lowDataEvent("c1", event));
+  });
+});
+
+describe("webSocketCompression", () => {
+  async function firstFrameSent(message: string) {
+    const server = Bun.serve({
+      port: 0,
+      fetch: (request, server) => (server.upgrade(request) ? undefined : new Response(null, { status: 400 })),
+      websocket: { perMessageDeflate: webSocketCompression, open: (socket) => void socket.send(message, true), message() {} },
+    });
+    try {
+      const received = await new Promise<Buffer>((resolve, reject) => {
+        let bytes = Buffer.alloc(0);
+        const client = connect(server.port!, "127.0.0.1", () =>
+          client.write(
+            "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+              "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n",
+          ),
+        );
+        client.on("error", reject);
+        client.on("data", (chunk: Buffer) => {
+          bytes = Buffer.concat([bytes, chunk]);
+          const frameStart = bytes.indexOf("\r\n\r\n") + 4;
+          if (frameStart >= 4 && bytes.length > frameStart + 2 && bytes.length >= frameStart + 2 + (bytes[frameStart + 1]! & 0x7f)) {
+            client.destroy();
+            resolve(bytes.subarray(frameStart));
+          }
+        });
+      });
+      return { compressed: (received[0]! & 0x40) !== 0, payload: received.subarray(2, 2 + (received[1]! & 0x7f)) };
+    } finally {
+      server.stop(true);
+    }
+  }
+
+  test("a compressed message leaves its deflate stream open, as Android's OkHttp needs to read it", async () => {
+    const message = JSON.stringify({ type: "small" });
+    const { compressed, payload } = await firstFrameSent(message);
+    expect(compressed).toBe(true);
+    const finalBlock = (payload[0]! & 1) === 1;
+    expect(finalBlock).toBe(false);
+    expect(inflateRawSync(Buffer.concat([payload, Buffer.from([0, 0, 0xff, 0xff])]), { finishFlush: 2 }).toString()).toBe(message);
   });
 });

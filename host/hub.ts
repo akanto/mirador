@@ -39,6 +39,9 @@ export const socketData = (role: SocketData["role"], deviceId: string | null = n
 
 export type BrowserSocket = ServerWebSocket<SocketData>;
 
+/** Bun's shared compressor ends each message with a final deflate block, which Android's OkHttp then inflates forever without delivering anything; a compressor per socket does not. */
+export const webSocketCompression = { compress: "dedicated", decompress: true } as const;
+
 /** Other devices reach the host over a network, often a phone's mobile data; this machine's own pages don't, and skip the work. */
 const deliver = (socket: BrowserSocket, payload: string) => socket.send(payload, socket.data.deviceId !== null);
 

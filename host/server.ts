@@ -31,7 +31,7 @@ import { JobWaitRefused } from "./job-waits.ts";
 import { JoinRequestRefused, SenderLimit, type JoinRequestService } from "./join-requests.ts";
 import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
-import { socketData, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
+import { socketData, webSocketCompression, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
 import type { MachineRelays } from "./machine-relays.ts";
 import type { MachineWatch } from "./machine-watch.ts";
 import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
@@ -750,7 +750,7 @@ export function startServer(services: HostServices) {
     /** Bun drops what is sent while more than the limit waits to go out (16 MB by default, less than one long history), so the limit is far above that, and a client that falls further behind is disconnected to reconnect and fetch again instead of silently missing messages. */
     backpressureLimit: 1024 * 1024 * 1024,
     closeOnBackpressureLimit: true,
-    perMessageDeflate: true,
+    perMessageDeflate: webSocketCompression,
     open(socket) {
       hub.add(socket);
       if (socket.data.role === "page") sendSnapshot(socket);
