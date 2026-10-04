@@ -3088,6 +3088,13 @@ button.shell-more:hover {
   overflow-wrap: anywhere;
 }
 
+.job-waits button.job-wait-follow {
+  padding: 0;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
 .job-waits li + li {
   border-top: 1px solid var(--border);
 }

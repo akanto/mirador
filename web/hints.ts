@@ -102,6 +102,8 @@ export const hints = {
   stopWaitingForUsageLimit: "Stop waiting for the reset: the agent does not continue by itself, and messages you queued go out now.",
   jobWait:
     "The agent left this job running and ran mirador when-done, so it need not poll it. Mirador checks on it now and then: a process every second, a container every 5 seconds, a job on another machine every 20 seconds over ssh. When it ends, the message goes to the agent as your next message, or, if the agent asked so, only to you.\n\nThe wait survives a host restart.",
+  followJob:
+    "Follow it in a terminal tab of this workspace: what it runs, how long it has run, then its output as it comes, from the file a process writes to or from the container's logs. The tab says when the job ends. Ctrl+C closes it; the job keeps running.",
   stopWaitingForJob: "Stop waiting for this job: when it ends, nobody is told. It keeps running.",
   canvasUse:
     "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",

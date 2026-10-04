@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { checkJob, jobCheckCommand, JobWaitRefused, JobWaits, type JobState } from "../host/job-waits.ts";
+import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, type JobState } from "../host/job-waits.ts";
 import { Store } from "../host/store.ts";
 import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd } from "../shared/model.ts";
@@ -209,5 +209,65 @@ esac
 
   test("without Docker or Podman a container cannot be checked", async () => {
     expect(await checkContainer("up", mkdtempSync(join(tmpdir(), "no-docker-")))).toBe("unknown");
+  });
+});
+
+describe("followJobProgram", () => {
+  const fakeSsh = `#!/bin/sh
+while [ "$1" != "--" ]; do shift; done
+shift
+[ "$1" = unreachable ] && { echo "ssh: connect to host unreachable port 22: Connection refused" >&2; exit 255; }
+shift
+exec /bin/sh -c "$*"
+`;
+
+  const fakeDocker = `#!/bin/sh
+case "$*" in
+  *"Image: "*" web") echo "Image: nginx:1" ;;
+  *"Command: "*" web") echo "Command: nginx -g daemon off;" ;;
+  *"Started: "*" web") echo "Started: 2026-10-04T12:00:00Z" ;;
+  "logs --tail 50 -f web") echo "GET / 200" ;;
+  *) echo "Error: No such container: $(echo "$*" | sed 's/.* //')" >&2; exit 1 ;;
+esac
+`;
+
+  const binWith = (programs: Record<string, string>) => {
+    const bin = mkdtempSync(join(tmpdir(), "fake-programs-"));
+    Object.entries(programs).forEach(([name, script]) => {
+      writeFileSync(join(bin, name), script);
+      chmodSync(join(bin, name), 0o755);
+    });
+    return bin;
+  };
+
+  /** Run as the terminal tab would, with Enter pressed at the end. */
+  const follow = async (wait: Pick<JobWait, "job" | "sshHost">, bin: string) => {
+    const following = Bun.spawn(followJobProgram(wait).command, { env: { PATH: `${bin}:/usr/sbin:/usr/bin:/bin` }, stdin: new Blob(["\n"]), stdout: "pipe", stderr: "pipe" });
+    const [output, errors] = await Promise.all([new Response(following.stdout).text(), new Response(following.stderr).text()]);
+    return `${output}${errors}`;
+  };
+
+  test("over ssh, a process's command line and the lines it writes to its log show until it ends", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "followed-job-")), "it's.log");
+    const job = Bun.spawn(["sh", "-c", "echo first; sleep 0.5; echo second; sleep 1.5"], { stdout: Bun.file(log) });
+    const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: "box" }, binWith({ ssh: fakeSsh }));
+    expect(output).toContain("Command: sh -c echo first; sleep 0.5; echo second");
+    expect(output).toMatch(/Running for: \d\d:\d\d/);
+    expect(output).toMatch(/Output: \S*it's\.log\n/);
+    expect(output).toMatch(/first\nsecond\n/);
+    expect(output).toEndWith(`\nProcess ${job.pid} ended.\nPress Enter to close this tab.`);
+  });
+
+  test("when ssh cannot connect, its error stays until Enter", async () => {
+    const output = await follow({ job: { kind: "process", pid: 1 }, sshHost: "unreachable" }, binWith({ ssh: fakeSsh }));
+    expect(output).toBe("Press Enter to close this tab.ssh: connect to host unreachable port 22: Connection refused\n");
+  });
+
+  test("a container shows its image, command and start, then its logs until it stops; one that is gone says so", async () => {
+    const bin = binWith({ docker: fakeDocker });
+    expect(await follow({ job: { kind: "container", name: "web" }, sshHost: null }, bin)).toBe(
+      "Image: nginx:1\nCommand: nginx -g daemon off;\nStarted: 2026-10-04T12:00:00Z\n\nGET / 200\n\nContainer web ended.\nPress Enter to close this tab.",
+    );
+    expect(await follow({ job: { kind: "container", name: "gone" }, sshHost: null }, bin)).toBe("Press Enter to close this tab.Error: No such container: gone\n");
   });
 });

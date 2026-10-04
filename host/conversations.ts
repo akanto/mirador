@@ -33,7 +33,7 @@ import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
 import type { ImageStore } from "./images.ts";
-import { JobWaits } from "./job-waits.ts";
+import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
 import { assertLaunchable } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
@@ -412,6 +412,13 @@ export class ConversationService {
   stopWaitingForJob(conversationId: string, waitId: string) {
     const wait = this.jobWaits.stop(conversationId, waitId);
     if (wait) this.append(conversationId, { type: "job-wait-ended", wait, end: "stopped" });
+  }
+
+  /** A terminal tab that shows what the job runs and follows its output. */
+  jobFollowProgram(conversationId: string, waitId: string): { workspaceId: string; program: TerminalProgram } {
+    const wait = this.jobWaits.in(conversationId).find(({ id }) => id === waitId);
+    if (!wait) throw new Error("Mirador no longer waits for that job.");
+    return { workspaceId: this.get(conversationId).workspaceId, program: followJobProgram(wait) };
   }
 
   private jobWaitEnded(conversationId: string, wait: JobWait, end: Exclude<JobWaitEnd, "stopped">) {

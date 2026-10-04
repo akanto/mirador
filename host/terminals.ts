@@ -21,11 +21,11 @@ interface Shell {
   title: string | null;
 }
 
-/** A program to run in a terminal tab of its own instead of the login shell. */
+/** A program to run in a terminal tab of its own instead of the login shell; without an environment, it gets the shell's. */
 export interface TerminalProgram {
   tabName: string;
   command: string[];
-  environment: Record<string, string>;
+  environment?: Record<string, string>;
 }
 
 interface Tab {

@@ -1,6 +1,7 @@
 import { checkInterval, describeJob, FAILED_CHECKS_BEFORE_GIVING_UP, jobEndedMessage, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd, WaitedJob } from "../shared/model.ts";
 import type { Store } from "./store.ts";
+import type { TerminalProgram } from "./terminals.ts";
 
 /** Appended to Claude Code's system prompt, so agents in Mirador hand their waiting to the host. */
 export const jobWaitGuidance = `# Jobs left running
@@ -153,4 +154,62 @@ export async function checkJob({ job, sshHost }: Pick<JobWait, "job" | "sshHost"
   const checking = Bun.spawn(command, { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: CHECK_TIMEOUT_MS });
   const [output, exitCode] = await Promise.all([new Response(checking.stdout).text(), checking.exited]);
   return exitCode === SSH_FAILED ? "unknown" : jobStateIn(output);
+}
+
+const singleQuoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
+
+/** The tab goes when its program exits, so what the program said last waits for Enter. */
+const closeOnEnter = "printf 'Press Enter to close this tab.'; read -r _";
+
+const stopFollowingOnceCaughtUp = '[ -n "${follower-}" ] && { sleep 1; kill $follower 2>/dev/null; }';
+
+/**
+ * A process's output is the file its stdout or stderr goes to, as nohup and `> log 2>&1` leave it; one going to a
+ * terminal or a pipe cannot be followed. /proc has the files on Linux, lsof on macOS.
+ */
+function followProcessScript(pid: number) {
+  return [
+    `pid=${pid}`,
+    "runs() { kill -0 $pid 2>/dev/null || ps -p $pid >/dev/null 2>&1; }",
+    `runs || { echo "Process $pid is not running."; ${closeOnEnter}; exit 1; }`,
+    'echo "Command: $(ps -o args= -p $pid)"',
+    `echo "Running for: $(ps -o etime= -p $pid | tr -d ' ')"`,
+    "outputFile() { readlink /proc/$pid/fd/$1 2>/dev/null || lsof -a -p $pid -d $1 -Fn 2>/dev/null | sed -n 's/^n//p'; }",
+    "set --",
+    'for fd in 1 2; do file=$(outputFile $fd); if [ -f "$file" ] && [ -r "$file" ] && [ "$file" != "${1-}" ]; then set -- "$@" "$file"; fi; done',
+    'if [ $# -gt 0 ]; then echo "Output: $*"; echo; tail -n 50 -f "$@" & follower=$!; else echo "Its output goes to no file this tab can follow, so it only shows when the process ends."; fi',
+    `trap '[ -n "\${follower-}" ] && kill $follower 2>/dev/null; exit 130' INT TERM HUP`,
+    "while runs; do sleep 1; done",
+    stopFollowingOnceCaughtUp,
+    'echo; echo "Process $pid ended."',
+    closeOnEnter,
+  ].join("\n");
+}
+
+function followContainerScript(name: string) {
+  const inspect = (format: string) => `"$engine" inspect --type container -f ${singleQuoted(format)} ${name}`;
+  return [
+    `engine=$(command -v docker || command -v podman) || { echo "Neither docker nor podman is installed here."; ${closeOnEnter}; exit 1; }`,
+    `${inspect("Image: {{.Config.Image}}")} || { ${closeOnEnter}; exit 1; }`,
+    inspect("Command: {{.Path}}{{range .Args}} {{.}}{{end}}"),
+    inspect("Started: {{.State.StartedAt}}"),
+    "echo",
+    `"$engine" logs --tail 50 -f ${name}`,
+    `echo; echo "Container ${name} ended."`,
+    closeOnEnter,
+  ].join("\n");
+}
+
+/** A shell script that prints what the job runs and since when, then follows its output until it ends. */
+const followJobScript = (job: WaitedJob) => (job.kind === "process" ? followProcessScript(job.pid) : followContainerScript(job.name));
+
+/** Without BatchMode, unlike the checks: in a terminal, ssh can ask for a password. When it cannot connect, its error stays. */
+function overSsh(sshHost: string, script: string) {
+  const ssh = ["ssh", "-t", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "--", sshHost, `sh -c ${singleQuoted(script)}`];
+  return `${ssh.map(singleQuoted).join(" ")}; [ $? -ne ${SSH_FAILED} ] || { ${closeOnEnter}; }`;
+}
+
+export function followJobProgram(wait: Pick<JobWait, "job" | "sshHost">): TerminalProgram {
+  const script = followJobScript(wait.job);
+  return { tabName: describeJob(wait), command: ["sh", "-c", wait.sshHost ? overSsh(wait.sshHost, script) : script] };
 }

@@ -11,7 +11,7 @@ import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { HintLayer } from "./Hint.tsx";
 import { SearchDialog } from "./Search.tsx";
 import { hints } from "./hints.ts";
-import { useLoginRequest } from "./login-request.ts";
+import { useProgramRequest } from "./program-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
 import { DEFAULT_SIDEBAR_WIDTH, sidebarWidthWithinLimits, type PaneLayout } from "./layout.ts";
@@ -213,10 +213,10 @@ export function App() {
   const toggleTerminal = () => setHidden("terminals", (wasHidden) => !wasHidden);
 
   const open = selectedOpen(state);
-  const loginRequest = useLoginRequest();
+  const programRequest = useProgramRequest();
   useEffect(() => {
-    if (loginRequest) setHidden("terminals", () => false);
-  }, [loginRequest]);
+    if (programRequest) setHidden("terminals", () => false);
+  }, [programRequest]);
   useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
 
   const closeOverlay = useCallback(() => {

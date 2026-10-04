@@ -30,6 +30,7 @@ import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
 import { useDragToReorder } from "./drag-to-reorder.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
+import { requestProgram } from "./program-request.ts";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
@@ -876,7 +877,16 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
           <li key={wait.id}>
             <div className="job-wait-text">
               <span className="job-wait-status" data-hint={hints.jobWait}>
-                Waiting for {describeJob(wait)} to end, since {formatClockTime(wait.since)}
+                Waiting for{" "}
+                <button
+                  type="button"
+                  className="link job-wait-follow"
+                  data-hint={hints.followJob}
+                  onClick={() => requestProgram({ type: "terminal.follow-job", conversationId, waitId: wait.id })}
+                >
+                  {describeJob(wait)}
+                </button>{" "}
+                to end, since {formatClockTime(wait.since)}
               </span>
               <span className="job-wait-message" data-hint={`${whoHears(wait)}${wait.message}`} data-hint-when-cut-off="">
                 {whoHears(wait)}

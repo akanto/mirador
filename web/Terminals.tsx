@@ -8,7 +8,7 @@ import { isTerminal, layoutKey, terminalsIn, type TerminalLayout } from "../shar
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { takeLoginRequest, useLoginRequest } from "./login-request.ts";
+import { takeProgramRequest, useProgramRequest, type ProgramRequest } from "./program-request.ts";
 import { terminalShortcutKeys } from "./shortcuts.ts";
 import { Splitter } from "./Splitter.tsx";
 import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
@@ -47,9 +47,9 @@ function requestTerminal(workspaceId: string, split: TerminalSplit | null) {
   return requestId;
 }
 
-function requestLoginTerminal(conversationId: string) {
+function requestProgramTerminal(request: ProgramRequest) {
   const requestId = crypto.randomUUID();
-  connection.send({ type: "terminal.open-login", requestId, conversationId, columns: INITIAL_COLUMNS, rows: INITIAL_ROWS });
+  connection.send({ ...request, requestId, columns: INITIAL_COLUMNS, rows: INITIAL_ROWS });
   return requestId;
 }
 
@@ -63,13 +63,13 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
   const [busy, setBusy] = useState<BusyClose | null>(null);
   const requests = useRef(new Set<string>());
   const open = (split: TerminalSplit | null) => requests.current.add(requestTerminal(workspaceId, split));
-  const loginRequest = useLoginRequest();
+  const programRequest = useProgramRequest();
 
   useEffect(() => {
-    if (status !== "open" || tabs === null || loginRequest === null) return;
-    const conversationId = takeLoginRequest();
-    if (conversationId) requests.current.add(requestLoginTerminal(conversationId));
-  }, [status, tabs, loginRequest]);
+    if (status !== "open" || tabs === null || programRequest === null) return;
+    const request = takeProgramRequest();
+    if (request) requests.current.add(requestProgramTerminal(request));
+  }, [status, tabs, programRequest]);
 
   useEffect(() => {
     if (status !== "open") return;

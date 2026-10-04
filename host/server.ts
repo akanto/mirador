@@ -627,6 +627,11 @@ export function startServer(services: HostServices) {
         void exited.then((exitCode) => conversations.loginEnded(message.conversationId, exitCode === 0));
         return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
       }
+      case "terminal.follow-job": {
+        const { workspaceId, program } = conversations.jobFollowProgram(message.conversationId, message.waitId);
+        const { exited: _, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
+        return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
+      }
       case "terminal.replay":
         return terminals.replay(socket, message.terminalId);
       case "terminal.input":
