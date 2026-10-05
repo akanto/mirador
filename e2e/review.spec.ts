@@ -283,6 +283,12 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await view.getByRole("tab", { name: /Findings/ }).click();
     const finding = (title: string) => view.locator(".finding", { hasText: title });
     await expect(finding("Unchanged helper")).toContainText("Outside the pull request's diff");
+    const footer = finding("Unchanged helper").locator("footer");
+    const rightEdge = async (locator: Locator) => {
+      const box = (await locator.boundingBox())!;
+      return box.x + box.width;
+    };
+    expect(await rightEdge(footer) - (await rightEdge(footer.locator("button").last()))).toBeLessThan(2);
     await finding("Unchanged helper").getByRole("button", { name: "Kept" }).click();
     await expect(finding("Unchanged helper").getByRole("button", { name: "Dropped" })).toBeVisible();
     await expect(view.getByRole("tab", { name: /Findings/ }).locator(".tab-count")).toHaveText("2");
