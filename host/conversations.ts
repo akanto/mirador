@@ -578,9 +578,8 @@ export class ConversationService {
 
   shutdown() {
     this.stopping = true;
-    this.commands.shutdown();
     this.jobWaits.stopAll();
-    return Promise.all([...this.harnessesByLaunch.values()].map((harness) => harness.stop()));
+    return Promise.all([this.commands.shutdown(), ...[...this.harnessesByLaunch.values()].map((harness) => harness.stop())]);
   }
 
   private ensureSession(conversationId: string, open = () => this.openSession(conversationId)): Promise<string> {

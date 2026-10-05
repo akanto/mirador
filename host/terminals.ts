@@ -159,8 +159,11 @@ export class TerminalService {
     this.shellsIn(workspaceId).forEach(({ id }) => this.close(id));
   }
 
-  shutdown() {
+  /** Waits for the shells to exit: one still running when the host re-executes itself would be left a zombie. */
+  async shutdown() {
+    const exits = [...this.shells.values()].map(({ child }) => child.exited);
     this.shells.forEach(({ id }) => this.close(id));
+    await Promise.all(exits);
   }
 
   private splittableTabOf(terminalId: string) {

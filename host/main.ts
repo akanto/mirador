@@ -78,15 +78,14 @@ if (network) console.log(`other devices: ${config.publicOrigin} (HTTPS on port $
 async function stopServices() {
   terminalSessions.stop();
   sourceWatcher.stop();
-  terminals.shutdown();
-  const agentsExited = conversations.shutdown();
+  const childrenExited = Promise.all([terminals.shutdown(), conversations.shutdown()]);
   server.stop();
   assetsServer.stop(true);
   networkAssetsServer?.stop(true);
   relays.stopAll();
   watch.stopAll();
   store.close();
-  await agentsExited;
+  await childrenExited;
 }
 
 let stopping = false;

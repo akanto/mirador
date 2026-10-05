@@ -53,7 +53,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  terminals.shutdown();
+  await terminals.shutdown();
   process.env.SHELL = originalShell;
   process.env.HOME = originalHome;
   await rm(workspaceDir, { recursive: true, force: true });
@@ -222,6 +222,26 @@ test("a program with a key runs once: opening it again while it runs shows its t
   await first.exited;
   const afterEnding = terminals.openProgram("w1", 80, 24, follow);
   expect(afterEnding.terminalId).not.toBe(first.terminalId);
+});
+
+test("shutting down waits for every shell to exit, so a host that re-executes itself leaves no zombie behind", async () => {
+  const watching = fakeBrowser();
+  terminals.attach(watching.socket, "w1");
+  [terminals.open("w1", 80, 24), terminals.open("w1", 80, 24)].forEach(({ terminalId }) => terminals.input(terminalId, "echo shell-$$-up\n"));
+  const shellsUp = () => new Set(outputOf(watching.received).match(/shell-\d+-up/g));
+  const pids = [...(await eventually(shellsUp, (up) => up.size === 2))].map((up) => Number(up.split("-")[1]));
+
+  await terminals.shutdown();
+
+  const isRunning = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  expect(pids.filter(isRunning)).toEqual([]);
 });
 
 test("opening a terminal in a workspace that no longer exists fails", () => {

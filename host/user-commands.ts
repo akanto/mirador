@@ -91,7 +91,10 @@ export class UserCommandRunner {
     if (child) stopProcessGroup(child);
   }
 
-  shutdown() {
+  /** Waits for the commands to exit, as the terminals' shutdown does for its shells. */
+  async shutdown() {
+    const exits = [...this.running.values()].map(({ exited }) => exited);
     this.running.forEach(stopProcessGroup);
+    await Promise.all(exits);
   }
 }
