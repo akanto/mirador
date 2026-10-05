@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Sends a message to the Mirador conversation of the Claude Code session this runs in, as the user's
+# Sends a message to the Mirador conversation of the agent session this runs in, as the user's
 # next message: right away when the agent is idle, else queued behind its turn. A job the agent left
 # running in the background can end with it, so the agent picks up where the job leaves off.
 #
-# Mirador gives its agents MIRADOR_URL and MIRADOR_SCRIPT_TOKEN, and Claude Code gives every command it
-# runs CLAUDE_CODE_SESSION_ID; a script started from there inherits all three. opencode has no session
-# id to inherit, so its conversations can only be reached with --session.
+# Mirador gives its agents MIRADOR_URL and MIRADOR_SCRIPT_TOKEN, and every command an agent runs gets its
+# session id: Claude Code gives it CLAUDE_CODE_SESSION_ID, and Mirador's plugin for opencode MIRADOR_SESSION_ID.
+# A script started from there inherits them.
 #
 # Usage:
 #   mirador-message [--session <agent session id>] "<message>"
@@ -18,7 +18,7 @@ usage() {
   exit 2
 }
 
-session="${CLAUDE_CODE_SESSION_ID:-}"
+session="${CLAUDE_CODE_SESSION_ID:-${MIRADOR_SESSION_ID:-}}"
 message=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -32,7 +32,7 @@ done
 
 [ -n "${MIRADOR_URL:-}" ] && [ -n "${MIRADOR_SCRIPT_TOKEN:-}" ] \
   || usage "MIRADOR_URL and MIRADOR_SCRIPT_TOKEN are not set; run this from an agent in Mirador, or a script it started"
-[ -n "$session" ] || usage "CLAUDE_CODE_SESSION_ID is not set; pass --session"
+[ -n "$session" ] || usage "neither CLAUDE_CODE_SESSION_ID nor MIRADOR_SESSION_ID is set; pass --session"
 if [ -z "$message" ]; then
   [ -t 0 ] && usage "no message given"
   message=$(cat)

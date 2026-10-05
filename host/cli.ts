@@ -22,7 +22,8 @@ const whenDoneUsage = `usage: mirador when-done (--pid <pid> | --container <name
   Mirador waits for the process or Docker/Podman container to end, on this machine or, with --host, on another one over ssh.
   Then the message goes to the agent's conversation as your next message, so the agent carries on;
   with --no-resume only you are told. Without a message, it says the job ended.
-  Run it from an agent in Mirador: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).`;
+  Run it from an agent in Mirador: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and the agent's session id, which Claude Code
+  gives its commands as CLAUDE_CODE_SESSION_ID and Mirador gives opencode's as MIRADOR_SESSION_ID (or pass --session).`;
 
 /** The host prints a sign-in link only to a terminal, and each link works once, so a new browser needs a new link. */
 function signIn() {
@@ -128,9 +129,9 @@ async function whenDone(args: string[]) {
     return fail(`${(error as Error).message}\n\n${whenDoneUsage}`, 2);
   }
   const { MIRADOR_URL: url, MIRADOR_SCRIPT_TOKEN: token } = process.env;
-  const session = parsed.session ?? process.env.CLAUDE_CODE_SESSION_ID;
+  const session = parsed.session ?? process.env.CLAUDE_CODE_SESSION_ID ?? process.env.MIRADOR_SESSION_ID;
   if (!url || !token) return fail("MIRADOR_URL and MIRADOR_SCRIPT_TOKEN are not set; run it from an agent in Mirador, or a script it started", 2);
-  if (!session) return fail("CLAUDE_CODE_SESSION_ID is not set; pass --session", 2);
+  if (!session) return fail("neither CLAUDE_CODE_SESSION_ID nor MIRADOR_SESSION_ID is set; pass --session", 2);
   const response = await fetch(`${url}/sessions/${encodeURIComponent(session)}/job-waits`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
