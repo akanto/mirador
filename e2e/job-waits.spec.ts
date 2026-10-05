@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
@@ -27,8 +27,21 @@ function startJob() {
   return job;
 }
 
-test("mirador when-done has the host wait for a job the agent left running, then resume the agent, or only tell you, also after a restart", async ({ page }) => {
+/** opencode gives the commands it runs no session id, so an agent of it names its session for mirador when-done; Claude Code's commands inherit it. */
+function watchSessionId(page: Page) {
+  let sessionId: string | null = null;
+  page.on("websocket", (socket) =>
+    socket.on("framereceived", ({ payload }) => {
+      const message = JSON.parse(String(payload));
+      sessionId = message.type === "conversation.upserted" ? (message.conversation.acpSessionId ?? sessionId) : sessionId;
+    }),
+  );
+  return () => sessionId;
+}
+
+test("the agent has the host wait for a job it left running, then resume the agent, or only tell you, also after a restart", async ({ page }) => {
   test.setTimeout(180_000);
+  const sessionId = watchSessionId(page);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const dialog = await createProfile(page, PROFILE, scriptedOpencodeEnvironment(model, host.root), "", "opencode");
@@ -38,20 +51,25 @@ test("mirador when-done has the host wait for a job the agent left running, then
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
+  await expect.poll(sessionId).not.toBeNull();
 
   const waits = page.getByRole("region", { name: "Jobs waited for" });
   const notices = page.locator(".notice-line");
   const fromScript = page.locator(".timeline-entry", { has: page.locator(".author", { hasText: "From a script" }) }).locator(".message.user");
-  const whenDone = async (job: ChildProcess, options: string, answer = `Mirador waits for process ${job.pid}`) => {
-    await sendMessage(page, `RUN mirador when-done --pid ${job.pid} ${options}`);
+  const toolResult = async (answer: string) => {
     await expect(page.locator(".timeline .message.agent", { hasText: `Tool result: ${answer}` })).toHaveCount(1);
     await waitForTurnToEnd(page);
   };
+  const whenDone = async (job: ChildProcess, message: string, { resume = true, answer = `Mirador waits for process ${job.pid}` } = {}) => {
+    await sendMessage(page, `CALL when_done ${JSON.stringify({ pid: job.pid, message, resume })}`);
+    await toolResult(answer);
+  };
 
-  await test.step("the agent's command sets up the wait, which shows above the message box", async () => {
+  await test.step("the agent's when_done call sets up the wait, which shows above the message box", async () => {
     const job = startJob();
     await whenDone(job, "build-finished check the output");
-    expect(model.textsSent().some((text) => text.includes("Run `mirador when-done --pid <pid>")), "Mirador tells opencode about the command").toBe(true);
+    const offered = model.requests.flatMap(({ tools }) => tools ?? []).find(({ function: { name } }) => name.endsWith("when_done"));
+    expect(offered?.function.description, "the tool tells the agent when to call it").toContain("don't poll it with sleep");
     await expect(waits.locator("li")).toHaveCount(1);
     await expect(waits).toContainText(`Waiting for process ${job.pid} to end`);
     await expect(waits).toContainText("Then the agent gets: build-finished check the output");
@@ -67,9 +85,9 @@ test("mirador when-done has the host wait for a job the agent left running, then
     });
   });
 
-  await test.step("with --no-resume only you are told: the agent gets nothing", async () => {
+  await test.step("without resuming the agent, only you are told: the agent gets nothing", async () => {
     const job = startJob();
-    await whenDone(job, "--no-resume look-at-the-results");
+    await whenDone(job, "look-at-the-results", { resume: false });
     await expect(waits).toContainText("Then you are told: look-at-the-results");
     const messagesBefore = await page.locator(".timeline .message.user").count();
     job.kill();
@@ -125,8 +143,18 @@ test("mirador when-done has the host wait for a job the agent left running, then
     const job = startJob();
     job.kill();
     await new Promise((resolve) => job.once("exit", resolve));
-    await whenDone(job, "too-late", `mirador when-done: There is no running process ${job.pid}.`);
+    await whenDone(job, "too-late", { answer: `There is no running process ${job.pid}.` });
     await expect(waits).toHaveCount(0);
+  });
+
+  await test.step("mirador when-done does the same from a command, given the agent's session", async () => {
+    const job = startJob();
+    await sendMessage(page, `RUN mirador when-done --session ${sessionId()} --pid ${job.pid} from-a-command`);
+    await toolResult(`Mirador waits for process ${job.pid}`);
+    await expect(waits).toContainText("Then the agent gets: from-a-command");
+    await waits.getByRole("button", { name: "Stop waiting" }).click();
+    await expect(waits).toHaveCount(0);
+    job.kill();
   });
 
   await test.step("the wait goes on through a host restart, and a job that ended meanwhile resumes the agent", async () => {

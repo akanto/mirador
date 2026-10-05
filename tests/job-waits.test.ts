@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, type JobState } from "../host/job-waits.ts";
 import { Store } from "../host/store.ts";
-import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, type JobWaitRequest } from "../shared/job-waits.ts";
+import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, waitSetUpReply, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd } from "../shared/model.ts";
 
 const sleepProcess: JobWaitRequest = { job: { kind: "process", pid: 4242 }, sshHost: null, message: "Slept, carry on", resume: true };
@@ -40,6 +40,13 @@ describe("readJobWaitRequest", () => {
     expect(jobWaitEndedNotice(remoteBuild, "gave-up")).toBe("Stopped waiting for container build on me@fedora: it could not be checked for 10 minutes, so it may still run");
     expect(messageAtEnd(remoteBuild, "ended")).toBe("Build done");
     expect(messageAtEnd(remoteBuild, "gave-up")).toStartWith("Build done\n\n(Mirador stopped waiting for container build on me@fedora: it could not be checked");
+  });
+
+  test("the agent is told who hears of the job's end, and to end its turn when that is itself", () => {
+    expect(waitSetUpReply(remoteBuild)).toBe("Mirador waits for container build on me@fedora. When it ends, Mirador tells the user:\nBuild done");
+    expect(waitSetUpReply({ ...remoteBuild, resume: true })).toBe(
+      "Mirador waits for container build on me@fedora. When it ends, you get this as the user's next message:\nBuild done\nEnd your turn now rather than wait for it.",
+    );
   });
 });
 

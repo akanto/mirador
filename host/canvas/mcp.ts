@@ -2,6 +2,8 @@ import { createMcpHandler, McpServer, type McpHttpHandler } from "@modelcontextp
 import * as z from "zod/v4";
 import type { ConversationService } from "../conversations.ts";
 import { CANVAS_SERVER_NAME } from "../acp/harnesses.ts";
+import { JobWaitRefused, jobWaitToolDescription } from "../job-waits.ts";
+import { readJobWaitRequest, waitSetUpReply } from "../../shared/job-waits.ts";
 import { answerAsToolResult, type CanvasService, type RenderOutcome } from "./service.ts";
 import { answersOf, findingSeverities, isCommentable, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 import { ReviewProblems } from "../review/snapshot.ts";
@@ -128,6 +130,8 @@ function describeRender(itemId: string, render: RenderOutcome) {
  */
 const loadedUpFront = { "anthropic/alwaysLoad": true };
 
+const toolError = (text: string) => ({ isError: true, content: [{ type: "text" as const, text }] });
+
 function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string) {
   const server = new McpServer(
     { name: CANVAS_SERVER_NAME, version: "0.1.0" },
@@ -213,6 +217,36 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
         return { content: [{ type: "text", text: describeReview(item.id, item.review) }] };
       } catch (error) {
         if (error instanceof ReviewProblems) return { isError: true, content: [{ type: "text", text: error.message }] };
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    "when_done",
+    {
+      description: jobWaitToolDescription,
+      inputSchema: z.object({
+        pid: z.number().optional().describe("The process to wait for, by its pid."),
+        container: z.string().optional().describe("Or the Docker or Podman container to wait for, by its name or id."),
+        host: z.string().optional().describe("For a job on another machine: user@host, or a name from your ssh config. Mirador checks on it over ssh."),
+        message: z.string().optional().describe("Your instruction for picking up the work once the job ends. Without one, the message says the job ended."),
+        resume: z
+          .boolean()
+          .optional()
+          .describe("false when the user should decide what happens next: Mirador then only tells them, and you get nothing. True by default."),
+      }),
+      _meta: loadedUpFront,
+    },
+    async ({ pid, container, host, message, resume }) => {
+      if ((pid === undefined) === (container === undefined)) return toolError("Name the job: either its pid or its container.");
+      const job = pid === undefined ? { kind: "container", name: container } : { kind: "process", pid };
+      const request = readJobWaitRequest({ job, sshHost: host ?? null, message: message ?? null, resume: resume ?? true });
+      if (typeof request === "string") return toolError(request);
+      try {
+        return { content: [{ type: "text", text: waitSetUpReply(await conversations.waitForJob(conversationId, request)) }] };
+      } catch (error) {
+        if (error instanceof JobWaitRefused) return toolError(error.message);
         throw error;
       }
     },

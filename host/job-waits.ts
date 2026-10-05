@@ -7,6 +7,10 @@ import type { TerminalProgram } from "./terminals.ts";
 export const jobWaitGuidance = `# Jobs left running
 When you start a job that runs on after your command returns (a nohup or & process, a Docker or Podman container, a job on another machine), don't poll it with sleep and don't spawn an agent to watch it. Run \`mirador when-done --pid <pid> "<message>"\` (or \`--container <name>\`; add \`--host <user@host>\` for a job on another machine, reached over ssh) and end your turn. Mirador checks on the job, and when it ends the message comes back to you as the user's next message, so write it as your instruction for picking up the work. Add \`--no-resume\` when the user should decide what happens next: Mirador then only tells them.`;
 
+/** For the canvas server's when_done tool, which any agent can call: opencode gives its commands no session id that `mirador when-done` could name the conversation by. */
+export const jobWaitToolDescription =
+  "Have Mirador wait for a job you leave running, then send you a message. When you start a job that runs on after your command returns (a nohup or & process, a Docker or Podman container, a job on another machine), don't poll it with sleep and don't spawn an agent to watch it: call this with its pid or container and end your turn. Mirador checks on the job, and when it ends the message comes back to you as the user's next message, so write it as your instruction for picking up the work. The same as the `mirador when-done` command.";
+
 /** `unknown`: the check failed, e.g. ssh could not connect or Docker did not answer. */
 export type JobState = "running" | "ended" | "unknown";
 

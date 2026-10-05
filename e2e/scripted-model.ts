@@ -2,7 +2,7 @@ import { createServer, type ServerResponse, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
 type ChatMessage = { role: string; content?: string | { type: string; text?: string }[] | null };
-type ChatRequest = { messages: ChatMessage[]; tools?: { function: { name: string } }[] };
+type ChatRequest = { messages: ChatMessage[]; tools?: { function: { name: string; description?: string } }[] };
 type ToolCall = { name: string; arguments: Record<string, unknown> };
 
 const textOf = (message: ChatMessage | undefined) =>
@@ -26,7 +26,8 @@ const finish = (finishReason: string) => ({
 /**
  * An OpenAI-compatible model for opencode that follows a script instead of thinking: the last
  * user message decides the reply. `RUN <command>` calls bash, `SHOW <title>` and `ASK <question>`
- * call the canvas tools, a tool result is echoed back, anything else is echoed as text.
+ * call the canvas tools, `CALL <tool> <JSON arguments>` any of them, a tool result is echoed back,
+ * anything else is echoed as text.
  */
 export class ScriptedModel {
   readonly requests: ChatRequest[] = [];
@@ -74,6 +75,10 @@ export class ScriptedModel {
     const [directive, ...rest] = text.split(" ");
     const argument = rest.join(" ");
     if (directive === "RUN") return this.call(response, { name: "bash", arguments: { command: argument, description: "Run the scripted command" } });
+    if (directive === "CALL") {
+      const [tool, ...json] = rest;
+      return this.call(response, { name: canvasTool(tool!), arguments: JSON.parse(json.join(" ")) });
+    }
     if (directive === "SHOW") {
       return this.call(response, { name: canvasTool("show"), arguments: { title: argument, html: `<h1>${argument}</h1>` } });
     }

@@ -52,6 +52,12 @@ export function messageAtEnd(wait: JobWait, end: Exclude<JobWaitEnd, "stopped">)
   return `${wait.message}\n\n(Mirador stopped waiting for ${describeJob(wait)}: ${gaveUpReason(wait)}.)`;
 }
 
+/** What the agent is told once the host waits for its job. */
+export function waitSetUpReply(wait: JobWait) {
+  const whoHears = wait.resume ? "you get this as the user's next message" : "Mirador tells the user";
+  return `Mirador waits for ${describeJob(wait)}. When it ends, ${whoHears}:\n${wait.message}${wait.resume ? "\nEnd your turn now rather than wait for it." : ""}`;
+}
+
 /** The line the conversation shows where the wait ended. */
 export function jobWaitEndedNotice(wait: JobWait, end: JobWaitEnd) {
   switch (end) {

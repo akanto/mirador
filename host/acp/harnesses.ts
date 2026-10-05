@@ -1,7 +1,6 @@
 import { RequestError } from "@agentclientprotocol/sdk";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
 import { canvasUseGuidance } from "../canvas/guidance.ts";
 import { jobWaitGuidance } from "../job-waits.ts";
@@ -79,29 +78,10 @@ export function harnessSpec(harness: HarnessId, profile: Profile | null, claudeP
  */
 export function launchEnvironment(harness: HarnessId, profile: Profile | null, claudeProgramSetting: string): Record<string, string> {
   const environment = profileEnvironment(profile);
-  if (harness === "opencode") return withMiradorPlugin(environment);
-  if (environment.CLAUDE_CODE_EXECUTABLE) return environment;
+  if (harness !== "claude" || environment.CLAUDE_CODE_EXECUTABLE) return environment;
   const program = findClaudeProgram(claudeProgramSetting, environment.PATH);
   if (!program) throw new Error(claudeProgramMissing(claudeProgramSetting));
   return { ...environment, CLAUDE_CODE_EXECUTABLE: program };
-}
-
-const miradorPlugin = pathToFileURL(join(import.meta.dir, "opencode-plugin.ts")).href;
-
-/**
- * opencode adds the plugins of OPENCODE_CONFIG_CONTENT to the user's own; a profile may set that variable too. One that
- * does not parse is left for opencode to report.
- */
-export function withMiradorPlugin(environment: Record<string, string>): Record<string, string> {
-  let config: unknown = {};
-  try {
-    config = environment.OPENCODE_CONFIG_CONTENT ? Bun.JSONC.parse(environment.OPENCODE_CONFIG_CONTENT) : {};
-  } catch {
-    return environment;
-  }
-  if (typeof config !== "object" || config === null || Array.isArray(config)) return environment;
-  const { plugin = [] } = config as { plugin?: unknown[] };
-  return { ...environment, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, plugin: [...plugin, miradorPlugin] }) };
 }
 
 export function profileEnvironment(profile: Profile | null): Record<string, string> {
