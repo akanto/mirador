@@ -46,6 +46,21 @@ export function swapPanes(layout: PaneLayout, first: PaneId, second: PaneId): Pa
   return { ...layout, slots };
 }
 
+const fullscreenPaneOf = (layout: PaneLayout) =>
+  layout.fullscreen === "conversation" || (layout.fullscreen && !layout.hidden[layout.fullscreen]) ? layout.fullscreen : null;
+
+/** Shown, and not covered by another pane in fullscreen. */
+export function inView(layout: PaneLayout, pane: HideablePane) {
+  const fullscreen = fullscreenPaneOf(layout);
+  return !layout.hidden[pane] && (fullscreen === null || fullscreen === pane);
+}
+
+/** Hides a pane in view; shows one that is hidden or covered, leaving the fullscreen that would cover it. */
+export function toggledInView(layout: PaneLayout, pane: HideablePane): PaneLayout {
+  if (inView(layout, pane)) return { ...layout, hidden: { ...layout.hidden, [pane]: true } };
+  return { ...layout, hidden: { ...layout.hidden, [pane]: false }, fullscreen: null };
+}
+
 const isShare = (value: unknown): value is number => typeof value === "number" && value > 0 && value < 1;
 
 const isSlots = (value: unknown): value is Slots =>

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { FACTORY_DEFAULT, arrangements, isPaneLayout, layoutFrom, placement, sidebarWidthWithinLimits, swapPanes, type PaneId } from "../web/layout.ts";
+import { FACTORY_DEFAULT, arrangements, inView, isPaneLayout, layoutFrom, placement, sidebarWidthWithinLimits, swapPanes, toggledInView, type PaneId } from "../web/layout.ts";
 
 const everything: Record<PaneId, boolean> = { conversation: true, canvas: true, terminals: true };
 const layout = { ...layoutFrom(FACTORY_DEFAULT), leftShare: 0.4, topShare: 0.6 };
@@ -47,6 +47,23 @@ test("a fullscreen pane covers the whole area and the dividers go away; a hidden
   expect(terminalsFullscreen.areas.canvas).toBe("1 / 3 / 2 / 4");
   expect(terminalsFullscreen).toMatchObject({ columnDivider: null, rowDivider: null });
   expect(placement(layout, { ...everything, terminals: false }, "terminals").columnDivider).toBe("1 / 2 / 4 / 3");
+});
+
+test("a pane covered by another in fullscreen is not in view, and showing it leaves the fullscreen", () => {
+  const allShown = { ...layout, hidden: { canvas: false, terminals: false } };
+  const conversationFullscreen = { ...allShown, fullscreen: "conversation" as const };
+  expect(inView(allShown, "canvas")).toBe(true);
+  expect(inView(conversationFullscreen, "canvas")).toBe(false);
+  expect(inView(conversationFullscreen, "terminals")).toBe(false);
+  expect(toggledInView(conversationFullscreen, "canvas")).toMatchObject({ hidden: { canvas: false, terminals: false }, fullscreen: null });
+  expect(inView({ ...allShown, fullscreen: "canvas" }, "canvas")).toBe(true);
+  expect(toggledInView({ ...allShown, fullscreen: "canvas" }, "canvas").hidden.canvas).toBe(true);
+});
+
+test("a hidden pane's fullscreen covers nothing, as the workspace ignores it", () => {
+  const hiddenTerminalsFullscreen = { ...layout, hidden: { canvas: false, terminals: true }, fullscreen: "terminals" as const };
+  expect(inView(hiddenTerminalsFullscreen, "canvas")).toBe(true);
+  expect(toggledInView(hiddenTerminalsFullscreen, "terminals")).toMatchObject({ hidden: { canvas: false, terminals: false }, fullscreen: null });
 });
 
 test("stored layouts are checked before use", () => {

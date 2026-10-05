@@ -92,6 +92,17 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   await page.getByRole("button", { name: "Exit fullscreen" }).click();
   expect(await placeOf(page, "terminals")).toBe("left");
 
+  const header = page.locator(".chat-header:visible");
+  await page.getByRole("button", { name: "Fullscreen conversation" }).click();
+  await expect(header.getByRole("button", { name: "Show canvas" })).toBeVisible();
+  await header.getByRole("button", { name: "Show terminal" }).click();
+  expect(await placesOf(page)).toEqual({ conversation: "right bottom", canvas: "right top", terminals: "left" });
+  await expect(header.getByRole("button", { name: "Hide canvas" })).toBeVisible();
+  await expect(header.getByRole("button", { name: "Hide terminal" })).toBeVisible();
+  await page.getByRole("button", { name: "Fullscreen conversation" }).click();
+  await runFromPalette(page, "Show canvas");
+  expect(await placesOf(page)).toEqual({ conversation: "right bottom", canvas: "right top", terminals: "left" });
+
   await pane(page, "canvas").getByRole("button", { name: "Hide", exact: true }).click();
   expect(await placesOf(page)).toEqual({ conversation: "right", canvas: "hidden", terminals: "left" });
 

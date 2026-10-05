@@ -14,7 +14,7 @@ import { hints } from "./hints.ts";
 import { useProgramRequest } from "./program-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
-import { DEFAULT_SIDEBAR_WIDTH, sidebarWidthWithinLimits, type PaneLayout } from "./layout.ts";
+import { DEFAULT_SIDEBAR_WIDTH, inView, sidebarWidthWithinLimits, toggledInView, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { ProfilesDialog } from "./Profiles.tsx";
 import { isFreshReview } from "./review-placement.ts";
@@ -209,8 +209,10 @@ export function App() {
     changeLayout((current) => ({ ...current, hidden: { ...current.hidden, [pane]: hidden(current.hidden[pane]) } }));
   const canvasVisible = !layout.hidden.canvas;
   const terminalVisible = !layout.hidden.terminals;
-  const toggleCanvas = () => setHidden("canvas", (wasHidden) => !wasHidden);
-  const toggleTerminal = () => setHidden("terminals", (wasHidden) => !wasHidden);
+  const canvasInView = inView(layout, "canvas");
+  const terminalInView = inView(layout, "terminals");
+  const toggleCanvas = () => changeLayout((current) => toggledInView(current, "canvas"));
+  const toggleTerminal = () => changeLayout((current) => toggledInView(current, "terminals"));
 
   const open = selectedOpen(state);
   const programRequest = useProgramRequest();
@@ -321,9 +323,9 @@ export function App() {
                   promptTemplates={state.promptTemplates}
                   onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", page: "conversations" } })}
                   open={kept}
-                  canvasVisible={canvasVisible}
+                  canvasVisible={canvasInView}
                   onToggleCanvas={toggleCanvas}
-                  terminalVisible={terminalVisible}
+                  terminalVisible={terminalInView}
                   onToggleTerminal={toggleTerminal}
                 />
               </RedrawnOnlyWhenShown>
@@ -387,8 +389,8 @@ export function App() {
           entries={paletteEntries(
             state,
             dispatch,
-            { visible: canvasVisible, toggle: toggleCanvas },
-            { visible: terminalVisible, toggle: toggleTerminal },
+            { visible: canvasInView, toggle: toggleCanvas },
+            { visible: terminalInView, toggle: toggleTerminal },
             () => state.selectedConversationId && conversationLayouts.reset(state.selectedConversationId),
             showMachine,
           )}
