@@ -26,8 +26,7 @@ export class Connection {
       this.setStatus("open");
     };
     socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data)) as ServerMessage;
-      this.messageListeners.forEach((listener) => listener(message));
+      this.dispatchMessage(JSON.parse(String(event.data)) as ServerMessage);
     };
     socket.onclose = async () => {
       if (!opened && (await this.isUnauthorized())) return this.setStatus("unauthorized");
@@ -45,6 +44,52 @@ export class Connection {
     return true;
   }
 
+  /**
+   * Sends a request that expects a response. Rejects if disconnected or if the connection
+   * drops while waiting, and unsubscribes its message and status listeners on settlement.
+   */
+  sendAndAwait<T>(
+    send: (requestId: string) => ClientMessage,
+    pick: (message: ServerMessage, requestId: string) => T | undefined,
+  ): Promise<T> {
+    if (this.status !== "open" || (this.socket && this.socket.readyState !== WebSocket.OPEN)) {
+      return Promise.reject(new Error("Not connected to the host."));
+    }
+    const requestId = crypto.randomUUID();
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const cleanUp = () => {
+        settled = true;
+        unsubscribeMessage();
+        unsubscribeStatus();
+      };
+      const unsubscribeMessage = this.onMessage((message) => {
+        if (settled) return;
+        try {
+          const picked = pick(message, requestId);
+          if (picked !== undefined) {
+            cleanUp();
+            resolve(picked);
+          }
+        } catch (error) {
+          cleanUp();
+          reject(error);
+        }
+      });
+      const unsubscribeStatus = this.onStatus((status) => {
+        if (settled) return;
+        if (status !== "open") {
+          cleanUp();
+          reject(new Error("Disconnected from the host."));
+        }
+      });
+      if (!this.send(send(requestId))) {
+        cleanUp();
+        reject(new Error("Not connected to the host."));
+      }
+    });
+  }
+
   onMessage(listener: MessageListener) {
     this.messageListeners.add(listener);
     return () => void this.messageListeners.delete(listener);
@@ -55,9 +100,20 @@ export class Connection {
     return () => void this.statusListeners.delete(listener);
   }
 
-  private setStatus(status: ConnectionStatus) {
+  dispatchMessage(message: ServerMessage) {
+    this.messageListeners.forEach((listener) => listener(message));
+  }
+
+  setStatus(status: ConnectionStatus) {
     this.status = status;
     this.statusListeners.forEach((listener) => listener(status));
+  }
+
+  get listenerCount() {
+    return {
+      messages: this.messageListeners.size,
+      statuses: this.statusListeners.size,
+    };
   }
 
   private async isUnauthorized() {

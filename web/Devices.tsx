@@ -150,14 +150,16 @@ type Invite = Extract<ServerMessage, { type: "devices.invited" }>;
 
 const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 /** Sends a setting to the host, which saves it for its next start; null once saved, else what is wrong with it. */
-function saveSetting(send: (requestId: string) => ClientMessage, answered: (problem: string | null) => void) {
-  const requestId = crypto.randomUUID();
-  const unsubscribe = connection.onMessage((message) => {
-    if (message.type !== "settings.saved" || message.requestId !== requestId) return;
-    unsubscribe();
-    answered(message.problem);
-  });
-  if (!connection.send(send(requestId))) unsubscribe();
+async function saveSetting(send: (requestId: string) => ClientMessage, answered: (problem: string | null) => void) {
+  try {
+    const problem = await connection.sendAndAwait(
+      send,
+      (message, requestId) => (message.type === "settings.saved" && message.requestId === requestId ? message.problem : undefined),
+    );
+    answered(problem);
+  } catch (error) {
+    answered(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function NetworkSwitch({ settings }: { settings: ReachabilitySettings }) {
@@ -306,14 +308,16 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
   const shownInSidebar = useConnectedDevicesInSidebar();
 
-  const createInvite = () => {
-    const requestId = crypto.randomUUID();
-    const unsubscribe = connection.onMessage((message) => {
-      if (message.type !== "devices.invited" || message.requestId !== requestId) return;
-      unsubscribe();
-      setInvite(message);
-    });
-    connection.send({ type: "devices.invite", requestId });
+  const createInvite = async () => {
+    try {
+      const invited = await connection.sendAndAwait(
+        (requestId) => ({ type: "devices.invite", requestId }),
+        (message, requestId) => (message.type === "devices.invited" && message.requestId === requestId ? message : undefined),
+      );
+      setInvite(invited);
+    } catch {
+      // Disconnected or failed; nothing to set
+    }
   };
 
   const publicOrigin = listed?.reachability.publicAddress?.origin ?? null;

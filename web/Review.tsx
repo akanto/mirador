@@ -627,25 +627,20 @@ function FileList({
   );
 }
 
-const reviewedFiles = new Map<string, Promise<string[]>>();
+export const reviewedFiles = new Map<string, Promise<string[]>>();
 
 /** The reviewed version of a changed file, asked of the host once per review and file. */
-function reviewedFile(itemId: string, path: string) {
+export function reviewedFile(itemId: string, path: string) {
   const key = `${itemId}:${path}`;
   if (!reviewedFiles.has(key)) {
-    const request = new Promise<string[]>((resolve, reject) => {
-      const requestId = crypto.randomUUID();
-      const unsubscribe = connection.onMessage((message) => {
-        if (message.type === "review.file-read" && message.requestId === requestId) resolve(message.lines);
-        else if (message.type === "review.file-failed" && message.requestId === requestId) reject(new Error(message.message));
-        else return;
-        unsubscribe();
-      });
-      if (!connection.send({ type: "review.read-file", requestId, itemId, path })) {
-        unsubscribe();
-        reject(new Error("Not connected to the host."));
-      }
-    });
+    const request = connection.sendAndAwait(
+      (requestId) => ({ type: "review.read-file", requestId, itemId, path }),
+      (message, requestId) => {
+        if (message.type === "review.file-read" && message.requestId === requestId) return message.lines;
+        if (message.type === "review.file-failed" && message.requestId === requestId) throw new Error(message.message);
+        return undefined;
+      },
+    );
     request.catch(() => reviewedFiles.delete(key));
     reviewedFiles.set(key, request);
   }
@@ -715,7 +710,17 @@ interface ShownContext {
 }
 
 /** What was shown around each file's hunks, so it is still shown after a look at another tab or file. */
-const shownContexts = new Map<string, ShownContext>();
+export const shownContexts = new Map<string, ShownContext>();
+
+/** Drops cached file lines and revealed hunks from previous review items. */
+export function evictStaleReviewCaches(currentItemId: string) {
+  for (const key of shownContexts.keys()) {
+    if (!key.startsWith(`${currentItemId}:`)) shownContexts.delete(key);
+  }
+  for (const key of reviewedFiles.keys()) {
+    if (!key.startsWith(`${currentItemId}:`)) reviewedFiles.delete(key);
+  }
+}
 
 function useRevealedContext(itemId: string, file: ReviewFile) {
   const key = `${itemId}:${file.path}`;
@@ -926,6 +931,10 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   const fullscreen = usePaneFullscreen("canvas");
   const file = files.find((each) => each.path === path) ?? files[0];
   const finding = review.findings.find(({ id }) => id === findingId);
+
+  useEffect(() => {
+    evictStaleReviewCaches(item.id);
+  }, [item.id]);
 
   useEffect(() => {
     const typingElsewhere = isTextField(document.activeElement ?? document.body) && !document.activeElement?.closest("[inert]");
