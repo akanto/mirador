@@ -10,7 +10,7 @@ import { PidFileOnDisk, systemProcesses } from "../core/processes.ts";
 import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from "../core/runtime.ts";
 import type { SettingsStore } from "../core/settings.ts";
 import type { TrayAction, TrayState } from "../core/tray-menu.ts";
-import { pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
+import { giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
 import { AppTray } from "./app-tray.ts";
 import { setDockIconVisible } from "./dock.ts";
 import { MainWindow } from "./main-window.ts";
@@ -39,7 +39,8 @@ export class DesktopApp {
   private readonly notifications: HostNotifications;
   private status: TrayState["status"] = "starting";
   private busy = false;
-  private readonly windowMenuNonce = crypto.randomUUID();
+  /** Only the window's own page gets it, never a frame in it, so only that page makes the app act. */
+  private readonly pageNonce = crypto.randomUUID();
 
   constructor(private readonly environment: DesktopEnvironment) {
     const { appName, runtime, paths, settings, shell, home, configHome, uid, appPath } = environment;
@@ -178,11 +179,14 @@ export class DesktopApp {
 
   private showMenuInWindow() {
     if (!showsMenuInWindow || !this.window.isOpen) return;
-    this.window.runInPage(showMenuScript({ nonce: this.windowMenuNonce, items: windowMenu(this.trayState()) }));
+    this.window.runInPage(showMenuScript({ nonce: this.pageNonce, items: windowMenu(this.trayState()) }));
   }
 
   private answerPage(detail: unknown) {
-    const request = showsMenuInWindow ? pageRequest(detail, this.windowMenuNonce) : null;
+    const request = pageRequest(detail, this.pageNonce);
+    if (request?.type === "nonce") this.window.runInPage(giveNonceScript(this.pageNonce));
+    if (request?.type === "open-link") this.window.openInBrowser(request.url);
+    if (!showsMenuInWindow) return;
     if (request?.type === "menu") this.showMenuInWindow();
     if (request?.type === "action") void this.handle(request.action);
   }

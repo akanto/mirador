@@ -32,6 +32,7 @@ async function actAsDesktopApp(page: Page) {
     window.__electrobunSendToHost = (message) => {
       sent.push(message);
       if (message.type === "desktop-menu-request") setTimeout(() => window.dispatchEvent(new CustomEvent("mirador:desktop-menu", { detail: menu })));
+      if (message.type === "desktop-nonce-request") setTimeout(() => window.dispatchEvent(new CustomEvent("mirador:desktop-nonce", { detail: menu.nonce })));
     };
   }, menuWith(false));
   return () => page.evaluate(() => (window as unknown as { sentToDesktopApp: DesktopMenuMessage[] }).sentToDesktopApp);
@@ -62,6 +63,44 @@ test("inside the Linux desktop app, the sidebar offers the tray's menu and sends
   await expect(menu.getByRole("menuitemcheckbox", { name: "Open at login" })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+});
+
+test("inside the desktop app, a link to another site opens in the browser when the page asks the app with its nonce, and no other frame can ask", async ({ page }) => {
+  const sentToDesktopApp = await actAsDesktopApp(page);
+  await signIn(page, host);
+  await expect.poll(sentToDesktopApp).toContainEqual({ type: "desktop-nonce-request" });
+  await page.evaluate(() => {
+    const link = Object.assign(document.createElement("a"), { href: "https://example.com/docs", textContent: "the docs", target: "_blank" });
+    document.querySelector(".sidebar")!.append(link);
+    const frame = document.createElement("iframe");
+    frame.sandbox.add("allow-scripts");
+    frame.srcdoc = `<script>parent.postMessage({ type: "mirador:open-link", url: "https://evil.example/" }, "*")</script>`;
+    document.body.append(frame);
+  });
+  const link = page.getByRole("link", { name: "the docs" });
+  await link.click();
+  await link.click({ modifiers: ["ControlOrMeta"] });
+  await link.click({ button: "middle" });
+
+  const openedLinks = async () => (await sentToDesktopApp()).filter(({ type }) => type === "desktop-open-link");
+  await expect.poll(openedLinks).toHaveLength(3);
+  expect(await openedLinks()).toEqual(Array(3).fill({ type: "desktop-open-link", nonce: "nonce-1", url: "https://example.com/docs" }));
+  expect(page.context().pages()).toHaveLength(1);
+  expect(new URL(page.url()).origin).toBe(host.origin);
+});
+
+test("inside a desktop app that hands over no nonce, as one built before it did, links are left to the window", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__electrobunSendToHost = () => {};
+  });
+  await signIn(page, host);
+  await page.evaluate(() => {
+    const link = Object.assign(document.createElement("a"), { href: "https://example.com/docs", textContent: "the docs", target: "_blank" });
+    document.querySelector(".sidebar")!.append(link);
+  });
+  const popup = page.waitForEvent("popup");
+  await page.getByRole("link", { name: "the docs" }).click();
+  expect((await popup).url()).toContain("example.com");
 });
 
 test("the desktop app menu reaches past the sidebar's edge without being cut off", async ({ page }) => {

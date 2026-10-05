@@ -1,8 +1,8 @@
 import Electrobun, { BrowserWindow, Utils } from "electrobun/main";
-import { blockedNavigationUrl, navigationRules, openedWindowUrl } from "../core/navigation.ts";
+import { navigationRules } from "../core/navigation.ts";
 import { setDockIconVisible } from "./dock.ts";
 
-interface WebviewEvent {
+interface HostMessageEvent {
   data?: { detail?: unknown };
 }
 
@@ -39,9 +39,9 @@ export class MainWindow {
       this.window = null;
       setDockIconVisible(false);
     });
-    window.webview.on("will-navigate", (event) => this.openInBrowser(blockedNavigationUrl((event as WebviewEvent).data?.detail)));
-    Electrobun.events.on(`new-window-open-${window.webview.id}`, (event: unknown) => this.openInBrowser(openedWindowUrl((event as WebviewEvent).data?.detail)));
-    Electrobun.events.on(`host-message-${window.webview.id}`, (event: unknown) => this.onPageMessage((event as WebviewEvent).data?.detail));
+    // Blocked navigations and new windows are not opened in the browser: any frame can cause or forge those events, the
+    // agents' canvas pages included. The app's own page asks for its links with the nonce instead (web/outside-links.ts).
+    Electrobun.events.on(`host-message-${window.webview.id}`, (event: unknown) => this.onPageMessage((event as HostMessageEvent).data?.detail));
     this.window = window;
   }
 
@@ -49,7 +49,7 @@ export class MainWindow {
     this.window?.webview.executeJavascript(script);
   }
 
-  private openInBrowser(url: string | null) {
-    if (url && !url.startsWith(`${this.appOrigin}/`)) Utils.openExternal(url);
+  openInBrowser(url: string) {
+    if (!url.startsWith(`${this.appOrigin}/`)) Utils.openExternal(url);
   }
 }

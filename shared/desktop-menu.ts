@@ -11,4 +11,11 @@ export interface DesktopMenu {
 /** The app dispatches this on the page's window, which canvas frames from another origin cannot listen to. */
 export const DESKTOP_MENU_EVENT = "mirador:desktop-menu";
 
-export type DesktopMenuMessage = { type: "desktop-menu-request" } | { type: "desktop-action"; nonce: string; action: string };
+/** The app hands its window's own page the nonce with this event; only that page then makes the app act or open links. */
+export const DESKTOP_NONCE_EVENT = "mirador:desktop-nonce";
+
+export type DesktopMenuMessage =
+  | { type: "desktop-menu-request" }
+  | { type: "desktop-action"; nonce: string; action: string }
+  | { type: "desktop-nonce-request" }
+  | { type: "desktop-open-link"; nonce: string; url: string };

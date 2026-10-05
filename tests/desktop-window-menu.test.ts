@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
+import { giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
 const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false } as const;
 
@@ -25,5 +25,20 @@ describe("menu in the window", () => {
     expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "rm -rf" }, "n-1")).toBeNull();
     expect(pageRequest("quit", "n-1")).toBeNull();
     expect(pageRequest(null, "n-1")).toBeNull();
+  });
+
+  test("anyone may ask for the nonce, which the app gives only to its window's own page", () => {
+    expect(pageRequest({ type: "desktop-nonce-request" }, "n-1")).toEqual({ type: "nonce" });
+    expect(giveNonceScript("n-1")).toBe('window.dispatchEvent(new CustomEvent("mirador:desktop-nonce", { detail: "n-1" }))');
+  });
+
+  test("opens a link only when the request carries the nonce and the link is a web address", () => {
+    const link = { type: "desktop-open-link", nonce: "n-1", url: "https://example.com/a" };
+    expect(pageRequest(link, "n-1")).toEqual({ type: "open-link", url: "https://example.com/a" });
+    expect(pageRequest({ ...link, nonce: "guess" }, "n-1")).toBeNull();
+    expect(pageRequest({ type: "desktop-open-link", url: link.url }, "n-1")).toBeNull();
+    for (const url of ["file:///etc/passwd", "slack://open", "javascript:alert(1)", "not a url", 7, null]) {
+      expect(pageRequest({ ...link, url }, "n-1")).toBeNull();
+    }
   });
 });
