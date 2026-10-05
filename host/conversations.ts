@@ -769,7 +769,7 @@ export class ConversationService {
     if (existing) return existing;
     const spec = harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId));
     const harness = new HarnessProcess(
-      { ...spec, environment: { ...spec.environment, ...this.scriptEnvironment(spec.environment.PATH) } },
+      { ...spec, environment: { ...spec.environment, ...this.scriptEnvironment(spec.environment.PATH), ...this.testModelEnvironment(launch) } },
       {
         onSessionUpdate: (notification) => this.handleSessionUpdate(notification),
         onPermissionRequest: (request, signal) => this.handlePermissionRequest(request, signal),
@@ -779,6 +779,12 @@ export class ConversationService {
     );
     this.harnessesByLaunch.set(key, harness);
     return harness;
+  }
+
+  /** A test host's Claude Code starts its sessions on the test model, rather than switching to it once a session runs. */
+  private testModelEnvironment({ harness, profileId }: Launch): Record<string, string> {
+    const { model } = this.config.testModelOverride;
+    return harness === "claude" && profileId === null && model ? { ANTHROPIC_MODEL: model } : {};
   }
 
   /** Where scripts the agent starts reach the host (scripts/mirador-message), and the mirador command they do it with. */
