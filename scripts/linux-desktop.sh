@@ -12,7 +12,8 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 source "$repo/scripts/linux-common.sh"
 release=${MIRADOR_LINUX_RELEASE:-0}
-results="${TMPDIR:-/tmp}/mirador-linux-desktop-$arch$([ "$release" = 1 ] && echo -release)"
+results="${TMPDIR:-/tmp}/mirador-linux-desktop-$arch"
+[ "$release" = 1 ] && results+=-release
 rm -rf "$results" && mkdir -p "$results"
 
 build_image linux-test
