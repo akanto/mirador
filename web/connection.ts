@@ -12,6 +12,7 @@ export class Connection {
   private retryDelay = 500;
   private readonly messageListeners = new Set<MessageListener>();
   private readonly statusListeners = new Set<StatusListener>();
+  private readonly unsent: ClientMessage[] = [];
   status: ConnectionStatus = "connecting";
 
   connect() {
@@ -21,6 +22,7 @@ export class Connection {
     socket.onopen = () => {
       opened = true;
       this.retryDelay = 500;
+      this.unsent.splice(0).forEach((message) => socket.send(JSON.stringify(message)));
       this.setStatus("open");
     };
     socket.onmessage = (event) => {
@@ -35,9 +37,11 @@ export class Connection {
     };
   }
 
+  /** Sends at once, or as soon as the socket opens, so that what the user does while the page connects or reconnects counts. */
   send(message: ClientMessage): boolean {
-    if (this.socket?.readyState !== WebSocket.OPEN) return false;
-    this.socket.send(JSON.stringify(message));
+    if (this.status === "unauthorized") return false;
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
+    else this.unsent.push(message);
     return true;
   }
 

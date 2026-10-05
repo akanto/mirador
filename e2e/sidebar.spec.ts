@@ -1,4 +1,6 @@
-import { dirname } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -30,4 +32,17 @@ test("a workspace is a card: its folder under the name, new conversations at the
   await expect(chip).toHaveText("Claude Code");
   await card.getByLabel("Agent").selectOption({ label: "opencode" });
   await expect(chip).toHaveText("opencode");
+});
+
+test("a workspace added while the page reconnects to the host is added once it has", async ({ page }) => {
+  await signIn(page, host);
+  await host.stop();
+  await expect(page.locator(".banner")).toHaveText("Connection lost, reconnecting…");
+  const directory = mkdtempSync(join(tmpdir(), "mirador-e2e-offline-"));
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const input = page.getByLabel("Workspace directory");
+  await input.fill(directory);
+  await input.press("Enter");
+  await host.start();
+  await expect(workspaceCard(page, directory)).toBeVisible({ timeout: 30_000 });
 });
