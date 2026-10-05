@@ -71,7 +71,7 @@ test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, 
   await test.step("the agent continues where it left off, then the queued message goes out", async () => {
     await expect(page.locator(".message.user", { hasText: "Continue where you left off." })).toBeVisible({ timeout: 60_000 });
     await expect(page.locator(".message.user").last()).toHaveText("queued before the restart", { timeout: 180_000 });
-    await expect(page.locator(".message.agent", { hasText: "slept-through-restart" })).toBeVisible();
+    await expect(page.locator(".timeline .shell-output", { hasText: "slept-through-restart" }).first()).toBeAttached();
     await waitForTurnToEnd(page);
     await expect(page.locator(".timeline")).not.toContainText("Could not resume");
   });

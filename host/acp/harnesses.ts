@@ -87,12 +87,13 @@ export const CANVAS_SERVER_NAME = "canvas";
  * opencode needs nothing: it offers no question tool over ACP, and the user's own
  * opencode permission settings apply unchanged.
  */
-export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse) {
+export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { withoutUserSettings = false } = {}) {
   if (harness !== "claude") return undefined;
   return {
     systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance] : []), jobWaitGuidance].join("\n\n") },
     claudeCode: {
       options: {
+        ...(withoutUserSettings && { settingSources: ["project", "local"] }),
         env: { CLAUDE_NOTIFIER: "0" },
         allowedTools: [`mcp__${CANVAS_SERVER_NAME}__show`, `mcp__${CANVAS_SERVER_NAME}__ask`],
         disallowedTools: ["AskUserQuestion"],

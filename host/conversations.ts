@@ -683,9 +683,11 @@ export class ConversationService {
     return loadedId;
   }
 
+  /** A test host's own Claude Code works without the settings and instructions of the user who runs the tests. */
   private sessionRequest(conversationId: string, workspace: Workspace) {
-    const { harness } = this.get(conversationId);
-    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(harness, this.store.canvasUse()) };
+    const { harness, profileId } = this.get(conversationId);
+    const withoutUserSettings = this.config.testSkipsUserSettings && profileId === null;
+    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(harness, this.store.canvasUse(), { withoutUserSettings }) };
   }
 
   /** claude-notifier hooks into Claude Code only. */

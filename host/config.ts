@@ -39,6 +39,8 @@ export interface HostConfig {
   notifierDir: string | null;
   /** Test runs pin a cheap model; profiles are left alone because a profile chooses its own model. */
   testModelOverride: { model?: string; effort?: string };
+  /** Test hosts' own Claude Code sessions skip the user's settings and CLAUDE.md, which can steer or refuse test prompts. */
+  testSkipsUserSettings: boolean;
   /** Hot reload makes open pages swap modules mid-conversation, so it is opt-in for working on the UI itself. */
   developmentMode: boolean;
   /** Runs the statusline command from the user's Claude Code settings; test hosts turn it off with MIRADOR_STATUSLINE=off. */
@@ -180,6 +182,7 @@ export function loadConfig(env = process.env): HostConfig {
     reachability: reachedAs,
     notifierDir: env.MIRADOR_NOTIFIER_DIR ?? notifierDirIfInstalled(),
     testModelOverride: { model: env.MIRADOR_TEST_MODEL, effort: env.MIRADOR_TEST_EFFORT },
+    testSkipsUserSettings: env.MIRADOR_TEST_SKIP_USER_SETTINGS === "1",
     developmentMode: env.MIRADOR_DEV === "1",
     runsUserStatusLine: env.MIRADOR_STATUSLINE !== "off",
   };

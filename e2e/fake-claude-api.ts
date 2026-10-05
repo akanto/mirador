@@ -34,6 +34,8 @@ export class FakeClaudeApi {
   readonly answered: string[] = [];
   /** The system prompt each request carried, by the text the user typed last. */
   readonly systemPrompts = new Map<string, string>();
+  /** The user's newest message as Claude Code sent it, with the context it adds, by the text the user typed. */
+  readonly userMessages = new Map<string, string>();
   readonly refused: string[] = [];
   private server?: Server;
   private heldReplies: (() => void)[] | null = null;
@@ -74,6 +76,7 @@ export class FakeClaudeApi {
     if (this.heldReplies) return void this.heldReplies.push(() => this.reply(body, response));
     const typed = lastTypedText(body);
     this.systemPrompts.set(typed, systemTextOf(body));
+    this.userMessages.set(typed, textOf(body.messages.findLast(({ role }) => role === "user")?.content ?? ""));
     if (this.limited) {
       this.refused.push(typed);
       response.writeHead(429, { "content-type": "application/json", ...this.limitHeaders() });
