@@ -40,6 +40,7 @@ import { imagesOf, lowDataEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import type { ProfileService } from "./profiles.ts";
 import type { HostRestart } from "./restart.ts";
+import type { SignInCodes } from "./sign-in-codes.ts";
 import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
@@ -58,6 +59,7 @@ export interface HostServices {
   restart: HostRestart;
   devices: DeviceService;
   joinRequests: JoinRequestService;
+  signInCodes: SignInCodes;
   search: ConversationSearch;
   relays: MachineRelays;
   watch: MachineWatch;
@@ -97,6 +99,7 @@ export function startServer(services: HostServices) {
     restart,
     devices,
     joinRequests,
+    signInCodes,
     search,
     relays,
     watch,
@@ -132,9 +135,9 @@ export function startServer(services: HostServices) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
     const url = new URL(request.url);
     if (url.hostname !== "127.0.0.1") return Response.redirect(`${config.appOrigin}${url.pathname}${url.search}`, 302);
-    if (!sameSecret(url.searchParams.get("token"), config.browserToken)) {
-      return new Response("Invalid token. Use the link printed by the host.", { status: 403 });
-    }
+    const code = url.searchParams.get("code");
+    const signsIn = code === null ? sameSecret(url.searchParams.get("token"), config.browserToken) : signInCodes.redeem(code);
+    if (!signsIn) return new Response("This sign-in link is not valid, or was used or expired. Run mirador sign-in on this machine for a new one.", { status: 403 });
     return new Response(null, {
       status: 302,
       headers: {

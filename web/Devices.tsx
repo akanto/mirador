@@ -139,7 +139,7 @@ export function JoinMachine() {
       {problem && <p className="join-problem">{problem}</p>}
       {isThisMachine() && (
         <p className="hint">
-          On this machine itself, you can instead open the link the host printed in your terminal (it ends with <code>/auth?token=…</code>).
+          On this machine itself, you can instead sign in with a one-time link: the host prints one in the terminal that started it, and <code>mirador sign-in</code> makes a new one.
         </p>
       )}
     </div>

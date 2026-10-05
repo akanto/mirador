@@ -60,6 +60,7 @@ const schema = `
   CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, joined_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS invites (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS sign_in_codes (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS join_requests (
     id TEXT PRIMARY KEY, secret_hash TEXT NOT NULL, name TEXT NOT NULL, from_address TEXT NOT NULL, tailscale_user TEXT,
     authority_fingerprint TEXT, commitment TEXT NOT NULL, machine_nonce TEXT NOT NULL, requester_nonce TEXT, answer TEXT, expires_at INTEGER NOT NULL);
@@ -514,6 +515,17 @@ export class Store {
   takeInvite(codeHash: string, now: number) {
     const { changes } = this.db.query("DELETE FROM invites WHERE code_hash = ? AND expires_at > ?").run(codeHash, now);
     this.db.query("DELETE FROM invites WHERE expires_at <= ?").run(now);
+    return changes > 0;
+  }
+
+  addSignInCode(codeHash: string, expiresAt: number) {
+    this.db.query("INSERT INTO sign_in_codes (code_hash, expires_at) VALUES (?, ?)").run(codeHash, expiresAt);
+  }
+
+  /** Removes the sign-in code, and every expired one; whether it was there and still valid. */
+  takeSignInCode(codeHash: string, now: number) {
+    const { changes } = this.db.query("DELETE FROM sign_in_codes WHERE code_hash = ? AND expires_at > ?").run(codeHash, now);
+    this.db.query("DELETE FROM sign_in_codes WHERE expires_at <= ?").run(now);
     return changes > 0;
   }
 

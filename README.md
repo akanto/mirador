@@ -9,7 +9,7 @@ bun install
 bun start
 ```
 
-Open the `http://127.0.0.1:4600/auth?token=…` link the host prints (once per browser; it sets a cookie). Stop with Ctrl+C, which also stops the agent processes.
+Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs one browser in with a cookie, works once, and expires after 10 minutes. `bin/mirador sign-in` makes a new link for the next browser. Stop with Ctrl+C, which also stops the agent processes.
 
 Runs on macOS and Linux (x64 and arm64). [`desktop/`](desktop/README.md) wraps it in a menu bar / tray app with its own window on both. A release's `Mirador-macos-arm64.zip`, `Mirador-linux-x64-Setup.tar.gz` and `Mirador-linux-arm64-Setup.tar.gz` are that app carrying Mirador, for a computer without Bun or a checkout ([installing them](desktop/README.md#install)).
 

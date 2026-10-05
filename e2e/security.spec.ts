@@ -58,6 +58,22 @@ test("rejects browsers and clients without the right credentials", async ({ page
   expect(await readImage({ Cookie: cookie })).toBe(404);
 });
 
+test("a browser signs in with a one-time link from mirador sign-in, and the host prints no token where no terminal reads it", async ({ page }) => {
+  const browserToken = new URL(host.authUrl).searchParams.get("token")!;
+  expect(host.log).toContain("Mirador is running");
+  expect(host.log).not.toContain(browserToken);
+  expect(host.log).not.toContain("/auth?");
+
+  const link = /(http:\/\/\S+\/auth\?code=\S+)/.exec(host.mirador("sign-in"))![1]!;
+  await page.goto(link);
+  await expect(page.getByText("No conversation selected")).toBeVisible();
+  expect(page.url()).toBe(`${host.origin}/`);
+
+  const usedAgain = await fetch(link, { redirect: "manual" });
+  expect(usedAgain.status).toBe(403);
+  expect(await usedAgain.text()).toContain("mirador sign-in");
+});
+
 test("a hostile canvas page cannot reach the host, the parent page or the network", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);

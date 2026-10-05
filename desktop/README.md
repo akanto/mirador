@@ -98,7 +98,7 @@ The app listens to the host for the notifications a browser tab would show (a qu
 ## Notes and known limits
 
 - macOS attributes file access to the app, not to Terminal. Because the host is started through your interactive login shell, anything your `~/.zshrc` touches under `~/Downloads`, `~/Documents` or `~/Desktop` triggers a one-time permission prompt for Mirador. Until it is answered, host startup waits on it. Approve it once.
-- `host.log` contains the tokenised URL the host prints at startup. Treat the file as sensitive.
+- `host.log` holds no sign-in link: the host prints one only to a terminal.
 - The window loads `/auth?token=…` from `<data dir>/browser-token`; the token is never logged by the app. The window is sandboxed, and links to other origins open in your default browser.
 - There is no app icon yet; Electrobun warns about it during the build.
 - No Dock badge (Electrobun 2.0.2 has no API for it).

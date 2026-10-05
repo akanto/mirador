@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { loadConfig } from "./config.ts";
 import { DeviceService } from "./devices.ts";
 import { JoinRequestService } from "./join-requests.ts";
+import { SIGN_IN_CODE_LIFETIME_MINUTES, SignInCodes, signInLink } from "./sign-in-codes.ts";
 import { Store } from "./store.ts";
 import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
 import type { JoinRequest, ListedDevice } from "../shared/model.ts";
@@ -10,6 +11,7 @@ import { inviteLink } from "../shared/machines.ts";
 
 const usage = `usage: mirador <command>
 
+  sign-in    Make a one-time link a browser on this machine signs in to Mirador with
   invite     Make a one-time code another browser or app joins this Mirador with
   approve    Let in the devices that ask to join this Mirador, by typing the number each shows
   devices    List the devices that joined this Mirador, and which are connected now
@@ -21,6 +23,15 @@ const whenDoneUsage = `usage: mirador when-done (--pid <pid> | --container <name
   Then the message goes to the agent's conversation as your next message, so the agent carries on;
   with --no-resume only you are told. Without a message, it says the job ended.
   Run it from an agent in Mirador: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).`;
+
+/** The host prints a sign-in link only to a terminal, and each link works once, so a new browser needs a new link. */
+function signIn() {
+  const config = loadConfig();
+  const store = new Store(config.databasePath);
+  const code = new SignInCodes(store).mint();
+  store.close();
+  console.log(`Open this link in the browser to sign in (it works once, for ${SIGN_IN_CODE_LIFETIME_MINUTES} minutes):\n\n  ${signInLink(config.appOrigin, code)}\n`);
+}
 
 /** Makes an invite on this machine, for the first device to join it; joined devices invite more from Settings → Devices. */
 function invite() {
@@ -133,6 +144,7 @@ async function whenDone(args: string[]) {
 }
 
 const commands = new Map<string, (args: string[]) => void | Promise<void>>([
+  ["sign-in", signIn],
   ["invite", invite],
   ["approve", approve],
   ["devices", listDevices],

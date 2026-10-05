@@ -11,6 +11,7 @@ import { MachineRelays } from "./machine-relays.ts";
 import { MachineWatch } from "./machine-watch.ts";
 import { ConversationSearch } from "./search.ts";
 import { signedInWith } from "./sign-in.ts";
+import { SignInCodes, signInLink } from "./sign-in-codes.ts";
 import { Hub } from "./hub.ts";
 import { ImageStore } from "./images.ts";
 import { NotifierMute } from "./notifier.ts";
@@ -45,6 +46,7 @@ const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
 const devices = new DeviceService(store);
 const joinRequests = new JoinRequestService(store, devices, ownAuthorityFingerprint);
+const signInCodes = new SignInCodes(store);
 const search = new ConversationSearch(store);
 const signedIn = signedInWith(config.browserToken, devices);
 const watch = new MachineWatch(
@@ -58,7 +60,7 @@ const relays = new MachineRelays(store, config.relayPorts, (request) => signedIn
 });
 relays.startAll();
 watch.startAll();
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, joinRequests, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: server.rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
@@ -68,7 +70,8 @@ const terminalSessions = new TerminalSessionWatcher(
 );
 terminalSessions.start();
 
-console.log(`Mirador is running. Open:\n\n  ${config.appOrigin}/auth?token=${config.browserToken}\n`);
+if (process.stdout.isTTY) console.log(`Mirador is running. Open:\n\n  ${signInLink(config.appOrigin, signInCodes.mint())}\n`);
+else console.log(`Mirador is running at ${config.appOrigin}. To sign a browser in, open the link mirador sign-in prints.`);
 console.log(`data: ${config.dataDir}  agent logs: ${config.dataDir}/logs`);
 if (network) console.log(`other devices: ${config.publicOrigin} (HTTPS on port ${network.port} of every network this machine is on)`);
 

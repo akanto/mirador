@@ -74,6 +74,15 @@ export class TestHost {
     return readFileSync(join(this.dataDir, "script-token"), "utf8").trim();
   }
 
+  /** Runs Mirador's command line, as `mirador <args>` would on this host's machine, and gives what it printed. */
+  mirador(...args: string[]) {
+    return execFileSync("bun", ["host/cli.ts", ...args], {
+      cwd: this.sourceDir,
+      encoding: "utf8",
+      env: { ...process.env, MIRADOR_PORT: String(this.port), MIRADOR_DATA_DIR: this.dataDir },
+    });
+  }
+
   /** MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
   private baseEnvironment(): NodeJS.ProcessEnv {
     if (!process.env.MIRADOR_E2E_MINIMAL_ENV) return process.env;
@@ -122,11 +131,11 @@ export class TestHost {
     child.stderr!.on("data", capture);
     child.once("exit", (code, signal) => log.end(`\n[host exited: ${code ?? signal}]\n`));
     const deadline = Date.now() + 15_000;
-    while (!this.output.includes("/auth?token=")) {
+    while (!this.output.includes("Mirador is running")) {
       if (Date.now() > deadline || child.exitCode !== null) throw new Error(`host did not start:\n${this.output}`);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    this.authUrl = this.output.match(/(http:\/\/\S+\/auth\?token=\w+)/)![1]!;
+    this.authUrl = `${this.origin}/auth?token=${readFileSync(join(this.dataDir, "browser-token"), "utf8").trim()}`;
   }
 
   async stop() {
