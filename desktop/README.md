@@ -14,8 +14,8 @@ cd desktop
 bun install
 bun run typecheck
 bun run build:dev      # build/dev-macos-arm64/Mirador-dev.app
-bun run build          # build/stable-macos-arm64/Mirador.app (self-expanding, about 20 MB)
-bun run build:release  # the same app carrying Mirador (about 135 MB), for people without a checkout
+bun run build          # build/stable-macos-arm64/Mirador.app
+bun run build:release  # the same app carrying Mirador (about 390 MB), for people without a checkout
 bun run dev            # run from source with Electrobun's dev runner
 ```
 
@@ -23,7 +23,7 @@ bun run dev            # run from source with Electrobun's dev runner
 
 Icons: `assets/app-icon.svg` (app icon) and `assets/tray-icon.svg` (menu bar, drawn black and shown by macOS as a template image) are the sources. `scripts/render-icons.sh` renders `icon.iconset/` and `assets/tray-icon.png` from them; rerun it after editing either SVG. The page's favicon is `web/favicon.svg`.
 
-The stable build is a small stub. The first launch expands it in place and writes Electrobun's uninstall manifest to `~/Library/Application Support/com.sodre90.mirador/stable/`.
+Electrobun's stable app is built as a self-extracting stub; `scripts/unwrap-macos-app.sh` unwraps it right after the build, so `build/stable-macos-arm64/Mirador.app` is the expanded app and the release zip carries it. This matters because macOS runs a quarantined download translocated on a read-only mount, where the stub's own first-launch expansion fails and the app sits hung with no window. The expanded app needs nothing from its bundle at launch; Electrobun's uninstall manifest is written on the user's machine (`~/Library/Application Support/com.sodre90.mirador/stable/`) when the app first runs there.
 
 ## Install
 
