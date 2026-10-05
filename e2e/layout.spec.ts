@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4760);
@@ -74,4 +74,19 @@ test.describe("on a system in dark mode", () => {
     await theme(page, "Light").click();
     expect(await background(page)).toBe(LIGHT);
   });
+});
+
+test("a narrow conversation pane keeps its title readable and moves the header's buttons below it", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "show", { title: "Wide", html: "<p>canvas</p>" });
+  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+
+  await dragSplitterBy(page, -5000);
+  expect(await widthOf(page, ".chat-header")).toBeLessThan(400);
+  expect(await widthOf(page, ".chat-header h2")).toBeGreaterThanOrEqual(120);
+  await expect(page.locator(".chat-header .toggle-terminal")).toBeInViewport({ ratio: 1 });
 });

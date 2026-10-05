@@ -1094,8 +1094,9 @@ body.resizing iframe {
 
 .title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 
 .title-row h2 {
@@ -1103,6 +1104,7 @@ body.resizing iframe {
   font-weight: 600;
   margin: 0;
   flex: 1;
+  min-width: min(10em, 60%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
