@@ -1,6 +1,9 @@
 import { createContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { focusPane } from "./actions.ts";
 import { matchCount, matchOffsets, occurrencesIn } from "../shared/find.ts";
+import type { EntryMatchCount } from "../shared/model.ts";
+import { connection } from "./connection.ts";
+import type { EarlierHistory } from "./earlier-history.ts";
 import { hints } from "./hints.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
 
@@ -32,17 +35,25 @@ function takeFindRequest() {
   requestChanged();
 }
 
+/** A match by its entry's key, which stays the entry's as earlier history comes in above it. */
 interface Place {
-  entry: number;
+  key: string;
   occurrence: number;
 }
 
-/** An entry with matches: how many, and its element while it is in the page, where they are found as rendered. */
+/**
+ * An entry with matches: how many, its index in the timeline unless only the host holds it yet, and its element while
+ * it is in the page, where they are found as rendered.
+ */
 interface EntryMatches {
-  entry: number;
+  key: string;
+  entry: number | null;
   count: number;
   element: Element | null;
 }
+
+/** The host counts the matches in the history the page does not hold once typing pauses this long. */
+const ASK_HOST_AFTER_MS = 150;
 
 /** Highlighting creates a range per match, and every range slows each later change of the page. */
 const MAX_HIGHLIGHTED = 1_000;
@@ -127,7 +138,7 @@ function clearHighlights() {
   CSS.highlights.delete("find-current");
 }
 
-const lastIn = ({ entry, count }: EntryMatches): Place => ({ entry, occurrence: count - 1 });
+const lastIn = ({ key, count }: EntryMatches): Place => ({ key, occurrence: count - 1 });
 
 /**
  * The match at the wanted place, else the one before it, as when the entry rendered fewer matches than its stored text
@@ -136,26 +147,56 @@ const lastIn = ({ entry, count }: EntryMatches): Place => ({ entry, occurrence: 
 function placeOf(entries: EntryMatches[], wanted: Place | null): Place | null {
   if (entries.length === 0) return null;
   if (!wanted) return lastIn(entries.at(-1)!);
-  const holder = entries.find(({ entry }) => entry === wanted.entry);
+  const holder = entries.find(({ key }) => key === wanted.key);
   if (holder) return wanted.occurrence < holder.count ? wanted : lastIn(holder);
-  const before = entries.findLast(({ entry }) => entry < wanted.entry);
-  return before ? lastIn(before) : { entry: entries[0]!.entry, occurrence: 0 };
+  const before = entries.findLast(({ key }) => Number(key) < Number(wanted.key));
+  return before ? lastIn(before) : { key: entries[0]!.key, occurrence: 0 };
 }
 
+const indexOf = (entries: EntryMatches[], place: Place) => entries.findIndex(({ key }) => key === place.key);
+
 const positionOf = (entries: EntryMatches[], place: Place) =>
-  entries.filter(({ entry }) => entry < place.entry).reduce((before, { count }) => before + count, 0) + place.occurrence + 1;
+  entries.slice(0, indexOf(entries, place)).reduce((before, { count }) => before + count, 0) + place.occurrence + 1;
 
 function stepped(entries: EntryMatches[], place: Place, direction: 1 | -1): Place {
-  const index = entries.findIndex(({ entry }) => entry === place.entry);
+  const index = indexOf(entries, place);
   const occurrence = place.occurrence + direction;
-  if (occurrence >= 0 && occurrence < entries[index]!.count) return { entry: place.entry, occurrence };
+  if (occurrence >= 0 && occurrence < entries[index]!.count) return { key: place.key, occurrence };
   const next = entries[(index + direction + entries.length) % entries.length]!;
-  return direction === 1 ? { entry: next.entry, occurrence: 0 } : lastIn(next);
+  return direction === 1 ? { key: next.key, occurrence: 0 } : lastIn(next);
+}
+
+/**
+ * How often the query occurs in each entry of the history the host holds and the page does not, asked of the host
+ * as typing pauses; null until it answers.
+ */
+function useUnheldMatches(conversationId: string, query: string | null, earlier: EarlierHistory, firstHeldSeq: number | undefined): EntryMatchCount[] | null {
+  const [answered, setAnswered] = useState<{ conversationId: string; query: string; beforeSeq: number; entries: EntryMatchCount[] } | null>(null);
+  const asksHost = !!query && earlier.available && firstHeldSeq !== undefined;
+  const current = asksHost && answered?.conversationId === conversationId && answered.query === query && answered.beforeSeq >= firstHeldSeq ? answered : null;
+  const waiting = asksHost && !current;
+  useEffect(() => {
+    if (!waiting) return;
+    const asked = { requestId: crypto.randomUUID(), conversationId, query: query!, beforeSeq: firstHeldSeq! };
+    const stopListening = connection.onMessage((message) => {
+      if (message.type === "conversation.found" && message.requestId === asked.requestId) setAnswered({ ...asked, entries: message.entries });
+    });
+    const timer = setTimeout(() => connection.send({ type: "conversation.find", ...asked }), ASK_HOST_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      stopListening();
+    };
+  }, [waiting, conversationId, query, firstHeldSeq]);
+  return useMemo(() => {
+    if (!asksHost) return [];
+    return current && current.entries.filter(({ key }) => Number(key) < firstHeldSeq);
+  }, [asksHost, current, firstHeldSeq]);
 }
 
 /**
  * Finds the query in the whole conversation. Entries in the page are searched as rendered; those not loaded yet by
- * their stored text, and loaded once a step reaches them. The first match shown is the newest.
+ * their stored text, and those only the host holds yet by the host; either is loaded once a step reaches it. The first
+ * match shown is the newest.
  */
 export function useFind({
   conversationId,
@@ -164,6 +205,8 @@ export function useFind({
   timelineRef,
   firstLoaded,
   loadFrom,
+  earlier,
+  firstHeldSeq,
 }: {
   conversationId: string;
   historyLoaded: boolean;
@@ -171,6 +214,8 @@ export function useFind({
   timelineRef: RefObject<HTMLDivElement | null>;
   firstLoaded: number;
   loadFrom: (index: number) => void;
+  earlier: EarlierHistory;
+  firstHeldSeq: number | undefined;
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const [tally, setTally] = useState({ position: 0, total: 0 });
@@ -180,13 +225,13 @@ export function useFind({
   const withMatches = useRef<EntryMatches[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const storedCounts = useMemo(() => new Map<string, number>(), [query]);
+  const unheldMatches = useUnheldMatches(conversationId, query, earlier, firstHeldSeq);
 
   const request = useSyncExternalStore(subscribeToRequests, () => waitingRequest);
   useEffect(() => {
     if (request?.conversationId !== conversationId || !historyLoaded) return;
     takeFindRequest();
-    const entry = timeline.findIndex(({ key }) => key === request.entryKey);
-    place.current = entry === -1 ? null : { entry, occurrence: 0 };
+    place.current = { key: request.entryKey, occurrence: 0 };
     placeShown.current = null;
     setQuery(request.query);
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -204,25 +249,29 @@ export function useFind({
       return;
     }
     const entries: EntryMatches[] = [
-      ...timeline.slice(0, firstLoaded).map((block, entry) => ({ entry, count: countStored(block), element: null })),
+      ...(unheldMatches ?? []).map(({ key, count }) => ({ key, entry: null, count, element: null })),
+      ...timeline.slice(0, firstLoaded).map((block, entry) => ({ key: block.key, entry, count: countStored(block), element: null })),
       ...loadedEntries(element).map((entryElement, offset) => ({
+        key: timeline[firstLoaded + offset]!.key,
         entry: firstLoaded + offset,
         count: matchCount(entryText(entryElement).text, query),
         element: entryElement,
       })),
     ].filter(({ count }) => count > 0);
     withMatches.current = entries;
-    const current = placeOf(entries, place.current);
+    const wantedAwaitsHost = unheldMatches === null && place.current !== null && indexOf(entries, place.current) === -1;
+    const current = wantedAwaitsHost ? null : placeOf(entries, place.current);
     const total = entries.reduce((sum, { count }) => sum + count, 0);
     const position = current ? positionOf(entries, current) : 0;
     setTally((shown) => (shown.position === position && shown.total === total ? shown : { position, total }));
     if (!current) return;
     place.current = current;
-    const holder = entries.find(({ entry }) => entry === current.entry)!;
-    if (!holder.element) return loadFrom(current.entry);
+    const holder = entries[indexOf(entries, current)]!;
+    if (holder.entry === null) return void earlier.load(Number(holder.key));
+    if (!holder.element) return loadFrom(holder.entry);
     const currentRange = rangeAt(holder.element, query, current.occurrence);
     if (!currentRange) return;
-    const placeKey = `${current.entry}:${current.occurrence}`;
+    const placeKey = `${current.key}:${current.occurrence}`;
     if (placeShown.current !== placeKey) {
       placeShown.current = placeKey;
       unfoldAround(currentRange);
@@ -241,7 +290,7 @@ export function useFind({
       cancelAnimationFrame(frame);
       clearHighlights();
     };
-  }, [query, timeline, firstLoaded, placeChanges]);
+  }, [query, timeline, firstLoaded, placeChanges, unheldMatches]);
 
   const search = (text: string) => {
     place.current = null;

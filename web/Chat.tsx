@@ -27,8 +27,10 @@ import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
 import { matchOffsets } from "../shared/find.ts";
+import { isRawOutputOnHost } from "../shared/low-data.ts";
 import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
 import { useDragToReorder } from "./drag-to-reorder.ts";
+import { useEarlierHistory, type EarlierHistory } from "./earlier-history.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
@@ -268,12 +270,39 @@ function ToolContent({ content }: { content: ToolCallContent }) {
   }
 }
 
+const rawJsonText = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value, null, 2));
+
 function RawJson({ label, value }: { label: string; value: unknown }) {
   if (value === undefined || value === null) return null;
   return (
     <details className="raw">
       <summary>{label}</summary>
-      <pre>{typeof value === "string" ? value : JSON.stringify(value, null, 2)}</pre>
+      <pre>{rawJsonText(value)}</pre>
+    </details>
+  );
+}
+
+/** A tool call's raw output repeats what the call shows, often at length, so the page asks the host for it when shown. */
+function RawOutput({ block, conversationId }: { block: ToolBlock; conversationId: string }) {
+  const [shown, setShown] = useState(false);
+  const [fetched, setFetched] = useState<{ of: unknown; rawOutput: unknown } | null>(null);
+  const onHost = isRawOutputOnHost(block.rawOutput);
+  const current = fetched?.of === block.rawOutput ? fetched : null;
+  useEffect(() => {
+    if (!onHost || !shown || current) return;
+    const requestId = crypto.randomUUID();
+    const asked = block.rawOutput;
+    const stopListening = connection.onMessage((message) => {
+      if (message.type === "tool-raw-output.got" && message.requestId === requestId) setFetched({ of: asked, rawOutput: message.rawOutput });
+    });
+    connection.send({ type: "tool-raw-output.get", requestId, conversationId, toolCallId: block.toolCallId });
+    return stopListening;
+  }, [onHost, shown, current !== null, block.rawOutput]);
+  if (!onHost) return <RawJson label="output" value={block.rawOutput} />;
+  return (
+    <details className="raw" onToggle={(event) => setShown(event.currentTarget.open)}>
+      <summary>output</summary>
+      <pre>{current ? rawJsonText(current.rawOutput) : "Loading…"}</pre>
     </details>
   );
 }
@@ -390,7 +419,7 @@ function CommandCard({ command, conversationId }: { command: UserCommand; conver
   );
 }
 
-function ToolCard({ block }: { block: ToolBlock }) {
+function ToolCard({ block, conversationId }: { block: ToolBlock; conversationId: string }) {
   if (isShellCommand(block)) return <ShellCard block={block} />;
   return (
     <details className={`tool tool-${block.status ?? "pending"}`}>
@@ -406,7 +435,7 @@ function ToolCard({ block }: { block: ToolBlock }) {
         <ToolContent key={index} content={content} />
       ))}
       <RawJson label="input" value={block.rawInput} />
-      <RawJson label="output" value={block.rawOutput} />
+      <RawOutput block={block} conversationId={conversationId} />
     </details>
   );
 }
@@ -461,7 +490,7 @@ function SubagentCard({ block, conversationId }: { block: SubagentBlock; convers
         <ToolContent key={index} content={content} />
       ))}
       <RawJson label="input" value={block.rawInput} />
-      <RawJson label="output" value={block.rawOutput} />
+      <RawOutput block={block} conversationId={conversationId} />
     </details>
   );
 }
@@ -640,7 +669,7 @@ function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conver
         </details>
       );
     case "tool":
-      return block.subagent ? <SubagentCard block={block as SubagentBlock} conversationId={conversationId} /> : <ToolCard block={block} />;
+      return block.subagent ? <SubagentCard block={block as SubagentBlock} conversationId={conversationId} /> : <ToolCard block={block} conversationId={conversationId} />;
     case "command":
       return <CommandCard command={block.command} conversationId={conversationId} />;
     case "plan":
@@ -780,25 +809,47 @@ const ENTRIES_PER_LOAD = 200;
 /**
  * A long conversation keeps only its newest entries in the page: WebKit repaints every entry whenever any pane changes
  * size, which made dragging a divider lag in conversations with thousands of entries. Earlier entries load as the
- * reader scrolls up to them; while the reader stays at the bottom, the oldest loaded ones are let go again.
+ * reader scrolls up to them, from the host once the page has drawn all it holds; while the reader stays at the bottom,
+ * the oldest drawn ones are let go again. The first drawn entry is kept by its key, as earlier history comes in above it.
  */
-function useLoadedEntries(entryCount: number, historyLoaded: boolean, scroll: { holdPlace: () => void; isPinned: () => boolean }) {
-  const [first, setFirst] = useState<number | null>(null);
-  const newest = Math.max(0, entryCount - ENTRIES_PER_LOAD);
+function useLoadedEntries(
+  timeline: TimelineBlock[],
+  historyLoaded: boolean,
+  scroll: { holdPlace: () => void; isPinned: () => boolean },
+  earlier: EarlierHistory,
+) {
+  const [firstKey, setFirstKey] = useState<string | null>(null);
+  const drawMoreOnceLoaded = useRef(false);
+  const newest = Math.max(0, timeline.length - ENTRIES_PER_LOAD);
+  const keyedIndex = firstKey === null ? -1 : timeline.findIndex(({ key }) => key === firstKey);
+  const firstLoaded = keyedIndex === -1 ? newest : keyedIndex;
+  const drawFrom = (index: number) => setFirstKey(timeline[index]?.key ?? null);
   useEffect(() => {
-    if (historyLoaded && first === null) setFirst(newest);
+    if (historyLoaded && firstKey === null) drawFrom(newest);
   }, [historyLoaded]);
   useEffect(() => {
-    if (first !== null && scroll.isPinned() && entryCount - first > 2 * ENTRIES_PER_LOAD) setFirst(newest);
-  }, [entryCount]);
-  const firstLoaded = Math.min(first ?? newest, entryCount);
+    if (keyedIndex !== -1 && scroll.isPinned() && timeline.length - keyedIndex > 2 * ENTRIES_PER_LOAD) drawFrom(newest);
+    if (drawMoreOnceLoaded.current && firstLoaded > 0) {
+      drawMoreOnceLoaded.current = false;
+      loadFrom(firstLoaded - ENTRIES_PER_LOAD);
+    }
+  }, [timeline.length]);
   const loadFrom = (index: number) => {
     const target = Math.max(0, index);
     if (target >= firstLoaded) return;
     scroll.holdPlace();
-    setFirst(target);
+    drawFrom(target);
   };
-  return { firstLoaded, loadFrom, loadEarlier: () => loadFrom(firstLoaded - ENTRIES_PER_LOAD) };
+  const loadEarlier = () => {
+    if (firstLoaded > 0) return loadFrom(firstLoaded - ENTRIES_PER_LOAD);
+    if (earlier.load()) drawMoreOnceLoaded.current = true;
+  };
+  return { firstLoaded, loadFrom, loadEarlier };
+}
+
+function earlierEntriesLabel(firstLoaded: number, earlier: EarlierHistory) {
+  if (firstLoaded > 0) return `Show earlier entries (${firstLoaded.toLocaleString()}${earlier.available ? "+" : ""} more)`;
+  return earlier.loading ? "Loading earlier entries…" : "Show earlier entries";
 }
 
 const queuedMessagesGoOut: Record<HarnessId, string> = {
@@ -1099,12 +1150,14 @@ function BusySendButtons({ canSteer, enterWhileBusy, onSend }: { canSteer: boole
 function Composer({
   conversation,
   events,
+  holdsEarliest,
   pendingCommands,
   promptTemplates,
   onManageTemplates,
 }: {
   conversation: Conversation;
   events: StoredEvent[];
+  holdsEarliest: boolean;
   pendingCommands: UserCommand[];
   promptTemplates: PromptTemplate[];
   onManageTemplates: () => void;
@@ -1172,6 +1225,7 @@ function Composer({
   const history = usePromptHistory({
     conversationId: conversation.id,
     events,
+    holdsEarliest,
     inTheBox: { text, attachments: images.attachments },
     put: (content) => {
       images.replace(content.attachments);
@@ -1306,7 +1360,8 @@ export function ChatPanel({
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
   const { ref, onScroll, holdPlace, isPinned } = useScrollAnchor(open.events.length);
-  const { firstLoaded, loadFrom, loadEarlier } = useLoadedEntries(timeline.length, open.loaded, { holdPlace, isPinned });
+  const earlier = useEarlierHistory(open);
+  const { firstLoaded, loadFrom, loadEarlier } = useLoadedEntries(timeline, open.loaded, { holdPlace, isPinned }, earlier);
   const [subagentToShow, setSubagentToShow] = useState<string | null>(null);
   useEffect(() => {
     if (!subagentToShow) return;
@@ -1332,7 +1387,7 @@ export function ChatPanel({
   const showRunningSubagent = () => {
     if (runningSubagents[0]) showSubagent(runningSubagents[0]);
   };
-  const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom });
+  const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom, earlier, firstHeldSeq: open.events[0]?.seq });
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
       <SubagentStates.Provider value={subagentStates}>
@@ -1352,9 +1407,9 @@ export function ChatPanel({
           <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
             {!open.loaded && <div className="notice-line">Loading…</div>}
             {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
-            {firstLoaded > 0 && (
+            {(firstLoaded > 0 || earlier.available) && (
               <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
-                Show earlier entries ({firstLoaded.toLocaleString()} more)
+                {earlierEntriesLabel(firstLoaded, earlier)}
               </button>
             )}
             {timeline.slice(firstLoaded).map((block, offset) => (
@@ -1380,6 +1435,7 @@ export function ChatPanel({
         <Composer
           conversation={conversation}
           events={open.events}
+          holdsEarliest={!open.hasEarlier}
           pendingCommands={pendingCommands}
           promptTemplates={promptTemplates}
           onManageTemplates={onManageTemplates}

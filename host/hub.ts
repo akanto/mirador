@@ -4,7 +4,7 @@ import type { ClientAddress, DeviceConnection, StoredEvent } from "../shared/mod
 import { DEFLATED_MESSAGE_MIN_LENGTH } from "../shared/low-data.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
-import { lowDataEvent } from "./low-data.ts";
+import { lowDataEvent, pageEvent } from "./low-data.ts";
 
 export interface Presence {
   conversationId: string | null;
@@ -154,10 +154,10 @@ export class Hub {
   }
 
   publishEvent(conversationId: string, event: StoredEvent) {
-    const whole = once(() => JSON.stringify({ type: "conversation.event", conversationId, event } satisfies ServerMessage));
+    const forPage = once(() => JSON.stringify({ type: "conversation.event", conversationId, event: pageEvent(event) } satisfies ServerMessage));
     const lowData = once(() => JSON.stringify({ type: "conversation.event", conversationId, event: lowDataEvent(conversationId, event) } satisfies ServerMessage));
     this.sockets.forEach((socket) => {
-      if (socket.data.subscriptions.has(conversationId)) deliver(socket, socket.data.lowDataSubscriptions.has(conversationId) ? lowData() : whole());
+      if (socket.data.subscriptions.has(conversationId)) deliver(socket, socket.data.lowDataSubscriptions.has(conversationId) ? lowData() : forPage());
     });
   }
 }

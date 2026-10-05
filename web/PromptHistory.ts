@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import type { StoredEvent } from "../shared/model.ts";
-import { promptHistory, steppedTo, type HistoryStep } from "../shared/prompt-history.ts";
+import { promptHistory, steppedTo, type HistoryStep, type PromptHistoryEntry } from "../shared/prompt-history.ts";
 import { connection } from "./connection.ts";
 import { restoredDraft, type Attachment } from "./pasted-images.ts";
 
@@ -17,18 +17,21 @@ interface Recalled {
   draft: BoxContent;
 }
 
-/** What was typed in the workspace's other conversations, asked of the host once per conversation opened. */
-function useTypedElsewhere(conversationId: string) {
-  const [answered, setAnswered] = useState<{ conversationId: string; prompts: string[] } | null>(null);
+/**
+ * What was typed in the workspace's other conversations, and in this one before the events the page holds, asked of
+ * the host once per conversation opened and again as earlier history comes in.
+ */
+function useTypedElsewhere(conversationId: string, ownBeforeSeq: number | undefined) {
+  const [answered, setAnswered] = useState<{ conversationId: string; prompts: string[]; ownEarlier: PromptHistoryEntry[] } | null>(null);
   useEffect(() => {
     const requestId = crypto.randomUUID();
     const unsubscribe = connection.onMessage((message) => {
-      if (message.type === "prompt-history.listed" && message.requestId === requestId) setAnswered({ conversationId, prompts: message.prompts });
+      if (message.type === "prompt-history.listed" && message.requestId === requestId) setAnswered({ conversationId, prompts: message.prompts, ownEarlier: message.ownEarlier ?? [] });
     });
-    connection.send({ type: "prompt-history.list", requestId, conversationId });
+    connection.send({ type: "prompt-history.list", requestId, conversationId, ...(ownBeforeSeq !== undefined && { ownBeforeSeq }) });
     return unsubscribe;
-  }, [conversationId]);
-  return answered?.conversationId === conversationId ? answered.prompts : [];
+  }, [conversationId, ownBeforeSeq]);
+  return answered?.conversationId === conversationId ? answered : { prompts: [], ownEarlier: [] };
 }
 
 function stepFor(event: KeyboardEvent<HTMLTextAreaElement>): HistoryStep | null {
@@ -46,15 +49,17 @@ function stepFor(event: KeyboardEvent<HTMLTextAreaElement>): HistoryStep | null 
 export function usePromptHistory({
   conversationId,
   events,
+  holdsEarliest,
   inTheBox,
   put,
 }: {
   conversationId: string;
   events: StoredEvent[];
+  holdsEarliest: boolean;
   inTheBox: BoxContent;
   put: (content: BoxContent) => void;
 }) {
-  const typedElsewhere = useTypedElsewhere(conversationId);
+  const typed = useTypedElsewhere(conversationId, holdsEarliest ? undefined : events[0]?.seq);
   const [recalled, setRecalled] = useState<Recalled | null>(null);
   const shown = recalled?.conversationId === conversationId && recalled.shownText === inTheBox.text ? recalled : null;
 
@@ -64,7 +69,7 @@ export function usePromptHistory({
     const { selectionStart, selectionEnd } = event.currentTarget;
     const caretAtStart = selectionStart === 0 && selectionEnd === 0;
     if (!step || !(shown || (step === "older" && caretAtStart))) return false;
-    const history = promptHistory(events, typedElsewhere);
+    const history = promptHistory(events, typed.prompts, typed.ownEarlier);
     const target = steppedTo(history, shown?.entryText ?? null, step);
     if (target === null) return false;
     event.preventDefault();

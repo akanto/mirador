@@ -1,5 +1,5 @@
 import type { ContentBlock, SessionUpdate, ToolCallContent } from "@agentclientprotocol/sdk";
-import { eventImagePath, shortenedMark } from "../shared/low-data.ts";
+import { eventImagePath, rawOutputOnHost, shortenedMark } from "../shared/low-data.ts";
 import type { StoredEvent } from "../shared/model.ts";
 
 /** More tool output than a phone shows before its "Show more" stays on the host until asked for. */
@@ -65,9 +65,11 @@ function withoutToolResponse(meta: { [key: string]: unknown } | null | undefined
   return { ...meta, claudeCode: { ...rest, ...(toolResponse.isAsync === true && { toolResponse: { isAsync: true } }) } };
 }
 
+const exitCodeIn = (rawOutput: unknown) => (rawOutput as { metadata?: { exit?: unknown } } | null | undefined)?.metadata?.exit;
+
 /** The raw output repeats the content; a phone reads only the exit code opencode puts there. */
 function exitCodeOnly(rawOutput: unknown) {
-  const exit = (rawOutput as { metadata?: { exit?: unknown } } | null | undefined)?.metadata?.exit;
+  const exit = exitCodeIn(rawOutput);
   return exit === undefined ? {} : { rawOutput: { metadata: { exit } } };
 }
 
@@ -90,6 +92,25 @@ function lowDataUpdate(conversationId: string, seq: number, update: SessionUpdat
 export function lowDataEvent(conversationId: string, stored: StoredEvent): StoredEvent {
   if (stored.event.type !== "acp") return stored;
   return { ...stored, event: { ...stored.event, update: lowDataUpdate(conversationId, stored.seq, stored.event.update) } };
+}
+
+function pageUpdate(update: SessionUpdate): SessionUpdate {
+  if (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update") return update;
+  const { rawOutput, _meta, ...rest } = update;
+  return {
+    ...rest,
+    ...(rawOutput !== undefined && { rawOutput: rawOutput === null ? null : rawOutputOnHost(exitCodeIn(rawOutput)) }),
+    ...(_meta !== undefined && { _meta: withoutToolResponse(_meta) }),
+  };
+}
+
+/**
+ * A stored event as a page gets it: Claude Code repeats each tool's output in its raw output and in its own record of
+ * the response, so those are left out, the raw output sent when the page shows it.
+ */
+export function pageEvent(stored: StoredEvent): StoredEvent {
+  if (stored.event.type !== "acp") return stored;
+  return { ...stored, event: { ...stored.event, update: pageUpdate(stored.event.update) } };
 }
 
 /** A tool call's whole output from one stored event, its images still links. */

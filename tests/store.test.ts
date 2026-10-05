@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import type { CanvasItem, Conversation, JobWait, Profile } from "../shared/model.ts";
+import type { CanvasItem, Conversation, ConversationEvent, JobWait, Profile } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 
@@ -77,6 +77,33 @@ describe("Store", () => {
     expect(store.listEventsBetween("c1", 4, 6).map(({ seq }) => seq)).toEqual([4, 5]);
     expect(store.findEvent("c1", 6)?.event).toEqual({ type: "user-message", text: "third" });
     expect(store.findEvent("c1", 99)).toBeNull();
+  });
+
+  test("a page's part of the history is the newest whole turns that reach the size it is given, and the rest is earlier", () => {
+    const { store } = seededStore();
+    const reply = (text: string) => ({ type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } }) as const;
+    store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "available_commands_update", availableCommands: [] } });
+    ["first", "second", "third"].forEach((text) => {
+      store.appendEvent("c1", { type: "user-message", text });
+      store.appendEvent("c1", reply("x".repeat(1_000)));
+    });
+    expect(store.newestTurnsWithin("c1", Number.MAX_SAFE_INTEGER, 1)).toBe(6);
+    expect(store.newestTurnsWithin("c1", Number.MAX_SAFE_INTEGER, 1_500)).toBe(4);
+    expect(store.newestTurnsWithin("c1", 6, 1)).toBe(4);
+    expect(store.newestTurnsWithin("c1", Number.MAX_SAFE_INTEGER, 1_000_000)).toBe(0);
+    expect([5, 6, 7, 1].map((seq) => store.turnStartOf("c1", seq))).toEqual([4, 6, 6, 0]);
+    expect([1, 2].map((seq) => store.hasEventsBefore("c1", seq))).toEqual([false, true]);
+  });
+
+  test("a tool call's raw output is the last one it reported, as stored", () => {
+    const { store } = seededStore();
+    const update = (rawOutput: unknown) => ({ type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t1", rawOutput } }) as ConversationEvent;
+    store.appendEvent("c1", update({ output: "partial" }));
+    store.appendEvent("c1", update({ output: "done", interrupted: false, metadata: { exit: 0 } }));
+    store.appendEvent("c1", update(null));
+    store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t2", status: "completed" } });
+    expect(store.latestRawOutput("c1", "t1")).toEqual({ output: "done", interrupted: false, metadata: { exit: 0 } });
+    expect(store.latestRawOutput("c1", "t2")).toBeNull();
   });
 
   test("updates a conversation's persisted fields but always loads it idle", () => {

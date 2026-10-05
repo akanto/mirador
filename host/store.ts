@@ -639,6 +639,48 @@ export class Store {
     return this.turnsBefore(conversationId, Number.MAX_SAFE_INTEGER, turns);
   }
 
+  /**
+   * Where the newest turns before `beforeSeq` start that, as stored, add up to `budget` characters or just past it,
+   * one turn at least; 0 when all of them do not.
+   */
+  newestTurnsWithin(conversationId: string, beforeSeq: number, budget: number): number {
+    const turnStartBefore = this.db.query(
+      "SELECT seq FROM events WHERE conversation_id = ? AND seq < ? AND json_extract(event, '$.type') = 'user-message' ORDER BY seq DESC LIMIT 1",
+    );
+    const sizeBetween = this.db.query("SELECT COALESCE(SUM(LENGTH(event)), 0) AS size FROM events WHERE conversation_id = ? AND seq >= ? AND seq < ?");
+    let size = 0;
+    for (let end = beforeSeq; ; ) {
+      const start = turnStartBefore.get(conversationId, end) as { seq: number } | null;
+      if (!start) return 0;
+      size += (sizeBetween.get(conversationId, start.seq, end) as { size: number }).size;
+      if (size >= budget) return start.seq;
+      end = start.seq;
+    }
+  }
+
+  /** Where the turn that holds the event starts. */
+  turnStartOf(conversationId: string, seq: number): number {
+    const start = this.db
+      .query("SELECT seq FROM events WHERE conversation_id = ? AND seq <= ? AND json_extract(event, '$.type') = 'user-message' ORDER BY seq DESC LIMIT 1")
+      .get(conversationId, seq) as { seq: number } | null;
+    return start?.seq ?? 0;
+  }
+
+  hasEventsBefore(conversationId: string, seq: number): boolean {
+    return this.db.query("SELECT 1 FROM events WHERE conversation_id = ? AND seq < ? LIMIT 1").get(conversationId, seq) !== null;
+  }
+
+  /** The raw output the tool call reported last. */
+  latestRawOutput(conversationId: string, toolCallId: string): unknown {
+    const row = this.db
+      .query(
+        `SELECT event FROM events WHERE conversation_id = ? AND json_extract(event, '$.update.toolCallId') = ? AND json_extract(event, '$.update.rawOutput') IS NOT NULL
+         ORDER BY seq DESC LIMIT 1`,
+      )
+      .get(conversationId, toolCallId) as { event: string } | null;
+    return row ? (JSON.parse(row.event) as { update: { rawOutput: unknown } }).update.rawOutput : null;
+  }
+
   turnsBefore(conversationId: string, beforeSeq: number, turns: number): { fromSeq: number; hasEarlier: boolean } {
     const [firstTurn, earlierTurn] = this.db
       .query(

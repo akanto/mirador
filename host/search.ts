@@ -1,6 +1,7 @@
-import { MIN_SEARCH_LENGTH, matchOffsets, textsOf } from "../shared/find.ts";
-import type { ConversationMatches, SearchHit } from "../shared/model.ts";
-import { buildTimeline } from "../shared/timeline.ts";
+import { MIN_SEARCH_LENGTH, matchCount, matchOffsets, textsOf } from "../shared/find.ts";
+import type { ConversationMatches, EntryMatchCount, SearchHit, StoredEvent } from "../shared/model.ts";
+import { buildTimeline, withChunksCoalesced } from "../shared/timeline.ts";
+import { pageEvent } from "./low-data.ts";
 import type { Store } from "./store.ts";
 
 const HITS_PER_CONVERSATION = 20;
@@ -20,6 +21,10 @@ interface SearchableConversation {
   entries: SearchableEntry[];
 }
 
+/** The entries a page shows for the events, with the text it finds in them. */
+const searchableEntries = (events: StoredEvent[]): SearchableEntry[] =>
+  buildTimeline(withChunksCoalesced(events).map(pageEvent)).map((block) => ({ key: block.key, at: block.at, text: textsOf(block).join("\n") }));
+
 /** The rest of the line around a match, cut short on both sides. */
 export function snippetAround(text: string, [start, end]: [number, number]): SearchHit["snippet"] {
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
@@ -36,6 +41,8 @@ export function snippetAround(text: string, [start, end]: [number, number]): Sea
 /** Finds text in every conversation, by the entries the page shows, so a hit can be opened at its entry. */
 export class ConversationSearch {
   private readonly searchable = new Map<string, SearchableConversation>();
+  /** The part of each conversation before what its page holds, which the page's find bar asks about as the user types. */
+  private readonly earlierParts = new Map<string, { beforeSeq: number; entries: SearchableEntry[] }>();
   private forgetTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly store: Store) {}
@@ -48,6 +55,18 @@ export class ConversationSearch {
       .map(({ id }) => this.matchesIn(id, query))
       .filter((found) => found.matches > 0)
       .toSorted((a, b) => b.hits[0]!.at - a.hits[0]!.at);
+  }
+
+  /** How often the query occurs in each entry before `beforeSeq`, for the page that holds only the events from there. */
+  matchesBefore(conversationId: string, query: string, beforeSeq: number): EntryMatchCount[] {
+    this.forgetLater();
+    const known = this.earlierParts.get(conversationId);
+    const entries = known?.beforeSeq === beforeSeq ? known.entries : searchableEntries(this.store.listEventsBetween(conversationId, 0, beforeSeq));
+    this.earlierParts.set(conversationId, { beforeSeq, entries });
+    return entries.flatMap(({ key, text }) => {
+      const count = matchCount(text, query);
+      return count > 0 ? [{ key, count }] : [];
+    });
   }
 
   private matchesIn(conversationId: string, query: string): ConversationMatches {
@@ -66,14 +85,17 @@ export class ConversationSearch {
     const lastSeq = this.store.lastEventSeq(conversationId);
     const known = this.searchable.get(conversationId);
     if (known?.lastSeq === lastSeq) return known.entries;
-    const entries = buildTimeline(this.store.listEvents(conversationId)).map((block) => ({ key: block.key, at: block.at, text: textsOf(block).join("\n") }));
+    const entries = searchableEntries(this.store.listEvents(conversationId));
     this.searchable.set(conversationId, { lastSeq, entries });
     return entries;
   }
 
   private forgetLater() {
     clearTimeout(this.forgetTimer);
-    this.forgetTimer = setTimeout(() => this.searchable.clear(), FORGET_AFTER_MS);
+    this.forgetTimer = setTimeout(() => {
+      this.searchable.clear();
+      this.earlierParts.clear();
+    }, FORGET_AFTER_MS);
     this.forgetTimer.unref?.();
   }
 }

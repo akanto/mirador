@@ -39,7 +39,7 @@ import type { MachineRelays } from "./machine-relays.ts";
 import type { MachineWatch } from "./machine-watch.ts";
 import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
-import { imagesOf, lowDataEvent, wholeToolOutput } from "./low-data.ts";
+import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import { profileFor, type ProfileService } from "./profiles.ts";
 import type { HostRestart } from "./restart.ts";
@@ -71,6 +71,11 @@ export interface HostServices {
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
+/**
+ * How much of a conversation's history, as stored, a page gets at a time: the page shows at most a few hundred entries,
+ * and a long conversation holds hundreds of megabytes.
+ */
+const PAGE_HISTORY_SIZE = 4_000_000;
 const hostRunId = crypto.randomUUID();
 
 const parsedJson = (text: string): unknown => {
@@ -419,6 +424,20 @@ export function startServer(services: HostServices) {
     return { ...history, events: inLowData(withChunksCoalesced(store.listEventsFrom(conversationId, fromSeq))), hasEarlier };
   }
 
+  /** A page gets the newest turns first, about as much of them at a time as PAGE_HISTORY_SIZE, and earlier ones as it asks. */
+  function pageHistory(conversationId: string): ServerMessage {
+    const { events, hasEarlier } = pageHistoryBefore(conversationId, Number.MAX_SAFE_INTEGER);
+    return { type: "conversation.history", conversationId, events, canvas: canvas.list(conversationId), hasEarlier };
+  }
+
+  /** The turns before `beforeSeq` that make up the next part of the history, or more to reach back to an event the page wants. */
+  function pageHistoryBefore(conversationId: string, beforeSeq: number, reaching?: number) {
+    const newest = store.newestTurnsWithin(conversationId, beforeSeq, PAGE_HISTORY_SIZE);
+    const fromSeq = reaching === undefined ? newest : Math.min(newest, store.turnStartOf(conversationId, reaching));
+    const events = withChunksCoalesced(store.listEventsBetween(conversationId, fromSeq, beforeSeq)).map(pageEvent);
+    return { conversationId, events, hasEarlier: store.hasEventsBefore(conversationId, fromSeq) };
+  }
+
   /** The phone may hold the first chunks of a message the events it missed go on with, so those stay as they are. */
   function coalescedFromNextTurn(events: StoredEvent[]) {
     const nextTurn = events.findIndex(({ event }) => event.type === "user-message");
@@ -577,22 +596,24 @@ export function startServer(services: HostServices) {
           return reply(lowDataHistory(message.conversationId, message.lowData));
         }
         socket.data.lowDataSubscriptions.delete(message.conversationId);
-        return reply({
-          type: "conversation.history",
-          conversationId: message.conversationId,
-          events: withChunksCoalesced(store.listEvents(message.conversationId)),
-          canvas: canvas.list(message.conversationId),
-        });
+        return reply(pageHistory(message.conversationId));
       case "conversation.unsubscribe":
         socket.data.subscriptions.delete(message.conversationId);
         socket.data.lowDataSubscriptions.delete(message.conversationId);
         return;
       case "conversation.load-earlier": {
-        const { conversationId, beforeSeq, turns } = message;
+        const { conversationId, beforeSeq, turns, reaching } = message;
+        if (turns === undefined) return reply({ type: "conversation.earlier", requestId: message.requestId, beforeSeq, ...pageHistoryBefore(conversationId, beforeSeq, reaching) });
         const { fromSeq, hasEarlier } = store.turnsBefore(conversationId, beforeSeq, turns);
         const events = withChunksCoalesced(store.listEventsBetween(conversationId, fromSeq, beforeSeq)).map((event) => lowDataEvent(conversationId, event));
-        return reply({ type: "conversation.earlier", requestId: message.requestId, conversationId, events, hasEarlier });
+        return reply({ type: "conversation.earlier", requestId: message.requestId, conversationId, beforeSeq, events, hasEarlier });
       }
+      case "conversation.find": {
+        const { requestId, conversationId, query, beforeSeq } = message;
+        return reply({ type: "conversation.found", requestId, conversationId, entries: search.matchesBefore(conversationId, query, beforeSeq) });
+      }
+      case "tool-raw-output.get":
+        return reply({ type: "tool-raw-output.got", requestId: message.requestId, rawOutput: store.latestRawOutput(message.conversationId, message.toolCallId) });
       case "tool-output.get": {
         const stored = store.findEvent(message.conversationId, message.seq);
         return reply({ type: "tool-output.got", requestId: message.requestId, content: stored ? wholeToolOutput(message.conversationId, stored) : [] });

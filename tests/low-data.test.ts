@@ -3,8 +3,8 @@ import { connect } from "node:net";
 import { inflateRawSync } from "node:zlib";
 import type { SessionUpdate, ToolCallContent } from "@agentclientprotocol/sdk";
 import { Hub, socketData, webSocketCompression, type BrowserSocket } from "../host/hub.ts";
-import { imagesOf, lowDataEvent, wholeToolOutput } from "../host/low-data.ts";
-import { canvasChangedSince, eventImagePath, newestCanvasChange, shortenedOutputOf } from "../shared/low-data.ts";
+import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "../host/low-data.ts";
+import { canvasChangedSince, eventImagePath, isRawOutputOnHost, newestCanvasChange, rawOutputOnHost, shortenedOutputOf } from "../shared/low-data.ts";
 import type { CanvasItem, StoredEvent } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { buildTimeline, type ToolBlock } from "../shared/timeline.ts";
@@ -83,6 +83,34 @@ describe("lowDataEvent", () => {
   });
 });
 
+describe("pageEvent", () => {
+  test("a page gets a tool's output once: its raw output and Claude Code's record of it stay on the host, with the exit code and the background mark sent along", () => {
+    const bash = stored(3, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "t3",
+      status: "completed",
+      content: [text("total 0")],
+      rawOutput: { output: "total 0", metadata: { exit: 1 } },
+      _meta: { claudeCode: { toolName: "Bash", toolResponse: { stdout: "total 0", isAsync: true } } },
+    });
+    const update = updateOf(pageEvent(bash));
+    expect(update.content).toEqual([text("total 0")]);
+    expect(update.rawOutput).toEqual(rawOutputOnHost(1));
+    expect(isRawOutputOnHost(update.rawOutput)).toBe(true);
+    expect(update._meta).toEqual({ claudeCode: { toolName: "Bash", toolResponse: { isAsync: true } } });
+    expect(JSON.stringify(update).match(/total 0/g)).toHaveLength(1);
+  });
+
+  test("a tool that reported no raw output, or an empty one, still has none, and other events stay as they are", () => {
+    const without = stored(4, { sessionUpdate: "tool_call", toolCallId: "t4", title: "Read" });
+    expect(updateOf(pageEvent(without))).toEqual(updateOf(without));
+    expect(updateOf(pageEvent(stored(5, { sessionUpdate: "tool_call_update", toolCallId: "t4", rawOutput: null }))).rawOutput).toBeNull();
+    expect(isRawOutputOnHost({ output: "x" })).toBe(false);
+    const message: StoredEvent = { seq: 6, at: 6, event: { type: "user-message", text: "hi" } };
+    expect(pageEvent(message)).toBe(message);
+  });
+});
+
 describe("canvas changes", () => {
   const item = (id: string, updatedAt?: number): CanvasItem => ({ id, conversationId: "c1", kind: "show", title: id, status: "shown", createdAt: 1, updatedAt });
   const items = [item("before the change tracking"), item("seen", 10), item("same millisecond", 20), item("later", 30)];
@@ -107,14 +135,14 @@ describe("Hub.publishEvent", () => {
     return sent;
   }
 
-  test("a phone following in low data gets the event's low-data form, compressed; this machine's page gets it whole, uncompressed", () => {
+  test("a phone following in low data gets the event's low-data form, compressed; this machine's page gets its page form, uncompressed", () => {
     const hub = new Hub();
     const page = connect(hub, null, "whole");
     const phone = connect(hub, "phone", "low data");
-    const event = stored(2, { sessionUpdate: "tool_call_update", toolCallId: "t1", content: [{ type: "content", content: screenshot }] });
+    const event = stored(2, { sessionUpdate: "tool_call_update", toolCallId: "t1", content: [{ type: "content", content: screenshot }], rawOutput: { output: "shot" } });
     hub.publishEvent("c1", event);
     expect(page.map(({ compressed }) => compressed)).toEqual([false]);
-    expect(JSON.parse(page[0]!.payload).event).toEqual(event);
+    expect(JSON.parse(page[0]!.payload).event).toEqual(pageEvent(event));
     expect(phone.map(({ compressed }) => compressed)).toEqual([true]);
     expect(JSON.parse(phone[0]!.payload).event).toEqual(lowDataEvent("c1", event));
   });

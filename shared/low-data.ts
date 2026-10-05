@@ -44,3 +44,14 @@ export const shortenedOutputOf = (content: ToolCallContent[]): Shortened | null 
 
 /** Where the host serves an image that the low-data form left out of a stored event: the event's `index`th image. */
 export const eventImagePath = (conversationId: string, seq: number, index: number) => `/conversations/${conversationId}/events/${seq}/images/${index}`;
+
+const RAW_OUTPUT_ON_HOST_KEY = "mirador/raw-output-on-host";
+
+/**
+ * In a page's form of a tool call, its raw output, which repeats what the call shows, stays on the host until the page
+ * shows it. opencode's exit code comes along, as the page reads it from there.
+ */
+export const rawOutputOnHost = (exit: unknown) => ({ [RAW_OUTPUT_ON_HOST_KEY]: true, ...(exit !== undefined && { metadata: { exit } }) });
+
+export const isRawOutputOnHost = (rawOutput: unknown) =>
+  typeof rawOutput === "object" && rawOutput !== null && (rawOutput as Record<string, unknown>)[RAW_OUTPUT_ON_HOST_KEY] === true;

@@ -7,6 +7,7 @@ import type {
   ClaudeProgram,
   Conversation,
   ConversationMatches,
+  EntryMatchCount,
   ExternalSession,
   JoinRequest,
   ListedDevice,
@@ -90,8 +91,15 @@ export type ClientMessage =
   | { type: "conversation.rename"; conversationId: string; title: string }
   | { type: "conversation.set-profile"; conversationId: string; profileId: string | null }
   | { type: "conversation.subscribe"; conversationId: string; lowData?: LowDataSubscription }
-  /** The turns before the earliest event a low-data subscriber holds. */
-  | { type: "conversation.load-earlier"; requestId: string; conversationId: string; beforeSeq: number; turns: number }
+  /**
+   * The turns before the earliest event the subscriber holds: as many as a low-data subscriber asks for, and for a page
+   * as many as the host sends at a time, or more to reach back to the event `reaching`.
+   */
+  | { type: "conversation.load-earlier"; requestId: string; conversationId: string; beforeSeq: number; turns?: number; reaching?: number }
+  /** How often the query occurs in each entry of the conversation that starts before `beforeSeq`, which the page does not hold. */
+  | { type: "conversation.find"; requestId: string; conversationId: string; query: string; beforeSeq: number }
+  /** A tool call's raw output, which a page gets only when it shows it. */
+  | { type: "tool-raw-output.get"; requestId: string; conversationId: string; toolCallId: string }
   /** Tool output the low-data form shortened, whole: the content of the stored event its mark names, images still as links. */
   | { type: "tool-output.get"; requestId: string; conversationId: string; seq: number }
   | { type: "conversation.unsubscribe"; conversationId: string }
@@ -197,11 +205,14 @@ export type ServerMessage =
        * canvas items, only those changed since the newest change it held, update its own.
        */
       continuesAfter?: number;
-      /** For a low-data subscriber: the conversation has turns before these events. */
+      /** The conversation has turns before these events. */
       hasEarlier?: boolean;
     }
-  | { type: "conversation.earlier"; requestId: string; conversationId: string; events: StoredEvent[]; hasEarlier: boolean }
+  /** The events right before `beforeSeq`. */
+  | { type: "conversation.earlier"; requestId: string; conversationId: string; beforeSeq: number; events: StoredEvent[]; hasEarlier: boolean }
   | { type: "tool-output.got"; requestId: string; content: ToolCallContent[] }
+  | { type: "conversation.found"; requestId: string; conversationId: string; entries: EntryMatchCount[] }
+  | { type: "tool-raw-output.got"; requestId: string; rawOutput: unknown }
   | { type: "conversation.event"; conversationId: string; event: StoredEvent }
   | { type: "canvas.upserted"; item: CanvasItem }
   | { type: "fs.completions"; requestId: string; directories: string[] }

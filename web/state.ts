@@ -5,7 +5,10 @@ import { inSidebarOrder } from "../shared/sidebar-order.ts";
 export interface OpenConversation {
   conversationId: string;
   loaded: boolean;
+  /** The newest part of the history at first; earlier parts come as the reader scrolls up to them. */
   events: StoredEvent[];
+  /** The host holds events before these. */
+  hasEarlier: boolean;
   canvas: CanvasItem[];
 }
 
@@ -101,7 +104,7 @@ export const selectedOpen = (state: AppState) => state.kept.find(({ conversation
 
 function select(state: AppState, conversationId: string | null): AppState {
   if (conversationId === null) return { ...state, selectedConversationId: null };
-  const opened = state.kept.find((open) => open.conversationId === conversationId) ?? { conversationId, loaded: false, events: [], canvas: [] };
+  const opened = state.kept.find((open) => open.conversationId === conversationId) ?? { conversationId, loaded: false, events: [], hasEarlier: false, canvas: [] };
   const others = state.kept.filter((open) => open !== opened);
   return { ...state, selectedConversationId: conversationId, kept: [opened, ...others].slice(0, KEPT_CONVERSATIONS) };
 }
@@ -168,8 +171,13 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         conversationId: message.conversationId,
         loaded: true,
         events: message.events,
+        hasEarlier: message.hasEarlier ?? false,
         canvas: message.canvas.map((item) => withThisPagesAssetsOrigin(state, item)),
       }));
+    case "conversation.earlier":
+      return withOpen(state, message.conversationId, (open) =>
+        open.events[0]?.seq === message.beforeSeq ? { ...open, events: [...message.events, ...open.events], hasEarlier: message.hasEarlier } : open,
+      );
     case "conversation.event":
       return withOpen(state, message.conversationId, (open) => {
         const lastSeq = open.events.at(-1)?.seq ?? 0;
@@ -200,8 +208,9 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "slash-commands.listed":
     case "prompt-history.listed":
     case "mentions.suggested":
-    case "conversation.earlier":
     case "tool-output.got":
+    case "tool-raw-output.got":
+    case "conversation.found":
     case "statusline.rendered":
     case "terminals.listed":
     case "terminal.opened":

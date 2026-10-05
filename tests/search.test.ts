@@ -63,6 +63,21 @@ describe("ConversationSearch", () => {
     expect(search.find("needle").map(({ conversationId }) => conversationId)).toEqual(["older"]);
   });
 
+  test("counts a conversation's matches per entry before an event, for the page that holds only the events from there", () => {
+    const store = storeWithTwoConversations();
+    store.appendEvent("older", { type: "user-message", text: "needle one" });
+    store.appendEvent("older", agentSays("needle "));
+    store.appendEvent("older", agentSays("and needle"));
+    store.appendEvent("older", { type: "user-message", text: "needle held by the page" });
+    const search = new ConversationSearch(store);
+    expect(search.matchesBefore("older", "needle", 4)).toEqual([
+      { key: "1", count: 1 },
+      { key: "2", count: 2 },
+    ]);
+    expect(search.matchesBefore("older", "needle", 2)).toEqual([{ key: "1", count: 1 }]);
+    expect(search.matchesBefore("older", "haystack", 4)).toEqual([]);
+  });
+
   test("needs two characters", () => {
     const store = storeWithTwoConversations();
     store.appendEvent("older", { type: "user-message", text: "a" });

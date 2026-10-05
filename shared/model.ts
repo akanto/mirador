@@ -111,6 +111,12 @@ export interface SearchHit {
   snippet: { before: string; match: string; after: string };
 }
 
+/** An entry of a conversation's timeline, by its key, and how often a query occurs in it. */
+export interface EntryMatchCount {
+  key: string;
+  count: number;
+}
+
 /** Its newest hits first. */
 export interface ConversationMatches {
   conversationId: string;
