@@ -479,6 +479,10 @@ export class Store {
     this.db.query("UPDATE machines SET device_token = ? WHERE id = ?").run(token, id);
   }
 
+  forgetMachineDeviceToken(id: string) {
+    this.db.query("UPDATE machines SET device_token = NULL WHERE id = ?").run(id);
+  }
+
   /** The certificate authority this host checks the machine's certificate against, when the computer's own don't vouch for it. */
   machineAuthority(id: string): string | null {
     return (this.db.query("SELECT authority FROM machines WHERE id = ?").get(id) as { authority: string | null } | null)?.authority ?? null;

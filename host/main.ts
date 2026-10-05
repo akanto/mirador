@@ -55,11 +55,18 @@ const watch = new MachineWatch(
   store,
   (status) => hub.broadcast({ type: "machine.status", status }),
   (notification) => hub.notifyThisComputer(notification),
+  machineSignedOut,
 );
-const relays = new MachineRelays(store, config.relayPorts, (request) => signedIn(request) !== null, (machineId) => {
-  hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
-  watch.start(machineId);
-});
+const relays = new MachineRelays(
+  store,
+  config.relayPorts,
+  (request) => signedIn(request) !== null,
+  (machineId) => {
+    hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+    watch.start(machineId);
+  },
+  machineSignedOut,
+);
 relays.startAll();
 watch.startAll();
 const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, joinRequests, signInCodes, search, relays, watch, certificate });
@@ -76,6 +83,12 @@ if (process.stdout.isTTY) console.log(`Mirador is running. Open:\n\n  ${signInLi
 else console.log(`Mirador is running at ${config.appOrigin}. To sign a browser in, open the link mirador sign-in prints.`);
 console.log(`data: ${config.dataDir}  agent logs: ${config.dataDir}/logs`);
 if (network) console.log(`other devices: ${config.publicOrigin} (HTTPS on port ${network.port} of every network this machine is on)`);
+
+function machineSignedOut(machineId: string) {
+  store.forgetMachineDeviceToken(machineId);
+  watch.stop(machineId);
+  hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
+}
 
 async function stopServices() {
   terminalSessions.stop();

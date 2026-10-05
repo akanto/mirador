@@ -1,6 +1,7 @@
 import type { Conversation, Machine, MachineStatus, WaitingFor } from "../shared/model.ts";
 import { TOKEN_COOKIE, type ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
+import { signInRevoked } from "./machine-sign-in.ts";
 import { trusting } from "./machine-trust.ts";
 import type { Store } from "./store.ts";
 
@@ -20,7 +21,7 @@ class MachineSocket {
   constructor(
     private readonly url: string,
     private readonly signIn: () => Bun.WebSocketOptions | null,
-    private readonly events: { opened?: () => void; message: (message: ServerMessage) => void; closed?: () => void },
+    private readonly events: { opened?: () => void; message: (message: ServerMessage) => void; closed?: () => void; refused?: () => void },
   ) {}
 
   start() {
@@ -28,7 +29,9 @@ class MachineSocket {
     if (!options || this.stopped) return;
     const socket = new (WebSocket as unknown as BunWebSocket)(this.url, options);
     this.socket = socket;
+    let opened = false;
     socket.onopen = () => {
+      opened = true;
       this.failures = 0;
       this.events.opened?.();
     };
@@ -36,6 +39,7 @@ class MachineSocket {
     socket.onclose = () => {
       this.socket = null;
       this.events.closed?.();
+      if (!opened) this.events.refused?.();
       if (this.stopped) return;
       this.retry = setTimeout(() => this.start(), RECONNECT_DELAYS_MS[Math.min(this.failures++, RECONNECT_DELAYS_MS.length - 1)]);
     };
@@ -69,6 +73,7 @@ export class MachineWatch {
     private readonly store: Store,
     private readonly statusChanged: (status: MachineStatus) => void,
     private readonly notify: (notification: SystemNotification) => void,
+    private readonly signedOut: (machineId: string) => void,
   ) {}
 
   startAll() {
@@ -91,6 +96,7 @@ export class MachineWatch {
         opened: () => this.update(watched, { reachable: true }),
         message: (message) => this.follow(watched, message),
         closed: () => this.update(watched, { reachable: false }),
+        refused: () => signInRevoked(this.store, machineId).then((revoked) => revoked && this.signedOut(machineId)),
       }),
       new MachineSocket(socketUrl("/notifications"), signIn, {
         message: (message) => message.type === "system-notification" && this.notify(this.passedOn(machine, message.notification)),

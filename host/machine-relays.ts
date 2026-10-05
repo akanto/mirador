@@ -3,6 +3,7 @@ import { askToJoin as askToJoinThere } from "../shared/join-requests.ts";
 import type { Machine } from "../shared/model.ts";
 import { TOKEN_COOKIE } from "../shared/protocol.ts";
 import { authorityFingerprint } from "./certificates.ts";
+import { signInRevoked } from "./machine-sign-in.ts";
 import { offeredAuthority, trusting } from "./machine-trust.ts";
 import type { Store } from "./store.ts";
 
@@ -73,6 +74,7 @@ export class MachineRelays {
     private readonly ports: number[],
     private readonly isSignedIn: (request: Request) => boolean,
     private readonly joined: (machineId: string) => void,
+    private readonly signedOut: (machineId: string) => void,
   ) {}
 
   startAll() {
@@ -223,7 +225,13 @@ export class MachineRelays {
       ...trusting(this.store.machineAuthority(machineId)),
     }).catch(() => null);
     if (!response) return new Response(`${machine.name} did not answer.`, { status: 502 });
+    if (response.status === 401) this.forgetRevokedSignIn(machineId);
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers: relayedHeaders(response.headers, machine.origin, relayOrigin) });
+  }
+
+  /** The machine turns a request away when it revoked this computer; the rail then offers this computer's own way to join again. */
+  private forgetRevokedSignIn(machineId: string) {
+    signInRevoked(this.store, machineId).then((revoked) => revoked && this.signedOut(machineId));
   }
 
   /** The machine's end opens first, so a page the machine turns away sees its socket fail, as it would there. */

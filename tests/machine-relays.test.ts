@@ -57,7 +57,7 @@ describe("relay ports", () => {
     store.insertMachine({ id: "moved", name: "Moved", origin: "https://moved.example", createdAt: 2 });
     store.setMachineRelayPort("kept", kept);
     store.setMachineRelayPort("moved", outside);
-    const relays = new MachineRelays(store, [inRange, kept], () => true, () => {});
+    const relays = new MachineRelays(store, [inRange, kept], () => true, () => {}, () => {});
     relays.startAll();
     try {
       expect(store.listMachines().map(({ id, relayPort }) => [id, relayPort])).toEqual([
@@ -101,7 +101,7 @@ describe("joining a machine that made its own certificate", () => {
     cleanUps.push(() => server.stop(true));
     const store = new Store(":memory:");
     store.insertMachine({ id: "box", name: "Box", origin: `https://127.0.0.1:${server.port}`, createdAt: 1 });
-    const relays = new MachineRelays(store, [], () => true, () => {});
+    const relays = new MachineRelays(store, [], () => true, () => {}, () => {});
     return { authority: offeredAuthority!, codesReceived, store, join: relays.join.bind(relays, "box") };
   }
 
@@ -167,7 +167,7 @@ describe("joining a machine that made its own certificate", () => {
     store.insertMachine({ id: "box", name: "Box", origin: `https://127.0.0.1:${server.port}`, createdAt: 1 });
     store.setMachineAuthority("box", ownAuthority().authority);
 
-    await new MachineRelays(store, [], () => true, () => {}).askToJoin("box", (number) => void requests.approve(requests.waiting()[0]!.id, number));
+    await new MachineRelays(store, [], () => true, () => {}, () => {}).askToJoin("box", (number) => void requests.approve(requests.waiting()[0]!.id, number));
     expect(store.machineAuthority("box")).toBe(certificate.authority);
     expect(machineStore.listDevices().map(({ name }) => name)).toEqual([expect.stringMatching(/^Mirador on /)]);
   });

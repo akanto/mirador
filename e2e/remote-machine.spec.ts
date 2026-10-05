@@ -180,18 +180,18 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     expect(await askedThroughRelay.text()).toBe("This computer asks to join its machines itself, from its own window.");
   });
 
-  await test.step("revoked on the server, it asks for a new code in the frame, which joins this computer's host again", async () => {
+  await test.step("revoked on the server, it offers this computer's own ways to join again, and a new code joins it", async () => {
     await settings.locator(".device-list li", { hasText: "Mirador on " }).getByRole("button", { name: /^Revoke / }).click();
     await settings.getByRole("button", { name: /^Confirm: Revoke / }).click();
     await expect(serverButton).toHaveClass(/\baway\b/);
     await serverButton.click();
-    await expect(frame.getByRole("heading", { name: "Join this machine" })).toBeVisible();
-    await expect(frame.getByRole("button", { name: "Ask to join" }), "this computer asks to join its machines itself").toHaveCount(0);
+    const rejoin = page.getByRole("region", { name: "Join Home server" });
+    await expect(rejoin.getByRole("button", { name: "Ask to join" })).toBeVisible();
+    await expect(page.locator('iframe[title="Home server"]')).toHaveCount(0);
     await settings.getByRole("button", { name: "Invite a device" }).click();
     await expect(settings.locator(".invite-link")).not.toHaveText(link);
-    const newLink = (await settings.locator(".invite-link").textContent())!;
-    await frame.getByLabel("Invite code").fill(newLink.split("/join/")[1]!);
-    await frame.getByRole("button", { name: "Join", exact: true }).click();
+    await rejoin.getByLabel("Invite code or link").fill((await settings.locator(".invite-link").textContent())!);
+    await rejoin.getByRole("button", { name: "Join", exact: true }).click();
     await expect(workspaceCard(frame, serverOnly)).toBeVisible();
     await expect(serverButton).not.toHaveClass(/\baway\b/);
   });

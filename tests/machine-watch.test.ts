@@ -23,13 +23,14 @@ type Socket = Bun.ServerWebSocket<{ path: string }>;
 function fakeMachine(port = 0) {
   const sockets: Socket[] = [];
   const signIns: string[] = [];
+  let acceptedCookie = "mirador_token=device-token";
   const server = Bun.serve<{ path: string }>({
     hostname: "127.0.0.1",
     port,
     fetch(request, server) {
       const { pathname } = new URL(request.url);
       signIns.push(`${pathname} ${request.headers.get("origin")} ${request.headers.get("cookie")}`);
-      if (request.headers.get("cookie") !== "mirador_token=device-token") return new Response("unauthorized", { status: 401 });
+      if (request.headers.get("cookie") !== acceptedCookie) return new Response("unauthorized", { status: 401 });
       return server.upgrade(request, { data: { path: pathname } }) ? undefined : new Response("no", { status: 400 });
     },
     websocket: {
@@ -39,7 +40,11 @@ function fakeMachine(port = 0) {
   });
   const origin = `http://127.0.0.1:${server.port}`;
   const send = (path: string, message: unknown) => sockets.filter(({ data }) => data.path === path).forEach((socket) => socket.send(JSON.stringify(message)));
-  return { server, origin, sockets, signIns, send };
+  const revokeDevice = () => {
+    acceptedCookie = "";
+    sockets.splice(0).forEach((socket) => socket.close(1000, "device revoked"));
+  };
+  return { server, origin, sockets, signIns, send, revokeDevice };
 }
 
 const conversation = (id: string, waitingFor: string | null) => ({ id, waitingFor });
@@ -56,10 +61,19 @@ function watching(origin: string, joined = true) {
   if (joined) store.setMachineDeviceToken("m1", "device-token");
   const statuses: MachineStatus[] = [];
   const notifications: SystemNotification[] = [];
-  const watch = new MachineWatch(store, (status) => statuses.push(status), (notification) => notifications.push(notification));
+  const signedOut: string[] = [];
+  const watch = new MachineWatch(
+    store,
+    (status) => statuses.push(status),
+    (notification) => notifications.push(notification),
+    (machineId) => {
+      signedOut.push(machineId);
+      watch.stop(machineId);
+    },
+  );
   cleanUp.push(() => watch.stopAll());
   watch.startAll();
-  return { watch, statuses, notifications };
+  return { watch, statuses, notifications, signedOut };
 }
 
 describe("MachineWatch", () => {
@@ -93,7 +107,7 @@ describe("MachineWatch", () => {
   test("says when the machine stops answering, and listens again once it is back", async () => {
     const machine = fakeMachine();
     const { port } = machine.server;
-    const { watch } = watching(machine.origin);
+    const { watch, signedOut } = watching(machine.origin);
     await eventually(() => expect(watch.statuses()[0]!.reachable).toBe(true));
     machine.server.stop(true);
     await eventually(() => expect(watch.statuses()[0]!.reachable).toBe(false));
@@ -101,6 +115,17 @@ describe("MachineWatch", () => {
     const back = fakeMachine(port);
     cleanUp.push(() => back.server.stop(true));
     await eventually(() => expect(watch.statuses()[0]!.reachable).toBe(true), 5_000);
+    expect(signedOut).toEqual([]);
+  }, 10_000);
+
+  test("signs out of a machine that revoked this host, and stops asking it", async () => {
+    const machine = fakeMachine();
+    cleanUp.push(() => machine.server.stop(true));
+    const { watch, signedOut } = watching(machine.origin);
+    await eventually(() => expect(watch.statuses()[0]!.reachable).toBe(true));
+    machine.revokeDevice();
+    await eventually(() => expect(signedOut).toEqual(["m1"]), 5_000);
+    expect(watch.statuses()).toEqual([]);
   }, 10_000);
 
   test("leaves a machine this host has not joined alone", async () => {
