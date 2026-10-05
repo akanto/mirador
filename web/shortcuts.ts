@@ -10,6 +10,9 @@ export type ShortcutCommand =
   | { type: "find" }
   | { type: "search" }
   | { type: "focus"; pane: "chat" | "canvas" }
+  | { type: "bigger-font" }
+  | { type: "smaller-font" }
+  | { type: "reset-font" }
   | { type: "reload-page" }
   | { type: "restart-host" };
 
@@ -54,6 +57,11 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
     if (press.code === "KeyT") return press.shiftKey ? { type: "new-workspace" } : { type: "new-conversation" };
   }
   if (press.key === "?" && !press.metaKey && !press.ctrlKey && !press.altKey && typing === "not-typing") return { type: "help" };
+  if (primary && !press.altKey) {
+    if (press.code === "Equal" || press.code === "NumpadAdd") return { type: "bigger-font" };
+    if (press.code === "Minus" || press.code === "NumpadSubtract") return { type: "smaller-font" };
+    if ((press.code === "Digit0" || press.code === "Numpad0") && !press.shiftKey) return { type: "reset-font" };
+  }
   return null;
 }
 
@@ -116,6 +124,8 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included (Enter: older match, Shift+Enter: newer)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
     { keys: `${primary}${shift}← / ${primary}${shift}→`, action: "Focus the message box / the canvas (not while editing text)" },
+    { keys: `${primary}+ / ${primary}−`, action: "Make text bigger / smaller (in a terminal, changes its font size instead)" },
+    { keys: `${primary}0`, action: "Reset text size to 100% (in a terminal, resets to 12 px)" },
     { keys: `${primary}R`, action: "Reload the page, with the UI code as it is now" },
     { keys: keys.restartHost, action: "Restart the host to run its code as it is now; working agents stop and then continue where they left off" },
     { keys: `${keys.send} / ${keys.sendTheOtherWay}`, action: "While the agent works: add the message to its running turn, or send it after the turn ends (Settings picks which key does which)" },

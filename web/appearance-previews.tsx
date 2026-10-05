@@ -1,4 +1,5 @@
 import { commandShownClosed, outputStartsOpen, type ShellOutputStyle } from "../shared/shell-output.ts";
+import { BASE_TEXT_PX, FONT_SCALES, type FontScale } from "./font-scale.ts";
 import type { MachineColorStyle } from "./machine-colors.ts";
 import { pastelVariables } from "./pastels.ts";
 import type { Theme } from "./theme.ts";
@@ -63,6 +64,17 @@ export function WaitingPreview({ style }: { style: WaitingStyle }) {
         </span>
         <WaitingRow style={style} waits />
         <WaitingRow style={style} waits={false} />
+      </span>
+    </span>
+  );
+}
+
+/** Chat text written at the size this step really draws it. */
+export function FontSizePreview({ scale }: { scale: FontScale }) {
+  return (
+    <span className="preview-window">
+      <span className="preview-text-sample" style={{ fontSize: `${BASE_TEXT_PX * FONT_SCALES[scale]}px` }}>
+        Mirador
       </span>
     </span>
   );

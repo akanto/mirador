@@ -79,6 +79,19 @@ describe("commandFor", () => {
     expect(commandFor(questionMark, "empty-field", true)).toBeNull();
     expect(commandFor(questionMark, "typing", true)).toBeNull();
   });
+
+  test("Cmd/Ctrl + and - step font size, 0 resets", () => {
+    expect(commandFor(press("Equal", { metaKey: true }), "typing", true)).toEqual({ type: "bigger-font" });
+    expect(commandFor(press("NumpadAdd", { metaKey: true }), "typing", true)).toEqual({ type: "bigger-font" });
+    expect(commandFor(press("Minus", { metaKey: true }), "typing", true)).toEqual({ type: "smaller-font" });
+    expect(commandFor(press("NumpadSubtract", { metaKey: true }), "typing", true)).toEqual({ type: "smaller-font" });
+    expect(commandFor(press("Digit0", { metaKey: true }), "typing", true)).toEqual({ type: "reset-font" });
+    expect(commandFor(press("Numpad0", { metaKey: true }), "typing", true)).toEqual({ type: "reset-font" });
+
+    expect(commandFor(press("Equal", { ctrlKey: true }), "terminal", false)).toEqual({ type: "bigger-font" });
+    expect(commandFor(press("Minus", { ctrlKey: true }), "terminal", false)).toEqual({ type: "smaller-font" });
+    expect(commandFor(press("Digit0", { ctrlKey: true }), "terminal", false)).toEqual({ type: "reset-font" });
+  });
 });
 
 describe("shortcutKeys", () => {

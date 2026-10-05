@@ -30,9 +30,10 @@
   --rail-hover: light-dark(rgb(24 24 48 / 0.05), rgb(255 255 255 / 0.05));
   --rail-selected: light-dark(rgb(24 24 48 / 0.08), rgb(255 255 255 / 0.09));
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --font-scale: 1;
   color-scheme: light;
   font-family: "Inter var", Inter, -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--font-scale));
   -webkit-font-smoothing: antialiased;
 }
 
@@ -79,7 +80,7 @@ button.icon {
   background: none;
   color: var(--muted);
   padding: 0 6px;
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale));
 }
 
 button.icon:hover:not(:disabled) {
@@ -121,7 +122,7 @@ button.icon.armed:hover:not(:disabled) {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 14%, transparent);
   border-radius: 4px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 600;
   visibility: visible;
 }
@@ -148,12 +149,12 @@ select:focus-visible {
 pre,
 code {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 kbd {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   padding: 0 5px;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -212,7 +213,7 @@ button.icon.pane-grip {
   cursor: grab;
   touch-action: none;
   padding: 0 4px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   letter-spacing: -3px;
 }
 
@@ -229,7 +230,7 @@ body.moving-pane iframe {
 
 button.icon.pane-fullscreen {
   padding: 0 4px;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale));
 }
 
 button.icon.pane-fullscreen.on {
@@ -303,7 +304,7 @@ body.resizing iframe {
   background: var(--warn);
   color: #000;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .banner.host-code-changed {
@@ -315,7 +316,7 @@ body.resizing iframe {
 
 /* The banner is the same orange with black text in both themes, so its button is too. */
 .banner.host-code-changed button {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 1px 8px;
   color: #000;
   background: rgb(255 255 255 / 0.85);
@@ -399,9 +400,9 @@ body.resizing iframe {
   border-radius: 9px;
   background: color-mix(in srgb, var(--tone) 12%, transparent);
   color: color-mix(in srgb, var(--tone) 78%, var(--text));
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
   font-weight: 600;
-  line-height: 16px;
+  line-height: calc(16px * var(--font-scale));
 }
 
 .waiting-count {
@@ -411,9 +412,9 @@ body.resizing iframe {
   border-radius: 9px;
   background: var(--tone);
   color: var(--bg);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
   font-weight: 600;
-  line-height: 17px;
+  line-height: calc(17px * var(--font-scale));
   text-align: center;
 }
 
@@ -431,7 +432,7 @@ body.resizing iframe {
 .waiting-list h2 {
   margin: 0 0 6px;
   padding: 0 4px 0 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 500;
   color: var(--muted);
 }
@@ -477,7 +478,7 @@ body.resizing iframe {
 .waiting-workspace {
   flex: none;
   max-width: 40%;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--faint);
 }
 
@@ -512,7 +513,7 @@ body.resizing iframe {
 }
 
 .sidebar h1 {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 500;
   color: var(--muted);
   margin: 0;
@@ -605,7 +606,7 @@ body.resizing iframe {
   place-items: center;
   flex: none;
   color: #fff;
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -628,7 +629,7 @@ body.resizing iframe {
 
 .workspace-folder {
   margin-top: -1px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--faint);
 }
 
@@ -719,7 +720,7 @@ body.resizing iframe {
 .workspace-actions button.link {
   flex: none;
   white-space: nowrap;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .workspace-actions .continue-session {
@@ -745,7 +746,7 @@ body.resizing iframe {
   border-radius: 5px;
   background: var(--rail-hover);
   color: color-mix(in srgb, var(--text) 66%, transparent);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 
 .agent-chip:hover {
@@ -785,7 +786,7 @@ body.resizing iframe {
 }
 
 .hint {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--muted);
   margin-top: 4px;
 }
@@ -796,7 +797,7 @@ body.resizing iframe {
   padding: 0;
   max-height: 240px;
   overflow-y: auto;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .completions li {
@@ -834,7 +835,7 @@ body.resizing iframe {
   padding: 5px 8px;
   border-radius: 6px;
   background: var(--rail-card);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -887,7 +888,7 @@ body.resizing iframe {
 .desktop-menu-status {
   padding: 5px 8px;
   color: color-mix(in srgb, var(--text) 60%, transparent);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .desktop-menu [role="separator"] {
@@ -933,7 +934,7 @@ body.resizing iframe {
 
 .modal h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
   font-weight: 600;
 }
 
@@ -970,7 +971,7 @@ body.resizing iframe {
 .profile-list .profile-agent {
   margin-left: 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .profile-editor {
@@ -998,7 +999,7 @@ body.resizing iframe {
 .profile-editor textarea,
 .environment-preview pre {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   font-weight: normal;
   resize: vertical;
 }
@@ -1016,7 +1017,7 @@ body.resizing iframe {
   margin: 4px 0;
   padding-left: 18px;
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .form-actions {
@@ -1028,7 +1029,7 @@ body.resizing iframe {
 
 .saved {
   color: var(--ok);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 @media (max-width: 640px) {
@@ -1038,7 +1039,7 @@ body.resizing iframe {
 }
 
 .warning {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 8px 10px;
   border-radius: 6px;
   background: var(--warn-soft);
@@ -1072,7 +1073,7 @@ body.resizing iframe {
 }
 
 .session-meta {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--muted);
 }
 
@@ -1100,7 +1101,7 @@ body.resizing iframe {
 }
 
 .title-row h2 {
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--font-scale));
   font-weight: 600;
   margin: 0;
   flex: 1;
@@ -1112,11 +1113,11 @@ body.resizing iframe {
 
 .harness {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .badge {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 500;
   padding: 1px 8px;
   border-radius: 10px;
@@ -1134,7 +1135,7 @@ body.resizing iframe {
 button.subagents-running {
   border: none;
   font-family: inherit;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 600;
   padding: 1px 8px;
   border-radius: 10px;
@@ -1162,14 +1163,14 @@ button.subagents-running {
 button.find-trigger,
 button.toggle-canvas,
 button.toggle-terminal {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 3px 10px;
   color: var(--muted);
 }
 
 .status-detail {
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   margin-top: 4px;
 }
 
@@ -1184,7 +1185,7 @@ button.toggle-terminal {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1197,7 +1198,7 @@ button.toggle-terminal {
   background: transparent;
   color: var(--text);
   font-weight: 500;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 2px 4px;
   max-width: 220px;
 }
@@ -1223,7 +1224,7 @@ button.picker-button {
   background: transparent;
   color: var(--text);
   font-weight: 500;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 2px 4px;
   max-width: 260px;
   overflow: hidden;
@@ -1263,7 +1264,7 @@ button.picker-button:focus-visible {
 
 input.picker-search {
   margin: 8px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .picker-list {
@@ -1277,13 +1278,13 @@ input.picker-search {
   padding: 4px 12px;
   background: var(--panel-2);
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 600;
 }
 
 .picker-option {
   padding: 5px 12px 5px 20px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   cursor: pointer;
 }
 
@@ -1303,7 +1304,7 @@ input.picker-search {
 .picker-empty {
   padding: 10px 12px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .config input[type="checkbox"] {
@@ -1374,7 +1375,7 @@ input.picker-search {
   display: grid;
   place-items: center;
   color: #fff;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale));
   font-weight: 600;
   user-select: none;
 }
@@ -1411,7 +1412,7 @@ input.picker-search {
 
 .timestamp {
   color: var(--faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   user-select: none;
@@ -1419,7 +1420,7 @@ input.picker-search {
 
 .gutter .timestamp {
   padding-top: 3px;
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
 }
 
 :root:not([data-timestamps="shown"]) .timeline-entry:not(:hover) > .gutter > .timestamp {
@@ -1498,7 +1499,7 @@ input.picker-search {
 
 .thought {
   color: var(--muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 
 .thought summary,
@@ -1511,7 +1512,7 @@ input.picker-search {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--panel);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   overflow: hidden;
 }
 
@@ -1539,7 +1540,7 @@ input.picker-search {
 .tool-title {
   flex: 1;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1547,7 +1548,7 @@ input.picker-search {
 
 .tool-kind {
   color: var(--faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 
 .tool-status {
@@ -1582,7 +1583,7 @@ input.picker-search {
 
 .subagent-facts {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   white-space: nowrap;
 }
 
@@ -1591,7 +1592,7 @@ input.picker-search {
   padding-left: 1.4em;
   color: var(--accent);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1612,7 +1613,7 @@ input.picker-search {
   border-radius: 4px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1643,7 +1644,7 @@ button.running-subagent {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   text-align: left;
   cursor: pointer;
 }
@@ -1699,13 +1700,13 @@ button.running-subagent:hover {
 
 .raw summary {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   margin-top: 6px;
 }
 
 .locations {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   margin: 6px 0 4px;
 }
 
@@ -1714,7 +1715,7 @@ button.running-subagent:hover {
 }
 
 .diff-path {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   color: var(--muted);
   font-family: var(--mono);
 }
@@ -1727,7 +1728,7 @@ button.running-subagent:hover {
   overflow: auto;
   margin: 4px 0;
   padding: 6px 0;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   line-height: 1.55;
 }
 
@@ -1749,7 +1750,7 @@ button.running-subagent:hover {
   border-left: 3px solid var(--accent);
   border-radius: 6px;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 
 .plan ul {
@@ -1801,12 +1802,12 @@ button.running-subagent:hover {
 .permission-outcome {
   color: var(--muted);
   margin-top: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .notice-line {
   color: var(--faint);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1845,7 +1846,7 @@ button.running-subagent:hover {
 
 .working {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1863,7 +1864,7 @@ button.running-subagent:hover {
 
 .info-line {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .error-line {
@@ -1903,7 +1904,7 @@ button.running-subagent:hover {
 .find-tally {
   min-width: 5.5em;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   text-align: right;
   white-space: nowrap;
 }
@@ -1924,7 +1925,7 @@ button.running-subagent:hover {
   background: var(--warn-soft);
   border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .composer {
@@ -1960,7 +1961,7 @@ button.running-subagent:hover {
   padding: 4px 8px;
   border-radius: 5px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
 }
 
 .composer-suggestions li[aria-selected="true"] {
@@ -1982,7 +1983,7 @@ button.running-subagent:hover {
 
 .mention-path {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   overflow-wrap: anywhere;
 }
 
@@ -2024,7 +2025,7 @@ button.running-subagent:hover {
 .slash-command-hint {
   grid-row: 2;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   color: var(--faint);
 }
 
@@ -2109,7 +2110,7 @@ button.running-subagent:hover {
   max-width: 100%;
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2129,7 +2130,7 @@ button.running-subagent:hover {
   flex-direction: column;
   gap: 4px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .template-form input {
@@ -2143,7 +2144,7 @@ button.running-subagent:hover {
   padding: 8px;
   border-radius: 6px;
   background: var(--panel-2);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -2219,7 +2220,7 @@ button.running-subagent:hover {
 .canvas-outcome {
   flex-shrink: 0;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   padding: 1px 7px;
   border-radius: 9px;
   background: var(--panel-2);
@@ -2246,7 +2247,7 @@ button.running-subagent:hover {
 }
 
 .canvas-header button.canvas-nav {
-  font-size: 18px;
+  font-size: calc(18px * var(--font-scale));
   line-height: 1;
   padding: 2px 6px;
 }
@@ -2254,7 +2255,7 @@ button.running-subagent:hover {
 .history-toggle,
 .canvas-clear {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   height: 26px;
   padding: 0 10px;
   color: var(--muted);
@@ -2286,7 +2287,7 @@ button.running-subagent:hover {
   background: none;
   padding: 5px 8px;
   text-align: left;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   color: var(--text);
 }
 
@@ -2300,7 +2301,7 @@ button.running-subagent:hover {
 
 .history-entry .timestamp {
   color: var(--faint);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   font-variant-numeric: tabular-nums;
 }
 
@@ -2319,7 +2320,7 @@ button.running-subagent:hover {
 
 .history-entry .entry-outcome {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   white-space: nowrap;
 }
 
@@ -2378,7 +2379,7 @@ button.running-subagent:hover {
 .ask-page-before-title {
   align-self: flex-start;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .canvas-frame.ask-context,
@@ -2414,7 +2415,7 @@ button.running-subagent:hover {
   margin: 0;
   padding: 6px 10px 6px 26px;
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   background: var(--removed);
 }
 
@@ -2427,7 +2428,7 @@ button.running-subagent:hover {
 
 .ask h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
   font-weight: 600;
 }
 
@@ -2439,7 +2440,7 @@ button.running-subagent:hover {
 
 .delivered {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 /* Columns as wide as the widest preview needs (plus the option's padding and borders), side by side while they fit */
@@ -2470,7 +2471,7 @@ button.running-subagent:hover {
 
 .ask-option-description {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .ask-option {
@@ -2581,7 +2582,7 @@ button.running-subagent:hover {
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   padding: 12px 14px;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
   outline: none;
 }
 
@@ -2619,7 +2620,7 @@ button.running-subagent:hover {
   margin-left: auto;
   flex-shrink: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .palette li.none {
@@ -2646,7 +2647,7 @@ button.running-subagent:hover {
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   padding: 12px 14px;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
   outline: none;
 }
 
@@ -2654,7 +2655,7 @@ button.running-subagent:hover {
   padding: 6px 14px;
   border-bottom: 1px solid var(--border);
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .search-results {
@@ -2665,7 +2666,7 @@ button.running-subagent:hover {
 .search-workspace {
   margin: 10px 8px 2px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2681,7 +2682,7 @@ button.running-subagent:hover {
 
 .search-count {
   color: var(--faint);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 400;
 }
 
@@ -2703,7 +2704,7 @@ button.running-subagent:hover {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2717,7 +2718,7 @@ button.running-subagent:hover {
 .search-when {
   flex-shrink: 0;
   color: var(--faint);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .modal.shortcut-help {
@@ -2765,7 +2766,7 @@ input.rename {
   color: #e4e5e9;
   border: 1px solid #2f323b;
   box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   line-height: 1.45;
   white-space: pre-line;
   overflow-wrap: anywhere;
@@ -2810,7 +2811,7 @@ input.rename {
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   background: var(--panel-2);
   border-bottom: 1px solid var(--border);
 }
@@ -2852,7 +2853,7 @@ input.rename {
   flex-shrink: 0;
   color: var(--danger);
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   padding: 0 7px;
   border-radius: 9px;
   background: color-mix(in srgb, var(--danger) 13%, transparent);
@@ -2864,7 +2865,7 @@ input.rename {
   background: #16171c;
   color: var(--shell-text);
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   line-height: 1.5;
   padding: 8px 12px;
 }
@@ -2917,7 +2918,7 @@ button.shell-more {
   background: none;
   color: #a5a8ff;
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 button.shell-more:hover {
@@ -2930,7 +2931,7 @@ button.shell-more:hover {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -3011,7 +3012,7 @@ button.shell-more:hover {
   gap: 10px;
   min-height: 20px;
   margin: -8px 16px 8px;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   color: var(--muted);
 }
 
@@ -3061,7 +3062,7 @@ button.shell-more:hover {
 
 .statusline button.statusline-source {
   flex-shrink: 0;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .usage-limit-line {
@@ -3083,7 +3084,7 @@ button.shell-more:hover {
   border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   border-radius: 8px;
   background: var(--warn-soft);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .usage-limit > span {
@@ -3098,7 +3099,7 @@ button.shell-more:hover {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .job-waits li {
@@ -3153,13 +3154,13 @@ button.shell-more:hover {
   border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .queue header {
   padding: 5px 10px 0;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .queue ol {
@@ -3186,7 +3187,7 @@ button.shell-more:hover {
   cursor: grab;
   touch-action: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: -3px;
   -webkit-user-select: none;
   user-select: none;
@@ -3209,12 +3210,12 @@ button.shell-more:hover {
   border-radius: 4px;
   background: color-mix(in srgb, #3f7d64 16%, transparent);
   color: color-mix(in srgb, #3f7d64 80%, var(--text));
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 
 .queued button.link {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 0;
 }
 
@@ -3229,7 +3230,7 @@ button.shell-more:hover {
   padding: 0 6px;
   border: none;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   cursor: pointer;
 }
 
@@ -3257,7 +3258,7 @@ button.shell-more:hover {
 
 .composer.shell-mode textarea {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .composer .run-command {
@@ -3277,7 +3278,7 @@ button.shell-more:hover {
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 600;
 }
 
@@ -3304,7 +3305,7 @@ button.shell-more:hover {
   border-radius: 8px;
   background: var(--panel-2);
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .pasted-images button.icon {
@@ -3357,7 +3358,7 @@ button.shell-more:hover {
 .composer-problem {
   margin: 0 0 6px;
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .image-preview {
@@ -3375,7 +3376,7 @@ button.shell-more:hover {
 
 .shell-header .stop-command {
   margin-left: auto;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   padding: 0;
 }
 
@@ -3398,7 +3399,7 @@ button.shell-more:hover {
   padding: 0 10px 0 4px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
   color: var(--muted);
 }
 
@@ -3444,11 +3445,11 @@ button.shell-more:hover {
 
 .terminal-tab .close-tab {
   padding: 0 8px 0 4px;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale));
 }
 
 .terminal-tab .close-tab.armed {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .terminal-tabs .new-tab {
@@ -3496,7 +3497,7 @@ button.shell-more:hover {
 
 .split-strip .show-all-splits {
   color: inherit;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .split-strip {
@@ -3509,7 +3510,7 @@ button.shell-more:hover {
   background: #23252c;
   border-bottom: 1px solid #2f313a;
   color: #9a9daa;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .split-title {
@@ -3523,11 +3524,11 @@ button.shell-more:hover {
 .split-strip .close-split {
   padding: 0 6px;
   color: inherit;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale));
 }
 
 .split-strip .close-split.armed {
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .terminal-view {
@@ -3622,7 +3623,7 @@ button.shell-more:hover {
 
 .modal.settings h3 {
   margin: 16px 0 2px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   font-weight: 600;
 }
 
@@ -3660,7 +3661,7 @@ button.arrangement.chosen {
   display: grid;
   place-items: center;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 600;
   color: var(--muted);
   background: var(--panel-2);
@@ -3739,7 +3740,7 @@ button.picture-option {
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 button.picture-option:hover {
@@ -3812,6 +3813,13 @@ button.picture-option.chosen {
   height: 10px;
   border-radius: 5px;
   background: var(--accent-soft);
+}
+
+.preview-text-sample {
+  margin: auto;
+  padding: 0 6px;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .preview-split {
@@ -3917,9 +3925,9 @@ button.picture-option.chosen {
   flex: none;
   margin-left: auto;
   border-radius: 6px;
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--font-scale));
   font-weight: 600;
-  line-height: 10px;
+  line-height: calc(10px * var(--font-scale));
   white-space: nowrap;
 }
 
@@ -3947,7 +3955,7 @@ button.picture-option.chosen {
   border-radius: 3px;
   background: var(--accent);
   color: #fff;
-  font-size: 6px;
+  font-size: calc(6px * var(--font-scale));
   font-weight: 600;
 }
 
@@ -4038,7 +4046,7 @@ button.picture-option.chosen {
 .tab-count {
   margin-left: 5px;
   color: var(--faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 400;
 }
 
@@ -4046,7 +4054,7 @@ button.picture-option.chosen {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .selection-label {
@@ -4068,7 +4076,7 @@ button.picture-option.chosen {
 
 .review .anchor {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -4112,7 +4120,7 @@ button.picture-option.chosen {
   background: none;
   border-radius: 6px;
   padding: 5px 7px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .review-list li button:hover {
@@ -4149,7 +4157,7 @@ button.picture-option.chosen {
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .file-directory {
@@ -4158,7 +4166,7 @@ button.picture-option.chosen {
 
 .change {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
   font-weight: 700;
   color: var(--muted);
 }
@@ -4175,7 +4183,7 @@ button.picture-option.chosen {
 .finding-count {
   padding: 0 5px;
   border-radius: 999px;
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
 }
 
 .in-tour {
@@ -4206,18 +4214,18 @@ button.picture-option.chosen {
 .flow-step-header h3,
 .file-header h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
 }
 
 .file-header h3 {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   overflow-wrap: anywhere;
 }
 
 .step-count {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .flow-step-say {
@@ -4267,7 +4275,7 @@ button.picture-option.chosen {
 
 .code-block {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   line-height: 1.45;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -4376,7 +4384,7 @@ button.picture-option.chosen {
   align-items: baseline;
   gap: 2px 14px;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   color: var(--muted);
   padding: 2px 4px;
 }
@@ -4411,7 +4419,7 @@ button.picture-option.chosen {
   background: var(--accent-soft);
   color: var(--accent);
   font-family: system-ui, sans-serif;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .finding {
@@ -4423,7 +4431,7 @@ button.picture-option.chosen {
   border-radius: 6px;
   background: var(--panel);
   font-family: system-ui, sans-serif;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   line-height: 1.5;
 }
 
@@ -4461,14 +4469,14 @@ button.picture-option.chosen {
 
 .review .severity {
   color: var(--severity);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 .checked {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--muted);
 }
 
@@ -4490,18 +4498,18 @@ button.picture-option.chosen {
   flex-wrap: wrap;
   gap: 4px 12px;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .finding footer button.link {
   padding: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .finding .decision {
   padding: 1px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .finding .decision.keep {
@@ -4515,7 +4523,7 @@ button.picture-option.chosen {
 
 .answer header a {
   margin-left: auto;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .answer footer .decision {
@@ -4527,7 +4535,7 @@ button.picture-option.chosen {
   border-radius: 999px;
   background: var(--warn-soft);
   color: var(--warn);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 
 .conversation-state.resolved {
@@ -4556,7 +4564,7 @@ button.picture-option.chosen {
 
 .comment-author {
   display: block;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   font-weight: 600;
   color: var(--muted);
 }
@@ -4572,7 +4580,7 @@ button.picture-option.chosen {
 }
 
 .finding-status {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .finding-status.posted {
@@ -4601,7 +4609,7 @@ button.picture-option.chosen {
 
 .evidence summary {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   cursor: pointer;
 }
 
@@ -4632,7 +4640,7 @@ button.picture-option.chosen {
 
 .review-overview h3 {
   margin: 16px 0 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -4640,14 +4648,14 @@ button.picture-option.chosen {
 
 .verdict {
   margin: 0 0 4px;
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale));
   font-weight: 600;
 }
 
 .review-stats {
   margin: 0 0 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .overview-flow {
@@ -4700,7 +4708,7 @@ button.picture-option.chosen {
 
 .post-panel p {
   margin: 0 0 8px;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .posted-note {
@@ -4723,7 +4731,7 @@ button.picture-option.chosen {
 }
 
 .ask-about-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   color: var(--muted);
 }
 
@@ -4744,7 +4752,7 @@ button.picture-option.chosen {
   padding: 6px 12px;
   border-top: 1px solid var(--border);
   background: var(--accent-soft);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .review-sent button.link {
@@ -4755,12 +4763,12 @@ button.picture-option.chosen {
   padding: 4px 10px;
   border-top: 1px solid var(--border);
   color: var(--faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 
 .review-keys kbd {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
 }
 
 .workspace > header {
@@ -4862,13 +4870,13 @@ body.reordering * {
 
 .device-this {
   color: var(--accent);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
 }
 
 .device-seen {
   flex: 1;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .device-dot {
@@ -4924,7 +4932,7 @@ body.reordering * {
 }
 
 .invite-code {
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale));
   letter-spacing: 0.06em;
 }
 
@@ -5015,7 +5023,7 @@ body.reordering * {
   border-radius: 8px;
   background: var(--rail-card);
   color: var(--text);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 600;
 }
 
@@ -5034,7 +5042,7 @@ body.reordering * {
   overflow: hidden;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5046,7 +5054,7 @@ body.reordering * {
 
 .machine-not-joined {
   color: var(--warn);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
 }
 
 .app.with-rail {
@@ -5114,7 +5122,7 @@ body.reordering * {
   border-radius: 10px;
   background: var(--rail-card);
   color: var(--text);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   font-weight: 600;
   cursor: pointer;
 }
@@ -5143,8 +5151,8 @@ body.reordering * {
   border-radius: 9px;
   background: var(--tone);
   color: var(--bg);
-  font-size: 10px;
-  line-height: 13px;
+  font-size: calc(10px * var(--font-scale));
+  line-height: calc(13px * var(--font-scale));
   text-align: center;
 }
 
@@ -5155,7 +5163,7 @@ body.reordering * {
 }
 
 .rail-machine.this-computer {
-  font-size: 17px;
+  font-size: calc(17px * var(--font-scale));
 }
 
 .rail-machine[data-color],
@@ -5179,7 +5187,7 @@ body.reordering * {
 .rail-manage {
   border-style: dashed;
   color: var(--muted);
-  font-size: 17px;
+  font-size: calc(17px * var(--font-scale));
   font-weight: 400;
 }
 
@@ -5207,7 +5215,7 @@ body.reordering * {
 .join-asked .join-number {
   margin: 16px 0;
   color: var(--text);
-  font-size: 32px;
+  font-size: calc(32px * var(--font-scale));
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
@@ -5234,13 +5242,13 @@ body.reordering * {
 
 .join-request h2 {
   margin: 0 0 4px;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale));
 }
 
 .join-request p {
   margin: 0 0 10px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale));
 }
 
 .join-request form {

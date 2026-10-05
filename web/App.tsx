@@ -20,7 +20,9 @@ import { ProfilesDialog } from "./Profiles.tsx";
 import { isFreshReview } from "./review-placement.ts";
 import { SessionsDialog } from "./Sessions.tsx";
 import { SettingsDialog } from "./Settings.tsx";
-import { shortcutKeys, type ShortcutCommand } from "./shortcuts.ts";
+import { shortcutKeys, typingStateOf, type ShortcutCommand } from "./shortcuts.ts";
+import { setFontScale, stepFontScale } from "./font-scale.ts";
+import { resetTerminalFontSize, stepTerminalFontSize } from "./terminal-font.ts";
 import { Sidebar } from "./Sidebar.tsx";
 import { Splitter } from "./Splitter.tsx";
 import { initialStateFor, reducer, selectedOpen, type AppAction, type AppState, type OpenConversation } from "./state.ts";
@@ -265,6 +267,12 @@ export function App() {
       case "focus":
         if (command.pane === "canvas") setHidden("canvas", () => false);
         return requestAnimationFrame(() => focusPane(command.pane));
+      case "bigger-font":
+        return typingStateOf(document.activeElement) === "terminal" ? stepTerminalFontSize(1) : setFontScale(stepFontScale(1));
+      case "smaller-font":
+        return typingStateOf(document.activeElement) === "terminal" ? stepTerminalFontSize(-1) : setFontScale(stepFontScale(-1));
+      case "reset-font":
+        return typingStateOf(document.activeElement) === "terminal" ? resetTerminalFontSize() : setFontScale("100");
     }
   });
 

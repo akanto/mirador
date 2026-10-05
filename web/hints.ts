@@ -27,6 +27,7 @@ export const hints = {
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",
+  terminalFontSize: "Font size in terminal splits and tabs (11 to 24 px). ⌘+ and ⌘− step it when a terminal is focused.",
   connectedDevicesInSidebar: "While devices are connected, a line at the bottom of the sidebar says how many; click it to see which. Remembered in this browser.",
   connectedDevices: (names: string[]) => `Connected now: ${names.join(", ")}. Click to see all devices in Settings → Devices.`,
   askAndUpdateReview:
@@ -77,6 +78,7 @@ export const hints = {
   shellOutputStyle:
     "How each shell command the agent runs shows in a conversation until you open or close it: its command with the output a click away, the output open only when the command failed, one line with the command too a click away, or everything open. Commands you run with ! always show their output.",
   timestamps: "Off: the time shows next to each author's name, and on a later line while you point at it.\nOn: every line shows its time.",
+  textSize: "Text size across the app: 50%, 70%, 100%, 140%, or 200%. ⌘+ and ⌘− step it, ⌘0 resets.",
   theme: "Light, dark, or follow the system setting.",
   waitingStyle:
     "How the sidebar marks a conversation whose agent waits for you: for an approval or an answer (Needs you), or because its turn ended while you looked elsewhere (Done, or Failed after an error).\n\nPill and count: a pill on the row and a count on its workspace. Dot only: a coloured dot and a bold title. Pills and a list on top: also lists every waiting conversation above the workspaces.",

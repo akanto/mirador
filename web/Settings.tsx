@@ -1,11 +1,12 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type PromptTemplate } from "../shared/model.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
-import { MachineColorPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
+import { FontSizePreview, MachineColorPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
+import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
@@ -15,6 +16,7 @@ import { setShellOutputStyle, useShellOutputStyle } from "./shell-output.ts";
 import { isMac } from "./shortcuts.ts";
 import type { DevicesListed, SettingsPage } from "./state.ts";
 import { notifies, setNotificationsWanted, useNotificationSetting, type NotificationSetting } from "./system-notifications.ts";
+import { TERMINAL_FONT_SIZES, useTerminalFontSize } from "./terminal-font.ts";
 import { themeLabels, useTheme } from "./theme.ts";
 import { setCopyOnSelect, useCopyOnSelect } from "./terminal-settings.ts";
 import { useTimestampsShown } from "./timestamps.ts";
@@ -202,6 +204,7 @@ function PictureChoice<Option extends string>({
   hint,
   labels,
   chosen,
+  columns,
   onChoose,
   preview,
 }: {
@@ -209,13 +212,19 @@ function PictureChoice<Option extends string>({
   hint: string;
   labels: Record<Option, string>;
   chosen: Option;
+  columns?: number;
   onChoose: (option: Option) => void;
   preview: (option: Option) => ReactNode;
 }) {
   return (
     <div className="picture-choice" data-hint={hint}>
       <div className="picture-choice-name">{name}</div>
-      <div className="picture-options" role="radiogroup" aria-label={name}>
+      <div
+        className="picture-options"
+        role="radiogroup"
+        aria-label={name}
+        style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
+      >
         {(Object.keys(labels) as Option[]).map((option) => (
           <button
             key={option}
@@ -239,6 +248,7 @@ function PictureChoice<Option extends string>({
 function AppearanceSettings() {
   const [theme, setTheme] = useTheme();
   const [timestampsShown, setTimestampsShown] = useTimestampsShown();
+  const [fontScale, setFontScale] = useFontScale();
   const [waitingStyle, setWaitingStyle] = useWaitingStyle();
   const workspaceColorStyle = useWorkspaceColorStyle();
   const machineColorStyle = useMachineColorStyle();
@@ -247,6 +257,15 @@ function AppearanceSettings() {
     <>
       <h3>Appearance</h3>
       <p className="hint">Remembered in this browser.</p>
+      <PictureChoice
+        name="Text size"
+        hint={hints.textSize}
+        labels={fontScaleLabels}
+        chosen={fontScale}
+        columns={5}
+        onChoose={setFontScale}
+        preview={(option) => <FontSizePreview scale={option} />}
+      />
       <PictureChoice name="Theme" hint={hints.theme} labels={themeLabels} chosen={theme} onChoose={setTheme} preview={(option) => <ThemePreview theme={option} />} />
       <PictureChoice
         name="Waiting for you"
@@ -314,11 +333,22 @@ function SendingSettings() {
 
 function TerminalSettings() {
   const copyOnSelect = useCopyOnSelect();
+  const [fontSize, setFontSize] = useTerminalFontSize();
   return (
     <>
       <h3>Terminal</h3>
       <p className="hint">Remembered in this browser.</p>
       <div className="terminal-settings">
+        <label data-hint={hints.terminalFontSize}>
+          Font size
+          <select value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}>
+            {TERMINAL_FONT_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {size} px
+              </option>
+            ))}
+          </select>
+        </label>
         <label data-hint={hints.copyOnSelect}>
           <input type="checkbox" checked={copyOnSelect} onChange={(event) => setCopyOnSelect(event.target.checked)} />
           Copy on select

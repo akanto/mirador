@@ -13,6 +13,7 @@ import { terminalShortcutKeys } from "./shortcuts.ts";
 import { Splitter } from "./Splitter.tsx";
 import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
+import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
 import { copiesOnSelect } from "./terminal-settings.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
@@ -121,9 +122,13 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
   const terminal = useRef<Terminal | null>(null);
 
   useEffect(() => {
-    const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: 12, cursorBlink: true, scrollback: 5_000, theme: terminalTheme });
+    const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: terminalFontSize(), cursorBlink: true, scrollback: 5_000, theme: terminalTheme });
     const fit = new FitAddon();
     const fitIfShown = () => isShown(screen.current!) && fit.fit();
+    const applyFontSize = () => {
+      view.options.fontSize = terminalFontSize();
+      fitIfShown();
+    };
     view.loadAddon(fit);
     view.attachCustomKeyEventHandler((event) => {
       if (event.defaultPrevented) return false;
@@ -158,6 +163,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     const resized = view.onResize(({ cols, rows }) => connection.send({ type: "terminal.resize", terminalId, columns: cols, rows }));
     const observer = new ResizeObserver(fitIfShown);
     observer.observe(screen.current!);
+    const stopFontListening = subscribeTerminalFontSize(applyFontSize);
 
     fitIfShown();
     connection.send({ type: "terminal.resize", terminalId, columns: view.cols, rows: view.rows });
@@ -167,6 +173,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       terminal.current = null;
       screenElement.removeEventListener("mousedown", startSelecting);
       observer.disconnect();
+      stopFontListening();
       typed.dispose();
       resized.dispose();
       stopListening();
