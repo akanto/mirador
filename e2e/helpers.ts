@@ -81,12 +81,16 @@ export async function startConversation(page: Page) {
 
 export const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");
 
+/** Sends a message and waits until the host has it, in the timeline or the queue, so a turn it starts already shows as running. */
 export async function sendMessage(page: Page, text: string) {
   const composer = page.locator(".composer:visible textarea");
   await expect(composer).toBeEditable();
   await expect(page.locator(".composer:visible .send")).toBeVisible({ timeout: 120_000 });
+  const taken = page.locator(".timeline:visible .message.user, .queue:visible .queued-text").filter({ hasText: text });
+  const takenBefore = await taken.count();
   await composer.fill(text);
   await composer.press("Enter");
+  await expect(taken).toHaveCount(takenBefore + 1);
 }
 
 export async function waitForTurnToEnd(page: Page) {

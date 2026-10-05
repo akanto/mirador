@@ -370,9 +370,9 @@ export class ConversationService {
     this.forgetUnseenTurnEnd(conversationId);
     this.retitleFromFirstMessage(conversationId, text);
     const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
+    this.setStatus(conversationId, "starting");
     this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }) }, commands);
     try {
-      this.setStatus(conversationId, "starting");
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
       const prompt = await this.promptContent(conversationId, withCommandOutputs(commands, text), imageIds);
