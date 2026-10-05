@@ -5,6 +5,7 @@ import {
   isCanvasUse,
   isPastel,
   type CanvasUse,
+  type ClaudeProgram,
   type ClientAddress,
   type ListedDevice,
   type PromptTemplate,
@@ -18,6 +19,7 @@ import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
+import { describeClaudeProgram } from "./acp/claude-program.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
@@ -451,6 +453,20 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "prompt-template.upserted", template: store.findPromptTemplate(id)! });
   }
 
+  let claudeProgram: ClaudeProgram = { configured: store.claudeProgramSetting(), found: null, version: null };
+  const lookUpClaudeProgram = async () => {
+    claudeProgram = await describeClaudeProgram(store.claudeProgramSetting());
+    hub.broadcast({ type: "settings.claude-program", claudeProgram });
+  };
+  void lookUpClaudeProgram();
+
+  /** Claude Code agents start again with the new program; turns they were running stop, as when a profile changes. */
+  function setClaudeProgram(path: string) {
+    store.setClaudeProgramSetting(path.trim());
+    conversations.restartClaudeAgents();
+    return lookUpClaudeProgram();
+  }
+
   /** Conversations pick it up when their session next starts or resumes. */
   function setCanvasUse(canvasUse: CanvasUse) {
     if (!isCanvasUse(canvasUse)) throw new Error(`Unknown canvas use ${canvasUse}`);
@@ -512,6 +528,8 @@ export function startServer(services: HostServices) {
         return deletePromptTemplate(message.templateId);
       case "settings.set-canvas-use":
         return setCanvasUse(message.canvasUse);
+      case "settings.set-claude-program":
+        return setClaudeProgram(message.path);
       case "conversation.create":
         conversations.create(message.workspaceId, message.launch);
         return;
@@ -734,6 +752,7 @@ export function startServer(services: HostServices) {
       profiles: store.listProfiles().map((profile) => profileFor(socket, profile)),
       promptTemplates: store.listPromptTemplates(),
       canvasUse: store.canvasUse(),
+      claudeProgram,
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
       agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,
       machines: store.listMachines(),

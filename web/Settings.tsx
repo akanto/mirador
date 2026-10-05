@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { canvasUseLabels, type CanvasUse, type PromptTemplate } from "../shared/model.ts";
+import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type PromptTemplate } from "../shared/model.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import { MachineColorPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
@@ -49,6 +49,7 @@ function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hid
 const pageLabels: Record<SettingsPage, string> = {
   appearance: "Appearance",
   conversations: "Conversations",
+  agents: "Agents",
   terminal: "Terminal",
   canvas: "Canvas",
   layout: "Layout",
@@ -63,6 +64,7 @@ export function SettingsDialog({
   devices,
   promptTemplates,
   canvasUse,
+  claudeProgram,
   layoutDefault,
   onChange,
   onClose,
@@ -71,6 +73,7 @@ export function SettingsDialog({
   devices: DevicesListed | null;
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
+  claudeProgram: ClaudeProgram;
   layoutDefault: LayoutDefault;
   onChange: (layoutDefault: LayoutDefault) => void;
   onClose: () => void;
@@ -91,6 +94,7 @@ export function SettingsDialog({
         {isMac && <TypingSettings />}
       </>
     ),
+    agents: () => <AgentSettings claudeProgram={claudeProgram} />,
     terminal: () => <TerminalSettings />,
     canvas: () => (
       <>
@@ -320,6 +324,46 @@ function TerminalSettings() {
           Copy on select
         </label>
       </div>
+    </>
+  );
+}
+
+function foundClaudeProgram({ configured, found, version }: ClaudeProgram) {
+  if (found) return version ? `Runs ${found}, ${version}` : `Runs ${found}`;
+  if (configured) return "Nothing at that path can run.";
+  return "Claude Code is not installed. Install it with curl -fsSL https://claude.ai/install.sh | bash, or enter where its claude program is.";
+}
+
+function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
+  const [path, setPath] = useState(claudeProgram.configured);
+  useEffect(() => setPath(claudeProgram.configured), [claudeProgram.configured]);
+  const save = () => {
+    if (path.trim() !== claudeProgram.configured) connection.send({ type: "settings.set-claude-program", path: path.trim() });
+  };
+  return (
+    <>
+      <h3>Claude Code</h3>
+      <p className="hint">
+        Mirador runs the Claude Code installed on the host's computer. A change restarts its agents, which stops the turns they are running.
+      </p>
+      <div className="sending-settings">
+        <label data-hint={hints.claudeProgram}>
+          Program
+          <input
+            type="text"
+            className="claude-program"
+            value={path}
+            placeholder="Found on its own"
+            spellCheck={false}
+            onChange={(event) => setPath(event.target.value)}
+            onBlur={save}
+            onKeyDown={(event) => event.key === "Enter" && save()}
+          />
+        </label>
+      </div>
+      <p className="hint claude-program-found" role="status">
+        {foundClaudeProgram(claudeProgram)}
+      </p>
     </>
   );
 }

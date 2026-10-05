@@ -1,10 +1,11 @@
-# The Linux machine scripts/linux-test.sh runs Mirador's checks on: Bun, Node for the Playwright runner, opencode and
-# Playwright's Chromium, as a non-root user because Claude Code refuses to skip permission prompts as root.
+# The Linux machine scripts/linux-test.sh runs Mirador's checks on: Bun, Node for the Playwright runner, Claude Code,
+# opencode and Playwright's Chromium, as a non-root user because Claude Code refuses to skip permission prompts as root.
 FROM ubuntu:24.04
 
 ARG BUN_VERSION=1.4.0
 ARG NODE_VERSION=22.13.1
 ARG OPENCODE_VERSION=1.18.18
+ARG CLAUDE_CODE_VERSION=2.1.289
 ARG PLAYWRIGHT_VERSION=1.63.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git openssl unzip xz-utils && rm -rf /var/lib/apt/lists/*
@@ -13,9 +14,10 @@ RUN arch=$(dpkg --print-architecture | sed 's/amd64/x64/') \
 
 USER ubuntu
 WORKDIR /home/ubuntu
-ENV PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.opencode/bin:$PATH
+ENV PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.opencode/bin:/home/ubuntu/.local/bin:$PATH
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
  && curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path \
+ && curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" \
  && mkdir -p .bun/install/cache
 
 USER root

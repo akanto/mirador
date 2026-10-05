@@ -3713,6 +3713,11 @@ button.arrangement.chosen {
   white-space: nowrap;
 }
 
+input.claude-program {
+  width: 26em;
+  max-width: 100%;
+}
+
 .picture-choice {
   margin-top: 14px;
 }

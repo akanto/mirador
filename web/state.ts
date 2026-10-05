@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, Conversation, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
@@ -21,7 +21,7 @@ export type Overlay =
   | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
-export type SettingsPage = "appearance" | "conversations" | "terminal" | "canvas" | "layout" | "devices" | "notifications";
+export type SettingsPage = "appearance" | "conversations" | "agents" | "terminal" | "canvas" | "layout" | "devices" | "notifications";
 
 export type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
 
@@ -31,6 +31,7 @@ export interface AppState {
   profiles: Profile[];
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
+  claudeProgram: ClaudeProgram;
   canvasAssetsOrigin: string;
   agentsCanvasAssetsOrigin: string;
   machines: Machine[];
@@ -66,6 +67,7 @@ export const initialState: AppState = {
   profiles: [],
   promptTemplates: [],
   canvasUse: "often",
+  claudeProgram: { configured: "", found: null, version: null },
   canvasAssetsOrigin: "",
   agentsCanvasAssetsOrigin: "",
   machines: [],
@@ -129,6 +131,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         profiles: message.profiles,
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
+        claudeProgram: message.claudeProgram,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
         agentsCanvasAssetsOrigin: message.agentsCanvasAssetsOrigin,
         machines: message.machines,
@@ -182,6 +185,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, promptTemplates: upsert(state.promptTemplates, message.template).sort((a, b) => a.name.localeCompare(b.name)) };
     case "settings.canvas-use":
       return { ...state, canvasUse: message.canvasUse };
+    case "settings.claude-program":
+      return { ...state, claudeProgram: message.claudeProgram };
     case "prompt-template.deleted":
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":

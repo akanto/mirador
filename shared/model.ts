@@ -180,6 +180,13 @@ export type CanvasUse = "as-needed" | "often";
 
 export const canvasUseLabels: Record<CanvasUse, string> = { "as-needed": "As needed", often: "Often" };
 
+/** The Claude Code the host runs: `configured` is the path set in Settings, empty to find claude on its own. */
+export interface ClaudeProgram {
+  configured: string;
+  found: string | null;
+  version: string | null;
+}
+
 export const isCanvasUse = (value: unknown): value is CanvasUse => typeof value === "string" && Object.hasOwn(canvasUseLabels, value);
 
 export interface Workspace {

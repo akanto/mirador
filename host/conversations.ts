@@ -32,7 +32,7 @@ import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
-import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
+import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
@@ -489,9 +489,10 @@ export class ConversationService {
   loginProgram(conversationId: string): { workspaceId: string; program: TerminalProgram } {
     const conversation = this.get(conversationId);
     const profile = conversation.profileId === null ? null : this.existingProfile(conversation.profileId);
+    const environment = launchEnvironment(conversation.harness, profile, this.store.claudeProgramSetting());
     return {
       workspaceId: conversation.workspaceId,
-      program: { tabName: `${harnessLabels[conversation.harness]} sign-in`, command: loginCommand(conversation.harness), environment: profileEnvironment(profile) },
+      program: { tabName: `${harnessLabels[conversation.harness]} sign-in`, command: loginCommand(conversation.harness, environment), environment },
     };
   }
 
@@ -554,6 +555,16 @@ export class ConversationService {
     const harness = this.harnessesByLaunch.get(profileId);
     this.harnessesByLaunch.delete(profileId);
     harness?.stop("was restarted because its profile changed");
+  }
+
+  /** Claude Code agents start again with the program now set, as a profile's agent does when the profile changes. */
+  restartClaudeAgents() {
+    [...this.harnessesByLaunch]
+      .filter(([key]) => key === "claude" || this.store.findProfile(key)?.harness === "claude")
+      .forEach(([key, harness]) => {
+        this.harnessesByLaunch.delete(key);
+        harness.stop("was restarted because the Claude Code program changed");
+      });
   }
 
   /** Stops running turns the way Stop does and holds every queue; returns the conversations whose turn was stopped. */
@@ -769,7 +780,7 @@ export class ConversationService {
     const key = launch.profileId ?? launch.harness;
     const existing = this.harnessesByLaunch.get(key);
     if (existing) return existing;
-    const spec = harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId));
+    const spec = harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId), this.store.claudeProgramSetting());
     const harness = new HarnessProcess(
       { ...spec, environment: { ...spec.environment, ...this.scriptEnvironment(spec.environment.PATH), ...this.testModelEnvironment(launch) } },
       {

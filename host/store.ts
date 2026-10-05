@@ -387,6 +387,15 @@ export class Store {
     this.db.query("INSERT INTO settings (key, value) VALUES ('canvas_use', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(canvasUse);
   }
 
+  /** The Claude Code program set in Settings; empty to find claude on its own. */
+  claudeProgramSetting(): string {
+    return this.setting("claude_program") ?? "";
+  }
+
+  setClaudeProgramSetting(path: string) {
+    this.setSetting("claude_program", path || null);
+  }
+
   private setting(key: string) {
     return (this.db.query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null)?.value ?? null;
   }
