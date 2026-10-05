@@ -21,7 +21,13 @@ export function matchCount(text: string, query: string) {
   return count;
 }
 
-const rawText = (raw: unknown) => (raw === undefined || raw === null ? [] : [typeof raw === "string" ? raw : JSON.stringify(raw, null, 2)]);
+/** The words and numbers in a tool call's input or output, without the JSON around them. */
+function wordsIn(raw: unknown): string[] {
+  if (typeof raw === "string") return [raw];
+  if (typeof raw === "number") return [String(raw)];
+  if (Array.isArray(raw)) return raw.flatMap(wordsIn);
+  return typeof raw === "object" && raw !== null ? Object.values(raw).flatMap(wordsIn) : [];
+}
 
 function toolTexts(block: ToolBlock): string[] {
   return [
@@ -32,8 +38,8 @@ function toolTexts(block: ToolBlock): string[] {
       if (content.type === "diff") return [content.path, content.oldText ?? "", content.newText];
       return [];
     }),
-    ...rawText(block.rawInput),
-    ...rawText(block.rawOutput),
+    ...wordsIn(block.rawInput),
+    ...wordsIn(block.rawOutput),
     ...(block.subagent?.blocks.flatMap(textsOf) ?? []),
   ];
 }

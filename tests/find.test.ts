@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { matchCount, matchOffsets, occurrencesIn } from "../shared/find.ts";
+import { matchCount, matchOffsets, occurrencesIn, textsOf } from "../shared/find.ts";
+import { snippetAround } from "../host/search.ts";
 import { buildTimeline } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
@@ -65,5 +66,26 @@ describe("occurrencesIn", () => {
   test("counts a message by its markdown source", () => {
     const [message] = buildTimeline(stored([acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "A **needle** and a needle" } })]));
     expect(occurrencesIn(message!, "needle")).toBe(2);
+  });
+});
+
+describe("textsOf", () => {
+  test("holds a tool call's input as its words, so a search snippet shows no JSON keys or quotes", () => {
+    const [card] = buildTimeline(
+      stored([
+        acp({
+          sessionUpdate: "tool_call",
+          toolCallId: "t",
+          title: "Task",
+          kind: "think",
+          status: "completed",
+          rawInput: { description: "Find where the test presses Enter", prompt: "line one\nline two", limit: 20 },
+        }),
+      ]),
+    );
+    const text = textsOf(card!).join("\n");
+    expect(snippetAround(text, matchOffsets(text, "presses Enter")[0]!)).toEqual({ before: "Find where the test ", match: "presses Enter", after: "" });
+    expect(matchOffsets(text, "description")).toEqual([]);
+    expect(matchCount(text, "20")).toBe(1);
   });
 });

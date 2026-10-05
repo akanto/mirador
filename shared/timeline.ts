@@ -143,6 +143,9 @@ function claudeCodeMeta(update: { _meta?: { [key: string]: unknown } | null }) {
   };
 }
 
+/** A reply as short as "Done." can turn up inside an unrelated error message by chance. */
+const SHORTEST_ERROR_ECHO = 16;
+
 class TimelineBuilder {
   readonly blocks: TimelineBlock[] = [];
   private readonly toolBlocks = new Map<string, ToolBlock>();
@@ -151,6 +154,7 @@ class TimelineBuilder {
   private readonly subagentsOfThisTurn: Subagent[] = [];
   private readonly commands = new UserCommandLog();
   private readonly errorsAwaitingSignIn: ErrorBlock[] = [];
+  private readonly streamedMessages = new Map<string, { text: string; chunks: number }>();
 
   add({ seq, at, event }: StoredEvent) {
     const origin = { key: String(seq), at };
@@ -177,6 +181,7 @@ class TimelineBuilder {
         if (event.stopReason === "end_turn") return;
         return this.push({ kind: "notice", ...origin, text: `Turn ended: ${event.stopReason.replaceAll("_", " ")}` });
       case "error": {
+        this.dropAgentEchoOf(event.message);
         const block: ErrorBlock = {
           kind: "error",
           ...origin,
@@ -230,6 +235,7 @@ class TimelineBuilder {
         return this.appendText("user", origin, contentText(update.content), into);
       case "agent_message_chunk":
         if (isInformational(update._meta)) return this.push({ kind: "info", ...origin, text: contentText(update.content) }, into);
+        if (this.repeatsStreamedMessage(update.messageId, contentText(update.content))) return;
         return this.appendText("agent", origin, contentText(update.content), into);
       case "agent_thought_chunk":
         return this.appendText("thought", origin, contentText(update.content), into);
@@ -255,6 +261,22 @@ class TimelineBuilder {
   private subagentOf(update: { _meta?: { [key: string]: unknown } | null }) {
     const { parentToolUseId } = claudeCodeMeta(update);
     return parentToolUseId ? this.toolBlocks.get(parentToolUseId)?.subagent : undefined;
+  }
+
+  /** Some gateways follow a streamed message with one chunk that holds all of it again, under the message's id. */
+  private repeatsStreamedMessage(messageId: string | null | undefined, text: string) {
+    if (!messageId) return false;
+    const streamed = this.streamedMessages.get(messageId) ?? { text: "", chunks: 0 };
+    const repeats = streamed.chunks >= 2 && text.trim() !== "" && text === streamed.text;
+    if (!repeats) this.streamedMessages.set(messageId, { text: streamed.text + text, chunks: streamed.chunks + 1 });
+    return repeats;
+  }
+
+  /** Claude Code says an API error as the agent's message, and the failed prompt reports it again as an error. */
+  private dropAgentEchoOf(errorMessage: string) {
+    const last = this.blocks.at(-1);
+    const echo = last?.kind === "agent" ? last.text.trim() : "";
+    if (echo.length >= SHORTEST_ERROR_ECHO && errorMessage.includes(echo)) this.blocks.pop();
   }
 
   private appendText(kind: TextBlockKind, origin: Origin, text: string, into: TimelineBlock[]) {

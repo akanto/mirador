@@ -76,6 +76,43 @@ const byParent = (parent: string) => ({ claudeCode: { parentToolUseId: parent } 
 const read = (toolCallId: string, parent: string) =>
   acp({ sessionUpdate: "tool_call", toolCallId, title: `Read ${toolCallId}.ts`, status: "pending", _meta: { claudeCode: { parentToolUseId: parent, toolName: "Read" } } });
 
+describe("a gateway that repeats a streamed message whole, under its id", () => {
+  const says = (text: string, messageId?: string) => acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text }, messageId });
+  const toolStarts = acp({ sessionUpdate: "tool_call", toolCallId: "t1", title: "Task", status: "pending" });
+  const toolEnds = acp({ sessionUpdate: "tool_call_update", toolCallId: "t1", status: "completed" });
+  const shape = (events: ConversationEvent[]) => buildTimeline(stored(events)).map((block) => `${block.kind}:${"text" in block ? block.text : ""}`);
+  const streamed = ["Both ", "worktrees ", "are clean."].map((piece) => says(piece, "chatcmpl-A"));
+
+  test("shows the message once, whether the repeat comes after tool calls or straight after it", () => {
+    expect(shape([...streamed, toolStarts, toolEnds, says("Both worktrees are clean.", "chatcmpl-A")])).toEqual(["agent:Both worktrees are clean.", "tool:"]);
+    expect(shape([...streamed, says("Both worktrees are clean.", "chatcmpl-A")])).toEqual(["agent:Both worktrees are clean."]);
+  });
+
+  test("keeps what the agent really says twice: another message, equal chunks, no id, or a message sent whole", () => {
+    const done = (messageId: string) => ["Do", "ne", "."].map((piece) => says(piece, messageId));
+    expect(shape([...done("m1"), toolStarts, ...done("m2")])).toEqual(["agent:Done.", "tool:", "agent:Done."]);
+    expect(shape([says("ha", "m"), says("ha", "m")])).toEqual(["agent:haha"]);
+    expect(shape([says("a", "m"), says("b", "m"), says("ab", "m2")])).toEqual(["agent:abab"]);
+    expect(shape([says("Hi"), says("Hi"), says("HiHi")])).toEqual(["agent:HiHiHiHi"]);
+  });
+});
+
+describe("an API error Claude Code also says as the agent's message", () => {
+  const apiError = "API Error: 502 Bad Gateway. This is a server-side issue, usually temporary.";
+
+  test("shows once, as the error, with what marks it", () => {
+    const timeline = buildTimeline(stored([{ type: "user-message", text: "go" }, agentText(apiError), { type: "error", message: `Internal error: ${apiError}: {"errorKind":"server_error"}` }]));
+    expect(timeline.map(({ kind }) => kind)).toEqual(["user", "error"]);
+    const limit = "You've hit your session limit · resets 6:20pm (Europe/Budapest)";
+    expect(buildTimeline(stored([agentText(limit), { type: "error", message: limit, usageLimit: { resetsAt: 1 } }]))).toEqual([expect.objectContaining({ kind: "error", usageLimit: true })]);
+  });
+
+  test("keeps a reply an unrelated error follows, even one the error happens to contain", () => {
+    expect(buildTimeline(stored([agentText("All done."), { type: "error", message: "ACP connection closed" }])).map(({ kind }) => kind)).toEqual(["agent", "error"]);
+    expect(buildTimeline(stored([agentText("Done."), { type: "error", message: "Done. Then the agent stopped" }])).map(({ kind }) => kind)).toEqual(["agent", "error"]);
+  });
+});
+
 describe("subagents", () => {
   test("what a subagent does goes under the tool call that started it, its own subagents' work under theirs", () => {
     const timeline = buildTimeline(
