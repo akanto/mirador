@@ -34,6 +34,7 @@ const conversation: Conversation = {
   usageLimit: null,
   jobWaits: [],
   waitingFor: null,
+  activity: null,
   configOptions: [modelOption],
   position: 0,
   createdAt: 1_000,

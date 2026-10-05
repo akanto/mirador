@@ -184,6 +184,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   usageLimit: null,
   jobWaits: [],
   waitingFor: null,
+  activity: null,
   configOptions: JSON.parse(row.config_options),
   position: row.position,
   createdAt: row.created_at,

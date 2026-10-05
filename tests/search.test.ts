@@ -28,6 +28,7 @@ function storeWithTwoConversations() {
     usageLimit: null,
     jobWaits: [],
     waitingFor: null,
+    activity: null,
     configOptions: [],
     createdAt: 1,
     updatedAt: 1,

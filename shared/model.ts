@@ -261,6 +261,12 @@ export interface JobWait {
 /** `gave-up`: the job could not be checked for too long, e.g. its machine stopped answering, so it may still run. */
 export type JobWaitEnd = "ended" | "gave-up" | "stopped";
 
+/** A tool the agent waits for permission to run, or the tool call it started last that has not finished, by its title. */
+export interface Activity {
+  kind: "permission" | "tool";
+  title: string;
+}
+
 export interface Conversation {
   id: string;
   workspaceId: string;
@@ -284,6 +290,8 @@ export interface Conversation {
   jobWaits: JobWait[];
   /** Kept in memory, except for questions, so a host restart forgets the turns that ended unseen. */
   waitingFor: WaitingFor | null;
+  /** What the agent does now, while a turn runs; kept in memory only. */
+  activity: Activity | null;
   configOptions: SessionConfigOption[];
   /** Its place among its workspace's conversations in the sidebar. */
   position: number;

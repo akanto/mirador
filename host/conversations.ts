@@ -1,7 +1,9 @@
 import { realpath } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 import type * as acp from "@agentclientprotocol/sdk";
 import {
   harnessLabels,
+  type Activity,
   type AdoptMode,
   type AskMode,
   type ContextUsage,
@@ -23,6 +25,7 @@ import { messageAtEnd, type JobWaitRequest } from "../shared/job-waits.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
+import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
@@ -58,6 +61,7 @@ type PermissionResolver = (optionId: string | null) => void;
 interface PendingPermission {
   settle: PermissionResolver;
   allowOptionId: string | null;
+  tool: string;
 }
 
 interface Runtime {
@@ -72,8 +76,7 @@ interface Runtime {
   profileSwitch?: Promise<void>;
   pendingPermissions: Map<string, PendingPermission>;
   queuedMessages: QueuedMessage[];
-  /** The running turn's tool calls that have not finished yet. */
-  openToolCalls: Set<string>;
+  openToolCalls: OpenToolCalls;
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
   automaticContinues: number;
@@ -204,6 +207,7 @@ export class ConversationService {
       usageLimit: null,
       jobWaits: [],
       waitingFor: null,
+      activity: null,
       configOptions: [],
       createdAt: now,
       updatedAt: now,
@@ -784,10 +788,10 @@ export class ConversationService {
   private followToolCalls(conversationId: string, update: acp.SessionUpdate) {
     const runtime = this.runtime(conversationId);
     if (!runtime.running) return;
-    if (update.sessionUpdate === "tool_call" && !hasFinished(update.status)) runtime.openToolCalls.add(update.toolCallId);
-    if (update.sessionUpdate !== "tool_call_update" || !hasFinished(update.status)) return;
-    runtime.openToolCalls.delete(update.toolCallId);
-    if (runtime.openToolCalls.size === 0) this.steerQueuedMessages(conversationId).catch(() => {});
+    const activityBefore = this.activity(conversationId);
+    const finishedOne = runtime.openToolCalls.follow(update);
+    if (!isDeepStrictEqual(this.activity(conversationId), activityBefore)) this.publish(this.get(conversationId));
+    if (finishedOne && runtime.openToolCalls.size === 0) this.steerQueuedMessages(conversationId).catch(() => {});
   }
 
   /** Messages that join the running turn; those the agent cannot take go back to the front of the queue, to go out when it ends. */
@@ -848,7 +852,7 @@ export class ConversationService {
         if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
         resolve(optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } });
       };
-      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId });
+      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId, tool: request.toolCall.title ?? "a tool" });
       this.publish(this.get(conversationId));
       signal.addEventListener("abort", () => settle(null), { once: true });
     });
@@ -970,7 +974,7 @@ export class ConversationService {
     let runtime = this.runtimes.get(conversationId);
     if (!runtime) {
       const queuedMessages = this.store.findConversation(conversationId)?.queuedMessages ?? [];
-      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new Set(), automaticContinues: 0 };
+      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new OpenToolCalls(), automaticContinues: 0 };
       this.runtimes.set(conversationId, runtime);
     }
     return runtime;
@@ -998,6 +1002,12 @@ export class ConversationService {
     return true;
   }
 
+  private activity(conversationId: string): Activity | null {
+    const runtime = this.runtimes.get(conversationId);
+    if (!runtime?.running) return null;
+    return currentActivity(runtime.openToolCalls, [...runtime.pendingPermissions.values()].map(({ tool }) => tool));
+  }
+
   private waitingFor(conversationId: string): WaitingFor | null {
     if ((this.runtimes.get(conversationId)?.pendingPermissions.size ?? 0) > 0) return "permission";
     if (this.conversationsWithQuestions.has(conversationId)) return "question";
@@ -1020,6 +1030,7 @@ export class ConversationService {
       usageLimit: this.runtimes.get(conversation.id)?.usageLimit?.wait ?? null,
       jobWaits: this.jobWaits.in(conversation.id),
       waitingFor: this.waitingFor(conversation.id),
+      activity: this.activity(conversation.id),
     };
   }
 
@@ -1038,7 +1049,6 @@ export class ConversationService {
   }
 }
 
-const hasFinished = (status: acp.ToolCallStatus | null | undefined) => status === "completed" || status === "failed";
 
 const updatesTheAgentRecords = new Set<string>(["user_message_chunk", "agent_message_chunk", "agent_thought_chunk", "tool_call"]);
 
