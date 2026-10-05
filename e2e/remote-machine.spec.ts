@@ -144,6 +144,14 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     serverConversation = conversationInFrame(page)!;
   });
 
+  await test.step("its canvas pages load their libraries from this computer, whose browser need not trust the server's certificate", async () => {
+    const html = `<div id="out"></div><script src="http://localhost:${PUBLIC_CANVAS_PORT}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
+    void callCanvasTool(host, serverConversation, "show", { title: "Chart", html }).catch(() => {});
+    const canvasPage = frame.locator(".canvas-frame.show iframe");
+    await expect(canvasPage.contentFrame().locator("#out")).toHaveText(/^d3 7/);
+    expect(await canvasPage.getAttribute("srcdoc")).toContain(`http://127.0.0.1:${laptop.port + 1}/d3.min.js`);
+  });
+
   await test.step("the page shows the server again after a reload, and this computer's own view at a click", async () => {
     await page.reload();
     await expect(workspaceCard(frame, serverOnly)).toBeVisible();

@@ -18,7 +18,7 @@ import {
 import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
-import { PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
+import { CANVAS_ASSETS_ORIGIN_HEADER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import { describeClaudeProgram } from "./acp/claude-program.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
@@ -119,6 +119,8 @@ export function startServer(services: HostServices) {
 
   /** Each page loads canvas libraries from the address it reached the host at, so it never needs to trust another. */
   function canvasAssetsOriginFor(request: Request) {
+    const viewingComputersCopy = request.headers.get(CANVAS_ASSETS_ORIGIN_HEADER);
+    if (viewingComputersCopy && /^http:\/\/127\.0\.0\.1:\d+$/.test(viewingComputersCopy)) return viewingComputersCopy;
     const host = request.headers.get("host") ?? "";
     if (localHosts.includes(host)) return localCanvasAssetsOrigin;
     if (network && networkHosts.includes(host)) return `https://${host.slice(0, host.lastIndexOf(":"))}:${network.canvasPort}`;

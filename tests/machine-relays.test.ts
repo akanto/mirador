@@ -20,15 +20,17 @@ describe("forwardedHeaders", () => {
       "sec-websocket-key": "abc",
       accept: "application/json",
     });
-    expect(Object.fromEntries(forwardedHeaders(incoming, machine, "device-token"))).toEqual({
+    expect(Object.fromEntries(forwardedHeaders(incoming, machine, "device-token", "http://127.0.0.1:4601"))).toEqual({
       accept: "application/json",
       cookie: "mirador_token=device-token",
       origin: machine,
+      "mirador-canvas-assets-origin": "http://127.0.0.1:4601",
     });
   });
 
   test("adds no origin where the page sent none, and no cookie before this host has joined", () => {
-    expect(Object.fromEntries(forwardedHeaders(new Headers({ cookie: "mirador_token=x", accept: "*/*" }), machine, null))).toEqual({ accept: "*/*" });
+    const forwarded = forwardedHeaders(new Headers({ cookie: "mirador_token=x", accept: "*/*" }), machine, null, "http://127.0.0.1:4601");
+    expect(forwarded.has("cookie") || forwarded.has("origin")).toBe(false);
   });
 });
 
@@ -57,7 +59,7 @@ describe("relay ports", () => {
     store.insertMachine({ id: "moved", name: "Moved", origin: "https://moved.example", createdAt: 2 });
     store.setMachineRelayPort("kept", kept);
     store.setMachineRelayPort("moved", outside);
-    const relays = new MachineRelays(store, [inRange, kept], () => true, () => {}, () => {});
+    const relays = new MachineRelays(store, [inRange, kept], "http://127.0.0.1:4601", () => true, () => {}, () => {});
     relays.startAll();
     try {
       expect(store.listMachines().map(({ id, relayPort }) => [id, relayPort])).toEqual([
@@ -101,7 +103,7 @@ describe("joining a machine that made its own certificate", () => {
     cleanUps.push(() => server.stop(true));
     const store = new Store(":memory:");
     store.insertMachine({ id: "box", name: "Box", origin: `https://127.0.0.1:${server.port}`, createdAt: 1 });
-    const relays = new MachineRelays(store, [], () => true, () => {}, () => {});
+    const relays = new MachineRelays(store, [], "http://127.0.0.1:4601", () => true, () => {}, () => {});
     return { authority: offeredAuthority!, codesReceived, store, join: relays.join.bind(relays, "box") };
   }
 
@@ -167,7 +169,7 @@ describe("joining a machine that made its own certificate", () => {
     store.insertMachine({ id: "box", name: "Box", origin: `https://127.0.0.1:${server.port}`, createdAt: 1 });
     store.setMachineAuthority("box", ownAuthority().authority);
 
-    await new MachineRelays(store, [], () => true, () => {}, () => {}).askToJoin("box", (number) => void requests.approve(requests.waiting()[0]!.id, number));
+    await new MachineRelays(store, [], "http://127.0.0.1:4601", () => true, () => {}, () => {}).askToJoin("box", (number) => void requests.approve(requests.waiting()[0]!.id, number));
     expect(store.machineAuthority("box")).toBe(certificate.authority);
     expect(machineStore.listDevices().map(({ name }) => name)).toEqual([expect.stringMatching(/^Mirador on /)]);
   });

@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { askToJoin as askToJoinThere } from "../shared/join-requests.ts";
 import type { Machine } from "../shared/model.ts";
-import { TOKEN_COOKIE } from "../shared/protocol.ts";
+import { CANVAS_ASSETS_ORIGIN_HEADER, TOKEN_COOKIE } from "../shared/protocol.ts";
 import { authorityFingerprint } from "./certificates.ts";
 import { signInRevoked } from "./machine-sign-in.ts";
 import { offeredAuthority, trusting } from "./machine-trust.ts";
@@ -28,10 +28,11 @@ interface RelayedSocket {
 /** Only 1000 and 3000–4999 may be sent when closing; others describe how a socket broke. */
 const sendableCloseCode = (code: number) => (code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000);
 
-export function forwardedHeaders(incoming: Headers, machineOrigin: string, token: string | null) {
+export function forwardedHeaders(incoming: Headers, machineOrigin: string, token: string | null, canvasAssetsOrigin: string) {
   const headers = new Headers([...incoming].filter(([name]) => !UNFORWARDED_REQUEST_HEADERS.has(name) && !name.startsWith("sec-websocket-")));
   if (incoming.has("origin")) headers.set("origin", machineOrigin);
   if (token) headers.set("cookie", `${TOKEN_COOKIE}=${token}`);
+  headers.set(CANVAS_ASSETS_ORIGIN_HEADER, canvasAssetsOrigin);
   return headers;
 }
 
@@ -72,6 +73,7 @@ export class MachineRelays {
   constructor(
     private readonly store: Store,
     private readonly ports: number[],
+    private readonly canvasAssetsOrigin: string,
     private readonly isSignedIn: (request: Request) => boolean,
     private readonly joined: (machineId: string) => void,
     private readonly signedOut: (machineId: string) => void,
@@ -214,7 +216,7 @@ export class MachineRelays {
     const url = new URL(request.url);
     if (url.pathname === "/join" && request.method === "POST") return this.joinFromPage(machine, request);
     if (url.pathname.startsWith("/join-requests")) return new Response("This computer asks to join its machines itself, from its own window.", { status: 403 });
-    const headers = forwardedHeaders(request.headers, machine.origin, this.store.machineDeviceToken(machineId));
+    const headers = forwardedHeaders(request.headers, machine.origin, this.store.machineDeviceToken(machineId), this.canvasAssetsOrigin);
     if (request.headers.get("upgrade")?.toLowerCase() === "websocket") return this.relaySocket(machine, url, headers, request, server);
 
     const response = await fetch(`${machine.origin}${url.pathname}${url.search}`, {

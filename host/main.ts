@@ -60,6 +60,7 @@ const watch = new MachineWatch(
 const relays = new MachineRelays(
   store,
   config.relayPorts,
+  `http://127.0.0.1:${config.canvasAssetsPort}`,
   (request) => signedIn(request) !== null,
   (machineId) => {
     hub.broadcast({ type: "machines.changed", machines: store.listMachines() });
