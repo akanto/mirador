@@ -61,7 +61,7 @@ test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, 
     const pid = host.pid!;
     expect(isHostCommandLine(commandLineOf(pid))).toBe(true);
     await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
-    await expect.poll(() => host.log.match(/\/auth\?token=/g)?.length, { timeout: 60_000 }).toBe(2);
+    await expect.poll(() => host.log.match(/Mirador is running/g)?.length, { timeout: 60_000 }).toBe(2);
     expect(host.pid).toBe(pid);
     expect(isHostCommandLine(commandLineOf(pid))).toBe(true);
     await expect(hostCodeChanged).toHaveCount(0, { timeout: 30_000 });
