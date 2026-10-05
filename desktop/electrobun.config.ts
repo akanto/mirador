@@ -27,8 +27,9 @@ export default {
       "icon.iconset/icon_32x32@2x.png": "views/assets/app-icon.png",
       ...(carriesMirador && { "release/mirador": "mirador" }),
     },
-    mac: { createDmg: false, icons: "icon.iconset" },
+    mac: { createDmg: false, icons: "icon.iconset", codesign: true },
     linux: { icon: "icon.iconset/icon_512x512.png" },
   },
+  scripts: { postBuild: "scripts/add-local-network-usage.ts" },
   runtime: { exitOnLastWindowClosed: false },
 } satisfies ElectrobunConfig;

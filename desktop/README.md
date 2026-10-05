@@ -27,7 +27,7 @@ The stable build is a small stub. The first launch expands it in place and write
 
 ## Install
 
-A release build from GitHub (unsigned, so macOS quarantines the download; clearing that once lets it open):
+A release build from GitHub (signed ad hoc rather than by an identified developer, so macOS quarantines the download; clearing that once lets it open):
 
 ```bash
 unzip Mirador-macos-arm64.zip -d /Applications
@@ -50,7 +50,7 @@ ditto "<repo>/desktop/build/stable-macos-arm64/Mirador.app" "/Applications/Mirad
 open "/Applications/Mirador.app"
 ```
 
-Launch it once from its installed location. "Open at login" (on by default) registers the path it was launched from, so launch it from where it will stay. Launch it by explicit path, not `open -a "Mirador"`: several bundles share this identifier (the dev and stable build folders), and launching the wrong one would register the wrong path for login. The app is not signed or notarised; built locally and copied with `ditto` it carries no quarantine flag, so no Gatekeeper prompt is expected.
+Launch it once from its installed location. "Open at login" (on by default) registers the path it was launched from, so launch it from where it will stay. Launch it by explicit path, not `open -a "Mirador"`: several bundles share this identifier (the dev and stable build folders), and launching the wrong one would register the wrong path for login. Stable builds are signed ad hoc (Electrobun's own signing step, with `ELECTROBUN_DEVELOPER_ID=-` unless you set a real identity), which macOS needs before it asks to allow notifications; they are not notarised. Built locally and copied with `ditto`, the app carries no quarantine flag, so no Gatekeeper prompt is expected. The first time the terminal or an agent reaches a machine on the local network, macOS asks to allow it.
 
 ## Settings
 
