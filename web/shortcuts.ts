@@ -59,7 +59,7 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   if (press.key === "?" && !press.metaKey && !press.ctrlKey && !press.altKey && typing === "not-typing") return { type: "help" };
   if (primary && !press.altKey) {
     if (press.code === "Equal" || press.code === "NumpadAdd") return { type: "bigger-font" };
-    if (press.code === "Minus" || press.code === "NumpadSubtract") return { type: "smaller-font" };
+    if ((press.code === "Minus" || press.code === "NumpadSubtract") && !press.shiftKey) return { type: "smaller-font" };
     if ((press.code === "Digit0" || press.code === "Numpad0") && !press.shiftKey) return { type: "reset-font" };
   }
   return null;

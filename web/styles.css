@@ -3753,6 +3753,7 @@ button.picture-option.chosen {
 }
 
 .picture-preview {
+  --font-scale: 1;
   display: block;
   height: 64px;
   border-radius: 5px;

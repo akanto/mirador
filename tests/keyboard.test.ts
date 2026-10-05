@@ -91,6 +91,10 @@ describe("commandFor", () => {
     expect(commandFor(press("Equal", { ctrlKey: true }), "terminal", false)).toEqual({ type: "bigger-font" });
     expect(commandFor(press("Minus", { ctrlKey: true }), "terminal", false)).toEqual({ type: "smaller-font" });
     expect(commandFor(press("Digit0", { ctrlKey: true }), "terminal", false)).toEqual({ type: "reset-font" });
+
+    // Ctrl+Shift+Minus (Ctrl+_) is readline undo in bash/zsh; font-shrink must not intercept it
+    expect(commandFor(press("Minus", { ctrlKey: true, shiftKey: true }), "terminal", false)).toBeNull();
+    expect(commandFor(press("Minus", { metaKey: true, shiftKey: true }), "terminal", true)).toBeNull();
   });
 });
 

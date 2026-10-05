@@ -4,7 +4,7 @@ export const TERMINAL_FONT_SIZES = Array.from({ length: 14 }, (_, index) => 11 +
 
 const DEFAULT_TERMINAL_FONT_SIZE = 12;
 
-const clampFontSize = (size: number) => Math.min(24, Math.max(11, size));
+const clampFontSize = (size: number) => (Number.isFinite(size) ? Math.min(24, Math.max(11, Math.round(size))) : DEFAULT_TERMINAL_FONT_SIZE);
 
 export const storedTerminalFontSize = (): number => {
   try {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { fontScales, FONT_SCALES, steppedFontScale, type FontScale } from "../web/font-scale.ts";
 import {
   resetTerminalFontSize,
@@ -41,6 +41,7 @@ describe("steppedFontScale", () => {
 });
 
 describe("terminal-font", () => {
+  const originalLocalStorage = globalThis.localStorage;
   const storage = new Map<string, string>();
 
   beforeEach(() => {
@@ -54,6 +55,10 @@ describe("terminal-font", () => {
       key: () => null,
     } as unknown as Storage;
     resetTerminalFontSize();
+  });
+
+  afterAll(() => {
+    globalThis.localStorage = originalLocalStorage;
   });
 
   test("valid sizes range from 11 to 24 px", () => {
@@ -86,6 +91,12 @@ describe("terminal-font", () => {
 
     setTerminalFontSize(30);
     expect(terminalFontSize()).toBe(24);
+
+    setTerminalFontSize(NaN);
+    expect(terminalFontSize()).toBe(12);
+
+    setTerminalFontSize(14.7);
+    expect(terminalFontSize()).toBe(15);
   });
 
   test("stepTerminalFontSize steps single pixels and stays clamped", () => {
