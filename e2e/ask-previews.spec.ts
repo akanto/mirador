@@ -59,6 +59,27 @@ test("previews show whole: option columns widen to fit them, and what is wider t
   expect(blue!.y).toBe(green!.y);
 });
 
+test("a question's page and previews taller than the window show whole, so a wheel turn over them scrolls the canvas toward the answer", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const tall = (text: string) => `<div style="height:1500px;background:#151922;color:#e3e7ef">${text}</div>`;
+  askInBackground(conversationId, { question: "Which plan?", html: tall("The plan"), options: [{ label: "Go" }, { label: "Wait", html: tall("Waiting") }] });
+
+  const context = page.locator(".ask-context iframe");
+  const scrollsInside = (frame: Locator) => frame.contentFrame().locator("html").evaluate((root) => root.scrollHeight > root.clientHeight);
+  await expect(context.contentFrame().getByText("The plan")).toBeVisible();
+  await expect.poll(() => scrollsInside(context)).toBe(false);
+  await expect.poll(() => scrollsInside(preview(page.locator(".ask-option").nth(1)))).toBe(false);
+
+  const canvas = page.locator(".canvas-body");
+  const { x, y, width } = (await context.boundingBox())!;
+  await page.mouse.move(x + width / 2, y + 100);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => canvas.evaluate((element) => element.scrollTop)).toBeGreaterThan(250);
+  await answerCanvasQuestion(page, "Go");
+});
+
 test("a question asked right after a page carries that page, so both are in the canvas together", async ({ page }) => {
   await signIn(page, host);
   const conversationId = await startConversation(page);

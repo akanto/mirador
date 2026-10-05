@@ -2392,7 +2392,6 @@ button.running-subagent:hover {
   box-sizing: content-box;
   width: calc(100% - 2px);
   height: 45vh;
-  max-height: 80vh;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
@@ -2402,7 +2401,6 @@ button.running-subagent:hover {
   box-sizing: content-box;
   width: calc(100% - 2px);
   height: 240px;
-  max-height: 60vh;
   border: 1px solid var(--border);
   border-radius: 5px;
 }

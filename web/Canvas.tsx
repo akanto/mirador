@@ -42,7 +42,7 @@ function fittedStyles(contentSize: ContentSize | undefined, roomWidth: number): 
   const scale = roomWidth / (width + FRAME_BORDERS);
   return {
     box: { height: Math.ceil((height + FRAME_BORDERS) * scale) },
-    frame: { position: "absolute", width, height, maxHeight: "none", transform: `scale(${scale})`, transformOrigin: "0 0" },
+    frame: { position: "absolute", width, height, transform: `scale(${scale})`, transformOrigin: "0 0" },
   };
 }
 
