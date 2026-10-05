@@ -43,7 +43,9 @@ import { assertLaunchable } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
 import type { TerminalProgram } from "./terminals.ts";
+import { claudeTranscriptPath } from "./statusline.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
+import { lastAnsweringModel, modelChoiceFor } from "./transcript-model.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 
 const UNTITLED = "New conversation";
@@ -535,7 +537,7 @@ export class ConversationService {
     return this.store
       .listConversations()
       .filter(({ harness, acpSessionId }) => harness === "claude" && acpSessionId !== null)
-      .map(({ profileId }) => claudeConfigDir(profileEnvironment(profileId === null ? null : (this.store.findProfile(profileId) ?? null))));
+      .map((conversation) => this.claudeConfigDirOf(conversation));
   }
 
   /** Marks conversations whose Claude Code session is also open in a terminal, e.g. one continued from there. */
@@ -656,6 +658,7 @@ export class ConversationService {
     this.conversationBySession.set(loadedId, conversationId);
     const loaded = await harness.loadSession({ ...sessionRequest, sessionId: loadedId });
     this.bindSession(conversationId, loadedId, loaded.configOptions);
+    if (conversation.harness === "claude") await this.restoreTranscriptModel(conversationId, loadedId, claudeTranscriptPath(this.claudeConfigDirOf(conversation), sessionRequest.cwd, sessionId));
     await this.applyProfileMode(conversationId, loadedId);
     this.setStatus(conversationId, "idle");
     return loadedId;
@@ -683,6 +686,17 @@ export class ConversationService {
     const early = this.updatesForUnknownSessions.get(sessionId) ?? [];
     this.updatesForUnknownSessions.delete(sessionId);
     early.forEach((notification) => this.handleSessionUpdate(notification));
+  }
+
+  /** Claude Code resumes a session on the model that answered last, but claude-agent-acp moves it to the model the settings name. */
+  private async restoreTranscriptModel(conversationId: string, sessionId: string, transcriptPath: string) {
+    const model = lastAnsweringModel(await Bun.file(transcriptPath).text().catch(() => ""));
+    const choice = model && modelChoiceFor(this.get(conversationId).configOptions, model);
+    if (choice) await this.trySetConfigOption(conversationId, sessionId, "model", choice);
+  }
+
+  private claudeConfigDirOf({ profileId }: Conversation) {
+    return claudeConfigDir(profileEnvironment(profileId === null ? null : (this.store.findProfile(profileId) ?? null)));
   }
 
   /** A conversation takes its profile's mode when it starts with the profile or moves to it; after that its own choice stands. */
