@@ -43,9 +43,8 @@ import { assertLaunchable } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
 import type { TerminalProgram } from "./terminals.ts";
-import { claudeTranscriptPath } from "./statusline.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
-import { lastAnsweringModel, modelChoiceFor } from "./transcript-model.ts";
+import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "./claude-transcript.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 
 const UNTITLED = "New conversation";
@@ -310,10 +309,9 @@ export class ConversationService {
       return sessionId;
     })
       .finally(() => (runtime.holdingQueue = false))
-      .then((sessionId) => {
+      .then(() => {
         if (runtime.running) return;
-        const sameSession = sessionId === conversation.acpSessionId;
-        if (interrupted && sameSession) return this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION);
+        if (interrupted) return this.resumeStoppedTurn(conversationId, conversation.acpSessionId);
         this.sendNextQueuedMessage(conversationId);
       })
       .catch(() => {});
@@ -571,8 +569,8 @@ export class ConversationService {
    * recorded it. Otherwise messages still queued (also after a crash) go out, as they would have when the turn ended.
    */
   resumeAfterRestart(stoppedTurns: string[]) {
-    this.store.listConversations().forEach(({ id }) => {
-      if (stoppedTurns.includes(id) && this.agentHasRecorded(id)) this.prompt(id, CONTINUE_AFTER_INTERRUPTION).catch(() => {});
+    this.store.listConversations().forEach(({ id, acpSessionId }) => {
+      if (stoppedTurns.includes(id)) this.resumeStoppedTurn(id, acpSessionId).catch(() => {});
       else if (!this.resumeUsageLimitWait(id)) this.sendNextQueuedMessage(id);
     });
     this.jobWaits.startAll();
@@ -599,6 +597,27 @@ export class ConversationService {
     runtime.harness = undefined;
     runtime.sessionId = undefined;
     return harness && sessionId ? harness.closeSession(sessionId).catch(() => {}) : Promise.resolve();
+  }
+
+  /**
+   * Picks up a turn stopped for a restart or a profile switch: the agent continues where it left off if it is still in
+   * the session the turn ran in and recorded the request there; otherwise, as in a fresh session, it gets the request again.
+   */
+  private async resumeStoppedTurn(conversationId: string, stoppedSessionId: string | null) {
+    const request = lastTurnRequest(this.store.listEvents(conversationId));
+    this.setStatus(conversationId, "starting");
+    const sessionId = await this.ensureSession(conversationId);
+    if (sessionId === stoppedSessionId && (await this.sessionRecorded(conversationId, sessionId, request))) return this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION);
+    if (request) return this.prompt(conversationId, request.text, request.imageIds);
+    this.setStatus(conversationId, "idle");
+    this.sendNextQueuedMessage(conversationId);
+  }
+
+  /** Only Claude Code's transcript tells whether the agent recorded the message that started a turn. */
+  private async sessionRecorded(conversationId: string, sessionId: string, request: TurnRequest | null) {
+    const conversation = this.get(conversationId);
+    if (conversation.harness !== "claude" || !request) return true;
+    return recordsUserMessage(await claudeTranscript(this.claudeConfigDirOf(conversation), sessionId), request.firstText);
   }
 
   private agentHasRecorded(conversationId: string) {
@@ -658,7 +677,7 @@ export class ConversationService {
     this.conversationBySession.set(loadedId, conversationId);
     const loaded = await harness.loadSession({ ...sessionRequest, sessionId: loadedId });
     this.bindSession(conversationId, loadedId, loaded.configOptions);
-    if (conversation.harness === "claude") await this.restoreTranscriptModel(conversationId, loadedId, claudeTranscriptPath(this.claudeConfigDirOf(conversation), sessionRequest.cwd, sessionId));
+    if (conversation.harness === "claude") await this.restoreTranscriptModel(conversationId, loadedId, sessionId);
     await this.applyProfileMode(conversationId, loadedId);
     this.setStatus(conversationId, "idle");
     return loadedId;
@@ -689,8 +708,8 @@ export class ConversationService {
   }
 
   /** Claude Code resumes a session on the model that answered last, but claude-agent-acp moves it to the model the settings name. */
-  private async restoreTranscriptModel(conversationId: string, sessionId: string, transcriptPath: string) {
-    const model = lastAnsweringModel(await Bun.file(transcriptPath).text().catch(() => ""));
+  private async restoreTranscriptModel(conversationId: string, sessionId: string, recordedSessionId: string) {
+    const model = lastAnsweringModel(await claudeTranscript(this.claudeConfigDirOf(this.get(conversationId)), recordedSessionId));
     const choice = model && modelChoiceFor(this.get(conversationId).configOptions, model);
     if (choice) await this.trySetConfigOption(conversationId, sessionId, "model", choice);
   }
@@ -1072,6 +1091,25 @@ const updatesTheAgentRecords = new Set<string>(["user_message_chunk", "agent_mes
 export function sessionHasRecord(events: StoredEvent[]) {
   const sinceCleared = events.slice(events.findLastIndex(({ event }) => event.type === "context-cleared") + 1);
   return sinceCleared.some(({ event }) => event.type === "turn-end" || (event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate)));
+}
+
+interface TurnRequest {
+  /** The message that started the turn and those that joined it, as one. */
+  text: string;
+  firstText: string;
+  imageIds: string[];
+}
+
+const endsTurn = ({ event }: StoredEvent) => event.type === "turn-end" || event.type === "error";
+
+/** What the user asked in the turn that ended last: the message that started it and any that joined it. */
+export function lastTurnRequest(events: StoredEvent[]): TurnRequest | null {
+  const lastEnd = events.findLastIndex(endsTurn);
+  const start = events.slice(0, Math.max(lastEnd, 0)).findLastIndex(endsTurn) + 1;
+  const messages = events.slice(start, lastEnd === -1 ? undefined : lastEnd).flatMap(({ event }) => (event.type === "user-message" ? [event] : []));
+  const [first] = messages;
+  if (!first) return null;
+  return { text: messages.map(({ text }) => text).join("\n\n"), firstText: first.text, imageIds: messages.flatMap(({ imageIds = [] }) => imageIds) };
 }
 
 /** Messages queued after a /clear wait for it, rather than join the turn in the session it ends. */

@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
-import { lastAnsweringModel, modelChoiceFor } from "../host/transcript-model.ts";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "../host/claude-transcript.ts";
 
 const record = (fields: Record<string, unknown>) => JSON.stringify(fields);
 const answer = (model: string, isSidechain = false) => record({ type: "assistant", isSidechain, message: { role: "assistant", model, content: [] } });
@@ -41,4 +44,26 @@ test("a transcript's model maps to the picker's choice for it, and to none the p
   expect(modelChoiceFor(options, "claude-sonnet-5-5")).toBe("sonnet");
   expect(modelChoiceFor(options, "claude-opus-4-1-20250805")).toBeNull();
   expect(modelChoiceFor([], "claude-haiku-4-5-20251001")).toBeNull();
+});
+
+test("a transcript records the messages the user sent, however Claude Code stored their text", () => {
+  const transcript = [
+    record({ type: "user", message: { role: "user", content: "Remember the word heliotrope" } }),
+    record({ type: "user", message: { role: "user", content: [{ type: "text", text: "Command output:\nok\n\nFix the build" }, { type: "image" }] } }),
+    record({ type: "user", isSidechain: true, message: { role: "user", content: "Survey the docs" } }),
+    record({ type: "user", message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] } }),
+  ].join("\n");
+  expect(recordsUserMessage(transcript, "Remember the word heliotrope")).toBe(true);
+  expect(recordsUserMessage(transcript, "Fix the build\n")).toBe(true);
+  expect(recordsUserMessage(transcript, "Survey the docs")).toBe(false);
+  expect(recordsUserMessage("", "Remember the word heliotrope")).toBe(false);
+});
+
+test("a session's transcript is found under whichever project directory Claude Code keeps it", async () => {
+  const configDir = mkdtempSync(join(tmpdir(), "mirador-claude-"));
+  mkdirSync(join(configDir, "projects", "-private-var-project"), { recursive: true });
+  writeFileSync(join(configDir, "projects", "-private-var-project", "s-1.jsonl"), answer("claude-haiku-4-5"));
+  expect(await claudeTranscript(configDir, "s-1")).toBe(answer("claude-haiku-4-5"));
+  expect(await claudeTranscript(configDir, "s-2")).toBe("");
+  expect(await claudeTranscript(join(configDir, "missing"), "s-1")).toBe("");
 });
