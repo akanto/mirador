@@ -25,6 +25,7 @@ import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
 import { canvasChangedSince, DEFLATED_MESSAGES_HEADER, type LowDataSubscription } from "../shared/low-data.ts";
 import { movedBefore } from "../shared/sidebar-order.ts";
+import { withChunksCoalesced } from "../shared/timeline.ts";
 import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
@@ -412,10 +413,16 @@ export function startServer(services: HostServices) {
     const history = { type: "conversation.history", conversationId, canvas: canvas.list(conversationId) } as const;
     if (afterSeq !== undefined && afterSeq <= store.lastEventSeq(conversationId)) {
       const changedCanvas = canvasChangedAfter === undefined ? history.canvas : canvasChangedSince(history.canvas, canvasChangedAfter);
-      return { ...history, canvas: changedCanvas, events: inLowData(store.listEventsFrom(conversationId, afterSeq + 1)), continuesAfter: afterSeq };
+      return { ...history, canvas: changedCanvas, events: inLowData(coalescedFromNextTurn(store.listEventsFrom(conversationId, afterSeq + 1))), continuesAfter: afterSeq };
     }
     const { fromSeq, hasEarlier } = store.latestTurns(conversationId, latestTurns);
-    return { ...history, events: inLowData(store.listEventsFrom(conversationId, fromSeq)), hasEarlier };
+    return { ...history, events: inLowData(withChunksCoalesced(store.listEventsFrom(conversationId, fromSeq))), hasEarlier };
+  }
+
+  /** The phone may hold the first chunks of a message the events it missed go on with, so those stay as they are. */
+  function coalescedFromNextTurn(events: StoredEvent[]) {
+    const nextTurn = events.findIndex(({ event }) => event.type === "user-message");
+    return nextTurn === -1 ? events : [...events.slice(0, nextTurn), ...withChunksCoalesced(events.slice(nextTurn))];
   }
 
   /** The desktop app listens on /notifications with the same token and origin as the pages, and hears only system notifications. */
@@ -573,7 +580,7 @@ export function startServer(services: HostServices) {
         return reply({
           type: "conversation.history",
           conversationId: message.conversationId,
-          events: store.listEvents(message.conversationId),
+          events: withChunksCoalesced(store.listEvents(message.conversationId)),
           canvas: canvas.list(message.conversationId),
         });
       case "conversation.unsubscribe":
@@ -583,7 +590,7 @@ export function startServer(services: HostServices) {
       case "conversation.load-earlier": {
         const { conversationId, beforeSeq, turns } = message;
         const { fromSeq, hasEarlier } = store.turnsBefore(conversationId, beforeSeq, turns);
-        const events = store.listEventsBetween(conversationId, fromSeq, beforeSeq).map((event) => lowDataEvent(conversationId, event));
+        const events = withChunksCoalesced(store.listEventsBetween(conversationId, fromSeq, beforeSeq)).map((event) => lowDataEvent(conversationId, event));
         return reply({ type: "conversation.earlier", requestId: message.requestId, conversationId, events, hasEarlier });
       }
       case "tool-output.get": {

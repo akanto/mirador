@@ -35,7 +35,19 @@ test("a long conversation shows its newest entries, and earlier ones load as the
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-long-conversation.ts"), join(host.dataDir, "state.sqlite"), conversationId, "225"]);
   await host.start();
+  const historySizes: number[] = [];
+  page.on("websocket", (socket) =>
+    socket.on("framereceived", ({ payload }) => {
+      const message = JSON.parse(String(payload));
+      if (message.type === "conversation.history") historySizes.push(message.events.length);
+    }),
+  );
   await page.reload();
+
+  await test.step("each answer, streamed a word at a time, reaches the page as one event", async () => {
+    await expect.poll(() => historySizes.at(-1)).toBeGreaterThanOrEqual(3 * 225);
+    expect(historySizes.at(-1)).toBeLessThan(3 * 225 + 10);
+  });
 
   let notLoaded = 0;
   await test.step("the newest 200 entries are in the page, with the latest in view", async () => {

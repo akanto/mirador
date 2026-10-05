@@ -1,6 +1,7 @@
 import type {
   ContentBlock,
   PermissionOption,
+  SessionUpdate,
   PlanEntry,
   StopReason,
   ToolCallContent,
@@ -134,6 +135,39 @@ function isInformational(meta: { [key: string]: unknown } | null | undefined) {
   return claudeCode?.kind === "informational";
 }
 
+const COALESCED_KEY = "mirador/coalesced";
+
+/** Streamed chunks the host sends as one chunk: how many, and where and when the first one came. */
+interface Coalesced {
+  chunks: number;
+  firstSeq: number;
+  firstAt: number;
+}
+
+const coalescedIn = (update: { _meta?: { [key: string]: unknown } | null }) => (update._meta?.[COALESCED_KEY] as Coalesced | undefined) ?? null;
+
+type Streamed = { text: string; chunks: number };
+
+/** Some gateways follow a streamed message with one chunk that holds all of it again, under the message's id. */
+const repeatsWhole = (streamed: Streamed, text: string) => streamed.chunks >= 2 && text.trim() !== "" && text === streamed.text;
+
+class StreamedMessages {
+  private readonly messages = new Map<string, Streamed>();
+
+  soFar(messageId: string): Streamed {
+    return this.messages.get(messageId) ?? { text: "", chunks: 0 };
+  }
+
+  /** Whether the text only repeats the message streamed so far; if not, it adds to the message. */
+  repeats(messageId: string | null | undefined, text: string, chunks: number) {
+    if (!messageId) return false;
+    const streamed = this.soFar(messageId);
+    const repeats = repeatsWhole(streamed, text);
+    if (!repeats) this.messages.set(messageId, { text: streamed.text + text, chunks: streamed.chunks + chunks });
+    return repeats;
+  }
+}
+
 function claudeCodeMeta(update: { _meta?: { [key: string]: unknown } | null }) {
   const claudeCode = (update._meta?.claudeCode ?? {}) as { toolName?: unknown; parentToolUseId?: unknown; toolResponse?: { isAsync?: unknown } | null };
   return {
@@ -154,7 +188,7 @@ class TimelineBuilder {
   private readonly subagentsOfThisTurn: Subagent[] = [];
   private readonly commands = new UserCommandLog();
   private readonly errorsAwaitingSignIn: ErrorBlock[] = [];
-  private readonly streamedMessages = new Map<string, { text: string; chunks: number }>();
+  private readonly streamedMessages = new StreamedMessages();
 
   add({ seq, at, event }: StoredEvent) {
     const origin = { key: String(seq), at };
@@ -222,20 +256,20 @@ class TimelineBuilder {
         return;
       }
       case "acp":
-        return this.addUpdate(origin, event.update);
+        return this.addUpdate(coalescedOrigin(event.update) ?? origin, event.update, at);
     }
   }
 
-  private addUpdate(origin: Origin, update: Extract<StoredEvent["event"], { type: "acp" }>["update"]) {
+  private addUpdate(origin: Origin, update: SessionUpdate, at: number) {
     const subagent = this.subagentOf(update);
-    if (subagent) subagent.lastActivityAt = origin.at;
+    if (subagent) subagent.lastActivityAt = at;
     const into = subagent?.blocks ?? this.blocks;
     switch (update.sessionUpdate) {
       case "user_message_chunk":
         return this.appendText("user", origin, contentText(update.content), into);
       case "agent_message_chunk":
         if (isInformational(update._meta)) return this.push({ kind: "info", ...origin, text: contentText(update.content) }, into);
-        if (this.repeatsStreamedMessage(update.messageId, contentText(update.content))) return;
+        if (this.streamedMessages.repeats(update.messageId, contentText(update.content), coalescedIn(update)?.chunks ?? 1)) return;
         return this.appendText("agent", origin, contentText(update.content), into);
       case "agent_thought_chunk":
         return this.appendText("thought", origin, contentText(update.content), into);
@@ -261,15 +295,6 @@ class TimelineBuilder {
   private subagentOf(update: { _meta?: { [key: string]: unknown } | null }) {
     const { parentToolUseId } = claudeCodeMeta(update);
     return parentToolUseId ? this.toolBlocks.get(parentToolUseId)?.subagent : undefined;
-  }
-
-  /** Some gateways follow a streamed message with one chunk that holds all of it again, under the message's id. */
-  private repeatsStreamedMessage(messageId: string | null | undefined, text: string) {
-    if (!messageId) return false;
-    const streamed = this.streamedMessages.get(messageId) ?? { text: "", chunks: 0 };
-    const repeats = streamed.chunks >= 2 && text.trim() !== "" && text === streamed.text;
-    if (!repeats) this.streamedMessages.set(messageId, { text: streamed.text + text, chunks: streamed.chunks + 1 });
-    return repeats;
   }
 
   /** Claude Code says an API error as the agent's message, and the failed prompt reports it again as an error. */
@@ -332,8 +357,106 @@ class TimelineBuilder {
   }
 }
 
+const coalescedOrigin = (update: SessionUpdate): Origin | null => {
+  const coalesced = "_meta" in update ? coalescedIn(update) : null;
+  return coalesced && { key: String(coalesced.firstSeq), at: coalesced.firstAt };
+};
+
 export function buildTimeline(events: StoredEvent[]): TimelineBlock[] {
   const builder = new TimelineBuilder();
   events.forEach((event) => builder.add(event));
   return builder.blocks;
+}
+
+type ChunkUpdate = Extract<SessionUpdate, { sessionUpdate: "agent_message_chunk" | "agent_thought_chunk" }>;
+
+/** Streamed text of the reply or of the thinking, which may go out together with the chunks before it. */
+function coalescibleChunk({ event }: StoredEvent): { update: ChunkUpdate; text: string } | null {
+  if (event.type !== "acp") return null;
+  const { update } = event;
+  if (update.sessionUpdate !== "agent_message_chunk" && update.sessionUpdate !== "agent_thought_chunk") return null;
+  return update.content.type === "text" && !isInformational(update._meta) ? { update, text: update.content.text } : null;
+}
+
+/** A chunk of the reply that the timeline checks for a repeat of the whole message. */
+function countedChunk({ event }: StoredEvent): { messageId: string; text: string } | null {
+  if (event.type !== "acp" || event.update.sessionUpdate !== "agent_message_chunk") return null;
+  const { messageId, content, _meta } = event.update;
+  return messageId && !isInformational(_meta) ? { messageId, text: contentText(content) } : null;
+}
+
+/** Consecutive chunks of one message, with nothing between them, that go out as one. */
+class ChunkRun {
+  private readonly texts: string[];
+  private length: number;
+  private last: StoredEvent;
+
+  constructor(
+    private readonly first: StoredEvent,
+    private readonly update: ChunkUpdate,
+    text: string,
+    private readonly streamedBefore: Streamed | null,
+  ) {
+    this.texts = [text];
+    this.length = text.length;
+    this.last = first;
+  }
+
+  /** The timeline would read the run as a repeat of the whole message if it came to hold just that. */
+  takes(update: ChunkUpdate, text: string) {
+    const sameMessage =
+      update.sessionUpdate === this.update.sessionUpdate && update.messageId === this.update.messageId && JSON.stringify(update._meta ?? null) === JSON.stringify(this.update._meta ?? null);
+    return sameMessage && !this.wouldRepeatWhole(text);
+  }
+
+  private wouldRepeatWhole(text: string) {
+    if (!this.streamedBefore || this.length + text.length !== this.streamedBefore.text.length) return false;
+    return repeatsWhole(this.streamedBefore, this.texts.join("") + text);
+  }
+
+  add(stored: StoredEvent, text: string) {
+    this.texts.push(text);
+    this.length += text.length;
+    this.last = stored;
+  }
+
+  /** Under the last chunk's number, so a phone that asks for what came after it gets none of them again. */
+  asEvent(): StoredEvent {
+    if (this.texts.length === 1) return this.first;
+    const coalesced: Coalesced = { chunks: this.texts.length, firstSeq: this.first.seq, firstAt: this.first.at };
+    const content = { ...(this.update.content as Extract<ContentBlock, { type: "text" }>), text: this.texts.join("") };
+    return { seq: this.last.seq, at: this.last.at, event: { type: "acp", update: { ...this.update, content, _meta: { ...this.update._meta, [COALESCED_KEY]: coalesced } } } };
+  }
+}
+
+/**
+ * Agents stream their replies and thinking a few words per chunk, each stored as an event of its own; a long
+ * conversation holds hundreds of thousands. Sent as one chunk per message, its history is a fraction of the size, and
+ * its timeline the same. The events must start at a turn, so no message's chunks start before them.
+ */
+export function withChunksCoalesced(events: StoredEvent[]): StoredEvent[] {
+  const coalesced: StoredEvent[] = [];
+  const streamed = new StreamedMessages();
+  let run: ChunkRun | null = null;
+  const endRun = () => {
+    if (run) coalesced.push(run.asEvent());
+    run = null;
+  };
+  for (const stored of events) {
+    const counted = countedChunk(stored);
+    const streamedBefore = counted && streamed.soFar(counted.messageId);
+    const chunk = coalescibleChunk(stored);
+    const repeat = counted !== null && streamed.repeats(counted.messageId, counted.text, 1);
+    if (!chunk || repeat) {
+      endRun();
+      coalesced.push(stored);
+    } else if (run?.takes(chunk.update, chunk.text)) {
+      run.add(stored, chunk.text);
+    } else {
+      endRun();
+      run = new ChunkRun(stored, chunk.update, chunk.text, streamedBefore);
+    }
+  }
+  endRun();
+  return coalesced;
 }
