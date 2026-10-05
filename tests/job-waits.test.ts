@@ -257,7 +257,7 @@ esac
 
   test("over ssh, a process's command line and the lines it writes to its log show until it ends", async () => {
     const log = join(mkdtempSync(join(tmpdir(), "followed-job-")), "it's.log");
-    const job = Bun.spawn(["sh", "-c", "echo first; sleep 0.5; echo second; sleep 1.5"], { stdout: Bun.file(log) });
+    const job = Bun.spawn(["sh", "-c", "echo first; sleep 0.5; echo second; sleep 1.5"], { stdout: Bun.file(log), stderr: "ignore" });
     const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: "box" }, binWith({ ssh: fakeSsh }));
     expect(output).toContain("Command: sh -c echo first; sleep 0.5; echo second");
     expect(output).toMatch(/Running for: \d\d:\d\d/);

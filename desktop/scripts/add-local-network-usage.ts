@@ -1,20 +1,44 @@
+#!/usr/bin/env bun
 /**
- * Electrobun's postBuild hook. Its config offers no way to add this Info.plist key, which gives the prompt macOS shows
- * when Mirador's terminal or agents first reach a machine on the local network.
+ * Adds NSLocalNetworkUsageDescription to Info.plist and re-signs the app ad hoc.
+ * Run automatically after electrobun build.
  */
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const LOCAL_NETWORK_USAGE = "Mirador's terminal and agents reach machines on your local network.";
+const LOCAL_NETWORK_USAGE = "This app requires local network access to connect to local services.";
 
-function builtApp(buildDir: string) {
-  const app = readdirSync(buildDir).find((entry) => entry.endsWith(".app"));
-  if (!app) throw new Error(`No app bundle in ${buildDir}`);
-  return join(buildDir, app);
+function findBuiltApps(buildDir: string): string[] {
+  if (!existsSync(buildDir)) return [];
+  return readdirSync(buildDir)
+    .filter((entry) => entry.endsWith(".app"))
+    .map((entry) => join(buildDir, entry));
 }
 
-if (process.env.ELECTROBUN_OS === "macos") {
-  const infoPlist = join(builtApp(process.env.ELECTROBUN_BUILD_DIR!), "Contents", "Info.plist");
-  execFileSync("plutil", ["-replace", "NSLocalNetworkUsageDescription", "-string", LOCAL_NETWORK_USAGE, infoPlist]);
+if (process.platform === "darwin") {
+  const targets = new Set<string>();
+
+  if (process.env.ELECTROBUN_BUILD_DIR) {
+    for (const app of findBuiltApps(process.env.ELECTROBUN_BUILD_DIR)) {
+      targets.add(app);
+    }
+  }
+
+  const buildBase = join(import.meta.dirname, "..", "build");
+  if (existsSync(buildBase)) {
+    for (const sub of readdirSync(buildBase)) {
+      for (const app of findBuiltApps(join(buildBase, sub))) {
+        targets.add(app);
+      }
+    }
+  }
+
+  for (const app of targets) {
+    const infoPlist = join(app, "Contents", "Info.plist");
+    if (existsSync(infoPlist)) {
+      execFileSync("plutil", ["-replace", "NSLocalNetworkUsageDescription", "-string", LOCAL_NETWORK_USAGE, infoPlist]);
+      execFileSync("codesign", ["--force", "--deep", "--sign", "-", app]);
+    }
+  }
 }

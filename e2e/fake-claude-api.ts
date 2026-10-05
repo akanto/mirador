@@ -130,4 +130,14 @@ export class FakeClaudeApi {
 
 /** Claude Code signs in with a made-up subscription token and gives up at the first refusal instead of retrying. */
 export const subscriptionEnvironment = (api: FakeClaudeApi) =>
-  ["-u ANTHROPIC_API_KEY", "-u ANTHROPIC_AUTH_TOKEN", `ANTHROPIC_BASE_URL=${api.url}`, "CLAUDE_CODE_OAUTH_TOKEN=e2e-subscription-token", "CLAUDE_CODE_MAX_RETRIES=0"].join("\n");
+  [
+    "-u ANTHROPIC_API_KEY",
+    "-u ANTHROPIC_AUTH_TOKEN",
+    "-u ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "-u ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "-u ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "-u ANTHROPIC_DEFAULT_FABLE_MODEL",
+    `ANTHROPIC_BASE_URL=${api.url}`,
+    "CLAUDE_CODE_OAUTH_TOKEN=e2e-subscription-token",
+    "CLAUDE_CODE_MAX_RETRIES=0",
+  ].join("\n");

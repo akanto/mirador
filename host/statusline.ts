@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chosenModel } from "../shared/config-options.ts";
@@ -25,8 +26,16 @@ export async function statusLineCommandIn(configDir: string): Promise<string | n
 }
 
 /** Claude Code keeps a session's transcript under a directory named after the project path, with every character but letters and digits turned into "-". */
-export const claudeTranscriptPath = (configDir: string, directory: string, sessionId: string) =>
-  join(configDir, "projects", directory.replace(/[^a-zA-Z0-9]/g, "-"), `${sessionId}.jsonl`);
+export const claudeTranscriptPath = (configDir: string, directory: string, sessionId: string) => {
+  const canonical = (() => {
+    try {
+      return realpathSync(directory);
+    } catch {
+      return directory;
+    }
+  })();
+  return join(configDir, "projects", canonical.replace(/[^a-zA-Z0-9]/g, "-"), `${sessionId}.jsonl`);
+};
 
 const rateLimitWindow = ({ usedPercent, resetsAt }: QuotaWindow) => ({ used_percentage: usedPercent, resets_at: Math.floor(resetsAt / 1000) });
 
