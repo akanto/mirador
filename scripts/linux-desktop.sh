@@ -50,7 +50,7 @@ run_in_container --volume "$results:/results" --env "RELEASE=$release" "mirador-
     until_true() { for _ in $(seq 120); do "$@" && return 0; sleep 1; done; return 1; }
     display_up() { xdpyinfo >/dev/null 2>&1; }
     host_answers() { curl -fs -o /dev/null http://127.0.0.1:4600/; }
-    window_shown() { xdotool search --name "^Mirador$" >/dev/null 2>&1; }
+    window_shown() { xdotool search --onlyvisible --name "^Mirador$" >/dev/null 2>&1; }
     window_gone() { ! window_shown; }
     app_running() { kill -0 "$app" 2>/dev/null; }
 
