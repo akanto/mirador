@@ -21,6 +21,8 @@ export interface SocketData {
   lowDataSubscriptions: Set<string>;
   /** The socket's client reads long messages deflated, in binary frames. */
   readsDeflatedMessages: boolean;
+  /** The socket's page edits profiles, so it gets their environments and prelaunch commands. */
+  readsProfileLaunch: boolean;
   terminalWorkspaceId: string | null;
   presence: Presence;
   /** Where the page loads canvas libraries from, fitting the address it reached the host at. */
@@ -30,12 +32,20 @@ export interface SocketData {
 
 const thisMachine: ClientAddress = { fromAddress: "127.0.0.1", tailscaleUser: null };
 
-export const socketData = (role: SocketData["role"], deviceId: string | null = null, canvasAssetsOrigin = "", from = thisMachine, readsDeflatedMessages = false): SocketData => ({
+export const socketData = (
+  role: SocketData["role"],
+  deviceId: string | null = null,
+  canvasAssetsOrigin = "",
+  from = thisMachine,
+  readsDeflatedMessages = false,
+  readsProfileLaunch = false,
+): SocketData => ({
   role,
   deviceId,
   canvasAssetsOrigin,
   from,
   readsDeflatedMessages,
+  readsProfileLaunch,
   subscriptions: new Set<string>(),
   lowDataSubscriptions: new Set<string>(),
   terminalWorkspaceId: null,

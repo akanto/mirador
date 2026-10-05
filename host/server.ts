@@ -17,7 +17,7 @@ import {
 import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
-import { TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
+import { PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
@@ -38,7 +38,7 @@ import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { imagesOf, lowDataEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
-import type { ProfileService } from "./profiles.ts";
+import { profileFor, type ProfileService } from "./profiles.ts";
 import type { HostRestart } from "./restart.ts";
 import type { SignInCodes } from "./sign-in-codes.ts";
 import type { StatuslineService } from "./statusline.ts";
@@ -421,7 +421,9 @@ export function startServer(services: HostServices) {
     if (!signedIn) return new Response("unauthorized", { status: 401 });
     if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
     const readsDeflatedMessages = request.headers.has(DEFLATED_MESSAGES_HEADER);
-    const upgraded = server.upgrade(request, { data: socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages) });
+    const readsProfileLaunch = new URL(request.url).searchParams.has(PROFILE_LAUNCH_PARAMETER);
+    const data = socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages, readsProfileLaunch);
+    const upgraded = server.upgrade(request, { data });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
 
@@ -729,7 +731,7 @@ export function startServer(services: HostServices) {
       type: "snapshot",
       workspaces: store.listWorkspaces(),
       conversations: conversations.list(),
-      profiles: store.listProfiles(),
+      profiles: store.listProfiles().map((profile) => profileFor(socket, profile)),
       promptTemplates: store.listPromptTemplates(),
       canvasUse: store.canvasUse(),
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,

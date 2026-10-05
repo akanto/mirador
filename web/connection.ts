@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
+import { PROFILE_LAUNCH_PARAMETER, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 
 export type ConnectionStatus = "connecting" | "open" | "unauthorized" | "reconnecting";
 
@@ -15,7 +15,7 @@ export class Connection {
   status: ConnectionStatus = "connecting";
 
   connect() {
-    const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
+    const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws?${PROFILE_LAUNCH_PARAMETER}`);
     this.socket = socket;
     let opened = false;
     socket.onopen = () => {

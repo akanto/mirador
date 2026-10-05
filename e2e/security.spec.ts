@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE } from "../shared/protocol.ts";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -72,6 +73,48 @@ test("a browser signs in with a one-time link from mirador sign-in, and the host
   const usedAgain = await fetch(link, { redirect: "manual" });
   expect(usedAgain.status).toBe(403);
   expect(await usedAgain.text()).toContain("mirador sign-in");
+});
+
+/** The profiles in the snapshot a socket of the page gets, opened with the given query. */
+const snapshotProfiles = (page: Page, query: string) =>
+  page.evaluate(
+    (query) =>
+      new Promise<{ name: string; environment: string; prelaunch: string }[]>((resolve) => {
+        const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws${query}`);
+        socket.onmessage = ({ data }) => {
+          const message = JSON.parse(String(data));
+          if (message.type !== "snapshot") return;
+          socket.close();
+          resolve(message.profiles);
+        };
+      }),
+    query,
+  );
+
+test("a profile's environment and prelaunch command reach a joined device only when its page asks, as Mirador's own pages do and the phone app does not", async ({ page, browser }) => {
+  const launch = { environment: "ANTHROPIC_API_KEY=sk-e2e-secret", prelaunch: "source ~/.work-keys" };
+  await signIn(page, host);
+  await page.evaluate(
+    (profile) =>
+      new Promise((resolve) => {
+        const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
+        socket.onopen = () => socket.send(JSON.stringify({ type: "profile.save", requestId: "save-work", profile }));
+        socket.onmessage = ({ data }) => JSON.parse(String(data)).type === "profile.saved" && resolve(socket.close());
+      }),
+    { name: "Work", harness: "claude", ...launch, mode: null, bypassPermissions: false, askMode: "wait" },
+  );
+
+  const code = /Invite code: (\S+)/.exec(host.mirador("invite"))![1]!;
+  const joined = await fetch(`${host.origin}/join`, { method: "POST", body: JSON.stringify({ code, name: "Phone" }) });
+  const { token } = (await joined.json()) as { token: string };
+  const device = await browser.newContext();
+  await device.addCookies([{ name: TOKEN_COOKIE, value: token, url: host.origin }]);
+  const devicePage = await device.newPage();
+  await devicePage.goto(`${host.origin}/mirador-ca.pem`);
+
+  expect(await snapshotProfiles(devicePage, "")).toEqual([expect.objectContaining({ name: "Work", environment: "", prelaunch: "" })]);
+  expect(await snapshotProfiles(devicePage, `?${PROFILE_LAUNCH_PARAMETER}`)).toEqual([expect.objectContaining({ name: "Work", ...launch })]);
+  await device.close();
 });
 
 test("a hostile canvas page cannot reach the host, the parent page or the network", async ({ page }) => {

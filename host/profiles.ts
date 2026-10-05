@@ -2,7 +2,7 @@ import { askModeLabels, harnessIds, harnessLabels, type Launch, type Profile } f
 import { parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import type { ConversationService } from "./conversations.ts";
-import type { Hub } from "./hub.ts";
+import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
 
 /** A profile runs only on the agent it was made for; the picker sends both, and the host checks they agree. */
@@ -15,6 +15,10 @@ export function assertLaunchable(store: Store, launch: Launch) {
     throw new Error(`Profile "${profile.name}" is for ${harnessLabels[profile.harness]}, not ${harnessLabels[launch.harness]}.`);
   }
 }
+
+/** A profile as a socket gets it: without what it launches its agent with, unless the socket's page edits profiles. */
+export const profileFor = (socket: BrowserSocket, profile: Profile): Profile =>
+  socket.data.readsProfileLaunch ? profile : { ...profile, environment: "", prelaunch: "" };
 
 export class ProfileService {
   constructor(
@@ -46,7 +50,7 @@ export class ProfileService {
     this.store.saveProfile(profile);
     const launchChanged = existing && (existing.environment !== profile.environment || existing.prelaunch !== profile.prelaunch);
     if (launchChanged) this.conversations.restartProfile(profile.id);
-    this.hub.broadcast({ type: "profile.upserted", profile });
+    this.hub.sendEach((socket) => ({ type: "profile.upserted", profile: profileFor(socket, profile) }));
     return profile;
   }
 

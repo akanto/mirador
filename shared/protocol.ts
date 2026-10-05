@@ -37,6 +37,12 @@ export interface TerminalSplit {
 
 /** The cookie a signed-in page carries; the desktop app sends it too when it listens for system notifications. */
 export const TOKEN_COOKIE = "mirador_token";
+/**
+ * Mirador's own pages edit profiles, so they open /ws with this query parameter to get what each profile launches its
+ * agent with: the environment and prelaunch command, which often hold API keys. Other clients, such as the phone app,
+ * never show them and never get them.
+ */
+export const PROFILE_LAUNCH_PARAMETER = "profile-launch";
 
 export type ProfileDraft = Pick<Profile, "name" | "harness" | "environment" | "prelaunch" | "mode" | "bypassPermissions" | "askMode"> & { id?: string };
 
