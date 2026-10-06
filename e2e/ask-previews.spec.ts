@@ -76,7 +76,42 @@ test("a question's page and previews taller than the window show whole, so a whe
   const { x, y, width } = (await context.boundingBox())!;
   await page.mouse.move(x + width / 2, y + 100);
   await page.mouse.wheel(0, 300);
-  await expect.poll(() => canvas.evaluate((element) => element.scrollTop)).toBeGreaterThan(250);
+  await expect.poll(() => canvas.evaluate((element) => element.scrollTop), "the page reports the turn, and the canvas takes it once").toBe(300);
+  await answerCanvasQuestion(page, "Go");
+});
+
+test("a page that scrolls inside itself keeps the wheel, and the canvas takes the turns the page cannot use", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const scrollsItself = `<div style="height:1500px;background:#151922;color:#e3e7ef">
+  <div id="inner" style="height:200px;overflow-y:auto"><div style="height:1000px">inside the box</div></div>
+  <div style="height:1000px">below the box</div>
+</div>`;
+  askInBackground(conversationId, { question: "Which plan?", html: scrollsItself, options: [{ label: "Go" }, { label: "Wait" }] });
+
+  const context = page.locator(".ask-context iframe");
+  const insideThePage = context.contentFrame();
+  const inner = insideThePage.locator("#inner");
+  const canvas = page.locator(".canvas-body");
+  await expect(inner).toBeVisible();
+  const scrollTop = () => canvas.evaluate((element) => element.scrollTop);
+
+  await test.step("a box inside the page keeps the wheel, and the canvas stays where it is", async () => {
+    const box = (await inner.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + 50);
+    await page.mouse.wheel(0, 200);
+    await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBe(200);
+    expect(await scrollTop()).toBe(0);
+  });
+
+  await test.step("a turn the page cannot use reaches the canvas", async () => {
+    const below = (await insideThePage.getByText("below the box").boundingBox())!;
+    await page.mouse.move(below.x + below.width / 2, below.y + 20);
+    await page.mouse.wheel(0, 200);
+    await expect.poll(scrollTop).toBe(200);
+  });
+
   await answerCanvasQuestion(page, "Go");
 });
 

@@ -34,6 +34,22 @@ function useElementWidth(element: RefObject<HTMLElement | null>) {
 /** The fitted frames (a question's page and its option previews) have a 1px border. */
 const FRAME_BORDERS = 2;
 
+/** A wheel turn reported by a page that could not use it: the panel holding the page scrolls by it instead. */
+function scrollPanelBy(frame: HTMLIFrameElement | null, wheel: { deltaY: number; deltaMode: number }) {
+  const panel = scrollableAncestor(frame);
+  if (!panel) return;
+  const lines = wheel.deltaMode === 1 ? 16 : wheel.deltaMode === 2 ? panel.clientHeight : 1;
+  panel.scrollBy({ top: wheel.deltaY * lines });
+}
+
+function scrollableAncestor(element: HTMLElement | null): HTMLElement | null {
+  for (let node = element?.parentElement ?? null; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === "auto" || overflow === "scroll") && node.scrollHeight > node.clientHeight) return node;
+  }
+  return null;
+}
+
 /** Sized to its content; content wider than the room is drawn at its own width and scaled down to fit, so none of it is cut off. */
 function fittedStyles(contentSize: ContentSize | undefined, roomWidth: number): { box?: CSSProperties; frame?: CSSProperties } {
   if (!contentSize) return {};
@@ -86,6 +102,7 @@ function CanvasFrame({
         const askedWidth = message.overflowWidth && Math.min(message.overflowWidth, MAX_CONTENT_WIDTH);
         setContentSize((current) => ({ height: message.height, width: askedWidth || current?.width || null }));
       }
+      if (message.kind === "wheel") scrollPanelBy(frame.current, message);
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);

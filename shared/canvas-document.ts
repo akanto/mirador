@@ -5,6 +5,8 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "rendered"; errors: string[] }
   /** `overflowWidth` is how wide the content wants to be, when that is wider than the frame. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "size"; height: number; overflowWidth: number | null }
+  /** A wheel turn the page has no use for, for the panel behind it to take instead. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "wheel"; deltaX: number; deltaY: number; deltaMode: number }
   | {
       source: typeof CANVAS_MESSAGE_SOURCE;
       itemId: string;
@@ -79,6 +81,31 @@ function frameReporter(itemId: string) {
   };
   new ResizeObserver(reportSize).observe(document.documentElement);
   addEventListener("load", reportSize);
+  const hasRoom = (node, axis, delta) => {
+    const position = axis === "scrollTop" ? node.scrollTop : node.scrollLeft;
+    const size = axis === "scrollTop" ? node.clientHeight : node.clientWidth;
+    const total = axis === "scrollTop" ? node.scrollHeight : node.scrollWidth;
+    return delta < 0 ? position > 0 : delta > 0 ? position + size < total - 1 : false;
+  };
+  const takesTheWheel = (node, deltaX, deltaY, isRoot) => {
+    const style = isRoot ? null : getComputedStyle(node);
+    const scrolls = (overflow) => isRoot || style[overflow] === "auto" || style[overflow] === "scroll";
+    return (scrolls("overflowY") && hasRoom(node, "scrollTop", deltaY)) || (scrolls("overflowX") && hasRoom(node, "scrollLeft", deltaX));
+  };
+  const pageScrolls = (event) => {
+    const root = document.scrollingElement || document.documentElement;
+    if (takesTheWheel(root, event.deltaX, event.deltaY, true)) return true;
+    for (let node = event.target; node instanceof Element && node !== root; node = node.parentElement) {
+      if (takesTheWheel(node, event.deltaX, event.deltaY, false)) return true;
+    }
+    return false;
+  };
+  // A page that fits its frame has nothing to scroll, and WebKit does not pass the wheel on to the panel holding it.
+  addEventListener("wheel", (event) => {
+    if (!event.isTrusted || event.defaultPrevented || event.ctrlKey || pageScrolls(event)) return;
+    event.preventDefault();
+    post({ kind: "wheel", deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
+  }, { passive: false });
   addEventListener("keydown", (event) => {
     if (!event.isTrusted || !(event.metaKey || event.ctrlKey || event.altKey)) return;
     const target = event.target;
