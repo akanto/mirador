@@ -92,19 +92,36 @@ function frameReporter(itemId: string) {
     const scrolls = (overflow) => isRoot || style[overflow] === "auto" || style[overflow] === "scroll";
     return (scrolls("overflowY") && hasRoom(node, "scrollTop", deltaY)) || (scrolls("overflowX") && hasRoom(node, "scrollLeft", deltaX));
   };
-  const pageScrolls = (event) => {
+  const scrollingNode = (event) => {
     const root = document.scrollingElement || document.documentElement;
-    if (takesTheWheel(root, event.deltaX, event.deltaY, true)) return true;
+    if (takesTheWheel(root, event.deltaX, event.deltaY, true)) return root;
     for (let node = event.target; node instanceof Element && node !== root; node = node.parentElement) {
-      if (takesTheWheel(node, event.deltaX, event.deltaY, false)) return true;
+      if (takesTheWheel(node, event.deltaX, event.deltaY, false)) return node;
     }
-    return false;
+    return null;
+  };
+  const wheelPixels = (delta, deltaMode, page) => delta * (deltaMode === 1 ? 16 : deltaMode === 2 ? page : 1);
+  // WebKit does not natively scroll these sandboxed srcdoc frames, so scroll ourselves once the engine had its chance.
+  const catchUpWithTheEngine = (node, event) => {
+    const was = { x: node.scrollLeft, y: node.scrollTop };
+    setTimeout(() => {
+      if (node.scrollLeft !== was.x || node.scrollTop !== was.y) return;
+      node.scrollBy({
+        left: wheelPixels(event.deltaX, event.deltaMode, node.clientWidth),
+        top: wheelPixels(event.deltaY, event.deltaMode, node.clientHeight),
+      });
+    }, 64);
   };
   // A page that fits its frame has nothing to scroll, and WebKit does not pass the wheel on to the panel holding it.
   addEventListener("wheel", (event) => {
-    if (!event.isTrusted || event.defaultPrevented || event.ctrlKey || pageScrolls(event)) return;
-    event.preventDefault();
-    post({ kind: "wheel", deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
+    if (!event.isTrusted || event.defaultPrevented || event.ctrlKey) return;
+    const node = scrollingNode(event);
+    if (node === null) {
+      event.preventDefault();
+      post({ kind: "wheel", deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
+      return;
+    }
+    catchUpWithTheEngine(node, event);
   }, { passive: false });
   addEventListener("keydown", (event) => {
     if (!event.isTrusted || !(event.metaKey || event.ctrlKey || event.altKey)) return;
