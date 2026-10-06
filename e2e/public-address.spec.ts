@@ -67,6 +67,7 @@ test("an address saved in Settings goes to config.json, and invite links use it 
     await expect(shownInvite.locator(".invite-code")).toBeVisible();
     await expect(shownInvite.locator(".invite-link")).toHaveCount(0);
     await expect(inviteQrCode(shownInvite)).toHaveCount(0);
+    await expect(shownInvite.locator(".invite-without-link"), "the invite says why it has no link to show").toBeVisible();
   });
 
   await test.step("after the restart, invites come with a link to the saved address", async () => {
@@ -76,7 +77,9 @@ test("an address saved in Settings goes to config.json, and invite links use it 
     settings = await openSettings(page, "Devices");
     form = addressForm(settings);
     await expect(settings.getByText("Saved. The host uses it from its next start.")).toHaveCount(0);
-    await expect((await invite(settings)).locator(".invite-link")).toHaveText(/^https:\/\/box\.example\.ts\.net\/#\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const linkedInvite = await invite(settings);
+    await expect(linkedInvite.locator(".invite-link")).toHaveText(/^https:\/\/box\.example\.ts\.net\/#\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    await expect(linkedInvite.locator(".invite-without-link")).toHaveCount(0);
   });
 
   await test.step("emptying both takes the address out of config.json", async () => {

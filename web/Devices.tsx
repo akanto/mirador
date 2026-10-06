@@ -304,6 +304,15 @@ function InviteLink({ link }: { link: string }) {
   );
 }
 
+function InviteWithoutLink() {
+  return (
+    <span className="hint invite-without-link">
+      No link and no QR code: no address is set that other devices reach this Mirador at. Set the address below, or turn on Reachable on the network — the host
+      uses either from its next start.
+    </span>
+  );
+}
+
 export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
   const shownInSidebar = useConnectedDevicesInSidebar();
@@ -363,7 +372,11 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
             <span>
               Code <code className="invite-code">{invite.code}</code>, works once until {timeOf(invite.expiresAt)}.
             </span>
-            {publicOrigin && <InviteLink link={inviteLink(publicOrigin, invite.code, listed?.reachability.authorityFingerprint)} />}
+            {publicOrigin ? (
+              <InviteLink link={inviteLink(publicOrigin, invite.code, listed?.reachability.authorityFingerprint)} />
+            ) : (
+              <InviteWithoutLink />
+            )}
           </div>
         )}
       </div>
