@@ -117,6 +117,18 @@ function copySelectionWhenReleased(view: Terminal) {
 /** A split hidden behind a zoomed one has no size; fitting it then would shrink its shell to two columns. */
 const isShown = (element: HTMLElement) => element.offsetWidth > 0 && element.offsetHeight > 0;
 
+/**
+ * Writes output the terminal already consumed. Answering the programs' questions in it — the cursor position, the
+ * background colour — would send the answers back down the shell's input, where they land as typed text.
+ */
+function writeReplayedHistory(view: Terminal, data: string) {
+  view.reset();
+  view.options.disableStdin = true;
+  view.write(data, () => {
+    view.options.disableStdin = false;
+  });
+}
+
 function TerminalView({ terminalId, focus, events }: { terminalId: string; focus: FocusRequest | undefined; events: RefObject<TerminalEvents> }) {
   const screen = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
@@ -153,10 +165,8 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
 
     const stopListening = connection.onMessage((message) => {
       if (!("terminalId" in message) || message.terminalId !== terminalId) return;
-      if (message.type === "terminal.replayed") {
-        view.reset();
-        view.write(message.data);
-      } else if (message.type === "terminal.output") view.write(message.data);
+      if (message.type === "terminal.replayed") writeReplayedHistory(view, message.data);
+      else if (message.type === "terminal.output") view.write(message.data);
       else if (message.type === "terminal.cleared") view.write("", () => view.clear());
     });
     const typed = view.onData((data) => connection.send({ type: "terminal.input", terminalId, data }));
