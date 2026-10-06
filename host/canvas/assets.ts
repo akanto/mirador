@@ -1,4 +1,5 @@
 import { dirname, join, resolve, sep } from "node:path";
+import { HERE_PATH } from "../addresses.ts";
 
 const packageDir = (name: string) => dirname(Bun.resolveSync(`${name}/package.json`, import.meta.dir));
 
@@ -32,7 +33,9 @@ export function serveCanvasAssets(port: number, certificate: { chain: string; ke
     ...(certificate && { tls: { cert: certificate.chain, key: certificate.key } }),
     async fetch(request) {
       if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-      const file = resolveAsset(new URL(request.url).pathname);
+      const pathname = new URL(request.url).pathname;
+      if (pathname === HERE_PATH) return Response.json({ mirador: true }, { headers: corsHeaders });
+      const file = resolveAsset(pathname);
       if (!file || !(await Bun.file(file).exists())) return new Response("not found", { status: 404, headers: corsHeaders });
       return new Response(Bun.file(file), { headers: corsHeaders });
     },

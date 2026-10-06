@@ -7,6 +7,7 @@ import {
   type CanvasUse,
   type ClaudeProgram,
   type ClientAddress,
+  type FoundAddress,
   type ListedDevice,
   type PromptTemplate,
   type PublicAddress,
@@ -28,6 +29,8 @@ import { movedBefore } from "../shared/sidebar-order.ts";
 import { withChunksCoalesced } from "../shared/timeline.ts";
 import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
+import { HERE_PATH, addressesThatAnswer, addressesUsed, rememberAddressUsed, type AddressCandidate } from "./addresses.ts";
+import { servePortOnTailnet, tailnetName, tailscaleCommand } from "./tailscale.ts";
 import { errorMessage, type ConversationService } from "./conversations.ts";
 import { deviceName, type DeviceService } from "./devices.ts";
 import { JobWaitRefused } from "./job-waits.ts";
@@ -134,6 +137,9 @@ export function startServer(services: HostServices) {
     return config.canvasAssetsOrigin;
   }
 
+  /** Public, so Settings can tell whether an address reaches this Mirador before it believes it. */
+  const here = () => Response.json({ mirador: true });
+
   /** Public, so devices can trust Mirador's own certificate authority before they join. */
   const serveAuthority = () =>
     certificate?.authority
@@ -236,6 +242,8 @@ export function startServer(services: HostServices) {
       publicAddress: running.publicAddress,
       savedPublicAddress: savedPublicAddress(config.dataDir),
       publicAddressSetByEnvironment: running.publicAddressSetByEnvironment,
+      port: config.port,
+      canvasAssetsPort: config.canvasAssetsPort,
       network: running.network !== null,
       savedNetwork: savedNetwork(config.dataDir),
       networkSetByEnvironment: running.networkSetByEnvironment,
@@ -244,6 +252,24 @@ export function startServer(services: HostServices) {
       authorityFingerprint,
     };
   }
+  /** The addresses other devices could reach this host at: its tailnet name, and the addresses devices already used, each one asked.
+   * With `serve` the host first puts both of its ports on the tailnet, so a machine with Tailscale needs no commands typed anywhere. */
+  async function foundAddresses(serve: boolean) {
+    const command = tailscaleCommand();
+    const name = command && (await tailnetName(command));
+    let problem: string | null = null;
+    if (serve && command && name) {
+      for (const port of [config.port, config.canvasAssetsPort]) {
+        problem ??= await servePortOnTailnet(command, port);
+      }
+    }
+    const candidates: AddressCandidate[] = [
+      ...(name ? [{ origin: `https://${name}:${config.port}`, how: "tailnet" as const }] : []),
+      ...addressesUsed().map((host) => ({ origin: `https://${host}`, how: "devices" as const })),
+    ];
+    return { addresses: await addressesThatAnswer(candidates, config.canvasAssetsPort), tailscale: command ? ("present" as const) : ("absent" as const), problem };
+  }
+
   const listedDevices = (): ListedDevice[] => {
     const connections = hub.deviceConnections();
     return devices.list().map((device) => ({ ...device, connection: connections.get(device.id) ?? null }));
@@ -453,6 +479,7 @@ export function startServer(services: HostServices) {
     if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
     const readsDeflatedMessages = request.headers.has(DEFLATED_MESSAGES_HEADER);
     const readsProfileLaunch = new URL(request.url).searchParams.has(PROFILE_LAUNCH_PARAMETER);
+    rememberAddressUsed(request.headers.get("host"));
     const data = socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages, readsProfileLaunch);
     const upgraded = server.upgrade(request, { data });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
@@ -737,6 +764,11 @@ export function startServer(services: HostServices) {
         return hub.send(socket, devicesListed(socket));
       case "devices.invite":
         return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });
+      case "address.find":
+      case "address.serve":
+        return void foundAddresses(message.type === "address.serve").then((found) =>
+          reply({ type: "address.found", requestId: message.requestId, ...found }),
+        );
       case "device.revoke":
         return revokeDevice(message.deviceId);
       case "settings.set-public-address":
@@ -787,6 +819,7 @@ export function startServer(services: HostServices) {
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
     "/mirador-ca.pem": serveAuthority,
+    "/mirador-here": here,
   };
   /** Only this machine's own browser, agents and scripts sign in with these tokens, so they are served on 127.0.0.1 alone. */
   const routesForThisMachine = {

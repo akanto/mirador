@@ -114,6 +114,7 @@ export class TestHost {
         MIRADOR_TEST_MODEL: process.env.MIRADOR_TEST_MODEL ?? "haiku",
         MIRADOR_TEST_EFFORT: process.env.MIRADOR_TEST_EFFORT ?? "low",
         MIRADOR_TEST_SKIP_USER_SETTINGS: "1",
+        MIRADOR_TAILSCALE: join(this.root, "no-tailscale-on-this-machine"),
         MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
         ...(this.options.shell && { SHELL: this.options.shell }),
         ...(this.options.fakePrograms && { PATH: `${this.fakeProgramsDir}:${this.baseEnvironment().PATH}` }),

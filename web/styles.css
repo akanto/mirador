@@ -5011,6 +5011,40 @@ body.reordering * {
   margin: 0;
 }
 
+.address-finder {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin: 10px 0 4px;
+}
+
+.address-finder .hint,
+.address-finder .setting-problem {
+  margin: 0;
+}
+
+.address-finder .hint button {
+  margin-left: 6px;
+}
+
+.addresses-found {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.addresses-found li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.addresses-found .address-how {
+  color: var(--muted);
+}
+
 .network-switch {
   display: grid;
   gap: 4px;

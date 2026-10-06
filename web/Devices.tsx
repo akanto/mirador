@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
 import { askToJoin, spacedNumber } from "../shared/join-requests.ts";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
-import type { ReachabilitySettings } from "../shared/model.ts";
+import type { PublicAddress, ReachabilitySettings } from "../shared/model.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { setConnectedDevicesInSidebar, useConnectedDevicesInSidebar } from "./connected-devices.ts";
@@ -181,7 +181,7 @@ function NetworkSwitch({ settings }: { settings: ReachabilitySettings }) {
 
   return (
     <div className="network-switch">
-      <label>
+      <label data-hint={hints.networkReachability}>
         <input type="checkbox" checked={on} disabled={settings.networkSetByEnvironment} onChange={(event) => switchTo(event.target.checked)} />
         Reachable on the network, over HTTPS at port {settings.networkPort}
       </label>
@@ -235,8 +235,9 @@ function PublicAddressSettings({ settings }: { settings: ReachabilitySettings })
           </>
         ) : (
           <>
-            The address other devices reach this Mirador at, and a second one its canvas pages load their libraries from. Set them when a proxy, such as{" "}
-            <code>tailscale serve</code>, gives it its addresses.
+            The address other devices reach this Mirador at — its own port, <code>{settings.port}</code> — and a second one where its canvas pages load the libraries
+            they draw with, which Mirador serves on a port of their own, <code>{settings.canvasAssetsPort}</code>. A proxy in front of both, such as{" "}
+            <code>tailscale serve</code>, gives each one an address.
             {usesNetworkAddress && (
               <>
                 {" "}
@@ -246,7 +247,7 @@ function PublicAddressSettings({ settings }: { settings: ReachabilitySettings })
           </>
         )}
       </p>
-      <label>
+      <label data-hint={hints.address}>
         Address
         <input
           value={origin}
@@ -257,7 +258,7 @@ function PublicAddressSettings({ settings }: { settings: ReachabilitySettings })
           spellCheck={false}
         />
       </label>
-      <label>
+      <label data-hint={hints.canvasAddress}>
         Canvas address
         <input
           value={canvasOrigin}
@@ -276,9 +277,100 @@ function PublicAddressSettings({ settings }: { settings: ReachabilitySettings })
   );
 }
 
+type AddressSearch = Extract<ServerMessage, { type: "address.found" }>;
+
+/** Finds the address other devices reach this host at, so the two fields need no proxy knowledge typed by hand. */
+function AddressFinder() {
+  const [looking, setLooking] = useState<"find" | "serve" | null>(null);
+  const [search, setSearch] = useState<AddressSearch | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const look = async (serving: boolean) => {
+    setLooking(serving ? "serve" : "find");
+    setProblem(null);
+    try {
+      setSearch(
+        await connection.sendAndAwait(
+          (requestId) => ({ type: serving ? "address.serve" : "address.find", requestId }),
+          (message, requestId) => (message.type === "address.found" && message.requestId === requestId ? message : undefined),
+        ),
+      );
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLooking(null);
+    }
+  };
+
+  return (
+    <div className="address-finder">
+      <button type="button" data-hint={hints.findAddress} disabled={looking !== null} onClick={() => void look(false)}>
+        {looking === "find" ? "Looking…" : "Find the address"}
+      </button>
+      {search && (
+        <AddressOutcome
+          search={search}
+          looking={looking}
+          onServe={() => void look(true)}
+          onUse={(address) => void saveSetting((requestId) => ({ type: "settings.set-public-address", requestId, address }), setProblem)}
+        />
+      )}
+      {search?.problem && <p className="setting-problem">{search.problem}</p>}
+      {problem && <p className="setting-problem">{problem}</p>}
+    </div>
+  );
+}
+
+function AddressOutcome({
+  search,
+  looking,
+  onServe,
+  onUse,
+}: {
+  search: AddressSearch;
+  looking: "find" | "serve" | null;
+  onServe: () => void;
+  onUse: (address: PublicAddress) => void;
+}) {
+  if (search.addresses.length > 0) {
+    return (
+      <ul className="addresses-found" aria-label="Addresses found">
+        {search.addresses.map((address) => (
+          <li key={address.origin}>
+            <span>
+              <code>{address.origin}</code> and <code>{address.canvasOrigin}</code>{" "}
+              <span className="address-how">{address.how === "tailnet" ? "this machine's name on the tailnet" : "an address a device already used"}</span>
+            </span>
+            <button type="button" onClick={() => onUse(address)}>
+              Use these
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (search.tailscale === "present") {
+    return (
+      <p className="hint">
+        Nothing answered yet. This machine has Tailscale, which can put Mirador on the tailnet itself.
+        <button type="button" data-hint={hints.exposeOnTailscale} disabled={looking !== null} onClick={onServe}>
+          {looking === "serve" ? "Exposing…" : "Expose Mirador on Tailscale"}
+        </button>
+      </p>
+    );
+  }
+  return (
+    <p className="hint">
+      Nothing answered: no address of this machine's reaches Mirador yet, and it has no Tailscale. Devices on the same network reach it directly — turn on{" "}
+      <em>Reachable on the network</em> below, which needs no address and no proxy.
+    </p>
+  );
+}
+
 function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySettings }) {
   return (
     <section className="reachability" aria-label="How other devices reach this Mirador">
+      {!settings.publicAddressSetByEnvironment && <AddressFinder />}
       <NetworkSwitch settings={settings} />
       <PublicAddressSettings settings={settings} />
       {settings.restartNeeded && (

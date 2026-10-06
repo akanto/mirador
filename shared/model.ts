@@ -95,11 +95,20 @@ export interface PublicAddress {
   canvasOrigin: string;
 }
 
+/** An address that answered as this Mirador, and where the search found it. */
+export interface FoundAddress extends PublicAddress {
+  /** tailnet: this machine's own name on its tailnet. devices: an address some device already reached it at. */
+  how: "tailnet" | "devices";
+}
+
 /** How other devices reach a host, as it runs and as saved for its next start; the environment's settings can't be changed in Settings. */
 export interface ReachabilitySettings {
   publicAddress: PublicAddress | null;
   savedPublicAddress: PublicAddress | null;
   publicAddressSetByEnvironment: boolean;
+  /** The ports this host serves on: its own pages, and the libraries canvas pages load. */
+  port: number;
+  canvasAssetsPort: number;
   /** Whether the host listens for other devices over HTTPS itself, and on which port. */
   network: boolean;
   savedNetwork: boolean;
