@@ -7,6 +7,7 @@ import { readJobWaitRequest, waitSetUpReply } from "../../shared/job-waits.ts";
 import { answerAsToolResult, type CanvasService, type RenderOutcome } from "./service.ts";
 import { answersOf, findingSeverities, isCommentable, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 import { ReviewProblems } from "../review/snapshot.ts";
+import { MIRADOR_VERSION } from "../../shared/version.ts";
 
 const PROGRESS_HEARTBEAT_MS = 15_000;
 
@@ -134,7 +135,7 @@ const toolError = (text: string) => ({ isError: true, content: [{ type: "text" a
 
 function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string) {
   const server = new McpServer(
-    { name: CANVAS_SERVER_NAME, version: "0.2.0" },
+    { name: CANVAS_SERVER_NAME, version: MIRADOR_VERSION },
     { instructions: canvasInstructions(assetsOrigin) },
   );
 

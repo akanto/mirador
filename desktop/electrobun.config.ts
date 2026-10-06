@@ -1,6 +1,7 @@
 import type { ElectrobunConfig } from "electrobun";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const hostDirectory = resolve(import.meta.dir, "..");
 const bun = Bun.which("bun") ?? join(homedir(), ".bun", "bin", "bun");
@@ -11,7 +12,7 @@ export default {
   app: {
     name: "Mirador",
     identifier: "com.sodre90.mirador",
-    version: "0.2.0",
+    version: MIRADOR_VERSION,
   },
   build: {
     mainProcess: "bun",

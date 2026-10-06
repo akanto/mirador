@@ -27,7 +27,7 @@ export type Overlay =
   | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
-export type SettingsPage = "appearance" | "conversations" | "agents" | "terminal" | "canvas" | "layout" | "devices" | "notifications";
+export type SettingsPage = "appearance" | "conversations" | "agents" | "terminal" | "canvas" | "layout" | "devices" | "notifications" | "about";
 
 export type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
 
@@ -38,6 +38,8 @@ export interface AppState {
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
+  /** The version of the host serving this page. */
+  version: string;
   canvasAssetsOrigin: string;
   agentsCanvasAssetsOrigin: string;
   machines: Machine[];
@@ -74,6 +76,7 @@ export const initialState: AppState = {
   promptTemplates: [],
   canvasUse: "often",
   claudeProgram: { configured: "", found: null, version: null },
+  version: "",
   canvasAssetsOrigin: "",
   agentsCanvasAssetsOrigin: "",
   machines: [],
@@ -138,6 +141,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
         claudeProgram: message.claudeProgram,
+        version: message.version,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
         agentsCanvasAssetsOrigin: message.agentsCanvasAssetsOrigin,
         machines: message.machines,

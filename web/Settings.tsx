@@ -57,6 +57,7 @@ const pageLabels: Record<SettingsPage, string> = {
   layout: "Layout",
   devices: "Devices",
   notifications: "Notifications",
+  about: "About",
 };
 const settingsPages = Object.keys(pageLabels) as SettingsPage[];
 const pageSteps: Partial<Record<string, 1 | -1>> = { ArrowDown: 1, ArrowUp: -1 };
@@ -67,6 +68,7 @@ export function SettingsDialog({
   promptTemplates,
   canvasUse,
   claudeProgram,
+  version,
   layoutDefault,
   onChange,
   onClose,
@@ -76,6 +78,7 @@ export function SettingsDialog({
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
+  version: string;
   layoutDefault: LayoutDefault;
   onChange: (layoutDefault: LayoutDefault) => void;
   onClose: () => void;
@@ -107,6 +110,7 @@ export function SettingsDialog({
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
     devices: () => <DeviceSettings listed={devices} />,
     notifications: () => <NotificationSettings />,
+    about: () => <AboutSettings version={version} claudeProgram={claudeProgram} />,
   };
 
   return (
@@ -354,6 +358,16 @@ function TerminalSettings() {
           Copy on select
         </label>
       </div>
+    </>
+  );
+}
+
+function AboutSettings({ version, claudeProgram }: { version: string; claudeProgram: ClaudeProgram }) {
+  return (
+    <>
+      <h3>About</h3>
+      <p className="hint">Mirador {version}</p>
+      <p className="hint">Claude Code: {foundClaudeProgram(claudeProgram)}</p>
     </>
   );
 }

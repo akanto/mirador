@@ -1,3 +1,4 @@
+import { MIRADOR_VERSION } from "../../../shared/version.ts";
 import type { HostStatus } from "./host-supervisor.ts";
 
 export type TrayAction = "open" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
@@ -27,6 +28,7 @@ export function trayMenu(state: TrayState): TrayItem[] {
   const restartable = state.status !== "external" && state.status !== "starting";
   return [
     { type: "normal", label: statusLabels[state.status], enabled: false },
+    { type: "normal", label: `Mirador ${MIRADOR_VERSION}`, enabled: false },
     { type: "normal", label: "Open", action: "open" },
     { type: "separator" },
     { type: "normal", label: restartable ? "Restart host" : "Restart host (not started by this app)", action: "restart-host", enabled: restartable },

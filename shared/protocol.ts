@@ -192,6 +192,8 @@ export type ServerMessage =
       hostRunId: string;
       /** Mirador's own host source was edited since this host started. */
       hostCodeChanged: boolean;
+      /** The version of Mirador this host is. */
+      version: string;
     }
   | { type: "profile.upserted"; profile: Profile }
   | { type: "profile.deleted"; profileId: string }

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 import { giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
 const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false } as const;
@@ -6,7 +7,16 @@ const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false 
 describe("menu in the window", () => {
   test("is the tray's menu without Open", () => {
     const labels = windowMenu(state).map((item) => (item.type === "normal" ? item.label : "—"));
-    expect(labels).toEqual(["Host: running, started by this app", "—", "Restart host", "Run host in the background", "Open at login", "—", "Quit"]);
+    expect(labels).toEqual([
+      "Host: running, started by this app",
+      `Mirador ${MIRADOR_VERSION}`,
+      "—",
+      "Restart host",
+      "Run host in the background",
+      "Open at login",
+      "—",
+      "Quit",
+    ]);
     expect(windowMenu(state).find((item) => item.type === "normal" && item.action === "toggle-background")).toMatchObject({ checked: true });
   });
 

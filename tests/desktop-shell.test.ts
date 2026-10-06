@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { navigationRules, webUrl } from "../desktop/src/core/navigation.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 import { trayMenu, type TrayItem, type TrayState } from "../desktop/src/core/tray-menu.ts";
 
 const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true };
@@ -10,6 +11,7 @@ describe("tray menu", () => {
     const items = trayMenu(state);
     expect(items.map((entry) => (entry.type === "normal" ? entry.label : "-"))).toEqual([
       "Host: running, started by this app",
+      `Mirador ${MIRADOR_VERSION}`,
       "Open",
       "-",
       "Restart host",
@@ -22,9 +24,10 @@ describe("tray menu", () => {
     expect(item(items, "Open at login")).toMatchObject({ checked: true, action: "toggle-open-at-login" });
   });
 
-  test("shows the status line as information, not an action", () => {
+  test("shows the status line and the version as information, not actions", () => {
     expect(trayMenu(state)[0]).toMatchObject({ enabled: false });
     expect((trayMenu(state)[0] as { action?: string }).action).toBeUndefined();
+    expect(trayMenu(state)[1]).toMatchObject({ label: `Mirador ${MIRADOR_VERSION}`, enabled: false });
   });
 
   test("disables and explains restarting a host the app did not start", () => {

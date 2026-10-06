@@ -34,6 +34,7 @@ import { JobWaitRefused } from "./job-waits.ts";
 import { JoinRequestRefused, SenderLimit, type JoinRequestService } from "./join-requests.ts";
 import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 import { socketData, webSocketCompression, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
 import type { MachineRelays } from "./machine-relays.ts";
 import type { MachineWatch } from "./machine-watch.ts";
@@ -812,6 +813,7 @@ export function startServer(services: HostServices) {
       homeDir: homedir(),
       hostRunId,
       hostCodeChanged: restart.codeChanged,
+      version: MIRADOR_VERSION,
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
   }

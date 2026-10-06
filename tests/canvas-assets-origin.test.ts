@@ -23,6 +23,7 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
     homeDir: "/home/me",
     hostRunId: "run",
     hostCodeChanged: false,
+    version: "0.2.0",
   } satisfies ServerMessage;
   const connected = reducer(initialState, { type: "server", message: snapshot });
   return reducer(connected, { type: "select", conversationId: "a" });

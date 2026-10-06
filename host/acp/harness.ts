@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { HarnessId } from "../../shared/model.ts";
+import { MIRADOR_VERSION } from "../../shared/version.ts";
 
 export type ConfigValue = string | boolean;
 
@@ -163,7 +164,7 @@ export class HarnessProcess {
     return this.connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       clientCapabilities: {},
-      clientInfo: { name: "mirador", version: "0.2.0" },
+      clientInfo: { name: "mirador", version: MIRADOR_VERSION },
     });
   }
 

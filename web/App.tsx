@@ -454,6 +454,7 @@ export function App() {
           promptTemplates={state.promptTemplates}
           canvasUse={state.canvasUse}
           claudeProgram={state.claudeProgram}
+          version={state.version}
           layoutDefault={conversationLayouts.layoutDefault}
           onChange={conversationLayouts.setLayoutDefault}
           onClose={closeOverlay}
