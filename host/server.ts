@@ -643,7 +643,7 @@ export function startServer(services: HostServices) {
         return conversations.stopWaitingForJob(message.conversationId, message.waitId);
       case "conversation.cancel":
         canvas.withdrawWaitingAsks(message.conversationId);
-        return conversations.cancel(message.conversationId);
+        return conversations.cancel(message.conversationId, { force: message.force });
       case "conversation.set-ask-mode":
         return conversations.setAskMode(message.conversationId, message.askMode);
       case "conversation.set-bypass-permissions":

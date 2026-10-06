@@ -112,6 +112,9 @@ function ConfigControl({ conversationId, option }: { conversationId: string; opt
 
 const isBusy = (conversation: Conversation) => conversation.status === "running" || conversation.status === "starting";
 
+/** How long a graceful stop is given before the button offers to kill the wedged agent process. */
+const STOP_FORCE_GRACE_MS = 3000;
+
 /** Only profiles of the conversation's own agent: another agent cannot continue its session. */
 function ProfilePicker({ conversation, profiles }: { conversation: Conversation; profiles: Profile[] }) {
   const choices = profiles.filter(({ harness }) => harness === conversation.harness);
@@ -1166,6 +1169,15 @@ function Composer({
   const [pickingTemplate, setPickingTemplate] = useState(false);
   const templatesButton = useRef<HTMLButtonElement>(null);
   const busy = isBusy(conversation);
+  const [stopStage, setStopStage] = useState<"idle" | "stopping" | "force">("idle");
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    setStopStage("idle");
+    return () => clearTimeout(stopTimer.current);
+  }, [conversation.id]);
+  useEffect(() => {
+    if (!busy) setStopStage("idle");
+  }, [busy]);
   const queued = conversation.queuedMessages;
   const command = commandIn(text);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -1203,7 +1215,17 @@ function Composer({
     setText((current) => joinDrafts(current, message));
     closeTemplates();
   };
-  const cancel = () => connection.send({ type: "conversation.cancel", conversationId: conversation.id });
+  const stop = () => {
+    if (stopStage !== "idle") return;
+    connection.send({ type: "conversation.cancel", conversationId: conversation.id });
+    setStopStage("stopping");
+    stopTimer.current = setTimeout(() => setStopStage("force"), STOP_FORCE_GRACE_MS);
+  };
+  const forceStop = () => {
+    clearTimeout(stopTimer.current);
+    connection.send({ type: "conversation.cancel", conversationId: conversation.id, force: true });
+    setStopStage("force");
+  };
   const remove = (message: QueuedMessage) =>
     connection.send({ type: "conversation.queue.remove", conversationId: conversation.id, messageId: message.id });
   const pullBack = (message: QueuedMessage) => {
@@ -1245,7 +1267,7 @@ function Composer({
       pullBack(lastQueued);
     } else if (event.key === "Escape" && busy) {
       event.preventDefault();
-      cancel();
+      stop();
     } else history.onKeyDown(event);
   };
 
@@ -1273,7 +1295,9 @@ function Composer({
           style={composerHeight === null ? undefined : { minHeight: composerHeight }}
           placeholder={
             busy
-              ? busyPlaceholder(canSteer, enterWhileBusy)
+              ? stopStage === "force"
+                ? "The agent is not responding. Force stop ends its process; other conversations on the profile continue"
+                : busyPlaceholder(canSteer, enterWhileBusy)
               : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, / for its commands, @ for a path, ! to run a shell command)`
           }
           onChange={(event) => {
@@ -1319,8 +1343,8 @@ function Composer({
             busy && text.trim() && <BusySendButtons canSteer={canSteer} enterWhileBusy={enterWhileBusy} onSend={send} />
           )}
           {busy ? (
-            <button className="stop" data-shortcut={shortcutKeys().stop} onClick={cancel}>
-              Stop
+            <button className={`stop stop-${stopStage}`} data-shortcut={shortcutKeys().stop} data-hint={hints.stop} onClick={stopStage === "idle" ? stop : forceStop}>
+              {stopStage === "idle" ? "Stop" : stopStage === "stopping" ? "Stopping…" : "Force stop"}
             </button>
           ) : (
             command === null && (

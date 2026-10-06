@@ -81,6 +81,8 @@ interface Runtime {
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
   automaticContinues: number;
+  /** The agent process this turn runs on is being killed by the user, so the turn ends as a stop, not as a failure. */
+  forceStopped?: boolean;
 }
 
 export class ConversationService {
@@ -381,9 +383,15 @@ export class ConversationService {
       runtime.automaticContinues = 0;
       this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
     } catch (error) {
-      this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error) });
+      if (runtime.forceStopped) {
+        this.append(conversationId, { type: "turn-end", stopReason: "cancelled" });
+        this.notifyTurnEnded(conversationId, { stopReason: "cancelled" });
+      } else {
+        this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error) });
+      }
     } finally {
       runtime.running = false;
+      runtime.forceStopped = false;
       this.setStatus(conversationId, "idle");
       endTurn();
     }
@@ -516,13 +524,33 @@ export class ConversationService {
     this.replaceQueue(conversationId, (queue) => queue.filter(({ id }) => id !== messageId), messageId);
   }
 
-  async cancel(conversationId: string) {
+  async cancel(conversationId: string, { force = false } = {}): Promise<void> {
+    if (force) return this.forceCancel(conversationId);
     const runtime = this.runtime(conversationId);
     runtime.pendingPermissions.forEach(({ settle }) => settle(null));
     const conversation = this.get(conversationId);
     if (runtime.running && conversation.acpSessionId) {
       await this.harnessFor(conversation).cancel(conversation.acpSessionId);
     }
+  }
+
+  /**
+   * Unwedges a turn the agent won't cancel (e.g. its model request is blocked) by killing the shared agent process.
+   * Siblings on the same process lose their turn too, so once they have ended, they continue where they left off, as
+   * after a restart; the conversation the user force-stopped stays stopped. Every turn the kill ends is the user's
+   * doing rather than the agent's failure, so each ends the way a stop ends it.
+   */
+  private async forceCancel(conversationId: string): Promise<void> {
+    const runtime = this.runtime(conversationId);
+    const harness = runtime.harness;
+    if (!harness) return this.cancel(conversationId);
+    const interrupted = [...this.runtimes]
+      .filter(([id, other]) => id !== conversationId && other.harness === harness && other.running)
+      .map(([id, other]) => ({ id, other, stoppedSessionId: this.get(id).acpSessionId }));
+    [runtime, ...interrupted.map(({ other }) => other)].forEach((stopped) => (stopped.forceStopped = true));
+    await harness.stop("was force stopped");
+    await Promise.all([runtime.turnEnded, ...interrupted.map(({ other }) => other.turnEnded)]);
+    interrupted.forEach(({ id, stoppedSessionId }) => this.resumeStoppedTurn(id, stoppedSessionId).catch(() => {}));
   }
 
   respondToPermission(conversationId: string, permissionId: string, optionId: string | null) {
@@ -918,7 +946,7 @@ export class ConversationService {
       runtime.harness = undefined;
       runtime.sessionId = undefined;
       runtime.pendingPermissions.forEach(({ settle }) => settle(null));
-      if (runtime.running) this.append(conversationId, { type: "error", message: `The ${harness.spec.label} agent process ${reason}.` });
+      if (runtime.running && !runtime.forceStopped) this.append(conversationId, { type: "error", message: `The ${harness.spec.label} agent process ${reason}.` });
     });
   }
 

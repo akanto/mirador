@@ -2180,6 +2180,20 @@ button.running-subagent:hover {
   background: color-mix(in srgb, var(--danger) 88%, black);
 }
 
+.composer .stop-stopping {
+  background: transparent;
+  color: var(--danger);
+}
+
+.composer .stop-stopping:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.composer .stop-force {
+  animation: pulse 1.4s infinite;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
 /* Canvas */
 
 .canvas-panel {

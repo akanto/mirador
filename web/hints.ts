@@ -11,6 +11,7 @@ export const hints = {
     "The agent offers this setting for the session. Changing it sends the new value to the agent (ACP session/set_config_option), which applies it to this conversation.",
   restartHost:
     "Starts the host again in place, so it runs its code as it is now. Agents that are working stop, then continue where they left off; queued messages are kept. Terminal shells start over. Open pages reload by themselves.",
+  stop: "Asks the agent to stop its turn, as Esc does. When it has not stopped within a few seconds, this becomes Force stop, which ends the agent process instead; other conversations on the same profile continue where they left off.",
   reviewLineNumber: "Click to select this line, Shift+click to select up to it. Then a asks the agent about the lines, o opens them in IntelliJ IDEA.",
   findingChecked: "Confirmed: the agent verified it (ran, traced or tested the code). Plausible: suspected, not verified.",
   findingDecision: "Kept findings go to the pull request when you post; dropped ones stay here. Click to switch.",

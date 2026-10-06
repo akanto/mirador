@@ -104,7 +104,7 @@ export type ClientMessage =
   | { type: "tool-output.get"; requestId: string; conversationId: string; seq: number }
   | { type: "conversation.unsubscribe"; conversationId: string }
   | { type: "conversation.prompt"; conversationId: string; text: string; imageIds: string[]; afterTurn?: boolean }
-  | { type: "conversation.cancel"; conversationId: string }
+  | { type: "conversation.cancel"; conversationId: string; force?: boolean }
   | { type: "conversation.run-command"; conversationId: string; command: string }
   | { type: "conversation.stop-command"; conversationId: string; commandId: string }
   | { type: "conversation.drop-command-outputs"; conversationId: string; commandIds: string[] }
