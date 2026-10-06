@@ -1,5 +1,6 @@
 import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
+import type { UndoableTurn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
 export interface OpenConversation {
@@ -21,6 +22,7 @@ export type Overlay =
   | { kind: "sessions"; workspaceId: string }
   | { kind: "workspace-color"; workspaceId: string }
   | { kind: "add-workspace" }
+  | { kind: "revert"; conversationId: string; turn: UndoableTurn }
   | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
@@ -225,6 +227,9 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "machine.join-asked":
     case "machine.join-answered":
     case "settings.saved":
+    case "conversation.revert-previewed":
+    case "conversation.reverted":
+    case "conversation.revert-failed":
       return state;
     case "join-request.answered":
       return message.problem ? { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.problem }] } : state;

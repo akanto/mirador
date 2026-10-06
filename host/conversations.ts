@@ -15,6 +15,7 @@ import {
   type JobWaitEnd,
   type Launch,
   type QueuedMessage,
+  type RestorePlan,
   type StoredEvent,
   type TerminalActivity,
   type UsageLimitWait,
@@ -31,6 +32,7 @@ import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
+import { pendingReverts, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
@@ -39,6 +41,7 @@ import type { Hub } from "./hub.ts";
 import type { ImageStore } from "./images.ts";
 import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
+import { Checkpoints } from "./checkpoints.ts";
 import { assertLaunchable } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
@@ -52,6 +55,8 @@ const MAX_TITLE_LENGTH = 200;
 const LISTED_SESSIONS = 30;
 const TITLE_LENGTH = 60;
 const CONTINUE_AFTER_INTERRUPTION = "Continue where you left off.";
+const NO_FILES_KEPT = "Mirador kept no files for that turn, so there is nothing to undo it to.";
+const ONLY_GIT_REPOSITORIES = "Mirador keeps a turn's files only in a workspace that is a git repository.";
 const TURN_STOP_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
 const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
@@ -63,6 +68,13 @@ interface PendingPermission {
   settle: PermissionResolver;
   allowOptionId: string | null;
   tool: string;
+}
+
+interface PromptStart {
+  imageIds?: string[];
+  fromScript?: boolean;
+  /** A message of the user's starts a turn of its own, so the files are snapshotted and that turn can be undone. */
+  startsTurn?: boolean;
 }
 
 interface Runtime {
@@ -99,6 +111,7 @@ export class ConversationService {
   private readonly conversationsWithQuestions: Set<string>;
   private readonly commands = new UserCommandRunner();
   private readonly jobWaits: JobWaits;
+  private readonly checkpoints: Checkpoints;
   /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
   private stopping = false;
 
@@ -110,6 +123,7 @@ export class ConversationService {
     private readonly images: ImageStore,
     private readonly notifications: SystemNotifications,
   ) {
+    this.checkpoints = new Checkpoints(config.dataDir);
     this.cancelPermissionsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
     this.conversationsWithQuestions = new Set(store.listCanvasItemsWithStatus("waiting").map(({ conversationId }) => conversationId));
@@ -360,7 +374,7 @@ export class ConversationService {
     this.save({ ...this.get(conversationId), configOptions: response.configOptions });
   }
 
-  async prompt(conversationId: string, text: string, imageIds: string[] = [], fromScript = false) {
+  async prompt(conversationId: string, text: string, { imageIds = [], fromScript = false, startsTurn = false }: PromptStart = {}) {
     const runtime = this.runtime(conversationId);
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
     if (isClearCommand(text)) return this.clearContext(conversationId);
@@ -371,13 +385,16 @@ export class ConversationService {
     runtime.openToolCalls.clear();
     this.forgetUnseenTurnEnd(conversationId);
     this.retitleFromFirstMessage(conversationId, text);
-    const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
+    const events = this.store.listEvents(conversationId);
+    const commands = awaitingDelivery(userCommandsIn(events));
+    const reverts = pendingReverts(events);
     this.setStatus(conversationId, "starting");
-    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }) }, commands);
+    const checkpoint = startsTurn ? await this.snapshotFiles(conversationId) : null;
+    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, { commands, reverts });
     try {
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
-      const prompt = await this.promptContent(conversationId, withCommandOutputs(commands, text), imageIds);
+      const prompt = await this.promptContent(conversationId, withCommandOutputs(commands, withRevertNotes(reverts, text)), imageIds);
       const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, prompt);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
@@ -404,10 +421,51 @@ export class ConversationService {
    */
   async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, afterTurn = false } = {}) {
     const runtime = this.runtime(conversationId);
-    if (!runtime.running && !this.stopping && !runtime.usageLimit) return this.prompt(conversationId, text, imageIds, fromScript);
+    if (!runtime.running && !this.stopping && !runtime.usageLimit) return this.prompt(conversationId, text, { imageIds, fromScript, startsTurn: true });
     const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(afterTurn && { afterTurn }) };
     this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
     this.publish(this.get(conversationId));
+  }
+
+  /** What undoing the turn that began with this message would do to the files, or why it cannot be undone. */
+  async previewRevert(conversationId: string, seq: number): Promise<{ plan: RestorePlan | null; cannotUndo?: string }> {
+    const checkpoint = this.checkpointAt(conversationId, seq);
+    if (!checkpoint) return { plan: null, cannotUndo: NO_FILES_KEPT };
+    const plan = await this.checkpoints.preview(this.workspaceOf(conversationId), checkpoint);
+    return plan ? { plan } : { plan: null, cannotUndo: ONLY_GIT_REPOSITORIES };
+  }
+
+  /**
+   * Puts the workspace's files back to how they were before the turn that began with this message, deleting what came
+   * after it. The conversation itself stays as it is, so the agent's context and its cache survive whole; the note
+   * saying what happened goes out with the user's next message.
+   */
+  async revert(conversationId: string, seq: number): Promise<RestorePlan> {
+    if (this.runtime(conversationId).running) throw new Error("The agent is still working. Stop its turn before undoing one.");
+    const checkpoint = this.checkpointAt(conversationId, seq);
+    if (!checkpoint) throw new Error(NO_FILES_KEPT);
+    const plan = await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
+    this.append(conversationId, { type: "revert", revertId: crypto.randomUUID(), toSeq: seq, restored: plan.restored, removed: plan.removed });
+    return plan;
+  }
+
+  private checkpointAt(conversationId: string, seq: number) {
+    const event = this.store.findEvent(conversationId, seq)?.event;
+    return event?.type === "user-message" ? event.checkpoint : undefined;
+  }
+
+  private workspaceOf(conversationId: string) {
+    return this.existingWorkspace(this.get(conversationId).workspaceId);
+  }
+
+  /** A turn works without this, so a failure costs that turn its undo and nothing else. */
+  private async snapshotFiles(conversationId: string) {
+    try {
+      return await this.checkpoints.snapshot(this.workspaceOf(conversationId));
+    } catch (error) {
+      console.error(`${new Date().toISOString()} could not keep the files of a turn: ${errorMessage(error)}`);
+      return null;
+    }
   }
 
   /** Continues before the usage limit's reset, e.g. after switching to a profile that signs in to another account. */
@@ -647,7 +705,7 @@ export class ConversationService {
     this.setStatus(conversationId, "starting");
     const sessionId = await this.ensureSession(conversationId);
     if (sessionId === stoppedSessionId && (await this.sessionRecorded(conversationId, sessionId, request))) return this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION);
-    if (request) return this.prompt(conversationId, request.text, request.imageIds);
+    if (request) return this.prompt(conversationId, request.text, { imageIds: request.imageIds });
     this.setStatus(conversationId, "idle");
     this.sendNextQueuedMessage(conversationId);
   }
@@ -884,10 +942,12 @@ export class ConversationService {
     if (!first) return;
     this.setQueue(conversationId, runtime, runtime.queuedMessages.filter((message) => !messages.includes(message)));
     this.publish(this.get(conversationId));
-    const commands = awaitingDelivery(userCommandsIn(this.store.listEvents(conversationId)));
+    const events = this.store.listEvents(conversationId);
+    const commands = awaitingDelivery(userCommandsIn(events));
+    const reverts = pendingReverts(events);
     const text = messages.map((message) => message.text).join("\n\n");
     const imageIds = messages.flatMap((message) => message.imageIds);
-    const injected = await this.promptContent(conversationId, withCommandOutputs(commands, text), imageIds)
+    const injected = await this.promptContent(conversationId, withCommandOutputs(commands, withRevertNotes(reverts, text)), imageIds)
       .then((prompt) => harness.steer(sessionId, prompt))
       .catch(() => false);
     if (!injected) {
@@ -896,8 +956,8 @@ export class ConversationService {
       if (!runtime.running) this.sendNextQueuedMessage(conversationId);
       return;
     }
-    this.appendUserMessage(conversationId, first, commands);
-    rest.forEach((message) => this.appendUserMessage(conversationId, message, []));
+    this.appendUserMessage(conversationId, first, { commands, reverts });
+    rest.forEach((message) => this.appendUserMessage(conversationId, message, { commands: [], reverts: [] }));
   }
 
   private async promptContent(conversationId: string, text: string, imageIds: string[]): Promise<acp.ContentBlock[]> {
@@ -1027,17 +1087,24 @@ export class ConversationService {
     const [next, ...rest] = runtime?.queuedMessages ?? [];
     if (!runtime || !next || this.holdsQueue(runtime)) return;
     this.setQueue(conversationId, runtime, rest);
-    this.prompt(conversationId, next.text, next.imageIds, next.fromScript).catch(() => {});
+    this.prompt(conversationId, next.text, { imageIds: next.imageIds, fromScript: next.fromScript, startsTurn: true }).catch(() => {});
   }
 
-  private appendUserMessage(conversationId: string, { text, imageIds, fromScript }: Omit<QueuedMessage, "id">, commands: UserCommand[]) {
+  private appendUserMessage(
+    conversationId: string,
+    { text, imageIds, fromScript, checkpoint }: Omit<QueuedMessage, "id"> & { checkpoint?: string | null },
+    { commands, reverts }: { commands: UserCommand[]; reverts: Revert[] },
+  ) {
     const attachedCommandIds = commands.map(({ commandId }) => commandId);
+    const attachedRevertIds = reverts.map(({ revertId }) => revertId);
     this.append(conversationId, {
       type: "user-message",
       text,
       ...(attachedCommandIds.length > 0 && { attachedCommandIds }),
+      ...(attachedRevertIds.length > 0 && { attachedRevertIds }),
       ...(imageIds.length > 0 && { imageIds }),
       ...(fromScript && { fromScript }),
+      ...(checkpoint && { checkpoint }),
     });
   }
 

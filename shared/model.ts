@@ -207,6 +207,12 @@ export interface Workspace {
   createdAt: number;
 }
 
+/** What putting a workspace's files back to how they were before a turn does. */
+export interface RestorePlan {
+  restored: number;
+  removed: number;
+}
+
 export interface QueuedMessage {
   id: string;
   text: string;
@@ -331,7 +337,17 @@ export interface TerminalTab {
 }
 
 export type ConversationEvent =
-  | { type: "user-message"; text: string; attachedCommandIds?: string[]; imageIds?: string[]; fromScript?: true }
+  | {
+      type: "user-message";
+      text: string;
+      attachedCommandIds?: string[];
+      /** Revert notes that went to the agent ahead of this message, so they are not sent again. */
+      attachedRevertIds?: string[];
+      imageIds?: string[];
+      fromScript?: true;
+      /** The workspace's files as they were when this turn started, so the turn can be undone. */
+      checkpoint?: string;
+    }
   | { type: "user-command"; commandId: string; command: string }
   | { type: "user-command-output"; commandId: string; stream: CommandStream; text: string }
   | { type: "user-command-ended"; commandId: string; exitCode: number | null }
@@ -351,6 +367,8 @@ export type ConversationEvent =
   /** The agent's sign-in, started from the conversation in a terminal tab, ended. */
   | { type: "login-ended"; signedIn: boolean }
   | { type: "usage-limit-wait-stopped" }
+  /** The user put the workspace's files back to how they were before one of its turns. */
+  | { type: "revert"; revertId: string; toSeq: number; restored: number; removed: number }
   | { type: "job-wait-ended"; wait: JobWait; end: JobWaitEnd };
 
 /** A harness session in a workspace directory, possibly started outside the app. */

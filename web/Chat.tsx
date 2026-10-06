@@ -34,6 +34,7 @@ import { useEarlierHistory, type EarlierHistory } from "./earlier-history.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
+import { AskToUndoFiles, UndoFilesButton } from "./Revert.tsx";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
@@ -650,13 +651,17 @@ const TimestampedEntry = memo(function TimestampedEntry({
 });
 
 function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conversationId: string }) {
+  const askToUndoFiles = useContext(AskToUndoFiles);
   switch (block.kind) {
     case "user":
       return (
-        <div className="message user">
-          {block.text}
-          <MessageImages conversationId={conversationId} imageIds={block.imageIds} />
-        </div>
+        <>
+          <div className="message user">
+            {block.text}
+            <MessageImages conversationId={conversationId} imageIds={block.imageIds} />
+          </div>
+          {block.undoSeq !== undefined && <UndoFilesButton turn={{ seq: block.undoSeq, text: block.text }} ask={askToUndoFiles} />}
+        </>
       );
     case "agent":
       return (

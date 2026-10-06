@@ -644,6 +644,16 @@ export function startServer(services: HostServices) {
       case "conversation.cancel":
         canvas.withdrawWaitingAsks(message.conversationId);
         return conversations.cancel(message.conversationId, { force: message.force });
+      case "conversation.revert-preview":
+        return conversations
+          .previewRevert(message.conversationId, message.seq)
+          .then(({ plan, cannotUndo }) => reply({ type: "conversation.revert-previewed", requestId: message.requestId, plan, ...(cannotUndo && { cannotUndo }) }))
+          .catch((error) => reply({ type: "conversation.revert-failed", requestId: message.requestId, message: errorMessage(error) }));
+      case "conversation.revert":
+        return conversations
+          .revert(message.conversationId, message.seq)
+          .then((plan) => reply({ type: "conversation.reverted", requestId: message.requestId, plan }))
+          .catch((error) => reply({ type: "conversation.revert-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.set-ask-mode":
         return conversations.setAskMode(message.conversationId, message.askMode);
       case "conversation.set-bypass-permissions":

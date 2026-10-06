@@ -18,6 +18,7 @@ import type {
   PromptTemplate,
   PublicAddress,
   ReachabilitySettings,
+  RestorePlan,
   StatuslineRender,
   StoredEvent,
   TerminalTab,
@@ -105,6 +106,10 @@ export type ClientMessage =
   | { type: "conversation.unsubscribe"; conversationId: string }
   | { type: "conversation.prompt"; conversationId: string; text: string; imageIds: string[]; afterTurn?: boolean }
   | { type: "conversation.cancel"; conversationId: string; force?: boolean }
+  /** What undoing the turn that began with the message at `seq` would do to the workspace's files. */
+  | { type: "conversation.revert-preview"; requestId: string; conversationId: string; seq: number }
+  /** Puts the workspace's files back to how they were before the turn that began with the message at `seq`. */
+  | { type: "conversation.revert"; requestId: string; conversationId: string; seq: number }
   | { type: "conversation.run-command"; conversationId: string; command: string }
   | { type: "conversation.stop-command"; conversationId: string; commandId: string }
   | { type: "conversation.drop-command-outputs"; conversationId: string; commandIds: string[] }
@@ -214,6 +219,10 @@ export type ServerMessage =
   | { type: "conversation.found"; requestId: string; conversationId: string; entries: EntryMatchCount[] }
   | { type: "tool-raw-output.got"; requestId: string; rawOutput: unknown }
   | { type: "conversation.event"; conversationId: string; event: StoredEvent }
+  /** `cannotUndo` says why a turn cannot be undone, when it cannot; `plan` is absent then too. */
+  | { type: "conversation.revert-previewed"; requestId: string; plan: RestorePlan | null; cannotUndo?: string }
+  | { type: "conversation.reverted"; requestId: string; plan: RestorePlan }
+  | { type: "conversation.revert-failed"; requestId: string; message: string }
   | { type: "canvas.upserted"; item: CanvasItem }
   | { type: "fs.completions"; requestId: string; directories: string[] }
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }

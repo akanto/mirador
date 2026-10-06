@@ -1,5 +1,6 @@
 import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
 import { launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine } from "../shared/model.ts";
+import { turnTitle, undoableTurns } from "../shared/reverts.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
@@ -17,6 +18,7 @@ import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
 import { DEFAULT_SIDEBAR_WIDTH, inView, sidebarWidthWithinLimits, toggledInView, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { ProfilesDialog } from "./Profiles.tsx";
+import { AskToUndoFiles, RevertDialog } from "./Revert.tsx";
 import { isFreshReview } from "./review-placement.ts";
 import { SessionsDialog } from "./Sessions.tsx";
 import { SettingsDialog } from "./Settings.tsx";
@@ -75,6 +77,9 @@ interface PaneToggle {
   toggle: () => void;
 }
 
+/** Enough of a conversation's turns to name in the palette; every message keeps its own button, however long the history is. */
+const UNDOABLE_TURNS_IN_PALETTE = 6;
+
 function paletteEntries(
   state: AppState,
   dispatch: Dispatch<AppAction>,
@@ -118,13 +123,26 @@ function paletteEntries(
     },
   ]);
   const openConversation = state.conversations.find(({ id }) => id === state.selectedConversationId);
+  const openHistory = selectedOpen(state);
+  /** The turns whose files Mirador kept, newest first: the palette lists the last few, every message carries its own button. */
+  const undoable: PaletteEntry[] = [...undoableTurns(openHistory?.events ?? [])]
+    .reverse()
+    .slice(0, UNDOABLE_TURNS_IN_PALETTE)
+    .map((turn) => ({
+      id: `undo-${turn.seq}`,
+      label: `Undo the files of “${turnTitle(turn.text)}”`,
+      detail: openConversation?.title,
+      kind: "action",
+      run: () => openHistory && dispatch({ type: "open-overlay", overlay: { kind: "revert", conversationId: openHistory.conversationId, turn } }),
+    }));
   const openConversationActions: PaletteEntry[] =
-    selectedOpen(state) && openConversation
+    openHistory && openConversation
       ? [
           { id: "rename", label: "Rename conversation…", kind: "action", run: startRenamingOpenConversation },
           { id: "toggle-canvas", label: canvas.visible ? "Hide canvas" : "Show canvas", kind: "action", run: canvas.toggle },
           { id: "toggle-terminal", label: terminal.visible ? "Hide terminal" : "Show terminal", kind: "action", run: terminal.toggle },
           { id: "reset-layout", label: "Reset layout to default", detail: openConversation.title, kind: "action", run: resetLayout },
+          ...undoable,
         ]
       : [];
   const machineActions = state.machines.map(
@@ -325,17 +343,21 @@ export function App() {
           keptConversation && (
             <Activity key={kept.conversationId} mode={kept === open ? "visible" : "hidden"}>
               <RedrawnOnlyWhenShown shown={kept === open}>
-                <ChatPanel
-                  conversation={keptConversation}
-                  profiles={state.profiles}
-                  promptTemplates={state.promptTemplates}
-                  onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", page: "conversations" } })}
-                  open={kept}
-                  canvasVisible={canvasInView}
-                  onToggleCanvas={toggleCanvas}
-                  terminalVisible={terminalInView}
-                  onToggleTerminal={toggleTerminal}
-                />
+                <AskToUndoFiles.Provider
+                  value={(turn) => dispatch({ type: "open-overlay", overlay: { kind: "revert", conversationId: kept.conversationId, turn } })}
+                >
+                  <ChatPanel
+                    conversation={keptConversation}
+                    profiles={state.profiles}
+                    promptTemplates={state.promptTemplates}
+                    onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", page: "conversations" } })}
+                    open={kept}
+                    canvasVisible={canvasInView}
+                    onToggleCanvas={toggleCanvas}
+                    terminalVisible={terminalInView}
+                    onToggleTerminal={toggleTerminal}
+                  />
+                </AskToUndoFiles.Provider>
               </RedrawnOnlyWhenShown>
             </Activity>
           )
@@ -406,6 +428,7 @@ export function App() {
         />
       )}
       {overlay?.kind === "help" && <ShortcutHelp onClose={closeOverlay} />}
+      {overlay?.kind === "revert" && <RevertDialog conversationId={overlay.conversationId} turn={overlay.turn} onClose={closeOverlay} />}
       {overlay?.kind === "search" && (
         <SearchDialog workspaces={state.workspaces} conversations={state.conversations} onOpen={(conversationId) => select(conversationId)} onClose={closeOverlay} />
       )}

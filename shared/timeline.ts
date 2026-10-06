@@ -12,6 +12,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 import { jobWaitEndedNotice } from "./job-waits.ts";
 import type { StoredEvent } from "./model.ts";
+import { turnTitle } from "./reverts.ts";
 import { UserCommandLog, type UserCommand } from "./user-commands.ts";
 
 /** The stored event a block starts with: its sequence number keys the block, and its time is the block's time. */
@@ -91,7 +92,7 @@ type PlanBlock = Origin & { kind: "plan"; entries: PlanEntry[] };
 
 export type TimelineBlock =
   | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string })
-  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true })
+  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; undoSeq?: number })
   | ToolBlock
   | PlanBlock
   | PermissionBlock
@@ -189,6 +190,8 @@ class TimelineBuilder {
   private readonly commands = new UserCommandLog();
   private readonly errorsAwaitingSignIn: ErrorBlock[] = [];
   private readonly streamedMessages = new StreamedMessages();
+  /** What each turn began with, for the note a revert leaves. */
+  private readonly messageTexts = new Map<number, string>();
 
   add({ seq, at, event }: StoredEvent) {
     const origin = { key: String(seq), at };
@@ -202,12 +205,20 @@ class TimelineBuilder {
         return;
       case "user-message":
         this.currentPlan = null;
+        this.messageTexts.set(seq, event.text);
         return this.push({
           kind: "user",
           ...origin,
           text: event.text,
           ...(event.imageIds && { imageIds: event.imageIds }),
           ...(event.fromScript && { fromScript: event.fromScript }),
+          ...(event.checkpoint && { undoSeq: seq }),
+        });
+      case "revert":
+        return this.push({
+          kind: "notice",
+          ...origin,
+          text: `Files put back to how they were before the turn of “${this.messageAt(event.toSeq)}”`,
         });
       case "turn-end":
         this.currentPlan = null;
@@ -258,6 +269,11 @@ class TimelineBuilder {
       case "acp":
         return this.addUpdate(coalescedOrigin(event.update) ?? origin, event.update, at);
     }
+  }
+
+  /** The start of the message a turn began with, which a revert's note names; a turn not loaded yet has none. */
+  private messageAt(seq: number) {
+    return turnTitle(this.messageTexts.get(seq) ?? "");
   }
 
   private addUpdate(origin: Origin, update: SessionUpdate, at: number) {

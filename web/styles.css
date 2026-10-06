@@ -1447,6 +1447,36 @@ input.picker-search {
   white-space: pre-wrap;
 }
 
+.undo-files {
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  visibility: hidden;
+}
+
+.timeline-entry:hover .undo-files,
+.undo-files:focus-visible {
+  visibility: visible;
+}
+
+.modal.revert {
+  width: min(560px, 100%);
+}
+
+.revert-turn {
+  max-height: 8em;
+  overflow-y: auto;
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.revert-summary {
+  margin: 0;
+}
+
 .markdown > :first-child {
   margin-top: 0;
 }
