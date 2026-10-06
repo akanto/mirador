@@ -69,7 +69,7 @@ test("a long conversation shows its newest entries, and earlier ones load as the
   await test.step("the button loads the rest, for keyboards and conversations too short to scroll", async () => {
     await earlier(page).evaluate((button: HTMLElement) => button.click());
     await expect(entries(page)).toHaveCount(200 + notLoaded);
-    await expect(entries(page).filter({ hasText: /^.*question 0$/ })).toHaveCount(1);
+    await expect(entries(page).filter({ hasText: "question 0" })).toHaveCount(1);
     await expect(earlier(page)).toHaveCount(0);
   });
 
