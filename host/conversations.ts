@@ -396,6 +396,7 @@ export class ConversationService {
     const reverts = pendingReverts(events);
     this.setStatus(conversationId, "starting");
     const checkpoint = startsTurn ? await this.snapshotFiles(conversationId) : null;
+    this.store.turnStarted(conversationId);
     this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, { commands, reverts });
     try {
       const sessionId = await this.ensureSession(conversationId);
@@ -415,6 +416,7 @@ export class ConversationService {
     } finally {
       runtime.running = false;
       runtime.forceStopped = false;
+      this.store.turnEnded(conversationId);
       this.setStatus(conversationId, "idle");
       endTurn();
     }
@@ -1091,9 +1093,8 @@ export class ConversationService {
 
   /** A turn the host was killed in the middle of has no end in the log, which leaves its subagent cards working for good. */
   private endTurnsOrphanedByRestart() {
-    this.store.listConversations().forEach(({ id }) => {
-      if (this.store.latestTurnEvent(id)?.type !== "user-message") return;
-      if (turnLeftOpenByTheLastHost(this.store.listEvents(id))) this.store.appendEvent(id, { type: "turn-end", stopReason: "cancelled" });
+    this.store.takeTurnsInFlight().forEach((id) => {
+      if (openTurnTheAgentWorkedOn(this.store.listEvents(id))) this.store.appendEvent(id, { type: "turn-end", stopReason: "cancelled" });
     });
   }
 
@@ -1304,10 +1305,10 @@ interface TurnRequest {
 const endsTurn = ({ event }: Pick<StoredEvent, "event">) => event.type === "turn-end" || event.type === "error";
 
 /**
- * A turn the previous host died in the middle of: it began, the agent worked on it, and nothing ended it. A turn the
- * agent never worked on is not one, since an end written for it would claim a session that can be resumed.
+ * A turn left open: it began, the agent worked on it, and nothing ended it. A turn the agent never worked on is not one,
+ * since an end written for it would claim a session that can be resumed.
  */
-export function turnLeftOpenByTheLastHost(events: StoredEvent[]): boolean {
+export function openTurnTheAgentWorkedOn(events: StoredEvent[]): boolean {
   const began = events.findLastIndex(({ event }) => event.type === "user-message" || endsTurn({ event }));
   if (events[began]?.event.type !== "user-message") return false;
   return events.slice(began + 1).some(({ event }) => event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate));

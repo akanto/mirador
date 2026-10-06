@@ -71,6 +71,16 @@ describe("Store", () => {
     expect(store.listEvents("c1").map(({ seq }) => seq)).toEqual([1, 4]);
   });
 
+  test("a turn is recorded while it runs, and taken once by the host that comes after the one it ran on", () => {
+    const { store } = seededStore();
+    store.turnStarted("c1");
+    expect(store.takeTurnsInFlight()).toEqual(["c1"]);
+    expect(store.takeTurnsInFlight()).toEqual([]);
+    store.turnStarted("c1");
+    store.turnEnded("c1");
+    expect(store.takeTurnsInFlight()).toEqual([]);
+  });
+
   test("the latest turns start at a user message, and the first turn takes along what came before it", () => {
     const { store } = seededStore();
     const reply = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } } } as const;

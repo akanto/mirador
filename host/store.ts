@@ -68,6 +68,8 @@ const schema = `
   CREATE TABLE IF NOT EXISTS job_waits (
     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     job TEXT NOT NULL, ssh_host TEXT, message TEXT NOT NULL, resume INTEGER NOT NULL, since INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS running_turns (
+    conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE);
 `;
 
 const addedColumns = [
@@ -337,6 +339,24 @@ export class Store {
     return (this.db.query("SELECT id, unseen_turn_end FROM conversations WHERE unseen_turn_end IS NOT NULL").all() as { id: string; unseen_turn_end: UnseenTurnEnd }[]).map(
       ({ id, unseen_turn_end }) => [id, unseen_turn_end],
     );
+  }
+
+  /** A conversation has one turn at a time, recorded so the host that comes after a dead one knows what it was running. */
+  turnStarted(conversationId: string) {
+    this.db.query("INSERT OR REPLACE INTO running_turns (conversation_id) VALUES (?)").run(conversationId);
+  }
+
+  turnEnded(conversationId: string) {
+    this.db.query("DELETE FROM running_turns WHERE conversation_id = ?").run(conversationId);
+  }
+
+  /** The turns a host was running when it stopped. Read once. */
+  takeTurnsInFlight(): string[] {
+    return this.db.transaction(() => {
+      const rows = this.db.query("SELECT conversation_id FROM running_turns").all() as { conversation_id: string }[];
+      this.db.query("DELETE FROM running_turns").run();
+      return rows.map(({ conversation_id: id }) => id);
+    })();
   }
 
   deleteConversation(id: string) {
