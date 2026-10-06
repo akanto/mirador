@@ -25,6 +25,8 @@ export const hints = {
     "Where other devices open Mirador: http://127.0.0.1:4600 on this machine alone, or an address a proxy forwards to it, such as https://macbook.example.ts.net:4600. The port is Mirador's own, 4600 unless the host was started with another.",
   canvasAddress:
     "Where a canvas page loads D3, Mermaid and three from. Mirador serves them on a port of their own (4601), an origin separate from the app's, so a page an agent wrote cannot reach this Mirador's own storage. A proxy has to forward that port as well: https://macbook.example.ts.net:4601.",
+  reachRoute:
+    "Mirador reaches other devices one way at a time. Picking a choice saves it and takes the other one back, so nothing here is set that the host does not use; the host reads it from its next start. An address it can be reached at has to be given by a proxy, such as tailscale serve, or the host serves HTTPS on the network itself with a certificate it makes.",
   networkReachability:
     "Mirador serves HTTPS itself on this port, with a certificate authority it makes, so devices on the same network need no proxy and no address. Each browser warns once about the certificate (or trusts it for good once it installs mirador-ca.pem).",
   inviteDevice:

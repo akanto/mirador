@@ -50,9 +50,10 @@ test("a device joins over HTTPS with an invite link that names the host's certif
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const settings = await openSettings(page, "Devices");
-  const networkSwitch = settings.getByLabel("Reachable on the network, over HTTPS at port 5192");
-  await expect(networkSwitch).toBeChecked();
-  await expect(networkSwitch).toBeDisabled();
+  const addressRoute = settings.getByRole("radio", { name: "At an address a proxy gives it" });
+  await expect(addressRoute, "the address the environment sets is what invite links use").toBeChecked();
+  await expect(addressRoute).toBeDisabled();
+  await expect(settings).toContainText("The host's environment sets how other devices reach it");
 
   const authority = authorityOf(host);
   const fingerprint = createHash("sha256").update(new X509Certificate(authority).raw).digest("base64url");
@@ -92,21 +93,21 @@ test("the host's own page loads canvas libraries from this machine, though agent
 test("turning the network on in Settings takes effect when the host restarts", async ({ page }) => {
   await signIn(page, hostSwitchedInSettings);
   let settings = await openSettings(page, "Devices");
-  const networkSwitch = () => settings.getByLabel("Reachable on the network, over HTTPS at port 5198");
-  await networkSwitch().check();
+  const networkRoute = () => settings.getByRole("radio", { name: "Over the network, with no address" });
+  await networkRoute().check();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
   expect(JSON.parse(readFileSync(join(hostSwitchedInSettings.dataDir, "config.json"), "utf8"))).toEqual({ network: true });
 
   await settings.getByRole("button", { name: "Restart host" }).click();
   await expect(settings, "the page reloads once the restarted host answers").toBeHidden({ timeout: 30_000 });
   settings = await openSettings(page, "Devices");
-  await expect(networkSwitch()).toBeChecked();
+  await expect(networkRoute()).toBeChecked();
   await expect(settings.getByRole("link", { name: "certificate authority" })).toHaveAttribute("href", "/mirador-ca.pem");
-  await expect(settings.getByText(/On the network it now uses https:\/\/.+:5198\./)).toBeVisible();
+  await expect(settings.getByText(/reach it directly at https:\/\/.+:5198/)).toBeVisible();
   const authority = authorityOf(hostSwitchedInSettings);
   expect(await fetchTrusting(authority, "https://127.0.0.1:5198/mirador-ca.pem")).toBe(authority);
 
-  await networkSwitch().uncheck();
+  await settings.getByRole("radio", { name: "Only on this machine" }).check();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
 });
 

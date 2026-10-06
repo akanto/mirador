@@ -26,20 +26,41 @@ test.afterAll(async () => {
 });
 
 const addressForm = (settings: Locator) => settings.getByRole("form", { name: "Address on your network" });
+const routeChoice = (settings: Locator, name: string) => settings.getByRole("radio", { name });
 const configFile = () => JSON.parse(readFileSync(join(host.dataDir, "config.json"), "utf8"));
+const ADDRESS_ROUTE = "At an address a proxy gives it";
+const NETWORK_ROUTE = "Over the network, with no address";
+const ALONE_ROUTE = "Only on this machine";
+
+/** Picking the address route brings its fields out; it is chosen for good once an address in them is saved. */
+async function chooseAddressRoute(settings: Locator) {
+  await routeChoice(settings, ADDRESS_ROUTE).click();
+  await expect(addressForm(settings)).toBeVisible();
+}
 
 async function invite(settings: Locator) {
   await settings.getByRole("button", { name: "Invite a device" }).click();
   return settings.getByLabel("Invite");
 }
 
-test("Settings says what the two addresses are for, and where to find them", async ({ page }) => {
+test("Settings offers one way at a time to reach it, and names what each one needs", async ({ page }) => {
   await signIn(page, host);
   const settings = await openSettings(page, "Devices");
 
-  await test.step("the ports are named, so 4600 and 4601 are not a mystery", async () => {
+  await test.step("a fresh host reaches no other device, and only that choice shows no controls", async () => {
+    await expect(routeChoice(settings, ALONE_ROUTE)).toBeChecked();
+    await expect(addressForm(settings)).toHaveCount(0);
+    await expect(settings.getByRole("button", { name: "Find the address" })).toHaveCount(0);
+  });
+
+  await test.step("the ports are named where the address is asked for, so 4600 and 4601 are not a mystery", async () => {
+    await chooseAddressRoute(settings);
     await expect(addressForm(settings)).toContainText(`its own port, ${host.port}`);
     await expect(addressForm(settings)).toContainText(`a port of their own, ${host.port + 1}`);
+  });
+
+  await test.step("the network way names the port it serves on, so 4602 is not a mystery either", async () => {
+    await expect(settings.getByRole("radiogroup")).toContainText(`port ${host.port + 2}`);
   });
 
   await test.step("both servers answer where Settings checks an address", async () => {
@@ -47,9 +68,9 @@ test("Settings says what the two addresses are for, and where to find them", asy
     expect(await (await fetch(`http://127.0.0.1:${host.port + 1}/mirador-here`)).json()).toEqual({ mirador: true });
   });
 
-  await test.step("a machine with no Tailscale, and nothing answering, is told to use the network instead", async () => {
+  await test.step("a machine with no Tailscale, and nothing answering, is told the choice is what is left", async () => {
     await settings.getByRole("button", { name: "Find the address" }).click();
-    await expect(settings.getByText("Devices on the same network reach it directly")).toBeVisible();
+    await expect(settings.getByText("and it has no Tailscale")).toBeVisible();
     await expect(settings.getByRole("button", { name: "Use these" })).toHaveCount(0);
   });
 });
@@ -58,6 +79,7 @@ test("a machine with Tailscale is offered one button for both of its ports, and 
   await signIn(page, hostWithTailscale);
   const settings = await openSettings(page, "Devices");
   const expose = settings.getByRole("button", { name: "Expose Mirador on Tailscale" });
+  await chooseAddressRoute(settings);
 
   await test.step("Tailscale's name answers nothing yet, so Mirador offers to serve its ports itself", async () => {
     await settings.getByRole("button", { name: "Find the address" }).click();
@@ -71,6 +93,30 @@ test("a machine with Tailscale is offered one button for both of its ports, and 
     expect(calls).toContain("status --json");
     expect(calls).toContain(`serve --bg --https=${hostWithTailscale.port} http://127.0.0.1:${hostWithTailscale.port}`);
     expect(calls).toContain(`serve --bg --https=${hostWithTailscale.port + 1} http://127.0.0.1:${hostWithTailscale.port + 1}`);
+  });
+});
+
+test("choosing another way takes the address back, and the host's own HTTPS is saved by choosing it", async ({ page }) => {
+  await signIn(page, host);
+  const settings = await openSettings(page, "Devices");
+  await chooseAddressRoute(settings);
+  const form = addressForm(settings);
+  await form.getByLabel("Address", { exact: true }).fill("https://box.example.ts.net");
+  await form.getByLabel("Canvas address").fill("https://box.example.ts.net:8443");
+  await form.getByRole("button", { name: "Save address" }).click();
+  expect(configFile()).toEqual({ publicOrigin: "https://box.example.ts.net", publicCanvasOrigin: "https://box.example.ts.net:8443" });
+
+  await test.step("the network way clears the address and serves the host's own HTTPS", async () => {
+    await routeChoice(settings, NETWORK_ROUTE).click();
+    await expect(routeChoice(settings, NETWORK_ROUTE)).toBeChecked();
+    await expect(addressForm(settings), "the fields go away with the choice that used them").toHaveCount(0);
+    await expect.poll(configFile).toEqual({ network: true });
+  });
+
+  await test.step("only on this machine takes that back too", async () => {
+    await routeChoice(settings, ALONE_ROUTE).click();
+    await expect(routeChoice(settings, ALONE_ROUTE)).toBeChecked();
+    await expect.poll(configFile).toEqual({});
   });
 });
 
@@ -97,12 +143,13 @@ async function scanned(qrCode: Locator) {
 test("an address saved in Settings goes to config.json, and invite links use it once the host restarts", async ({ page }) => {
   await signIn(page, host);
   let settings = await openSettings(page, "Devices");
+  await chooseAddressRoute(settings);
   let form = addressForm(settings);
 
   await test.step("both addresses are needed", async () => {
     await form.getByLabel("Address", { exact: true }).fill("https://box.example.ts.net/");
     await form.getByRole("button", { name: "Save address" }).click();
-    await expect(form.getByText("Set both Address and Canvas address, or neither.")).toBeVisible();
+    await expect(settings.getByText("Set both Address and Canvas address, or neither.")).toBeVisible();
   });
 
   await test.step("saving writes config.json, and the host keeps its old address until it restarts", async () => {
@@ -124,18 +171,11 @@ test("an address saved in Settings goes to config.json, and invite links use it 
     await expect(page.getByText("No conversation selected")).toBeVisible();
     settings = await openSettings(page, "Devices");
     form = addressForm(settings);
+    await expect(routeChoice(settings, ADDRESS_ROUTE), "the saved choice is the one shown after the restart").toBeChecked();
     await expect(settings.getByText("Saved. The host uses it from its next start.")).toHaveCount(0);
     const linkedInvite = await invite(settings);
     await expect(linkedInvite.locator(".invite-link")).toHaveText(/^https:\/\/box\.example\.ts\.net\/#\/join\/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     await expect(linkedInvite.locator(".invite-without-link")).toHaveCount(0);
-  });
-
-  await test.step("emptying both takes the address out of config.json", async () => {
-    await form.getByLabel("Address", { exact: true }).fill("");
-    await form.getByLabel("Canvas address").fill("");
-    await form.getByRole("button", { name: "Save address" }).click();
-    await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
-    expect(configFile()).toEqual({});
   });
 });
 
@@ -143,6 +183,9 @@ test("an address the host's environment sets can't be changed in Settings", asyn
   await signIn(page, hostAddressedByEnvironment);
   const settings = await openSettings(page, "Devices");
   const form = addressForm(settings);
+  await expect(routeChoice(settings, ADDRESS_ROUTE), "the environment's way is the one shown, and it is the only one").toBeChecked();
+  await expect(routeChoice(settings, NETWORK_ROUTE)).toBeDisabled();
+  await expect(settings).toContainText("The host's environment sets how other devices reach it");
   await expect(form).toContainText("The host's environment sets its address");
   await expect(form.getByLabel("Address", { exact: true })).toHaveValue("https://env.example.com");
   await expect(form.getByLabel("Address", { exact: true })).toBeDisabled();
