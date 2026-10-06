@@ -134,7 +134,7 @@ const toolError = (text: string) => ({ isError: true, content: [{ type: "text" a
 
 function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string) {
   const server = new McpServer(
-    { name: CANVAS_SERVER_NAME, version: "0.1.0" },
+    { name: CANVAS_SERVER_NAME, version: "0.2.0" },
     { instructions: canvasInstructions(assetsOrigin) },
   );
 

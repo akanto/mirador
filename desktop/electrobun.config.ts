@@ -11,7 +11,7 @@ export default {
   app: {
     name: "Mirador",
     identifier: "com.sodre90.mirador",
-    version: "0.1.0",
+    version: "0.2.0",
   },
   build: {
     mainProcess: "bun",

@@ -163,7 +163,7 @@ export class HarnessProcess {
     return this.connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       clientCapabilities: {},
-      clientInfo: { name: "mirador", version: "0.1.0" },
+      clientInfo: { name: "mirador", version: "0.2.0" },
     });
   }
 
