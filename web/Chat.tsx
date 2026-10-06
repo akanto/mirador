@@ -17,6 +17,7 @@ import {
   type StoredEvent,
   type UsageLimitWait,
 } from "../shared/model.ts";
+import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
 import { parseAnsi, plainTextOf } from "./ansi.ts";
@@ -73,6 +74,9 @@ import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 
 /** Past this many choices a plain select is hard to scan: opencode lists every model of every provider. */
 const SEARCHABLE_FROM_CHOICES = 20;
+
+/** A command Claude Code opens a panel for only in its own terminal gets one there, on the conversation's profile. */
+const requestPanelCommand = (conversationId: string, line: string) => requestProgram({ type: "terminal.open-panel-command", conversationId, line });
 
 const configOptionHint = (option: SessionConfigOption) => [option.description, hints.configOption].filter(Boolean).join("\n\n");
 
@@ -462,7 +466,7 @@ function useClock(ticking: boolean) {
 
 const callsLabel = (count: number) => (count === 1 ? "1 call" : `${count} calls`);
 
-function SubagentCard({ block, conversationId }: { block: SubagentBlock; conversationId: string }) {
+function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock; conversationId: string; harness: HarnessId }) {
   const state = useContext(SubagentStates).get(block.toolCallId) ?? "done";
   const now = useClock(state === "running");
   const { subagent_type, model } = subagentInput(block);
@@ -488,7 +492,7 @@ function SubagentCard({ block, conversationId }: { block: SubagentBlock; convers
       </summary>
       <div className="subagent-work">
         {block.subagent.blocks.map((child) => (
-          <TimelineEntry key={child.key} block={child} conversationId={conversationId} canRewind={false} />
+          <TimelineEntry key={child.key} block={child} conversationId={conversationId} harness={harness} canRewind={false} />
         ))}
       </div>
       {block.content.map((content, index) => (
@@ -645,13 +649,13 @@ const TimestampedEntry = memo(function TimestampedEntry({
             <Timestamp at={block.at} />
           </div>
         )}
-        <TimelineEntry block={block} conversationId={conversationId} canRewind={harnessRewinds[harness]} />
+        <TimelineEntry block={block} conversationId={conversationId} harness={harness} canRewind={harnessRewinds[harness]} />
       </div>
     </div>
   );
 });
 
-function TimelineEntry({ block, conversationId, canRewind }: { block: TimelineBlock; conversationId: string; canRewind: boolean }) {
+function TimelineEntry({ block, conversationId, harness, canRewind }: { block: TimelineBlock; conversationId: string; harness: HarnessId; canRewind: boolean }) {
   const askToRevert = useContext(AskToRevert);
   switch (block.kind) {
     case "user":
@@ -666,12 +670,21 @@ function TimelineEntry({ block, conversationId, canRewind }: { block: TimelineBl
           )}
         </>
       );
-    case "agent":
+    case "agent": {
+      const refused = harness === "claude" ? refusedPanelCommand(block.text) : null;
       return (
         <div className="message agent">
           <MarkdownText text={block.text} />
+          {refused && (
+            <div className="terminal-command">
+              <button type="button" data-hint={hints.terminalCommand} onClick={() => requestPanelCommand(conversationId, `/${refused}`)}>
+                Open a terminal tab
+              </button>
+            </div>
+          )}
         </div>
       );
+    }
     case "thought":
       return (
         <details className="thought">
@@ -680,7 +693,11 @@ function TimelineEntry({ block, conversationId, canRewind }: { block: TimelineBl
         </details>
       );
     case "tool":
-      return block.subagent ? <SubagentCard block={block as SubagentBlock} conversationId={conversationId} /> : <ToolCard block={block} conversationId={conversationId} />;
+      return block.subagent ? (
+        <SubagentCard block={block as SubagentBlock} conversationId={conversationId} harness={harness} />
+      ) : (
+        <ToolCard block={block} conversationId={conversationId} />
+      );
     case "command":
       return <CommandCard command={block.command} conversationId={conversationId} />;
     case "plan":
@@ -1203,6 +1220,12 @@ function Composer({
       setText("");
       return;
     }
+    const panelLine = conversation.harness === "claude" ? panelCommandLine(message) : null;
+    if (panelLine) {
+      requestPanelCommand(conversation.id, panelLine);
+      setText("");
+      return;
+    }
     if (command !== null) {
       if (connection.send({ type: "conversation.run-command", conversationId: conversation.id, command })) setText("");
       return;
@@ -1245,6 +1268,7 @@ function Composer({
   const afterTurnFor = (event: KeyboardEvent<HTMLTextAreaElement>) => (enterWhileBusy === "after-turn") !== event.altKey;
   const slashCommands = useSlashCommandMenu({
     conversationId: conversation.id,
+    harness: conversation.harness,
     events,
     text,
     setText,

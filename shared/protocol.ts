@@ -147,6 +147,8 @@ export type ClientMessage =
   /** Signs the conversation's agent in again, in a new terminal tab of its workspace. */
   | { type: "terminal.open-login"; requestId: string; conversationId: string; columns: number; rows: number }
   | { type: "terminal.follow-job"; requestId: string; conversationId: string; waitId: string; columns: number; rows: number }
+  /** Runs a command Claude Code opens a panel for only in its own terminal, in a new terminal tab of its workspace. */
+  | { type: "terminal.open-panel-command"; requestId: string; conversationId: string; line: string; columns: number; rows: number }
   | { type: "terminal.input"; terminalId: string; data: string }
   | { type: "terminal.resize"; terminalId: string; columns: number; rows: number }
   /** With `unlessBusy`, a terminal running a command stays open, and the host answers terminal.busy. */

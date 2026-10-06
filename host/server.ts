@@ -742,6 +742,11 @@ export function startServer(services: HostServices) {
         const { exited: _, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
         return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
       }
+      case "terminal.open-panel-command": {
+        const { workspaceId, program } = conversations.panelCommandProgram(message.conversationId, message.line);
+        const { exited: _, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
+        return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
+      }
       case "terminal.replay":
         return terminals.replay(socket, message.terminalId);
       case "terminal.input":

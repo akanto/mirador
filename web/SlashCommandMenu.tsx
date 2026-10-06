@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import type { StoredEvent } from "../shared/model.ts";
+import type { HarnessId, StoredEvent } from "../shared/model.ts";
+import { panelSlashCommands } from "../shared/panel-commands.ts";
 import { clearSlashCommand, latestSlashCommands, matchingCommands, slashQuery, type SlashCommand } from "../shared/slash-commands.ts";
 import { connection } from "./connection.ts";
 import { loginSlashCommand } from "./login-request.ts";
@@ -31,9 +32,12 @@ function useSlashCommands(conversationId: string, events: StoredEvent[], wanted:
 
 const miradorCommands = [clearSlashCommand, loginSlashCommand];
 
-const withMiradorCommands = (commands: SlashCommand[]) => [
-  ...commands.filter(({ name }) => !miradorCommands.some((own) => own.name === name)),
-  ...miradorCommands,
+/** The commands Mirador runs itself, so they stand even where the agent does not list them. */
+const miradorCommandsFor = (harness: HarnessId) => (harness === "claude" ? [...miradorCommands, ...panelSlashCommands] : miradorCommands);
+
+const withMiradorCommands = (commands: SlashCommand[], own: SlashCommand[]) => [
+  ...commands.filter(({ name }) => !own.some((same) => same.name === name)),
+  ...own,
 ];
 
 /**
@@ -42,12 +46,14 @@ const withMiradorCommands = (commands: SlashCommand[]) => [
  */
 export function useSlashCommandMenu({
   conversationId,
+  harness,
   events,
   text,
   setText,
   run,
 }: {
   conversationId: string;
+  harness: HarnessId;
   events: StoredEvent[];
   text: string;
   setText: (text: string) => void;
@@ -55,7 +61,10 @@ export function useSlashCommandMenu({
 }) {
   const query = slashQuery(text);
   const commands = useSlashCommands(conversationId, events, query !== null);
-  const matches = useMemo(() => (query === null ? [] : matchingCommands(withMiradorCommands(commands), query)), [commands, query]);
+  const matches = useMemo(
+    () => (query === null ? [] : matchingCommands(withMiradorCommands(commands, miradorCommandsFor(harness)), query)),
+    [commands, harness, query],
+  );
   const [dismissedAt, setDismissedAt] = useState<string | null>(null);
   const { pickedIndex, move } = usePickedSuggestion(matches.length, query);
   const open = matches.length > 0 && dismissedAt !== text;

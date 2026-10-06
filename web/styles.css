@@ -1447,6 +1447,10 @@ input.picker-search {
   white-space: pre-wrap;
 }
 
+.terminal-command {
+  margin-top: 8px;
+}
+
 .undo-files {
   align-self: flex-start;
   color: var(--muted);

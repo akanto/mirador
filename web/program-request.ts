@@ -1,7 +1,10 @@
 import { useSyncExternalStore } from "react";
 
-/** A program the terminal pane opens in a tab of its own: the agent's sign-in, or a waited-for job followed. */
-export type ProgramRequest = { type: "terminal.open-login"; conversationId: string } | { type: "terminal.follow-job"; conversationId: string; waitId: string };
+/** A program the terminal pane opens in a tab of its own: the agent's sign-in, a waited-for job followed, or a command of the agent's own terminal. */
+export type ProgramRequest =
+  | { type: "terminal.open-login"; conversationId: string }
+  | { type: "terminal.follow-job"; conversationId: string; waitId: string }
+  | { type: "terminal.open-panel-command"; conversationId: string; line: string };
 
 /** Until the terminal pane, which may first have to be shown, opens its tab. */
 let waiting: ProgramRequest | null = null;

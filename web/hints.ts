@@ -136,6 +136,8 @@ export const hints = {
     "The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ~/.local/bin, /opt/homebrew/bin or /usr/local/bin.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.",
   canvasUse:
     "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
+  terminalCommand:
+    "Claude Code shows this one only in its own terminal, so this opens it there: a terminal tab of this workspace, run by the Claude Code this conversation's profile uses. The panel is where the command happens; the agent's answer above is only its refusal.",
   logIn:
     "Opens the agent's own sign-in in a terminal tab of this workspace, with this conversation's profile, so a profile with an account of its own signs that one in. Once it says you are signed in, send your message again.",
   queuedGrip: "Drag to change the order queued messages go out in: they leave from the top.",
