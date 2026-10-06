@@ -153,6 +153,15 @@ export class TestHost {
     await this.start();
   }
 
+  /** Kills the host outright, as a crash does: nothing of a turn it was running gets written down. */
+  async kill() {
+    const child = this.process;
+    if (!child || child.exitCode !== null) return;
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    child.kill("SIGKILL");
+    await exited;
+  }
+
   get log() {
     return this.output;
   }

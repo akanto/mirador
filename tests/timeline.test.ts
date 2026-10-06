@@ -147,6 +147,13 @@ describe("subagents", () => {
     expect(states([{ type: "turn-end", stopReason: "end_turn" }, launch("s2", {})])).toEqual(["running"]);
   });
 
+  test("an error ends the turn as a stop does, so a subagent it leaves behind stops working with it", () => {
+    const states = (events: ConversationEvent[], busy = true) => subagentsIn(buildTimeline(stored(events))).map((block) => subagentState(block, busy));
+    const background = [launch("b1", { description: "Watch the build" }), answeredAtOnce("b1"), finish("b1")];
+    expect(states([...background, { type: "error", message: "ACP connection closed" }])).toEqual(["stopped"]);
+    expect(states([...background, { type: "error", message: "ACP connection closed" }], false)).toEqual(["stopped"]);
+  });
+
   test("ends when its call completes, or at its last activity when it ran in the background", () => {
     const [sync, background] = subagentsIn(
       buildTimeline(stored([launch("s1", {}), launch("b1", {}), answeredAtOnce("b1"), finish("b1"), read("r1", "b1"), finish("s1"), read("r2", "b1")])),

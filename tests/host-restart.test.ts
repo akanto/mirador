@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { lastTurnRequest } from "../host/conversations.ts";
+import { lastTurnRequest, turnLeftOpenByTheLastHost } from "../host/conversations.ts";
 import { hostCommandLine, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import type { ConversationEvent } from "../shared/model.ts";
 import { SourceWatcher } from "../host/source-watcher.ts";
@@ -40,6 +40,31 @@ describe("lastTurnRequest", () => {
     expect(lastTurnRequest(stored([said("lost"), { type: "error", message: "boom" }, said("Try again"), cancelled]))?.firstText).toBe("Try again");
     expect(lastTurnRequest(stored([said("done"), { type: "turn-end", stopReason: "end_turn" }, cancelled]))).toBeNull();
     expect(lastTurnRequest([])).toBeNull();
+  });
+});
+
+describe("turnLeftOpenByTheLastHost", () => {
+  const stored = (events: ConversationEvent[]) => events.map((event, index) => ({ seq: index + 1, at: index, event }));
+  const said = (text: string): ConversationEvent => ({ type: "user-message", text });
+  const worked: ConversationEvent = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "on it" } } };
+  const stopped: ConversationEvent = { type: "turn-end", stopReason: "cancelled" };
+
+  test("is a turn the agent worked on that nothing ended, since the host died in the middle of it", () => {
+    expect(turnLeftOpenByTheLastHost(stored([said("go"), worked]))).toBe(true);
+    expect(turnLeftOpenByTheLastHost(stored([said("Fix it"), worked, worked]))).toBe(true);
+    expect(turnLeftOpenByTheLastHost(stored([said("first"), worked, { type: "turn-end", stopReason: "end_turn" }, said("go"), worked]))).toBe(true);
+  });
+
+  test("is none the log ends, whether the agent finished, was stopped or failed", () => {
+    expect(turnLeftOpenByTheLastHost(stored([said("go"), worked, { type: "turn-end", stopReason: "end_turn" }]))).toBe(false);
+    expect(turnLeftOpenByTheLastHost(stored([said("go"), worked, stopped]))).toBe(false);
+    expect(turnLeftOpenByTheLastHost(stored([said("go"), worked, { type: "error", message: "ACP connection closed" }]))).toBe(false);
+    expect(turnLeftOpenByTheLastHost(stored([]))).toBe(false);
+  });
+
+  test("is none the agent never worked on, which has no session a resume could continue", () => {
+    expect(turnLeftOpenByTheLastHost(stored([said("go")]))).toBe(false);
+    expect(turnLeftOpenByTheLastHost(stored([said("first"), worked, stopped, said("go")]))).toBe(false);
   });
 });
 

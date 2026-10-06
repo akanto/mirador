@@ -222,11 +222,11 @@ class TimelineBuilder {
           text: `Files put back to how they were before the turn of “${this.messageAt(event.toSeq)}”`,
         });
       case "turn-end":
-        this.currentPlan = null;
-        this.subagentsOfThisTurn.splice(0).forEach((subagent) => (subagent.turnEnded = event.stopReason));
+        this.endTurn(event.stopReason);
         if (event.stopReason === "end_turn") return;
         return this.push({ kind: "notice", ...origin, text: `Turn ended: ${event.stopReason.replaceAll("_", " ")}` });
       case "error": {
+        this.endTurn("cancelled");
         this.dropAgentEchoOf(event.message);
         const block: ErrorBlock = {
           kind: "error",
@@ -312,6 +312,12 @@ class TimelineBuilder {
   private subagentOf(update: { _meta?: { [key: string]: unknown } | null }) {
     const { parentToolUseId } = claudeCodeMeta(update);
     return parentToolUseId ? this.toolBlocks.get(parentToolUseId)?.subagent : undefined;
+  }
+
+  /** Whether the turn ended of its own accord, was stopped, or was cut short by an error: its subagents end with it. */
+  private endTurn(stopReason: StopReason) {
+    this.currentPlan = null;
+    this.subagentsOfThisTurn.splice(0).forEach((subagent) => (subagent.turnEnded = stopReason));
   }
 
   /** Claude Code says an API error as the agent's message, and the failed prompt reports it again as an error. */

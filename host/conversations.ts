@@ -130,6 +130,7 @@ export class ConversationService {
   ) {
     this.checkpoints = new Checkpoints(config.dataDir);
     this.cancelPermissionsOrphanedByRestart();
+    this.endTurnsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
     this.conversationsWithQuestions = new Set(store.listCanvasItemsWithStatus("waiting").map(({ conversationId }) => conversationId));
     this.jobWaits = new JobWaits(store, {
@@ -1088,6 +1089,14 @@ export class ConversationService {
     });
   }
 
+  /** A turn the host was killed in the middle of has no end in the log, which leaves its subagent cards working for good. */
+  private endTurnsOrphanedByRestart() {
+    this.store.listConversations().forEach(({ id }) => {
+      if (this.store.latestTurnEvent(id)?.type !== "user-message") return;
+      if (turnLeftOpenByTheLastHost(this.store.listEvents(id))) this.store.appendEvent(id, { type: "turn-end", stopReason: "cancelled" });
+    });
+  }
+
   private cancelPermissionsOrphanedByRestart() {
     this.store.listConversations().forEach((conversation) => {
       const events = this.store.listEvents(conversation.id);
@@ -1292,7 +1301,17 @@ interface TurnRequest {
   imageIds: string[];
 }
 
-const endsTurn = ({ event }: StoredEvent) => event.type === "turn-end" || event.type === "error";
+const endsTurn = ({ event }: Pick<StoredEvent, "event">) => event.type === "turn-end" || event.type === "error";
+
+/**
+ * A turn the previous host died in the middle of: it began, the agent worked on it, and nothing ended it. A turn the
+ * agent never worked on is not one, since an end written for it would claim a session that can be resumed.
+ */
+export function turnLeftOpenByTheLastHost(events: StoredEvent[]): boolean {
+  const began = events.findLastIndex(({ event }) => event.type === "user-message" || endsTurn({ event }));
+  if (events[began]?.event.type !== "user-message") return false;
+  return events.slice(began + 1).some(({ event }) => event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate));
+}
 
 /** What the user asked in the turn that ended last: the message that started it and any that joined it. */
 export function lastTurnRequest(events: StoredEvent[]): TurnRequest | null {
