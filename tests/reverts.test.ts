@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { pendingReverts, turnTitle, undoableTurns, whatChanged, withRevertNotes } from "../shared/reverts.ts";
+import { pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, withRevertNotes } from "../shared/reverts.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>
   ({ type: "user-message", text, ...extra }) as ConversationEvent;
 const revertEvent = (revertId: string, toSeq: number, restored = 1, removed = 0) => ({ type: "revert", revertId, toSeq, restored, removed }) as ConversationEvent;
+const said = (messageId?: string) =>
+  ({ type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hi" }, ...(messageId && { messageId }) } }) as ConversationEvent;
 const stored = (...events: ConversationEvent[]): StoredEvent[] => events.map((event, index) => ({ seq: index + 1, at: 0, event }));
 
 test("a turn is undoable when Mirador kept the files it began with", () => {
@@ -38,4 +40,23 @@ test("a turn is named by its message's first line, shortened when long", () => {
   expect(turnTitle("Fix the parser\nand its tests")).toBe("Fix the parser");
   expect(turnTitle(`${"x".repeat(80)}`)).toHaveLength(61);
   expect(turnTitle("   ")).toBe("an earlier turn");
+});
+
+test("a rewind to a turn leaves the turns from there on, and none before it", () => {
+  const events = stored(userMessage("first"), userMessage("second"), userMessage("third"));
+  expect(turnsFrom(events, 2)).toEqual([
+    { seq: 2, text: "second" },
+    { seq: 3, text: "third" },
+  ]);
+  expect(turnsFrom(events, 1)).toHaveLength(3);
+});
+
+test("a rewind goes back to the last thing the agent said before the turn", () => {
+  const events = stored(userMessage("first"), said("msg_1"), said("msg_1"), said("msg_2"), userMessage("second"), said("msg_3"));
+  expect(rewindPointBefore(events, 5)).toBe("msg_2");
+});
+
+test("a rewind to the first turn has nothing of the agent's to go back to", () => {
+  expect(rewindPointBefore(stored(userMessage("first"), said("msg_1")), 1)).toBeNull();
+  expect(rewindPointBefore(stored(said(), userMessage("first")), 2)).toBeNull();
 });

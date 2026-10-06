@@ -62,6 +62,15 @@ describe("Store", () => {
     expect(store.listEvents("c1").map(({ seq }) => seq)).toEqual([1, 2]);
   });
 
+  test("dropping the events from a point on leaves the ones before, and does not hand their numbers out again", () => {
+    const { store } = seededStore();
+    ["a", "b", "c"].forEach((text) => store.appendEvent("c1", { type: "user-message", text }));
+    store.deleteEventsFrom("c1", 2);
+    expect(store.listEvents("c1").map(({ seq }) => seq)).toEqual([1]);
+    store.appendEvent("c1", { type: "user-message", text: "d" });
+    expect(store.listEvents("c1").map(({ seq }) => seq)).toEqual([1, 4]);
+  });
+
   test("the latest turns start at a user message, and the first turn takes along what came before it", () => {
     const { store } = seededStore();
     const reply = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } } } as const;

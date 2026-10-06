@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type * as acp from "@agentclientprotocol/sdk";
 import {
   harnessLabels,
+  harnessRewinds,
   type Activity,
   type AdoptMode,
   type AskMode,
@@ -32,7 +33,7 @@ import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
-import { pendingReverts, withRevertNotes, type Revert } from "../shared/reverts.ts";
+import { pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
@@ -56,6 +57,10 @@ const LISTED_SESSIONS = 30;
 const TITLE_LENGTH = 60;
 const CONTINUE_AFTER_INTERRUPTION = "Continue where you left off.";
 const NO_FILES_KEPT = "Mirador kept no files for that turn, so there is nothing to undo it to.";
+const AGENT_IS_WORKING = "The agent is still working. Stop its turn before going back.";
+const NOT_A_TURN = "A conversation can be taken back only to one of your own messages.";
+const AGENT_CANNOT_FORK = "The agent cannot be sent back to an earlier point in its session.";
+const ONLY_CLAUDE_CODE_REWINDS = "Taking a conversation back needs the agent to leave part of its own session behind, which only Claude Code can do here.";
 const ONLY_GIT_REPOSITORIES = "Mirador keeps a turn's files only in a workspace that is a git repository.";
 const TURN_STOP_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
@@ -447,6 +452,79 @@ export class ConversationService {
     const plan = await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
     this.append(conversationId, { type: "revert", revertId: crypto.randomUUID(), toSeq: seq, restored: plan.restored, removed: plan.removed });
     return plan;
+  }
+
+  /**
+   * What rewinding to this turn would do: the conversation loses its turns from here on, and the files go back to how
+   * they were when the turn began. `filesNote` says why the files will be left alone, when they will be.
+   */
+  async previewRewind(conversationId: string, seq: number): Promise<{ turnsLeaving: number; keptFrom: string | null; plan: RestorePlan | null; cannotRewind?: string; filesNote?: string }> {
+    const events = this.store.listEvents(conversationId);
+    const turnsLeaving = turnsFrom(events, seq).length;
+    const before = events.filter(({ seq: at, event }) => at < seq && event.type === "user-message");
+    const kept = before.at(-1)?.event;
+    const keptFrom = kept?.type === "user-message" ? turnTitle(kept.text) : null;
+    const cannotRewind = this.rewindProblem(conversationId, seq);
+    if (cannotRewind) return { turnsLeaving, keptFrom, plan: null, cannotRewind };
+    const { plan, cannotUndo } = await this.previewRevert(conversationId, seq);
+    return { turnsLeaving, keptFrom, plan, ...(cannotUndo && { filesNote: cannotUndo }) };
+  }
+
+  /**
+   * Takes the conversation, the workspace's files and the agent's session back to how they were before the turn that
+   * began with the message at `seq`. The agent goes on in a session forked so that it holds only what came before —
+   * the prefix is the same bytes it was, so the agent's cached context still counts — and the events from there on are
+   * dropped, which leaves what the agent has and what the user sees the same.
+   */
+  async rewind(conversationId: string, seq: number): Promise<{ fromSeq: number }> {
+    const cannotRewind = this.rewindProblem(conversationId, seq);
+    if (cannotRewind) throw new Error(cannotRewind);
+    const runtime = this.runtime(conversationId);
+    const conversation = this.get(conversationId);
+    const point = rewindPointBefore(this.store.listEvents(conversationId), seq);
+    this.setStatus(conversationId, "starting", "Going back…");
+    try {
+      const forked = point && conversation.acpSessionId ? await this.forkSessionAt(conversationId, point) : null;
+      const checkpoint = this.checkpointAt(conversationId, seq);
+      if (checkpoint) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
+      const released = this.releaseSession(runtime, conversation.acpSessionId);
+      this.store.deleteEventsFrom(conversationId, seq);
+      this.contextUsage.delete(conversationId);
+      this.save({ ...this.get(conversationId), acpSessionId: forked });
+      this.hub.publishToConversation(conversationId, { type: "conversation.rewound", conversationId, fromSeq: seq });
+      await released;
+      return { fromSeq: seq };
+    } finally {
+      this.setStatus(conversationId, "idle");
+    }
+  }
+
+  /**
+   * A copy of the agent's session that holds only what it had said up to `point`. The fork point is named the way
+   * claude-agent-acp asks for it, in `_meta.jetbrains.air.fork`; an agent that ignores it forks the whole session, so
+   * `harnessRewinds` keeps those agents out of here.
+   */
+  private async forkSessionAt(conversationId: string, point: string) {
+    const conversation = this.get(conversationId);
+    const harness = this.harnessFor(conversation);
+    this.runtime(conversationId).harness = harness;
+    const capabilities = await harness.start();
+    if (!capabilities.agentCapabilities?.sessionCapabilities?.fork) throw new Error(AGENT_CANNOT_FORK);
+    const { sessionId } = await harness.forkSession({
+      sessionId: conversation.acpSessionId!,
+      cwd: await recordedDirectory(this.existingWorkspace(conversation.workspaceId)),
+      _meta: { jetbrains: { air: { fork: { version: 1, messageId: point } } } },
+    });
+    return sessionId;
+  }
+
+  /** Why the conversation cannot go back to this turn, if it cannot. */
+  private rewindProblem(conversationId: string, seq: number) {
+    if (this.runtime(conversationId).running) return AGENT_IS_WORKING;
+    if (this.store.findEvent(conversationId, seq)?.event.type !== "user-message") return NOT_A_TURN;
+    const point = rewindPointBefore(this.store.listEvents(conversationId), seq);
+    if (!point) return undefined; // The agent holds nothing of what came before, so a fresh session says the same.
+    return harnessRewinds[this.get(conversationId).harness] ? undefined : ONLY_CLAUDE_CODE_REWINDS;
   }
 
   private checkpointAt(conversationId: string, seq: number) {

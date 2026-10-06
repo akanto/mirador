@@ -110,6 +110,10 @@ export type ClientMessage =
   | { type: "conversation.revert-preview"; requestId: string; conversationId: string; seq: number }
   /** Puts the workspace's files back to how they were before the turn that began with the message at `seq`. */
   | { type: "conversation.revert"; requestId: string; conversationId: string; seq: number }
+  /** What taking the conversation and the files back to before the turn that began with the message at `seq` would do. */
+  | { type: "conversation.rewind-preview"; requestId: string; conversationId: string; seq: number }
+  /** Takes the conversation and the workspace's files back to how they were before the turn at `seq`, and the agent with them. */
+  | { type: "conversation.rewind"; requestId: string; conversationId: string; seq: number }
   | { type: "conversation.run-command"; conversationId: string; command: string }
   | { type: "conversation.stop-command"; conversationId: string; commandId: string }
   | { type: "conversation.drop-command-outputs"; conversationId: string; commandIds: string[] }
@@ -223,6 +227,16 @@ export type ServerMessage =
   | { type: "conversation.revert-previewed"; requestId: string; plan: RestorePlan | null; cannotUndo?: string }
   | { type: "conversation.reverted"; requestId: string; plan: RestorePlan }
   | { type: "conversation.revert-failed"; requestId: string; message: string }
+  /**
+   * `turnsLeaving` and `keptFrom` say what the conversation loses: how many turns, and the turn it goes back to (null
+   * keptFrom: all of them). `cannotRewind` says why it cannot go back at all, `filesNote` why the files stay as they are.
+   */
+  | { type: "conversation.rewind-previewed"; requestId: string; turnsLeaving: number; keptFrom: string | null; plan: RestorePlan | null; cannotRewind?: string; filesNote?: string }
+  /** The rewind this page asked for is done: the events from `fromSeq` on are gone. */
+  | { type: "conversation.rewind-done"; requestId: string; conversationId: string; fromSeq: number }
+  /** The conversation was taken back to before `fromSeq`, which every page showing it drops its events from. */
+  | { type: "conversation.rewound"; conversationId: string; fromSeq: number }
+  | { type: "conversation.rewind-failed"; requestId: string; message: string }
   | { type: "canvas.upserted"; item: CanvasItem }
   | { type: "fs.completions"; requestId: string; directories: string[] }
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }

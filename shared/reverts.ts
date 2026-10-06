@@ -25,15 +25,34 @@ export function pendingReverts(events: StoredEvent[]): Revert[] {
     .map(({ revertId, toSeq, restored, removed }) => ({ revertId, toSeq, restored, removed, toMessage: messageOf(events, toSeq) }));
 }
 
-/** A turn whose files Mirador kept, so the files can be put back to how they were before it began. */
-export interface UndoableTurn {
+/** A turn of the conversation, named by the message that began it. */
+export interface Turn {
   seq: number;
   text: string;
 }
 
-/** The turns of the conversation that can be undone, oldest first. */
-export function undoableTurns(events: StoredEvent[]): UndoableTurn[] {
+/** The turns of the conversation whose files Mirador kept, so they can be put back, oldest first. */
+export function undoableTurns(events: StoredEvent[]): Turn[] {
   return events.flatMap(({ seq, event }) => (event.type === "user-message" && event.checkpoint ? [{ seq, text: event.text }] : []));
+}
+
+/** The turns from `seq` on: what a rewind to that point takes out of the conversation. */
+export function turnsFrom(events: StoredEvent[], seq: number): Turn[] {
+  return events.flatMap(({ seq: at, event }) => (event.type === "user-message" && at >= seq ? [{ seq: at, text: event.text }] : []));
+}
+
+/**
+ * The agent's own mark of the last thing it said before the turn at `seq`, which is where a rewind sends its session
+ * back to: a fork point names an assistant message, and the agent hands out one mark per reply that both its live
+ * session and its transcript on disk agree on.
+ */
+export function rewindPointBefore(events: StoredEvent[], seq: number): string | null {
+  const said = events.flatMap(({ seq: at, event }) =>
+    at < seq && event.type === "acp" && event.update.sessionUpdate === "agent_message_chunk" && event.update.messageId
+      ? [event.update.messageId]
+      : [],
+  );
+  return said.at(-1) ?? null;
 }
 
 /** The start of a turn's message, short enough to name that turn in a label or a note. */

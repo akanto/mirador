@@ -1,6 +1,6 @@
 import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
-import type { UndoableTurn } from "../shared/reverts.ts";
+import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 
 export interface OpenConversation {
@@ -22,7 +22,8 @@ export type Overlay =
   | { kind: "sessions"; workspaceId: string }
   | { kind: "workspace-color"; workspaceId: string }
   | { kind: "add-workspace" }
-  | { kind: "revert"; conversationId: string; turn: UndoableTurn }
+  /** `rewind` takes the conversation and the files back; without it only the files are put back. */
+  | { kind: "revert"; conversationId: string; turn: Turn; rewind?: boolean }
   | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
@@ -185,6 +186,9 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         const lastSeq = open.events.at(-1)?.seq ?? 0;
         return message.event.seq <= lastSeq ? open : { ...open, events: [...open.events, message.event] };
       });
+    case "conversation.rewound":
+    case "conversation.rewind-done":
+      return withOpen(state, message.conversationId, (open) => ({ ...open, events: open.events.filter(({ seq }) => seq < message.fromSeq) }));
     case "canvas.upserted":
       return withOpen(state, message.item.conversationId, (open) => ({ ...open, canvas: upsert(open.canvas, withThisPagesAssetsOrigin(state, message.item)) }));
     case "profile.upserted":
@@ -230,6 +234,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "conversation.revert-previewed":
     case "conversation.reverted":
     case "conversation.revert-failed":
+    case "conversation.rewind-previewed":
+    case "conversation.rewind-failed":
       return state;
     case "join-request.answered":
       return message.problem ? { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.problem }] } : state;

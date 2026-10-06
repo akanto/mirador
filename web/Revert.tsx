@@ -1,27 +1,55 @@
 import { createContext, useEffect, useState } from "react";
 import type { RestorePlan } from "../shared/model.ts";
-import { whatChanged, type UndoableTurn } from "../shared/reverts.ts";
+import { whatChanged, type Turn } from "../shared/reverts.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { Modal } from "./Palette.tsx";
 
-/** How the page asks to undo a turn; the dialog it opens lives at the top of the page, so both the message and the palette reach it. */
-export type AskToRevert = (turn: UndoableTurn) => void;
-
-/** The entries of a long timeline are memoized, so the way to ask reaches each message as context rather than as a prop. */
-export const AskToUndoFiles = createContext<AskToRevert>(() => {});
-
-interface Preview {
-  plan: RestorePlan | null;
-  cannotUndo?: string;
+/** What a turn's message offers: going back to it, and putting its files back where the agent cannot go back. */
+export interface UndoRequest {
+  turn: Turn;
+  rewind: boolean;
 }
 
-const previewRevert = (conversationId: string, seq: number) =>
+/** How the page asks to go back; the dialog it opens lives at the top of the page, so both the message and the palette reach it. */
+export type AskToRevert = (request: UndoRequest) => void;
+
+/** The entries of a long timeline are memoized, so the way to ask reaches each message as context rather than as a prop. */
+export const AskToRevert = createContext<AskToRevert>(() => {});
+
+/** What the dialog says while it is up, as the host works it out. */
+interface Preview {
+  plan: RestorePlan | null;
+  /** Why the files stay as they are, when they do. */
+  filesNote?: string;
+  /** Why the conversation cannot go back, when it cannot. */
+  cannotRewind?: string;
+  /** What a rewind leaves: how many turns go, and the turn it goes back to; null keptFrom: all of them. */
+  turnsLeaving?: number;
+  keptFrom?: string | null;
+}
+
+const previewFiles = (conversationId: string, seq: number) =>
   connection.sendAndAwait(
     (requestId) => ({ type: "conversation.revert-preview", requestId, conversationId, seq }),
     (message, requestId) => {
-      if (message.type === "conversation.revert-previewed" && message.requestId === requestId) return { plan: message.plan, cannotUndo: message.cannotUndo };
+      if (message.type === "conversation.revert-previewed" && message.requestId === requestId) {
+        return { plan: message.plan, ...(message.cannotUndo && { filesNote: message.cannotUndo }) };
+      }
       if (message.type === "conversation.revert-failed" && message.requestId === requestId) throw new Error(message.message);
+      return undefined;
+    },
+  );
+
+const previewRewind = (conversationId: string, seq: number) =>
+  connection.sendAndAwait(
+    (requestId) => ({ type: "conversation.rewind-preview", requestId, conversationId, seq }),
+    (message, requestId) => {
+      if (message.type === "conversation.rewind-previewed" && message.requestId === requestId) {
+        const { plan, cannotRewind, filesNote, turnsLeaving, keptFrom } = message;
+        return { plan, ...(cannotRewind && { cannotRewind }), ...(filesNote && { filesNote }), ...(turnsLeaving !== undefined && { turnsLeaving }), keptFrom };
+      }
+      if (message.type === "conversation.rewind-failed" && message.requestId === requestId) throw new Error(message.message);
       return undefined;
     },
   );
@@ -36,50 +64,76 @@ const putFilesBack = (conversationId: string, seq: number) =>
     },
   );
 
-/** What undoing the turn would do to the files, which the host works out while the dialog is up. */
-function usePreview(conversationId: string, seq: number) {
+const rewindTo = (conversationId: string, seq: number) =>
+  connection.sendAndAwait(
+    (requestId) => ({ type: "conversation.rewind", requestId, conversationId, seq }),
+    (message, requestId) => {
+      if (message.type === "conversation.rewind-done" && message.requestId === requestId) return message.fromSeq;
+      if (message.type === "conversation.rewind-failed" && message.requestId === requestId) throw new Error(message.message);
+      return undefined;
+    },
+  );
+
+/** What going back to the turn would do, which the host works out while the dialog is up. */
+function usePreview(conversationId: string, seq: number, rewind: boolean) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     let showing = true;
-    previewRevert(conversationId, seq).then(
+    const asked = rewind ? previewRewind(conversationId, seq) : previewFiles(conversationId, seq);
+    asked.then(
       (answered) => showing && setPreview(answered),
       (error) => showing && setProblem(error instanceof Error ? error.message : String(error)),
     );
     return () => {
       showing = false;
     };
-  }, [conversationId, seq]);
+  }, [conversationId, seq, rewind]);
   return { preview, problem, setProblem };
 }
 
-export function RevertDialog({ conversationId, turn, onClose }: { conversationId: string; turn: UndoableTurn; onClose: () => void }) {
-  const { preview, problem, setProblem } = usePreview(conversationId, turn.seq);
-  const [undoing, setUndoing] = useState(false);
+/** What the conversation loses: the turns from this one on, and the agent's own history with them. */
+function whatLeaves({ turnsLeaving = 1, keptFrom }: Preview) {
+  const turns = `${turnsLeaving} ${turnsLeaving === 1 ? "turn" : "turns"}`;
+  return keptFrom
+    ? `${turns} leave the conversation, and the agent's own history goes back with them, to before “${keptFrom}”.`
+    : "Every turn leaves the conversation, and the agent starts over with nothing of it.";
+}
 
-  const undo = async () => {
-    setUndoing(true);
+/** What the files do: they go back too, or they stay as they are and this says why. */
+function whatFiles(preview: Preview, rewind: boolean) {
+  if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
+  if (!preview.plan) return "";
+  const changed = `${whatChanged(preview.plan)} since this turn began.`;
+  return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
+}
+
+export function RevertDialog({ conversationId, turn, rewind, onClose }: { conversationId: string; turn: Turn; rewind: boolean; onClose: () => void }) {
+  const { preview, problem, setProblem } = usePreview(conversationId, turn.seq, rewind);
+  const [working, setWorking] = useState(false);
+  const go = async () => {
+    setWorking(true);
     try {
-      await putFilesBack(conversationId, turn.seq);
+      await (rewind ? rewindTo(conversationId, turn.seq) : putFilesBack(conversationId, turn.seq));
       onClose();
     } catch (error) {
-      setUndoing(false);
+      setWorking(false);
       setProblem(error instanceof Error ? error.message : String(error));
     }
   };
-
-  const plan = preview?.plan;
-  const cannotUndo = problem ?? preview?.cannotUndo;
+  const blocked = problem ?? preview?.cannotRewind;
+  const files = preview && !blocked ? whatFiles(preview, rewind) : "";
   return (
-    <Modal label="Undo the files of a turn" className="revert" onClose={onClose}>
-      <h2>Undo the files</h2>
+    <Modal label={rewind ? "Rewind to here" : "Undo the files of a turn"} className="revert" onClose={onClose}>
+      <h2>{rewind ? "Rewind to here" : "Undo the files"}</h2>
       <p className="revert-turn">{turn.text}</p>
-      {cannotUndo ? (
-        <p className="revert-summary">{cannotUndo}</p>
-      ) : plan ? (
-        <p className="revert-summary">
-          {whatChanged(plan)} since this turn began. The turn above stays in the conversation, and the agent is told the files no longer hold it.
-        </p>
+      {blocked ? (
+        <p className="revert-summary">{blocked}</p>
+      ) : preview ? (
+        <>
+          {rewind && <p className="revert-summary">{whatLeaves(preview)}</p>}
+          {files && <p className="revert-summary">{files}</p>}
+        </>
       ) : (
         <p className="revert-summary">Checking what would change…</p>
       )}
@@ -87,9 +141,9 @@ export function RevertDialog({ conversationId, turn, onClose }: { conversationId
         <button type="button" className="link" onClick={onClose}>
           Cancel
         </button>
-        {plan && (
-          <button type="button" className="primary" data-hint={hints.undoFilesConfirm} disabled={undoing} onClick={undo}>
-            {undoing ? "Putting the files back…" : "Put the files back"}
+        {preview && !blocked && (
+          <button type="button" className="primary" data-hint={rewind ? hints.rewindConfirm : hints.undoFilesConfirm} disabled={working} onClick={go}>
+            {working ? (rewind ? "Going back…" : "Putting the files back…") : rewind ? "Rewind" : "Put the files back"}
           </button>
         )}
       </div>
@@ -97,11 +151,11 @@ export function RevertDialog({ conversationId, turn, onClose }: { conversationId
   );
 }
 
-/** On the message that began a turn: puts the workspace's files back to how they were before that turn. */
-export function UndoFilesButton({ turn, ask }: { turn: UndoableTurn; ask: AskToRevert }) {
+/** On the message that began a turn: back to before it, or, where the agent cannot go back, its files alone. */
+export function UndoButton({ turn, rewind, ask }: { turn: Turn; rewind: boolean; ask: AskToRevert }) {
   return (
-    <button type="button" className="link undo-files" data-hint={hints.undoFiles} onClick={() => ask(turn)}>
-      Undo files
+    <button type="button" className="link undo-files" data-hint={rewind ? hints.rewind : hints.undoFiles} onClick={() => ask({ turn, rewind })}>
+      {rewind ? "Rewind to here" : "Undo files"}
     </button>
   );
 }

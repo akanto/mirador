@@ -4,6 +4,7 @@ import { flatSelectOptions } from "../shared/config-options.ts";
 import { describeJob } from "../shared/job-waits.ts";
 import {
   harnessLabels,
+  harnessRewinds,
   terminalActivityLabels,
   askModeLabels,
   type AskMode,
@@ -34,7 +35,7 @@ import { useEarlierHistory, type EarlierHistory } from "./earlier-history.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
-import { AskToUndoFiles, UndoFilesButton } from "./Revert.tsx";
+import { AskToRevert, UndoButton } from "./Revert.tsx";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
@@ -487,7 +488,7 @@ function SubagentCard({ block, conversationId }: { block: SubagentBlock; convers
       </summary>
       <div className="subagent-work">
         {block.subagent.blocks.map((child) => (
-          <TimelineEntry key={child.key} block={child} conversationId={conversationId} />
+          <TimelineEntry key={child.key} block={child} conversationId={conversationId} canRewind={false} />
         ))}
       </div>
       {block.content.map((content, index) => (
@@ -644,14 +645,14 @@ const TimestampedEntry = memo(function TimestampedEntry({
             <Timestamp at={block.at} />
           </div>
         )}
-        <TimelineEntry block={block} conversationId={conversationId} />
+        <TimelineEntry block={block} conversationId={conversationId} canRewind={harnessRewinds[harness]} />
       </div>
     </div>
   );
 });
 
-function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conversationId: string }) {
-  const askToUndoFiles = useContext(AskToUndoFiles);
+function TimelineEntry({ block, conversationId, canRewind }: { block: TimelineBlock; conversationId: string; canRewind: boolean }) {
+  const askToRevert = useContext(AskToRevert);
   switch (block.kind) {
     case "user":
       return (
@@ -660,7 +661,9 @@ function TimelineEntry({ block, conversationId }: { block: TimelineBlock; conver
             {block.text}
             <MessageImages conversationId={conversationId} imageIds={block.imageIds} />
           </div>
-          {block.undoSeq !== undefined && <UndoFilesButton turn={{ seq: block.undoSeq, text: block.text }} ask={askToUndoFiles} />}
+          {block.turnSeq !== undefined && (block.filesKept || canRewind) && (
+            <UndoButton turn={{ seq: block.turnSeq, text: block.text }} rewind={canRewind} ask={askToRevert} />
+          )}
         </>
       );
     case "agent":

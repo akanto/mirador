@@ -654,6 +654,18 @@ export function startServer(services: HostServices) {
           .revert(message.conversationId, message.seq)
           .then((plan) => reply({ type: "conversation.reverted", requestId: message.requestId, plan }))
           .catch((error) => reply({ type: "conversation.revert-failed", requestId: message.requestId, message: errorMessage(error) }));
+      case "conversation.rewind-preview":
+        return conversations
+          .previewRewind(message.conversationId, message.seq)
+          .then(({ turnsLeaving, keptFrom, plan, cannotRewind, filesNote }) =>
+            reply({ type: "conversation.rewind-previewed", requestId: message.requestId, turnsLeaving, keptFrom, plan, ...(cannotRewind && { cannotRewind }), ...(filesNote && { filesNote }) }),
+          )
+          .catch((error) => reply({ type: "conversation.rewind-failed", requestId: message.requestId, message: errorMessage(error) }));
+      case "conversation.rewind":
+        return conversations
+          .rewind(message.conversationId, message.seq)
+          .then(({ fromSeq }) => reply({ type: "conversation.rewind-done", requestId: message.requestId, conversationId: message.conversationId, fromSeq }))
+          .catch((error) => reply({ type: "conversation.rewind-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.set-ask-mode":
         return conversations.setAskMode(message.conversationId, message.askMode);
       case "conversation.set-bypass-permissions":

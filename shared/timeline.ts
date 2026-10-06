@@ -92,7 +92,7 @@ type PlanBlock = Origin & { kind: "plan"; entries: PlanEntry[] };
 
 export type TimelineBlock =
   | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string })
-  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; undoSeq?: number })
+  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; turnSeq?: number; filesKept?: true })
   | ToolBlock
   | PlanBlock
   | PermissionBlock
@@ -212,7 +212,8 @@ class TimelineBuilder {
           text: event.text,
           ...(event.imageIds && { imageIds: event.imageIds }),
           ...(event.fromScript && { fromScript: event.fromScript }),
-          ...(event.checkpoint && { undoSeq: seq }),
+          ...(seq > 0 && { turnSeq: seq }),
+          ...(event.checkpoint && { filesKept: true as const }),
         });
       case "revert":
         return this.push({

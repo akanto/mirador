@@ -607,6 +607,12 @@ export class Store {
     return stored;
   }
 
+  /** Drops the events from `seq` on, as a rewind to that point does; the seqs it frees are not handed out again. */
+  deleteEventsFrom(conversationId: string, seq: number) {
+    this.nextSeq.set(conversationId, Math.max(this.nextSeq.get(conversationId) ?? 0, this.lastEventSeq(conversationId) + 1));
+    this.db.query("DELETE FROM events WHERE conversation_id = ? AND seq >= ?").run(conversationId, seq);
+  }
+
   lastEventSeq(conversationId: string): number {
     return (this.db.query("SELECT MAX(seq) AS max FROM events WHERE conversation_id = ?").get(conversationId) as { max: number | null }).max ?? 0;
   }
