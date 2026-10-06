@@ -1,8 +1,20 @@
 import { mkdir, readdir, rm, rmdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import type { RestorePlan, Workspace } from "../shared/model.ts";
 
 const refOf = (workspaceId: string) => `refs/mirador/${workspaceId}`;
+
+/** git's `-z --name-status` output: a status and a path, each ended by NUL, with names left as they are. */
+function statusAndPathOf(output: string) {
+  const fields = output.split("\0").filter(Boolean);
+  return fields.flatMap((field, index) => (index % 2 === 1 ? [] : [{ status: field, path: fields[index + 1] ?? "" }]));
+}
+
+/** A path git reported names a file of this workspace; any other path is not ours to delete. */
+function withinWorkspace(workspace: Workspace, path: string) {
+  const root = resolve(workspace.path);
+  return resolve(root, path).startsWith(root + sep);
+}
 const SNAPSHOT_MESSAGE = "mirador: the files at the start of a turn";
 const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost", "-c", "commit.gpgsign=false"];
 
@@ -66,10 +78,10 @@ export class Checkpoints {
   /** What a restore would change: what to put back or rewrite, what to delete, and the paths to delete. */
   private async diffToNow(workspace: Workspace, commit: string) {
     const now = await this.stageEverything(workspace);
-    const diff = await this.git(workspace, ["diff-tree", "-r", "--name-status", "--no-renames", commit, now]);
-    const changes = diff.stdout.split("\n").filter(Boolean).map((line) => line.split("\t"));
-    const withStatus = (letters: string[]) => changes.filter(([status]) => letters.includes(status)).length;
-    const added = changes.filter(([status]) => status === "A").map(([, path]) => path);
+    const diff = await this.git(workspace, ["diff-tree", "-r", "-z", "--name-status", "--no-renames", commit, now]);
+    const changes = statusAndPathOf(diff.stdout);
+    const withStatus = (letters: string[]) => changes.filter(({ status }) => letters.includes(status)).length;
+    const added = changes.filter(({ status }) => status === "A").map(({ path }) => path);
     return { restored: withStatus(["M", "D"]), removed: added.length, added };
   }
 
@@ -90,7 +102,7 @@ export class Checkpoints {
 
   private async deleteFiles(workspace: Workspace, paths: string[]) {
     await Promise.all(
-      paths.map(async (path) => {
+      paths.filter((path) => withinWorkspace(workspace, path)).map(async (path) => {
         const full = join(workspace.path, path);
         await rm(full, { force: true });
         await this.pruneEmptyDirectories(workspace.path, dirname(full));

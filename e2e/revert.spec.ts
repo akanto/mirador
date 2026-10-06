@@ -10,6 +10,7 @@ const promptsFile = join(host.root, "prompts");
 const profileName = "rewindable";
 const readme = join(host.projectDir, "README.md");
 const made = join(host.projectDir, "made.txt");
+const accented = join(host.projectDir, "café.txt");
 let headAtStart = "";
 
 /** An opencode stand-in that is an agent of its own, taking prompts and ending its turns at once. */
@@ -75,14 +76,16 @@ test("a turn's files go back to how they were, the agent hears about it, and you
   await test.step("the dialog says what the undo would change, and putting the files back does it", async () => {
     writeFileSync(readme, "changed by the turn\n");
     writeFileSync(made, "made by the turn\n");
+    writeFileSync(accented, "made by the turn, with a name git would quote\n");
     await userMessage(page).hover();
     await undoFiles(page).click();
     const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-    await expect(dialog).toContainText("1 file put back as they were and 1 file created since deleted");
+    await expect(dialog).toContainText("1 file put back as they were and 2 files created since deleted");
     await dialog.getByRole("button", { name: "Put the files back" }).click();
     await expect(dialog).toHaveCount(0);
     expect(readFileSync(readme, "utf8")).toBe("# e2e project\n");
     expect(() => readFileSync(made, "utf8")).toThrow();
+    expect(() => readFileSync(accented, "utf8")).toThrow();
   });
 
   await test.step("the conversation keeps the turn and notes the undo", async () => {
