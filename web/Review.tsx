@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import type { CanvasItem } from "../shared/model.ts";
 import {
   anchorLabel,
@@ -112,20 +112,28 @@ function questionAbout(title: string, place: AskingAbout, finding: ReviewFinding
 
 const AGENT_EDIT_FLASH_MS = 2000;
 
-/** Whether the agent changed this part of the review just now, while it was on screen, to draw the eye to it for a moment. */
+/** For the review on screen: the agent's edit it opened with, and the edit each part last flashed for. */
+const ShownAgentEdits = createContext({ openedWith: undefined as number | undefined, flashed: new Map<string, number>() });
+
+/**
+ * Whether to draw the eye to this part for a moment because the agent changed it since the review opened. Each change
+ * flashes once, when the part is first on screen: a finding the agent adds as it appears, a verdict changed while
+ * another tab was open when that tab opens.
+ */
 function useAgentEdited(review: Review, part: string) {
-  const at = review.agentEdit?.at;
-  const seenAt = useRef(at);
+  const shown = useContext(ShownAgentEdits);
+  const edit = review.agentEdit;
   const [flashing, setFlashing] = useState(false);
   useEffect(() => {
-    if (at === seenAt.current) return;
-    seenAt.current = at;
-    const changed = Boolean(review.agentEdit?.parts.includes(part));
-    setFlashing(changed);
-    if (!changed) return;
+    if (!edit || edit.at === shown.openedWith || !edit.parts.includes(part) || shown.flashed.get(part) === edit.at) return;
+    shown.flashed.set(part, edit.at);
+    setFlashing(true);
     const timer = setTimeout(() => setFlashing(false), AGENT_EDIT_FLASH_MS);
-    return () => clearTimeout(timer);
-  }, [at]);
+    return () => {
+      clearTimeout(timer);
+      setFlashing(false);
+    };
+  }, [edit?.at]);
   return flashing;
 }
 
@@ -984,6 +992,7 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   const [selection, setSelection] = useState<LineSelection | null>(null);
   const [asking, setAsking] = useState<AskingAbout | null>(null);
   const [sentNote, setSentNote] = useState<string | null>(null);
+  const [shownAgentEdits] = useState(() => ({ openedWith: review.agentEdit?.at, flashed: new Map<string, number>() }));
   const enterWhileBusy = useEnterWhileBusy();
   const fullscreen = usePaneFullscreen("canvas");
   const file = files.find((each) => each.path === path) ?? files[0];
@@ -1107,124 +1116,126 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   };
 
   return (
-    <div className="review" ref={root} tabIndex={-1} onKeyDown={onKeyDown}>
-      <div className="review-bar">
-        <div className="review-tabs" role="tablist" aria-label="Review">
-          {shownTabs.map(({ id, label, key }) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "selected" : ""} data-shortcut={key} onClick={() => setTab(id)}>
-              {label}
-              {id === "flow" && <span className="tab-count">{review.flow.length}</span>}
-              {id === "files" && <span className="tab-count">{review.files.length}</span>}
-              {id === "findings" && <span className="tab-count">{review.findings.filter((each) => each.decision === "keep").length}</span>}
-              {id === "conversations" && <span className="tab-count">{answers.filter((each) => each.decision === "keep").length}</span>}
-            </button>
-          ))}
-        </div>
-        <span className="spacer" />
-        {selection && (
-          <span className="selection-actions">
-            <span className="selection-label">{selectionLabel(selection)}</span>
-            <button type="button" onClick={() => setAsking(selection)}>
-              Ask (a)
-            </button>
-            <button type="button" onClick={() => openInEditor(item.id, selection.path, lineToOpen(selection.rows))}>
-              Open in IDEA (o)
-            </button>
-          </span>
-        )}
-        {fullscreen && (
-          <button type="button" className="placement-toggle" data-hint={hints.reviewPlacement} onClick={() => fullscreen.setFullscreen(!fullscreen.isFullscreen)}>
-            {fullscreen.isFullscreen ? "Beside the chat" : "Full screen"}
-          </button>
-        )}
-      </div>
-      <div className="review-body">
-        {tab === "overview" && (
-          <Overview
-            item={item}
-            onStep={(index) => {
-              setStepIndex(index);
-              setTab("flow");
-            }}
-            onFinding={(id) => showFinding(id, "findings")}
-            onAnswer={(id) => {
-              setAnswerId(id);
-              setTab("conversations");
-            }}
-          />
-        )}
-        {tab === "flow" && <FlowTour item={item} stepIndex={stepIndex} onStep={setStepIndex} selection={selection} onSelect={select} onGoToCode={goToCode} />}
-        {tab === "files" && (
-          <div className="review-split files-view">
-            <FileList files={files} review={review} path={file?.path ?? null} onPath={(next) => showFile(next)} filterField={filterField} />
-            {file ? (
-              <FileDiff
-                key={file.path}
-                item={item}
-                file={file}
-                hunkIndex={hunkIndex}
-                findingId={findingId}
-                selection={selection}
-                onSelect={select}
-                onAsk={(target) => setAsking(placeOfFinding(target))}
-              />
-            ) : (
-              <p className="review-empty">No files changed.</p>
-            )}
-          </div>
-        )}
-        {tab === "findings" && (
-          <div className="findings-view">
-            {review.findings.length === 0 && <p className="review-empty">The agent found nothing to comment on.</p>}
-            {review.findings.map((each) => (
-              <FindingCard
-                key={each.id}
-                item={item}
-                finding={each}
-                selected={each.id === findingId}
-                showsCode
-                selection={selection}
-                onSelect={select}
-                onGoToCode={() => goToCode(each.at)}
-                onAsk={() => setAsking(placeOfFinding(each))}
-              />
+    <ShownAgentEdits.Provider value={shownAgentEdits}>
+      <div className="review" ref={root} tabIndex={-1} onKeyDown={onKeyDown}>
+        <div className="review-bar">
+          <div className="review-tabs" role="tablist" aria-label="Review">
+            {shownTabs.map(({ id, label, key }) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "selected" : ""} data-shortcut={key} onClick={() => setTab(id)}>
+                {label}
+                {id === "flow" && <span className="tab-count">{review.flow.length}</span>}
+                {id === "files" && <span className="tab-count">{review.files.length}</span>}
+                {id === "findings" && <span className="tab-count">{review.findings.filter((each) => each.decision === "keep").length}</span>}
+                {id === "conversations" && <span className="tab-count">{answers.filter((each) => each.decision === "keep").length}</span>}
+              </button>
             ))}
-            <PostPanel item={item} />
           </div>
-        )}
-        {tab === "conversations" && (
-          <div className="findings-view">
-            {answers.map((each) => (
-              <AnswerCard key={each.id} item={item} answer={each} selected={each.id === answerId} />
-            ))}
-            <PostPanel item={item} />
-          </div>
-        )}
-      </div>
-      {asking && (
-        <AskAboutLines
-          label={askingLabel(asking)}
-          onSend={send}
-          onClose={() => {
-            setAsking(null);
-            root.current?.focus();
-          }}
-        />
-      )}
-      {sentNote && (
-        <div className="review-sent" role="status">
-          {sentNote}
-          {fullscreen?.isFullscreen && (
-            <button type="button" className="link" onClick={() => fullscreen.setFullscreen(false)}>
-              Show the chat
+          <span className="spacer" />
+          {selection && (
+            <span className="selection-actions">
+              <span className="selection-label">{selectionLabel(selection)}</span>
+              <button type="button" onClick={() => setAsking(selection)}>
+                Ask (a)
+              </button>
+              <button type="button" onClick={() => openInEditor(item.id, selection.path, lineToOpen(selection.rows))}>
+                Open in IDEA (o)
+              </button>
+            </span>
+          )}
+          {fullscreen && (
+            <button type="button" className="placement-toggle" data-hint={hints.reviewPlacement} onClick={() => fullscreen.setFullscreen(!fullscreen.isFullscreen)}>
+              {fullscreen.isFullscreen ? "Beside the chat" : "Full screen"}
             </button>
           )}
         </div>
-      )}
-      <footer className="review-keys" aria-hidden="true">
-        <kbd>1</kbd>–<kbd>{shownTabs.length}</kbd> tabs · <kbd>←</kbd>/<kbd>→</kbd> tour · <kbd>j</kbd>/<kbd>k</kbd> changes · <kbd>n</kbd>/<kbd>p</kbd> findings ·{" "}
-        <kbd>f</kbd> files · click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in IDEA
-      </footer>
-    </div>
+        <div className="review-body">
+          {tab === "overview" && (
+            <Overview
+              item={item}
+              onStep={(index) => {
+                setStepIndex(index);
+                setTab("flow");
+              }}
+              onFinding={(id) => showFinding(id, "findings")}
+              onAnswer={(id) => {
+                setAnswerId(id);
+                setTab("conversations");
+              }}
+            />
+          )}
+          {tab === "flow" && <FlowTour item={item} stepIndex={stepIndex} onStep={setStepIndex} selection={selection} onSelect={select} onGoToCode={goToCode} />}
+          {tab === "files" && (
+            <div className="review-split files-view">
+              <FileList files={files} review={review} path={file?.path ?? null} onPath={(next) => showFile(next)} filterField={filterField} />
+              {file ? (
+                <FileDiff
+                  key={file.path}
+                  item={item}
+                  file={file}
+                  hunkIndex={hunkIndex}
+                  findingId={findingId}
+                  selection={selection}
+                  onSelect={select}
+                  onAsk={(target) => setAsking(placeOfFinding(target))}
+                />
+              ) : (
+                <p className="review-empty">No files changed.</p>
+              )}
+            </div>
+          )}
+          {tab === "findings" && (
+            <div className="findings-view">
+              {review.findings.length === 0 && <p className="review-empty">The agent found nothing to comment on.</p>}
+              {review.findings.map((each) => (
+                <FindingCard
+                  key={each.id}
+                  item={item}
+                  finding={each}
+                  selected={each.id === findingId}
+                  showsCode
+                  selection={selection}
+                  onSelect={select}
+                  onGoToCode={() => goToCode(each.at)}
+                  onAsk={() => setAsking(placeOfFinding(each))}
+                />
+              ))}
+              <PostPanel item={item} />
+            </div>
+          )}
+          {tab === "conversations" && (
+            <div className="findings-view">
+              {answers.map((each) => (
+                <AnswerCard key={each.id} item={item} answer={each} selected={each.id === answerId} />
+              ))}
+              <PostPanel item={item} />
+            </div>
+          )}
+        </div>
+        {asking && (
+          <AskAboutLines
+            label={askingLabel(asking)}
+            onSend={send}
+            onClose={() => {
+              setAsking(null);
+              root.current?.focus();
+            }}
+          />
+        )}
+        {sentNote && (
+          <div className="review-sent" role="status">
+            {sentNote}
+            {fullscreen?.isFullscreen && (
+              <button type="button" className="link" onClick={() => fullscreen.setFullscreen(false)}>
+                Show the chat
+              </button>
+            )}
+          </div>
+        )}
+        <footer className="review-keys" aria-hidden="true">
+          <kbd>1</kbd>–<kbd>{shownTabs.length}</kbd> tabs · <kbd>←</kbd>/<kbd>→</kbd> tour · <kbd>j</kbd>/<kbd>k</kbd> changes · <kbd>n</kbd>/<kbd>p</kbd> findings ·{" "}
+          <kbd>f</kbd> files · click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in IDEA
+        </footer>
+      </div>
+    </ShownAgentEdits.Provider>
   );
 }

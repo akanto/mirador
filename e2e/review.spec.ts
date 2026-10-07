@@ -443,6 +443,26 @@ test("the agent rewords one comment in place: the user stays on the finding they
     await expect((await openCanvasHistory(page)).locator(".history-entry")).toHaveCount(1);
   });
 
+  await test.step("a finding the agent adds flashes as it appears, and a verdict changed out of sight flashes once, when its tab opens", async () => {
+    const result = await callCanvasTool(host, conversationId, "update_review", {
+      verdict: "Approve once fetchItems calls the items API.",
+      addFindings: [{ severity: "nit", checked: "plausible", at: "items.ts:1", title: "Return type", body: "Worth typing the items?" }],
+    });
+    expect(result).toContain("updated verdict, finding-4 in place");
+    await expect(finding("Return type")).toHaveClass(/agent-edited/);
+    const verdict = view.locator(".verdict");
+    await view.getByRole("tab", { name: /Overview/ }).click();
+    await expect(verdict).toHaveText("Approve once fetchItems calls the items API.");
+    await expect(verdict).toHaveClass(/agent-edited/);
+    await expect(verdict).not.toHaveClass(/agent-edited/);
+    await view.getByRole("tab", { name: /Findings/ }).click();
+    await view.getByRole("tab", { name: /Overview/ }).click();
+    await expect(verdict).toBeVisible();
+    await page.waitForTimeout(200);
+    await expect(verdict).not.toHaveClass(/agent-edited/);
+    await view.getByRole("tab", { name: /Findings/ }).click();
+  });
+
   await test.step("an open edit box takes the agent's rewording until the user types; then it keeps their draft and shows the agent's under it", async () => {
     const rewordTo = (body: string) => callCanvasTool(host, conversationId, "update_review", { findings: [{ id: "finding-3", body }] });
     await finding("Empty items").getByRole("button", { name: "Edit" }).click();
