@@ -103,7 +103,7 @@ test("inside a desktop app that hands over no nonce, as one built before it did,
   expect((await popup).url()).toContain("example.com");
 });
 
-test("inside the macOS desktop app, ⌘W closes the open dialog or the focused terminal's shell, and with nothing to close asks the app with its nonce", async ({ page }) => {
+test("inside the macOS desktop app, ⌘W closes the open dialog, else the focused terminal's shell, and with nothing to close asks the app with its nonce", async ({ page }) => {
   const sentToDesktopApp = await actAsDesktopApp(page);
   await signIn(page, host);
   await expect.poll(sentToDesktopApp).toContainEqual({ type: "desktop-nonce-request" });
@@ -127,6 +127,15 @@ test("inside the macOS desktop app, ⌘W closes the open dialog or the focused t
     await page.locator(".terminal-pane .xterm").nth(1).click();
     await pressCommandWInTheApp();
     await expect(splits).toHaveCount(1);
+  });
+
+  await test.step("a dialog opened while a terminal has focus closes first, and the shell behind it stays", async () => {
+    await page.locator(".terminal-pane .xterm").click();
+    await page.getByRole("button", { name: "Settings…" }).evaluate((button: HTMLButtonElement) => button.click());
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    await pressCommandWInTheApp();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
+    await expect(page.locator(".terminal-pane .terminal-split")).toHaveCount(1);
   });
 
   await test.step("with focus elsewhere and no dialog open, the page asks the app to close the window", async () => {

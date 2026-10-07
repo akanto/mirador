@@ -5,8 +5,8 @@ import { desktopNonce, inDesktopApp, sendToDesktopApp } from "./desktop-bridge.t
 /** Closes what it stands for and says so, or says no and leaves ⌘W to the next. */
 type Closer = () => boolean;
 
-const focusedClosers = new Set<RefObject<Closer>>();
 const dialogClosers = new Set<RefObject<Closer>>();
+const focusedClosers = new Set<RefObject<Closer>>();
 
 function useCloser(closers: Set<RefObject<Closer>>, closer: Closer) {
   const latest = useRef(closer);
@@ -17,14 +17,14 @@ function useCloser(closers: Set<RefObject<Closer>>, closer: Closer) {
   }, [closers]);
 }
 
-/** A terminal closes its shell while focus is in it. */
-export const useClosesWhileFocused = (closer: Closer) => useCloser(focusedClosers, closer);
-
-/** When nothing focused takes it, the open dialog closes, the one opened last first. */
+/** An open dialog closes first, the one opened last first, even while focus stayed in a terminal behind it. */
 export const useClosesAsDialog = (closer: Closer) => useCloser(dialogClosers, closer);
 
+/** With no dialog open, a terminal closes its shell while focus is in it. */
+export const useClosesWhileFocused = (closer: Closer) => useCloser(focusedClosers, closer);
+
 function closeWhatHasFocus() {
-  const closers = [...focusedClosers, ...[...dialogClosers].reverse()];
+  const closers = [...[...dialogClosers].reverse(), ...focusedClosers];
   if (closers.some((closer) => closer.current())) return;
   const nonce = desktopNonce();
   if (nonce) sendToDesktopApp({ type: "desktop-close-window", nonce });
