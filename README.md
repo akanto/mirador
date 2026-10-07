@@ -349,4 +349,6 @@ scripts/linux-desktop.sh   # builds the desktop app's installer, installs it and
 MIRADOR_LINUX_RELEASE=1 scripts/linux-desktop.sh   # the same for the release installer, which carries Mirador
 ```
 
+Build the arm64 release installer on an x64 Linux machine too: in Docker on Apple Silicon, Electrobun's toolchain crashes (see `desktop/README.md`).
+
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).
