@@ -20,6 +20,7 @@ import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
 import { pastelVariables } from "./pastels.ts";
+import { highlightedCompletion } from "./path-completion.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
@@ -48,27 +49,29 @@ function AddWorkspace({ onDone }: { onDone: () => void }) {
   const [path, setPath] = useState("~/");
   const typingAidAttributes = useTypingAidAttributes();
   const completions = useDirectoryCompletions(path);
-  const [highlighted, setHighlighted] = useState(0);
-  useEffect(() => setHighlighted(0), [completions]);
+  const [picked, setPicked] = useState<number | null>(null);
+  useEffect(() => setPicked(null), [completions]);
+  const highlighted = highlightedCompletion(path, completions, picked);
 
   const submit = () => {
     connection.send({ type: "workspace.create", path });
     onDone();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    const highlightedCompletion = completions[highlighted];
-    if (event.key === "Tab" && highlightedCompletion) {
+    const completion = completions[highlighted ?? 0];
+    if (event.key === "Tab" && completion) {
       event.preventDefault();
-      setPath(highlightedCompletion);
-    } else if (event.key === "ArrowDown") {
+      setPath(completion);
+    } else if (event.key === "ArrowDown" && completions.length > 0) {
       event.preventDefault();
-      setHighlighted((index) => Math.min(index + 1, completions.length - 1));
-    } else if (event.key === "ArrowUp") {
+      setPicked(highlighted === null ? 0 : Math.min(highlighted + 1, completions.length - 1));
+    } else if (event.key === "ArrowUp" && highlighted !== null) {
       event.preventDefault();
-      setHighlighted((index) => Math.max(index - 1, 0));
+      setPicked(Math.max(highlighted - 1, 0));
     } else if (event.key === "Enter") {
       event.preventDefault();
-      submit();
+      if (highlighted === null) submit();
+      else setPath(completion!);
     } else if (event.key === "Escape") {
       onDone();
     }
@@ -85,7 +88,7 @@ function AddWorkspace({ onDone }: { onDone: () => void }) {
         onChange={(event) => setPath(event.target.value)}
         onKeyDown={onKeyDown}
       />
-      <div className="hint">Tab completes, Enter adds, Esc cancels</div>
+      <div className="hint">{highlighted === null ? "Enter adds, Tab completes, Esc cancels" : "Enter or Tab takes the highlighted folder, Esc cancels"}</div>
       <ul className="completions">
         {completions.map((completion, index) => (
           <li key={completion} className={index === highlighted ? "highlighted" : ""} onMouseDown={() => setPath(completion)}>
