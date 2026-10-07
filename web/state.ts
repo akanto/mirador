@@ -57,6 +57,7 @@ export interface AppState {
   awaitingConversationIn: string | null;
   overlay: Overlay | null;
   notices: { id: number; text: string }[];
+  noticesEverShown: number;
   /** The host process run this page last heard from; another one means the host restarted, maybe with new code. */
   hostRunId: string | null;
   hostCodeChanged: boolean;
@@ -95,6 +96,7 @@ export const initialState: AppState = {
   hostCodeChanged: false,
   hostRestarting: false,
   notices: [],
+  noticesEverShown: 0,
 };
 
 export function initialStateFor(conversationId: string | null): AppState {
@@ -124,12 +126,16 @@ function withOpen(state: AppState, conversationId: string, change: (open: OpenCo
     : state;
 }
 
-let noticeCounter = 0;
-
 /** Agents write the canvas library address they were given into their pages; this page may load them from another one. */
 function withThisPagesAssetsOrigin(state: AppState, item: CanvasItem): CanvasItem {
   const { agentsCanvasAssetsOrigin: written, canvasAssetsOrigin: reachable } = state;
   return !written || written === reachable ? item : (JSON.parse(JSON.stringify(item).replaceAll(written, reachable)) as CanvasItem);
+}
+
+/** Ids never repeat, so dismissing a notice by its id cannot take a later one with it. */
+function withNotice(state: AppState, text: string): AppState {
+  const id = state.noticesEverShown + 1;
+  return { ...state, notices: [...state.notices, { id, text }], noticesEverShown: id };
 }
 
 function applyServerMessage(state: AppState, message: ServerMessage): AppState {
@@ -212,7 +218,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "prompt-template.deleted":
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":
-      return { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.message }] };
+      return withNotice(state, message.message);
     case "fs.completions":
     case "profile.saved":
     case "sessions.listed":
@@ -247,7 +253,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "conversation.rewind-failed":
       return state;
     case "join-request.answered":
-      return message.problem ? { ...state, notices: [...state.notices, { id: ++noticeCounter, text: message.problem }] } : state;
+      return message.problem ? withNotice(state, message.problem) : state;
     case "join-requests.listed":
       return { ...state, joinRequests: message.joinRequests };
     case "devices.listed":
