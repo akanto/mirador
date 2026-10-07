@@ -126,7 +126,11 @@ function withOpen(state: AppState, conversationId: string, change: (open: OpenCo
     : state;
 }
 
-/** Agents write the canvas library address they were given into their pages; this page may load them from another one. */
+/**
+ * Agents write the canvas library address they were given into their pages; this page may load them from another one.
+ * Every occurrence is swapped, in text and scripts too: the address can sit anywhere a page builds a URL, and showing
+ * this page's address in its place is harmless.
+ */
 function withThisPagesAssetsOrigin(state: AppState, item: CanvasItem): CanvasItem {
   const { agentsCanvasAssetsOrigin: written, canvasAssetsOrigin: reachable } = state;
   return !written || written === reachable ? item : (JSON.parse(JSON.stringify(item).replaceAll(written, reachable)) as CanvasItem);
