@@ -118,16 +118,24 @@ function copySelectionWhenReleased(view: Terminal) {
 /** A split hidden behind a zoomed one has no size; fitting it then would shrink its shell to two columns. */
 const isShown = (element: HTMLElement) => element.offsetWidth > 0 && element.offsetHeight > 0;
 
+/** Keys, pastes and clicks reach the terminal's onData while their event is handled; its own answers, while it parses output. */
+const isFromTheUser = () => window.event instanceof UIEvent || window.event instanceof ClipboardEvent;
+
 /**
  * Writes output the terminal already consumed. Answering the programs' questions in it — the cursor position, the
- * background colour — would send the answers back down the shell's input, where they land as typed text.
+ * background colour — would send the answers back down the shell's input, where they land as typed text. What the user
+ * types meanwhile still goes through.
  */
-function writeReplayedHistory(view: Terminal, data: string) {
-  view.reset();
-  view.options.disableStdin = true;
-  view.write(data, () => {
-    view.options.disableStdin = false;
-  });
+function historyReplayer(view: Terminal) {
+  let pendingReplays = 0;
+  return {
+    write(data: string) {
+      view.reset();
+      pendingReplays++;
+      view.write(data, () => pendingReplays--);
+    },
+    letsThrough: () => pendingReplays === 0 || isFromTheUser(),
+  };
 }
 
 function TerminalView({ terminalId, focus, events }: { terminalId: string; focus: FocusRequest | undefined; events: RefObject<TerminalEvents> }) {
@@ -169,13 +177,14 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     view.textarea?.setAttribute("writingsuggestions", "false");
     view.textarea?.addEventListener("focus", () => events.current.focused(terminalId));
 
+    const history = historyReplayer(view);
     const stopListening = connection.onMessage((message) => {
       if (!("terminalId" in message) || message.terminalId !== terminalId) return;
-      if (message.type === "terminal.replayed") writeReplayedHistory(view, message.data);
+      if (message.type === "terminal.replayed") history.write(message.data);
       else if (message.type === "terminal.output") view.write(message.data);
       else if (message.type === "terminal.cleared") view.write("", () => view.clear());
     });
-    const typed = view.onData((data) => connection.send({ type: "terminal.input", terminalId, data }));
+    const typed = view.onData((data) => history.letsThrough() && connection.send({ type: "terminal.input", terminalId, data }));
     const resized = view.onResize(({ cols, rows }) => connection.send({ type: "terminal.resize", terminalId, columns: cols, rows }));
     const observer = new ResizeObserver(fitIfShown);
     observer.observe(screen.current!);

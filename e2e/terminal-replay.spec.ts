@@ -55,3 +55,48 @@ test("replaying a terminal's log does not answer the questions in it as though t
     await expect(screenOf(page, 0)).toContainText(cursorPositionAnswer);
   });
 });
+
+type PasteDuringReplay = { terminalId: string; text: string };
+
+/** Pastes into a terminal right after the page takes its replayed history, before the terminal has parsed any of it. */
+async function pasteWhileReplaying(page: Page) {
+  await page.addInitScript(() => {
+    const armed = window as unknown as { pasteDuringReplay?: PasteDuringReplay };
+    const pasteIfReplayed = (event: MessageEvent) => {
+      const paste = armed.pasteDuringReplay;
+      const message = typeof event.data === "string" ? JSON.parse(event.data) : null;
+      if (!paste || message?.type !== "terminal.replayed" || message.terminalId !== paste.terminalId) return;
+      delete armed.pasteDuringReplay;
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", paste.text);
+      const textarea = document.querySelector(`[data-terminal-id="${paste.terminalId}"] .xterm-helper-textarea`)!;
+      textarea.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+    };
+    const onmessage = Object.getOwnPropertyDescriptor(WebSocket.prototype, "onmessage")!;
+    Object.defineProperty(WebSocket.prototype, "onmessage", {
+      ...onmessage,
+      set(this: WebSocket, handler: ((event: MessageEvent) => void) | null) {
+        onmessage.set!.call(this, handler && ((event: MessageEvent) => (handler.call(this, event), pasteIfReplayed(event))));
+      },
+    });
+  });
+  return (paste: PasteDuringReplay) => page.evaluate((armed) => Object.assign(window, { pasteDuringReplay: armed }), paste);
+}
+
+test("what the user pastes or types while a terminal's history replays reaches the shell", async ({ page }) => {
+  const armPaste = await pasteWhileReplaying(page);
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  await page.getByRole("button", { name: "Show terminal" }).click();
+  const tabs = page.getByRole("tab");
+  await page.getByRole("button", { name: "New terminal tab" }).click();
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
+  await expect(screenOf(page, 0)).toContainText("$");
+  const terminalId = (await page.locator(".terminal-pane .terminal-split").getAttribute("data-terminal-id"))!;
+
+  await tabs.first().click();
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await armPaste({ terminalId, text: "echo pasted-$((6*7))\n" });
+  await tabs.last().click();
+  await expect(screenOf(page, 0)).toContainText("pasted-42");
+});
