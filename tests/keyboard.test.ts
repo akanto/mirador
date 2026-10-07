@@ -9,7 +9,7 @@ import {
   type NavigationState,
 } from "../web/navigation.ts";
 import { matchesQuery } from "../web/Palette.tsx";
-import { commandFor, shortcutKeys, type KeyPress } from "../web/shortcuts.ts";
+import { commandFor, findsTemplate, shortcutKeys, type KeyPress } from "../web/shortcuts.ts";
 import { terminalKeyAction } from "../web/terminal-keys.ts";
 
 const press = (code: string, modifiers: Partial<KeyPress> = {}, key = ""): KeyPress => ({
@@ -98,10 +98,20 @@ describe("commandFor", () => {
   });
 });
 
+describe("findsTemplate", () => {
+  test("is ⌘J on macOS and Ctrl+J elsewhere, with no other modifier", () => {
+    expect(findsTemplate(press("KeyJ", { metaKey: true }), true)).toBe(true);
+    expect(findsTemplate(press("KeyJ", { ctrlKey: true }), false)).toBe(true);
+    expect(findsTemplate(press("KeyJ", { ctrlKey: true }), true)).toBe(false);
+    expect(findsTemplate(press("KeyJ", { metaKey: true, shiftKey: true }), true)).toBe(false);
+    expect(findsTemplate(press("KeyJ", {}), true)).toBe(false);
+  });
+});
+
 describe("shortcutKeys", () => {
   test("the keys a button's hint shows are written for the platform", () => {
-    expect(shortcutKeys(true)).toMatchObject({ newWorkspace: "⌥⇧T", newConversation: "⌥T", toggleCanvas: "⌘\\", sendTheOtherWay: "⌥Enter" });
-    expect(shortcutKeys(false)).toMatchObject({ newWorkspace: "Alt+Shift+T", newConversation: "Alt+T", toggleCanvas: "Ctrl+\\", sendTheOtherWay: "Alt+Enter" });
+    expect(shortcutKeys(true)).toMatchObject({ newWorkspace: "⌥⇧T", newConversation: "⌥T", toggleCanvas: "⌘\\", sendTheOtherWay: "⌥Enter", templates: "⌘J" });
+    expect(shortcutKeys(false)).toMatchObject({ newWorkspace: "Alt+Shift+T", newConversation: "Alt+T", toggleCanvas: "Ctrl+\\", sendTheOtherWay: "Alt+Enter", templates: "Ctrl+J" });
   });
 });
 

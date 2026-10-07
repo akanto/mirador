@@ -30,12 +30,15 @@ export type TypingState = "not-typing" | "empty-field" | "typing" | "terminal";
 
 export const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 
+/** ⌘ on macOS, Ctrl elsewhere, without the other one. */
+const holdsPrimary = (press: KeyPress, mac: boolean) => (mac ? press.metaKey && !press.ctrlKey : press.ctrlKey && !press.metaKey);
+
 /**
  * Bindings chosen so that neither Chrome nor cmux (when the app runs in a cmux browser pane)
  * takes them first. Option+letter bindings avoid macOS dead keys (Option+E/I/N/U/`).
  */
 export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): ShortcutCommand | null {
-  const primary = mac ? press.metaKey && !press.ctrlKey : press.ctrlKey && !press.metaKey;
+  const primary = holdsPrimary(press, mac);
   const optionOnly = press.altKey && !press.metaKey && !press.ctrlKey;
 
   const terminalClears = mac && typing === "terminal";
@@ -65,6 +68,9 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   return null;
 }
 
+/** In the message box: find a prompt template to put in at the caret. */
+export const findsTemplate = (press: KeyPress, mac = isMac) => holdsPrimary(press, mac) && !press.altKey && !press.shiftKey && press.code === "KeyJ";
+
 export function typingStateOf(element: Element | null): TypingState {
   if (element?.closest(".xterm")) return "terminal";
   if (element instanceof HTMLTextAreaElement || (element instanceof HTMLInputElement && element.type !== "checkbox")) {
@@ -92,6 +98,7 @@ export function shortcutKeys(mac = isMac) {
     find: `${primary}F`,
     search: `${primary}${shift}F`,
     restartHost: `${primary}${shift}R`,
+    templates: `${primary}J`,
     send: "Enter",
     sendTheOtherWay: `${option}Enter`,
     stop: "Esc",
@@ -123,6 +130,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.search, action: "Search every conversation in every workspace" },
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included (Enter: older match, Shift+Enter: newer)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
+    { keys: keys.templates, action: "In the message box: find a prompt template by typing and put it in; Tab / Shift+Tab then go through its {{values}}" },
     { keys: `${primary}${shift}← / ${primary}${shift}→`, action: "Focus the message box / the canvas (not while editing text)" },
     { keys: `${primary}+ / ${primary}−`, action: "Make text bigger / smaller (in a terminal, changes its font size instead)" },
     { keys: `${primary}0`, action: "Reset text size to 100% (in a terminal, resets to 12 px)" },

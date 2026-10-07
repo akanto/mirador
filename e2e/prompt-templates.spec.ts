@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, primaryModifier, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -9,6 +9,8 @@ const model = new ScriptedModel();
 const PROFILE = "scripted opencode";
 const PULL_REQUEST = "https://github.com/team/repo/pull/5";
 
+// The second test uses the conversation and the template the first one leaves.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   mkdirSync(host.projectDir, { recursive: true });
   await model.start();
@@ -97,5 +99,54 @@ test("a prompt template asks for its parameters, then goes out or into the messa
     await templatesButton(otherWindow).click();
     await expect(picker(otherWindow).locator(".template-choice-name")).toHaveText(["Explain a path"]);
     await otherWindow.close();
+  });
+});
+
+test("⌘J finds a template by typing and puts it in at the caret with its first value selected; Tab and Shift+Tab go through the values", async ({ page }) => {
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  await page.locator(".conversation-title").first().click();
+  const composer = page.locator(".composer:visible textarea");
+  const finder = page.getByRole("dialog", { name: "Find a prompt template" });
+  const query = finder.getByLabel("Find a template");
+  const selected = () => composer.evaluate((box: HTMLTextAreaElement) => box.value.slice(box.selectionStart, box.selectionEnd));
+  const findTemplate = async () => composer.press(`${await primaryModifier(page)}+KeyJ`);
+  await composer.fill("Please: ");
+
+  await test.step("Esc puts the finder away and goes back to the message box", async () => {
+    await findTemplate();
+    await expect(query).toBeFocused();
+    await query.press("Escape");
+    await expect(finder).toHaveCount(0);
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Please: ");
+  });
+
+  await test.step("typing narrows the templates, and Enter puts the picked one in with its first value selected", async () => {
+    await findTemplate();
+    await query.fill("nothing like it");
+    await expect(finder).toContainText("No template has that.");
+    await query.fill("line by");
+    await expect(finder.getByRole("option")).toHaveCount(1);
+    await expect(finder.getByRole("option")).toContainText("Explain a path");
+    await query.press("Enter");
+    await expect(finder).toHaveCount(0);
+    await expect(composer).toHaveValue("Please: Explain {{Path}} line by line, then {{ Path }} again.");
+    await expect(composer).toBeFocused();
+    await expect.poll(selected).toBe("{{Path}}");
+  });
+
+  await test.step("Tab and Shift+Tab go from value to value, and Tab goes on from one just typed", async () => {
+    await composer.press("Tab");
+    await expect.poll(selected).toBe("{{ Path }}");
+    await composer.press("Shift+Tab");
+    await expect.poll(selected).toBe("{{Path}}");
+    await page.keyboard.type("web/App.tsx");
+    await composer.press("Tab");
+    await expect.poll(selected).toBe("{{ Path }}");
+    await page.keyboard.type("it");
+    await expect(composer).toHaveValue("Please: Explain web/App.tsx line by line, then it again.");
+    await composer.press("Tab");
+    await expect(composer).not.toBeFocused();
   });
 });

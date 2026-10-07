@@ -7,6 +7,30 @@ export const parametersOf = (text: string) => [...new Set([...text.matchAll(PARA
 
 export const filledIn = (text: string, values: Record<string, string>) => text.replace(PARAMETER, (placeholder, name: string) => (name ? (values[name] ?? "") : placeholder));
 
+export interface TextRange {
+  start: number;
+  end: number;
+}
+
+/** Where the {{parameters}} still to fill in sit in the message box, each place on its own. */
+export const placeholdersIn = (text: string): TextRange[] =>
+  [...text.matchAll(PARAMETER)].filter(([, name]) => name).map(({ index, 0: placeholder }) => ({ start: index, end: index + placeholder.length }));
+
+/** Where Tab goes from the selection: the next placeholder after it, or with ⇧Tab the one before it, coming round at the ends. */
+export function adjacentPlaceholder(text: string, selection: TextRange, step: 1 | -1): TextRange | null {
+  const placeholders = placeholdersIn(text);
+  const adjacent = step === 1 ? placeholders.find(({ start }) => start >= selection.end) : placeholders.findLast(({ end }) => end <= selection.start);
+  return adjacent ?? (step === 1 ? placeholders[0] : placeholders.at(-1)) ?? null;
+}
+
+/** The templates holding every word typed, those whose name does first. */
+export function matchingTemplates<Template extends Pick<PromptTemplate, "name" | "text">>(templates: Template[], query: string): Template[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const holdsEvery = (text: string) => words.every((word) => text.toLowerCase().includes(word));
+  const found = templates.filter(({ name, text }) => holdsEvery(`${name}\n${text}`));
+  return [...found.filter(({ name }) => holdsEvery(name)), ...found.filter(({ name }) => !holdsEvery(name))];
+}
+
 /** Added once, to a host that has never had templates; deleted ones stay deleted. */
 export const defaultPromptTemplates: Omit<PromptTemplate, "createdAt">[] = [
   {

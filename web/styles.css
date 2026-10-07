@@ -2147,6 +2147,28 @@ button.running-subagent:hover {
   background: var(--row-hover);
 }
 
+.template-finder input {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.template-finder .template-choices li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.template-finder .template-choices li:hover {
+  background: var(--row-hover);
+}
+
+.template-finder .template-choices li[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
 .template-choice-name {
   font-weight: 600;
 }

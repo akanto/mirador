@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import type { PromptTemplate } from "../shared/model.ts";
-import { filledIn, parametersOf, promptTemplateProblem } from "../shared/prompt-templates.ts";
+import { filledIn, matchingTemplates, parametersOf, promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { suggestionAttributes, usePickedSuggestion } from "./SuggestionList.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
 const NEW_TEMPLATE = "new";
@@ -124,6 +125,66 @@ export function TemplatePicker({
             Manage templates…
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+const FOUND_TEMPLATES_ID = "found-templates";
+
+/** ⌘J's popover: typing narrows the templates, ↑/↓ pick one, Enter puts it in the message box, Esc goes back to it. */
+export function TemplateFinder({
+  templates,
+  opener,
+  onInsert,
+  onClose,
+}: {
+  templates: PromptTemplate[];
+  opener: RefObject<HTMLElement | null>;
+  onInsert: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const found = matchingTemplates(templates, query);
+  const { pickedIndex, move } = usePickedSuggestion(found.length, query);
+  const popover = useClosingOnOutsideClick(onClose, opener);
+  const typingAidAttributes = useTypingAidAttributes();
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    const step = ({ ArrowDown: 1, ArrowUp: -1 } as const)[event.key as "ArrowDown" | "ArrowUp"];
+    if (step && found.length > 0) move(step);
+    else if (event.key === "Enter" && found[pickedIndex]) onInsert(found[pickedIndex].text);
+    else if (event.key === "Escape") {
+      event.stopPropagation();
+      onClose();
+    } else return;
+    event.preventDefault();
+  };
+  return (
+    <div ref={popover} className="template-picker template-finder" role="dialog" aria-label="Find a prompt template">
+      <input
+        {...typingAidAttributes}
+        {...suggestionAttributes(FOUND_TEMPLATES_ID, found.length > 0, pickedIndex)}
+        autoFocus
+        role="combobox"
+        aria-expanded={found.length > 0}
+        aria-label="Find a template"
+        placeholder="Find a template"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={onKeyDown}
+      />
+      {found.length === 0 ? (
+        <p className="hint">{templates.length === 0 ? "No templates yet; Settings adds them." : "No template has that."}</p>
+      ) : (
+        <ul id={FOUND_TEMPLATES_ID} className="template-choices" role="listbox" aria-label="Prompt templates">
+          {found.map((template, index) => (
+            <li key={template.id} id={`${FOUND_TEMPLATES_ID}-${index}`} role="option" aria-selected={index === pickedIndex} onMouseDown={(event) => event.preventDefault()} onClick={() => onInsert(template.text)}>
+              <span className="template-choice-name">{template.name}</span>
+              <span className="template-choice-text">{firstLineOf(template.text)}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

@@ -18,6 +18,7 @@ import {
   type UsageLimitWait,
 } from "../shared/model.ts";
 import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.ts";
+import { adjacentPlaceholder, placeholdersIn, type TextRange } from "../shared/prompt-templates.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
 import { parseAnsi, plainTextOf } from "./ansi.ts";
@@ -43,11 +44,11 @@ import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
 import { useMentionMenu } from "./MentionMenu.tsx";
 import { usePromptHistory } from "./PromptHistory.ts";
-import { TemplatePicker } from "./PromptTemplates.tsx";
+import { TemplateFinder, TemplatePicker } from "./PromptTemplates.tsx";
 import { useSlashCommandMenu } from "./SlashCommandMenu.tsx";
 import { noSuggestions } from "./SuggestionList.tsx";
 import { movedCaretToLineEdge } from "./line-edge-keys.ts";
-import { keyLabels, shortcutKeys } from "./shortcuts.ts";
+import { findsTemplate, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
 import { useShellOutputStyle } from "./shell-output.ts";
 import { Statusline } from "./Statusline.tsx";
@@ -1191,6 +1192,11 @@ function Composer({
 }) {
   const [text, setText] = useDraft(conversation.id);
   const [pickingTemplate, setPickingTemplate] = useState(false);
+  const [findingTemplate, setFindingTemplate] = useState(false);
+  const [fillingTemplate, setFillingTemplate] = useState(false);
+  useEffect(() => {
+    if (!text) setFillingTemplate(false);
+  }, [text]);
   const templatesButton = useRef<HTMLButtonElement>(null);
   const busy = isBusy(conversation);
   const [stopStage, setStopStage] = useState<"idle" | "stopping" | "force">("idle");
@@ -1250,6 +1256,35 @@ function Composer({
     setText((current) => joinDrafts(current, message));
     closeTemplates();
   };
+  const select = (range: TextRange) =>
+    requestAnimationFrame(() => {
+      textarea.current?.focus();
+      textarea.current?.setSelectionRange(range.start, range.end);
+    });
+  const closeTemplateFinder = () => {
+    setFindingTemplate(false);
+    select({ start: textarea.current?.selectionStart ?? text.length, end: textarea.current?.selectionEnd ?? text.length });
+  };
+  /** Code-completion style: the template goes in at the caret with its first value to fill in selected, and Tab goes on to the next. */
+  const insertTemplateAtCaret = (template: string) => {
+    const start = textarea.current?.selectionStart ?? text.length;
+    const end = textarea.current?.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + template + text.slice(end);
+    setText(next);
+    setFindingTemplate(false);
+    setFillingTemplate(true);
+    const caretAfter = { start: start + template.length, end: start + template.length };
+    select(placeholdersIn(next).find((placeholder) => placeholder.start >= start) ?? caretAfter);
+  };
+  const goToPlaceholder = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Tab" || event.altKey || event.metaKey || event.ctrlKey || !fillingTemplate) return false;
+    const { selectionStart, selectionEnd } = event.currentTarget;
+    const placeholder = adjacentPlaceholder(text, { start: selectionStart, end: selectionEnd }, event.shiftKey ? -1 : 1);
+    if (!placeholder) return false;
+    event.preventDefault();
+    event.currentTarget.setSelectionRange(placeholder.start, placeholder.end);
+    return true;
+  };
   const stop = () => {
     if (stopStage !== "idle") return;
     connection.send({ type: "conversation.cancel", conversationId: conversation.id });
@@ -1294,7 +1329,13 @@ function Composer({
   });
   const suggestions = history.showing ? noSuggestions : slashCommands.menu ? slashCommands : mentions;
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (suggestions.onKeyDown(event) || movedCaretToLineEdge(event.nativeEvent)) return;
+    if (findsTemplate(event.nativeEvent)) {
+      event.preventDefault();
+      setPickingTemplate(false);
+      setFindingTemplate(true);
+      return;
+    }
+    if (suggestions.onKeyDown(event) || goToPlaceholder(event) || movedCaretToLineEdge(event.nativeEvent)) return;
     const lastQueued = queued.at(-1);
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -1359,6 +1400,7 @@ function Composer({
           onKeyDown={onKeyDown}
           onPaste={images.onPaste}
         />
+        {findingTemplate && <TemplateFinder templates={promptTemplates} opener={textarea} onInsert={insertTemplateAtCaret} onClose={closeTemplateFinder} />}
         {pickingTemplate && (
           <TemplatePicker
             templates={promptTemplates}
@@ -1381,6 +1423,7 @@ function Composer({
               aria-haspopup="dialog"
               aria-expanded={pickingTemplate}
               data-hint={hints.promptTemplates}
+              data-shortcut={shortcutKeys().templates}
               onClick={() => setPickingTemplate((open) => !open)}
             >
               Templates
