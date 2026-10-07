@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DesktopMenu, DesktopMenuMessage } from "../shared/desktop-menu.ts";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, chooseInSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4810);
@@ -145,6 +145,18 @@ test("inside the macOS desktop app, ⌘W closes the open dialog, else the focuse
     await expect.poll(askedToCloseWindow).toEqual([{ type: "desktop-close-window", nonce: "nonce-1" }]);
     await expect(page.locator(".terminal-pane .terminal-split")).toHaveCount(1);
   });
+});
+
+test("inside the desktop app, the page gives the app the chosen theme with its nonce, once handed the nonce and on every choice after", async ({ page }) => {
+  const sentToDesktopApp = await actAsDesktopApp(page);
+  await signIn(page, host);
+  const appearances = async () => (await sentToDesktopApp()).filter(({ type }) => type === "desktop-appearance");
+  const given = (...appearances: string[]) => appearances.map((appearance) => ({ type: "desktop-appearance", nonce: "nonce-1", appearance }));
+  await expect.poll(appearances).toEqual(given("light"));
+
+  await chooseInSettings(page, "Theme", "Dark");
+  await chooseInSettings(page, "Theme", "Match system");
+  await expect.poll(appearances).toEqual(given("light", "dark", "system"));
 });
 
 test("the desktop app menu reaches past the sidebar's edge without being cut off", async ({ page }) => {

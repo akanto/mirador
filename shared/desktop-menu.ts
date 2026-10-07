@@ -17,9 +17,15 @@ export const DESKTOP_NONCE_EVENT = "mirador:desktop-nonce";
 /** The macOS app's ⌘W asks its page with this event to close what has focus; with nothing to close, the page asks back to close the window. */
 export const DESKTOP_CLOSE_EVENT = "mirador:desktop-close";
 
+/** Mirador's chosen theme, which the macOS app gives its window: WebKit hands canvas frames the app's appearance, not the page's. */
+export type DesktopAppearance = "light" | "dark" | "system";
+
+export const isDesktopAppearance = (value: unknown): value is DesktopAppearance => value === "light" || value === "dark" || value === "system";
+
 export type DesktopMenuMessage =
   | { type: "desktop-menu-request" }
   | { type: "desktop-action"; nonce: string; action: string }
   | { type: "desktop-nonce-request" }
   | { type: "desktop-open-link"; nonce: string; url: string }
-  | { type: "desktop-close-window"; nonce: string };
+  | { type: "desktop-close-window"; nonce: string }
+  | { type: "desktop-appearance"; nonce: string; appearance: DesktopAppearance };

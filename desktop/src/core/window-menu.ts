@@ -1,4 +1,12 @@
-import { DESKTOP_CLOSE_EVENT, DESKTOP_MENU_EVENT, DESKTOP_NONCE_EVENT, type DesktopMenu, type DesktopMenuItem } from "../../../shared/desktop-menu.ts";
+import {
+  DESKTOP_CLOSE_EVENT,
+  DESKTOP_MENU_EVENT,
+  DESKTOP_NONCE_EVENT,
+  isDesktopAppearance,
+  type DesktopAppearance,
+  type DesktopMenu,
+  type DesktopMenuItem,
+} from "../../../shared/desktop-menu.ts";
 import { webUrl } from "./navigation.ts";
 import { isTrayAction, trayMenu, type TrayAction, type TrayState } from "./tray-menu.ts";
 
@@ -18,7 +26,8 @@ export type PageRequest =
   | { type: "nonce" }
   | { type: "action"; action: TrayAction }
   | { type: "open-link"; url: string }
-  | { type: "close-window" };
+  | { type: "close-window" }
+  | { type: "appearance"; appearance: DesktopAppearance };
 
 /**
  * Any frame in the window can post to the app, the agents' canvas pages included; only the page the app handed the
@@ -32,6 +41,7 @@ export function pageRequest(detail: unknown, nonce: string): PageRequest | null 
   if (message.nonce !== nonce) return null;
   if (message.type === "desktop-action" && isTrayAction(message.action)) return { type: "action", action: message.action };
   if (message.type === "desktop-close-window") return { type: "close-window" };
+  if (message.type === "desktop-appearance" && isDesktopAppearance(message.appearance)) return { type: "appearance", appearance: message.appearance };
   const url = message.type === "desktop-open-link" ? webUrl(message.url) : null;
   return url ? { type: "open-link", url } : null;
 }

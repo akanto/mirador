@@ -58,4 +58,15 @@ describe("menu in the window", () => {
       expect(pageRequest({ ...link, url }, "n-1")).toBeNull();
     }
   });
+
+  test("gives the window the theme only when the page asks with the nonce, and only a theme Mirador has", () => {
+    for (const appearance of ["light", "dark", "system"] as const) {
+      expect(pageRequest({ type: "desktop-appearance", nonce: "n-1", appearance }, "n-1")).toEqual({ type: "appearance", appearance });
+    }
+    expect(pageRequest({ type: "desktop-appearance", nonce: "guess", appearance: "dark" }, "n-1")).toBeNull();
+    expect(pageRequest({ type: "desktop-appearance", appearance: "dark" }, "n-1")).toBeNull();
+    for (const appearance of ["sepia", "", null, 1]) {
+      expect(pageRequest({ type: "desktop-appearance", nonce: "n-1", appearance }, "n-1")).toBeNull();
+    }
+  });
 });

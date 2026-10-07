@@ -100,6 +100,7 @@ The app listens to the host for the notifications a browser tab would show (a qu
 - macOS attributes file access to the app, not to Terminal. Because the host is started through your interactive login shell, anything your `~/.zshrc` touches under `~/Downloads`, `~/Documents` or `~/Desktop` triggers a one-time permission prompt for Mirador. Until it is answered, host startup waits on it. Approve it once.
 - `host.log` holds no sign-in link: the host prints one only to a terminal.
 - The window loads `/auth?token=…` from `<data dir>/browser-token`; the token is never logged by the app. The window is sandboxed, and links to other origins open in your default browser.
+- On macOS the whole app takes Mirador's theme (Light or Dark), not the Mac's appearance: the title bar, the dialogs and the canvas pages, which WebKit renders in the app's appearance rather than the page's. *Match system* follows the Mac. Electrobun 2.0.2 has no call for this, so the app sets it through the Objective-C runtime (`src/bun/app-appearance.ts`). The Linux app is left as it was: whether WebKitGTK does the same to canvas pages is untested.
 - There is no app icon yet; Electrobun warns about it during the build.
 - No Dock badge (Electrobun 2.0.2 has no API for it).
 

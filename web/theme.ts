@@ -1,4 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
+import { DESKTOP_NONCE_EVENT, isDesktopAppearance } from "../shared/desktop-menu.ts";
+import { desktopNonce, inDesktopApp, sendToDesktopApp } from "./desktop-bridge.ts";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -18,6 +20,17 @@ export function storedTheme(): Theme {
 /** The stylesheet reads the theme from the root element. */
 export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
+}
+
+/** The macOS app gives its window the chosen theme, once it has handed this page its nonce and on every choice after. */
+export function giveThemeToDesktopApp() {
+  if (!inDesktopApp() || window.parent !== window) return;
+  const give = (nonce: string | null) => {
+    const appearance = document.documentElement.dataset.theme;
+    if (nonce && isDesktopAppearance(appearance)) sendToDesktopApp({ type: "desktop-appearance", nonce, appearance });
+  };
+  window.addEventListener(DESKTOP_NONCE_EVENT, (event) => give((event as CustomEvent<string>).detail));
+  new MutationObserver(() => give(desktopNonce())).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
 const systemPrefersDark = () => matchMedia("(prefers-color-scheme: dark)");

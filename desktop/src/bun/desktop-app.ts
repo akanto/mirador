@@ -11,6 +11,7 @@ import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from 
 import type { SettingsStore } from "../core/settings.ts";
 import type { TrayAction, TrayState } from "../core/tray-menu.ts";
 import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
+import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
 import { setDockIconVisible } from "./dock.ts";
 import { MainWindow } from "./main-window.ts";
@@ -194,6 +195,7 @@ export class DesktopApp {
     if (request?.type === "nonce") this.window.runInPage(giveNonceScript(this.pageNonce));
     if (request?.type === "open-link") this.window.openInBrowser(request.url);
     if (request?.type === "close-window") void this.window.closeAfterAsking();
+    if (request?.type === "appearance") giveAppAppearance(request.appearance);
     if (!showsMenuInWindow) return;
     if (request?.type === "menu") this.showMenuInWindow();
     if (request?.type === "action") void this.handle(request.action);
