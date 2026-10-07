@@ -10,6 +10,7 @@ export type ConfigValue = string | boolean;
 
 const PRELAUNCH_TIMEOUT_MS = 60_000;
 const PRELAUNCH_OUTPUT_IN_ERRORS = 600;
+const FORCE_KILL_GRACE_MS = 3000;
 /** claude-agent-acp's extension for adding a message to the running turn, advertised in `_meta.steering` at initialize. */
 const STEERING_METHOD = "_session/steering";
 
@@ -115,11 +116,17 @@ export class HarnessProcess {
     return this.agent().request(acp.methods.agent.session.setConfigOption, request);
   }
 
-  /** Settles once the agent process has exited. */
+  /**
+   * Settles once the agent process has exited. An agent that handles the stop signal can defer it as long as it
+   * likes — claude-agent-acp disposes itself on SIGTERM, which wedges when the turn is wedged — so the grace
+   * period ends with SIGKILL; a connection left closed and uncleaned would fail every later prompt of its own kind.
+   */
   stop(reason?: string) {
     this.stopReason = reason;
+    const child = this.child;
     this.connection?.close();
-    this.child?.kill();
+    child?.kill();
+    if (child) setTimeout(() => child.exitCode === null && child.signalCode === null && child.kill("SIGKILL"), FORCE_KILL_GRACE_MS).unref();
     return this.exited;
   }
 
