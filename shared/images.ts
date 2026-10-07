@@ -18,3 +18,7 @@ export const extensionFor = (mimeType: string) =>
 export const mimeTypeOf = (imageId: string) => imageTypes[imageId.split(".").at(-1) as ImageExtension];
 
 export const imageUrl = (conversationId: string, imageId: string) => `/conversations/${conversationId}/images/${imageId}`;
+
+/** An image the agent's update carried, shown from its own data: never fetched from an address the agent named. */
+export const carriedImageSource = ({ mimeType, data }: { mimeType: string; data: string }) =>
+  extensionFor(mimeType) && data ? `data:${mimeType};base64,${data}` : null;

@@ -662,6 +662,8 @@ export function startServer(services: HostServices) {
         return conversations.moveQueuedMessage(message.conversationId, message.messageId, message.beforeMessageId);
       case "conversation.queue.remove":
         return conversations.removeQueuedMessage(message.conversationId, message.messageId);
+      case "images.discard":
+        return conversations.discardImages(message.conversationId, message.imageIds);
       case "conversation.queue.set-after-turn":
         return conversations.setQueuedMessageAfterTurn(message.conversationId, message.messageId, message.afterTurn);
       case "conversation.usage-limit.continue":

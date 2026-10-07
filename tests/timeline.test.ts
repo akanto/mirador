@@ -197,3 +197,30 @@ describe("lineDiff", () => {
     expect(lineDiff(null, "a\nb").map(({ kind }) => kind)).toEqual(["added", "added"]);
   });
 });
+
+describe("images in the agent's updates", () => {
+  const png = { type: "image" as const, mimeType: "image/png", data: "iVBORw0KGgo=" };
+
+  test("a replayed user message keeps its image with its text, instead of a placeholder", () => {
+    const timeline = buildTimeline(
+      stored([
+        acp({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "what is this?" } }),
+        acp({ sessionUpdate: "user_message_chunk", content: png }),
+        agentText("A logo."),
+      ]),
+    );
+    expect(timeline).toHaveLength(2);
+    expect(timeline[0]).toMatchObject({ kind: "user", text: "what is this?", images: [png] });
+    expect(timeline[1]).toMatchObject({ kind: "agent", text: "A logo." });
+  });
+
+  test("an image the agent sends joins its reply", () => {
+    const timeline = buildTimeline(stored([{ type: "user-message", text: "draw" }, agentText("Here:"), acp({ sessionUpdate: "agent_message_chunk", content: png })]));
+    expect(timeline.at(-1)).toMatchObject({ kind: "agent", text: "Here:", images: [png] });
+  });
+
+  test("an image that starts a message makes a message of its own", () => {
+    const timeline = buildTimeline(stored([{ type: "user-message", text: "draw" }, acp({ sessionUpdate: "agent_message_chunk", content: png })]));
+    expect(timeline.at(-1)).toMatchObject({ kind: "agent", text: "", images: [png] });
+  });
+});

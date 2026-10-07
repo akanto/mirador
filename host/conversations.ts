@@ -683,6 +683,13 @@ export class ConversationService {
     );
   }
 
+  /** Images pasted into the message box but left out of what was sent; one that a message carried or a queued one carries stays. */
+  discardImages(conversationId: string, imageIds: string[]) {
+    if (!this.store.hasConversation(conversationId)) return;
+    const carried = new Set([...this.store.sentImageIds(conversationId), ...this.runtime(conversationId).queuedMessages.flatMap((message) => message.imageIds)]);
+    imageIds.filter((imageId) => !carried.has(imageId)).forEach((imageId) => this.images.delete(conversationId, imageId));
+  }
+
   removeQueuedMessage(conversationId: string, messageId: string) {
     this.replaceQueue(conversationId, (queue) => queue.filter(({ id }) => id !== messageId), messageId);
   }

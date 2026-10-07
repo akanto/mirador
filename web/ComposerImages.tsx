@@ -1,9 +1,11 @@
 import { useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type RefObject, type SetStateAction } from "react";
 import { flushSync } from "react-dom";
-import { imageUrl } from "../shared/images.ts";
+import type { ImageContent } from "@agentclientprotocol/sdk";
+import { carriedImageSource, imageUrl } from "../shared/images.ts";
 import { useDraftAttachments } from "./drafts.ts";
 import { useImagePreview } from "./ImagePreview.tsx";
 import {
+  discardImages,
   imageFilesIn,
   imagesToPaste,
   nextNumber,
@@ -28,7 +30,8 @@ export function useComposerImages(
   const latest = useRef(attachments);
   latest.current = attachments;
   const uploading = useRef(new Set<number>());
-  const [uploadCount, setUploadCount] = useState(0);
+  const [uploadingNumbers, setUploadingNumbers] = useState<number[]>([]);
+  const showUploads = () => setUploadingNumbers([...uploading.current].sort((a, b) => a - b));
   const [problem, setProblem] = useState<string | null>(null);
 
   const insertAtCaret = (insertion: string) => {
@@ -54,14 +57,14 @@ export function useComposerImages(
       setProblem(`Could not attach ${file.name || "the image"}: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       uploading.current.delete(number);
-      setUploadCount(uploading.current.size);
+      showUploads();
     }
   };
 
   const attach = (files: File[]) => {
     setProblem(null);
     const pasted = files.map((file) => ({ file, number: reserveNumber() }));
-    setUploadCount(uploading.current.size);
+    showUploads();
     insertAtCaret(pasted.map(({ number }) => `${placeholder(number)} `).join(""));
     pasted.forEach(({ file, number }) => void upload(file, number));
   };
@@ -69,7 +72,8 @@ export function useComposerImages(
   return {
     attachments,
     referenced: referencedAttachments(text, attachments),
-    uploading: uploadCount > 0,
+    uploadingNumbers,
+    uploading: uploadingNumbers.length > 0,
     problem,
     onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
       const images = imagesToPaste(event.clipboardData.getData("text/plain"), imageFilesIn(event.clipboardData));
@@ -90,6 +94,7 @@ export function useComposerImages(
     detach(attachment: Attachment) {
       setText((current) => withoutPlaceholder(current, attachment.number));
       setAttachments((current) => current.filter(({ imageId }) => imageId !== attachment.imageId));
+      discardImages(conversationId, [attachment]);
     },
     restore(queuedText: string, imageIds: string[]) {
       const restored = restoredDraft(queuedText, imageIds, latest.current);
@@ -101,7 +106,10 @@ export function useComposerImages(
       latest.current = replacements;
       setAttachments(replacements);
     },
-    clear() {
+    /** The message went out: images pasted but left out of it go. */
+    clearAfterSending() {
+      const sent = referencedAttachments(text, latest.current);
+      discardImages(conversationId, latest.current.filter((attachment) => !sent.includes(attachment)));
       setProblem(null);
       setAttachments([]);
     },
@@ -111,14 +119,16 @@ export function useComposerImages(
 export function PastedImages({
   conversationId,
   attachments,
+  uploadingNumbers,
   onRemove,
 }: {
   conversationId: string;
   attachments: Attachment[];
+  uploadingNumbers: number[];
   onRemove: (attachment: Attachment) => void;
 }) {
   const [preview, open] = useImagePreview();
-  if (attachments.length === 0) return null;
+  if (attachments.length === 0 && uploadingNumbers.length === 0) return null;
   return (
     <>
       <ul className="pasted-images" aria-label="Pasted images">
@@ -133,20 +143,29 @@ export function PastedImages({
           </button>
         </li>
       ))}
+      {uploadingNumbers.map((number) => (
+        <li key={`uploading-${number}`} className="uploading">
+          <span className="upload-spinner" aria-hidden="true" />
+          <span className="pasted-image-label">{placeholder(number)}</span>
+          Uploading…
+        </li>
+      ))}
       </ul>
       {preview}
     </>
   );
 }
 
-export function MessageImages({ conversationId, imageIds }: { conversationId: string; imageIds: string[] | undefined }) {
+/** Pasted images, by their id, and images the agent's updates carried. */
+export function MessageImages({ conversationId, imageIds = [], carried = [] }: { conversationId: string; imageIds?: string[]; carried?: ImageContent[] }) {
   const [preview, open] = useImagePreview();
-  if (!imageIds?.length) return null;
+  const sources = [...imageIds.map((imageId) => imageUrl(conversationId, imageId)), ...carried.flatMap((image) => carriedImageSource(image) ?? [])];
+  if (sources.length === 0) return null;
   return (
     <div className="message-images">
-      {imageIds.map((imageId, index) => (
-        <button key={imageId} type="button" className="thumbnail" aria-label={`Show image ${index + 1}`} onClick={() => open(imageUrl(conversationId, imageId))}>
-          <img src={imageUrl(conversationId, imageId)} alt="" />
+      {sources.map((source, index) => (
+        <button key={index} type="button" className="thumbnail" aria-label={`Show image ${index + 1}`} onClick={() => open(source)}>
+          <img src={source} alt="" />
         </button>
       ))}
       {preview}

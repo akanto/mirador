@@ -1,5 +1,6 @@
 import type {
   ContentBlock,
+  ImageContent,
   PermissionOption,
   SessionUpdate,
   PlanEntry,
@@ -90,9 +91,12 @@ export interface PermissionBlock extends Origin {
 
 type PlanBlock = Origin & { kind: "plan"; entries: PlanEntry[] };
 
+/** Images a message carried in the agent's own updates: ones the agent sent, or those of a session's replayed history. */
+type CarriedImages = { images?: ImageContent[] };
+
 export type TimelineBlock =
-  | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string })
-  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; turnSeq?: number; filesKept?: true })
+  | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string } & CarriedImages)
+  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; turnSeq?: number; filesKept?: true } & CarriedImages)
   | ToolBlock
   | PlanBlock
   | PermissionBlock
@@ -283,8 +287,10 @@ class TimelineBuilder {
     const into = subagent?.blocks ?? this.blocks;
     switch (update.sessionUpdate) {
       case "user_message_chunk":
+        if (update.content.type === "image") return this.appendImage("user", origin, update.content, into);
         return this.appendText("user", origin, contentText(update.content), into);
       case "agent_message_chunk":
+        if (update.content.type === "image") return this.appendImage("agent", origin, update.content, into);
         if (isInformational(update._meta)) return this.push({ kind: "info", ...origin, text: contentText(update.content) }, into);
         if (this.streamedMessages.repeats(update.messageId, contentText(update.content), coalescedIn(update)?.chunks ?? 1)) return;
         return this.appendText("agent", origin, contentText(update.content), into);
@@ -334,6 +340,15 @@ class TimelineBuilder {
       return;
     }
     this.push({ kind, ...origin, text }, into);
+  }
+
+  private appendImage(kind: "user" | "agent", origin: Origin, image: ImageContent, into: TimelineBlock[]) {
+    const last = into.at(-1);
+    if (last && last.kind === kind) {
+      last.images = [...(last.images ?? []), image];
+      return;
+    }
+    this.push({ kind, ...origin, text: "", images: [image] }, into);
   }
 
   private upsertTool(origin: Origin, update: ToolCallUpdate & { title?: string | null }, into: TimelineBlock[]) {
@@ -405,7 +420,7 @@ function coalescibleChunk({ event }: StoredEvent): { update: ChunkUpdate; text: 
 function countedChunk({ event }: StoredEvent): { messageId: string; text: string } | null {
   if (event.type !== "acp" || event.update.sessionUpdate !== "agent_message_chunk") return null;
   const { messageId, content, _meta } = event.update;
-  return messageId && !isInformational(_meta) ? { messageId, text: contentText(content) } : null;
+  return messageId && content.type !== "image" && !isInformational(_meta) ? { messageId, text: contentText(content) } : null;
 }
 
 /** Consecutive chunks of one message, with nothing between them, that go out as one. */

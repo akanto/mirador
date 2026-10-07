@@ -3370,6 +3370,26 @@ button.shell-more:hover {
   padding: 0 6px;
 }
 
+.pasted-images li.uploading {
+  padding-inline-end: 8px;
+}
+
+.upload-spinner {
+  width: 14px;
+  height: 14px;
+  margin: 0 4px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: upload-spin 0.8s linear infinite;
+}
+
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .thumbnail {
   display: block;
   padding: 0;

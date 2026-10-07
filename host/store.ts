@@ -761,6 +761,14 @@ export class Store {
     return rows.map(({ event }) => JSON.parse(event));
   }
 
+  /** The pasted images that the conversation's messages carried. */
+  sentImageIds(conversationId: string): string[] {
+    const rows = this.db
+      .query(`SELECT json_extract(event, '$.imageIds') AS imageIds FROM events WHERE conversation_id = ? AND json_extract(event, '$.type') = 'user-message'`)
+      .all(conversationId) as { imageIds: string | null }[];
+    return rows.flatMap(({ imageIds }) => (imageIds ? (JSON.parse(imageIds) as string[]) : []));
+  }
+
   /** The messages and shell commands typed in the conversation before the given event, newest first. */
   typedBefore(conversationId: string, beforeSeq: number, limit = TYPED_IN_WORKSPACE_LIMIT): ConversationEvent[] {
     const rows = this.db

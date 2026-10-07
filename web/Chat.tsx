@@ -660,7 +660,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
         <>
           <div className="message user">
             {block.text}
-            <MessageImages conversationId={conversationId} imageIds={block.imageIds} />
+            <MessageImages conversationId={conversationId} imageIds={block.imageIds} carried={block.images} />
           </div>
           {block.turnSeq !== undefined && (block.filesKept || canRewind) && (
             <UndoButton turn={{ seq: block.turnSeq, text: block.text }} rewind={canRewind} ask={askToRevert} />
@@ -672,6 +672,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
       return (
         <div className="message agent">
           <MarkdownText text={block.text} />
+          <MessageImages conversationId={conversationId} carried={block.images} />
           {refused && (
             <div className="terminal-command">
               <button type="button" data-hint={hints.terminalCommand} onClick={() => requestPanelCommand(conversationId, `/${refused}`)}>
@@ -1230,7 +1231,7 @@ function Composer({
     const imageIds = images.referenced.map(({ imageId }) => imageId);
     if (!connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds, afterTurn })) return;
     setText("");
-    images.clear();
+    images.clearAfterSending();
   };
   const closeTemplates = () => {
     setPickingTemplate(false);
@@ -1307,7 +1308,7 @@ function Composer({
       {conversation.jobWaits.length > 0 && <JobWaits conversationId={conversation.id} waits={conversation.jobWaits} />}
       {queued.length > 0 && <QueuedMessages conversationId={conversation.id} harness={conversation.harness} messages={queued} onEdit={pullBack} onRemove={remove} />}
       <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />
-      <PastedImages conversationId={conversation.id} attachments={images.referenced} onRemove={images.detach} />
+      <PastedImages conversationId={conversation.id} attachments={images.referenced} uploadingNumbers={images.uploadingNumbers} onRemove={images.detach} />
       {images.problem && (
         <div className="composer-problem" role="alert">
           {images.problem}

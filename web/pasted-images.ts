@@ -1,3 +1,5 @@
+import { connection } from "./connection.ts";
+
 /** An image pasted into the message box, which the text mentions as `[Image #number]`, as Claude Code does. */
 export interface Attachment {
   number: number;
@@ -65,6 +67,11 @@ async function sendable(image: Blob): Promise<Blob> {
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   const png = await canvas.convertToBlob({ type: "image/png" });
   return png.size <= MAX_BYTES ? png : canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 });
+}
+
+/** Pasted images that no message took: the host deletes those that no sent or queued message carries. */
+export function discardImages(conversationId: string, attachments: Attachment[]) {
+  if (attachments.length > 0) connection.send({ type: "images.discard", conversationId, imageIds: attachments.map(({ imageId }) => imageId) });
 }
 
 /** Stores the image with the conversation in the host, which hands it to the agent with the message that mentions it. */

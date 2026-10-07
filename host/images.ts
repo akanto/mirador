@@ -30,6 +30,10 @@ export class ImageStore {
     return { type: "image", mimeType: mimeTypeOf(imageId), data: Buffer.from(await file.arrayBuffer()).toString("base64") };
   }
 
+  delete(conversationId: string, imageId: string) {
+    if (isImageId(imageId)) rmSync(join(this.folder(conversationId), imageId), { force: true });
+  }
+
   deleteConversation(conversationId: string) {
     rmSync(this.folder(conversationId), { recursive: true, force: true });
   }
