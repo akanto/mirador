@@ -1,6 +1,9 @@
 import { ApplicationMenu } from "electrobun/main";
 
-export function installApplicationMenu(appName: string) {
+const CLOSE_WINDOW = "close-window";
+
+/** ⌘W is easily pressed meaning something inside Mirador, so it asks before the window closes. */
+export function installApplicationMenu(appName: string, closeWindowAfterAsking: () => void) {
   ApplicationMenu.setApplicationMenu([
     {
       label: appName,
@@ -26,7 +29,10 @@ export function installApplicationMenu(appName: string) {
     },
     {
       label: "Window",
-      submenu: [{ role: "minimize", accelerator: "m" }, { role: "zoom" }, { role: "close", accelerator: "w" }, { role: "bringAllToFront" }],
+      submenu: [{ role: "minimize", accelerator: "m" }, { role: "zoom" }, { label: "Close Window", action: CLOSE_WINDOW, accelerator: "w" }, { role: "bringAllToFront" }],
     },
   ]);
+  ApplicationMenu.on("application-menu-clicked", (event) => {
+    if ((event as { data?: { action?: unknown } }).data?.action === CLOSE_WINDOW) closeWindowAfterAsking();
+  });
 }

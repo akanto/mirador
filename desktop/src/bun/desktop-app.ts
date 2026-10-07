@@ -95,6 +95,10 @@ export class DesktopApp {
     if (!this.window.isOpen) setDockIconVisible(false);
   }
 
+  closeWindowAfterAsking() {
+    return this.window.closeAfterAsking();
+  }
+
   stopOwnedHost() {
     this.supervisor.terminateOwned();
   }

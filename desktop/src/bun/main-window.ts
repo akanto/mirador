@@ -45,6 +45,21 @@ export class MainWindow {
     this.window = window;
   }
 
+  async closeAfterAsking() {
+    if (!this.window) return;
+    const { response } = await Utils.showMessageBox({
+      type: "question",
+      title: this.title,
+      message: `Close the ${this.title} window?`,
+      detail: "Conversations keep running. Open the window again from the menu bar.",
+      buttons: ["Close window", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    const closeChosen = response === 0;
+    if (closeChosen) this.window?.close();
+  }
+
   runInPage(script: string) {
     this.window?.webview.executeJavascript(script);
   }

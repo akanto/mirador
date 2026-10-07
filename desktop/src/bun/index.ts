@@ -40,7 +40,7 @@ async function launch() {
     isPackaged: Electrobun.app.isPackaged,
   });
 
-  if (process.platform === "darwin") installApplicationMenu(APP_NAME);
+  if (process.platform === "darwin") installApplicationMenu(APP_NAME, () => void app?.closeWindowAfterAsking());
   Electrobun.events.on("reopen", () => void app?.openWindow());
   Electrobun.events.on("before-quit", () => app?.stopOwnedHost());
   await app.start();
