@@ -20,6 +20,8 @@ test.afterAll(async () => {
 test("a profile sets the mode, YOLO and Questions of the conversations that start with it or move to it", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
+  const plainProfile = await createProfile(page, "plain", scriptedOpencodeEnvironment(model, host.root), "", "opencode");
+  await plainProfile.getByRole("button", { name: "Close" }).click();
   const created = await createProfile(page, PROFILE, scriptedOpencodeEnvironment(model, host.root), "", "opencode");
   await expect(created.getByLabel("Profile mode").locator("option")).toHaveText(["Agent's default"]);
   await created.getByRole("button", { name: "Close" }).click();
@@ -27,12 +29,13 @@ test("a profile sets the mode, YOLO and Questions of the conversations that star
   const sessionMode = page.getByLabel("Session Mode", { exact: true }).filter({ visible: true });
   const yolo = page.getByLabel("YOLO", { exact: true }).filter({ visible: true });
   const questions = page.getByLabel("Questions", { exact: true }).filter({ visible: true });
-  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "opencode" });
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "plain · opencode" });
   const plain = await startConversation(page);
   await expect(sessionMode).toHaveValue("build");
 
   await test.step("the profile offers the modes the agent listed, and keeps one with YOLO and Questions", async () => {
     const editor = await openProfiles(page);
+    await editor.locator(".profile-list li", { hasText: PROFILE }).click();
     await expect(editor.getByLabel("Profile mode").locator("option")).toContainText(["Agent's default", "build", "plan"]);
     await editor.getByLabel("Profile mode").selectOption("plan");
     await editor.getByLabel("Profile YOLO").check();

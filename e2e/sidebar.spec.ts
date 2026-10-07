@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, createProfile, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4870);
@@ -30,8 +30,10 @@ test("a workspace is a card: its folder under the name, new conversations at the
 
   const chip = card.locator(".agent-chip-label");
   await expect(chip).toHaveText("Claude Code");
-  await card.getByLabel("Agent").selectOption({ label: "opencode" });
-  await expect(chip).toHaveText("opencode");
+  const profiles = await createProfile(page, "home llama", "", "", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await card.getByLabel("Agent").selectOption({ label: "home llama · opencode" });
+  await expect(chip).toHaveText("home llama · opencode");
 });
 
 test("a workspace added while the page reconnects to the host is added once it has", async ({ page }) => {

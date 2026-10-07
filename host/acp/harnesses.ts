@@ -64,18 +64,15 @@ const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").re
  * claude-agent-acp picks a session's model from its own ANTHROPIC_MODEL, and opencode
  * reads its configuration (OPENCODE_CONFIG_CONTENT, XDG_CONFIG_HOME, ...) at startup.
  */
-export function harnessSpec(harness: HarnessId, profile: Profile | null, claudeProgramSetting: string): HarnessSpec {
-  const command = commandFor[harness]();
-  const common = { id: harness, command, startsOneAtATime: harness === "opencode" };
-  const environment = launchEnvironment(harness, profile, claudeProgramSetting);
-  if (!profile) {
-    return { ...common, label: harnessLabels[harness], logName: harness, environment, prelaunch: "" };
-  }
+export function harnessSpec(profile: Profile, claudeProgramSetting: string): HarnessSpec {
+  const { harness } = profile;
   return {
-    ...common,
+    id: harness,
+    command: commandFor[harness](),
+    startsOneAtATime: harness === "opencode",
     label: `${harnessLabels[harness]} (${profile.name})`,
     logName: `${harness}-${slug(profile.name) || "profile"}-${profile.id.slice(0, 8)}`,
-    environment,
+    environment: launchEnvironment(harness, profile, claudeProgramSetting),
     prelaunch: profile.prelaunch,
   };
 }

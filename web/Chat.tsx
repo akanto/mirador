@@ -121,31 +121,28 @@ const isBusy = (conversation: Conversation) => conversation.status === "running"
 /** How long a graceful stop is given before the button offers to kill the wedged agent process. */
 const STOP_FORCE_GRACE_MS = 3000;
 
-/** Only profiles of the conversation's own agent: another agent cannot continue its session. */
+/** Only profiles of the conversation's own agent: another agent cannot continue its session. One that has none to run on asks for one. */
 function ProfilePicker({ conversation, profiles }: { conversation: Conversation; profiles: Profile[] }) {
   const choices = profiles.filter(({ harness }) => harness === conversation.harness);
-  const profileWasDeleted = conversation.profileId !== null && !choices.some(({ id }) => id === conversation.profileId);
+  const hasItsProfile = choices.some(({ id }) => id === conversation.profileId);
   return (
     <label className="config" data-hint={hints.profile}>
       <span>Profile</span>
       <select
         aria-label="Profile"
-        value={conversation.profileId ?? ""}
-        onChange={(event) =>
-          connection.send({ type: "conversation.set-profile", conversationId: conversation.id, profileId: event.target.value || null })
-        }
+        value={hasItsProfile ? conversation.profileId! : ""}
+        onChange={(event) => connection.send({ type: "conversation.set-profile", conversationId: conversation.id, profileId: event.target.value })}
       >
-        <option value="">None</option>
+        {!hasItsProfile && (
+          <option value="" disabled>
+            {conversation.profileId === null ? "Pick a profile" : "Deleted profile"}
+          </option>
+        )}
         {choices.map(({ id, name }) => (
           <option key={id} value={id}>
             {name}
           </option>
         ))}
-        {profileWasDeleted && (
-          <option value={conversation.profileId!} disabled>
-            Deleted profile
-          </option>
-        )}
       </select>
     </label>
   );

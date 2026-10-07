@@ -18,6 +18,7 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
     claudeProgram: { configured: "", found: null, version: null },
     canvasAssetsOrigin,
     agentsCanvasAssetsOrigin: agentsOrigin,
+    installedAgents: ["claude"],
     machines: [],
     machineStatuses: [],
     homeDir: "/home/me",

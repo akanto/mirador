@@ -9,6 +9,7 @@ import type {
   ConversationMatches,
   EntryMatchCount,
   ExternalSession,
+  HarnessId,
   FoundAddress,
   JoinRequest,
   ListedDevice,
@@ -91,7 +92,7 @@ export type ClientMessage =
     }
   | { type: "conversation.delete"; conversationId: string }
   | { type: "conversation.rename"; conversationId: string; title: string }
-  | { type: "conversation.set-profile"; conversationId: string; profileId: string | null }
+  | { type: "conversation.set-profile"; conversationId: string; profileId: string }
   | { type: "conversation.subscribe"; conversationId: string; lowData?: LowDataSubscription }
   /**
    * The turns before the earliest event the subscriber holds: as many as a low-data subscriber asks for, and for a page
@@ -188,6 +189,8 @@ export type ServerMessage =
       promptTemplates: PromptTemplate[];
       canvasUse: CanvasUse;
       claudeProgram: ClaudeProgram;
+      /** The agents this machine has a program for, which a new profile can run. */
+      installedAgents: HarnessId[];
       /** Where this page loads canvas libraries from: the address it reached the host at may differ from the one agents were given. */
       canvasAssetsOrigin: string;
       agentsCanvasAssetsOrigin: string;

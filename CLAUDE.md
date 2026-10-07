@@ -88,7 +88,7 @@ scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu via Docker
 Mirador is a localhost web app that drives coding agents (Claude Code through `claude-agent-acp`, and opencode) over ACP, and gives them a canvas with the `show`, `ask` and `review` tools.
 
 - **`host/`** is the Bun server:
-  - the ACP client, with one agent process per harness or profile and many sessions on it;
+  - the ACP client, with one agent process per profile and many sessions on it;
   - the canvas MCP server, which each session gets through `session/new`;
   - terminals;
   - the SQLite store in `~/.mirador`;

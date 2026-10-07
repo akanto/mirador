@@ -21,6 +21,7 @@ import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { CANVAS_ASSETS_ORIGIN_HEADER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import { describeClaudeProgram } from "./acp/claude-program.ts";
+import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
@@ -45,7 +46,7 @@ import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
-import { profileFor, type ProfileService } from "./profiles.ts";
+import { defaultLaunchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
 import type { HostRestart } from "./restart.ts";
 import type { SignInCodes } from "./sign-in-codes.ts";
 import type { StatuslineService } from "./statusline.ts";
@@ -550,7 +551,7 @@ export function startServer(services: HostServices) {
       id: crypto.randomUUID(),
       name: basename(directory) || directory,
       path: directory,
-      defaultLaunch: { harness: "claude", profileId: null },
+      defaultLaunch: defaultLaunchForNewWorkspace(store),
       createdAt: Date.now(),
     });
   }
@@ -844,6 +845,7 @@ export function startServer(services: HostServices) {
       promptTemplates: store.listPromptTemplates(),
       canvasUse: store.canvasUse(),
       claudeProgram,
+      installedAgents: installedHarnesses(store.claudeProgramSetting()),
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
       agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,
       machines: store.listMachines(),

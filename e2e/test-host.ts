@@ -47,6 +47,8 @@ export class TestHost {
       copiesSource?: boolean;
       fakePrograms?: boolean;
       environment?: Record<string, string>;
+      /** Starts with no profile, as a first run does; otherwise the host has the profile a user sets up first. */
+      withoutProfiles?: boolean;
     } = {},
   ) {
     this.origin = `http://127.0.0.1:${port}`;
@@ -83,6 +85,10 @@ export class TestHost {
     });
   }
 
+  private get bun() {
+    return process.env.MIRADOR_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun";
+  }
+
   /** MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
   private baseEnvironment(): NodeJS.ProcessEnv {
     if (!process.env.MIRADOR_E2E_MINIMAL_ENV) return process.env;
@@ -102,9 +108,13 @@ export class TestHost {
       writeFileSync(join(this.projectDir, "README.md"), "# e2e project\n");
     }
     if (this.options.copiesSource) this.copySource();
+    if (this.starts === 0 && !this.options.withoutProfiles) {
+      mkdirSync(this.dataDir, { recursive: true });
+      execFileSync(this.bun, [join(repoRoot, "e2e", "seed-profile.ts"), this.sourceDir, join(this.dataDir, "state.sqlite")]);
+    }
     this.starts += 1;
     this.output = "";
-    const child = spawn(process.env.MIRADOR_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun", ["host/main.ts"], {
+    const child = spawn(this.bun, ["host/main.ts"], {
       cwd: this.sourceDir,
       env: {
         ...this.baseEnvironment(),

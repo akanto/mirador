@@ -1,19 +1,47 @@
-import { askModeLabels, harnessIds, harnessLabels, type HarnessId, type Launch, type Profile } from "../shared/model.ts";
+import { askModeLabels, harnessIds, harnessLabels, type HarnessId, type Launch, type Profile, type Workspace } from "../shared/model.ts";
 import { parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import type { ConversationService } from "./conversations.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
 
-/** A profile runs only on the agent it was made for; the picker sends both, and the host checks they agree. */
-export function assertLaunchable(store: Store, launch: Launch) {
+/** Every conversation runs on a profile, and a profile only on the agent it was made for; the picker sends both, and the host checks they agree. */
+export function profileToLaunch(store: Store, launch: Launch): Profile {
   if (!harnessIds.includes(launch.harness)) throw new Error(`Unknown agent ${launch.harness}.`);
-  if (launch.profileId === null) return;
+  if (launch.profileId === null) throw new Error("Every conversation runs on a profile: pick one, or set one up in Profiles.");
   const profile = store.findProfile(launch.profileId);
   if (!profile) throw new Error("That profile no longer exists.");
   if (profile.harness !== launch.harness) {
     throw new Error(`Profile "${profile.name}" is for ${harnessLabels[profile.harness]}, not ${harnessLabels[launch.harness]}.`);
   }
+  return profile;
+}
+
+const launchOn = ({ harness, id }: Profile): Launch => ({ harness, profileId: id });
+
+/**
+ * Once there is a profile, every workspace starts its conversations on one: a workspace without one, or whose profile
+ * was deleted, takes one of the same agent if there is one, else the first. Gives the workspaces that changed.
+ */
+export function giveEveryWorkspaceAProfile(store: Store): Workspace[] {
+  const profiles = store.listProfiles();
+  if (profiles.length === 0) return [];
+  const hasOne = ({ defaultLaunch }: Workspace) => profiles.some(({ id }) => id === defaultLaunch.profileId);
+  return store
+    .listWorkspaces()
+    .filter((workspace) => !hasOne(workspace))
+    .map(({ id, defaultLaunch }) => {
+      store.setWorkspaceDefaultLaunch(id, launchOn(profiles.find(({ harness }) => harness === defaultLaunch.harness) ?? profiles[0]!));
+      return store.findWorkspace(id)!;
+    });
+}
+
+/** A new workspace starts its conversations as the workspace added last does, else on the first profile; with none yet, on none. */
+export function defaultLaunchForNewWorkspace(store: Store): Launch {
+  const profiles = store.listProfiles();
+  const latest = store.listWorkspaces().toSorted((first, second) => second.createdAt - first.createdAt)[0];
+  const profile = profiles.find(({ id }) => id === latest?.defaultLaunch.profileId) ?? profiles[0];
+  return profile ? launchOn(profile) : { harness: "claude", profileId: null };
 }
 
 /**
@@ -74,19 +102,27 @@ export class ProfileService {
     const launchChanged = existing && (existing.environment !== profile.environment || existing.prelaunch !== profile.prelaunch);
     if (launchChanged) this.conversations.restartProfile(profile.id);
     this.hub.sendEach((socket) => ({ type: "profile.upserted", profile: profileFor(socket, profile) }));
+    if (!existing) this.broadcastWorkspaces(giveEveryWorkspaceAProfile(this.store));
     return profile;
   }
 
+  /** The last profile stays: without one, no conversation could start. Workspaces that used a deleted one move to another. */
   delete(profileId: string) {
-    const workspacesUsingIt = this.store.listWorkspaces().filter(({ defaultLaunch }) => defaultLaunch.profileId === profileId);
+    if (this.store.listProfiles().every(({ id }) => id === profileId)) {
+      throw new Error("Mirador needs a profile to start conversations with: create another before deleting this one.");
+    }
     this.store.deleteProfile(profileId);
     this.conversations.restartProfile(profileId);
     this.hub.broadcast({ type: "profile.deleted", profileId });
-    workspacesUsingIt.forEach(({ id }) => this.hub.broadcast({ type: "workspace.upserted", workspace: this.store.findWorkspace(id)! }));
+    this.broadcastWorkspaces(giveEveryWorkspaceAProfile(this.store));
+  }
+
+  private broadcastWorkspaces(workspaces: Workspace[]) {
+    workspaces.forEach((workspace) => this.hub.broadcast({ type: "workspace.upserted", workspace }));
   }
 
   setWorkspaceDefault(workspaceId: string, launch: Launch) {
-    assertLaunchable(this.store, launch);
+    profileToLaunch(this.store, launch);
     this.store.setWorkspaceDefaultLaunch(workspaceId, launch);
     const workspace = this.store.findWorkspace(workspaceId);
     if (workspace) this.hub.broadcast({ type: "workspace.upserted", workspace });

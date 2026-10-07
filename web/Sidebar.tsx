@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { connectedDevicesLabel, otherConnectedDevices } from "../shared/devices.ts";
 import {
-  harnessIds,
   launchLabel,
   terminalActivityLabels,
   type Conversation,
-  type Launch,
   type Profile,
   type WaitingFor,
   type Workspace,
@@ -169,33 +167,29 @@ function markColorOf(name: string) {
   return markColors[hash % markColors.length];
 }
 
-const launchKey = ({ harness, profileId }: Launch) => profileId ?? harness;
-
-/** Every agent on its own, then every profile (each belongs to one agent). */
-const launchChoices = (profiles: Profile[]): Launch[] => [
-  ...harnessIds.map((harness) => ({ harness, profileId: null })),
-  ...profiles.map(({ id, harness }) => ({ harness, profileId: id })),
-];
-
-/** A chip as wide as the chosen agent's name, with the select laid invisibly over it to open the choices. */
-function LaunchPicker({ workspace, profiles }: { workspace: Workspace; profiles: Profile[] }) {
-  const choices = launchChoices(profiles);
-  const choose = (key: string) => {
-    const launch = choices.find((choice) => launchKey(choice) === key);
-    if (launch) connection.send({ type: "workspace.set-default-launch", workspaceId: workspace.id, launch });
+/**
+ * A chip as wide as the chosen profile's name, with the select laid invisibly over it to open the choices. With no
+ * profile yet, it leads to setting one up, which the main pane offers when no conversation is open.
+ */
+function LaunchPicker({ workspace, profiles, dispatch }: { workspace: Workspace; profiles: Profile[]; dispatch: Dispatch<AppAction> }) {
+  if (profiles.length === 0) {
+    return (
+      <button className="link" data-hint={hints.setUpProfile} onClick={() => dispatch({ type: "select", conversationId: null })}>
+        Set up a profile
+      </button>
+    );
+  }
+  const choose = (profileId: string) => {
+    const profile = profiles.find(({ id }) => id === profileId);
+    if (profile) connection.send({ type: "workspace.set-default-launch", workspaceId: workspace.id, launch: { harness: profile.harness, profileId } });
   };
   return (
     <span className="agent-chip">
       <span className="agent-chip-label">{launchLabel(workspace.defaultLaunch, profiles)}</span>
-      <select
-        aria-label="Agent"
-        data-hint={hints.launch}
-        value={launchKey(workspace.defaultLaunch)}
-        onChange={(event) => choose(event.target.value)}
-      >
-        {choices.map((launch) => (
-          <option key={launchKey(launch)} value={launchKey(launch)}>
-            {launchLabel(launch, profiles)}
+      <select aria-label="Agent" data-hint={hints.launch} value={workspace.defaultLaunch.profileId ?? ""} onChange={(event) => choose(event.target.value)}>
+        {profiles.map(({ id, harness }) => (
+          <option key={id} value={id}>
+            {launchLabel({ harness, profileId: id }, profiles)}
           </option>
         ))}
       </select>
@@ -336,7 +330,7 @@ function WorkspaceSection({
         >
           + New
         </button>
-        <LaunchPicker workspace={workspace} profiles={profiles} />
+        <LaunchPicker workspace={workspace} profiles={profiles} dispatch={dispatch} />
         <button
           className="link continue-session"
           aria-label="Continue a session…"

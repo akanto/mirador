@@ -92,10 +92,11 @@ export const hints = {
   inTerminal:
     "This Claude Code session is also running in a terminal. The host sees that in Claude Code's session registry (<config dir>/sessions/<pid>.json) and shows what the terminal is doing.",
   launch:
-    "Agent (and profile) for new conversations in this workspace. Remembered per workspace. Existing conversations keep the agent they started with.",
+    "The profile new conversations in this workspace start on, and with it their agent. Remembered per workspace. Existing conversations keep the profile they run on until you move them.",
+  setUpProfile: "Every conversation runs on a profile. Set up your first one in the main pane; with nothing more set, it runs the agent as it is set up on this machine.",
   continueSession:
     "Pick up a Claude Code or opencode session that was started in a terminal in this directory. Continue it in place, or fork its history into a new conversation and leave the original alone.",
-  profiles: "Named setups for an agent: environment variables and a pre-launch command, applied to the agent process the profile starts.",
+  profiles: "Named setups for an agent: environment variables and a pre-launch command, applied to the agent process the profile starts. Every conversation runs on one.",
   shellOutputStyle:
     "How each shell command the agent runs shows in a conversation until you open or close it: its command with the output a click away, the output open only when the command failed, one line with the command too a click away, or everything open. Commands you run with ! always show their output.",
   timestamps: "Off: the time shows next to each author's name, and on a later line while you point at it.\nOn: every line shows its time.",
@@ -107,7 +108,7 @@ export const hints = {
   workspaceColor: "Give this workspace a colour, to tell it apart in the sidebar. Every window shows it.",
   workspaceColorStyle:
     "How a workspace you gave a colour shows it: on its whole card, on its heading only, or as a stripe down its edge over a softer tint. Click a workspace's initials to give it a colour.",
-  newConversation: "Start a conversation in this workspace, with the agent picked next to this button.",
+  newConversation: "Start a conversation in this workspace, on the profile picked next to this button.",
   addWorkspace: "Add a project directory. Its conversations run with it as the working directory.",
   removeWorkspace: "Remove this workspace and its conversations from the app. The directory and its files are not touched.",
   removeWorkspaceArmed: "Click again to remove this workspace and its conversations from the app. The directory and its files are not touched.",

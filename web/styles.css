@@ -300,6 +300,17 @@ body.resizing iframe {
   text-align: center;
 }
 
+.first-profile {
+  max-width: 640px;
+  overflow-y: auto;
+}
+
+.first-profile .profile-editor {
+  margin-top: 16px;
+  color: var(--text);
+  text-align: left;
+}
+
 .banner {
   background: var(--warn);
   color: #000;

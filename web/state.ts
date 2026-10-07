@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
@@ -38,6 +38,8 @@ export interface AppState {
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
+  /** The agents the host's machine has a program for, which a new profile can run. */
+  installedAgents: HarnessId[];
   /** The version of the host serving this page. */
   version: string;
   canvasAssetsOrigin: string;
@@ -76,6 +78,7 @@ export const initialState: AppState = {
   promptTemplates: [],
   canvasUse: "often",
   claudeProgram: { configured: "", found: null, version: null },
+  installedAgents: [],
   version: "",
   canvasAssetsOrigin: "",
   agentsCanvasAssetsOrigin: "",
@@ -141,6 +144,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
         claudeProgram: message.claudeProgram,
+        installedAgents: message.installedAgents,
         version: message.version,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
         agentsCanvasAssetsOrigin: message.agentsCanvasAssetsOrigin,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Conversation } from "../shared/model.ts";
-import { assertLaunchable, moveProfilelessOntoProfiles } from "../host/profiles.ts";
+import { defaultLaunchForNewWorkspace, giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, profileToLaunch } from "../host/profiles.ts";
 import { Store } from "../host/store.ts";
 
 describe("moveProfilelessOntoProfiles", () => {
@@ -69,18 +69,66 @@ describe("moveProfilelessOntoProfiles", () => {
   });
 });
 
-describe("assertLaunchable", () => {
+describe("profileToLaunch", () => {
   const store = new Store(":memory:");
   store.saveProfile({ id: "p1", name: "home llama", harness: "opencode", environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
 
-  test("accepts an agent on its own and a profile on its own agent", () => {
-    expect(() => assertLaunchable(store, { harness: "claude", profileId: null })).not.toThrow();
-    expect(() => assertLaunchable(store, { harness: "opencode", profileId: "p1" })).not.toThrow();
+  test("gives the profile when it is on its own agent", () => {
+    expect(profileToLaunch(store, { harness: "opencode", profileId: "p1" }).name).toBe("home llama");
   });
 
-  test("refuses a profile on another agent, a deleted profile and an unknown agent", () => {
-    expect(() => assertLaunchable(store, { harness: "claude", profileId: "p1" })).toThrow('Profile "home llama" is for opencode, not Claude Code.');
-    expect(() => assertLaunchable(store, { harness: "opencode", profileId: "gone" })).toThrow("That profile no longer exists.");
-    expect(() => assertLaunchable(store, { harness: "pi" as never, profileId: null })).toThrow("Unknown agent pi.");
+  test("refuses no profile, a profile on another agent, a deleted profile and an unknown agent", () => {
+    expect(() => profileToLaunch(store, { harness: "claude", profileId: null })).toThrow("Every conversation runs on a profile: pick one, or set one up in Profiles.");
+    expect(() => profileToLaunch(store, { harness: "claude", profileId: "p1" })).toThrow('Profile "home llama" is for opencode, not Claude Code.');
+    expect(() => profileToLaunch(store, { harness: "opencode", profileId: "gone" })).toThrow("That profile no longer exists.");
+    expect(() => profileToLaunch(store, { harness: "pi" as never, profileId: "p1" })).toThrow("Unknown agent pi.");
+  });
+});
+
+describe("workspace defaults", () => {
+  const profile = (id: string, name: string, harness: "claude" | "opencode", createdAt: number) =>
+    ({ id, name, harness, environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt }) as const;
+  const workspace = (id: string, profileId: string | null, harness: "claude" | "opencode", createdAt: number) => ({
+    id,
+    name: id,
+    path: `/tmp/${id}`,
+    defaultLaunch: { harness, profileId },
+    createdAt,
+  });
+
+  test("with no profile yet, a workspace starts on none, and the first profile goes to every workspace", () => {
+    const store = new Store(":memory:");
+    store.insertWorkspace(workspace("w1", null, "claude", 1));
+    expect(defaultLaunchForNewWorkspace(store)).toEqual({ harness: "claude", profileId: null });
+    expect(giveEveryWorkspaceAProfile(store)).toEqual([]);
+
+    store.saveProfile(profile("p1", "Claude Code", "claude", 1));
+
+    expect(giveEveryWorkspaceAProfile(store).map(({ id, defaultLaunch }) => [id, defaultLaunch])).toEqual([["w1", { harness: "claude", profileId: "p1" }]]);
+    expect(giveEveryWorkspaceAProfile(store)).toEqual([]);
+  });
+
+  test("a workspace whose profile is gone takes one of the same agent if there is one, else the first", () => {
+    const store = new Store(":memory:");
+    [profile("a", "alpha", "claude", 1), profile("b", "beta", "opencode", 2)].forEach((each) => store.saveProfile(each));
+    store.insertWorkspace(workspace("on-opencode", "deleted", "opencode", 1));
+    store.insertWorkspace(workspace("on-claude", "deleted-too", "claude", 2));
+
+    giveEveryWorkspaceAProfile(store);
+    expect(store.findWorkspace("on-opencode")!.defaultLaunch).toEqual({ harness: "opencode", profileId: "b" });
+    expect(store.findWorkspace("on-claude")!.defaultLaunch).toEqual({ harness: "claude", profileId: "a" });
+
+    store.deleteProfile("b");
+    giveEveryWorkspaceAProfile(store);
+    expect(store.findWorkspace("on-opencode")!.defaultLaunch).toEqual({ harness: "claude", profileId: "a" });
+  });
+
+  test("a new workspace starts as the one added last does", () => {
+    const store = new Store(":memory:");
+    [profile("a", "alpha", "claude", 1), profile("o", "omega", "opencode", 2)].forEach((each) => store.saveProfile(each));
+    store.insertWorkspace(workspace("first", "a", "claude", 1));
+    store.insertWorkspace(workspace("latest", "o", "opencode", 2));
+
+    expect(defaultLaunchForNewWorkspace(store)).toEqual({ harness: "opencode", profileId: "o" });
   });
 });

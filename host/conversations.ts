@@ -44,7 +44,7 @@ import type { ImageStore } from "./images.ts";
 import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
 import { Checkpoints } from "./checkpoints.ts";
-import { assertLaunchable } from "./profiles.ts";
+import { profileToLaunch } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
 import type { TerminalProgram } from "./terminals.ts";
@@ -105,8 +105,8 @@ interface Runtime {
 
 export class ConversationService {
   private readonly runtimes = new Map<string, Runtime>();
-  /** One agent process per profile, and one per agent for conversations without a profile. */
-  private readonly harnessesByLaunch = new Map<string, HarnessProcess>();
+  /** One agent process per profile, by its id. */
+  private readonly harnessesByProfile = new Map<string, HarnessProcess>();
   private readonly conversationBySession = new Map<string, string>();
   private readonly updatesForUnknownSessions = new Map<string, acp.SessionNotification[]>();
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
@@ -180,7 +180,7 @@ export class ConversationService {
   /** The newest sessions the harness knows for the workspace directory, including ones started outside the app. */
   async listSessionsInWorkspace(workspaceId: string, launch: Launch): Promise<ExternalSession[]> {
     const directory = await recordedDirectory(this.existingWorkspace(workspaceId));
-    assertLaunchable(this.store, launch);
+    profileToLaunch(this.store, launch);
     const harness = this.harnessFor(launch);
     const capabilities = await harness.start();
     if (!capabilities.agentCapabilities?.sessionCapabilities?.list) throw new Error(`${harness.spec.label} cannot list its sessions.`);
@@ -210,8 +210,7 @@ export class ConversationService {
 
   private insertConversation(workspaceId: string, launch: Launch, title: string): Conversation {
     this.existingWorkspace(workspaceId);
-    assertLaunchable(this.store, launch);
-    const profile = launch.profileId === null ? undefined : this.existingProfile(launch.profileId);
+    const profile = profileToLaunch(this.store, launch);
     const now = Date.now();
     const conversation = this.store.insertConversation({
       id: crypto.randomUUID(),
@@ -221,8 +220,8 @@ export class ConversationService {
       title,
       titleSetByUser: false,
       acpSessionId: null,
-      askMode: profile?.askMode ?? "wait",
-      bypassPermissions: profile?.bypassPermissions ?? false,
+      askMode: profile.askMode,
+      bypassPermissions: profile.bypassPermissions,
       status: "idle",
       statusDetail: null,
       openInTerminal: null,
@@ -290,39 +289,35 @@ export class ConversationService {
   }
 
   /**
-   * Moves the conversation to another profile of the same agent. The old agent process lets go of
-   * the session first, then the new one resumes it, with the new profile's model rather than the old choice.
-   */
-  /**
    * Moves the conversation's session to the agent process of another profile of its agent. A turn in progress
    * is stopped first and, once the session is back, continued under the new profile; queued messages follow.
    */
-  setProfile(conversationId: string, profileId: string | null) {
+  setProfile(conversationId: string, profileId: string) {
     const runtime = this.runtime(conversationId);
     const switched = (runtime.profileSwitch ?? Promise.resolve()).then(() => this.switchProfile(conversationId, profileId));
     runtime.profileSwitch = switched.catch(() => {});
     return switched;
   }
 
-  private async switchProfile(conversationId: string, profileId: string | null) {
+  private async switchProfile(conversationId: string, profileId: string) {
     const runtime = this.runtime(conversationId);
     await runtime.sessionId?.catch(() => {});
     if (this.get(conversationId).profileId === profileId) return;
-    assertLaunchable(this.store, { harness: this.get(conversationId).harness, profileId });
+    const profile = profileToLaunch(this.store, { harness: this.get(conversationId).harness, profileId });
     const interrupted = runtime.running;
     runtime.holdingQueue = interrupted;
     if (interrupted) await this.stopTurn(conversationId);
     const conversation = this.get(conversationId);
     const released = this.releaseSession(runtime, conversation.acpSessionId);
-    const profile = profileId === null ? undefined : this.existingProfile(profileId);
     this.save({
       ...conversation,
       profileId,
-      ...(profile && { askMode: profile.askMode, bypassPermissions: profile.bypassPermissions }),
+      askMode: profile.askMode,
+      bypassPermissions: profile.bypassPermissions,
       acpSessionId: this.agentHasRecorded(conversationId) ? conversation.acpSessionId : null,
       configOptions: conversation.configOptions.filter(({ id }) => id !== "model"),
     });
-    this.append(conversationId, { type: "profile-changed", profileName: profileId && this.existingProfile(profileId).name });
+    this.append(conversationId, { type: "profile-changed", profileName: profile.name });
     this.ensureSession(conversationId, async () => {
       this.setStatus(conversationId, "starting", "Switching profile…");
       await released;
@@ -608,7 +603,7 @@ export class ConversationService {
     const conversation = this.get(conversationId);
     const directory = this.store.findWorkspace(conversation.workspaceId)?.path;
     if (!directory) throw new Error("This conversation's workspace no longer exists.");
-    const environment = profileEnvironment(conversation.profileId === null ? null : this.existingProfile(conversation.profileId));
+    const environment = profileEnvironment(this.profileOf(conversation));
     void this.commands.run(command, directory, environment, (event) => this.append(conversationId, event));
   }
 
@@ -636,8 +631,7 @@ export class ConversationService {
   /** The agent's own sign-in, with the environment of the conversation's profile, so a profile with its own account signs that one in. */
   loginProgram(conversationId: string): { workspaceId: string; program: TerminalProgram } {
     const conversation = this.get(conversationId);
-    const profile = conversation.profileId === null ? null : this.existingProfile(conversation.profileId);
-    const environment = launchEnvironment(conversation.harness, profile, this.store.claudeProgramSetting());
+    const environment = launchEnvironment(conversation.harness, this.profileOf(conversation), this.store.claudeProgramSetting());
     return {
       workspaceId: conversation.workspaceId,
       program: { tabName: `${harnessLabels[conversation.harness]} sign-in`, command: loginCommand(conversation.harness, environment), environment },
@@ -650,8 +644,7 @@ export class ConversationService {
     if (command === null) throw new Error(`${line} is not a slash command.`);
     const conversation = this.get(conversationId);
     if (conversation.harness !== "claude") throw new Error(`${harnessLabels[conversation.harness]} has no command like ${line}.`);
-    const profile = conversation.profileId === null ? null : this.existingProfile(conversation.profileId);
-    const environment = launchEnvironment(conversation.harness, profile, this.store.claudeProgramSetting());
+    const environment = launchEnvironment(conversation.harness, this.profileOf(conversation), this.store.claudeProgramSetting());
     return {
       workspaceId: conversation.workspaceId,
       program: {
@@ -739,17 +732,17 @@ export class ConversationService {
 
   /** Conversations pick up a changed or deleted profile from a fresh agent process; turns in progress stop. */
   restartProfile(profileId: string) {
-    const harness = this.harnessesByLaunch.get(profileId);
-    this.harnessesByLaunch.delete(profileId);
+    const harness = this.harnessesByProfile.get(profileId);
+    this.harnessesByProfile.delete(profileId);
     harness?.stop("was restarted because its profile changed");
   }
 
   /** Claude Code agents start again with the program now set, as a profile's agent does when the profile changes. */
   restartClaudeAgents() {
-    [...this.harnessesByLaunch]
-      .filter(([key]) => key === "claude" || this.store.findProfile(key)?.harness === "claude")
-      .forEach(([key, harness]) => {
-        this.harnessesByLaunch.delete(key);
+    [...this.harnessesByProfile]
+      .filter(([profileId]) => this.store.findProfile(profileId)?.harness === "claude")
+      .forEach(([profileId, harness]) => {
+        this.harnessesByProfile.delete(profileId);
         harness.stop("was restarted because the Claude Code program changed");
       });
   }
@@ -777,7 +770,7 @@ export class ConversationService {
   shutdown() {
     this.stopping = true;
     this.jobWaits.stopAll();
-    return Promise.all([this.commands.shutdown(), ...[...this.harnessesByLaunch.values()].map((harness) => harness.stop())]);
+    return Promise.all([this.commands.shutdown(), ...[...this.harnessesByProfile.values()].map((harness) => harness.stop())]);
   }
 
   private ensureSession(conversationId: string, open = () => this.openSession(conversationId)): Promise<string> {
@@ -962,10 +955,10 @@ export class ConversationService {
   }
 
   private harnessFor(launch: Launch): HarnessProcess {
-    const key = launch.profileId ?? launch.harness;
-    const existing = this.harnessesByLaunch.get(key);
+    const profile = this.profileOf(launch);
+    const existing = this.harnessesByProfile.get(profile.id);
     if (existing) return existing;
-    const spec = harnessSpec(launch.harness, launch.profileId === null ? null : this.existingProfile(launch.profileId), this.store.claudeProgramSetting());
+    const spec = harnessSpec(profile, this.store.claudeProgramSetting());
     const harness = new HarnessProcess(
       { ...spec, environment: { ...spec.environment, ...this.scriptEnvironment(spec.environment.PATH), ...this.testModelEnvironment(launch) } },
       {
@@ -975,7 +968,7 @@ export class ConversationService {
       },
       `${this.config.dataDir}/logs`,
     );
-    this.harnessesByLaunch.set(key, harness);
+    this.harnessesByProfile.set(profile.id, harness);
     return harness;
   }
 
@@ -996,9 +989,9 @@ export class ConversationService {
     return { MIRADOR_URL: this.config.appOrigin, MIRADOR_SCRIPT_TOKEN: this.config.scriptToken, ...miradorCommandEnvironment(path) };
   }
 
-  private existingProfile(profileId: string) {
-    const profile = this.store.findProfile(profileId);
-    if (!profile) throw new Error("This conversation's profile was deleted. Pick another profile at the top of the conversation.");
+  private profileOf({ profileId }: { profileId: string | null }) {
+    const profile = profileId === null ? undefined : this.store.findProfile(profileId);
+    if (!profile) throw new Error("This conversation has no profile, or its profile was deleted. Pick a profile at the top of the conversation.");
     return profile;
   }
 
@@ -1103,8 +1096,8 @@ export class ConversationService {
   }
 
   private handleHarnessExit(harness: HarnessProcess, reason: string) {
-    this.harnessesByLaunch.forEach((current, key) => {
-      if (current === harness) this.harnessesByLaunch.delete(key);
+    this.harnessesByProfile.forEach((current, key) => {
+      if (current === harness) this.harnessesByProfile.delete(key);
     });
     this.runtimes.forEach((runtime, conversationId) => {
       if (runtime.harness !== harness) return;

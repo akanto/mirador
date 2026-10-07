@@ -153,6 +153,8 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 - **Claude Code and opencode** over ACP, in the workspace's folder, with your normal settings: Claude Code with `~/.claude` (settings, hooks, MCP servers; claude-notifier is muted for Mirador's sessions), opencode with `~/.config/opencode` (providers, agents, plugins, MCP servers, and its permission settings: Mirador forces nothing, so with opencode's defaults most tools run without asking). opencode is found on `PATH`, else in `/opt/homebrew/bin`, `/usr/local/bin` or `~/.opencode/bin`.
 - **Profiles** (*Profiles…*): an agent plus the environment it starts with, e.g. Claude Code through a work gateway or a local llama.cpp server, or opencode with another config (`OPENCODE_CONFIG=…`, or inline `OPENCODE_CONFIG_CONTENT='{…}'`).
+  - Every conversation runs on a profile. On first start Mirador offers one filled in: an installed agent as it is set up on this machine, with an empty environment. Conversations from before profiles move onto such a profile per agent.
+  - The last profile stays until you create another; the workspaces of a deleted profile move to another one.
   - Environment lines are `KEY=value`, `-u KEY` and `# comment`, so the lines of a `claude_env=( … )` alias paste as they are.
   - An optional pre-launch command can start a proxy first; if it fails, you see its output.
   - Each profile has defaults for mode, YOLO and questions, its own agent process and its own log (`logs/<agent>-<name>-<id>.log`). Saving a changed profile restarts its agent.
@@ -199,7 +201,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### Sidebar and workspaces
 
-- **Workspaces** are project folders (*Add workspace*, Tab completes paths), each a card with its conversations oldest first and *+ New* at the bottom. The chip beside *+ New* chooses the agent or profile for new conversations, and each workspace remembers it. Removing a workspace never touches its files.
+- **Workspaces** are project folders (*Add workspace*, Tab completes paths), each a card with its conversations oldest first and *+ New* at the bottom. The chip beside *+ New* chooses the profile for new conversations, and each workspace remembers it. Removing a workspace never touches its files.
 - **Drag to reorder** workspaces (by their heading) and conversations (within their workspace). Every window and reload keeps the order.
 - **Colours**: eight pastels, picked from the workspace's initials badge or the palette, drawn as a tinted card, a heading or an edge stripe.
 - **Waiting marks**: *Needs you*, *Done* and *Failed* (see [Notifications](#notifications-and-waiting-for-you)).

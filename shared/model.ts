@@ -31,7 +31,6 @@ export const askModeLabels: Record<AskMode, string> = {
   "next-message": "My answer is sent as the next message",
 };
 
-/** How to launch an agent: extra environment and a command to run first. No profile means the host's own environment. */
 /** Another machine's Mirador opened from this one, e.g. a server the agents keep working on while this computer sleeps. */
 export interface Machine {
   id: string;
@@ -164,15 +163,18 @@ export interface Profile {
   createdAt: number;
 }
 
-/** What a new conversation starts: an agent, with one of its profiles or with none. */
+/** What a new conversation starts: a profile, on its agent. No profile only until the first one is set up. */
 export interface Launch {
   harness: HarnessId;
   profileId: string | null;
 }
 
+/** A profile's name, then its agent's unless the name already is it. */
 export function launchLabel(launch: Launch, profiles: Profile[]): string {
   const profile = profiles.find(({ id }) => id === launch.profileId);
-  return profile ? `${profile.name} · ${harnessLabels[profile.harness]}` : harnessLabels[launch.harness];
+  if (!profile) return "No profile";
+  const agent = harnessLabels[profile.harness];
+  return profile.name === agent ? agent : `${profile.name} · ${agent}`;
 }
 
 export type ConversationStatus = "idle" | "starting" | "running" | "error";

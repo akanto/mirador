@@ -3,7 +3,9 @@ import type { Workspace } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import type { AppAction } from "./state.ts";
 
+/** Without a profile yet, the main pane offers to set one up instead, as it does with no conversation open. */
 export function startConversationIn(workspace: Workspace, dispatch: Dispatch<AppAction>) {
+  if (workspace.defaultLaunch.profileId === null) return dispatch({ type: "select", conversationId: null });
   dispatch({ type: "awaiting-conversation", workspaceId: workspace.id });
   connection.send({ type: "conversation.create", workspaceId: workspace.id, launch: workspace.defaultLaunch });
 }

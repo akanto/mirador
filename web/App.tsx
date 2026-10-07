@@ -17,7 +17,7 @@ import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, 
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
 import { DEFAULT_SIDEBAR_WIDTH, inView, sidebarWidthWithinLimits, toggledInView, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
-import { ProfilesDialog } from "./Profiles.tsx";
+import { FirstProfile, ProfilesDialog } from "./Profiles.tsx";
 import { AskToRevert, RevertDialog } from "./Revert.tsx";
 import { isFreshReview } from "./review-placement.ts";
 import { SessionsDialog } from "./Sessions.tsx";
@@ -365,12 +365,15 @@ export function App() {
           )
         );
       })}
-      {!(conversation && open) && (
-        <div className="empty">
-          <h2>No conversation selected</h2>
-          <p>Add a workspace (a project directory) on the left, then start a conversation in it with Claude Code or opencode.</p>
-        </div>
-      )}
+      {!(conversation && open) &&
+        (state.profiles.length === 0 ? (
+          <FirstProfile installedAgents={state.installedAgents} conversations={state.conversations} />
+        ) : (
+          <div className="empty">
+            <h2>No conversation selected</h2>
+            <p>Add a workspace (a project directory) on the left, then start a conversation in it on one of your profiles.</p>
+          </div>
+        ))}
     </main>
   );
   const layoutWidth = layoutElement.current?.getBoundingClientRect().width ?? window.innerWidth;
@@ -436,7 +439,9 @@ export function App() {
       {overlay?.kind === "search" && (
         <SearchDialog workspaces={state.workspaces} conversations={state.conversations} onOpen={(conversationId) => select(conversationId)} onClose={closeOverlay} />
       )}
-      {overlay?.kind === "profiles" && <ProfilesDialog profiles={state.profiles} conversations={state.conversations} onClose={closeOverlay} />}
+      {overlay?.kind === "profiles" && (
+        <ProfilesDialog profiles={state.profiles} conversations={state.conversations} installedAgents={state.installedAgents} onClose={closeOverlay} />
+      )}
       {overlay?.kind === "machines" && (
         <MachinesDialog
           machines={state.machines}

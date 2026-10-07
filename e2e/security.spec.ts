@@ -112,8 +112,8 @@ test("a profile's environment and prelaunch command reach a joined device only w
   const devicePage = await device.newPage();
   await devicePage.goto(`${host.origin}/mirador-ca.pem`);
 
-  expect(await snapshotProfiles(devicePage, "")).toEqual([expect.objectContaining({ name: "Work", environment: "", prelaunch: "" })]);
-  expect(await snapshotProfiles(devicePage, `?${PROFILE_LAUNCH_PARAMETER}`)).toEqual([expect.objectContaining({ name: "Work", ...launch })]);
+  expect(await snapshotProfiles(devicePage, "")).toContainEqual(expect.objectContaining({ name: "Work", environment: "", prelaunch: "" }));
+  expect(await snapshotProfiles(devicePage, `?${PROFILE_LAUNCH_PARAMETER}`)).toContainEqual(expect.objectContaining({ name: "Work", ...launch }));
   await device.close();
 });
 

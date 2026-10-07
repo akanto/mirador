@@ -32,7 +32,7 @@ export async function callCanvasTool(host: TestHost, conversationId: string, nam
 
 export async function signIn(page: Page, host: TestHost) {
   await page.goto(host.authUrl);
-  await expect(page.getByText("No conversation selected")).toBeVisible();
+  await expect(page.getByText("No conversation selected").or(page.getByRole("heading", { name: "Set up a profile to start" }))).toBeVisible();
 }
 
 export async function addWorkspace(page: Page, directory: string) {

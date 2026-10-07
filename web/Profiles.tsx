@@ -84,17 +84,25 @@ function modeChoices(conversations: Conversation[], harness: HarnessId, saved: s
   return [{ value: AGENTS_OWN_MODE, name: "Agent's default" }, ...known, ...savedButUnknown];
 }
 
+/** A new profile runs an agent this machine has; one named after its agent keeps following the agent picked until it is renamed. */
 function ProfileEditor({
   profile,
   conversations,
+  installedAgents,
+  namedAfterAgent = false,
+  isOnlyProfile = false,
   onSaved,
 }: {
   profile: Profile | undefined;
   conversations: Conversation[];
+  installedAgents: HarnessId[];
+  namedAfterAgent?: boolean;
+  isOnlyProfile?: boolean;
   onSaved: (profileId: string) => void;
 }) {
-  const [name, setName] = useState(profile?.name ?? "");
-  const [harness, setHarness] = useState<HarnessId>(profile?.harness ?? "claude");
+  const firstHarness = profile?.harness ?? installedAgents[0] ?? "claude";
+  const [name, setName] = useState(profile?.name ?? (namedAfterAgent ? harnessLabels[firstHarness] : ""));
+  const [harness, setHarness] = useState<HarnessId>(firstHarness);
   const [environment, setEnvironment] = useState(profile?.environment ?? "");
   const [prelaunch, setPrelaunch] = useState(profile?.prelaunch ?? "");
   const [mode, setMode] = useState(profile?.mode ?? AGENTS_OWN_MODE);
@@ -138,13 +146,15 @@ function ProfileEditor({
           disabled={Boolean(profile)}
           title={profile ? "A profile's agent is fixed: its conversations keep running on it." : undefined}
           onChange={(event) => {
-            setHarness(event.target.value as HarnessId);
+            const picked = event.target.value as HarnessId;
+            if (name === harnessLabels[harness]) setName(harnessLabels[picked]);
+            setHarness(picked);
             setMode(AGENTS_OWN_MODE);
           }}
         >
           {harnessIds.map((id) => (
-            <option key={id} value={id}>
-              {harnessLabels[id]}
+            <option key={id} value={id} disabled={!profile && !installedAgents.includes(id)}>
+              {installedAgents.includes(id) ? harnessLabels[id] : `${harnessLabels[id]} (not installed)`}
             </option>
           ))}
         </select>
@@ -210,7 +220,7 @@ function ProfileEditor({
         <button type="submit" disabled={saving || errors.length > 0 || !name.trim() || unchanged}>
           {profile ? "Save" : "Create profile"}
         </button>
-        {profile && (
+        {profile && !isOnlyProfile && (
           <ConfirmButton className="danger" label="Delete profile" armedText="Delete?" armedHint={hints.deleteProfileArmed} onConfirm={deleteProfile}>
             Delete
           </ConfirmButton>
@@ -220,11 +230,44 @@ function ProfileEditor({
       {profile && (
         <div className="hint">Saving a changed environment or pre-launch command restarts this profile's agent; a turn in progress stops.</div>
       )}
+      {isOnlyProfile && <div className="hint">This is your only profile, and every conversation needs one, so it stays until you create another.</div>}
     </form>
   );
 }
 
-export function ProfilesDialog({ profiles, conversations, onClose }: { profiles: Profile[]; conversations: Conversation[]; onClose: () => void }) {
+/** With no profile yet, the main pane offers the first: an agent this machine has, named after it, run as it is set up here. */
+export function FirstProfile({ installedAgents, conversations }: { installedAgents: HarnessId[]; conversations: Conversation[] }) {
+  if (installedAgents.length === 0) {
+    return (
+      <div className="empty">
+        <h2>Install an agent to start</h2>
+        <p>Mirador runs Claude Code or opencode, and this machine has neither. Install one, then reload this page.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="empty first-profile">
+      <h2>Set up a profile to start</h2>
+      <p>
+        Every conversation runs on a profile: an agent and the environment it starts with. With nothing more set, it runs the agent as
+        it is set up on this machine. You can add profiles for other accounts, gateways or local models later in Profiles.
+      </p>
+      <ProfileEditor profile={undefined} conversations={conversations} installedAgents={installedAgents} namedAfterAgent onSaved={() => {}} />
+    </div>
+  );
+}
+
+export function ProfilesDialog({
+  profiles,
+  conversations,
+  installedAgents,
+  onClose,
+}: {
+  profiles: Profile[];
+  conversations: Conversation[];
+  installedAgents: HarnessId[];
+  onClose: () => void;
+}) {
   const [selectedId, setSelectedId] = useState(profiles[0]?.id ?? NEW_PROFILE);
   const selected = profiles.find(({ id }) => id === selectedId);
 
@@ -249,7 +292,7 @@ export function ProfilesDialog({ profiles, conversations, onClose }: { profiles:
         </header>
         <p className="hint">
           A profile is an agent plus the environment it starts with: which account, gateway, local model or opencode config it
-          uses. Without a profile, agents use the environment the host was started with.
+          uses. Every conversation runs on one; with no environment set, the agent runs as it is set up on this machine.
         </p>
         <div className="profiles-body">
           <ul className="profile-list">
@@ -263,7 +306,14 @@ export function ProfilesDialog({ profiles, conversations, onClose }: { profiles:
               + New profile
             </li>
           </ul>
-          <ProfileEditor key={selected?.id ?? NEW_PROFILE} profile={selected} conversations={conversations} onSaved={setSelectedId} />
+          <ProfileEditor
+            key={selected?.id ?? NEW_PROFILE}
+            profile={selected}
+            conversations={conversations}
+            installedAgents={installedAgents}
+            isOnlyProfile={profiles.length === 1 && selected !== undefined}
+            onSaved={setSelectedId}
+          />
         </div>
       </div>
     </div>

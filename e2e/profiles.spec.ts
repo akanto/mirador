@@ -35,6 +35,7 @@ test("a profile's environment and pre-launch command reach Claude Code, and its 
   await addWorkspace(page, host.projectDir);
 
   const dialog = await openProfiles(page);
+  await dialog.locator(".profile-list li", { hasText: "+ New profile" }).click();
   await dialog.getByLabel("Environment", { exact: true }).fill('ANTHROPIC_MODEL="$model"');
   await expect(dialog.locator(".form-errors")).toContainText("values are not expanded");
   await expect(dialog.getByRole("button", { name: "Create profile" })).toBeDisabled();
@@ -69,6 +70,7 @@ test("saving a changed profile restarts its agent, and the conversation continue
   await signIn(page, host);
   await page.locator(".workspace li").first().click();
   const dialog = await openProfiles(page);
+  await dialog.locator(".profile-list li", { hasText: "fake gateway" }).click();
   await dialog.getByRole("button", { name: "Edit environment" }).click();
   const field = dialog.getByLabel("Environment", { exact: true });
   await field.fill((await field.inputValue()).replace("e2e-gateway-token", "e2e-rotated-token"));
