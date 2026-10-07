@@ -37,6 +37,8 @@ function agentRefusedToOpen(text: string, conversationId: string) {
 
 const ran = () => readFileSync(ranHere, "utf8").trim().split("\n");
 
+// Later tests use the workspace the first one adds.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fakeClaude();
   await host.start();
