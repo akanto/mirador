@@ -54,3 +54,25 @@ test("a wheel turn over a scrolling box in a tall page scrolls the box, not the 
   await page.waitForTimeout(200);
   expect(await scrolled()).toEqual({ box: 200, page: 0 });
 });
+
+/** Stands in for WebKit, which does not scroll these frames itself: the page cancels the wheel after Mirador has seen it. */
+const pageTheEngineDoesNotScroll = `<body style="margin:0"><div style="height:4000px">tall page</div>
+<script>addEventListener("wheel", (event) => event.preventDefault(), { passive: false });</script></body>`;
+
+test("a touchpad's stream of small wheel turns scrolls by every one of them, where the engine does not scroll the page", async ({ page }) => {
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "show", { title: "Touchpad", html: pageTheEngineDoesNotScroll });
+
+  const canvasPage = page.locator(".canvas-frame.show iframe");
+  const inside = canvasPage.contentFrame().locator("body");
+  await expect(inside).toContainText("tall page");
+  const frame = (await canvasPage.boundingBox())!;
+  await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+  for (let turn = 0; turn < 30; turn++) await page.mouse.wheel(0, 10);
+
+  const scrollTop = () => inside.evaluate((node) => node.ownerDocument.scrollingElement!.scrollTop);
+  await expect.poll(scrollTop).toBe(300);
+  await page.mouse.wheel(0, 50);
+  expect(await scrollTop()).toBe(350);
+});

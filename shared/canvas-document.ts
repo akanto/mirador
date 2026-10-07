@@ -118,15 +118,35 @@ function frameReporter(itemId: string, theme: CanvasTheme) {
     return takesTheWheel(root, event.deltaX, event.deltaY, true) ? root : null;
   };
   const wheelPixels = (delta, deltaMode, page) => delta * (deltaMode === 1 ? 16 : deltaMode === 2 ? page : 1);
-  // WebKit does not natively scroll these sandboxed srcdoc frames, so scroll ourselves once the engine had its chance.
-  const catchUpWithTheEngine = (node, event) => {
+  const scrollByTurn = (node, turn) => node.scrollBy({
+    left: wheelPixels(turn.deltaX, turn.deltaMode, node.clientWidth),
+    top: wheelPixels(turn.deltaY, turn.deltaMode, node.clientHeight),
+  });
+  // WebKit does not natively scroll these sandboxed srcdoc frames. The first turns on a node show whether the engine
+  // scrolls it; where it does not, those turns are made up for and every later one scrolls here at once, so a
+  // touchpad's stream of small turns neither lags nor gets lost.
+  const engineScrolls = new WeakMap();
+  const turnsWhileFindingOut = new WeakMap();
+  const scrollWhereTheEngineDoesNot = (node, event) => {
+    const known = engineScrolls.get(node);
+    if (known === true) return;
+    if (known === false) {
+      event.preventDefault();
+      scrollByTurn(node, event);
+      return;
+    }
+    const turns = turnsWhileFindingOut.get(node);
+    if (turns) {
+      turns.push(event);
+      return;
+    }
+    turnsWhileFindingOut.set(node, [event]);
     const was = { x: node.scrollLeft, y: node.scrollTop };
     setTimeout(() => {
-      if (node.scrollLeft !== was.x || node.scrollTop !== was.y) return;
-      node.scrollBy({
-        left: wheelPixels(event.deltaX, event.deltaMode, node.clientWidth),
-        top: wheelPixels(event.deltaY, event.deltaMode, node.clientHeight),
-      });
+      const moved = node.scrollLeft !== was.x || node.scrollTop !== was.y;
+      engineScrolls.set(node, moved);
+      if (!moved) turnsWhileFindingOut.get(node).forEach((turn) => scrollByTurn(node, turn));
+      turnsWhileFindingOut.delete(node);
     }, 64);
   };
   // A page that fits its frame has nothing to scroll, and WebKit does not pass the wheel on to the panel holding it.
@@ -138,7 +158,7 @@ function frameReporter(itemId: string, theme: CanvasTheme) {
       post({ kind: "wheel", deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
       return;
     }
-    catchUpWithTheEngine(node, event);
+    scrollWhereTheEngineDoesNot(node, event);
   }, { passive: false });
   addEventListener("keydown", (event) => {
     if (!event.isTrusted || !(event.metaKey || event.ctrlKey || event.altKey)) return;
