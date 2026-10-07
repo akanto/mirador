@@ -1,4 +1,4 @@
-import { askModeLabels, harnessIds, harnessLabels, type Launch, type Profile } from "../shared/model.ts";
+import { askModeLabels, harnessIds, harnessLabels, type HarnessId, type Launch, type Profile } from "../shared/model.ts";
 import { parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import type { ConversationService } from "./conversations.ts";
@@ -14,6 +14,29 @@ export function assertLaunchable(store: Store, launch: Launch) {
   if (profile.harness !== launch.harness) {
     throw new Error(`Profile "${profile.name}" is for ${harnessLabels[profile.harness]}, not ${harnessLabels[launch.harness]}.`);
   }
+}
+
+/**
+ * Workspaces and conversations from before every conversation ran on a profile move onto one per agent, named after it
+ * and with nothing of its own, so they run as they did. Only for the agents this machine has a program for.
+ */
+export function moveProfilelessOntoProfiles(store: Store, installed: HarnessId[]) {
+  store
+    .profilelessHarnesses()
+    .filter((harness) => installed.includes(harness))
+    .forEach((harness) =>
+      store.putProfilelessOn({
+        id: crypto.randomUUID(),
+        name: harnessLabels[harness],
+        harness,
+        environment: "",
+        prelaunch: "",
+        mode: null,
+        bypassPermissions: false,
+        askMode: "wait",
+        createdAt: Date.now(),
+      }),
+    );
 }
 
 /** A profile as a socket gets it: without what it launches its agent with, unless the socket's page edits profiles. */

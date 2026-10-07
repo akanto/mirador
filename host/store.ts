@@ -398,6 +398,23 @@ export class Store {
     this.db.query("UPDATE workspaces SET default_profile_id = NULL WHERE default_profile_id = ?").run(id);
   }
 
+  /** The agents that workspaces and conversations from before profiles were required still run without one. */
+  profilelessHarnesses(): HarnessId[] {
+    return this.db
+      .query("SELECT harness FROM conversations WHERE profile_id IS NULL UNION SELECT default_harness FROM workspaces WHERE default_profile_id IS NULL")
+      .all()
+      .map((row) => (row as { harness: HarnessId }).harness);
+  }
+
+  /** Saves the profile and moves its agent's profile-less workspaces and conversations onto it, all or nothing. */
+  putProfilelessOn(profile: Profile) {
+    this.db.transaction(() => {
+      this.saveProfile(profile);
+      this.db.query("UPDATE conversations SET profile_id = ? WHERE profile_id IS NULL AND harness = ?").run(profile.id, profile.harness);
+      this.db.query("UPDATE workspaces SET default_profile_id = ? WHERE default_profile_id IS NULL AND default_harness = ?").run(profile.id, profile.harness);
+    })();
+  }
+
   canvasUse(): CanvasUse {
     const value = (this.db.query("SELECT value FROM settings WHERE key = 'canvas_use'").get() as { value: string } | null)?.value;
     return isCanvasUse(value) ? value : "often";

@@ -37,7 +37,7 @@ export interface HostConfig {
   canvasAssetsOrigin: string;
   reachability: Reachability;
   notifierDir: string | null;
-  /** Test runs pin a cheap model; profiles are left alone because a profile chooses its own model. */
+  /** Test runs pin a cheap model for Claude Code on the user's own setup; a profile with an environment of its own chooses its model itself. */
   testModelOverride: { model?: string; effort?: string };
   /** Test hosts' own Claude Code sessions skip the user's settings and CLAUDE.md, which can steer or refuse test prompts. */
   testSkipsUserSettings: boolean;

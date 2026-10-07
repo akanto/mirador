@@ -1,7 +1,7 @@
 import { RequestError } from "@agentclientprotocol/sdk";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
+import { harnessIds, harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
 import { canvasUseGuidance } from "../canvas/guidance.ts";
 import { jobWaitGuidance } from "../job-waits.ts";
 import { applyEnvironment, parseEnvironment } from "../../shared/profile-environment.ts";
@@ -17,10 +17,18 @@ const claudeAgentEntry = join(
 /** Where opencode's installers put it, for hosts started without a login shell's PATH (e.g. by launchd). */
 const opencodeInstallDirectories = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".opencode", "bin")];
 
+const findOpencode = () => Bun.which("opencode") ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(":") });
+
 function opencodeCommand(): string[] {
-  const executable = Bun.which("opencode") ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(":") });
+  const executable = findOpencode();
   if (!executable) throw new Error("opencode is not installed: no opencode executable on PATH or in its usual install directories.");
   return [executable, "acp"];
+}
+
+/** The agents this machine has a program for. */
+export function installedHarnesses(claudeProgramSetting: string): HarnessId[] {
+  const programOf: Record<HarnessId, () => string | null> = { claude: () => findClaudeProgram(claudeProgramSetting), opencode: findOpencode };
+  return harnessIds.filter((harness) => programOf[harness]() !== null);
 }
 
 const commandFor: Record<HarnessId, () => string[]> = {

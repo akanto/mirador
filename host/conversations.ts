@@ -850,9 +850,7 @@ export class ConversationService {
     this.bindSession(conversationId, created.sessionId, created.configOptions);
     await this.restoreConfigChoices(conversationId, created.sessionId, conversation.configOptions);
     if (isFirstSession) await this.applyProfileMode(conversationId, created.sessionId);
-    if (conversation.harness === "claude" && conversation.profileId === null) {
-      await this.applyTestModelOverride(conversationId, created.sessionId);
-    }
+    if (this.onUsersOwnSetup(conversation)) await this.applyTestModelOverride(conversationId, created.sessionId);
     return created.sessionId;
   }
 
@@ -883,9 +881,9 @@ export class ConversationService {
 
   /** A test host's own Claude Code works without the settings and instructions of the user who runs the tests. */
   private sessionRequest(conversationId: string, workspace: Workspace) {
-    const { harness, profileId } = this.get(conversationId);
-    const withoutUserSettings = this.config.testSkipsUserSettings && profileId === null;
-    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(harness, this.store.canvasUse(), { withoutUserSettings }) };
+    const conversation = this.get(conversationId);
+    const withoutUserSettings = this.config.testSkipsUserSettings && this.onUsersOwnSetup(conversation);
+    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { withoutUserSettings }) };
   }
 
   /** claude-notifier hooks into Claude Code only. */
@@ -982,9 +980,15 @@ export class ConversationService {
   }
 
   /** A test host's Claude Code starts its sessions on the test model, rather than switching to it once a session runs. */
-  private testModelEnvironment({ harness, profileId }: Launch): Record<string, string> {
+  private testModelEnvironment(launch: Launch): Record<string, string> {
     const { model } = this.config.testModelOverride;
-    return harness === "claude" && profileId === null && model ? { ANTHROPIC_MODEL: model } : {};
+    return this.onUsersOwnSetup(launch) && model ? { ANTHROPIC_MODEL: model } : {};
+  }
+
+  /** Claude Code with no profile, or one with no environment of its own: test hosts choose its model and settings, as a profile with an environment does itself. */
+  private onUsersOwnSetup({ harness, profileId }: Launch) {
+    const profile = profileId === null ? undefined : this.store.findProfile(profileId);
+    return harness === "claude" && !profile?.environment.trim();
   }
 
   /** Where scripts the agent starts reach the host (scripts/mirador-message), and the mirador command they do it with. */
