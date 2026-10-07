@@ -218,3 +218,4 @@
 {"id":"int-36d1df41334a158a053b27a99c51a2d3","kind":"field_change","created_at":"2026-10-07T21:19:38.251519Z","actor":"perdos","issue_id":"vcs-7x1","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
 {"id":"int-023411c40eb1b1a9b322f689ddb41460","kind":"field_change","created_at":"2026-10-07T21:20:35.349822Z","actor":"perdos","issue_id":"vcs-qy8","extra":{"field":"status","new_value":"blocked","old_value":"open"}}
 {"id":"int-a620cb5d843f24f40c1f7862a8918968","kind":"field_change","created_at":"2026-10-07T21:21:12.091449Z","actor":"perdos","issue_id":"vcs-2s4.10","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-c0e46fc0492df47073c227a5146c318b","kind":"field_change","created_at":"2026-10-07T21:26:55.113495Z","actor":"perdos","issue_id":"vcs-3g1.10","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}

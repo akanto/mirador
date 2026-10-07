@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from "@playwright/test";
 import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { allowNotifications, notificationsShown, openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -7,11 +8,27 @@ import { TestHost } from "./test-host.ts";
 const networkOrigin = "https://127.0.0.1:5206";
 /** On the network with its own certificate authority, which the laptop learns as it asks to join. */
 const server = new TestHost(5204, {
+  fakePrograms: true,
   environment: { MIRADOR_NETWORK: "on", MIRADOR_PUBLIC_ORIGIN: networkOrigin, MIRADOR_PUBLIC_CANVAS_ORIGIN: "https://127.0.0.1:5207" },
 });
 const laptop = new TestHost(5208);
 
+const notificationsOnDesktop = join(server.root, "notify-send.log");
+const linksOpened = join(server.root, "xdg-open.log");
+
+/** The machine's desktop: notify-send, on which the user presses Open at once, and the browser xdg-open opens. */
+function fakeDesktop() {
+  mkdirSync(server.fakeProgramsDir, { recursive: true });
+  const fake = (program: string, script: string) => {
+    writeFileSync(join(server.fakeProgramsDir, program), `#!/bin/sh\n${script}\n`);
+    chmodSync(join(server.fakeProgramsDir, program), 0o755);
+  };
+  fake("notify-send", `printf '%s\\n' "$@" >> '${notificationsOnDesktop}'\necho open`);
+  fake("xdg-open", `printf '%s\\n' "$1" >> '${linksOpened}'`);
+}
+
 test.beforeAll(async () => {
+  fakeDesktop();
   await Promise.all([server.start(), laptop.start()]);
 });
 test.afterAll(async () => {
@@ -80,6 +97,8 @@ test("another Mirador asks to join over HTTPS, and gets in once someone at the m
     const settings = await openSettings(serverPage, "Devices");
     await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toHaveCount(1);
   });
+  expect(existsSync(notificationsOnDesktop)).toBe(false);
+  await serverPage.close();
 });
 
 test("a browser on the network asks to join, and is signed in once someone at the machine types the number it shows", async ({ browser }) => {
@@ -96,14 +115,24 @@ test("a browser on the network asks to join, and is signed in once someone at th
   await prompt.getByRole("button", { name: "Approve" }).click();
   await expect(phone.getByRole("button", { name: "Settings…" })).toBeVisible();
   await expect(prompt).toHaveCount(0);
+  await serverPage.close();
 });
 
-test("mirador approve on the machine lets in a browser that asks, while no page of the machine is open", async ({ browser }) => {
+test("while no page of the machine is open, a request to join shows on its desktop, and mirador approve there lets the browser in", async ({ browser }) => {
   const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
   await phone.goto(networkOrigin);
   await phone.getByLabel("Name this device").fill("Tablet");
   await phone.getByRole("button", { name: "Ask to join" }).click();
   const number = await numberShownIn(phone.locator(".join-machine"));
+
+  await test.step("notify-send shows it, and its Open signs a browser on the machine in", async () => {
+    await expect.poll(() => (existsSync(notificationsOnDesktop) ? readFileSync(notificationsOnDesktop, "utf8") : "")).toContain("Tablet asks to join Mirador");
+    await expect.poll(() => existsSync(linksOpened)).toBe(true);
+    const desk = await browser.newPage();
+    await desk.goto(readFileSync(linksOpened, "utf8").trim());
+    await expect(desk.getByRole("alertdialog", { name: "Tablet asks to join" })).toBeVisible();
+    await desk.close();
+  });
 
   const approve = spawnSync(join(import.meta.dirname, "..", "bin", "mirador"), ["approve"], {
     env: { ...process.env, MIRADOR_DATA_DIR: server.dataDir },

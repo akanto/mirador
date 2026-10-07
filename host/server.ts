@@ -49,7 +49,8 @@ import { completeDirectories, existingDirectory } from "./paths.ts";
 import { defaultLaunchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
 import type { DesktopAppCheck } from "./desktop-app-check.ts";
 import type { HostRestart } from "./restart.ts";
-import type { SignInCodes } from "./sign-in-codes.ts";
+import { signInLink, type SignInCodes } from "./sign-in-codes.ts";
+import { showWithNotifySend } from "./notify-send.ts";
 import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
@@ -224,7 +225,8 @@ export function startServer(services: HostServices) {
     answerAboutJoining(request, async ({ secret, nonce }) => {
       const waiting = await joinRequests.reveal(request.params.id, secret, nonce);
       sendJoinRequestsToEveryPage();
-      hub.notifyThisComputer(joinRequestNotification(waiting));
+      const notification = joinRequestNotification(waiting);
+      if (!hub.notifyThisComputer(notification)) void showWithNotifySend(notification, waiting.expiresAt, () => signInLink(config.appOrigin, signInCodes.mint()));
       return new Response(null, { status: 204 });
     });
 

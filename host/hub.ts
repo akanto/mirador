@@ -111,9 +111,11 @@ export class Hub {
     this.notifyEachDevice([...this.sockets, ...this.notifiers], notification);
   }
 
-  /** What this host passes on from its other machines; a device that wants those joins the machine itself. */
-  notifyThisComputer(notification: SystemNotification) {
-    this.notifyEachDevice([...this.sockets, ...this.notifiers].filter(({ data }) => data.deviceId === null), notification);
+  /** What this host passes on from its other machines; a device that wants those joins the machine itself. Whether a page or app here got it. */
+  notifyThisComputer(notification: SystemNotification): boolean {
+    const listeners = [...this.sockets, ...this.notifiers].filter(({ data }) => data.deviceId === null);
+    this.notifyEachDevice(listeners, notification);
+    return listeners.length > 0;
   }
 
   private notifyEachDevice(sockets: BrowserSocket[], notification: SystemNotification) {
