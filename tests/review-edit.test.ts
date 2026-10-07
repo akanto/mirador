@@ -100,6 +100,14 @@ describe("applyReviewEdit", () => {
     ]);
   });
 
+  test("a finding added after the last one was taken out gets a new id, so earlier mentions of the old one never name it", async () => {
+    const { review: withoutLast } = await edited(await publishedReview(), { removeFindings: ["finding-2"] });
+
+    const { review: after } = await edited(withoutLast, { addFindings: [{ severity: "nit", checked: "plausible", at: "service.ts:6", title: "Why 1", body: "Why one?" }] });
+
+    expect(after.findings.map(({ id }) => id)).toEqual(["finding-1", "finding-3"]);
+  });
+
   test("a finding both changed and taken out in one call is a problem, so neither happens", async () => {
     const review = await publishedReview();
 

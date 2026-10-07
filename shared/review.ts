@@ -131,6 +131,8 @@ export interface Review {
   pendingReviewUrl: string | null;
   /** The agent's latest change to parts of the review in place: finding and answer ids, "summary", "verdict" or "flow". */
   agentEdit?: { at: number; parts: string[] };
+  /** The highest finding number handed out so far, so a removed finding's id never names another one; missing until the agent changes the review. */
+  lastFindingNumber?: number;
 }
 
 export const answersOf = (review: Review) => review.answers ?? [];

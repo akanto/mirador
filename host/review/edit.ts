@@ -106,7 +106,7 @@ export function applyReviewEdit(review: Review, edit: ReviewEdit, anchors: EditA
       return finding?.id ?? [];
     }),
   );
-  const lastNumber = Math.max(0, ...review.findings.map(({ id }) => numberOf(id)));
+  const lastNumber = Math.max(review.lastFindingNumber ?? 0, ...review.findings.map(({ id }) => numberOf(id)));
   const added = (edit.addFindings ?? []).flatMap((finding, index): ReviewFinding[] => {
     const anchored = anchors.addFindings[index];
     return anchored ? [{ ...finding, ...anchored, id: `finding-${lastNumber + index + 1}`, decision: "keep" }] : [];
@@ -137,6 +137,7 @@ export function applyReviewEdit(review: Review, edit: ReviewEdit, anchors: EditA
       ...definedOnly({ verdict: edit.verdict, summary: edit.summary }),
       ...(edit.flow && { flow: edit.flow.map((step, index) => ({ title: step.title, say: step.say, ...anchors.flow[index]! })) }),
       findings: [...review.findings.filter(({ id }) => !removed.has(id)).map((finding) => editedFindings.get(finding.id) ?? finding), ...added],
+      lastFindingNumber: lastNumber + added.length,
       answers: answers.map((answer) => editedAnswers.get(answer.id) ?? answer),
     },
     changed,
