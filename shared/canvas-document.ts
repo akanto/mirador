@@ -24,6 +24,11 @@ export function isCanvasFrameMessage(data: unknown): data is CanvasFrameMessage 
   return typeof data === "object" && data !== null && (data as { source?: unknown }).source === CANVAS_MESSAGE_SOURCE;
 }
 
+/** The panel's used colour scheme, for canvas pages to resolve their light-dark() colours against. */
+export function canvasColorSchemeMessage(colorScheme: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "color-scheme", colorScheme };
+}
+
 export function canvasImportMap(assetsOrigin: string) {
   return {
     imports: {
@@ -55,6 +60,13 @@ function frameReporter(itemId: string) {
   const itemId = ${JSON.stringify(itemId)};
   const errors = [];
   const post = (message) => parent.postMessage({ source: ${JSON.stringify(CANVAS_MESSAGE_SOURCE)}, itemId, ...message }, "*");
+  // The panel posts its colour scheme here; sandboxed iframes do not inherit it, but light-dark() resolves against it.
+  addEventListener("message", (event) => {
+    const data = event.data;
+    if (data && data.source === ${JSON.stringify(CANVAS_MESSAGE_SOURCE)} && data.kind === "color-scheme") {
+      document.documentElement.style.colorScheme = data.colorScheme;
+    }
+  });
   const record = (message) => {
     if (errors.length >= 20 || /ResizeObserver loop/.test(message)) return;
     errors.push(message);
@@ -150,7 +162,7 @@ export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: 
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
     `<script>${frameReporter(itemId)}</script>`,
-    "<style>html{background:#fff;color:#111;font-family:system-ui,sans-serif}</style>",
+    "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif}</style>",
     withoutDoctype,
   ].join("\n");
 }

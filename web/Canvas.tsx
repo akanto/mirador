@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
-import { buildCanvasDocument, isCanvasFrameMessage } from "../shared/canvas-document.ts";
+import { buildCanvasDocument, canvasColorSchemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import type { AskOption, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
@@ -112,10 +112,17 @@ function CanvasFrame({
     if (contentSize?.width) onContentWidthRef.current?.(contentSize.width);
   }, [contentSize?.width]);
 
+  // The panel's theme lives in this document; sandboxed iframes do not inherit it, so hand the used value over.
+  useEffect(() => {
+    const observer = new MutationObserver(() => postColorSchemeTo(frame));
+    observer.observe(window.document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
   const fitted = fitsContent ? fittedStyles(contentSize, roomWidth) : {};
   return (
     <div ref={box} className={`canvas-frame ${className ?? ""}`} style={fitted.box}>
-      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} style={fitted.frame} />
+      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} style={fitted.frame} onLoad={() => postColorSchemeTo(frame)} />
       {errors.length > 0 && (
         <ul className="frame-errors">
           {errors.map((error, index) => (
@@ -125,6 +132,10 @@ function CanvasFrame({
       )}
     </div>
   );
+}
+
+function postColorSchemeTo(frame: RefObject<HTMLIFrameElement | null>) {
+  frame.current?.contentWindow?.postMessage(canvasColorSchemeMessage(getComputedStyle(window.document.documentElement).colorScheme), "*");
 }
 
 function reportRender(itemId: string) {
