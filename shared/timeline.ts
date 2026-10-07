@@ -13,7 +13,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 import { jobWaitEndedNotice } from "./job-waits.ts";
 import type { StoredEvent } from "./model.ts";
-import { turnTitle } from "./reverts.ts";
+import { turnTitle, whatWasLeft } from "./reverts.ts";
 import { UserCommandLog, type UserCommand } from "./user-commands.ts";
 
 /** The stored event a block starts with: its sequence number keys the block, and its time is the block's time. */
@@ -223,7 +223,7 @@ class TimelineBuilder {
         return this.push({
           kind: "notice",
           ...origin,
-          text: `Files put back to how they were before the turn of “${this.messageAt(event.toSeq)}”`,
+          text: [`Files put back to how they were before the turn of “${this.messageAt(event.toSeq)}”.`, whatWasLeft(event)].filter(Boolean).join(" "),
         });
       case "turn-end":
         this.endTurn(event.stopReason);

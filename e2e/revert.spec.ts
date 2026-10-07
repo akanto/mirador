@@ -30,6 +30,8 @@ const noteAboutAddAFile =
 const git = (...args: string[]) =>
   execFileSync("git", ["-C", host.projectDir, "-c", "user.name=e2e", "-c", "user.email=e2e@localhost", ...args], { encoding: "utf8" }).trim();
 
+// The second test goes on in the conversation the first one leaves.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fakeOpencode();
   writeFileSync(promptsFile, "");
@@ -117,5 +119,49 @@ test("a turn's files go back to how they were, the agent hears about it, and you
     expect(await git("rev-parse", "HEAD")).toBe(headAtStart);
     expect(await git("log", "--format=%s")).toBe("the project as it was");
     expect(await git("status", "--porcelain")).toBe("");
+  });
+});
+
+test("an undo leaves a submodule that moved as it is and says so, and a turn whose files Mirador no longer keeps says that", async ({ page }) => {
+  const library = join(host.root, "library");
+  const gitIn = (directory: string, ...args: string[]) =>
+    execFileSync("git", ["-C", directory, "-c", "user.name=e2e", "-c", "user.email=e2e@localhost", "-c", "protocol.file.allow=always", ...args], { encoding: "utf8" }).trim();
+  mkdirSync(library, { recursive: true });
+  gitIn(library, "init", "-q");
+  writeFileSync(join(library, "lib.txt"), "v1\n");
+  gitIn(library, "add", "-A");
+  gitIn(library, "commit", "-qm", "v1");
+  gitIn(host.projectDir, "submodule", "add", "-q", library, "library");
+  gitIn(host.projectDir, "commit", "-qm", "with the library");
+
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  await page.locator(".conversation-title").first().click();
+  await sendMessage(page, "Move the library on");
+  await expect(status(page)).toHaveText("idle", { timeout: 60_000 });
+  writeFileSync(join(host.projectDir, "library", "lib.txt"), "v2\n");
+  gitIn(join(host.projectDir, "library"), "commit", "-qam", "v2");
+  writeFileSync(readme, "changed by the turn\n");
+
+  await test.step("the dialog counts the submodule apart, and putting the files back leaves it", async () => {
+    await userMessage(page).hover();
+    await undoFiles(page).click();
+    const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+    await expect(dialog).toContainText("1 file put back as they were since this turn began. 1 submodule that changed stays as it is now");
+    await dialog.getByRole("button", { name: "Put the files back" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(readFileSync(readme, "utf8")).toBe("# e2e project\n");
+    expect(readFileSync(join(host.projectDir, "library", "lib.txt"), "utf8")).toBe("v2\n");
+  });
+
+  await test.step("once git has dropped a turn's files, its undo says Mirador no longer keeps them", async () => {
+    const refs = gitIn(host.projectDir, "for-each-ref", "--format=delete %(refname)", "refs/mirador/");
+    execFileSync("git", ["-C", host.projectDir, "update-ref", "--stdin"], { input: `${refs}\n` });
+    gitIn(host.projectDir, "gc", "--quiet", "--prune=now");
+    await userMessage(page).hover();
+    await undoFiles(page).click();
+    const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+    await expect(dialog).toContainText("Mirador no longer keeps the files of that turn: it keeps those of a workspace's newest 100 turns.");
+    await expect(dialog.getByRole("button", { name: "Put the files back" })).toHaveCount(0);
   });
 });

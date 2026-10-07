@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, withRevertNotes } from "../shared/reverts.ts";
+import { pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, withRevertNotes } from "../shared/reverts.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>
   ({ type: "user-message", text, ...extra }) as ConversationEvent;
@@ -29,6 +29,15 @@ test("a revert's note names the turn it went back to, and says what changed", ()
   expect(note).toContain('before the turn that began with "do the thing": 3 files put back as they were and 1 file created since deleted.');
   expect(note.endsWith("carry on")).toBe(true);
   expect(withRevertNotes([], "carry on")).toBe("carry on");
+});
+
+test("a revert that left submodules as they are tells the agent so", () => {
+  const revert = { revertId: "r1", toSeq: 1, toMessage: "do the thing", restored: 1, removed: 0, submodulesLeft: 2 };
+  expect(withRevertNotes([revert], "carry on")).toContain(
+    "1 file put back as they were. 2 submodules that changed stay as they are now: a submodule's files are its own repository's, so Mirador does not put them back. The conversation above is unchanged",
+  );
+  expect(whatWasLeft({ submodulesLeft: 1 })).toStartWith("1 submodule that changed stays as it is now");
+  expect(whatWasLeft({})).toBe("");
 });
 
 test("one file is not called files, and an unchanged tree says so", () => {

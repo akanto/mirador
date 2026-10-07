@@ -43,7 +43,7 @@ import type { Hub } from "./hub.ts";
 import type { ImageStore } from "./images.ts";
 import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
-import { Checkpoints } from "./checkpoints.ts";
+import { Checkpoints, SNAPSHOTS_KEPT } from "./checkpoints.ts";
 import { profileToLaunch } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
@@ -63,6 +63,7 @@ const NOT_A_TURN = "A conversation can be taken back only to one of your own mes
 const AGENT_CANNOT_FORK = "The agent cannot be sent back to an earlier point in its session.";
 const ONLY_CLAUDE_CODE_REWINDS = "Taking a conversation back needs the agent to leave part of its own session behind, which only Claude Code can do here.";
 const ONLY_GIT_REPOSITORIES = "Mirador keeps a turn's files only in a workspace that is a git repository.";
+const FILES_NO_LONGER_KEPT = `Mirador no longer keeps the files of that turn: it keeps those of a workspace's newest ${SNAPSHOTS_KEPT} turns.`;
 const TURN_STOP_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
 const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
@@ -447,7 +448,8 @@ export class ConversationService {
     const checkpoint = this.checkpointAt(conversationId, seq);
     if (!checkpoint) return { plan: null, cannotUndo: NO_FILES_KEPT };
     const plan = await this.checkpoints.preview(this.workspaceOf(conversationId), checkpoint);
-    return plan ? { plan } : { plan: null, cannotUndo: ONLY_GIT_REPOSITORIES };
+    if (!plan) return { plan: null, cannotUndo: ONLY_GIT_REPOSITORIES };
+    return (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint)) ? { plan } : { plan: null, cannotUndo: FILES_NO_LONGER_KEPT };
   }
 
   /**
@@ -459,8 +461,9 @@ export class ConversationService {
     if (this.runtime(conversationId).running) throw new Error("The agent is still working. Stop its turn before undoing one.");
     const checkpoint = this.checkpointAt(conversationId, seq);
     if (!checkpoint) throw new Error(NO_FILES_KEPT);
+    if (!(await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) throw new Error(FILES_NO_LONGER_KEPT);
     const plan = await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
-    this.append(conversationId, { type: "revert", revertId: crypto.randomUUID(), toSeq: seq, restored: plan.restored, removed: plan.removed });
+    this.append(conversationId, { type: "revert", revertId: crypto.randomUUID(), toSeq: seq, ...plan });
     return plan;
   }
 
@@ -496,7 +499,7 @@ export class ConversationService {
     try {
       const forked = point && conversation.acpSessionId ? await this.forkSessionAt(conversationId, point) : null;
       const checkpoint = this.checkpointAt(conversationId, seq);
-      if (checkpoint) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
+      if (checkpoint && (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
       const released = this.releaseSession(runtime, conversation.acpSessionId);
       this.store.deleteEventsFrom(conversationId, seq);
       this.contextUsage.delete(conversationId);

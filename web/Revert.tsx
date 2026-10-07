@@ -1,6 +1,6 @@
 import { createContext, useEffect, useState } from "react";
 import type { RestorePlan } from "../shared/model.ts";
-import { whatChanged, type Turn } from "../shared/reverts.ts";
+import { whatChanged, whatWasLeft, type Turn } from "../shared/reverts.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { Modal } from "./Palette.tsx";
@@ -104,7 +104,7 @@ function whatLeaves({ turnsLeaving = 1, keptFrom }: Preview) {
 function whatFiles(preview: Preview, rewind: boolean) {
   if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
   if (!preview.plan) return "";
-  const changed = `${whatChanged(preview.plan)} since this turn began.`;
+  const changed = [`${whatChanged(preview.plan)} since this turn began.`, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
   return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
 }
 
@@ -121,7 +121,7 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
       setProblem(error instanceof Error ? error.message : String(error));
     }
   };
-  const blocked = problem ?? preview?.cannotRewind;
+  const blocked = problem ?? preview?.cannotRewind ?? (rewind ? undefined : preview?.filesNote);
   const files = preview && !blocked ? whatFiles(preview, rewind) : "";
   return (
     <Modal label={rewind ? "Rewind to here" : "Undo the files of a turn"} className="revert" onClose={onClose}>

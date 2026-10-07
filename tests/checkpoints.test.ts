@@ -90,14 +90,58 @@ test("ignored files are neither stored nor deleted by a restore", async () => {
   expect(await read("build/output.txt")).toBe("output\n");
 });
 
-test("each snapshot hangs off the one before it, and the ref follows the newest", async () => {
-  const first = (await checkpoints.snapshot(workspace))!;
-  await write("kept.txt", "second\n");
-  const second = (await checkpoints.snapshot(workspace))!;
+const snapshotRefs = async () => (await git(projectDir, ["for-each-ref", "--format=%(objectname)", "refs/mirador/"])).stdout.split("\n").filter(Boolean);
 
-  expect(second).not.toBe(first);
-  expect((await git(projectDir, ["rev-parse", `${second}^`])).stdout).toBe(first);
-  expect((await git(projectDir, ["rev-parse", "refs/mirador/ws-1"])).stdout).toBe(second);
+test("each snapshot stands on its own, and only the newest are kept", async () => {
+  const keepingTwo = new Checkpoints(dataDir, 2);
+  const first = (await keepingTwo.snapshot(workspace))!;
+  await write("kept.txt", "second\n");
+  const second = (await keepingTwo.snapshot(workspace))!;
+  await write("kept.txt", "third\n");
+  const third = (await keepingTwo.snapshot(workspace))!;
+
+  expect((await git(projectDir, ["rev-parse", "--verify", "--quiet", `${second}^`])).exitCode).not.toBe(0);
+  expect((await snapshotRefs()).sort()).toEqual([second, third].sort());
+  await git(projectDir, ["gc", "--quiet", "--prune=now"]);
+  expect(await keepingTwo.keeps(workspace, first)).toBe(false);
+  expect(await keepingTwo.keeps(workspace, second)).toBe(true);
+});
+
+test("the chain snapshots made before each had a ref is kept as one, and goes when it is the oldest", async () => {
+  const tree = (await git(projectDir, ["write-tree"])).stdout;
+  const older = (await git(projectDir, ["commit-tree", tree, "-m", "older"])).stdout;
+  const chained = (await git(projectDir, ["commit-tree", tree, "-p", older, "-m", "newer"])).stdout;
+  await git(projectDir, ["update-ref", "refs/mirador/ws-1", chained]);
+  const keepingTwo = new Checkpoints(dataDir, 2);
+
+  const first = (await keepingTwo.snapshot(workspace))!;
+  expect((await snapshotRefs()).sort()).toEqual([chained, first].sort());
+  expect(await keepingTwo.keeps(workspace, older)).toBe(true);
+
+  await write("kept.txt", "second\n");
+  const second = (await keepingTwo.snapshot(workspace))!;
+  expect((await snapshotRefs()).sort()).toEqual([first, second].sort());
+});
+
+test("a submodule that moved is left as it is, and counted apart from the files", async () => {
+  const library = join(dataDir, "library");
+  await mkdir(library);
+  await git(library, ["init", "-q"]);
+  await writeFile(join(library, "lib.txt"), "v1\n");
+  await git(library, ["add", "-A"]);
+  await git(library, ["commit", "-qm", "v1"]);
+  await git(projectDir, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", library, "library"]);
+  await git(projectDir, ["commit", "-qam", "with the library"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await writeFile(join(projectDir, "library", "lib.txt"), "v2\n");
+  await git(join(projectDir, "library"), ["commit", "-qam", "v2"]);
+  await write("kept.txt", "changed\n");
+
+  expect(await checkpoints.preview(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
+  expect(await read("kept.txt")).toBe("one\n");
+  expect(await readFile(join(projectDir, "library", "lib.txt"), "utf8")).toBe("v2\n");
 });
 
 test("a workspace that is not a git repository has no snapshots to restore", async () => {

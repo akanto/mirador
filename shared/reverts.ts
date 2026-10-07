@@ -8,6 +8,7 @@ export interface Revert {
   toMessage: string;
   restored: number;
   removed: number;
+  submodulesLeft?: number;
 }
 
 const messageOf = (events: StoredEvent[], seq: number) => {
@@ -22,7 +23,7 @@ export function pendingReverts(events: StoredEvent[]): Revert[] {
     .filter(({ event }) => event.type === "revert")
     .map(({ event }) => event as Extract<ConversationEvent, { type: "revert" }>)
     .filter(({ revertId }) => !sent.has(revertId))
-    .map(({ revertId, toSeq, restored, removed }) => ({ revertId, toSeq, restored, removed, toMessage: messageOf(events, toSeq) }));
+    .map(({ revertId, toSeq, restored, removed, submodulesLeft }) => ({ revertId, toSeq, restored, removed, ...(submodulesLeft && { submodulesLeft }), toMessage: messageOf(events, toSeq) }));
 }
 
 /** A turn of the conversation, named by the message that began it. */
@@ -67,13 +68,23 @@ export const whatChanged = ({ restored, removed }: Pick<Revert, "restored" | "re
   return parts.length > 0 ? parts.join(" and ") : "no file was different";
 };
 
+/** What a restore does not put back, said after what it does; empty when nothing was left. */
+export const whatWasLeft = ({ submodulesLeft = 0 }: Pick<Revert, "submodulesLeft">) =>
+  submodulesLeft === 0
+    ? ""
+    : `${submodulesLeft === 1 ? "1 submodule that changed stays as it is" : `${submodulesLeft} submodules that changed stay as they are`} now: a submodule's files are its own repository's, so Mirador does not put them back.`;
+
 /** How the agent is told its changes are no longer in the files, ahead of the message it is being sent. */
 export function withRevertNotes(reverts: Revert[], message: string) {
   if (reverts.length === 0) return message;
-  const notes = reverts.map(
-    (revert) =>
-      `The user put this workspace's files back to how they were before the turn that began with "${revert.toMessage}": ${whatChanged(revert)}. ` +
+  const notes = reverts.map((revert) =>
+    [
+      `The user put this workspace's files back to how they were before the turn that began with "${revert.toMessage}": ${whatChanged(revert)}.`,
+      whatWasLeft(revert),
       "The conversation above is unchanged, but the files no longer hold what was changed or created after that point.",
+    ]
+      .filter(Boolean)
+      .join(" "),
   );
   return `${notes.join("\n\n")}\n\n${message}`;
 }

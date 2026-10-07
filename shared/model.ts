@@ -229,6 +229,8 @@ export interface Workspace {
 export interface RestorePlan {
   restored: number;
   removed: number;
+  /** Submodules that moved since: a restore leaves them as they are, since their files are their own repository's. */
+  submodulesLeft?: number;
 }
 
 export interface QueuedMessage {
@@ -386,7 +388,7 @@ export type ConversationEvent =
   | { type: "login-ended"; signedIn: boolean }
   | { type: "usage-limit-wait-stopped" }
   /** The user put the workspace's files back to how they were before one of its turns. */
-  | { type: "revert"; revertId: string; toSeq: number; restored: number; removed: number }
+  | { type: "revert"; revertId: string; toSeq: number; restored: number; removed: number; submodulesLeft?: number }
   | { type: "job-wait-ended"; wait: JobWait; end: JobWaitEnd };
 
 /** A harness session in a workspace directory, possibly started outside the app. */

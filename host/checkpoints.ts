@@ -2,12 +2,27 @@ import { mkdir, readdir, rm, rmdir } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { RestorePlan, Workspace } from "../shared/model.ts";
 
-const refOf = (workspaceId: string) => `refs/mirador/${workspaceId}`;
+/** Where snapshots hung, one after another, before each got a ref of its own. */
+const chainRefOf = (workspaceId: string) => `refs/mirador/${workspaceId}`;
+const snapshotRefsOf = (workspaceId: string) => `refs/mirador/turns/${workspaceId}/`;
+/** Named by when it was taken, so the names sort oldest first; the chain from before sorts ahead of every snapshot. */
+const snapshotRefOf = (workspaceId: string, commit: string, takenAt: number) => `${snapshotRefsOf(workspaceId)}${String(takenAt).padStart(16, "0")}-${commit}`;
 
-/** git's `-z --name-status` output: a status and a path, each ended by NUL, with names left as they are. */
-function statusAndPathOf(output: string) {
+export const SNAPSHOTS_KEPT = 100;
+
+const SUBMODULE_MODE = "160000";
+
+/**
+ * git's `-z --raw` output: each change's modes, objects and status (":100644 100644 <old> <new> M"), then its path, each
+ * ended by NUL, with names left as they are.
+ */
+function changesIn(output: string) {
   const fields = output.split("\0").filter(Boolean);
-  return fields.flatMap((field, index) => (index % 2 === 1 ? [] : [{ status: field, path: fields[index + 1] ?? "" }]));
+  return fields.flatMap((field, index) => {
+    if (index % 2 === 1) return [];
+    const [fromMode, toMode, , , status = ""] = field.slice(1).split(" ");
+    return [{ status, path: fields[index + 1] ?? "", submodule: fromMode === SUBMODULE_MODE || toMode === SUBMODULE_MODE }];
+  });
 }
 
 /** A path git reported names a file of this workspace; any other path is not ours to delete. */
@@ -23,46 +38,71 @@ const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost
  *
  * The workspace's own repository does the storing, through an index of our own (`GIT_INDEX_FILE`), so nothing of the
  * user's staging area, branch, HEAD or reflog is touched: a snapshot writes the file contents it does not already
- * have as objects, plus one commit per snapshot under `refs/mirador/<workspace>`, whose parent is the snapshot before
- * it. Restoring writes the working tree only, which is why its effect is ordinary uncommitted changes to the user.
+ * have as objects, plus one commit with a ref of its own under `refs/mirador/turns/<workspace>/`. Only the newest
+ * `keep` refs stay; git's own gc drops what the others alone held. Restoring writes the working tree only, which is why
+ * its effect is ordinary uncommitted changes to the user. A submodule's own files are its repository's, so a restore
+ * leaves a submodule as it is and says so.
  *
  * A workspace that is not a git repository has no snapshots, and so no undo.
  */
 export class Checkpoints {
   private readonly queues = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly dataDir: string) {}
+  constructor(
+    private readonly dataDir: string,
+    private readonly keep = SNAPSHOTS_KEPT,
+  ) {}
 
   /** The workspace's files as they are now, or null when it is not a git repository. */
   snapshot(workspace: Workspace): Promise<string | null> {
     return this.inOrder(workspace.id, async () => {
       if (!(await this.isRepository(workspace))) return null;
       const tree = await this.stageEverything(workspace);
-      const previous = await this.currentSnapshot(workspace);
-      const commit = await this.mustGit(workspace, ["commit-tree", tree, ...(previous ? ["-p", previous] : []), "-m", SNAPSHOT_MESSAGE]);
-      await this.mustGit(workspace, ["update-ref", refOf(workspace.id), commit.stdout]);
-      return commit.stdout;
+      const commit = (await this.mustGit(workspace, ["commit-tree", tree, "-m", SNAPSHOT_MESSAGE])).stdout;
+      await this.mustGit(workspace, ["update-ref", snapshotRefOf(workspace.id, commit, Date.now()), commit]);
+      await this.moveChainToItsOwnRef(workspace);
+      await this.dropAllButNewest(workspace);
+      return commit;
     });
+  }
+
+  /** Whether the snapshot's files are still in the repository: once its ref is dropped, git's gc may take them. */
+  keeps(workspace: Workspace, commit: string): Promise<boolean> {
+    return this.inOrder(workspace.id, async () => (await this.git(workspace, ["cat-file", "-e", `${commit}^{tree}`])).exitCode === 0);
   }
 
   /** What restoring `commit` would do, without touching a file; null when the workspace is not a git repository. */
   preview(workspace: Workspace, commit: string): Promise<RestorePlan | null> {
     return this.inOrder(workspace.id, async () => {
       if (!(await this.isRepository(workspace))) return null;
-      const { restored, removed } = await this.diffToNow(workspace, commit);
-      return { restored, removed };
+      const { restored, removed, submodulesLeft } = await this.diffToNow(workspace, commit);
+      return { restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }) };
     });
   }
 
   /** Puts the workspace's files back as they were when `commit` was taken, deleting what came after it. */
   restore(workspace: Workspace, commit: string): Promise<RestorePlan> {
     return this.inOrder(workspace.id, async () => {
-      const { restored, removed, added } = await this.diffToNow(workspace, commit);
+      const { restored, removed, added, submodulesLeft } = await this.diffToNow(workspace, commit);
       await this.deleteFiles(workspace, added);
       await this.mustGit(workspace, ["read-tree", commit]);
       await this.mustGit(workspace, ["checkout-index", "-a", "-f"]);
-      return { restored, removed };
+      return { restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }) };
     });
+  }
+
+  /** The chain the snapshots made before each got a ref: its newest snapshot holds the rest, and ages out like any. */
+  private async moveChainToItsOwnRef(workspace: Workspace) {
+    const chain = await this.git(workspace, ["rev-parse", "--verify", "--quiet", chainRefOf(workspace.id)]);
+    if (chain.exitCode !== 0) return;
+    await this.mustGit(workspace, ["update-ref", snapshotRefOf(workspace.id, chain.stdout, 0), chain.stdout]);
+    await this.mustGit(workspace, ["update-ref", "-d", chainRefOf(workspace.id)]);
+  }
+
+  private async dropAllButNewest(workspace: Workspace) {
+    const refs = await this.mustGit(workspace, ["for-each-ref", "--sort=-refname", "--format=%(refname)", snapshotRefsOf(workspace.id)]);
+    const dropped = refs.stdout.split("\n").filter(Boolean).slice(this.keep);
+    if (dropped.length > 0) await this.mustGit(workspace, ["update-ref", "--stdin"], dropped.map((ref) => `delete ${ref}\n`).join(""));
   }
 
   /** A snapshot of one workspace at a time: git's own index lock is per file, and the file is ours. */
@@ -75,23 +115,19 @@ export class Checkpoints {
     return next;
   }
 
-  /** What a restore would change: what to put back or rewrite, what to delete, and the paths to delete. */
+  /** What a restore would change: what to put back or rewrite, what to delete, the paths to delete, and the submodules it leaves. */
   private async diffToNow(workspace: Workspace, commit: string) {
     const now = await this.stageEverything(workspace);
-    const diff = await this.git(workspace, ["diff-tree", "-r", "-z", "--name-status", "--no-renames", commit, now]);
-    const changes = statusAndPathOf(diff.stdout);
-    const withStatus = (letters: string[]) => changes.filter(({ status }) => letters.includes(status)).length;
-    const added = changes.filter(({ status }) => status === "A").map(({ path }) => path);
-    return { restored: withStatus(["M", "D"]), removed: added.length, added };
+    const diff = await this.git(workspace, ["diff-tree", "-r", "-z", "--raw", "--no-renames", commit, now]);
+    const changes = changesIn(diff.stdout);
+    const files = changes.filter(({ submodule }) => !submodule);
+    const withStatus = (letters: string[]) => files.filter(({ status }) => letters.includes(status)).length;
+    const added = files.filter(({ status }) => status === "A").map(({ path }) => path);
+    return { restored: withStatus(["M", "D"]), removed: added.length, added, submodulesLeft: changes.length - files.length };
   }
 
   private async isRepository(workspace: Workspace) {
     return (await this.git(workspace, ["rev-parse", "--git-dir"])).exitCode === 0;
-  }
-
-  private async currentSnapshot(workspace: Workspace) {
-    const ref = await this.git(workspace, ["rev-parse", "--verify", "--quiet", refOf(workspace.id)]);
-    return ref.exitCode === 0 ? ref.stdout : null;
   }
 
   /** Writes the working tree into our index, which git compares against the files it hashed last time. */
@@ -119,18 +155,18 @@ export class Checkpoints {
   }
 
   /** git for the calls whose failure the user has to hear about, rather than one that only answers a question. */
-  private async mustGit(workspace: Workspace, args: string[]) {
-    const result = await this.git(workspace, args);
+  private async mustGit(workspace: Workspace, args: string[], input?: string) {
+    const result = await this.git(workspace, args, input);
     if (result.exitCode !== 0) throw new Error(`git ${args[0]} failed in ${workspace.path}: ${result.stderr || result.stdout}`);
     return result;
   }
 
-  private async git(workspace: Workspace, args: string[]) {
+  private async git(workspace: Workspace, args: string[], input?: string) {
     const index = join(this.dataDir, "checkpoints", `${workspace.id}.index`);
     await mkdir(dirname(index), { recursive: true });
     const child = Bun.spawn(["git", "-C", workspace.path, ...IDENTITY, ...args], {
       env: { ...process.env, GIT_INDEX_FILE: index },
-      stdin: "ignore",
+      stdin: input === undefined ? "ignore" : new Blob([input]),
       stdout: "pipe",
       stderr: "pipe",
     });
