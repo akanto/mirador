@@ -30,3 +30,12 @@ test("a socket left behind by an app that crashed does not block the next launch
   expect(lock).not.toBeNull();
   lock!.release();
 });
+
+test("of two launches at the same moment, exactly one gets the socket and the other one quits", async () => {
+  const socketPath = join(directory, "race.sock");
+  const claims = await Promise.all([claimSingleInstance(socketPath, () => {}), claimSingleInstance(socketPath, () => {})]);
+  const winners = claims.filter((claim) => claim !== null);
+  expect(winners).toHaveLength(1);
+  expect(await claimSingleInstance(socketPath, () => {})).toBeNull();
+  winners[0]!.release();
+});
