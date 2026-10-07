@@ -34,7 +34,7 @@ import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
-import { pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
+import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
@@ -49,6 +49,7 @@ import type { Store, UnseenTurnEnd } from "./store.ts";
 import type { SystemNotifications } from "./system-notifications.ts";
 import type { TerminalProgram } from "./terminals.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
+import { TerminalWork, updatesAfter } from "./terminal-catch-up.ts";
 import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "./claude-transcript.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 
@@ -117,6 +118,10 @@ export class ConversationService {
   private readonly updatesForUnknownSessions = new Map<string, acp.SessionNotification[]>();
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
+  private readonly terminalWork = new TerminalWork();
+  private readonly catchingUpWithTerminal = new Set<string>();
+  /** A session loaded again replays all of its history; it is held here, so only what the conversation lacks joins it. */
+  private readonly replaysBeingRead = new Map<string, acp.SessionNotification[]>();
   private readonly contextUsage = new Map<string, ContextUsage>();
   private readonly planQuotas = new PlanQuotasByProfile();
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
@@ -755,11 +760,36 @@ export class ConversationService {
   showTerminalActivity(activityBySession: Map<string, TerminalActivity>) {
     this.store.listConversations().forEach((conversation) => {
       const activity = (conversation.harness === "claude" && conversation.acpSessionId && activityBySession.get(conversation.acpSessionId)) || null;
+      if (this.terminalWork.seen(conversation.id, activity)) void this.catchUpWithTerminal(conversation.id);
       if ((this.terminalActivity.get(conversation.id) ?? null) === activity) return;
       if (activity) this.terminalActivity.set(conversation.id, activity);
       else this.terminalActivity.delete(conversation.id);
       this.publish(conversation);
     });
+  }
+
+  /**
+   * Once the user is done in a terminal, the turns they took there join the conversation, and its agent goes on from
+   * them rather than from what it last held. A turn running here goes first; the next look at the terminals catches up.
+   */
+  private async catchUpWithTerminal(conversationId: string) {
+    const runtime = this.runtime(conversationId);
+    if (runtime.running || this.stopping || this.catchingUpWithTerminal.has(conversationId)) return;
+    this.catchingUpWithTerminal.add(conversationId);
+    try {
+      await runtime.sessionId?.catch(() => {});
+      if (runtime.running) return;
+      this.terminalWork.caughtUp(conversationId);
+      const { acpSessionId } = this.get(conversationId);
+      if (!acpSessionId) return;
+      const released = this.releaseSession(runtime, acpSessionId);
+      await this.ensureSession(conversationId, async () => {
+        await released;
+        return this.loadWithTerminalTurns(conversationId, acpSessionId);
+      }).catch(() => {});
+    } finally {
+      this.catchingUpWithTerminal.delete(conversationId);
+    }
   }
 
   /**
@@ -910,6 +940,29 @@ export class ConversationService {
     return loadedId;
   }
 
+  private async loadWithTerminalTurns(conversationId: string, sessionId: string): Promise<string> {
+    const conversation = this.get(conversationId);
+    const harness = this.harnessFor(conversation);
+    this.runtime(conversationId).harness = harness;
+    const capabilities = await harness.start();
+    if (!capabilities.agentCapabilities?.loadSession) throw new Error(`${harness.spec.label} cannot load existing sessions.`);
+    this.setStatus(conversationId, "starting", "Reading the turns taken in the terminal…");
+    const workspace = this.existingWorkspace(conversation.workspaceId);
+    const replay: acp.SessionNotification[] = [];
+    this.replaysBeingRead.set(sessionId, replay);
+    try {
+      const loaded = await harness.loadSession({ ...this.sessionRequest(conversationId, workspace), cwd: await recordedDirectory(workspace), sessionId });
+      this.bindSession(conversationId, sessionId, loaded.configOptions);
+    } finally {
+      this.replaysBeingRead.delete(sessionId);
+    }
+    const anchor = lastAgentMessageId(this.store.listEvents(conversationId));
+    if (anchor) updatesAfter(replay, anchor).forEach((notification) => this.handleSessionUpdate(notification));
+    await this.restoreConfigChoices(conversationId, sessionId, conversation.configOptions);
+    this.setStatus(conversationId, "idle");
+    return sessionId;
+  }
+
   /** A test host's own Claude Code works without the settings and instructions of the user who runs the tests. */
   private sessionRequest(conversationId: string, workspace: Workspace) {
     const conversation = this.get(conversationId);
@@ -1034,6 +1087,8 @@ export class ConversationService {
   }
 
   private handleSessionUpdate(notification: acp.SessionNotification) {
+    const replay = this.replaysBeingRead.get(notification.sessionId);
+    if (replay) return void replay.push(notification);
     const conversationId = this.conversationBySession.get(notification.sessionId);
     if (!conversationId) {
       const pending = this.updatesForUnknownSessions.get(notification.sessionId) ?? [];

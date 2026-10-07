@@ -56,6 +56,9 @@ export function rewindPointBefore(events: StoredEvent[], seq: number): string | 
   return said.at(-1) ?? null;
 }
 
+/** The agent's latest message in the conversation, where turns taken elsewhere since pick up. */
+export const lastAgentMessageId = (events: StoredEvent[]) => rewindPointBefore(events, Infinity);
+
 /** The start of a turn's message, short enough to name that turn in a label or a note. */
 export function turnTitle(text: string) {
   const first = text.trim().split("\n")[0];

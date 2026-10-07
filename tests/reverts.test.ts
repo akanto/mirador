@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, withRevertNotes } from "../shared/reverts.ts";
+import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, withRevertNotes } from "../shared/reverts.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>
   ({ type: "user-message", text, ...extra }) as ConversationEvent;
@@ -68,4 +68,9 @@ test("a rewind goes back to the last thing the agent said before the turn", () =
 test("a rewind to the first turn has nothing of the agent's to go back to", () => {
   expect(rewindPointBefore(stored(userMessage("first"), said("msg_1")), 1)).toBeNull();
   expect(rewindPointBefore(stored(said(), userMessage("first")), 2)).toBeNull();
+});
+
+test("turns taken elsewhere pick up after the agent's latest message in the conversation", () => {
+  expect(lastAgentMessageId(stored(userMessage("first"), said("msg_1"), userMessage("second"), said("msg_2"), said()))).toBe("msg_2");
+  expect(lastAgentMessageId(stored(userMessage("first")))).toBeNull();
 });
