@@ -38,6 +38,7 @@ async function launch() {
     uid: process.getuid!(),
     appPath: installedAppPath(process.execPath),
     isPackaged: Electrobun.app.isPackaged,
+    builtFromCode: BUILD_DESKTOP_APP_CODE,
   });
 
   if (process.platform === "darwin") installApplicationMenu(APP_NAME, () => app?.closeWhatHasFocus());

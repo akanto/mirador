@@ -67,6 +67,15 @@ function HostBanner({ status, state }: { status: ConnectionStatus; state: AppSta
   );
 }
 
+function DesktopAppBanner({ state }: { state: AppState }) {
+  if (!state.desktopAppOutdated) return null;
+  return (
+    <div className="banner desktop-app-outdated">
+      The Mirador app is older than its code. Quit it and run <code>bun run build</code> in <code>desktop/</code>.
+    </div>
+  );
+}
+
 /** Most recently active first; the open conversation last, so Enter on an empty query switches away from it. */
 function recentConversations(state: AppState): Conversation[] {
   const isSelected = (conversation: Conversation) => Number(conversation.id === state.selectedConversationId);
@@ -346,6 +355,7 @@ export function App() {
   const conversationPane = (
     <main className="chat-column">
       <HostBanner status={status} state={state} />
+      <DesktopAppBanner state={state} />
       {inFixedOrder(state.kept).map((kept) => {
         const keptConversation = state.conversations.find(({ id }) => id === kept.conversationId);
         return (

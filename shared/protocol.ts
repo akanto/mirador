@@ -54,6 +54,9 @@ export const CANVAS_ASSETS_ORIGIN_HEADER = "mirador-canvas-assets-origin";
  */
 export const PROFILE_LAUNCH_PARAMETER = "profile-launch";
 
+/** A desktop app built from a checkout opens /notifications with this query parameter naming the code it was built from. */
+export const DESKTOP_APP_CODE_PARAMETER = "desktop-app-code";
+
 export type ProfileDraft = Pick<Profile, "name" | "harness" | "environment" | "prelaunch" | "mode" | "bypassPermissions" | "askMode"> & { id?: string };
 
 export type ClientMessage =
@@ -202,6 +205,8 @@ export type ServerMessage =
       hostRunId: string;
       /** Mirador's own host source was edited since this host started. */
       hostCodeChanged: boolean;
+      /** A desktop app listening to this host was built from other code than the host's checkout has now. */
+      desktopAppOutdated: boolean;
       /** The version of Mirador this host is. */
       version: string;
     }
@@ -269,6 +274,7 @@ export type ServerMessage =
   | { type: "terminal.cleared"; terminalId: string }
   | { type: "system-notification"; notification: SystemNotification }
   | { type: "host.code-changed" }
+  | { type: "desktop-app.outdated"; outdated: boolean }
   /** The host is stopping to start again in place; pages reload once they reconnect. */
   | { type: "host.restarting" }
   | { type: "error"; message: string }

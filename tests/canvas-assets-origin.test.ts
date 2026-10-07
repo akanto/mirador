@@ -24,6 +24,7 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
     homeDir: "/home/me",
     hostRunId: "run",
     hostCodeChanged: false,
+    desktopAppOutdated: false,
     version: "0.2.0",
   } satisfies ServerMessage;
   const connected = reducer(initialState, { type: "server", message: snapshot });

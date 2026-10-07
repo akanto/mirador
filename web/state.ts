@@ -62,6 +62,7 @@ export interface AppState {
   hostRunId: string | null;
   hostCodeChanged: boolean;
   hostRestarting: boolean;
+  desktopAppOutdated: boolean;
 }
 
 export type AppAction =
@@ -95,6 +96,7 @@ export const initialState: AppState = {
   hostRunId: null,
   hostCodeChanged: false,
   hostRestarting: false,
+  desktopAppOutdated: false,
   notices: [],
   noticesEverShown: 0,
 };
@@ -163,6 +165,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         homeDir: message.homeDir,
         hostRunId: message.hostRunId,
         hostCodeChanged: message.hostCodeChanged,
+        desktopAppOutdated: message.desktopAppOutdated,
         kept: state.kept.filter(({ conversationId }) => exists(conversationId)),
       };
       return exists(state.selectedConversationId) ? next : select(next, null);
@@ -270,6 +273,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, hostCodeChanged: true };
     case "host.restarting":
       return { ...state, hostRestarting: true };
+    case "desktop-app.outdated":
+      return { ...state, desktopAppOutdated: message.outdated };
   }
 }
 

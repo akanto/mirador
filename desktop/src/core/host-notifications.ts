@@ -1,4 +1,4 @@
-import { TOKEN_COOKIE, type ServerMessage } from "../../../shared/protocol.ts";
+import { DESKTOP_APP_CODE_PARAMETER, TOKEN_COOKIE, type ServerMessage } from "../../../shared/protocol.ts";
 import { bodyWithWorkspace, type SystemNotification } from "../../../shared/system-notifications.ts";
 
 const RETRY_DELAY_MILLISECONDS = 2_000;
@@ -15,7 +15,11 @@ export const nativeNotification = (notification: SystemNotification, platform: N
     ? { title: notification.title, subtitle: notification.workspace, body: notification.body }
     : { title: notification.title, body: bodyWithWorkspace(notification) };
 
-export const notificationSocketUrl = (origin: string) => `${origin.replace(/^http/, "ws")}/notifications`;
+export function notificationSocketUrl(origin: string, builtFromCode: string | null = null) {
+  const url = new URL("/notifications", origin.replace(/^http/, "ws"));
+  if (builtFromCode !== null) url.searchParams.set(DESKTOP_APP_CODE_PARAMETER, builtFromCode);
+  return url.href;
+}
 
 export interface NotificationSocket {
   onmessage: ((event: MessageEvent) => void) | null;
@@ -35,6 +39,8 @@ export interface HostNotificationsOptions {
   /** Read again for every connection: the host writes it on its first start, which may come after the app's. */
   token: () => string | null;
   show: (notification: SystemNotification) => void;
+  /** What the app was built from, for the host to tell when its checkout has moved on; a release build has none. */
+  builtFromCode?: string | null;
   open?: SocketOpener;
   retryDelayMilliseconds?: number;
 }
@@ -59,10 +65,10 @@ export class HostNotifications {
   }
 
   private connect() {
-    const { origin, token, show, open = openWebSocket } = this.options;
+    const { origin, token, show, builtFromCode = null, open = openWebSocket } = this.options;
     const currentToken = token();
     if (!currentToken) return this.connectLater();
-    const socket = open(notificationSocketUrl(origin), { Origin: origin, Cookie: `${TOKEN_COOKIE}=${currentToken}` });
+    const socket = open(notificationSocketUrl(origin, builtFromCode), { Origin: origin, Cookie: `${TOKEN_COOKIE}=${currentToken}` });
     this.socket = socket;
     socket.onmessage = ({ data }) => {
       const message = JSON.parse(String(data)) as ServerMessage;

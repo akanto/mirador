@@ -19,7 +19,7 @@ import {
 import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
-import { CANVAS_ASSETS_ORIGIN_HEADER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
+import { CANVAS_ASSETS_ORIGIN_HEADER, DESKTOP_APP_CODE_PARAMETER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import { describeClaudeProgram } from "./acp/claude-program.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
@@ -47,6 +47,7 @@ import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import { defaultLaunchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
+import type { DesktopAppCheck } from "./desktop-app-check.ts";
 import type { HostRestart } from "./restart.ts";
 import type { SignInCodes } from "./sign-in-codes.ts";
 import type { StatuslineService } from "./statusline.ts";
@@ -65,6 +66,7 @@ export interface HostServices {
   terminals: TerminalService;
   images: ImageStore;
   restart: HostRestart;
+  desktopApp: DesktopAppCheck;
   devices: DeviceService;
   joinRequests: JoinRequestService;
   signInCodes: SignInCodes;
@@ -110,6 +112,7 @@ export function startServer(services: HostServices) {
     terminals,
     images,
     restart,
+    desktopApp,
     devices,
     joinRequests,
     signInCodes,
@@ -479,9 +482,11 @@ export function startServer(services: HostServices) {
     if (!signedIn) return new Response("unauthorized", { status: 401 });
     if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
     const readsDeflatedMessages = request.headers.has(DEFLATED_MESSAGES_HEADER);
-    const readsProfileLaunch = new URL(request.url).searchParams.has(PROFILE_LAUNCH_PARAMETER);
+    const { searchParams } = new URL(request.url);
+    const readsProfileLaunch = searchParams.has(PROFILE_LAUNCH_PARAMETER);
+    const desktopAppCode = role === "notifier" ? searchParams.get(DESKTOP_APP_CODE_PARAMETER) : null;
     rememberAddressUsed(request.headers.get("host"));
-    const data = socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages, readsProfileLaunch);
+    const data = socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages, readsProfileLaunch, desktopAppCode);
     const upgraded = server.upgrade(request, { data });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
   }
@@ -855,6 +860,7 @@ export function startServer(services: HostServices) {
       homeDir: homedir(),
       hostRunId,
       hostCodeChanged: restart.codeChanged,
+      desktopAppOutdated: desktopApp.outdated,
       version: MIRADOR_VERSION,
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
@@ -886,11 +892,13 @@ export function startServer(services: HostServices) {
     open(socket) {
       hub.add(socket);
       if (socket.data.role === "page") sendSnapshot(socket);
+      else desktopApp.connected(socket, socket.data.desktopAppCode);
       if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
       else if (socket.data.role === "page") hub.send(socket, devicesListed(socket));
     },
     close(socket, code, reason) {
       hub.remove(socket);
+      desktopApp.disconnected(socket);
       if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
       if (code !== 1000 && code !== 1001) console.log(`${new Date().toISOString()} browser socket closed: ${code} ${reason}`);
     },

@@ -7,6 +7,8 @@ const hostDirectory = resolve(import.meta.dir, "..");
 const bun = Bun.which("bun") ?? join(homedir(), ".bun", "bin", "bun");
 /** `bun run build:release`: the app carries Mirador, staged by scripts/stage-mirador.sh, instead of running this checkout. */
 const carriesMirador = process.env.MIRADOR_DESKTOP_RELEASE === "1";
+/** Worked out by the Bun the host runs on: Electrobun's command line may evaluate this file on another Bun, whose transpiler can write the same code differently. */
+const builtFromCode = () => Bun.spawnSync([bun, join(hostDirectory, "shared", "desktop-app-code.ts"), import.meta.dir]).stdout.toString().trim() || null;
 
 export default {
   app: {
@@ -21,6 +23,7 @@ export default {
       define: {
         BUILD_HOST_DIRECTORY: JSON.stringify(carriesMirador ? null : hostDirectory),
         BUILD_BUN: JSON.stringify(carriesMirador ? null : bun),
+        BUILD_DESKTOP_APP_CODE: JSON.stringify(carriesMirador ? null : builtFromCode()),
       },
     },
     copy: {

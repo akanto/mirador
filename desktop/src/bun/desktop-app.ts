@@ -29,6 +29,8 @@ export interface DesktopEnvironment {
   uid: number;
   appPath: string | null;
   isPackaged: boolean;
+  /** What the app was built from, for the host to tell when its checkout has moved on; a release build has none. */
+  builtFromCode: string | null;
 }
 
 export class DesktopApp {
@@ -75,6 +77,7 @@ export class DesktopApp {
       origin: runtime.origin,
       token: () => this.browserTokenOnceWritten(),
       show: (notification) => Utils.showNotification(nativeNotification(notification, process.platform)),
+      builtFromCode: environment.builtFromCode,
     });
     this.renderTray();
   }

@@ -28,6 +28,8 @@ export interface SocketData {
   /** Where the page loads canvas libraries from, fitting the address it reached the host at. */
   canvasAssetsOrigin: string;
   from: ClientAddress;
+  /** The code a desktop app built from a checkout was built from; null for pages and release builds. */
+  desktopAppCode: string | null;
 }
 
 const thisMachine: ClientAddress = { fromAddress: "127.0.0.1", tailscaleUser: null };
@@ -39,6 +41,7 @@ export const socketData = (
   from = thisMachine,
   readsDeflatedMessages = false,
   readsProfileLaunch = false,
+  desktopAppCode: string | null = null,
 ): SocketData => ({
   role,
   deviceId,
@@ -46,6 +49,7 @@ export const socketData = (
   from,
   readsDeflatedMessages,
   readsProfileLaunch,
+  desktopAppCode,
   subscriptions: new Set<string>(),
   lowDataSubscriptions: new Set<string>(),
   terminalWorkspaceId: null,

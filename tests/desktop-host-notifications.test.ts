@@ -94,5 +94,6 @@ describe("host notifications in the desktop app", () => {
 
   test("turns the app's origin into its notification socket", () => {
     expect(notificationSocketUrl("http://127.0.0.1:4790")).toBe("ws://127.0.0.1:4790/notifications");
+    expect(notificationSocketUrl("https://mac.tail0.ts.net:4600", "65a3d4c7")).toBe("wss://mac.tail0.ts.net:4600/notifications?desktop-app-code=65a3d4c7");
   });
 });

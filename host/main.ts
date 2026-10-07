@@ -18,6 +18,8 @@ import { NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
 import { HostRestart, takeTurnsStoppedForRestart } from "./restart.ts";
+import { DesktopAppCheck } from "./desktop-app-check.ts";
+import { desktopAppCode } from "../shared/desktop-app-code.ts";
 import { startServer } from "./server.ts";
 import { SourceWatcher } from "./source-watcher.ts";
 import { StatuslineService } from "./statusline.ts";
@@ -49,6 +51,11 @@ const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
+const sourceDir = dirname(import.meta.dir);
+const desktopApp = new DesktopAppCheck(
+  () => desktopAppCode(join(sourceDir, "desktop")),
+  (outdated) => hub.broadcast({ type: "desktop-app.outdated", outdated }),
+);
 const devices = new DeviceService(store);
 const joinRequests = new JoinRequestService(store, devices, ownAuthorityFingerprint);
 const signInCodes = new SignInCodes(store);
@@ -73,8 +80,8 @@ const relays = new MachineRelays(
 );
 relays.startAll();
 watch.startAll();
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, devices, joinRequests, signInCodes, search, relays, watch, certificate });
-const sourceWatcher = new SourceWatcher(dirname(import.meta.dir), { uiEdited: server.rebuildUi, hostEdited: () => restart.hostCodeEdited() });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, desktopApp, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const sourceWatcher = new SourceWatcher(sourceDir, { uiEdited: server.rebuildUi, hostEdited: () => restart.hostCodeEdited() });
 sourceWatcher.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
 const terminalSessions = new TerminalSessionWatcher(
