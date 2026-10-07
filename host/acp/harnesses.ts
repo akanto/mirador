@@ -95,6 +95,9 @@ export function profileEnvironment(profile: Profile | null): Record<string, stri
 
 export const CANVAS_SERVER_NAME = "canvas";
 
+/** None of them changes files or runs commands for the agent, so none is worth a permission prompt. */
+const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "review", "update_review", "when_done"];
+
 /**
  * Session options Claude Code reads from `_meta.claudeCode.options` (claude-agent-acp).
  * AskUserQuestion is disabled so questions go through the visual `ask` tool instead.
@@ -109,7 +112,7 @@ export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { withoutU
       options: {
         ...(withoutUserSettings && { settingSources: ["project", "local"] }),
         env: { CLAUDE_NOTIFIER: "0" },
-        allowedTools: [`mcp__${CANVAS_SERVER_NAME}__show`, `mcp__${CANVAS_SERVER_NAME}__ask`, `mcp__${CANVAS_SERVER_NAME}__update_review`],
+        allowedTools: PRE_ALLOWED_CANVAS_TOOLS.map((tool) => `mcp__${CANVAS_SERVER_NAME}__${tool}`),
         disallowedTools: ["AskUserQuestion"],
       },
     },
