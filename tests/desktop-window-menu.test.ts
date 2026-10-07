@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MIRADOR_VERSION } from "../shared/version.ts";
-import { giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
+import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
 const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false } as const;
 
@@ -40,6 +40,13 @@ describe("menu in the window", () => {
   test("anyone may ask for the nonce, which the app gives only to its window's own page", () => {
     expect(pageRequest({ type: "desktop-nonce-request" }, "n-1")).toEqual({ type: "nonce" });
     expect(giveNonceScript("n-1")).toBe('window.dispatchEvent(new CustomEvent("mirador:desktop-nonce", { detail: "n-1" }))');
+  });
+
+  test("asks the page to close what has focus, and closes the window only when the page asks with the nonce", () => {
+    expect(closeWhatHasFocusScript).toBe('window.dispatchEvent(new CustomEvent("mirador:desktop-close"))');
+    expect(pageRequest({ type: "desktop-close-window", nonce: "n-1" }, "n-1")).toEqual({ type: "close-window" });
+    expect(pageRequest({ type: "desktop-close-window", nonce: "guess" }, "n-1")).toBeNull();
+    expect(pageRequest({ type: "desktop-close-window" }, "n-1")).toBeNull();
   });
 
   test("opens a link only when the request carries the nonce and the link is a web address", () => {

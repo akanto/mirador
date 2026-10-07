@@ -86,7 +86,7 @@ The LaunchAgent plists carry no environment values (the login shell supplies the
 
 ## What Quit does
 
-- Closing the window: nothing is stopped. The host and the menu bar item stay. Cmd+W asks first; the window's close button doesn't.
+- Closing the window: nothing is stopped. The host and the menu bar item stay. Cmd+W closes what has focus inside Mirador first (a terminal's shell, else the open dialog), and asks before it closes the window; the window's close button doesn't ask.
 - Quit (menu bar, or Cmd+Q while the window is focused): sends SIGTERM to the host only if this app started it. A host started by `bun host/main.ts` in a terminal, or a background-mode LaunchAgent host, keeps running.
 
 "Run host in the background" refuses to turn on, with a reason, while a host the app does not own is answering. When you turn it on, an app-owned host is stopped first so the LaunchAgent can take the port.

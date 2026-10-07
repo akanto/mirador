@@ -1,4 +1,4 @@
-import { DESKTOP_MENU_EVENT, DESKTOP_NONCE_EVENT, type DesktopMenu, type DesktopMenuItem } from "../../../shared/desktop-menu.ts";
+import { DESKTOP_CLOSE_EVENT, DESKTOP_MENU_EVENT, DESKTOP_NONCE_EVENT, type DesktopMenu, type DesktopMenuItem } from "../../../shared/desktop-menu.ts";
 import { webUrl } from "./navigation.ts";
 import { isTrayAction, trayMenu, type TrayAction, type TrayState } from "./tray-menu.ts";
 
@@ -11,7 +11,14 @@ export const showMenuScript = (menu: DesktopMenu) =>
 
 export const giveNonceScript = (nonce: string) => `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_NONCE_EVENT)}, { detail: ${JSON.stringify(nonce)} }))`;
 
-export type PageRequest = { type: "menu" } | { type: "nonce" } | { type: "action"; action: TrayAction } | { type: "open-link"; url: string };
+export const closeWhatHasFocusScript = `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_CLOSE_EVENT)}))`;
+
+export type PageRequest =
+  | { type: "menu" }
+  | { type: "nonce" }
+  | { type: "action"; action: TrayAction }
+  | { type: "open-link"; url: string }
+  | { type: "close-window" };
 
 /**
  * Any frame in the window can post to the app, the agents' canvas pages included; only the page the app handed the
@@ -24,6 +31,7 @@ export function pageRequest(detail: unknown, nonce: string): PageRequest | null 
   if (message.type === "desktop-nonce-request") return { type: "nonce" };
   if (message.nonce !== nonce) return null;
   if (message.type === "desktop-action" && isTrayAction(message.action)) return { type: "action", action: message.action };
+  if (message.type === "desktop-close-window") return { type: "close-window" };
   const url = message.type === "desktop-open-link" ? webUrl(message.url) : null;
   return url ? { type: "open-link", url } : null;
 }

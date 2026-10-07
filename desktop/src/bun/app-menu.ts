@@ -1,9 +1,9 @@
 import { ApplicationMenu } from "electrobun/main";
 
-const CLOSE_WINDOW = "close-window";
+const CLOSE = "close";
 
-/** ⌘W is easily pressed meaning something inside Mirador, so it asks before the window closes. */
-export function installApplicationMenu(appName: string, closeWindowAfterAsking: () => void) {
+/** ⌘W reaches here when the page did not take it, or before the page saw it: the page decides what it closes. */
+export function installApplicationMenu(appName: string, closeWhatHasFocus: () => void) {
   ApplicationMenu.setApplicationMenu([
     {
       label: appName,
@@ -29,10 +29,10 @@ export function installApplicationMenu(appName: string, closeWindowAfterAsking: 
     },
     {
       label: "Window",
-      submenu: [{ role: "minimize", accelerator: "m" }, { role: "zoom" }, { label: "Close Window", action: CLOSE_WINDOW, accelerator: "w" }, { role: "bringAllToFront" }],
+      submenu: [{ role: "minimize", accelerator: "m" }, { role: "zoom" }, { label: "Close", action: CLOSE, accelerator: "w" }, { role: "bringAllToFront" }],
     },
   ]);
   ApplicationMenu.on("application-menu-clicked", (event) => {
-    if ((event as { data?: { action?: unknown } }).data?.action === CLOSE_WINDOW) closeWindowAfterAsking();
+    if ((event as { data?: { action?: unknown } }).data?.action === CLOSE) closeWhatHasFocus();
   });
 }

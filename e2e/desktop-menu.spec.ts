@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DesktopMenu, DesktopMenuMessage } from "../shared/desktop-menu.ts";
-import { signIn } from "./helpers.ts";
+import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4810);
@@ -101,6 +101,41 @@ test("inside a desktop app that hands over no nonce, as one built before it did,
   const popup = page.waitForEvent("popup");
   await page.getByRole("link", { name: "the docs" }).click();
   expect((await popup).url()).toContain("example.com");
+});
+
+test("inside the macOS desktop app, ⌘W closes the open dialog or the focused terminal's shell, and with nothing to close asks the app with its nonce", async ({ page }) => {
+  const sentToDesktopApp = await actAsDesktopApp(page);
+  await signIn(page, host);
+  await expect.poll(sentToDesktopApp).toContainEqual({ type: "desktop-nonce-request" });
+  const pressCommandWInTheApp = () => page.evaluate(() => window.dispatchEvent(new CustomEvent("mirador:desktop-close")));
+  const askedToCloseWindow = async () => (await sentToDesktopApp()).filter(({ type }) => type === "desktop-close-window");
+
+  await test.step("an open dialog closes", async () => {
+    await page.getByRole("button", { name: "Settings…" }).click();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    await pressCommandWInTheApp();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
+  });
+
+  await test.step("the shell of the focused terminal closes", async () => {
+    await addWorkspace(page, host.projectDir);
+    await startConversation(page);
+    await page.getByRole("button", { name: "Show terminal" }).click();
+    await page.getByRole("button", { name: "Split right" }).click();
+    const splits = page.locator(".terminal-pane .terminal-split");
+    await expect(splits).toHaveCount(2);
+    await page.locator(".terminal-pane .xterm").nth(1).click();
+    await pressCommandWInTheApp();
+    await expect(splits).toHaveCount(1);
+  });
+
+  await test.step("with focus elsewhere and no dialog open, the page asks the app to close the window", async () => {
+    expect(await askedToCloseWindow()).toEqual([]);
+    await page.locator(".composer:visible textarea").focus();
+    await pressCommandWInTheApp();
+    await expect.poll(askedToCloseWindow).toEqual([{ type: "desktop-close-window", nonce: "nonce-1" }]);
+    await expect(page.locator(".terminal-pane .terminal-split")).toHaveCount(1);
+  });
 });
 
 test("the desktop app menu reaches past the sidebar's edge without being cut off", async ({ page }) => {

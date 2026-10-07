@@ -1,5 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
+import { askDesktopAppForNonce } from "./desktop-bridge.ts";
+import { closeWhatHasFocusOnCommandW } from "./desktop-close.ts";
 import { openOutsideLinksInTheBrowser } from "./outside-links.ts";
 import { applyFontScale, currentFontScale } from "./font-scale.ts";
 import { applyTheme, storedTheme } from "./theme.ts";
@@ -12,5 +14,7 @@ applyTheme(storedTheme());
 applyTimestampsShown(storedTimestampsShown());
 applyWaitingStyle(storedWaitingStyle());
 applyWorkspaceColorStyle();
+askDesktopAppForNonce();
 openOutsideLinksInTheBrowser();
+closeWhatHasFocusOnCommandW();
 createRoot(document.getElementById("root")!).render(<App />);

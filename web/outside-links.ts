@@ -1,5 +1,4 @@
-import { DESKTOP_NONCE_EVENT } from "../shared/desktop-menu.ts";
-import { inDesktopApp, sendToDesktopApp } from "./desktop-bridge.ts";
+import { desktopNonce, inDesktopApp, sendToDesktopApp } from "./desktop-bridge.ts";
 
 const OPEN_LINK_MESSAGE = "mirador:open-link";
 
@@ -47,14 +46,12 @@ function machineFrameSending(event: MessageEvent) {
 export function openOutsideLinksInTheBrowser() {
   if (!inDesktopApp()) return;
   if (window.parent !== window) return openOutsideLinksWith((url) => window.parent.postMessage({ type: OPEN_LINK_MESSAGE, url }, "*"));
-  let nonce: string | null = null;
-  window.addEventListener(DESKTOP_NONCE_EVENT, (event) => (nonce = (event as CustomEvent<string>).detail));
-  sendToDesktopApp({ type: "desktop-nonce-request" });
   const open = (url: string) => {
+    const nonce = desktopNonce();
     if (nonce) sendToDesktopApp({ type: "desktop-open-link", nonce, url });
   };
   // An app built before this never hands over a nonce, and still opens links from its window's navigation events.
-  openOutsideLinksWith(open, () => nonce !== null);
+  openOutsideLinksWith(open, () => desktopNonce() !== null);
   window.addEventListener("message", (event) => {
     if (!isOpenLinkMessage(event.data) || !machineFrameSending(event)) return;
     const url = webAddress(event.data.url);

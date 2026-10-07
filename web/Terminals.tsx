@@ -14,6 +14,7 @@ import { Splitter } from "./Splitter.tsx";
 import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
 import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
+import { useClosesWhileFocused } from "./desktop-close.ts";
 import { copiesOnSelect } from "./terminal-settings.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
@@ -132,6 +133,11 @@ function writeReplayedHistory(view: Terminal, data: string) {
 function TerminalView({ terminalId, focus, events }: { terminalId: string; focus: FocusRequest | undefined; events: RefObject<TerminalEvents> }) {
   const screen = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
+  useClosesWhileFocused(() => {
+    if (!screen.current?.contains(document.activeElement)) return false;
+    events.current.command({ type: "close" }, terminalId);
+    return true;
+  });
 
   useEffect(() => {
     const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: terminalFontSize(), cursorBlink: true, scrollback: 5_000, theme: terminalTheme });

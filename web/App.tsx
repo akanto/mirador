@@ -5,6 +5,7 @@ import { findInOpenConversation, focusPane, startConversationIn, startRenamingOp
 import { CanvasPanel } from "./Canvas.tsx";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
+import { useClosesAsDialog } from "./desktop-close.ts";
 import { JoinMachine } from "./Devices.tsx";
 import { JoinRequestPrompts } from "./JoinRequests.tsx";
 import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
@@ -251,6 +252,12 @@ export function App() {
       if (focusWasDropped && !anotherDialogOpened) focusPane("chat");
     });
   }, []);
+
+  useClosesAsDialog(() => {
+    if (!isModal(state)) return false;
+    closeOverlay();
+    return true;
+  });
 
   const select = (conversationId: string | null) => conversationId && dispatch({ type: "select", conversationId });
 

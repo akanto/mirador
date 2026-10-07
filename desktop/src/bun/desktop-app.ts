@@ -10,7 +10,7 @@ import { PidFileOnDisk, systemProcesses } from "../core/processes.ts";
 import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from "../core/runtime.ts";
 import type { SettingsStore } from "../core/settings.ts";
 import type { TrayAction, TrayState } from "../core/tray-menu.ts";
-import { giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
+import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
 import { AppTray } from "./app-tray.ts";
 import { setDockIconVisible } from "./dock.ts";
 import { MainWindow } from "./main-window.ts";
@@ -95,8 +95,8 @@ export class DesktopApp {
     if (!this.window.isOpen) setDockIconVisible(false);
   }
 
-  closeWindowAfterAsking() {
-    return this.window.closeAfterAsking();
+  closeWhatHasFocus() {
+    this.window.runInPage(closeWhatHasFocusScript);
   }
 
   stopOwnedHost() {
@@ -190,6 +190,7 @@ export class DesktopApp {
     const request = pageRequest(detail, this.pageNonce);
     if (request?.type === "nonce") this.window.runInPage(giveNonceScript(this.pageNonce));
     if (request?.type === "open-link") this.window.openInBrowser(request.url);
+    if (request?.type === "close-window") void this.window.closeAfterAsking();
     if (!showsMenuInWindow) return;
     if (request?.type === "menu") this.showMenuInWindow();
     if (request?.type === "action") void this.handle(request.action);

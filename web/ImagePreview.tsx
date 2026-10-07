@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useClosesAsDialog } from "./desktop-close.ts";
 
 /** The image at full size over the page; a click anywhere or Esc closes it. */
 function ImagePreview({ src, onClose }: { src: string; onClose: () => void }) {
@@ -12,6 +13,10 @@ function ImagePreview({ src, onClose }: { src: string; onClose: () => void }) {
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
   }, [onClose]);
+  useClosesAsDialog(() => {
+    onClose();
+    return true;
+  });
   return (
     <div className="modal-backdrop image-preview" role="dialog" aria-label="Image" onClick={onClose}>
       <img src={src} alt="" />
