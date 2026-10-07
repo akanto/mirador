@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
-import { buildCanvasDocument, canvasColorSchemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
+import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import type { AskOption, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { shortcutKeys } from "./shortcuts.ts";
+import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { ReviewView, type ReviewItem } from "./Review.tsx";
@@ -84,7 +85,8 @@ function CanvasFrame({
   const roomWidth = useElementWidth(box);
   const [errors, setErrors] = useState<string[]>([]);
   const [contentSize, setContentSize] = useState<ContentSize>();
-  const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin), [html, frameId, assetsOrigin]);
+  // The theme is not a dependency: changing it would reload the page, so it reaches a shown page by message instead.
+  const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme()), [html, frameId, assetsOrigin]);
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
   const onContentWidthRef = useRef(onContentWidth);
@@ -112,17 +114,12 @@ function CanvasFrame({
     if (contentSize?.width) onContentWidthRef.current?.(contentSize.width);
   }, [contentSize?.width]);
 
-  // The panel's theme lives in this document; sandboxed iframes do not inherit it, so hand the used value over.
-  useEffect(() => {
-    const observer = new MutationObserver(() => postColorSchemeTo(frame));
-    observer.observe(window.document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => observer.disconnect();
-  }, []);
+  useEffect(() => onShownThemeChange(() => postThemeTo(frame)), []);
 
   const fitted = fitsContent ? fittedStyles(contentSize, roomWidth) : {};
   return (
     <div ref={box} className={`canvas-frame ${className ?? ""}`} style={fitted.box}>
-      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} style={fitted.frame} onLoad={() => postColorSchemeTo(frame)} />
+      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} style={fitted.frame} onLoad={() => postThemeTo(frame)} />
       {errors.length > 0 && (
         <ul className="frame-errors">
           {errors.map((error, index) => (
@@ -134,8 +131,9 @@ function CanvasFrame({
   );
 }
 
-function postColorSchemeTo(frame: RefObject<HTMLIFrameElement | null>) {
-  frame.current?.contentWindow?.postMessage(canvasColorSchemeMessage(getComputedStyle(window.document.documentElement).colorScheme), "*");
+/** Also on load: a theme chosen while the page was still opening went to the frame's blank window and was lost. */
+function postThemeTo(frame: RefObject<HTMLIFrameElement | null>) {
+  frame.current?.contentWindow?.postMessage(canvasThemeMessage(shownTheme()), "*");
 }
 
 function reportRender(itemId: string) {

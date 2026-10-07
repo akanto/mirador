@@ -24,9 +24,12 @@ export function isCanvasFrameMessage(data: unknown): data is CanvasFrameMessage 
   return typeof data === "object" && data !== null && (data as { source?: unknown }).source === CANVAS_MESSAGE_SOURCE;
 }
 
-/** The panel's used colour scheme, for canvas pages to resolve their light-dark() colours against. */
-export function canvasColorSchemeMessage(colorScheme: string) {
-  return { source: CANVAS_MESSAGE_SOURCE, kind: "color-scheme", colorScheme };
+/** Light or dark, as the panel shows: canvas pages resolve their light-dark() colours against it. */
+export type CanvasTheme = "light" | "dark";
+
+/** Tells a canvas page the panel's theme changed, since a sandboxed frame does not inherit the panel's color-scheme. */
+export function canvasThemeMessage(theme: CanvasTheme) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "theme", theme };
 }
 
 export function canvasImportMap(assetsOrigin: string) {
@@ -55,17 +58,19 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
   ].join("; ");
 }
 
-function frameReporter(itemId: string) {
+function frameReporter(itemId: string, theme: CanvasTheme) {
   return `(() => {
   const itemId = ${JSON.stringify(itemId)};
   const errors = [];
   const post = (message) => parent.postMessage({ source: ${JSON.stringify(CANVAS_MESSAGE_SOURCE)}, itemId, ...message }, "*");
-  // The panel posts its colour scheme here; sandboxed iframes do not inherit it, but light-dark() resolves against it.
+  // Important, so the panel's theme wins over a page's own color-scheme (often "light dark", which follows the system) from the first paint.
+  const colorScheme = document.createElement("style");
+  const showIn = (theme) => { colorScheme.textContent = ":root{color-scheme:" + (theme === "dark" ? "dark" : "light") + " !important}"; };
+  showIn(${JSON.stringify(theme)});
+  document.head.append(colorScheme);
   addEventListener("message", (event) => {
     const data = event.data;
-    if (data && data.source === ${JSON.stringify(CANVAS_MESSAGE_SOURCE)} && data.kind === "color-scheme") {
-      document.documentElement.style.colorScheme = data.colorScheme;
-    }
+    if (event.source === parent && data && data.source === ${JSON.stringify(CANVAS_MESSAGE_SOURCE)} && data.kind === "theme") showIn(data.theme);
   });
   const record = (message) => {
     if (errors.length >= 20 || /ResizeObserver loop/.test(message)) return;
@@ -154,14 +159,14 @@ function escapeAttribute(value: string) {
  * reporter come before anything the agent wrote; the parser folds the agent's own
  * <html>/<head> tags into the already-open elements.
  */
-export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string) {
+export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string, theme: CanvasTheme) {
   const withoutDoctype = html.replace(/^\s*<!doctype[^>]*>/i, "");
   return [
     "<!doctype html>",
     `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy(assetsOrigin))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
-    `<script>${frameReporter(itemId)}</script>`,
+    `<script>${frameReporter(itemId, theme)}</script>`,
     "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif}</style>",
     withoutDoctype,
   ].join("\n");

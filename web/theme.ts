@@ -15,9 +15,30 @@ export function storedTheme(): Theme {
   }
 }
 
-/** The stylesheet reads the theme from the root element; canvas pages follow it through color-scheme. */
+/** The stylesheet reads the theme from the root element. */
 export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
+}
+
+const systemPrefersDark = () => matchMedia("(prefers-color-scheme: dark)");
+
+/** Light or dark, as the panel shows now: Match system takes the system's. */
+export function shownTheme(): "light" | "dark" {
+  const theme = document.documentElement.dataset.theme;
+  if (theme === "system") return systemPrefersDark().matches ? "dark" : "light";
+  return theme === "dark" ? "dark" : "light";
+}
+
+/** Calls back when the shown theme may have changed: another theme chosen, or the system's switched under Match system. */
+export function onShownThemeChange(listener: () => void) {
+  const chosen = new MutationObserver(listener);
+  chosen.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  const system = systemPrefersDark();
+  system.addEventListener("change", listener);
+  return () => {
+    chosen.disconnect();
+    system.removeEventListener("change", listener);
+  };
 }
 
 export function useTheme() {
