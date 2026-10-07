@@ -94,12 +94,39 @@ function fenced(code: string) {
 }
 
 const UPDATE_THE_REVIEW =
-  "If your answer changes anything in the review (its findings, tour, summary or verdict), publish the review again with the review tool.";
+  "If your answer changes anything in the review (a finding, the tour, the summary or the verdict), change just those parts with the update_review tool; publish the whole review again only if the code under review changed.";
 
-function questionAbout(title: string, selection: Pick<LineSelection, "path" | "rows">, question: string, updatesReview: boolean) {
-  const code = selection.rows.map((row) => `${marker(row)}${row.text}`).join("\n");
-  const asked = `About ${selectionLabel(selection)} in the review "${title}":\n\n${fenced(code)}\n\n${question.trim()}`;
+/** What a question is about: lines, and the finding they belong to when it was asked from one. */
+type AskingAbout = Pick<LineSelection, "path" | "rows"> & { findingId?: string };
+
+const quoted = (text: string) => text.split("\n").map((line) => `> ${line}`).join("\n");
+
+/** A question from a finding names it and carries its comment as the user sees it, their own rewording included. */
+function questionAbout(title: string, place: AskingAbout, finding: ReviewFinding | undefined, question: string, updatesReview: boolean) {
+  const code = place.rows.map((row) => `${marker(row)}${row.text}`).join("\n");
+  const subject = finding ? `${finding.id} ("${finding.title}") at ${selectionLabel(place)}` : selectionLabel(place);
+  const comment = finding ? `\n\nIts comment now reads:\n\n${quoted(finding.body)}` : "";
+  const asked = `About ${subject} in the review "${title}":${comment}\n\n${fenced(code)}\n\n${question.trim()}`;
   return updatesReview ? `${asked}\n\n${UPDATE_THE_REVIEW}` : asked;
+}
+
+const AGENT_EDIT_FLASH_MS = 2000;
+
+/** Whether the agent changed this part of the review just now, while it was on screen, to draw the eye to it for a moment. */
+function useAgentEdited(review: Review, part: string) {
+  const at = review.agentEdit?.at;
+  const seenAt = useRef(at);
+  const [flashing, setFlashing] = useState(false);
+  useEffect(() => {
+    if (at === seenAt.current) return;
+    seenAt.current = at;
+    const changed = Boolean(review.agentEdit?.parts.includes(part));
+    setFlashing(changed);
+    if (!changed) return;
+    const timer = setTimeout(() => setFlashing(false), AGENT_EDIT_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [at]);
+  return flashing;
 }
 
 function CodeText({ text, spans }: { text: string; spans: CodeSpan[] | undefined }) {
@@ -188,6 +215,7 @@ function FindingCard({
 }) {
   const { review } = item;
   const [editing, setEditing] = useState(false);
+  const agentEdited = useAgentEdited(review, finding.id);
   const file = fileOf(review, finding.at.path);
   const update = (change: { decision?: FindingDecision; body?: string }) =>
     connection.send({ type: "review.update-finding", itemId: item.id, findingId: finding.id, ...change });
@@ -198,7 +226,9 @@ function FindingCard({
   };
   return (
     <article
-      className={["finding", `severity-${finding.severity}`, finding.decision === "drop" && "dropped", selected && "selected"].filter(Boolean).join(" ")}
+      className={["finding", `severity-${finding.severity}`, finding.decision === "drop" && "dropped", selected && "selected", agentEdited && "agent-edited"]
+        .filter(Boolean)
+        .join(" ")}
       data-finding-id={finding.id}
     >
       <header>
@@ -279,6 +309,7 @@ function BodyEditor({ body, onSave, onCancel }: { body: string; onSave: (body: s
 
 function AnswerCard({ item, answer, selected }: { item: ReviewItem; answer: ReviewAnswer; selected: boolean }) {
   const [editing, setEditing] = useState(false);
+  const agentEdited = useAgentEdited(item.review, answer.id);
   const update = (change: { decision?: FindingDecision; body?: string; resolve?: boolean }) =>
     connection.send({ type: "review.update-answer", itemId: item.id, answerId: answer.id, ...change });
   const posted = Boolean(answer.postedAs);
@@ -287,7 +318,10 @@ function AnswerCard({ item, answer, selected }: { item: ReviewItem; answer: Revi
     setEditing(false);
   };
   return (
-    <article className={["finding", "answer", answer.decision === "drop" && "dropped", selected && "selected"].filter(Boolean).join(" ")} data-answer-id={answer.id}>
+    <article
+      className={["finding", "answer", answer.decision === "drop" && "dropped", selected && "selected", agentEdited && "agent-edited"].filter(Boolean).join(" ")}
+      data-answer-id={answer.id}
+    >
       <header>
         <span className="anchor">{conversationPlace(answer)}</span>
         {answer.outdated && <span className="conversation-state">Outdated</span>}
@@ -425,15 +459,19 @@ function Overview({
   const answers = answersOf(review);
   const added = review.files.reduce((sum, file) => sum + file.added, 0);
   const removed = review.files.reduce((sum, file) => sum + file.removed, 0);
+  const verdictEdited = useAgentEdited(review, "verdict");
+  const summaryEdited = useAgentEdited(review, "summary");
   return (
     <div className="review-overview">
       <section className="overview-story">
-        <p className="verdict">{review.verdict}</p>
+        <p className={`verdict ${verdictEdited ? "agent-edited" : ""}`}>{review.verdict}</p>
         <p className="review-stats">
           {review.files.length} files changed · <span className="added-count">+{added}</span> <span className="removed-count">−{removed}</span> ·{" "}
           {review.base} ({review.baseCommit.slice(0, 8)}) → {review.headCommit.slice(0, 8)}
         </p>
-        <MarkdownText text={review.summary} />
+        <div className={summaryEdited ? "agent-edited" : ""}>
+          <MarkdownText text={review.summary} />
+        </div>
         {review.flow.length > 0 && (
           <>
             <h3>How the code flows</h3>
@@ -508,9 +546,10 @@ function FlowTour({
 }) {
   const { review } = item;
   const step = review.flow[stepIndex];
+  const tourEdited = useAgentEdited(review, "flow");
   if (!step) return <p className="review-empty">The agent described no code flow.</p>;
   return (
-    <div className="review-split flow-tour">
+    <div className={`review-split flow-tour ${tourEdited ? "agent-edited" : ""}`}>
       <nav className="review-list" aria-label="Flow steps">
         <ol>
           {review.flow.map((each, index) => (
@@ -917,7 +956,8 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   const filterField = useRef<HTMLInputElement>(null);
   const files = useMemo(() => filesInReadingOrder(review), [review.files, review.flow]);
   const [tab, setTab] = useState<Tab>("overview");
-  const [stepIndex, setStepIndex] = useState(0);
+  const [chosenStep, setStepIndex] = useState(0);
+  const stepIndex = Math.min(chosenStep, Math.max(review.flow.length - 1, 0));
   const [path, setPath] = useState<string | null>(files[0]?.path ?? null);
   const [hunkIndex, setHunkIndex] = useState(0);
   const [findingId, setFindingId] = useState<string | null>(review.findings[0]?.id ?? null);
@@ -925,7 +965,7 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   const [answerId, setAnswerId] = useState<string | null>(null);
   const shownTabs = tabs.filter(({ id }) => id !== "conversations" || answers.length > 0);
   const [selection, setSelection] = useState<LineSelection | null>(null);
-  const [asking, setAsking] = useState<Pick<LineSelection, "path" | "rows"> | null>(null);
+  const [asking, setAsking] = useState<AskingAbout | null>(null);
   const [sentNote, setSentNote] = useState<string | null>(null);
   const enterWhileBusy = useEnterWhileBusy();
   const fullscreen = usePaneFullscreen("canvas");
@@ -977,7 +1017,7 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   };
   const stepTour = (step: 1 | -1) => setStepIndex((index) => Math.min(Math.max(index + step, 0), Math.max(review.flow.length - 1, 0)));
 
-  const currentPlace = (): Pick<LineSelection, "path" | "rows"> | null => {
+  const currentPlace = (): AskingAbout | null => {
     if (selection) return selection;
     if (tab === "flow" && review.flow[stepIndex]) {
       const step = review.flow[stepIndex]!;
@@ -987,10 +1027,15 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
     if (tab === "findings" && finding) return placeOfFinding(finding);
     return null;
   };
-  const placeOfFinding = (target: ReviewFinding) => ({
+  const placeOfFinding = (target: ReviewFinding): AskingAbout => ({
+    findingId: target.id,
     path: target.at.path,
     rows: excerptRows(fileOf(review, target.at.path), target.excerpt).filter((row) => isWithin(row.newLine, target.at)),
   });
+  const askingLabel = (place: AskingAbout) => {
+    const askedFinding = review.findings.find(({ id }) => id === place.findingId);
+    return askedFinding ? `the finding "${askedFinding.title}" at ${selectionLabel(place)}` : selectionLabel(place);
+  };
   const askAboutCurrentPlace = () => {
     const place = currentPlace();
     if (place && place.rows.length > 0) setAsking(place);
@@ -1001,10 +1046,11 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   };
   const send = (question: string, updatesReview: boolean) => {
     if (!asking) return;
-    const text = questionAbout(item.title, asking, question, updatesReview);
+    const askedFinding = review.findings.find(({ id }) => id === asking.findingId);
+    const text = questionAbout(item.title, asking, askedFinding, question, updatesReview);
     if (!connection.send({ type: "conversation.prompt", conversationId, text, imageIds: [], afterTurn: enterWhileBusy === "after-turn" })) return;
-    const updating = updatesReview ? ", and the agent publishes the review again if the answer changes it" : "";
-    setSentNote(`Asked about ${selectionLabel(asking)}. The answer comes in the chat${updating}.`);
+    const updating = updatesReview ? ", and the agent updates the parts of the review it changes" : "";
+    setSentNote(`Asked about ${askingLabel(asking)}. The answer comes in the chat${updating}.`);
     setAsking(null);
     setSelection(null);
     root.current?.focus();
@@ -1140,7 +1186,7 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
       </div>
       {asking && (
         <AskAboutLines
-          label={selectionLabel(asking)}
+          label={askingLabel(asking)}
           onSend={send}
           onClose={() => {
             setAsking(null);

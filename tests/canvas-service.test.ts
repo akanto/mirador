@@ -10,6 +10,8 @@ import type { SystemNotifications } from "../host/system-notifications.ts";
 import type { Review, ReviewAnswer, ReviewFinding } from "../shared/review.ts";
 import type { NotificationReason } from "../shared/system-notifications.ts";
 import { completeDirectories } from "../host/paths.ts";
+import type { ReviewProblems } from "../host/review/snapshot.ts";
+import { gitRepository, reviewRequest } from "./review-repository.ts";
 
 function setUp() {
   const store = new Store(":memory:");
@@ -150,6 +152,36 @@ describe("CanvasService", () => {
     canvas.updateAnswer("r1", "answer-1", { body: "The user's words.", resolve: true });
     expect(store.findCanvasItem("r1")!.review!.answers![0]).toMatchObject({ body: "The user's words.", agentBody: "The agent's words.", resolve: true });
     expect(() => canvas.updateAnswer("r1", "answer-2", { resolve: true })).toThrow("does not let you resolve");
+  });
+
+  test("the agent's edit changes the newest review in its own canvas item, names what changed, and keeps a choice the user made meanwhile", async () => {
+    const { store, canvas } = setUp();
+    const { directory } = gitRepository();
+    const findings = [
+      { severity: "nit" as const, checked: "confirmed" as const, at: "service.ts:2", title: "Magic number", body: "Name the 1?" },
+      { severity: "issue" as const, checked: "plausible" as const, at: "service.ts:5-7", title: "Unused", body: "Is load() still needed?" },
+    ];
+    await canvas.review("c1", reviewRequest(directory, { findings }));
+    const newest = await canvas.review("c1", reviewRequest(directory, { findings }));
+
+    const editing = canvas.editReview("c1", { findings: [{ id: "finding-1", body: "Name it." }] });
+    canvas.updateFinding(newest.id, "finding-2", { decision: "drop" });
+    const { item } = await editing;
+
+    expect(item.id).toBe(newest.id);
+    expect(store.listCanvasItems("c1")).toHaveLength(2);
+    expect(item.review.findings.map(({ id, body, decision }) => [id, body, decision])).toEqual([
+      ["finding-1", "Name it.", "keep"],
+      ["finding-2", "Is load() still needed?", "drop"],
+    ]);
+    expect(item.review.agentEdit).toEqual({ at: expect.any(Number), parts: ["finding-1"] });
+  });
+
+  test("the agent's edit names a review this conversation does not have", async () => {
+    const { canvas } = setUp();
+    const problems = (edit: Parameters<CanvasService["editReview"]>[1]) => canvas.editReview("c1", edit).then(() => [], (error: ReviewProblems) => error.problems);
+    expect(await problems({ summary: "?" })).toEqual(["This conversation has no review to change; publish one with the review tool."]);
+    expect(await problems({ review: "r9", summary: "?" })).toEqual(["review: r9 is not a review in this conversation."]);
   });
 });
 

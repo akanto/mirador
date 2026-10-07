@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5030, { fakePrograms: true });
@@ -270,13 +270,13 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await question.fill("Reply with just the word NOTED.");
     await question.press(`${await primaryModifier(page)}+Enter`);
     await expect(view.locator(".review-sent")).toContainText("Asked about service.ts:2-4");
-    await expect(view.locator(".review-sent")).toContainText("publishes the review again if the answer changes it");
+    await expect(view.locator(".review-sent")).toContainText("the agent updates the parts of the review it changes");
     await view.getByRole("button", { name: "Show the chat" }).click();
     await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
     const asked = page.locator(".message.user").last();
     await expect(asked).toContainText('About service.ts:2-4 in the review "PR 7: fetch items for the user"');
     await expect(asked).toContainText("+  const user = authenticate(request) ?? anonymous();");
-    await expect(asked).toContainText("publish the review again with the review tool");
+    await expect(asked).toContainText("change just those parts with the update_review tool");
   });
 
   await test.step("kept and edited findings on the diff go to a pending review; the one outside the diff stays", async () => {
@@ -404,5 +404,56 @@ test("a re-review answers the pull request's conversations; the user resolves on
       { threadId: "PRRT_1" },
       { pullRequestReviewId: "PRR_1", pullRequestReviewThreadId: "PRRT_2", body: "Still there, in fetchItems." },
     ]);
+  });
+});
+
+test("the agent rewords one comment in place: the user stays on the finding they were reading, and their choices stay", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const view = page.locator(".review");
+  const finding = (title: string) => view.locator(".finding", { hasText: title });
+
+  const published = await callCanvasTool(host, conversationId, "review", review());
+  expect(published).toContain('call update_review with these ids: finding-1 "Anonymous fallback" at service.ts:2; finding-2 "Unchanged helper"');
+  await view.getByRole("tab", { name: /Findings/ }).click();
+  await finding("Unchanged helper").getByRole("button", { name: "Kept" }).click();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await expect(view.locator(".finding.selected .finding-title")).toHaveText("Empty items");
+
+  await test.step("a wrong id is sent back to the agent, and nothing changes", async () => {
+    const result = await callCanvasTool(host, conversationId, "update_review", { findings: [{ id: "finding-9", body: "?" }] });
+    expect(result).toContain("finding-9 is not one of this review's findings (finding-1, finding-2, finding-3).");
+    await expect(finding("Empty items")).toContainText("Should this call the API?");
+  });
+
+  await test.step("only the reworded comment changes and flashes; the tab, the selection and the user's drop stay, and no new page is added", async () => {
+    const result = await callCanvasTool(host, conversationId, "update_review", { findings: [{ id: "finding 3", body: "Call the items API?" }] });
+    expect(result).toContain("updated finding-3 in place");
+    await expect(finding("Empty items")).toContainText("Call the items API?");
+    await expect(finding("Empty items")).toHaveClass(/agent-edited/);
+    await expect(finding("Anonymous fallback")).not.toHaveClass(/agent-edited/);
+    await expect(view.getByRole("tab", { name: /Findings/ })).toHaveAttribute("aria-selected", "true");
+    await expect(view.locator(".finding.selected .finding-title")).toHaveText("Empty items");
+    await expect(finding("Unchanged helper").getByRole("button", { name: "Dropped" })).toBeVisible();
+    await expect(finding("Empty items")).not.toHaveClass(/agent-edited/);
+    await expect((await openCanvasHistory(page)).locator(".history-entry")).toHaveCount(1);
+  });
+
+  await test.step("asked from a finding, the question names it and quotes its comment as it now reads", async () => {
+    await finding("Empty items").getByRole("button", { name: "Ask" }).click();
+    const dialog = page.getByRole("dialog", { name: "Ask the agent about these lines" });
+    await expect(dialog).toContainText('Ask the agent about the finding "Empty items" at items.ts:2');
+    await dialog.locator("textarea").fill("Reply with just the word NOTED.");
+    await dialog.locator("textarea").press(`${await primaryModifier(page)}+Enter`);
+    await expect(view.locator(".review-sent")).toContainText('Asked about the finding "Empty items" at items.ts:2');
+    const asked = page.locator(".message.user").last();
+    await expect(asked).toContainText('About finding-3 ("Empty items") at items.ts:2 in the review "PR 7: fetch items for the user"');
+    await expect(asked).toContainText("Its comment now reads:");
+    await expect(asked).toContainText("Call the items API?");
+    await waitForTurnToEnd(page);
   });
 });

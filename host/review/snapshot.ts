@@ -27,8 +27,11 @@ export interface ReviewRequest {
 
 /** What the agent has to fix before the review can be shown; all of it at once, so one more call is enough. */
 export class ReviewProblems extends Error {
-  constructor(readonly problems: string[]) {
-    super(`The review was not shown. Fix these and call review again:\n${problems.map((problem) => `- ${problem}`).join("\n")}`);
+  constructor(
+    readonly problems: string[],
+    lead = "The review was not shown. Fix these and call review again",
+  ) {
+    super(`${lead}:\n${problems.map((problem) => `- ${problem}`).join("\n")}`);
   }
 }
 
@@ -77,7 +80,7 @@ function excerptAround({ line, endLine }: CodeAnchor, fileLines: string[]): Code
 }
 
 /** Reads anchors against the reviewed version, collecting what is wrong with them instead of stopping at the first. */
-class AnchorReader {
+export class AnchorReader {
   private readonly fileLines = new Map<string, Promise<string[] | null>>();
 
   constructor(
@@ -168,7 +171,7 @@ export async function snapshotReview(request: ReviewRequest): Promise<Review> {
 }
 
 /** One at a time, so the agent gets its problems in the order of its request. */
-async function mapInOrder<T, R>(items: T[], map: (item: T, index: number) => Promise<R>) {
+export async function mapInOrder<T, R>(items: T[], map: (item: T, index: number) => Promise<R>) {
   const results: R[] = [];
   for (const [index, item] of items.entries()) results.push(await map(item, index));
   return results;

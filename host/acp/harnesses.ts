@@ -109,7 +109,7 @@ export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { withoutU
       options: {
         ...(withoutUserSettings && { settingSources: ["project", "local"] }),
         env: { CLAUDE_NOTIFIER: "0" },
-        allowedTools: [`mcp__${CANVAS_SERVER_NAME}__show`, `mcp__${CANVAS_SERVER_NAME}__ask`],
+        allowedTools: [`mcp__${CANVAS_SERVER_NAME}__show`, `mcp__${CANVAS_SERVER_NAME}__ask`, `mcp__${CANVAS_SERVER_NAME}__update_review`],
         disallowedTools: ["AskUserQuestion"],
       },
     },

@@ -44,7 +44,7 @@ export const hints = {
   connectedDevicesInSidebar: "While devices are connected, a line at the bottom of the sidebar says how many; click it to see which. Remembered in this browser.",
   connectedDevices: (names: string[]) => `Connected now: ${names.join(", ")}. Click to see all devices in Settings → Devices.`,
   askAndUpdateReview:
-    "Ask, and tell the agent to publish the review again if its answer changes a finding, the tour, the summary or the verdict. Your choices on the findings carry over.",
+    "Ask, and tell the agent to update the parts of the review its answer changes, such as a finding, the tour, the summary or the verdict. They change in place, and the rest stays as you left it.",
   answerDecision: "Kept answers go to their conversations on the pull request when you post, as replies on your pending review; dropped ones stay here. Click to switch.",
   answerResolve:
     "Resolve this conversation on GitHub when its answer is posted. The answer waits on your pending review until you submit it, but the conversation shows as resolved to everyone at once.",

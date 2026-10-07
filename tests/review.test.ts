@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { excerptRows, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "../host/review/diff.ts";
 import { parsePullRequestUrl, postPendingReview, type GitHubCli } from "../host/review/github.ts";
-import { ReviewProblems, snapshotReview, type ReviewRequest } from "../host/review/snapshot.ts";
+import { ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
+import { gitRepository, reviewRequest as request } from "./review-repository.ts";
 
 const diff = `diff --git a/src/app.ts b/src/app.ts
 index 1111111..2222222 100644
@@ -101,31 +100,6 @@ describe("anchors and excerpts", () => {
     expect(isCommentable(app, { path: "src/app.ts", line: 5, endLine: 6 })).toBe(false);
     expect(isCommentable(undefined, { path: "elsewhere.ts", line: 1, endLine: 1 })).toBe(false);
   });
-});
-
-function gitRepository() {
-  const directory = mkdtempSync(join(tmpdir(), "mirador-review-"));
-  const git = (...args: string[]) =>
-    execFileSync("git", ["-C", directory, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" });
-  git("init", "-q", "-b", "main");
-  writeFileSync(join(directory, "service.ts"), ["export function serve() {", "  return load();", "}", "", "function load() {", "  return 1;", "}"].join("\n") + "\n");
-  git("add", ".");
-  git("commit", "-q", "-m", "base");
-  git("checkout", "-q", "-b", "feature");
-  writeFileSync(join(directory, "service.ts"), ["export function serve() {", "  return load() + 1;", "}", "", "function load() {", "  return 1;", "}"].join("\n") + "\n");
-  git("commit", "-q", "-am", "change");
-  return { directory, head: git("rev-parse", "HEAD").trim() };
-}
-
-const request = (repository: string, change: Partial<ReviewRequest> = {}): ReviewRequest => ({
-  title: "Serve one more",
-  repository,
-  base: "main",
-  verdict: "Approve.",
-  summary: "Adds one.",
-  flow: [{ title: "Entry", at: "service.ts:1-3", say: "serve() calls load()." }],
-  findings: [{ severity: "nit", checked: "confirmed", at: "service.ts:2", title: "Magic number", body: "Name the 1?" }],
-  ...change,
 });
 
 describe("snapshotReview", () => {

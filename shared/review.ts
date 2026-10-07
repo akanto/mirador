@@ -129,6 +129,8 @@ export interface Review {
   files: ReviewFile[];
   posting: boolean;
   pendingReviewUrl: string | null;
+  /** The agent's latest change to parts of the review in place: finding and answer ids, "summary", "verdict" or "flow". */
+  agentEdit?: { at: number; parts: string[] };
 }
 
 export const answersOf = (review: Review) => review.answers ?? [];

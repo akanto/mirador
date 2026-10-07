@@ -6,9 +6,10 @@ import type { Store } from "../store.ts";
 import type { SystemNotifications } from "../system-notifications.ts";
 import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, isSameChange } from "../review/carry-over.ts";
+import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
 import { openInIdea } from "../review/editor.ts";
 import { ghCli, postPendingReview, type GitHubCli } from "../review/github.ts";
-import { allOrEveryProblem, reviewedFileLines, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
+import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
 
 const RENDER_REPORT_TIMEOUT_MS = 6000;
 
@@ -150,6 +151,19 @@ export class CanvasService {
     }) as ReviewItem;
   }
 
+  /**
+   * Changes parts of a review already shown, in the same canvas item, so the user keeps their place in it. The edit is
+   * applied to the review as it is once git has been read, so a choice the user made meanwhile stays.
+   */
+  async editReview(conversationId: string, edit: ReviewEdit & { review?: string }) {
+    const target = this.reviewToEdit(conversationId, edit.review);
+    const anchors = await readEditAnchors(target.review, edit);
+    const latest = this.reviewItem(target.id);
+    const { review, changed, removed } = applyReviewEdit(latest.review, edit, anchors);
+    const item = this.save({ ...latest, review: { ...review, agentEdit: { at: Date.now(), parts: changed } } }) as ReviewItem;
+    return { item, changed, removed };
+  }
+
   updateFinding(itemId: string, findingId: string, change: FindingChange) {
     const item = this.reviewItem(itemId);
     const finding = item.review.findings.find(({ id }) => id === findingId);
@@ -250,6 +264,14 @@ export class CanvasService {
     const item = this.store.findCanvasItem(itemId);
     if (!item?.review) throw new Error("Unknown review.");
     return item as ReviewItem;
+  }
+
+  private reviewToEdit(conversationId: string, itemId: string | undefined) {
+    const reviews = this.store.listCanvasItems(conversationId).filter((item) => item.review);
+    const item = itemId === undefined ? reviews.at(-1) : reviews.find(({ id }) => id === itemId);
+    if (item) return item as ReviewItem;
+    const problem = itemId === undefined ? "This conversation has no review to change; publish one with the review tool." : `review: ${itemId} is not a review in this conversation.`;
+    throw new ReviewProblems([problem], REVIEW_NOT_CHANGED);
   }
 
   private latestReviewOf(conversationId: string, change: Review) {
