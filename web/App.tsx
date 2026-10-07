@@ -14,9 +14,10 @@ import { HintLayer } from "./Hint.tsx";
 import { SearchDialog } from "./Search.tsx";
 import { hints } from "./hints.ts";
 import { useProgramRequest } from "./program-request.ts";
+import { requestOfTerminalPane, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
-import { DEFAULT_SIDEBAR_WIDTH, inView, sidebarWidthWithinLimits, toggledInView, type PaneLayout } from "./layout.ts";
+import { DEFAULT_SIDEBAR_WIDTH, inView, paneLabels, sidebarWidthWithinLimits, toggledInView, type PaneId, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { FirstProfile, ProfilesDialog } from "./Profiles.tsx";
 import { AskToRevert, RevertDialog } from "./Revert.tsx";
@@ -87,15 +88,23 @@ interface PaneToggle {
   toggle: () => void;
 }
 
+interface PanesInPalette {
+  canvas: PaneToggle;
+  terminal: PaneToggle;
+  /** Shows the terminal pane where it is hidden, then has it open a tab, split or take the keys. */
+  askTerminals: (request: TerminalPaneRequest) => void;
+  fullscreen: PaneId | null;
+  setFullscreen: (pane: PaneId | null) => void;
+  resetLayout: () => void;
+}
+
 /** Enough of a conversation's turns to name in the palette; every message keeps its own button, however long the history is. */
 const TURNS_IN_PALETTE = 6;
 
 function paletteEntries(
   state: AppState,
   dispatch: Dispatch<AppAction>,
-  canvas: PaneToggle,
-  terminal: PaneToggle,
-  resetLayout: () => void,
+  panes: PanesInPalette,
   showMachine: (machine: Machine) => void,
 ): PaletteEntry[] {
   const workspaceName = (workspaceId: string) => state.workspaces.find(({ id }) => id === workspaceId)?.name ?? "";
@@ -146,13 +155,26 @@ function paletteEntries(
   /** Claude Code can be sent back in its own session; an agent that cannot only has its files put back. */
   const rewindable = openConversation && harnessRewinds[openConversation.harness] ? backTo(turnsFrom(openHistory?.events ?? [], 0), true) : [];
   const undoable = backTo(undoableTurns(openHistory?.events ?? []), false);
+  const { canvas, terminal, askTerminals, fullscreen } = panes;
+  const terminalActions: PaletteEntry[] = [
+    { id: "toggle-terminal", label: terminal.visible ? "Hide terminal" : "Show terminal", kind: "action", run: terminal.toggle },
+    { id: "new-terminal-tab", label: "New terminal tab", kind: "action", run: () => askTerminals({ type: "new-tab" }) },
+    { id: "split-terminal-right", label: "Split the terminal right", kind: "action", run: () => askTerminals({ type: "split", axis: "columns" }) },
+    { id: "split-terminal-down", label: "Split the terminal down", kind: "action", run: () => askTerminals({ type: "split", axis: "rows" }) },
+    { id: "focus-terminal", label: "Focus the terminal", kind: "action", run: () => askTerminals({ type: "focus" }) },
+  ];
+  const panesInView: PaneId[] = ["conversation", ...(canvas.visible ? ["canvas" as const] : []), ...(terminal.visible ? ["terminals" as const] : [])];
+  const fullscreenActions: PaletteEntry[] = fullscreen
+    ? [{ id: "exit-fullscreen", label: "Exit fullscreen", detail: paneLabels[fullscreen], kind: "action", run: () => panes.setFullscreen(null) }]
+    : panesInView.map((pane) => ({ id: `fullscreen-${pane}`, label: `Fullscreen ${paneLabels[pane].toLowerCase()}`, kind: "action", run: () => panes.setFullscreen(pane) }));
   const openConversationActions: PaletteEntry[] =
     openHistory && openConversation
       ? [
           { id: "rename", label: "Rename conversation…", kind: "action", run: startRenamingOpenConversation },
           { id: "toggle-canvas", label: canvas.visible ? "Hide canvas" : "Show canvas", kind: "action", run: canvas.toggle },
-          { id: "toggle-terminal", label: terminal.visible ? "Hide terminal" : "Show terminal", kind: "action", run: terminal.toggle },
-          { id: "reset-layout", label: "Reset layout to default", detail: openConversation.title, kind: "action", run: resetLayout },
+          ...terminalActions,
+          ...fullscreenActions,
+          { id: "reset-layout", label: "Reset layout to default", detail: openConversation.title, kind: "action", run: panes.resetLayout },
           ...rewindable,
           ...undoable,
         ]
@@ -178,8 +200,12 @@ function paletteEntries(
 /** Dialogs take the keyboard; the inline add-workspace field does not, so shortcuts keep working if it is left open. */
 const isModal = (state: AppState) => state.overlay !== null && state.overlay.kind !== "add-workspace";
 
-/** Keys forwarded from a canvas page may navigate but never create or restart anything: the page is agent-written. */
-const changesSomething = (command: ShortcutCommand) => ["new-conversation", "new-workspace", "restart-host"].includes(command.type);
+/**
+ * Keys forwarded from a canvas page may navigate but never create or restart anything, nor reach a shell: the page is
+ * agent-written. Showing the terminal pane starts a shell where none runs.
+ */
+const outOfCanvasPagesReach = (command: ShortcutCommand) =>
+  ["new-conversation", "new-workspace", "restart-host", "toggle-terminal"].includes(command.type) || (command.type === "focus" && command.pane === "terminals");
 
 function useShowCanvasForNewReview(items: CanvasItem[] | undefined, canvasVisible: boolean, showCanvas: () => void) {
   const newestReview = items?.filter((item) => item.kind === "review").at(-1);
@@ -226,6 +252,10 @@ export function App() {
   const status = useConnectionStatus();
   useReloadWhenHostRestarted(state.hostRunId);
   const conversationLayouts = useConversationLayouts();
+  const conversationIds = state.conversations.map(({ id }) => id).join(" ");
+  useEffect(() => {
+    if (state.hostRunId !== null) conversationLayouts.forgetAllBut(conversationIds.split(" "));
+  }, [state.hostRunId, conversationIds]);
   const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
   const layoutElement = useRef<HTMLDivElement>(null);
   const layoutArea = () => {
@@ -245,6 +275,11 @@ export function App() {
   const terminalInView = inView(layout, "terminals");
   const toggleCanvas = () => changeLayout((current) => toggledInView(current, "canvas"));
   const toggleTerminal = () => changeLayout((current) => toggledInView(current, "terminals"));
+  const askTerminals = (request: TerminalPaneRequest) => {
+    changeLayout((current) => (inView(current, "terminals") ? current : toggledInView(current, "terminals")));
+    requestOfTerminalPane(request);
+  };
+  const setFullscreen = (pane: PaneId | null) => changeLayout((current) => ({ ...current, fullscreen: pane }));
 
   const open = selectedOpen(state);
   const programRequest = useProgramRequest();
@@ -271,7 +306,7 @@ export function App() {
   const select = (conversationId: string | null) => conversationId && dispatch({ type: "select", conversationId });
 
   useShortcuts((command, fromCanvas) => {
-    if (fromCanvas && (changesSomething(command) || command.type === "find")) return;
+    if (fromCanvas && (outOfCanvasPagesReach(command) || command.type === "find")) return;
     if (command.type === "reload-page") return location.reload();
     if (command.type === "restart-host") return restartHost();
     if (isModal(state)) {
@@ -298,11 +333,18 @@ export function App() {
         return requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".add-workspace input")?.focus());
       case "toggle-canvas":
         return toggleCanvas();
+      case "toggle-terminal":
+        return toggleTerminal();
       case "find":
         return findInOpenConversation();
-      case "focus":
-        if (command.pane === "canvas") setHidden("canvas", () => false);
-        return requestAnimationFrame(() => focusPane(command.pane));
+      case "focus": {
+        const { pane } = command;
+        if (pane === "terminals") return askTerminals({ type: "focus" });
+        const covered = layout.fullscreen !== null && layout.fullscreen !== (pane === "chat" ? "conversation" : pane);
+        if (covered) setFullscreen(null);
+        if (pane === "canvas") setHidden("canvas", () => false);
+        return requestAnimationFrame(() => focusPane(pane));
+      }
       case "bigger-font":
         return typingStateOf(document.activeElement) === "terminal" ? stepTerminalFontSize(1) : setFontScale(stepFontScale(1));
       case "smaller-font":
@@ -441,9 +483,14 @@ export function App() {
           entries={paletteEntries(
             state,
             dispatch,
-            { visible: canvasInView, toggle: toggleCanvas },
-            { visible: terminalInView, toggle: toggleTerminal },
-            () => state.selectedConversationId && conversationLayouts.reset(state.selectedConversationId),
+            {
+              canvas: { visible: canvasInView, toggle: toggleCanvas },
+              terminal: { visible: terminalInView, toggle: toggleTerminal },
+              askTerminals,
+              fullscreen: layout.fullscreen,
+              setFullscreen,
+              resetLayout: () => state.selectedConversationId && conversationLayouts.reset(state.selectedConversationId),
+            },
             showMachine,
           )}
           onClose={closeOverlay}

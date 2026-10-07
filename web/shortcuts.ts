@@ -7,9 +7,10 @@ export type ShortcutCommand =
   | { type: "new-conversation" }
   | { type: "new-workspace" }
   | { type: "toggle-canvas" }
+  | { type: "toggle-terminal" }
   | { type: "find" }
   | { type: "search" }
-  | { type: "focus"; pane: "chat" | "canvas" }
+  | { type: "focus"; pane: "chat" | "canvas" | "terminals" }
   | { type: "bigger-font" }
   | { type: "smaller-font" }
   | { type: "reset-font" }
@@ -46,11 +47,13 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyK" && !terminalClears) return { type: "palette" };
   if (primary && !press.altKey && press.code === "KeyR" && !terminalSearchesHistory) return press.shiftKey ? { type: "restart-host" } : { type: "reload-page" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "Backslash") return { type: "toggle-canvas" };
+  if (press.ctrlKey && !press.metaKey && !press.altKey && !press.shiftKey && press.code === "Backquote") return { type: "toggle-terminal" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyF" && typing !== "terminal") return { type: "find" };
   if (primary && !press.altKey && press.shiftKey && press.code === "KeyF") return { type: "search" };
   if (primary && !press.altKey && press.shiftKey && typing !== "typing") {
     if (press.code === "ArrowLeft") return { type: "focus", pane: "chat" };
     if (press.code === "ArrowRight") return { type: "focus", pane: "canvas" };
+    if (press.code === "ArrowDown") return { type: "focus", pane: "terminals" };
   }
   if (optionOnly) {
     const step = press.code === "ArrowDown" ? 1 : press.code === "ArrowUp" ? -1 : null;
@@ -95,6 +98,8 @@ export function shortcutKeys(mac = isMac) {
     newConversation: `${option}T`,
     newWorkspace: `${option}${shift}T`,
     toggleCanvas: `${primary}\\`,
+    toggleTerminal: mac ? "⌃`" : "Ctrl+`",
+    focusTerminal: `${primary}${shift}↓`,
     find: `${primary}F`,
     search: `${primary}${shift}F`,
     restartHost: `${primary}${shift}R`,
@@ -127,11 +132,12 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.newConversation, action: "New conversation in this workspace (with its profile)" },
     { keys: keys.newWorkspace, action: "Add a workspace (a project directory)" },
     { keys: keys.toggleCanvas, action: "Show / hide the canvas" },
+    { keys: keys.toggleTerminal, action: "Show / hide the terminal" },
     { keys: keys.search, action: "Search every conversation in every workspace" },
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included (Enter: older match, Shift+Enter: newer)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
     { keys: keys.templates, action: "In the message box: find a prompt template by typing and put it in; Tab / Shift+Tab then go through its {{values}}" },
-    { keys: `${primary}${shift}← / ${primary}${shift}→`, action: "Focus the message box / the canvas (not while editing text)" },
+    { keys: `${primary}${shift}← / ${primary}${shift}→ / ${primary}${shift}↓`, action: "Focus the message box / the canvas / the terminal (not while editing text)" },
     { keys: `${primary}+ / ${primary}−`, action: "Make text bigger / smaller (in a terminal, changes its font size instead)" },
     { keys: `${primary}0`, action: "Reset text size to 100% (in a terminal, resets to 12 px)" },
     { keys: `${primary}R`, action: "Reload the page, with the UI code as it is now" },

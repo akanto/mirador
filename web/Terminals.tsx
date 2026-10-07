@@ -9,7 +9,8 @@ import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { takeProgramRequest, useProgramRequest, type ProgramRequest } from "./program-request.ts";
-import { terminalShortcutKeys } from "./shortcuts.ts";
+import { takeTerminalPaneRequest, useTerminalPaneRequest, type TerminalPaneRequest } from "./terminal-pane-request.ts";
+import { shortcutKeys, terminalShortcutKeys } from "./shortcuts.ts";
 import { Splitter } from "./Splitter.tsx";
 import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
@@ -84,12 +85,15 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
   useEffect(() => {
     if (status !== "open") return;
     let firstListing = true;
+    let listed: TerminalTab[] = [];
     const stopListening = connection.onMessage((message) => {
       if (message.type === "terminal.opened" && requests.current.delete(message.requestId)) setOpened({ tabId: message.tabId, terminalId: message.terminalId });
       if (message.type === "terminal.busy") setBusy({ terminalId: message.terminalId, command: message.command, tabId: message.tabId });
       if (message.type !== "terminals.listed" || message.workspaceId !== workspaceId) return;
       if (firstListing && message.tabs.length === 0) requests.current.add(requestTerminal(workspaceId, null));
       firstListing = false;
+      forgetSharesOfEndedTerminals(listed, message.tabs);
+      listed = message.tabs;
       setTabs(message.tabs);
     });
     connection.send({ type: "terminals.attach", workspaceId });
@@ -100,7 +104,7 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
     };
   }, [workspaceId, status]);
 
-  return { tabs, opened, open, busy };
+  return { tabs, opened, open, busy, opening: () => requests.current.size > 0 };
 }
 
 function copySelection(view: Terminal) {
@@ -219,6 +223,14 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
 
 /** Each split's part of its group, kept while the page is open so a tab looks the same when shown again. */
 const splitShares = new Map<string, number>();
+
+const terminalIdsIn = (tabs: TerminalTab[]) => tabs.flatMap(({ terminals }) => terminals.map(({ id }) => id));
+
+/** A group's share is kept under its first terminal's id, so it goes with that terminal too. */
+function forgetSharesOfEndedTerminals(before: TerminalTab[], after: TerminalTab[]) {
+  const ended = new Set(terminalIdsIn(before)).difference(new Set(terminalIdsIn(after)));
+  [...splitShares.keys()].filter((key) => ended.has(key.slice(key.indexOf(":") + 1))).forEach((key) => splitShares.delete(key));
+}
 const shareOf = (layout: TerminalLayout) => splitShares.get(layoutKey(layout)) ?? 1;
 const flexOf = (layout: TerminalLayout): CSSProperties => ({ flex: `${shareOf(layout)} 1 0` });
 
@@ -324,7 +336,7 @@ function TabLayout({
 const lastActiveTabs = new Map<string, string>();
 
 export function TerminalPane({ workspace, status, onHide }: { workspace: Workspace; status: ConnectionStatus; onHide: () => void }) {
-  const { tabs, opened, open, busy } = useWorkspaceTerminals(workspace.id, status);
+  const { tabs, opened, open, busy, opening } = useWorkspaceTerminals(workspace.id, status);
   const [activeTabId, setActiveTabId] = useState(() => lastActiveTabs.get(workspace.id) ?? null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [zoomed, setZoomed] = useState<string | null>(null);
@@ -414,6 +426,24 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
     }
   };
 
+  /** A pane shown onto no tabs is already starting a shell, which then takes the keys. */
+  const answer = (request: TerminalPaneRequest) => {
+    if (!activeTab) {
+      if (request.type !== "focus" && !opening()) open(null);
+      return;
+    }
+    const focused = lastFocusedIn(activeTab);
+    if (request.type === "new-tab") return open(null);
+    if (request.type === "split") return split(focused, request.axis);
+    setFocus({ terminalId: focused });
+  };
+  const paneRequest = useTerminalPaneRequest();
+  useEffect(() => {
+    if (tabs === null || paneRequest === null) return;
+    const request = takeTerminalPaneRequest();
+    if (request) answer(request);
+  }, [tabs, paneRequest]);
+
   const events = useRef<TerminalEvents>(null!);
   events.current = {
     command: run,
@@ -482,7 +512,7 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
           ⊟
         </button>
         <FullscreenToggle pane="terminals" />
-        <button type="button" className="link" data-hint={hints.terminalHide} onClick={onHide}>
+        <button type="button" className="link" data-hint={hints.terminalHide} data-shortcut={shortcutKeys().toggleTerminal} onClick={onHide}>
           Hide
         </button>
       </header>

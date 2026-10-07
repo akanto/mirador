@@ -47,6 +47,17 @@ describe("commandFor", () => {
     expect(commandFor(focusCanvas, "typing", true)).toBeNull();
   });
 
+  test("Ctrl+` shows and hides the terminal on every system, and Cmd+Shift+Down focuses it", () => {
+    const toggleTerminal = press("Backquote", { ctrlKey: true });
+    expect(commandFor(toggleTerminal, "typing", true)).toEqual({ type: "toggle-terminal" });
+    expect(commandFor(toggleTerminal, "terminal", false)).toEqual({ type: "toggle-terminal" });
+    expect(commandFor(press("Backquote", { metaKey: true }), "not-typing", true)).toBeNull();
+    expect(commandFor(press("ArrowDown", { metaKey: true, shiftKey: true }), "empty-field", true)).toEqual({ type: "focus", pane: "terminals" });
+    expect(commandFor(press("ArrowDown", { ctrlKey: true, shiftKey: true }), "typing", false)).toBeNull();
+    expect(shortcutKeys(true).toggleTerminal).toBe("⌃`");
+    expect(shortcutKeys(false).focusTerminal).toBe("Ctrl+Shift+↓");
+  });
+
   test("on macOS a terminal keeps ⌘K for itself, but focus can still move out of it", () => {
     expect(commandFor(press("KeyK", { metaKey: true }), "terminal", true)).toBeNull();
     expect(commandFor(press("KeyK", { ctrlKey: true }), "terminal", false)).toEqual({ type: "palette" });

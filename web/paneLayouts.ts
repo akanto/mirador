@@ -68,7 +68,13 @@ export function useConversationLayouts() {
   const reset = (conversationId: string) =>
     setLayouts((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== conversationId)));
 
-  return { layoutOf, change, reset, layoutDefault, setLayoutDefault };
+  const forgetAllBut = (conversationIds: string[]) =>
+    setLayouts((current) => {
+      const kept = Object.entries(current).filter(([id]) => conversationIds.includes(id));
+      return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept);
+    });
+
+  return { layoutOf, change, reset, forgetAllBut, layoutDefault, setLayoutDefault };
 }
 
 function storedSidebarWidth() {

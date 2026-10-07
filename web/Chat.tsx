@@ -217,7 +217,7 @@ function ChatHeader({
         <button className="toggle-canvas" data-hint={hints.canvasToggle} data-shortcut={shortcutKeys().toggleCanvas} onClick={onToggleCanvas}>
           {canvasVisible ? "Hide canvas" : "Show canvas"}
         </button>
-        <button className="toggle-terminal" data-hint={hints.terminalToggle} onClick={onToggleTerminal}>
+        <button className="toggle-terminal" data-hint={hints.terminalToggle} data-shortcut={shortcutKeys().toggleTerminal} onClick={onToggleTerminal}>
           {terminalVisible ? "Hide terminal" : "Show terminal"}
         </button>
         <FullscreenToggle pane="conversation" />

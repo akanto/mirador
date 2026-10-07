@@ -152,6 +152,15 @@ test("each terminal in a tab carries the title its shell sets", async () => {
   ]);
 });
 
+test("a runaway title is cut to 200 characters", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "w1");
+  const { terminalId } = terminals.open("w1", 80, 24);
+  terminals.input(terminalId, "printf '\\033]0;%s\\007' \"$(printf 'x%.0s' $(seq 1 500))\"\n");
+  const [tab] = await tabsOnceSettled(browser.received, ([only]) => (only?.terminals[0]?.title?.length ?? 0) > 0);
+  expect(tab?.terminals[0]?.title).toBe("x".repeat(200));
+});
+
 test("a terminal splits beside or below itself, and the others close up when one exits", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "w1");

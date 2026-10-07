@@ -7,6 +7,8 @@ import { agentEnvironment, loginShell } from "./acp/environment.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
+/** Every listing of the workspace's terminals carries the titles, so a runaway one is cut short. */
+const TITLE_CHARACTERS = 200;
 const MAX_DIMENSION = 1_000;
 
 const titleSequence = /\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
@@ -211,8 +213,10 @@ export class TerminalService {
   }
 
   private retitle(shell: Shell, title: string | undefined) {
-    if (title === undefined || (title || null) === shell.title) return;
-    shell.title = title || null;
+    if (title === undefined) return;
+    const kept = title.slice(0, TITLE_CHARACTERS) || null;
+    if (kept === shell.title) return;
+    shell.title = kept;
     this.publishListing(shell.workspaceId);
   }
 

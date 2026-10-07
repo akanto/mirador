@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { waitingRequest } from "./waiting-request.ts";
 
 /** A program the terminal pane opens in a tab of its own: the agent's sign-in, a waited-for job followed, or a command of the agent's own terminal. */
 export type ProgramRequest =
@@ -6,26 +6,8 @@ export type ProgramRequest =
   | { type: "terminal.follow-job"; conversationId: string; waitId: string }
   | { type: "terminal.open-panel-command"; conversationId: string; line: string };
 
-/** Until the terminal pane, which may first have to be shown, opens its tab. */
-let waiting: ProgramRequest | null = null;
-const listeners = new Set<() => void>();
-const changed = () => listeners.forEach((listener) => listener());
+const programs = waitingRequest<ProgramRequest>();
 
-export function requestProgram(request: ProgramRequest) {
-  waiting = request;
-  changed();
-}
-
-export function takeProgramRequest() {
-  const request = waiting;
-  waiting = null;
-  changed();
-  return request;
-}
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-export const useProgramRequest = () => useSyncExternalStore(subscribe, () => waiting);
+export const requestProgram = programs.request;
+export const takeProgramRequest = programs.take;
+export const useProgramRequest = programs.useWaiting;
