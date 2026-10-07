@@ -499,6 +499,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const folded = useFoldedGroups();
   useUnfoldGroupOfOpenConversation(state);
   const { ungrouped, grouped } = sidebarSections(state.workspaces, state.workspaceGroups);
+  const workspacesAsShown = [...ungrouped, ...grouped.flatMap(({ workspaces }) => workspaces)];
   const groupDrag = useDragToReorder((groupId, beforeGroupId) => connection.send({ type: "workspace-group.move", groupId, beforeGroupId }));
   const workspaceDrag = usePointerDrag<WorkspaceDrop>((workspaceId, { groupId, beforeWorkspaceId }) =>
     connection.send({ type: "workspace.move", workspaceId, groupId, beforeWorkspaceId }),
@@ -509,7 +510,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const startWorkspaceDrag = (workspace: Workspace, event: PointerEvent<HTMLElement>) =>
     workspaceDrag.startDrag(workspace.id, event, (y) => {
       const target = workspaceDropAt(sidebar.current ? sidebarRows(sidebar.current) : [], y);
-      return { target, changes: movesWorkspace(state.workspaces, workspace.id, target) };
+      return { target, changes: movesWorkspace(workspacesAsShown, workspace.id, target) };
     });
   const workspaceSections = (workspaces: Workspace[], groupId: string | null) =>
     workspaces.map((workspace, index) => (

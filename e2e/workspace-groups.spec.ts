@@ -121,12 +121,19 @@ test("workspaces gather in groups that fold, take a new name and order, and leav
     expect(await namesIn(page, "Clients")).toEqual(["alpha", "beta"]);
   });
 
-  await test.step("a group is renamed in place, and dragged by its heading above another", async () => {
-    await heading(page, "Clients").hover();
-    await heading(page, "Clients").getByRole("button", { name: "Rename group" }).click();
-    const field = page.getByLabel("Group name", { exact: true });
-    await field.fill("Customers");
-    await field.press("Enter");
+  await test.step("a group is renamed in place, Esc keeping its name and clicking away saving the new one, and dragged by its heading above another", async () => {
+    const startRenaming = async () => {
+      await heading(page, "Clients").hover();
+      await heading(page, "Clients").getByRole("button", { name: "Rename group" }).click();
+      return page.getByLabel("Group name", { exact: true });
+    };
+    const field = await startRenaming();
+    await field.fill("Nobody");
+    await field.press("Escape");
+    await expect(field).toHaveCount(0);
+    expect(await groupNames(page)).toEqual(["Clients", "Own"]);
+    await (await startRenaming()).fill("Customers");
+    await page.locator(".sidebar h1").click();
     await expect(group(page, "Customers")).toBeVisible();
     await drop(page, heading(page, "Own"), heading(page, "Customers"), "top");
     await expect.poll(() => groupNames(page)).toEqual(["Own", "Customers"]);
@@ -149,6 +156,12 @@ test("workspaces gather in groups that fold, take a new name and order, and leav
 
 test("the palette makes a group and moves a workspace into one or out of its own", async ({ page }) => {
   await signIn(page, host);
+  await page.getByRole("button", { name: "New group" }).click();
+  await page.getByLabel("New group name").fill("Never");
+  await page.getByLabel("New group name").press("Escape");
+  await expect(page.getByLabel("New group name")).toHaveCount(0);
+  expect(await groupNames(page)).toEqual(["Own"]);
+
   await runFromPalette(page, "New group");
   await page.getByLabel("New group name").fill("Later");
   await page.getByLabel("New group name").press("Enter");
