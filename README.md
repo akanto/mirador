@@ -203,6 +203,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 - **Workspaces** are project folders (*Add workspace*, Tab completes paths), each a card with its conversations oldest first and *+ New* at the bottom. The chip beside *+ New* chooses the profile for new conversations, and each workspace remembers it. Removing a workspace never touches its files.
 - **Drag to reorder** workspaces (by their heading) and conversations (within their workspace). Every window and reload keeps the order.
+- **Groups**: ⊞ next to + adds a group, e.g. per project or client, named in place. Drag a workspace by its heading into a group, out of it or within it; dropping it on a folded group's heading puts it last there. Drag a group's heading to reorder the groups, and hover it to rename or delete the group (its workspaces move to the top). A group folds to its heading, which then counts what waits in it; opening a conversation in a folded group unfolds it. The palette has *New group…* and moves a workspace into a group or out of its own. Every window keeps the groups; folding is per browser. The phone app shows the workspaces without their groups.
 - **Colours**: eight pastels, picked from the workspace's initials badge or the palette, drawn as a tinted card, a heading or an edge stripe.
 - **Waiting marks**: *Needs you*, *Done* and *Failed* (see [Notifications](#notifications-and-waiting-for-you)).
 - **Devices connected**: a line at the bottom says how many devices are connected; it can be switched off.

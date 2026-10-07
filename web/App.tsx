@@ -1,5 +1,5 @@
 import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
-import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine } from "../shared/model.ts";
+import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
@@ -117,6 +117,19 @@ function paletteEntries(
       run: () => dispatch({ type: "select", conversationId: conversation.id }),
     }),
   );
+  const moveToGroup = (workspace: Workspace, groupId: string | null) =>
+    connection.send({ type: "workspace.move", workspaceId: workspace.id, groupId, beforeWorkspaceId: null });
+  /** A workspace's group, the way the palette moves it: to each other group, last in it, or out of its own, last at the top. */
+  const groupMoves = (workspace: Workspace): PaletteEntry[] => {
+    const ownGroup = state.workspaceGroups.find(({ id }) => id === workspace.groupId);
+    const intoOthers = state.workspaceGroups
+      .filter(({ id }) => id !== ownGroup?.id)
+      .map((group): PaletteEntry => ({ id: `group-${workspace.id}-${group.id}`, label: `Move ${workspace.name} to group ${group.name}`, kind: "action", run: () => moveToGroup(workspace, group.id) }));
+    const outOfOwn: PaletteEntry[] = ownGroup
+      ? [{ id: `ungroup-${workspace.id}`, label: `Take ${workspace.name} out of group ${ownGroup.name}`, kind: "action", run: () => moveToGroup(workspace, null) }]
+      : [];
+    return [...intoOthers, ...outOfOwn];
+  };
   const current = currentWorkspace(state);
   const currentFirst = [...state.workspaces].sort((a, b) => Number(b.id === current?.id) - Number(a.id === current?.id));
   const workspaceActions = currentFirst.flatMap((workspace): PaletteEntry[] => [
@@ -140,6 +153,7 @@ function paletteEntries(
       kind: "action",
       run: () => dispatch({ type: "open-overlay", overlay: { kind: "workspace-color", workspaceId: workspace.id } }),
     },
+    ...groupMoves(workspace),
   ]);
   const openConversation = state.conversations.find(({ id }) => id === state.selectedConversationId);
   const openHistory = selectedOpen(state);
@@ -189,6 +203,7 @@ function paletteEntries(
     ...machineActions,
     { id: "search", label: "Search all workspaces…", detail: "every conversation", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "search" } }) },
     { id: "add-workspace", label: "Add workspace…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace" } }) },
+    { id: "add-workspace-group", label: "New group…", detail: "of workspaces", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace-group" } }) },
     { id: "profiles", label: "Profiles…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "profiles" } }) },
     { id: "machines", label: "Machines…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "machines" } }) },
     { id: "settings", label: "Settings…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "settings" } }) },
@@ -197,8 +212,8 @@ function paletteEntries(
   ];
 }
 
-/** Dialogs take the keyboard; the inline add-workspace field does not, so shortcuts keep working if it is left open. */
-const isModal = (state: AppState) => state.overlay !== null && state.overlay.kind !== "add-workspace";
+/** Dialogs take the keyboard; the sidebar's inline fields for a new workspace or group do not, so shortcuts keep working if one is left open. */
+const isModal = (state: AppState) => state.overlay !== null && state.overlay.kind !== "add-workspace" && state.overlay.kind !== "add-workspace-group";
 
 /**
  * Keys forwarded from a canvas page may navigate but never create or restart anything, nor reach a shell: the page is

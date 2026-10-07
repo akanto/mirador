@@ -30,7 +30,7 @@ beforeEach(async () => {
   await git(projectDir, ["add", "-A"]);
   await git(projectDir, ["commit", "-qm", "base"]);
   checkpoints = new Checkpoints(dataDir);
-  workspace = { id: "ws-1", name: "project", path: projectDir, defaultLaunch: { harness: "claude", profileId: null }, color: null, position: 0, createdAt: 0 };
+  workspace = { id: "ws-1", name: "project", path: projectDir, defaultLaunch: { harness: "claude", profileId: null }, color: null, position: 0, groupId: null, createdAt: 0 };
 });
 
 afterEach(() => rm(dataDir, { recursive: true, force: true }));

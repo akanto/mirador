@@ -11,6 +11,7 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
   const snapshot = {
     type: "snapshot",
     workspaces: [],
+    workspaceGroups: [],
     conversations: [],
     profiles: [],
     promptTemplates: [],

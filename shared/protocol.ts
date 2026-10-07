@@ -25,6 +25,7 @@ import type {
   StoredEvent,
   TerminalTab,
   Workspace,
+  WorkspaceGroup,
   Pastel,
 } from "./model.ts";
 import type { FindingDecision } from "./review.ts";
@@ -63,9 +64,18 @@ export type ClientMessage =
   | { type: "workspace.create"; path: string }
   | { type: "workspace.delete"; workspaceId: string }
   | { type: "workspace.set-default-launch"; workspaceId: string; launch: Launch }
-  /** Puts the workspace just before another in the sidebar, or last. */
-  | { type: "workspace.move"; workspaceId: string; beforeWorkspaceId: string | null }
+  /**
+   * Puts the workspace just before another of the group in the sidebar, or last in it; null for the workspaces in none.
+   * Without a group it keeps its own, as the phone app, which shows no groups, moves it.
+   */
+  | { type: "workspace.move"; workspaceId: string; groupId?: string | null; beforeWorkspaceId: string | null }
   | { type: "workspace.set-color"; workspaceId: string; color: Pastel | null }
+  | { type: "workspace-group.create"; name: string }
+  | { type: "workspace-group.rename"; groupId: string; name: string }
+  /** Puts the group just before another in the sidebar, or last. */
+  | { type: "workspace-group.move"; groupId: string; beforeGroupId: string | null }
+  /** Its workspaces go on, last, among the workspaces in no group. */
+  | { type: "workspace-group.delete"; groupId: string }
   | { type: "profile.save"; requestId: string; profile: ProfileDraft }
   | { type: "profile.delete"; profileId: string }
   /** Creates the template, or changes the one with this id. */
@@ -188,6 +198,7 @@ export type ServerMessage =
   | {
       type: "snapshot";
       workspaces: Workspace[];
+      workspaceGroups: WorkspaceGroup[];
       conversations: Conversation[];
       profiles: Profile[];
       promptTemplates: PromptTemplate[];
@@ -219,6 +230,8 @@ export type ServerMessage =
   | { type: "settings.claude-program"; claudeProgram: ClaudeProgram }
   | { type: "workspace.upserted"; workspace: Workspace }
   | { type: "workspace.deleted"; workspaceId: string }
+  | { type: "workspace-group.upserted"; group: WorkspaceGroup }
+  | { type: "workspace-group.deleted"; groupId: string }
   | { type: "conversation.upserted"; conversation: Conversation }
   | { type: "conversation.deleted"; conversationId: string }
   | {

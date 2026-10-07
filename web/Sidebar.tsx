@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { connectedDevicesLabel, otherConnectedDevices } from "../shared/devices.ts";
 import {
   launchLabel,
@@ -15,7 +15,7 @@ import { useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { DesktopMenu } from "./DesktopMenu.tsx";
-import { useDragToReorder } from "./drag-to-reorder.ts";
+import { useDragToReorder, usePointerDrag } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
@@ -26,6 +26,16 @@ import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
 import { parentFolder } from "./workspace-folder.ts";
+import {
+  movesWorkspace,
+  setGroupFolded,
+  sidebarSections,
+  useFoldedGroups,
+  workspaceDropAt,
+  type GroupSection,
+  type SidebarRow,
+  type WorkspaceDrop,
+} from "./workspace-groups.ts";
 
 function useDirectoryCompletions(prefix: string) {
   const [completions, setCompletions] = useState<string[]>([]);
@@ -119,11 +129,11 @@ function WaitingPill({ waitingFor }: { waitingFor: WaitingFor }) {
   );
 }
 
-function WaitingCount({ conversations }: { conversations: Conversation[] }) {
+function WaitingCount({ conversations, hint = hints.waitingCount }: { conversations: Conversation[]; hint?: string }) {
   const waiting = waitingByUrgency(conversations);
   if (waiting.length === 0) return null;
   return (
-    <span className={`waiting-count tone-${waitingTones[waiting[0]!.waitingFor!]}`} data-hint={hints.waitingCount}>
+    <span className={`waiting-count tone-${waitingTones[waiting[0]!.waitingFor!]}`} data-hint={hint}>
       {waiting.length}
     </span>
   );
@@ -263,6 +273,8 @@ function WorkspaceSection({
       className={["workspace", ...dragClasses].join(" ")}
       aria-label={workspace.name}
       data-reorder-id={workspace.id}
+      data-drop-row="workspace"
+      data-group-id={workspace.groupId ?? undefined}
       data-color={workspace.color ?? undefined}
       style={workspace.color ? pastelVariables(workspace.color) : undefined}
     >
@@ -347,6 +359,124 @@ function WorkspaceSection({
   );
 }
 
+/** A group's name being written: Enter or leaving the field saves, Esc cancels, and an empty name saves nothing. */
+function GroupNameField({ initial, label, onSave, onCancel }: { initial: string; label: string; onSave: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState(initial);
+  const typingAidAttributes = useTypingAidAttributes();
+  const finished = useRef(false);
+  const finish = (save: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    const trimmed = name.trim();
+    if (save && trimmed) onSave(trimmed);
+    else onCancel();
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") finish(true);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false);
+    }
+  };
+  return (
+    <input
+      {...typingAidAttributes}
+      autoFocus
+      className="group-name-field"
+      aria-label={label}
+      placeholder="Group name"
+      value={name}
+      spellCheck={false}
+      onFocus={(event) => event.target.select()}
+      onChange={(event) => setName(event.target.value)}
+      onKeyDown={onKeyDown}
+      onBlur={() => finish(true)}
+    />
+  );
+}
+
+function WorkspaceGroupSection({
+  section: { group, workspaces },
+  conversations,
+  folded,
+  landingInto,
+  dragClasses,
+  onStartDrag,
+  children,
+}: {
+  section: GroupSection;
+  conversations: Conversation[];
+  folded: boolean;
+  /** A workspace dragged over it would land last in it, where no workspace of it shows to draw a line by. */
+  landingInto: boolean;
+  dragClasses: string[];
+  onStartDrag: (event: PointerEvent<HTMLElement>) => void;
+  children: ReactNode;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const toggleFolded = () => setGroupFolded(group.id, !folded);
+  const toggleFromHeading = (event: ReactMouseEvent<HTMLElement>) => !(event.target as Element).closest("button, input") && toggleFolded();
+  const rename = (name: string) => {
+    setRenaming(false);
+    if (name !== group.name) connection.send({ type: "workspace-group.rename", groupId: group.id, name });
+  };
+  return (
+    <section className={["workspace-group", folded && "folded", ...dragClasses].filter(Boolean).join(" ")} aria-label={group.name} data-reorder-id={group.id}>
+      <header className={landingInto ? "drop-into" : undefined} data-drop-row="group-heading" data-group-id={group.id} onPointerDown={onStartDrag} onClick={toggleFromHeading}>
+        <button type="button" className="icon group-fold" aria-expanded={!folded} aria-label={`${folded ? "Unfold" : "Fold"} ${group.name}`} onClick={toggleFolded}>
+          ›
+        </button>
+        {renaming ? (
+          <GroupNameField initial={group.name} label="Group name" onSave={rename} onCancel={() => setRenaming(false)} />
+        ) : (
+          <span className="group-name">{group.name}</span>
+        )}
+        <span className="group-count" data-hint={hints.workspaceGroupCount}>
+          {workspaces.length}
+        </span>
+        {folded && <WaitingCount conversations={conversations} hint={hints.waitingInGroup} />}
+        <span className="group-actions">
+          <button type="button" className="icon" aria-label="Rename group" data-hint={hints.renameWorkspaceGroup} onClick={() => setRenaming(true)}>
+            ✎
+          </button>
+          <ConfirmButton
+            className="icon"
+            label="Delete group"
+            hint={hints.deleteWorkspaceGroup}
+            armedText="Delete?"
+            armedHint={hints.deleteWorkspaceGroupArmed}
+            onConfirm={() => connection.send({ type: "workspace-group.delete", groupId: group.id })}
+          >
+            ×
+          </ConfirmButton>
+        </span>
+      </header>
+      {!folded && workspaces.length === 0 && <div className="group-empty">Drag a workspace here by its heading</div>}
+      {!folded && children}
+    </section>
+  );
+}
+
+/** Where on screen each row a dragged workspace can land by is now, from top to bottom. */
+function sidebarRows(sidebar: HTMLElement): SidebarRow[] {
+  return [...sidebar.querySelectorAll<HTMLElement>("[data-drop-row]")].map((element): SidebarRow => {
+    const { top, bottom } = element.getBoundingClientRect();
+    const { dropRow, reorderId, groupId } = element.dataset;
+    if (dropRow === "group-heading") return { kind: "group-heading", groupId: groupId!, top, bottom };
+    if (dropRow === "ungrouped-drop") return { kind: "ungrouped-drop", top, bottom };
+    return { kind: "workspace", id: reorderId!, groupId: groupId ?? null, top, bottom };
+  });
+}
+
+/** Opening a conversation in a folded group unfolds the group, so the open conversation always shows in the sidebar. */
+function useUnfoldGroupOfOpenConversation(state: AppState) {
+  useEffect(() => {
+    const workspaceId = state.conversations.find(({ id }) => id === state.selectedConversationId)?.workspaceId;
+    const groupId = state.workspaces.find(({ id }) => id === workspaceId)?.groupId;
+    if (groupId) setGroupFolded(groupId, false);
+  }, [state.selectedConversationId]);
+}
+
 /** How many devices are connected now, besides the one looking; nothing while none is, or when switched off in Settings. */
 function ConnectedDevices({ listed, onOpen }: { listed: DevicesListed | null; onOpen: () => void }) {
   const shown = useConnectedDevicesInSidebar();
@@ -363,16 +493,60 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const adding = state.overlay?.kind === "add-workspace";
   const setAdding = (open: boolean) => dispatch(open ? { type: "open-overlay", overlay: { kind: "add-workspace" } } : { type: "close-overlay" });
   const openOverlay = (overlay: Overlay) => dispatch({ type: "open-overlay", overlay });
+  const addingGroup = state.overlay?.kind === "add-workspace-group";
   const sidebar = useRef<HTMLElement>(null);
-  const workspaceDrag = useDragToReorder((workspaceId, beforeWorkspaceId) => connection.send({ type: "workspace.move", workspaceId, beforeWorkspaceId }));
+  const groupList = useRef<HTMLDivElement>(null);
+  const folded = useFoldedGroups();
+  useUnfoldGroupOfOpenConversation(state);
+  const { ungrouped, grouped } = sidebarSections(state.workspaces, state.workspaceGroups);
+  const groupDrag = useDragToReorder((groupId, beforeGroupId) => connection.send({ type: "workspace-group.move", groupId, beforeGroupId }));
+  const workspaceDrag = usePointerDrag<WorkspaceDrop>((workspaceId, { groupId, beforeWorkspaceId }) =>
+    connection.send({ type: "workspace.move", workspaceId, groupId, beforeWorkspaceId }),
+  );
+  const draggingWorkspace = workspaceDrag.drag !== null;
+  const landing = workspaceDrag.drag?.changes ? workspaceDrag.drag.target : null;
+  const landsLastIn = (groupId: string | null) => landing !== null && landing.beforeWorkspaceId === null && landing.groupId === groupId;
+  const startWorkspaceDrag = (workspace: Workspace, event: PointerEvent<HTMLElement>) =>
+    workspaceDrag.startDrag(workspace.id, event, (y) => {
+      const target = workspaceDropAt(sidebar.current ? sidebarRows(sidebar.current) : [], y);
+      return { target, changes: movesWorkspace(state.workspaces, workspace.id, target) };
+    });
+  const workspaceSections = (workspaces: Workspace[], groupId: string | null) =>
+    workspaces.map((workspace, index) => (
+      <WorkspaceSection
+        key={workspace.id}
+        dragClasses={[
+          workspaceDrag.drag?.id === workspace.id && "dragged",
+          landing?.beforeWorkspaceId === workspace.id && "drop-before",
+          index === workspaces.length - 1 && landsLastIn(groupId) && "drop-after",
+        ].filter((name): name is string => Boolean(name))}
+        onStartDrag={(event) => startWorkspaceDrag(workspace, event)}
+        workspace={workspace}
+        conversations={conversationsIn(state, workspace.id)}
+        profiles={state.profiles}
+        homeDir={state.homeDir}
+        selectedConversationId={state.selectedConversationId}
+        pickingColor={state.overlay?.kind === "workspace-color" && state.overlay.workspaceId === workspace.id}
+        dispatch={dispatch}
+      />
+    ));
+  const createGroup = (name: string) => {
+    connection.send({ type: "workspace-group.create", name });
+    dispatch({ type: "close-overlay" });
+  };
   return (
     <nav className="sidebar" ref={sidebar}>
       <WaitingList state={state} dispatch={dispatch} />
       <header>
         <h1>Workspaces</h1>
-        <button className="icon" aria-label="Add workspace" data-hint={hints.addWorkspace} data-shortcut={shortcutKeys().newWorkspace} onClick={() => setAdding(true)}>
-          +
-        </button>
+        <span className="sidebar-header-buttons">
+          <button className="icon" aria-label="New group" data-hint={hints.addWorkspaceGroup} onClick={() => openOverlay({ kind: "add-workspace-group" })}>
+            ⊞
+          </button>
+          <button className="icon" aria-label="Add workspace" data-hint={hints.addWorkspace} data-shortcut={shortcutKeys().newWorkspace} onClick={() => setAdding(true)}>
+            +
+          </button>
+        </span>
       </header>
       {adding && <AddWorkspace onDone={() => setAdding(false)} />}
       {state.workspaces.length === 0 && !adding && (
@@ -380,20 +554,33 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
           + Add a project directory
         </button>
       )}
-      {state.workspaces.map((workspace, index) => (
-        <WorkspaceSection
-          key={workspace.id}
-          dragClasses={workspaceDrag.classesOf(workspace.id, index === state.workspaces.length - 1)}
-          onStartDrag={(event) => workspaceDrag.startDrag(workspace.id, sidebar.current, event)}
-          workspace={workspace}
-          conversations={conversationsIn(state, workspace.id)}
-          profiles={state.profiles}
-          homeDir={state.homeDir}
-          selectedConversationId={state.selectedConversationId}
-          pickingColor={state.overlay?.kind === "workspace-color" && state.overlay.workspaceId === workspace.id}
-          dispatch={dispatch}
-        />
-      ))}
+      {draggingWorkspace && ungrouped.length === 0 && (
+        <div className={["ungrouped-drop", landsLastIn(null) && "drop-into"].filter(Boolean).join(" ")} data-drop-row="ungrouped-drop">
+          Out of its group
+        </div>
+      )}
+      {workspaceSections(ungrouped, null)}
+      {grouped.length > 0 && (
+        <div className="workspace-groups" ref={groupList}>
+          {grouped.map((section, index) => {
+            const isFolded = folded.has(section.group.id);
+            return (
+              <WorkspaceGroupSection
+                key={section.group.id}
+                section={section}
+                conversations={section.workspaces.flatMap((workspace) => conversationsIn(state, workspace.id))}
+                folded={isFolded}
+                landingInto={landsLastIn(section.group.id) && (isFolded || section.workspaces.length === 0)}
+                dragClasses={groupDrag.classesOf(section.group.id, index === grouped.length - 1)}
+                onStartDrag={(event) => groupDrag.startDrag(section.group.id, groupList.current, event)}
+              >
+                {workspaceSections(section.workspaces, section.group.id)}
+              </WorkspaceGroupSection>
+            );
+          })}
+        </div>
+      )}
+      {addingGroup && <GroupNameField initial="" label="New group name" onSave={createGroup} onCancel={() => dispatch({ type: "close-overlay" })} />}
       <footer>
         <ConnectedDevices listed={state.devices} onOpen={() => openOverlay({ kind: "settings", page: "devices" })} />
         <DesktopMenu />

@@ -185,7 +185,7 @@ describe("terminalKeyAction", () => {
   });
 });
 
-const workspace = (id: string): Workspace => ({ id, name: id, path: `/p/${id}`, defaultLaunch: { harness: "claude", profileId: null }, color: null, position: 0, createdAt: 0 });
+const workspace = (id: string): Workspace => ({ id, name: id, path: `/p/${id}`, defaultLaunch: { harness: "claude", profileId: null }, color: null, position: 0, groupId: null, createdAt: 0 });
 
 const conversation = (id: string, workspaceId: string, createdAt: number, position = 0): Conversation => ({
   id,

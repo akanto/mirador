@@ -499,14 +499,61 @@ export function startServer(services: HostServices) {
     mcp.forget(conversationId);
   }
 
-  function moveWorkspace(workspaceId: string, beforeWorkspaceId: string | null) {
-    const before = store.listWorkspaces();
-    store.setWorkspaceOrder(movedBefore(before.map(({ id }) => id), workspaceId, beforeWorkspaceId));
-    const positionBefore = new Map(before.map(({ id, position }) => [id, position]));
+  /** Tells every window of the workspaces whose place in the sidebar changed since `before`: their position or their group. */
+  function broadcastMovedWorkspaces(before: Workspace[]) {
+    const placeOf = ({ position, groupId }: Workspace) => `${position} ${groupId}`;
+    const placeBefore = new Map(before.map((workspace) => [workspace.id, placeOf(workspace)]));
     store
       .listWorkspaces()
-      .filter(({ id, position }) => positionBefore.get(id) !== position)
+      .filter((workspace) => placeBefore.get(workspace.id) !== placeOf(workspace))
       .forEach((workspace) => hub.broadcast({ type: "workspace.upserted", workspace }));
+  }
+
+  /** Workspace positions run across the groups, so landing before a workspace of another group would land nowhere in particular. */
+  function moveWorkspace(workspaceId: string, groupId: string | null | undefined, beforeWorkspaceId: string | null) {
+    const before = store.listWorkspaces();
+    if (groupId !== undefined) {
+      if (groupId !== null && !store.findWorkspaceGroup(groupId)) throw new Error("That group is gone");
+      const landsBefore = before.find(({ id }) => id === beforeWorkspaceId);
+      if (landsBefore && landsBefore.groupId !== groupId) throw new Error("A workspace can only land before another of the same group");
+      store.setWorkspaceGroup(workspaceId, groupId);
+    }
+    store.setWorkspaceOrder(movedBefore(before.map(({ id }) => id), workspaceId, beforeWorkspaceId));
+    broadcastMovedWorkspaces(before);
+  }
+
+  function groupName(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("A group needs a name");
+    return trimmed;
+  }
+
+  function createWorkspaceGroup(name: string) {
+    const group = store.insertWorkspaceGroup({ id: crypto.randomUUID(), name: groupName(name), createdAt: Date.now() });
+    hub.broadcast({ type: "workspace-group.upserted", group });
+  }
+
+  function renameWorkspaceGroup(groupId: string, name: string) {
+    store.renameWorkspaceGroup(groupId, groupName(name));
+    const group = store.findWorkspaceGroup(groupId);
+    if (group) hub.broadcast({ type: "workspace-group.upserted", group });
+  }
+
+  function moveWorkspaceGroup(groupId: string, beforeGroupId: string | null) {
+    const before = store.listWorkspaceGroups();
+    store.setWorkspaceGroupOrder(movedBefore(before.map(({ id }) => id), groupId, beforeGroupId));
+    const positionBefore = new Map(before.map(({ id, position }) => [id, position]));
+    store
+      .listWorkspaceGroups()
+      .filter(({ id, position }) => positionBefore.get(id) !== position)
+      .forEach((group) => hub.broadcast({ type: "workspace-group.upserted", group }));
+  }
+
+  function deleteWorkspaceGroup(groupId: string) {
+    const before = store.listWorkspaces();
+    store.deleteWorkspaceGroup(groupId);
+    broadcastMovedWorkspaces(before);
+    hub.broadcast({ type: "workspace-group.deleted", groupId });
   }
 
   function savePromptTemplate(draft: Pick<PromptTemplate, "id" | "name" | "text">) {
@@ -579,9 +626,17 @@ export function startServer(services: HostServices) {
       case "workspace.set-default-launch":
         return profiles.setWorkspaceDefault(message.workspaceId, message.launch);
       case "workspace.move":
-        return moveWorkspace(message.workspaceId, message.beforeWorkspaceId);
+        return moveWorkspace(message.workspaceId, message.groupId, message.beforeWorkspaceId);
       case "workspace.set-color":
         return colorWorkspace(message.workspaceId, message.color);
+      case "workspace-group.create":
+        return createWorkspaceGroup(message.name);
+      case "workspace-group.rename":
+        return renameWorkspaceGroup(message.groupId, message.name);
+      case "workspace-group.move":
+        return moveWorkspaceGroup(message.groupId, message.beforeGroupId);
+      case "workspace-group.delete":
+        return deleteWorkspaceGroup(message.groupId);
       case "profile.save":
         return reply({ type: "profile.saved", requestId: message.requestId, profileId: profiles.save(message.profile).id });
       case "profile.delete":
@@ -849,6 +904,7 @@ export function startServer(services: HostServices) {
     hub.send(socket, {
       type: "snapshot",
       workspaces: store.listWorkspaces(),
+      workspaceGroups: store.listWorkspaceGroups(),
       conversations: conversations.list(),
       profiles: store.listProfiles().map((profile) => profileFor(socket, profile)),
       promptTemplates: store.listPromptTemplates(),

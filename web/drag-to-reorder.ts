@@ -4,11 +4,11 @@ import { movedBefore } from "../shared/sidebar-order.ts";
 const DRAG_AFTER_PX = 4;
 const NOT_A_DRAG_HANDLE = "button, a, input, select, textarea, label, [contenteditable]";
 
-interface Drag {
+/** A drag under way: what is dragged, where it would land now, and whether landing there changes anything. */
+export interface Drag<Target> {
   id: string;
-  /** The item it would land just before, or null for last. */
-  beforeId: string | null;
-  changesOrder: boolean;
+  target: Target;
+  changes: boolean;
 }
 
 const itemsOf = (list: HTMLElement) => [...list.querySelectorAll<HTMLElement>(":scope > [data-reorder-id]")];
@@ -39,17 +39,16 @@ function swallowNextClick() {
 }
 
 /**
- * Reorders a list's items, the children marked data-reorder-id, by dragging one to another place: the gap nearest the
- * pointer's height is where it lands. Dragging starts only once the pointer moves a few pixels, so clicks and
- * double-clicks keep working, and Esc cancels it.
+ * Drags an item with the pointer to where `placeAt` says it would land at the pointer's height. Dragging starts only
+ * once the pointer moves a few pixels, so clicks and double-clicks keep working, and Esc cancels it.
  */
-export function useDragToReorder(onMove: (id: string, beforeId: string | null) => void) {
-  const [drag, setDrag] = useState<Drag | null>(null);
+export function usePointerDrag<Target>(onDrop: (id: string, target: Target) => void) {
+  const [drag, setDrag] = useState<Drag<Target> | null>(null);
 
-  const startDrag = (id: string, list: HTMLElement | null, event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || !list || (event.target as Element).closest(NOT_A_DRAG_HANDLE)) return;
+  const startDrag = (id: string, event: ReactPointerEvent<HTMLElement>, placeAt: (y: number) => Omit<Drag<Target>, "id">) => {
+    if (event.button !== 0 || (event.target as Element).closest(NOT_A_DRAG_HANDLE)) return;
     const start = { x: event.clientX, y: event.clientY };
-    let latest: Drag | null = null;
+    let latest: Drag<Target> | null = null;
     document.addEventListener("selectstart", preventTextSelection);
     const follow = (move: PointerEvent) => {
       if (!latest && Math.hypot(move.clientX - start.x, move.clientY - start.y) < DRAG_AFTER_PX) return;
@@ -57,8 +56,7 @@ export function useDragToReorder(onMove: (id: string, beforeId: string | null) =
         document.body.classList.add("reordering");
         window.getSelection()?.removeAllRanges();
       }
-      const beforeId = idBelow(list, move.clientY);
-      latest = { id, beforeId, changesOrder: changesOrder(list, id, beforeId) };
+      latest = { id, ...placeAt(move.clientY) };
       setDrag(latest);
     };
     const finish = (drop: boolean) => {
@@ -71,7 +69,7 @@ export function useDragToReorder(onMove: (id: string, beforeId: string | null) =
       document.body.classList.remove("reordering");
       swallowNextClick();
       setDrag(null);
-      if (drop && latest.changesOrder) onMove(latest.id, latest.beforeId);
+      if (drop && latest.changes) onDrop(latest.id, latest.target);
     };
     const dropHere = () => finish(true);
     const cancel = () => finish(false);
@@ -87,13 +85,28 @@ export function useDragToReorder(onMove: (id: string, beforeId: string | null) =
     window.addEventListener("keydown", cancelOnEscape, true);
   };
 
+  return { drag, startDrag };
+}
+
+/** Reorders a list's items, the children marked data-reorder-id, by dragging one to another place: the gap nearest the pointer's height is where it lands. */
+export function useDragToReorder(onMove: (id: string, beforeId: string | null) => void) {
+  const { drag, startDrag } = usePointerDrag<string | null>(onMove);
+
+  const startReorder = (id: string, list: HTMLElement | null, event: ReactPointerEvent<HTMLElement>) => {
+    if (!list) return;
+    startDrag(id, event, (y) => {
+      const beforeId = idBelow(list, y);
+      return { target: beforeId, changes: changesOrder(list, id, beforeId) };
+    });
+  };
+
   /** The classes an item takes while a drag is on: faded when it is the one dragged, a line where it would land. */
   const classesOf = (itemId: string, isLast: boolean) =>
     [
       drag?.id === itemId && "dragged",
-      drag?.changesOrder && drag.beforeId === itemId && "drop-before",
-      drag?.changesOrder && drag.beforeId === null && isLast && "drop-after",
+      drag?.changes && drag.target === itemId && "drop-before",
+      drag?.changes && drag.target === null && isLast && "drop-after",
     ].filter((name): name is string => Boolean(name));
 
-  return { startDrag, classesOf };
+  return { startDrag: startReorder, classesOf };
 }

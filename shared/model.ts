@@ -220,7 +220,18 @@ export interface Workspace {
   defaultLaunch: Launch;
   /** Picked by the user to tell workspaces apart in the sidebar. */
   color: Pastel | null;
-  /** Its place among the workspaces in the sidebar. */
+  /** Its place among the workspaces in the sidebar, the ones of every group alike. */
+  position: number;
+  /** The group it is shown in, or null for the workspaces above the groups. */
+  groupId: string | null;
+  createdAt: number;
+}
+
+/** A folding heading in the sidebar for some of the workspaces, e.g. a project's or a client's. */
+export interface WorkspaceGroup {
+  id: string;
+  name: string;
+  /** Its place among the groups, which come after the workspaces in none. */
   position: number;
   createdAt: number;
 }

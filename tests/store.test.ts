@@ -171,6 +171,41 @@ describe("Store", () => {
     expect(store.listWorkspaces()[0]?.color).toBeNull();
   });
 
+  test("new groups go last and keep the order and names they are given, and a workspace remembers its group", () => {
+    const { store } = seededStore();
+    const clients = store.insertWorkspaceGroup({ id: "g1", name: "Clients", createdAt: 1 });
+    const own = store.insertWorkspaceGroup({ id: "g2", name: "Own", createdAt: 2 });
+    expect([clients.position, own.position]).toEqual([0, 1]);
+    store.setWorkspaceGroupOrder(["g2", "g1"]);
+    store.renameWorkspaceGroup("g1", "Customers");
+    expect(store.listWorkspaceGroups().map(({ name }) => name)).toEqual(["Own", "Customers"]);
+
+    expect(store.findWorkspace("w1")?.groupId).toBeNull();
+    store.setWorkspaceGroup("w1", "g1");
+    expect(store.findWorkspace("w1")?.groupId).toBe("g1");
+  });
+
+  test("deleting a group puts its workspaces last among those in none, in their order, and keeps the other groups'", () => {
+    const { store } = seededStore();
+    const workspace = (id: string, createdAt: number) =>
+      store.insertWorkspace({ id, name: id, path: `/tmp/${id}`, defaultLaunch: { harness: "claude", profileId: null }, createdAt });
+    ["w2", "w3", "w4"].forEach((id, index) => workspace(id, index + 2));
+    store.insertWorkspaceGroup({ id: "g1", name: "Gone", createdAt: 1 });
+    store.insertWorkspaceGroup({ id: "g2", name: "Kept", createdAt: 2 });
+    store.setWorkspaceGroup("w1", "g1");
+    store.setWorkspaceGroup("w3", "g1");
+    store.setWorkspaceGroup("w4", "g2");
+
+    store.deleteWorkspaceGroup("g1");
+    expect(store.listWorkspaceGroups().map(({ id }) => id)).toEqual(["g2"]);
+    expect(store.listWorkspaces().map(({ id, groupId }) => [id, groupId])).toEqual([
+      ["w2", null],
+      ["w4", "g2"],
+      ["w1", null],
+      ["w3", null],
+    ]);
+  });
+
   test("remembers a machine's colour until the user takes it away", () => {
     const store = new Store(":memory:");
     store.insertMachine({ id: "m1", name: "Home server", origin: "https://home-server.example", createdAt: 1 });
@@ -272,7 +307,8 @@ describe("Store", () => {
     expect(store.findConversation("c1")?.profileId).toBeNull();
     expect(store.findProfile("p1")?.harness).toBe("claude");
     expect(store.findConversation("c1")).toMatchObject({ titleSetByUser: false, bypassPermissions: false, queuedMessages: [], position: 0 });
-    expect(store.findWorkspace("w1")).toMatchObject({ position: 0, color: null });
+    expect(store.findWorkspace("w1")).toMatchObject({ position: 0, color: null, groupId: null });
+    expect(store.listWorkspaceGroups()).toEqual([]);
     expect(store.listUnseenTurnEnds()).toEqual([]);
     expect(store.listPromptTemplates()).toHaveLength(defaultPromptTemplates.length);
     store.close();

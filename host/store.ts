@@ -17,6 +17,7 @@ import type {
   QueuedMessage,
   StoredEvent,
   Workspace,
+  WorkspaceGroup,
 } from "../shared/model.ts";
 import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
@@ -70,6 +71,8 @@ const schema = `
     job TEXT NOT NULL, ssh_host TEXT, message TEXT NOT NULL, resume INTEGER NOT NULL, since INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS running_turns (
     conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE);
+  CREATE TABLE IF NOT EXISTS workspace_groups (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, position INTEGER NOT NULL, created_at INTEGER NOT NULL);
 `;
 
 const addedColumns = [
@@ -91,6 +94,7 @@ const addedColumns = [
   { table: "profiles", column: "bypass_permissions", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "profiles", column: "ask_mode", definition: "TEXT NOT NULL DEFAULT 'wait'" },
   { table: "workspaces", column: "color", definition: "TEXT" },
+  { table: "workspaces", column: "group_id", definition: "TEXT" },
 ];
 
 /** A turn that ended while nobody looked at its conversation, until someone opens it. */
@@ -104,6 +108,7 @@ type WorkspaceRow = {
   default_profile_id: string | null;
   color: string | null;
   position: number;
+  group_id: string | null;
   created_at: number;
 };
 
@@ -143,8 +148,14 @@ const toWorkspace = (row: WorkspaceRow): Workspace => ({
   defaultLaunch: { harness: row.default_harness, profileId: row.default_profile_id },
   color: isPastel(row.color) ? row.color : null,
   position: row.position,
+  groupId: row.group_id,
   createdAt: row.created_at,
 });
+
+const toWorkspaceGroup = (row: unknown): WorkspaceGroup => {
+  const { id, name, position, created_at } = row as { id: string; name: string; position: number; created_at: number };
+  return { id, name, position, createdAt: created_at };
+};
 
 const toProfile = (row: ProfileRow): Profile => ({
   id: row.id,
@@ -232,18 +243,59 @@ export class Store {
     return row ? toWorkspace(row) : undefined;
   }
 
-  /** Adds the workspace after the others. */
-  insertWorkspace(workspace: Omit<Workspace, "position" | "color">): Workspace {
+  /** Adds the workspace after the others, in no group. */
+  insertWorkspace(workspace: Omit<Workspace, "position" | "color" | "groupId">): Workspace {
     const { next: position } = this.db.query("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM workspaces").get() as { next: number };
     this.db
       .query("INSERT INTO workspaces (id, name, path, default_harness, default_profile_id, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(workspace.id, workspace.name, workspace.path, workspace.defaultLaunch.harness, workspace.defaultLaunch.profileId, position, workspace.createdAt);
-    return { ...workspace, color: null, position };
+    return { ...workspace, color: null, position, groupId: null };
   }
 
   /** Numbers the workspaces' positions in the given order. */
   setWorkspaceOrder(workspaceIds: string[]) {
     this.setPositions("workspaces", workspaceIds);
+  }
+
+  setWorkspaceGroup(workspaceId: string, groupId: string | null) {
+    this.db.query("UPDATE workspaces SET group_id = ? WHERE id = ?").run(groupId, workspaceId);
+  }
+
+  listWorkspaceGroups(): WorkspaceGroup[] {
+    return this.db.query("SELECT * FROM workspace_groups ORDER BY position, created_at").all().map(toWorkspaceGroup);
+  }
+
+  findWorkspaceGroup(id: string): WorkspaceGroup | undefined {
+    const row = this.db.query("SELECT * FROM workspace_groups WHERE id = ?").get(id);
+    return row ? toWorkspaceGroup(row) : undefined;
+  }
+
+  /** Adds the group after the others. */
+  insertWorkspaceGroup(group: Omit<WorkspaceGroup, "position">): WorkspaceGroup {
+    const { next: position } = this.db.query("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM workspace_groups").get() as { next: number };
+    this.db.query("INSERT INTO workspace_groups (id, name, position, created_at) VALUES (?, ?, ?, ?)").run(group.id, group.name, position, group.createdAt);
+    return { ...group, position };
+  }
+
+  renameWorkspaceGroup(groupId: string, name: string) {
+    this.db.query("UPDATE workspace_groups SET name = ? WHERE id = ?").run(name, groupId);
+  }
+
+  /** Numbers the groups' positions in the given order. */
+  setWorkspaceGroupOrder(groupIds: string[]) {
+    this.setPositions("workspace_groups", groupIds);
+  }
+
+  /** Its workspaces go on, in their order, after the others: last among the workspaces in no group. */
+  deleteWorkspaceGroup(groupId: string) {
+    this.db.transaction(() => {
+      const workspaces = this.listWorkspaces();
+      const staying = workspaces.filter((workspace) => workspace.groupId !== groupId);
+      const leaving = workspaces.filter((workspace) => workspace.groupId === groupId);
+      this.setPositions("workspaces", [...staying, ...leaving].map(({ id }) => id));
+      this.db.query("UPDATE workspaces SET group_id = NULL WHERE group_id = ?").run(groupId);
+      this.db.query("DELETE FROM workspace_groups WHERE id = ?").run(groupId);
+    })();
   }
 
   setWorkspaceDefaultLaunch(workspaceId: string, launch: Launch) {
@@ -827,7 +879,7 @@ export class Store {
       .filter((item) => item.status === status);
   }
 
-  private setPositions(table: "workspaces" | "conversations", ids: string[]) {
+  private setPositions(table: "workspaces" | "workspace_groups" | "conversations", ids: string[]) {
     const setPosition = this.db.query(`UPDATE ${table} SET position = ? WHERE id = ?`);
     this.db.transaction(() => ids.forEach((id, position) => setPosition.run(position, id)))();
   }

@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
@@ -22,6 +22,7 @@ export type Overlay =
   | { kind: "sessions"; workspaceId: string }
   | { kind: "workspace-color"; workspaceId: string }
   | { kind: "add-workspace" }
+  | { kind: "add-workspace-group" }
   /** `rewind` takes the conversation and the files back; without it only the files are put back. */
   | { kind: "revert"; conversationId: string; turn: Turn; rewind?: boolean }
   | { kind: "settings"; page?: SettingsPage };
@@ -33,6 +34,7 @@ export type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
 
 export interface AppState {
   workspaces: Workspace[];
+  workspaceGroups: WorkspaceGroup[];
   conversations: Conversation[];
   profiles: Profile[];
   promptTemplates: PromptTemplate[];
@@ -75,6 +77,7 @@ export type AppAction =
 
 export const initialState: AppState = {
   workspaces: [],
+  workspaceGroups: [],
   conversations: [],
   profiles: [],
   promptTemplates: [],
@@ -151,6 +154,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       const next = {
         ...state,
         workspaces: [...message.workspaces].sort(inSidebarOrder),
+        workspaceGroups: [...message.workspaceGroups].sort(inSidebarOrder),
         conversations: message.conversations,
         profiles: message.profiles,
         promptTemplates: message.promptTemplates,
@@ -174,6 +178,10 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, workspaces: upsert(state.workspaces, message.workspace).sort(inSidebarOrder) };
     case "workspace.deleted":
       return { ...state, workspaces: state.workspaces.filter(({ id }) => id !== message.workspaceId) };
+    case "workspace-group.upserted":
+      return { ...state, workspaceGroups: upsert(state.workspaceGroups, message.group).sort(inSidebarOrder) };
+    case "workspace-group.deleted":
+      return { ...state, workspaceGroups: state.workspaceGroups.filter(({ id }) => id !== message.groupId) };
     case "conversation.upserted": {
       const isNew = !state.conversations.some(({ id }) => id === message.conversation.id);
       const next = { ...state, conversations: upsert(state.conversations, message.conversation) };
