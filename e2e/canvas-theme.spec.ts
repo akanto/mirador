@@ -26,6 +26,7 @@ const pageFollowingTheSystem = `<style>:root { color-scheme: light dark; } body 
 
 const canvasPage = (page: Page) => page.locator(".canvas-frame.show iframe").contentFrame().locator("body");
 const rootBackground = (page: Page) => canvasPage(page).evaluate((node) => getComputedStyle(node.ownerDocument.documentElement).backgroundColor);
+const frameBackground = (page: Page) => page.locator(".canvas-frame.show iframe").evaluate((frame) => getComputedStyle(frame).backgroundColor);
 const whileParsing = (page: Page) => canvasPage(page).evaluate(() => (window as unknown as { whileParsing: unknown }).whileParsing);
 
 async function showPage(page: Page, html: string) {
@@ -40,8 +41,10 @@ test("a canvas page's default background follows the panel theme, live", async (
   await showPage(page, barePage);
 
   await expect.poll(() => rootBackground(page)).toBe(white);
+  expect(await frameBackground(page)).toBe(white);
   await chooseInSettings(page, "Theme", "Dark");
   await expect.poll(() => rootBackground(page)).toBe(nearBlack);
+  expect(await frameBackground(page)).toBe(nearBlack);
 });
 
 test("a canvas page is in the panel's theme from its first paint, and its scripts can read which", async ({ page }) => {

@@ -2421,7 +2421,8 @@ button.running-subagent:hover {
 .canvas-frame iframe {
   border: none;
   width: 100%;
-  background: #fff;
+  /* A canvas document's own default (shared/canvas-document.ts), so nothing flashes while a page loads. */
+  background: light-dark(#fff, #111);
   flex: 1;
 }
 
