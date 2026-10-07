@@ -289,12 +289,29 @@ function FindingCard({
   );
 }
 
+/** Follows the agent's rewording until the user types; from then on their draft stays, with the agent's new wording shown under it. */
 function BodyEditor({ body, onSave, onCancel }: { body: string; onSave: (body: string) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState(body);
+  const [startedFrom, setStartedFrom] = useState(body);
   const typingAidAttributes = useTypingAidAttributes();
+  const startFrom = (text: string) => {
+    setDraft(text);
+    setStartedFrom(text);
+  };
+  const agentReworded = body !== startedFrom;
+  if (agentReworded && draft === startedFrom) startFrom(body);
   return (
     <div className="finding-edit">
       <textarea {...typingAidAttributes} value={draft} rows={Math.max(3, draft.split("\n").length)} onChange={(event) => setDraft(event.target.value)} autoFocus />
+      {agentReworded && (
+        <div className="agent-reworded" role="status">
+          <p>The agent reworded this while you were editing:</p>
+          <MarkdownText text={body} />
+          <button type="button" className="link" onClick={() => startFrom(body)}>
+            Use its wording
+          </button>
+        </div>
+      )}
       <div className="finding-edit-actions">
         <button type="button" className="primary" onClick={() => onSave(draft)} disabled={!draft.trim()}>
           Save

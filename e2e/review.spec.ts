@@ -443,6 +443,26 @@ test("the agent rewords one comment in place: the user stays on the finding they
     await expect((await openCanvasHistory(page)).locator(".history-entry")).toHaveCount(1);
   });
 
+  await test.step("an open edit box takes the agent's rewording until the user types; then it keeps their draft and shows the agent's under it", async () => {
+    const rewordTo = (body: string) => callCanvasTool(host, conversationId, "update_review", { findings: [{ id: "finding-3", body }] });
+    await finding("Empty items").getByRole("button", { name: "Edit" }).click();
+    const box = finding("Empty items").locator("textarea");
+    await expect(box).toHaveValue("Call the items API?");
+    await rewordTo("Should fetchItems call the items API?");
+    await expect(box).toHaveValue("Should fetchItems call the items API?");
+    await box.fill("Call the API here.");
+    await rewordTo("Call the items API in fetchItems.");
+    const reworded = finding("Empty items").locator(".agent-reworded");
+    await expect(reworded).toContainText("The agent reworded this while you were editing");
+    await expect(reworded).toContainText("Call the items API in fetchItems.");
+    await expect(box).toHaveValue("Call the API here.");
+    await reworded.getByRole("button", { name: "Use its wording" }).click();
+    await expect(box).toHaveValue("Call the items API in fetchItems.");
+    await expect(reworded).toHaveCount(0);
+    await finding("Empty items").getByRole("button", { name: "Save" }).click();
+    await expect(finding("Empty items")).toContainText("Call the items API in fetchItems.");
+  });
+
   await test.step("asked from a finding, the question names it and quotes its comment as it now reads", async () => {
     await finding("Empty items").getByRole("button", { name: "Ask" }).click();
     const dialog = page.getByRole("dialog", { name: "Ask the agent about these lines" });
@@ -453,7 +473,7 @@ test("the agent rewords one comment in place: the user stays on the finding they
     const asked = page.locator(".message.user").last();
     await expect(asked).toContainText('About finding-3 ("Empty items") at items.ts:2 in the review "PR 7: fetch items for the user"');
     await expect(asked).toContainText("Its comment now reads:");
-    await expect(asked).toContainText("Call the items API?");
+    await expect(asked).toContainText("Call the items API in fetchItems.");
     await waitForTurnToEnd(page);
   });
 });

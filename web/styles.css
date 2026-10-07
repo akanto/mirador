@@ -4669,6 +4669,16 @@ button.picture-option.chosen {
   margin-top: 4px;
 }
 
+.agent-reworded {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-left: 3px solid var(--accent);
+}
+
+.agent-reworded p {
+  margin: 4px 0;
+}
+
 .evidence summary {
   color: var(--muted);
   font-size: calc(12px * var(--font-scale));
