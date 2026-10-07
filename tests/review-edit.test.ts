@@ -100,6 +100,14 @@ describe("applyReviewEdit", () => {
     ]);
   });
 
+  test("a finding both changed and taken out in one call is a problem, so neither happens", async () => {
+    const review = await publishedReview();
+
+    const problems = await problemsOf(edited(review, { findings: [{ id: "finding-2", body: "Shorter." }], removeFindings: ["finding 2"] }));
+
+    expect(problems).toEqual(["finding-2 is both changed and taken out; pick one."]);
+  });
+
   test("replaces the verdict, the summary and the whole tour", async () => {
     const review = await publishedReview();
 

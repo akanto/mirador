@@ -99,7 +99,13 @@ export function applyReviewEdit(review: Review, edit: ReviewEdit, anchors: EditA
     const userWordingStays = change.body === undefined && agentBody !== undefined;
     editedFindings.set(finding.id, { ...unchanged, ...(userWordingStays && { agentBody }), ...definedOnly(change), ...anchors.findings[index] });
   });
-  const removed = new Set((edit.removeFindings ?? []).flatMap((name) => editable(review.findings, name, "finding")?.id ?? []));
+  const removed = new Set(
+    (edit.removeFindings ?? []).flatMap((name) => {
+      const finding = editable(review.findings, name, "finding");
+      if (finding && editedFindings.has(finding.id)) problems.push(`${finding.id} is both changed and taken out; pick one.`);
+      return finding?.id ?? [];
+    }),
+  );
   const lastNumber = Math.max(0, ...review.findings.map(({ id }) => numberOf(id)));
   const added = (edit.addFindings ?? []).flatMap((finding, index): ReviewFinding[] => {
     const anchored = anchors.addFindings[index];
