@@ -57,7 +57,8 @@ export function usePromptHistory({
   events: StoredEvent[];
   holdsEarliest: boolean;
   inTheBox: BoxContent;
-  put: (content: BoxContent) => void;
+  /** `recalled` is the history entry now in the box; null when the box is back to what was being written. */
+  put: (content: BoxContent, recalled: PromptHistoryEntry | null) => void;
 }) {
   const typed = useTypedElsewhere(conversationId, holdsEarliest ? undefined : events[0]?.seq);
   const [recalled, setRecalled] = useState<Recalled | null>(null);
@@ -75,12 +76,12 @@ export function usePromptHistory({
     event.preventDefault();
     const draft = shown?.draft ?? inTheBox;
     if (target === "draft") {
-      put(draft);
+      put(draft, null);
       setRecalled(null);
     } else {
       const entry = history[target]!;
       const content = restoredDraft(entry.text, entry.imageIds, []);
-      put(content);
+      put(content, entry);
       setRecalled({ conversationId, entryText: entry.text, shownText: content.text, draft });
     }
     return true;

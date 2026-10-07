@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { promptHistory, steppedTo } from "../shared/prompt-history.ts";
+import { promptHistory, steppedTo, stoppedMessage } from "../shared/prompt-history.ts";
 
 const stored = (events: ConversationEvent[]): StoredEvent[] => events.map((event, seq) => ({ seq, at: seq, event }));
 const texts = (events: ConversationEvent[], typedElsewhere: string[] = []) => promptHistory(stored(events), typedElsewhere).map(({ text }) => text);
@@ -54,5 +54,32 @@ describe("prompt history", () => {
     expect(steppedTo(history, "c", "newer")).toBe("draft");
     expect(steppedTo(history, null, "newer")).toBeNull();
     expect(steppedTo([], null, "older")).toBeNull();
+  });
+});
+
+describe("stopped message", () => {
+  const answered: ConversationEvent[] = [
+    { type: "user-message", text: "first" },
+    { type: "turn-end", stopReason: "end_turn" },
+  ];
+  const stopped = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}): ConversationEvent[] => [
+    { type: "user-message", text, ...extra },
+    { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Half an answer" } } },
+    { type: "turn-end", stopReason: "cancelled" },
+  ];
+
+  test("is the user's message whose turn they stopped, while that turn is the latest", () => {
+    expect(stoppedMessage(stored([...answered, ...stopped("second")]))).toEqual({ seq: 2, text: "second" });
+  });
+
+  test("is none once the turn ended on its own, or something came after the stopped one", () => {
+    expect(stoppedMessage(stored(answered))).toBeNull();
+    expect(stoppedMessage(stored([...stopped("second"), { type: "user-message", text: "third" }]))).toBeNull();
+    expect(stoppedMessage(stored([...stopped("second"), { type: "user-command", commandId: "c1", command: "ls" }]))).toBeNull();
+    expect(stoppedMessage(stored([]))).toBeNull();
+  });
+
+  test("is none when a script sent the stopped message, as it is not the user's to edit", () => {
+    expect(stoppedMessage(stored([...answered, ...stopped("from a script", { fromScript: true })]))).toBeNull();
   });
 });

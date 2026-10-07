@@ -3439,6 +3439,16 @@ button.shell-more:hover {
   font-size: calc(12px * var(--font-scale));
 }
 
+.editing-stopped {
+  margin: 0 0 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
 .image-preview {
   background: rgb(10 10 14 / 0.75);
   cursor: zoom-out;

@@ -34,6 +34,7 @@ import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
 import { useDragToReorder } from "./drag-to-reorder.ts";
 import { useEarlierHistory, type EarlierHistory } from "./earlier-history.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
+import { useStoppedMessageEdit } from "./edit-stopped.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
@@ -1209,10 +1210,16 @@ function Composer({
   const typingAidAttributes = useTypingAidAttributes();
   const enterWhileBusy = useEnterWhileBusy();
   const canSteer = harnessSteers[conversation.harness];
+  const stoppedEdit = useStoppedMessageEdit({ conversation, events, holdsEarliest, busy });
   useEffect(() => textarea.current?.focus(), []);
 
+  const sendPrompt = (message: string, imageIds: string[], afterTurn: boolean) => {
+    if (!connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds, afterTurn })) return;
+    setText("");
+    images.clearAfterSending();
+  };
   const send = (afterTurn = false, message = text) => {
-    if (!message.trim() || command === "" || images.uploading) return;
+    if (!message.trim() || command === "" || images.uploading || stoppedEdit.goingBack) return;
     if (isLoginCommand(message)) {
       requestLogin(conversation.id);
       setText("");
@@ -1229,9 +1236,8 @@ function Composer({
       return;
     }
     const imageIds = images.referenced.map(({ imageId }) => imageId);
-    if (!connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds, afterTurn })) return;
-    setText("");
-    images.clearAfterSending();
+    if (stoppedEdit.editing) void stoppedEdit.replace().then((replaced) => replaced && sendPrompt(message, imageIds, afterTurn));
+    else sendPrompt(message, imageIds, afterTurn);
   };
   const closeTemplates = () => {
     setPickingTemplate(false);
@@ -1279,10 +1285,11 @@ function Composer({
     events,
     holdsEarliest,
     inTheBox: { text, attachments: images.attachments },
-    put: (content) => {
+    put: (content, recalled) => {
       images.replace(content.attachments);
       setText(content.text);
       setCaret(content.text.length);
+      stoppedEdit.recalled(recalled);
     },
   });
   const suggestions = history.showing ? noSuggestions : slashCommands.menu ? slashCommands : mentions;
@@ -1298,6 +1305,9 @@ function Composer({
     } else if (event.key === "Escape" && busy) {
       event.preventDefault();
       stop();
+    } else if (event.key === "Escape" && stoppedEdit.editing) {
+      event.preventDefault();
+      stoppedEdit.stopEditing();
     } else history.onKeyDown(event);
   };
 
@@ -1312,6 +1322,16 @@ function Composer({
       {images.problem && (
         <div className="composer-problem" role="alert">
           {images.problem}
+        </div>
+      )}
+      {stoppedEdit.editing && (
+        <div className="editing-stopped" role="status">
+          Editing your stopped message. Enter replaces it and its answer, and puts back any files it changed; Esc keeps them.
+        </div>
+      )}
+      {stoppedEdit.editing?.problem && (
+        <div className="composer-problem" role="alert">
+          {stoppedEdit.editing.problem}
         </div>
       )}
       <div className={command === null ? "composer" : "composer shell-mode"} onDragOver={images.onDragOver} onDrop={images.onDrop}>
@@ -1333,6 +1353,7 @@ function Composer({
           onChange={(event) => {
             setText(event.target.value);
             setCaret(event.target.selectionStart);
+            if (!event.target.value) stoppedEdit.stopEditing();
           }}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
@@ -1378,7 +1399,7 @@ function Composer({
             </button>
           ) : (
             command === null && (
-              <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || images.uploading}>
+              <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || images.uploading || stoppedEdit.goingBack}>
                 Send
               </button>
             )

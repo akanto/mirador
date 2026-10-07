@@ -1,4 +1,5 @@
 import type { ConversationEvent, StoredEvent } from "./model.ts";
+import type { Turn } from "./reverts.ts";
 
 /** A message the user typed, as ↑ brings it back into the message box; a shell command keeps its `!`. */
 export interface PromptHistoryEntry {
@@ -39,4 +40,13 @@ export function steppedTo(history: PromptHistoryEntry[], shownText: string | nul
   if (step === "older") return shown + 1 < history.length ? shown + 1 : null;
   if (shown < 0) return null;
   return shown === 0 ? "draft" : shown - 1;
+}
+
+/** The user's message whose turn they stopped, while that turn is still the conversation's latest: ↑ edits it, and sending the edit replaces it. */
+export function stoppedMessage(events: StoredEvent[]): Turn | null {
+  const latest = events.findLastIndex(({ event }) => event.type === "user-message" || event.type === "user-command");
+  const message = events[latest];
+  if (message?.event.type !== "user-message" || message.event.fromScript) return null;
+  const stopped = events.slice(latest + 1).some(({ event }) => event.type === "turn-end" && event.stopReason === "cancelled");
+  return stopped ? { seq: message.seq, text: message.event.text } : null;
 }

@@ -64,7 +64,7 @@ const putFilesBack = (conversationId: string, seq: number) =>
     },
   );
 
-const rewindTo = (conversationId: string, seq: number) =>
+export const rewindTo = (conversationId: string, seq: number) =>
   connection.sendAndAwait(
     (requestId) => ({ type: "conversation.rewind", requestId, conversationId, seq }),
     (message, requestId) => {
