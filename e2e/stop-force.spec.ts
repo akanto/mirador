@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, createProfile, openProfiles, sendMessage, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5270, { fakePrograms: true });
@@ -23,6 +23,8 @@ const prompts = () =>
   readFileSync(promptsFile, "utf8")
     .split("\n")
     .filter((text) => text !== "");
+
+test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   fakeOpencode();
@@ -85,4 +87,55 @@ test("Stop offers to kill the agent process, and killing it leaves the other con
   await expect.poll(() => prompts().filter((text) => text === "WEDGE two").length, { timeout: 30_000 }).toBe(2);
   await selectInSidebar(page, sibling);
   await expect(status(page)).toHaveText("running", { timeout: 30_000 });
+});
+
+const profilePicker = (page: Page) => page.getByLabel("Profile", { exact: true }).filter({ visible: true });
+const timeline = (page: Page) => page.locator(".timeline:visible");
+const sentTimes = (text: string) => prompts().filter((prompt) => prompt === text).length;
+
+async function signInToWorkspace(page: Page) {
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+}
+
+test("A profile switch that the agent ignores the cancel of kills the agent after a while and continues the turn on the new profile", async ({ page }) => {
+  await signInToWorkspace(page);
+  const profiles = await createProfile(page, "spare", "", "", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await wedgedConversation(page, "WEDGE before the switch");
+
+  await profilePicker(page).selectOption({ label: "spare" });
+  await expect(timeline(page)).toContainText("Turn ended: cancelled", { timeout: 30_000 });
+  await expect(timeline(page)).toContainText("Now using the profile “spare”");
+  await expect.poll(() => sentTimes("WEDGE before the switch"), { timeout: 30_000 }).toBe(2);
+  await expect(status(page)).toHaveText("running");
+  await expect(timeline(page).locator(".error-line")).toHaveCount(0);
+});
+
+test("An agent process that dies in the middle of a turn ends it with one error that says so", async ({ page }) => {
+  await signInToWorkspace(page);
+  await startConversationWithoutModel(page);
+  await sendMessage(page, "CRASH now");
+
+  await expect(timeline(page).locator(".error-line")).toHaveText(/agent process exited with 1/, { timeout: 30_000 });
+  await expect(status(page)).toHaveText("idle");
+  await expect(timeline(page).locator(".error-line")).toHaveCount(1);
+});
+
+test("Saving a changed profile stops the turns its agent runs, as Stop does, and continues them on the restarted agent", async ({ page }) => {
+  await signInToWorkspace(page);
+  await wedgedConversation(page, "WEDGE before the edit");
+
+  const dialog = await openProfiles(page);
+  await dialog.locator(".profile-list li", { hasText: profileName }).click();
+  await dialog.getByRole("button", { name: "Edit environment" }).click();
+  await dialog.getByLabel("Environment", { exact: true }).fill("EDITED=1");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByText("Saved")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  await expect(timeline(page)).toContainText("Turn ended: cancelled", { timeout: 30_000 });
+  await expect.poll(() => sentTimes("WEDGE before the edit"), { timeout: 30_000 }).toBe(2);
+  await expect(status(page)).toHaveText("running");
+  await expect(timeline(page).locator(".error-line")).toHaveCount(0);
 });

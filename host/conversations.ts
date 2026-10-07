@@ -99,8 +99,13 @@ interface Runtime {
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
   automaticContinues: number;
-  /** The agent process this turn runs on is being killed by the user, so the turn ends as a stop, not as a failure. */
-  forceStopped?: boolean;
+  /** The host kills the agent process this turn runs on on purpose, so the turn ends as a stop, not as a failure. */
+  killedOnPurpose?: boolean;
+}
+
+interface StoppedTurn {
+  conversationId: string;
+  sessionId: string | null;
 }
 
 export class ConversationService {
@@ -306,7 +311,7 @@ export class ConversationService {
     const profile = profileToLaunch(this.store, { harness: this.get(conversationId).harness, profileId });
     const interrupted = runtime.running;
     runtime.holdingQueue = interrupted;
-    if (interrupted) await this.stopTurn(conversationId);
+    if (interrupted) await this.stopTurnEvenIfIgnored(conversationId);
     const conversation = this.get(conversationId);
     const released = this.releaseSession(runtime, conversation.acpSessionId);
     this.save({
@@ -359,6 +364,12 @@ export class ConversationService {
     await turnEnded;
   }
 
+  /** An agent that ignores the cancel has its process killed after a while, as Force stop would. */
+  private async stopTurnEvenIfIgnored(conversationId: string) {
+    const stopped = await Promise.race([this.stopTurn(conversationId).then(() => true), Bun.sleep(TURN_STOP_TIMEOUT_MS).then(() => false)]);
+    if (!stopped) await this.forceCancel(conversationId);
+  }
+
   setAskMode(conversationId: string, askMode: AskMode) {
     this.save({ ...this.get(conversationId), askMode });
   }
@@ -403,7 +414,7 @@ export class ConversationService {
       runtime.automaticContinues = 0;
       this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
     } catch (error) {
-      if (runtime.forceStopped) {
+      if (runtime.killedOnPurpose) {
         this.append(conversationId, { type: "turn-end", stopReason: "cancelled" });
         this.notifyTurnEnded(conversationId, { stopReason: "cancelled" });
       } else {
@@ -411,7 +422,7 @@ export class ConversationService {
       }
     } finally {
       runtime.running = false;
-      runtime.forceStopped = false;
+      runtime.killedOnPurpose = false;
       this.store.turnEnded(conversationId);
       this.setStatus(conversationId, "idle");
       endTurn();
@@ -688,21 +699,32 @@ export class ConversationService {
 
   /**
    * Unwedges a turn the agent won't cancel (e.g. its model request is blocked) by killing the shared agent process.
-   * Siblings on the same process lose their turn too, so once they have ended, they continue where they left off, as
-   * after a restart; the conversation the user force-stopped stays stopped. Every turn the kill ends is the user's
-   * doing rather than the agent's failure, so each ends the way a stop ends it.
+   * Siblings on the same process lose their turn too, so they continue where they left off; the conversation the user
+   * force-stopped stays stopped.
    */
   private async forceCancel(conversationId: string): Promise<void> {
-    const runtime = this.runtime(conversationId);
-    const harness = runtime.harness;
+    const harness = this.runtime(conversationId).harness;
     if (!harness) return this.cancel(conversationId);
-    const interrupted = [...this.runtimes]
-      .filter(([id, other]) => id !== conversationId && other.harness === harness && other.running)
-      .map(([id, other]) => ({ id, other, stoppedSessionId: this.get(id).acpSessionId }));
-    [runtime, ...interrupted.map(({ other }) => other)].forEach((stopped) => (stopped.forceStopped = true));
-    await harness.stop("was force stopped");
-    await Promise.all([runtime.turnEnded, ...interrupted.map(({ other }) => other.turnEnded)]);
-    interrupted.forEach(({ id, stoppedSessionId }) => this.resumeStoppedTurn(id, stoppedSessionId).catch(() => {}));
+    const stopped = await this.killAgent(harness, "was force stopped");
+    this.continueStoppedTurns(stopped.filter((turn) => turn.conversationId !== conversationId));
+  }
+
+  /**
+   * Every turn the kill ends is the host's doing rather than the agent's failure, so each ends the way a stop ends it.
+   * Returns those turns once they all have ended.
+   */
+  private async killAgent(harness: HarnessProcess, reason: string): Promise<StoppedTurn[]> {
+    const running = [...this.runtimes].filter(([, runtime]) => runtime.harness === harness && runtime.running);
+    running.forEach(([, runtime]) => (runtime.killedOnPurpose = true));
+    const stopped = running.map(([conversationId]) => ({ conversationId, sessionId: this.get(conversationId).acpSessionId }));
+    await harness.stop(reason);
+    await Promise.all(running.map(([, runtime]) => runtime.turnEnded));
+    return stopped;
+  }
+
+  /** As after a restart, on a fresh agent process. */
+  private continueStoppedTurns(turns: StoppedTurn[]) {
+    turns.forEach(({ conversationId, sessionId }) => this.resumeStoppedTurn(conversationId, sessionId).catch(() => {}));
   }
 
   respondToPermission(conversationId: string, permissionId: string, optionId: string | null) {
@@ -730,11 +752,17 @@ export class ConversationService {
     });
   }
 
-  /** Conversations pick up a changed or deleted profile from a fresh agent process; turns in progress stop. */
+  /**
+   * Conversations pick up a changed or deleted profile from a fresh agent process. Turns in progress stop; with a
+   * changed profile they continue where they left off.
+   */
   restartProfile(profileId: string) {
     const harness = this.harnessesByProfile.get(profileId);
     this.harnessesByProfile.delete(profileId);
-    harness?.stop("was restarted because its profile changed");
+    if (!harness) return;
+    void this.killAgent(harness, "was restarted because its profile changed").then((stopped) => {
+      if (this.store.findProfile(profileId)) this.continueStoppedTurns(stopped);
+    });
   }
 
   /** Claude Code agents start again with the program now set, as a profile's agent does when the profile changes. */
@@ -743,7 +771,7 @@ export class ConversationService {
       .filter(([profileId]) => this.store.findProfile(profileId)?.harness === "claude")
       .forEach(([profileId, harness]) => {
         this.harnessesByProfile.delete(profileId);
-        harness.stop("was restarted because the Claude Code program changed");
+        void this.killAgent(harness, "was restarted because the Claude Code program changed").then((stopped) => this.continueStoppedTurns(stopped));
       });
   }
 
@@ -964,7 +992,7 @@ export class ConversationService {
       {
         onSessionUpdate: (notification) => this.handleSessionUpdate(notification),
         onPermissionRequest: (request, signal) => this.handlePermissionRequest(request, signal),
-        onExit: (process, reason) => this.handleHarnessExit(process, reason),
+        onExit: (process) => this.handleHarnessExit(process),
       },
       `${this.config.dataDir}/logs`,
     );
@@ -1095,7 +1123,7 @@ export class ConversationService {
     });
   }
 
-  private handleHarnessExit(harness: HarnessProcess, reason: string) {
+  private handleHarnessExit(harness: HarnessProcess) {
     this.harnessesByProfile.forEach((current, key) => {
       if (current === harness) this.harnessesByProfile.delete(key);
     });
@@ -1104,7 +1132,6 @@ export class ConversationService {
       runtime.harness = undefined;
       runtime.sessionId = undefined;
       runtime.pendingPermissions.forEach(({ settle }) => settle(null));
-      if (runtime.running && !runtime.forceStopped) this.append(conversationId, { type: "error", message: `The ${harness.spec.label} agent process ${reason}.` });
     });
   }
 

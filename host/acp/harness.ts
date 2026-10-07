@@ -11,6 +11,8 @@ export type ConfigValue = string | boolean;
 const PRELAUNCH_TIMEOUT_MS = 60_000;
 const PRELAUNCH_OUTPUT_IN_ERRORS = 600;
 const FORCE_KILL_GRACE_MS = 3000;
+/** A connection closes just before its process exits; a stop that has to SIGKILL the agent takes the grace period. */
+const EXIT_WAIT_MS = FORCE_KILL_GRACE_MS + 2000;
 /** claude-agent-acp's extension for adding a message to the running turn, advertised in `_meta.steering` at initialize. */
 const STEERING_METHOD = "_session/steering";
 
@@ -37,7 +39,8 @@ export interface HarnessListener {
 
 export class HarnessProcess {
   private child?: ChildProcess;
-  private exited: Promise<void> = Promise.resolve();
+  /** Settles with why the agent process went away, e.g. "exited with 1". */
+  private exited: Promise<string> = Promise.resolve("is not running");
   private connection?: acp.ClientConnection;
   private initialized?: Promise<acp.InitializeResponse>;
   private stopReason?: string;
@@ -83,8 +86,16 @@ export class HarnessProcess {
     return this.agent().request(acp.methods.agent.session.list, { cwd });
   }
 
+  /** A turn the agent process goes away during fails with why it went away, rather than with the closed connection. */
   async prompt(sessionId: string, prompt: acp.ContentBlock[]) {
-    return this.agent().request(acp.methods.agent.session.prompt, { sessionId, prompt });
+    const connection = this.connection;
+    try {
+      return await this.agent().request(acp.methods.agent.session.prompt, { sessionId, prompt });
+    } catch (error) {
+      if (!connection?.signal.aborted) throw error;
+      const reason = await Promise.race([this.exited, Bun.sleep(EXIT_WAIT_MS).then(() => null)]);
+      throw reason === null ? error : new Error(`The ${this.spec.label} agent process ${reason}.`);
+    }
   }
 
   /**
@@ -148,14 +159,17 @@ export class HarnessProcess {
     const [command, ...args] = this.spec.command;
     const child = spawn(command!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.spec.environment });
     this.child = child;
-    this.exited = new Promise((resolve) => child.once("exit", () => resolve()));
+    let exitedBecause = (_reason: string) => {};
+    this.exited = new Promise((resolve) => (exitedBecause = resolve));
     child.stderr!.pipe(createWriteStream(this.logPath(), { flags: "a" }));
     child.once("exit", (code, signal) => {
+      const reason = this.stopReason ?? `exited with ${code ?? signal}`;
       this.connection = undefined;
       this.initialized = undefined;
       this.child = undefined;
-      this.listener.onExit(this, this.stopReason ?? `exited with ${code ?? signal}`);
       this.stopReason = undefined;
+      this.listener.onExit(this, reason);
+      exitedBecause(reason);
     });
     const stream = acp.ndJsonStream(
       Writable.toWeb(child.stdin!),
