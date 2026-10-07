@@ -92,6 +92,7 @@ test("continuing a terminal session in place gives the agent its earlier context
 });
 
 test("a terminal session continues and forks on the model that answered in it, not on the one Claude's settings name", async ({ page }) => {
+  // `claude -p --model haiku` can answer on an older Haiku than the picker's haiku alias, which the picker then lists by its own id.
   const api = new FakeClaudeApi();
   api.limited = false;
   await api.start();
@@ -107,11 +108,11 @@ test("a terminal session continues and forks on the model that answered in it, n
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "answering api · Claude Code" });
   await sessionRow(await openSessionsDialog(page), sessionId).getByRole("button", { name: "Fork" }).click();
   await expect(page.locator(".timeline")).toContainText("Answered: Say hi", { timeout: 30_000 });
-  await expect(model).toHaveValue("haiku");
+  await expect(model.locator("option:checked")).toHaveText(/^Haiku/);
 
   await sessionRow(await openSessionsDialog(page), sessionId).getByRole("button", { name: "Continue" }).click();
   await expect(page.locator(".chat-header h2").filter({ visible: true })).toHaveText("Say hi");
   await expect(page.locator(".timeline").filter({ visible: true })).toContainText("Answered: Say hi", { timeout: 30_000 });
-  await expect(model).toHaveValue("haiku");
+  await expect(model.locator("option:checked")).toHaveText(/^Haiku/);
   api.stop();
 });
