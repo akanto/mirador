@@ -3101,8 +3101,6 @@ button.shell-more:hover {
 }
 
 .statusline-terminal {
-  --terminal-background: #1b1c22;
-  --terminal-foreground: #d4d6de;
   background: var(--terminal-background);
   color: var(--terminal-foreground);
   border-radius: 6px;

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { chosenModel } from "../shared/config-options.ts";
 import type { ContextUsage, Conversation, PlanQuotas, Profile, QuotaWindow, StatuslineRender } from "../shared/model.ts";
-import { parseAnsi, plainTextOf, type AnsiStyle } from "./ansi.ts";
+import { parseAnsi, plainTextOf, type AnsiRun } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { TERMINAL_FONT } from "./terminal-look.ts";
+import { readableOn } from "./readable-color.ts";
+import { drawsShapesOnly, statuslineLooks, TERMINAL_FONT, type StatuslineLook } from "./terminal-look.ts";
+import { useShownTheme } from "./theme.ts";
 import {
   compactTokenCount,
   contextHint,
@@ -130,10 +132,12 @@ function useStatuslineRender(conversation: Conversation, columns: number | null,
   return render;
 }
 
-function cssOf({ foreground, background, bold, dim, italic, underline, inverse, strikethrough }: AnsiStyle): CSSProperties {
+function cssOf({ text, style }: AnsiRun, look: StatuslineLook): CSSProperties {
+  const { foreground, background, bold, dim, italic, underline, inverse, strikethrough } = style;
+  const drawnOnTheStrip = foreground && !background && !drawsShapesOnly(text);
   const [color, backgroundColor] = inverse
     ? [background ?? "var(--terminal-background)", foreground ?? "var(--terminal-foreground)"]
-    : [foreground, background];
+    : [drawnOnTheStrip ? readableOn(foreground, look.background, look.minimumContrast) : foreground, background];
   return {
     color: dim ? `color-mix(in srgb, ${color ?? "var(--terminal-foreground)"} 60%, transparent)` : color,
     backgroundColor,
@@ -143,20 +147,22 @@ function cssOf({ foreground, background, bold, dim, italic, underline, inverse, 
   };
 }
 
-/** The command's output drawn as a terminal would, on a terminal's dark background, since statusline scripts colour themselves for one. */
+/** The command's output drawn as a terminal would, in the app's theme. */
 function TerminalText({ text }: { text: string }) {
   const lines = useMemo(() => parseAnsi(text), [text]);
+  const look = statuslineLooks[useShownTheme()];
+  const terminalColors = { "--terminal-background": look.background, "--terminal-foreground": look.foreground } as CSSProperties;
   return (
     <div
       className="statusline-terminal"
       role="img"
       aria-label={plainTextOf(lines).trim()}
-      style={{ fontFamily: TERMINAL_FONT, fontSize: TERMINAL_FONT_SIZE, paddingInline: TERMINAL_PADDING_X }}
+      style={{ fontFamily: TERMINAL_FONT, fontSize: TERMINAL_FONT_SIZE, paddingInline: TERMINAL_PADDING_X, ...terminalColors }}
     >
       {lines.map((runs, lineIndex) => (
         <div key={lineIndex} className="statusline-line">
           {runs.map((run, runIndex) => (
-            <span key={runIndex} style={cssOf(run.style)}>
+            <span key={runIndex} style={cssOf(run, look)}>
               {run.text}
             </span>
           ))}

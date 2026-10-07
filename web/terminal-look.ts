@@ -6,6 +6,24 @@ export const TERMINAL_FONT = '"MesloLGS NF", "Symbols Nerd Font Mono", "JetBrain
 export const TERMINAL_BACKGROUND = "#1b1c22";
 export const TERMINAL_FOREGROUND = "#d4d6de";
 
+/**
+ * The statusline strip follows the app theme. Scripts colour themselves for dark terminals, so on the light strip a
+ * colour drawn straight on it is darkened until it reads; one on a background of its own stays as the script drew it.
+ */
+export const statuslineLooks = {
+  dark: { background: TERMINAL_BACKGROUND, foreground: TERMINAL_FOREGROUND, minimumContrast: 1 },
+  light: { background: "#f3f4f6", foreground: "#24262d", minimumContrast: 4.5 },
+} as const;
+
+export type StatuslineLook = (typeof statuslineLooks)[keyof typeof statuslineLooks];
+
+const boxDrawingAndBlocks = /[\u2500-\u259f]/u;
+const powerlineGlyphs = /[\ue0a0-\ue0d7]/u;
+
+/** Powerline caps and box drawing take the colour of the block they join, so, as in xterm.js, no minimum contrast applies to them. */
+export const drawsShapesOnly = (text: string) =>
+  [...text].every((character) => /\s/u.test(character) || boxDrawingAndBlocks.test(character) || powerlineGlyphs.test(character));
+
 const ansiNames = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"] as const;
 const capitalized = (name: string) => name[0]!.toUpperCase() + name.slice(1);
 

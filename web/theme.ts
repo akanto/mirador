@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -40,6 +40,8 @@ export function onShownThemeChange(listener: () => void) {
     system.removeEventListener("change", listener);
   };
 }
+
+export const useShownTheme = () => useSyncExternalStore(onShownThemeChange, shownTheme);
 
 export function useTheme() {
   const [theme, setTheme] = useState(storedTheme);
