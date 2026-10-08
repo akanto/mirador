@@ -73,6 +73,14 @@ test.describe("on macOS", () => {
       await expect(query).toBeFocused();
     });
 
+    await test.step("⌘F from the shell, with the bar still open, takes the very next keys to the query", async () => {
+      await page.locator(".terminal-pane .xterm").click();
+      await expect(query).not.toBeFocused();
+      await page.keyboard.press("Meta+F");
+      await page.keyboard.type("three");
+      await expect(query).toHaveValue("three");
+    });
+
     await query.press("Escape");
     await expect(findBar(page)).toHaveCount(0);
     await expect(highlights(page)).toHaveCount(0);

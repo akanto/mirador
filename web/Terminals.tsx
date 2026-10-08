@@ -240,8 +240,11 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
   }, [focus]);
 
   function openFind() {
-    setFinding(true);
-    requestAnimationFrame(() => findInput.current?.select());
+    const openQuery = findInput.current;
+    if (openQuery) {
+      openQuery.focus();
+      openQuery.select();
+    } else setFinding(true);
   }
 
   const closeFind = () => {
