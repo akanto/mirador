@@ -1,9 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { jobControlShell, TestHost } from "./test-host.ts";
 
-/** dash, Linux's /bin/sh, may run commands in the shell's own process group, so the busy check needs bash there. */
-const jobControlShell = process.platform === "darwin" ? "/bin/sh" : "/bin/bash";
 const host = new TestHost(5224, { shell: jobControlShell });
 
 test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });

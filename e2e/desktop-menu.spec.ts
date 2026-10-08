@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DesktopMenu, DesktopMenuMessage } from "../shared/desktop-menu.ts";
 import { addWorkspace, chooseInSettings, signIn, startConversation } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { jobControlShell, TestHost } from "./test-host.ts";
 
-const host = new TestHost(4810);
+const host = new TestHost(4810, { shell: jobControlShell });
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
@@ -103,7 +103,7 @@ test("inside a desktop app that hands over no nonce, as one built before it did,
   expect((await popup).url()).toContain("example.com");
 });
 
-test("inside the macOS desktop app, ⌘W closes the open dialog, else the focused terminal's shell, and with nothing to close asks the app with its nonce", async ({ page }) => {
+test("inside the macOS desktop app, ⌘W closes the open dialog, else the focused terminal's shell or answers its question, and with nothing to close asks the app with its nonce", async ({ page }) => {
   const sentToDesktopApp = await actAsDesktopApp(page);
   await signIn(page, host);
   await expect.poll(sentToDesktopApp).toContainEqual({ type: "desktop-nonce-request" });
@@ -144,6 +144,49 @@ test("inside the macOS desktop app, ⌘W closes the open dialog, else the focuse
     await pressCommandWInTheApp();
     await expect.poll(askedToCloseWindow).toEqual([{ type: "desktop-close-window", nonce: "nonce-1" }]);
     await expect(page.locator(".terminal-pane .terminal-split")).toHaveCount(1);
+  });
+
+  const splits = page.locator(".terminal-pane .terminal-split");
+  const typingInto = (index: number) => page.locator(".terminal-pane .xterm-helper-textarea").nth(index);
+  const question = page.getByRole("button", { name: "Confirm: Close terminal 2", exact: true });
+  const runSleepInASecondSplit = async () => {
+    await page.getByRole("button", { name: "Split right" }).click();
+    await expect(splits).toHaveCount(2);
+    await page.locator(".terminal-pane .xterm").nth(1).click();
+    await page.keyboard.type("sleep 30\n");
+  };
+
+  await test.step("on a shell running a command, ⌘W asks; Esc, or waiting, keeps it and gives the shell back the keys", async () => {
+    await runSleepInASecondSplit();
+    await pressCommandWInTheApp();
+    await expect(question).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(typingInto(1)).toBeFocused();
+    await pressCommandWInTheApp();
+    await expect(question).toBeFocused();
+    await expect(typingInto(1)).toBeFocused({ timeout: 6_000 });
+    await expect(page.getByRole("button", { name: "Close terminal 2", exact: true })).toHaveText("×");
+    await expect(splits).toHaveCount(2);
+  });
+
+  await test.step("⌘W again while it asks closes that shell, and never asks the app to close the window", async () => {
+    await pressCommandWInTheApp();
+    await expect(question).toBeFocused();
+    await pressCommandWInTheApp();
+    await expect(splits).toHaveCount(1);
+    expect(await askedToCloseWindow()).toHaveLength(1);
+  });
+
+  await test.step("a close armed by a click is no answer to ⌘W, which stays with it", async () => {
+    await runSleepInASecondSplit();
+    await page.getByRole("button", { name: "Close terminal 2", exact: true }).click();
+    await expect(question).toBeFocused();
+    await pressCommandWInTheApp();
+    await expect(question).toBeVisible();
+    await expect(splits).toHaveCount(2);
+    expect(await askedToCloseWindow()).toHaveLength(1);
+    await question.click();
+    await expect(splits).toHaveCount(1);
   });
 });
 

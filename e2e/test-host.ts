@@ -8,6 +8,9 @@ export const notifierDir = join(homedir(), ".config", "claude-notifier");
 const claudeProjectsDir = join(homedir(), ".claude", "projects");
 const TRANSCRIPT_WRITERS_GRACE_MS = 2_000;
 
+/** dash, Linux's /bin/sh, may run commands in the shell's own process group, so the busy check needs bash there. */
+export const jobControlShell = process.platform === "darwin" ? "/bin/sh" : "/bin/bash";
+
 /**
  * Test sessions must be muted in the user's real claude-notifier directory; otherwise its
  * hooks (auto-approve in yolo mode, phone mirroring) act on them. These are the markers

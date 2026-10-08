@@ -227,7 +227,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 - **The workspace's shells**, in tabs, each with up to four splits side by side (*Split right*) or stacked (*Split down*); drag a divider to resize. Every window shares them, and they keep running while hidden and across reloads.
 - **macOS keys**, the ones cmux and iTerm2 share: `⌘D` splits right and `⌘⇧D` down, `⌥⌘←→↑↓` move between splits, `⌘[`/`⌘]` go to the previous or next split, `⌘T` opens a tab, `⌘⇧[`/`⌘⇧]`, `⌘1…⌘9` and `⌃1…⌃9` switch tabs, and `⌘⇧↩` zooms the focused split (*Show all* brings the others back). In Chrome, `⌘T`, `⌘W`, `⌘⇧[`/`⌘⇧]` and `⌥⌘←→` stay Chrome's.
-- **Closing**: `⌘W` closes the focused shell, and a middle click closes a tab. Either asks first while a command runs (Enter ends it, Esc keeps it).
+- **Closing**: `⌘W` closes the focused shell, and a middle click closes a tab. Either asks first while a command runs: Enter ends it, and so does `⌘W` again when `⌘W` asked; Esc keeps it.
 - **Line editing** as in a macOS terminal: `⌘←`, `⌘→`, `⌘⌫`, `⌥←`, `⌥→`, and `⌘K` clears for good.
 - **Copy on select** (*Settings → Terminal*). On Linux, `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste, and `Ctrl+C` stays the interrupt.
 - **Nerd Font aware**, with a dark terminal in both themes.

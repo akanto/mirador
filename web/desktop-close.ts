@@ -20,7 +20,7 @@ function useCloser(closers: Set<RefObject<Closer>>, closer: Closer) {
 /** An open dialog closes first, the one opened last first, even while focus stayed in a terminal behind it. */
 export const useClosesAsDialog = (closer: Closer) => useCloser(dialogClosers, closer);
 
-/** With no dialog open, a terminal closes its shell while focus is in it. */
+/** With no dialog open, what has the focus: a terminal closes its shell, a button asking to close one answers. */
 export const useClosesWhileFocused = (closer: Closer) => useCloser(focusedClosers, closer);
 
 function closeWhatHasFocus() {

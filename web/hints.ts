@@ -75,7 +75,7 @@ export const hints = {
   terminalSplit: "Open another shell beside the focused one, in the same tab (up to 4).",
   terminalSplitDown: "Open another shell below the focused one, in the same tab (up to 4).",
   terminalShowAll: "Show this tab's other terminals again; this one stopped filling the tab.",
-  terminalCloseBusy: (command: string) => `${command} runs in this terminal. Click again, or press Enter, to end it and close the terminal; Esc keeps it.`,
+  terminalCloseBusy: (command: string) => `${command} runs in this terminal. Click again, or press Enter or ⌘W, to end it and close the terminal; Esc keeps it.`,
   terminalCloseTab: "Close this tab and end its shells. A middle-click on the tab closes it too, asking first when a command runs in it.",
   terminalCloseTabBusy: (command: string) =>
     `${command} runs in this tab. Click again, middle-click the tab again, or press Enter, to end it and close the tab; Esc keeps it.`,

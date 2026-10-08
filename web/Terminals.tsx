@@ -36,9 +36,12 @@ interface BusyClose {
   tabId?: string;
 }
 
+/** A middle-click on a tab asks about the whole tab; ⌘W asks about one terminal. */
+const raisedByCloseKey = (busy: BusyClose) => busy.tabId === undefined;
+
 /** ⌘W on a tab's only terminal asks again on the tab's close, as a middle-click on the tab does. */
 const tabCloseAsksAgain = (tab: TerminalTab, busy: BusyClose | null): busy is BusyClose =>
-  busy !== null && (busy.tabId === undefined ? tab.terminals.length === 1 && tab.terminals[0]!.id === busy.terminalId : busy.tabId === tab.id);
+  busy !== null && (raisedByCloseKey(busy) ? tab.terminals.length === 1 && tab.terminals[0]!.id === busy.terminalId : busy.tabId === tab.id);
 
 const isMiddleButton = (event: MouseEvent) => event.button === 1;
 
@@ -270,7 +273,7 @@ function TabLayout({
 
   const split = (terminalId: string, style: CSSProperties) => {
     const index = tab.terminals.findIndex(({ id }) => id === terminalId);
-    const asksAgain = busy?.terminalId === terminalId && busy.tabId === undefined;
+    const asksAgain = busy?.terminalId === terminalId && raisedByCloseKey(busy);
     return (
       <div className={`terminal-split${zoomedAway({ terminalId })}`} data-terminal-id={terminalId} style={style}>
         {isSplit && (
@@ -288,6 +291,7 @@ function TabLayout({
               armedText="Close?"
               armedHint={asksAgain ? hints.terminalCloseBusy(busy.command) : hints.terminalCloseSplitArmed}
               armRequest={asksAgain ? busy : null}
+              confirmsOnCloseKey={asksAgain}
               onConfirm={() => connection.send({ type: "terminal.close", terminalId })}
             >
               ×
@@ -473,8 +477,9 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
                   label={`Close ${tabLabel(tab)}`}
                   hint={hints.terminalCloseTab}
                   armedText="Close?"
-                  armedHint={asksAgain ? (busy.tabId ? hints.terminalCloseTabBusy(busy.command) : hints.terminalCloseBusy(busy.command)) : hints.terminalCloseTabArmed}
+                  armedHint={asksAgain ? (raisedByCloseKey(busy) ? hints.terminalCloseBusy(busy.command) : hints.terminalCloseTabBusy(busy.command)) : hints.terminalCloseTabArmed}
                   armRequest={asksAgain ? busy : null}
+                  confirmsOnCloseKey={asksAgain && raisedByCloseKey(busy)}
                   onArmedChange={(armed) => setArmedTabClose((current) => (armed ? tab.id : current === tab.id ? null : current))}
                   onConfirm={() => connection.send({ type: "terminal.close-tab", tabId: tab.id })}
                 >
