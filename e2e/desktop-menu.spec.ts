@@ -138,6 +138,16 @@ test("inside the macOS desktop app, ⌘W closes the open dialog, else the focuse
     await expect(page.locator(".terminal-pane .terminal-split")).toHaveCount(1);
   });
 
+  await test.step("in a terminal's find bar, the bar closes and the shell stays", async () => {
+    await page.locator(".terminal-pane .xterm").click();
+    await page.keyboard.press((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta+F" : "Control+Shift+F");
+    const findBar = page.locator(".terminal-pane .terminal-find");
+    await expect(findBar.getByLabel("Find in this terminal")).toBeFocused();
+    await pressCommandWInTheApp();
+    await expect(findBar).toHaveCount(0);
+    await expect(page.locator(".terminal-pane .terminal-split")).toHaveCount(1);
+  });
+
   await test.step("with focus elsewhere and no dialog open, the page asks the app to close the window", async () => {
     expect(await askedToCloseWindow()).toEqual([]);
     await page.locator(".composer:visible textarea").focus();

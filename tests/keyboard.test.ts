@@ -79,9 +79,11 @@ describe("commandFor", () => {
     expect(commandFor(press("KeyF", { ctrlKey: true }), "terminal", false)).toBeNull();
   });
 
-  test("Cmd+Shift+F searches every workspace, from anywhere", () => {
+  test("Cmd+Shift+F searches every workspace, from anywhere but a Linux terminal, which finds in itself with Ctrl+Shift+F", () => {
     expect(commandFor(press("KeyF", { metaKey: true, shiftKey: true }), "typing", true)).toEqual({ type: "search" });
-    expect(commandFor(press("KeyF", { ctrlKey: true, shiftKey: true }), "terminal", false)).toEqual({ type: "search" });
+    expect(commandFor(press("KeyF", { metaKey: true, shiftKey: true }), "terminal", true)).toEqual({ type: "search" });
+    expect(commandFor(press("KeyF", { ctrlKey: true, shiftKey: true }), "typing", false)).toEqual({ type: "search" });
+    expect(commandFor(press("KeyF", { ctrlKey: true, shiftKey: true }), "terminal", false)).toBeNull();
   });
 
   test("? opens the help only outside text fields", () => {
@@ -164,6 +166,13 @@ describe("terminalKeyAction", () => {
     expect(terminalKeyAction(press("Digit0", { metaKey: true }), true)).toBeNull();
     expect(terminalKeyAction(press("ArrowRight", { metaKey: true, shiftKey: true }), true)).toBeNull();
     expect(terminalKeyAction(press("KeyD", { ctrlKey: true }), true)).toBeNull();
+  });
+
+  test("finds with ⌘F on macOS and Ctrl+Shift+F elsewhere, leaving Ctrl+F to the shell", () => {
+    expect(terminalKeyAction(press("KeyF", { metaKey: true }), true)).toEqual({ type: "find" });
+    expect(terminalKeyAction(press("KeyF", { ctrlKey: true, shiftKey: true }), false)).toEqual({ type: "find" });
+    expect(terminalKeyAction(press("KeyF", { ctrlKey: true }), false)).toBeNull();
+    expect(terminalKeyAction(press("KeyF", { ctrlKey: true }), true)).toBeNull();
   });
 
   test("elsewhere, copies with Ctrl+Shift+C and leaves Ctrl+Shift+V to the browser's paste, as in a Linux terminal", () => {

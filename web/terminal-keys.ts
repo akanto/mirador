@@ -15,6 +15,7 @@ export type PaneCommand =
 
 export type TerminalKeyAction =
   | { type: "clear" }
+  | { type: "find" }
   | { type: "copy" }
   | { type: "browser-paste" }
   | { type: "send"; data: string }
@@ -25,6 +26,7 @@ const pane = (command: PaneCommand): TerminalKeyAction => ({ type: "pane", comma
 
 const withCommand: Record<string, TerminalKeyAction> = {
   KeyK: { type: "clear" },
+  KeyF: { type: "find" },
   ArrowLeft: send("\x01"),
   ArrowRight: send("\x05"),
   Backspace: send("\x15"),
@@ -57,11 +59,13 @@ const withOption: Record<string, TerminalKeyAction> = {
 const withControlShift: Record<string, TerminalKeyAction> = {
   KeyC: { type: "copy" },
   KeyV: { type: "browser-paste" },
+  KeyF: { type: "find" },
 };
 
 /**
- * Elsewhere, Ctrl+Shift+C copies the selection and Ctrl+Shift+V pastes, as in GNOME Terminal, Konsole and VS Code, while
- * Ctrl+C and Ctrl+V stay ^C and ^V for the shell. The paste is the browser's own, which xterm.js receives as a paste event.
+ * Elsewhere, Ctrl+Shift+C copies the selection, Ctrl+Shift+V pastes and Ctrl+Shift+F finds, as in GNOME Terminal and
+ * Konsole, while Ctrl+C, Ctrl+V and Ctrl+F stay ^C, ^V and ^F for the shell. The paste is the browser's own, which
+ * xterm.js receives as a paste event.
  */
 function linuxTerminalKeyAction(press: KeyPress): TerminalKeyAction | null {
   if (!press.ctrlKey || !press.shiftKey || press.altKey || press.metaKey) return null;
@@ -75,10 +79,11 @@ function tabNumberAction({ code, metaKey, ctrlKey, altKey, shiftKey }: KeyPress)
 }
 
 /**
- * The macOS terminal keys xterm.js leaves out, as Terminal.app, iTerm2 and VS Code have them: ⌘K clears, ⌘←/⌘→ go to
- * the start/end of the line (^A/^E), ⌘⌫ deletes to its start (^U), ⌥←/⌥→ move by word (Esc b/Esc f, as readline and
- * zsh bind them; xterm.js would send Esc[1;3D, which they don't). And the pane keys cmux and iTerm2 share: ⌘D and ⌘⇧D
- * split, ⌥⌘arrows and ⌘[ ⌘] move between splits, ⌘T and ⌘W open and close, ⌘⇧[ ⌘⇧] and ⌘1…9 switch tabs, ⌘⇧↩ zooms.
+ * The macOS terminal keys xterm.js leaves out, as Terminal.app, iTerm2 and VS Code have them: ⌘K clears, ⌘F finds,
+ * ⌘←/⌘→ go to the start/end of the line (^A/^E), ⌘⌫ deletes to its start (^U), ⌥←/⌥→ move by word (Esc b/Esc f, as
+ * readline and zsh bind them; xterm.js would send Esc[1;3D, which they don't). And the pane keys cmux and iTerm2 share:
+ * ⌘D and ⌘⇧D split, ⌥⌘arrows and ⌘[ ⌘] move between splits, ⌘T and ⌘W open and close, ⌘⇧[ ⌘⇧] and ⌘1…9 switch tabs,
+ * ⌘⇧↩ zooms.
  */
 export function terminalKeyAction(press: KeyPress, mac = isMac): TerminalKeyAction | null {
   if (!mac) return linuxTerminalKeyAction(press);

@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { Fragment, useEffect, useReducer, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
@@ -12,6 +13,8 @@ import { takeProgramRequest, useProgramRequest, type ProgramRequest } from "./pr
 import { takeTerminalPaneRequest, useTerminalPaneRequest, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { shortcutKeys, terminalShortcutKeys } from "./shortcuts.ts";
 import { Splitter } from "./Splitter.tsx";
+import { HIGHLIGHT_LIMIT } from "./terminal-find.ts";
+import { TerminalFind } from "./TerminalFind.tsx";
 import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
 import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
@@ -146,23 +149,36 @@ function historyReplayer(view: Terminal) {
 }
 
 function TerminalView({ terminalId, focus, events }: { terminalId: string; focus: FocusRequest | undefined; events: RefObject<TerminalEvents> }) {
+  const viewElement = useRef<HTMLDivElement>(null);
   const screen = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
+  const [search, setSearch] = useState<SearchAddon | null>(null);
+  const [finding, setFinding] = useState(false);
+  const findInput = useRef<HTMLInputElement>(null);
   useClosesWhileFocused(() => {
+    const focusedFind = document.activeElement?.closest(".terminal-find");
+    if (focusedFind && viewElement.current?.contains(focusedFind)) {
+      closeFind();
+      return true;
+    }
     if (!screen.current?.contains(document.activeElement)) return false;
     events.current.command({ type: "close" }, terminalId);
     return true;
   });
 
   useEffect(() => {
-    const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: terminalFontSize(), cursorBlink: true, scrollback: 5_000, theme: terminalTheme });
+    // Find highlights its matches with decorations, which xterm.js 6 still counts as proposed API.
+    const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: terminalFontSize(), cursorBlink: true, scrollback: 5_000, theme: terminalTheme, allowProposedApi: true });
     const fit = new FitAddon();
+    const searcher = new SearchAddon({ highlightLimit: HIGHLIGHT_LIMIT });
     const fitIfShown = () => isShown(screen.current!) && fit.fit();
     const applyFontSize = () => {
       view.options.fontSize = terminalFontSize();
       fitIfShown();
     };
     view.loadAddon(fit);
+    view.loadAddon(searcher);
+    setSearch(searcher);
     view.attachCustomKeyEventHandler((event) => {
       if (event.defaultPrevented) return false;
       const action = terminalKeyAction(event);
@@ -172,6 +188,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
         event.preventDefault();
         if (action.type === "clear") connection.send({ type: "terminal.clear", terminalId });
         else if (action.type === "copy") copySelection(view);
+        else if (action.type === "find") openFind();
         else if (action.type === "pane") events.current.command(action.command, terminalId);
         else view.input(action.data);
       }
@@ -203,6 +220,8 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     terminal.current = view;
     return () => {
       terminal.current = null;
+      setFinding(false);
+      setSearch(null);
       screenElement.removeEventListener("mousedown", startSelecting);
       observer.disconnect();
       stopFontListening();
@@ -217,8 +236,19 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     if (focus) terminal.current?.focus();
   }, [focus]);
 
+  function openFind() {
+    setFinding(true);
+    requestAnimationFrame(() => findInput.current?.select());
+  }
+
+  const closeFind = () => {
+    setFinding(false);
+    terminal.current?.focus();
+  };
+
   return (
-    <div className="terminal-view">
+    <div className="terminal-view" ref={viewElement}>
+      {finding && search && <TerminalFind search={search} inputRef={findInput} onClose={closeFind} />}
       <div className="terminal-screen" ref={screen} />
     </div>
   );

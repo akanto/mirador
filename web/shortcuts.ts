@@ -44,12 +44,13 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
 
   const terminalClears = mac && typing === "terminal";
   const terminalSearchesHistory = !mac && typing === "terminal";
+  const terminalFinds = !mac && typing === "terminal";
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyK" && !terminalClears) return { type: "palette" };
   if (primary && !press.altKey && press.code === "KeyR" && !terminalSearchesHistory) return press.shiftKey ? { type: "restart-host" } : { type: "reload-page" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "Backslash") return { type: "toggle-canvas" };
   if (press.ctrlKey && !press.metaKey && !press.altKey && !press.shiftKey && press.code === "Backquote") return { type: "toggle-terminal" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyF" && typing !== "terminal") return { type: "find" };
-  if (primary && !press.altKey && press.shiftKey && press.code === "KeyF") return { type: "search" };
+  if (primary && !press.altKey && press.shiftKey && press.code === "KeyF" && !terminalFinds) return { type: "search" };
   if (primary && !press.altKey && press.shiftKey && typing !== "typing") {
     if (press.code === "ArrowLeft") return { type: "focus", pane: "chat" };
     if (press.code === "ArrowRight") return { type: "focus", pane: "canvas" };
@@ -135,6 +136,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.toggleTerminal, action: "Show / hide the terminal" },
     { keys: keys.search, action: "Search every conversation in every workspace" },
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included (Enter: older match, Shift+Enter: newer)" },
+    { keys: mac ? keys.find : "Ctrl+Shift+F", action: "In a terminal: find in its output, with match case, whole word and regular expression toggles (Enter: match further up, Shift+Enter: further down)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
     { keys: keys.templates, action: "In the message box: find a prompt template by typing and put it in; Tab / Shift+Tab then go through its {{values}}" },
     { keys: `${primary}${shift}← / ${primary}${shift}→ / ${primary}${shift}↓`, action: "Focus the message box / the canvas / the terminal (not while editing text)" },

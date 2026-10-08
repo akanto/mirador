@@ -3904,11 +3904,59 @@ button.shell-more:hover {
 }
 
 .terminal-view {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
   padding: 6px 4px 4px 10px;
   background: #1b1c22;
+}
+
+.terminal-find {
+  position: absolute;
+  top: 6px;
+  right: 18px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 28px);
+  padding: 3px 4px 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+
+.terminal-find input {
+  flex: 0 1 180px;
+  min-width: 60px;
+  padding: 3px 6px;
+  margin-right: 2px;
+}
+
+.terminal-find .find-tally {
+  min-width: 4.5em;
+  margin: 0 2px;
+}
+
+.find-toggle {
+  padding: 1px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: calc(12px * var(--font-scale)) ui-monospace, Menlo, monospace;
+}
+
+.find-toggle.wholeWord {
+  text-decoration: underline;
+}
+
+.find-toggle.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 .terminal-screen {

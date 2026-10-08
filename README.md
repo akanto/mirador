@@ -238,6 +238,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **macOS keys**, the ones cmux and iTerm2 share: `⌘D` splits right and `⌘⇧D` down, `⌥⌘←→↑↓` move between splits, `⌘[`/`⌘]` go to the previous or next split, `⌘T` opens a tab, `⌘⇧[`/`⌘⇧]`, `⌘1…⌘9` and `⌃1…⌃9` switch tabs, and `⌘⇧↩` zooms the focused split (*Show all* brings the others back). In Chrome, `⌘T`, `⌘W`, `⌘⇧[`/`⌘⇧]` and `⌥⌘←→` stay Chrome's.
 - **Closing**: `⌘W` closes the focused shell, and a middle click closes a tab. Either asks first while a command runs: Enter ends it, and so does `⌘W` again when `⌘W` asked; Esc keeps it.
 - **Line editing** as in a macOS terminal: `⌘←`, `⌘→`, `⌘⌫`, `⌥←`, `⌥→`, and `⌘K` clears for good.
+- **Find** with `⌘F` (`Ctrl+Shift+F` on Linux, where `Ctrl+F` stays the shell's) searches the focused split's scrollback. Every match is highlighted. Enter goes to the match further up, Shift+Enter further down. Match case, whole word and regular expression are toggles, as in VS Code. Esc, or `⌘W` in the desktop app, closes it and puts the cursor back in the shell.
 - **Copy on select** (*Settings → Terminal*). On Linux, `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste, and `Ctrl+C` stays the interrupt.
 - **Nerd Font aware**, with a dark terminal in both themes.
 
@@ -285,7 +286,7 @@ Hovering almost any control explains what it does behind the scenes, together wi
 | `⌥T` / `⌥⇧T` | New conversation / add a workspace |
 | `⌘\` | Show or hide the canvas |
 | `⌘⇧←` `⌘⇧→` | Focus the message box / the canvas |
-| `⌘F` / `⌘⇧F` | Find in the conversation / search everywhere |
+| `⌘F` / `⌘⇧F` | Find in the conversation (in a terminal, in its output) / search everywhere |
 | `⌘R` / `⌘⇧R` | Reload the page / restart the host |
 | `?` | Every shortcut, terminal keys included |
 

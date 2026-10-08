@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { commandFor, typingStateOf, type ShortcutCommand } from "./shortcuts.ts";
+import { terminalKeyAction } from "./terminal-keys.ts";
+
+/** A terminal's find field is a text field for every other key, but its own find key selects its query again. */
+const reselectsTerminalFind = (event: KeyboardEvent) =>
+  Boolean(document.activeElement?.closest(".terminal-find")) && terminalKeyAction(event)?.type === "find";
 
 /**
  * Keys pressed inside a canvas page never reach this window (the page is a sandboxed frame),
@@ -13,7 +18,7 @@ export function useShortcuts(onCommand: (command: ShortcutCommand, fromCanvas: b
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const command = commandFor(event, typingStateOf(document.activeElement));
-      if (!command) return;
+      if (!command || reselectsTerminalFind(event)) return;
       event.preventDefault();
       latest.current(command, false);
     };
