@@ -16,6 +16,9 @@ import { Splitter, type SplitAxis } from "./Splitter.tsx";
 
 const MIN_PANE_WIDTH = 240;
 const MIN_PANE_HEIGHT = 120;
+/** Its header, the last lines of the timeline and the composer. */
+const MIN_CONVERSATION_HEIGHT = 300;
+const minimumHeightOf = (pane: PaneId) => (pane === "conversation" ? MIN_CONVERSATION_HEIGHT : MIN_PANE_HEIGHT);
 const paneOrder: PaneId[] = ["conversation", "canvas", "terminals"];
 const NOT_A_BAR_BACKGROUND = "button, a, input, select, textarea, label, [role=tab], [role=separator], .renamable, [contenteditable]";
 
@@ -224,7 +227,8 @@ export function WorkspaceArea({
             label="Resize the top and bottom panes"
             resetShare={DEFAULT_TOP_SHARE}
             axis="rows"
-            minimumSize={MIN_PANE_HEIGHT}
+            minimumSize={minimumHeightOf(shownLayout.slots[1])}
+            secondMinimumSize={minimumHeightOf(shownLayout.slots[2])}
             area={areaAlong("rows")}
           />
         )}

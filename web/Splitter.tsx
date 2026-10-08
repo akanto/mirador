@@ -29,6 +29,7 @@ export function Splitter({
   resetShare,
   axis = "columns",
   minimumSize = MIN_PANEL_WIDTH,
+  secondMinimumSize = minimumSize,
   area,
   style,
 }: {
@@ -39,6 +40,8 @@ export function Splitter({
   resetShare: number;
   axis?: SplitAxis;
   minimumSize?: number;
+  /** The second pane's own minimum, when it needs more room than the first. */
+  secondMinimumSize?: number;
   area?: () => SplitArea;
   style?: CSSProperties;
 }) {
@@ -64,8 +67,10 @@ export function Splitter({
   };
 
   const withinLimits = (next: number) => {
-    const minimumShare = Math.min(minimumSize / room().size, 0.5);
-    return Math.min(Math.max(next, minimumShare), 1 - minimumShare);
+    const { size } = room();
+    const firstMinimumShare = Math.min(minimumSize / size, 0.5);
+    const secondMinimumShare = Math.min(secondMinimumSize / size, 0.5);
+    return Math.min(Math.max(next, firstMinimumShare), 1 - secondMinimumShare);
   };
 
   const shareAtPointer = (event: PointerEvent<HTMLDivElement>) => {

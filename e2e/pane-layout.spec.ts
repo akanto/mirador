@@ -77,6 +77,12 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   expect(await placesOf(page)).toEqual({ conversation: "right bottom", canvas: "right top", terminals: "left" });
   expect(await page.evaluate(() => document.querySelector(".canvas-panel iframe") === (window as unknown as { canvasFrameBefore: Element }).canvasFrameBefore)).toBe(true);
 
+  await dragDividerBy(page, "Resize the top and bottom panes", 5000);
+  const conversationBox = await boxOf(page, "conversation");
+  expect(conversationBox.height).toBeGreaterThanOrEqual(299);
+  const composerBox = (await pane(page, "conversation").locator(".composer").boundingBox())!;
+  expect(composerBox.y + composerBox.height).toBeLessThanOrEqual(conversationBox.y + conversationBox.height + 1);
+
   await pane(page, "canvas").locator(".canvas-title").dblclick();
   const area = await workspaceBox(page);
   expect(await boxOf(page, "canvas")).toEqual(area);
