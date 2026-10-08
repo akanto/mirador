@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { changeScopes, type ChangedFile, type ChangeList, type ChangeScope, type ChangesBase, type FileChanges } from "../shared/changes.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { firstChangedLine } from "./changes.ts";
@@ -39,14 +39,27 @@ const fileChanges = (conversationId: string, scope: ChangeScope, path: string) =
 
 type Loaded<T> = { value: T } | { error: string };
 
+const LOADS_KEPT = 100;
+const keptLoads = new Map<string, Loaded<unknown>>();
+const selectedPaths = new Map<string, string | null>();
+
+function keepLoad(key: string, loaded: Loaded<unknown>) {
+  keptLoads.delete(key);
+  keptLoads.set(key, loaded);
+  if (keptLoads.size > LOADS_KEPT) keptLoads.delete(keptLoads.keys().next().value!);
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
 /**
- * Loads again each time `trigger` changes, one request at a time: triggers that come while one runs are answered
- * by a single load after it, with the newest `load`.
+ * What `load` answered last for `key`, kept while the app runs, so the view shows it at once when it opens again.
+ * It loads again when it opens and each time `trigger` changes, one request at a time, and shows the answer only
+ * when it differs from the kept one.
  */
-function useLoadedOneAtATime<T>(load: () => Promise<T>, trigger: string): Loaded<T> | null {
-  const [loaded, setLoaded] = useState<Loaded<T> | null>(null);
-  const newestLoad = useRef(load);
-  newestLoad.current = load;
+function useKeptLoad<T>(key: string, load: () => Promise<T>, trigger: string): Loaded<T> | null {
+  const [, showNewAnswer] = useReducer((answers: number) => answers + 1, 0);
+  const newest = useRef({ key, load });
+  newest.current = { key, load };
   const running = useRef(false);
   const wantedAgain = useRef(false);
   useEffect(() => {
@@ -58,16 +71,19 @@ function useLoadedOneAtATime<T>(load: () => Promise<T>, trigger: string): Loaded
     (async () => {
       do {
         wantedAgain.current = false;
-        try {
-          setLoaded({ value: await newestLoad.current() });
-        } catch (error) {
-          setLoaded({ error: error instanceof Error ? error.message : String(error) });
-        }
+        const { key, load } = newest.current;
+        const answer: Loaded<unknown> = await load().then(
+          (value) => ({ value }),
+          (error) => ({ error: errorText(error) }),
+        );
+        if (JSON.stringify(answer) === JSON.stringify(keptLoads.get(key))) continue;
+        keepLoad(key, answer);
+        showNewAnswer();
       } while (wantedAgain.current);
       running.current = false;
     })();
-  }, [trigger]);
-  return loaded;
+  }, [key, trigger]);
+  return (keptLoads.get(key) as Loaded<T> | undefined) ?? null;
 }
 
 function FileRow({ file, selected, onSelect, children }: { file: ChangedFile; selected: boolean; onSelect: () => void; children: ReactNode }) {
@@ -156,16 +172,22 @@ function SelectedFile({ conversationId, file, loaded }: { conversationId: string
 export function ChangesView({ conversationId, refreshPoint }: { conversationId: string; refreshPoint: number }) {
   const scope = changesScope.use();
   const [refreshes, setRefreshes] = useState(0);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const loadedList = useLoadedOneAtATime(() => listChanges(conversationId, scope), `${scope} ${refreshPoint} ${refreshes}`);
-  const list = loadedList && "value" in loadedList && loadedList.value.scope === scope ? loadedList.value : null;
+  const reloadWhen = `${refreshPoint} ${refreshes}`;
+  const [selectedPath, setSelectedPath] = useState(selectedPaths.get(conversationId) ?? null);
+  const loadedList = useKeptLoad(`list ${conversationId} ${scope}`, () => listChanges(conversationId, scope), reloadWhen);
+  const list = loadedList && "value" in loadedList ? loadedList.value : null;
   const files = list ? [...list.project, ...list.outside] : [];
   const selected = files.find(({ path }) => path === selectedPath) ?? null;
-  const loadedDiff = useLoadedOneAtATime<FileChanges | null>(
+  const loadedDiff = useKeptLoad<FileChanges | null>(
+    `diff ${conversationId} ${scope} ${selected?.path}`,
     () => (selected ? fileChanges(conversationId, scope, selected.path) : Promise.resolve(null)),
-    `${scope} ${selected?.path} ${refreshPoint} ${refreshes}`,
+    reloadWhen,
   );
-  const toggle = (path: string) => setSelectedPath((was) => (was === path ? null : path));
+  const toggle = (path: string) => {
+    const next = path === selectedPath ? null : path;
+    selectedPaths.set(conversationId, next);
+    setSelectedPath(next);
+  };
   const selectedFile = selected && <SelectedFile conversationId={conversationId} file={selected} loaded={loadedDiff} />;
 
   return (

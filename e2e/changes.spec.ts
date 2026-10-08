@@ -186,3 +186,55 @@ test("Changes opens over a page, and a new page takes the canvas back", async ({
     await waitForTurnToEnd(page);
   });
 });
+
+test("Changes shows the files it listed last as soon as it opens again, and still updates them when they change", async ({ page }) => {
+  let heldLists: string[] | null = null;
+  let sendHeldLists = () => {};
+  await page.routeWebSocket(/\/ws\?/, (socket) => {
+    const host = socket.connectToServer();
+    socket.onMessage((message) => {
+      if (heldLists && /"type":"changes\.(list|diff)"/.test(String(message))) heldLists.push(String(message));
+      else host.send(message);
+    });
+    sendHeldLists = () => {
+      heldLists?.forEach((message) => host.send(message));
+      heldLists = null;
+    };
+  });
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  const canvas = page.locator(".canvas-panel");
+  const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
+  await changesButton.click();
+  await changes(page).getByRole("button", { name: "Uncommitted" }).click();
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt", "src/app.ts", "src/generated.txt"]);
+  await fileRow(page, "src/app.ts").click();
+  await expect(changes(page).locator(".changes-diff .code-row.added")).toContainText("line fifteen");
+
+  await changesButton.click();
+  await expect(changes(page)).toHaveCount(0);
+  heldLists = [];
+  await changesButton.click();
+  await expect.poll(() => heldLists?.length, "the list and the open file's changes are asked for again").toBe(2);
+  await expect(section(page, "Project").locator(".changed-path"), "the list from before, while the host has not answered").toHaveText([
+    "by-hand.txt",
+    "src/app.ts",
+    "src/generated.txt",
+  ]);
+  await expect(changes(page).locator(".changes-diff .code-row.added"), "with the file that was open still open").toContainText("line fifteen");
+  await expect(changes(page)).not.toContainText("Loading…");
+
+  writeFileSync(join(host.projectDir, "later.txt"), "later\n");
+  sendHeldLists();
+  await changes(page).getByRole("button", { name: "Refresh" }).click();
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt", "later.txt", "src/app.ts", "src/generated.txt"]);
+
+  await test.step("when the host comes back after a restart, an empty canvas lists the files again", async () => {
+    await startConversation(page);
+    await expect(fileRow(page, "later.txt")).toBeVisible();
+    writeFileSync(join(host.projectDir, "while-away.txt"), "away\n");
+    await host.restart();
+    await expect(fileRow(page, "while-away.txt")).toBeVisible({ timeout: 60_000 });
+  });
+  await changes(page).getByRole("button", { name: "This turn" }).click();
+});
