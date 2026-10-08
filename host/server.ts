@@ -26,7 +26,7 @@ import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
 import { canvasChangedSince, DEFLATED_MESSAGES_HEADER, type LowDataSubscription } from "../shared/low-data.ts";
-import { movedBefore } from "../shared/sidebar-order.ts";
+import { sidebarIdsAfterMove } from "../shared/sidebar-order.ts";
 import { withChunksCoalesced } from "../shared/timeline.ts";
 import { authorityFingerprint as fingerprintOf, type ServingCertificate } from "./certificates.ts";
 import { publicAddressOf, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress, type HostConfig } from "./config.ts";
@@ -499,27 +499,41 @@ export function startServer(services: HostServices) {
     mcp.forget(conversationId);
   }
 
-  /** Tells every window of the workspaces whose place in the sidebar changed since `before`: their position or their group. */
-  function broadcastMovedWorkspaces(before: Workspace[]) {
+  const sidebarNow = () => ({ workspaces: store.listWorkspaces(), groups: store.listWorkspaceGroups() });
+
+  /** Tells every window of the workspaces and groups whose place in the sidebar changed since `before`: their position, or a workspace's group. */
+  function broadcastSidebarChanges(before: ReturnType<typeof sidebarNow>) {
     const placeOf = ({ position, groupId }: Workspace) => `${position} ${groupId}`;
-    const placeBefore = new Map(before.map((workspace) => [workspace.id, placeOf(workspace)]));
-    store
-      .listWorkspaces()
-      .filter((workspace) => placeBefore.get(workspace.id) !== placeOf(workspace))
-      .forEach((workspace) => hub.broadcast({ type: "workspace.upserted", workspace }));
+    const workspacePlaces = new Map(before.workspaces.map((workspace) => [workspace.id, placeOf(workspace)]));
+    const groupPositions = new Map(before.groups.map(({ id, position }) => [id, position]));
+    const now = sidebarNow();
+    now.workspaces.filter((workspace) => workspacePlaces.get(workspace.id) !== placeOf(workspace)).forEach((workspace) => hub.broadcast({ type: "workspace.upserted", workspace }));
+    now.groups.filter(({ id, position }) => groupPositions.get(id) !== position).forEach((group) => hub.broadcast({ type: "workspace-group.upserted", group }));
   }
 
-  /** Workspace positions run across the groups, so landing before a workspace of another group would land nowhere in particular. */
-  function moveWorkspace(workspaceId: string, groupId: string | null | undefined, beforeWorkspaceId: string | null) {
-    const before = store.listWorkspaces();
+  /** Something lands in a group just before a workspace of it, or among the groups and the workspaces in none before either; or last. */
+  function checkLanding({ workspaces, groups }: ReturnType<typeof sidebarNow>, groupId: string | null, beforeWorkspaceId: string | null, beforeGroupId: string | null) {
+    const groupExists = (id: string) => groups.some((group) => group.id === id);
+    if (groupId !== null && !groupExists(groupId)) throw new Error("That group is gone");
+    if (beforeGroupId !== null && groupId !== null) throw new Error("Only something in no group can land before a group");
+    if (beforeGroupId !== null && !groupExists(beforeGroupId)) throw new Error("That group is gone");
+    const landsBefore = workspaces.find(({ id }) => id === beforeWorkspaceId);
+    if (landsBefore && landsBefore.groupId !== groupId) throw new Error("A workspace can only land before another of the same group");
+  }
+
+  /** Without a group, as the phone app moves it, a workspace keeps its own, and lands near the workspace named if that is in another. */
+  function moveWorkspace(workspaceId: string, groupId: string | null | undefined, beforeWorkspaceId: string | null, beforeGroupId: string | null) {
+    const before = sidebarNow();
+    const moving = before.workspaces.find(({ id }) => id === workspaceId);
+    if (!moving) throw new Error("That workspace is gone");
+    const landsIn = groupId === undefined ? moving.groupId : groupId;
     if (groupId !== undefined) {
-      if (groupId !== null && !store.findWorkspaceGroup(groupId)) throw new Error("That group is gone");
-      const landsBefore = before.find(({ id }) => id === beforeWorkspaceId);
-      if (landsBefore && landsBefore.groupId !== groupId) throw new Error("A workspace can only land before another of the same group");
+      checkLanding(before, groupId, beforeWorkspaceId, beforeGroupId);
       store.setWorkspaceGroup(workspaceId, groupId);
     }
-    store.setWorkspaceOrder(movedBefore(before.map(({ id }) => id), workspaceId, beforeWorkspaceId));
-    broadcastMovedWorkspaces(before);
+    const workspaces = before.workspaces.map((workspace) => (workspace.id === workspaceId ? { ...workspace, groupId: landsIn } : workspace));
+    store.setSidebarOrder(sidebarIdsAfterMove(workspaces, before.groups, workspaceId, beforeGroupId ?? beforeWorkspaceId));
+    broadcastSidebarChanges(before);
   }
 
   function groupName(name: string) {
@@ -539,20 +553,18 @@ export function startServer(services: HostServices) {
     if (group) hub.broadcast({ type: "workspace-group.upserted", group });
   }
 
-  function moveWorkspaceGroup(groupId: string, beforeGroupId: string | null) {
-    const before = store.listWorkspaceGroups();
-    store.setWorkspaceGroupOrder(movedBefore(before.map(({ id }) => id), groupId, beforeGroupId));
-    const positionBefore = new Map(before.map(({ id, position }) => [id, position]));
-    store
-      .listWorkspaceGroups()
-      .filter(({ id, position }) => positionBefore.get(id) !== position)
-      .forEach((group) => hub.broadcast({ type: "workspace-group.upserted", group }));
+  function moveWorkspaceGroup(groupId: string, beforeGroupId: string | null, beforeWorkspaceId: string | null) {
+    const before = sidebarNow();
+    if (!before.groups.some(({ id }) => id === groupId)) throw new Error("That group is gone");
+    checkLanding(before, null, beforeWorkspaceId, beforeGroupId);
+    store.setSidebarOrder(sidebarIdsAfterMove(before.workspaces, before.groups, groupId, beforeGroupId ?? beforeWorkspaceId));
+    broadcastSidebarChanges(before);
   }
 
   function deleteWorkspaceGroup(groupId: string) {
-    const before = store.listWorkspaces();
+    const before = sidebarNow();
     store.deleteWorkspaceGroup(groupId);
-    broadcastMovedWorkspaces(before);
+    broadcastSidebarChanges(before);
     hub.broadcast({ type: "workspace-group.deleted", groupId });
   }
 
@@ -626,7 +638,7 @@ export function startServer(services: HostServices) {
       case "workspace.set-default-launch":
         return profiles.setWorkspaceDefault(message.workspaceId, message.launch);
       case "workspace.move":
-        return moveWorkspace(message.workspaceId, message.groupId, message.beforeWorkspaceId);
+        return moveWorkspace(message.workspaceId, message.groupId, message.beforeWorkspaceId, message.beforeGroupId ?? null);
       case "workspace.set-color":
         return colorWorkspace(message.workspaceId, message.color);
       case "workspace-group.create":
@@ -634,7 +646,7 @@ export function startServer(services: HostServices) {
       case "workspace-group.rename":
         return renameWorkspaceGroup(message.groupId, message.name);
       case "workspace-group.move":
-        return moveWorkspaceGroup(message.groupId, message.beforeGroupId);
+        return moveWorkspaceGroup(message.groupId, message.beforeGroupId, message.beforeWorkspaceId ?? null);
       case "workspace-group.delete":
         return deleteWorkspaceGroup(message.groupId);
       case "profile.save":

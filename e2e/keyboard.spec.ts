@@ -39,16 +39,16 @@ const focusedTag = (page: Page) => page.evaluate(() => document.activeElement?.t
 test("conversations, workspaces, the canvas and the dialogs are all reachable from the keyboard", async ({ page }) => {
   await signIn(page, host);
   const primary = await primaryModifier(page);
-  await addWorkspace(page, host.projectDir);
+  await addWorkspace(page, secondProjectDir);
 
   await page.keyboard.press(`${primary}+KeyK`);
   const palette = page.getByLabel("Search conversations and actions");
   await palette.fill("add workspace");
   await palette.press("Enter");
   const directory = page.getByLabel("Workspace directory");
-  await directory.fill(secondProjectDir);
+  await directory.fill(host.projectDir);
   await directory.press("Enter");
-  await expect(workspaceCard(page, secondProjectDir)).toBeVisible();
+  await expect(workspaceCard(page, host.projectDir)).toBeVisible();
   await page.keyboard.press("Alt+Shift+KeyT");
   await expect(directory).toBeFocused();
   await directory.press("Escape");

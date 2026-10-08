@@ -1,6 +1,7 @@
 import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
 import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
+import { sidebarItems } from "../shared/sidebar-order.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { changesRefreshPoint } from "./changes.ts";
@@ -37,6 +38,7 @@ import { useSystemNotifications } from "./system-notifications.ts";
 import { TerminalPane } from "./Terminals.tsx";
 import { useShortcuts } from "./useShortcuts.ts";
 import { WorkspaceArea } from "./Workspace.tsx";
+import { idBelowGroup, landingBefore } from "./workspace-groups.ts";
 
 const conversationFromHash = () => location.hash.match(/^#\/c\/(.+)$/)?.[1] ?? null;
 
@@ -121,16 +123,22 @@ function paletteEntries(
       run: () => dispatch({ type: "select", conversationId: conversation.id }),
     }),
   );
-  const moveToGroup = (workspace: Workspace, groupId: string | null) =>
-    connection.send({ type: "workspace.move", workspaceId: workspace.id, groupId, beforeWorkspaceId: null });
-  /** A workspace's group, the way the palette moves it: to each other group, last in it, or out of its own, last at the top. */
+  const moveToGroup = (workspace: Workspace, groupId: string) => connection.send({ type: "workspace.move", workspaceId: workspace.id, groupId, beforeWorkspaceId: null });
+  const takeOutOfGroup = (workspace: Workspace, groupId: string) =>
+    connection.send({
+      type: "workspace.move",
+      workspaceId: workspace.id,
+      groupId: null,
+      ...landingBefore(state.workspaceGroups, idBelowGroup(sidebarItems(state.workspaces, state.workspaceGroups), groupId)),
+    });
+  /** A workspace's group, the way the palette moves it: to each other group, last in it, or out of its own, just below it. */
   const groupMoves = (workspace: Workspace): PaletteEntry[] => {
     const ownGroup = state.workspaceGroups.find(({ id }) => id === workspace.groupId);
     const intoOthers = state.workspaceGroups
       .filter(({ id }) => id !== ownGroup?.id)
       .map((group): PaletteEntry => ({ id: `group-${workspace.id}-${group.id}`, label: `Move ${workspace.name} to group ${group.name}`, kind: "action", run: () => moveToGroup(workspace, group.id) }));
     const outOfOwn: PaletteEntry[] = ownGroup
-      ? [{ id: `ungroup-${workspace.id}`, label: `Take ${workspace.name} out of group ${ownGroup.name}`, kind: "action", run: () => moveToGroup(workspace, null) }]
+      ? [{ id: `ungroup-${workspace.id}`, label: `Take ${workspace.name} out of group ${ownGroup.name}`, kind: "action", run: () => takeOutOfGroup(workspace, ownGroup.id) }]
       : [];
     return [...intoOthers, ...outOfOwn];
   };

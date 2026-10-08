@@ -801,16 +801,15 @@ body.resizing iframe {
   align-items: center;
 }
 
-/* Groups of workspaces: a folding heading each, below the workspaces in none */
-
-.workspace-groups {
-  display: flex;
-  flex-direction: column;
-}
+/* Groups of workspaces: a folding heading each, among the workspaces in none, with their own a little indented */
 
 .workspace-group {
   position: relative;
   margin-top: 14px;
+}
+
+.workspace-group > .workspace {
+  margin-left: 12px;
 }
 
 .workspace-group > header {
@@ -901,22 +900,6 @@ button.icon.group-fold {
 .sidebar > .group-name-field {
   flex: none;
   margin: 14px 4px 0;
-}
-
-.ungrouped-drop {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px dashed var(--rail-line);
-  border-radius: 10px;
-  color: var(--muted);
-  font-size: calc(12px * var(--font-scale));
-  text-align: center;
-}
-
-.ungrouped-drop.drop-into {
-  border-color: var(--accent);
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .hint {

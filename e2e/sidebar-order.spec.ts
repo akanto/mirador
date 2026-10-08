@@ -73,22 +73,22 @@ test("workspaces, and conversations within theirs, are dragged into an order eve
   await expect(workspaceCard(page, secondDir)).toBeVisible();
   await workspaceCard(page, secondDir).getByRole("button", { name: "+ New conversation" }).click();
   await expect(workspaceCard(page, secondDir).locator("li[data-reorder-id]")).toHaveCount(1);
-  const [projectId, secondId] = await workspaceIds(page);
+  const [secondId, projectId] = await workspaceIds(page);
   const heading = (directory: string) => workspaceCard(page, directory).locator("header");
 
-  await test.step("a conversation dragged over another workspace stays in its own, at its end", async () => {
-    await dragOnto(page, row(second), workspaceCard(page, secondDir), "bottom");
+  await test.step("a conversation dragged over another workspace, which a new one is above, stays in its own, first", async () => {
+    await dragOnto(page, row(first), workspaceCard(page, secondDir), "bottom");
     await page.mouse.up();
-    await expect.poll(() => conversationIds(page, host.projectDir)).toEqual([third, first, second]);
+    await expect.poll(() => conversationIds(page, host.projectDir)).toEqual([first, second, third]);
     await expect(workspaceCard(page, secondDir).locator("li[data-reorder-id]")).toHaveCount(1);
   });
 
   await test.step("a workspace dragged by its heading above another moves there, and stays after a reload", async () => {
-    await dragOnto(page, heading(secondDir), heading(host.projectDir), "top");
-    await expect(workspaceCard(page, host.projectDir)).toHaveClass(/drop-before/);
+    await dragOnto(page, heading(host.projectDir), heading(secondDir), "top");
+    await expect(workspaceCard(page, secondDir)).toHaveClass(/drop-before/);
     await page.mouse.up();
-    await expect.poll(() => workspaceIds(page)).toEqual([secondId, projectId]);
+    await expect.poll(() => workspaceIds(page)).toEqual([projectId, secondId]);
     await page.reload();
-    await expect.poll(() => workspaceIds(page)).toEqual([secondId, projectId]);
+    await expect.poll(() => workspaceIds(page)).toEqual([projectId, secondId]);
   });
 });

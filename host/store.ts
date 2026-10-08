@@ -21,6 +21,7 @@ import type {
 } from "../shared/model.ts";
 import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
+import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
 const deviceColumns = "id, name, joined_at AS joinedAt, last_seen_at AS lastSeenAt";
@@ -218,6 +219,7 @@ export class Store {
     const hadPromptTemplates = this.hasTable("prompt_templates");
     this.db.run(schema);
     this.addMissingColumns();
+    this.shareSidebarOrder();
     if (!hadPromptTemplates) defaultPromptTemplates.forEach((template) => this.savePromptTemplate({ ...template, createdAt: Date.now() }));
   }
 
@@ -243,18 +245,28 @@ export class Store {
     return row ? toWorkspace(row) : undefined;
   }
 
-  /** Adds the workspace after the others, in no group. */
+  /** Adds the workspace first in the sidebar, in no group. */
   insertWorkspace(workspace: Omit<Workspace, "position" | "color" | "groupId">): Workspace {
-    const { next: position } = this.db.query("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM workspaces").get() as { next: number };
+    const position = this.firstSidebarPosition();
     this.db
       .query("INSERT INTO workspaces (id, name, path, default_harness, default_profile_id, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(workspace.id, workspace.name, workspace.path, workspace.defaultLaunch.harness, workspace.defaultLaunch.profileId, position, workspace.createdAt);
     return { ...workspace, color: null, position, groupId: null };
   }
 
-  /** Numbers the workspaces' positions in the given order. */
-  setWorkspaceOrder(workspaceIds: string[]) {
-    this.setPositions("workspaces", workspaceIds);
+  /** Numbers the positions of the workspaces and the groups, which share one order, in the given order. */
+  setSidebarOrder(ids: string[]) {
+    this.db.transaction(() => {
+      this.setPositions("workspaces", ids);
+      this.setPositions("workspace_groups", ids);
+    })();
+  }
+
+  private firstSidebarPosition() {
+    const { first } = this.db
+      .query("SELECT COALESCE(MIN(position) - 1, 0) AS first FROM (SELECT position FROM workspaces UNION ALL SELECT position FROM workspace_groups)")
+      .get() as { first: number };
+    return first;
   }
 
   setWorkspaceGroup(workspaceId: string, groupId: string | null) {
@@ -270,9 +282,9 @@ export class Store {
     return row ? toWorkspaceGroup(row) : undefined;
   }
 
-  /** Adds the group after the others. */
+  /** Adds the group first in the sidebar. */
   insertWorkspaceGroup(group: Omit<WorkspaceGroup, "position">): WorkspaceGroup {
-    const { next: position } = this.db.query("SELECT COALESCE(MAX(position) + 1, 0) AS next FROM workspace_groups").get() as { next: number };
+    const position = this.firstSidebarPosition();
     this.db.query("INSERT INTO workspace_groups (id, name, position, created_at) VALUES (?, ?, ?, ?)").run(group.id, group.name, position, group.createdAt);
     return { ...group, position };
   }
@@ -281,18 +293,10 @@ export class Store {
     this.db.query("UPDATE workspace_groups SET name = ? WHERE id = ?").run(name, groupId);
   }
 
-  /** Numbers the groups' positions in the given order. */
-  setWorkspaceGroupOrder(groupIds: string[]) {
-    this.setPositions("workspace_groups", groupIds);
-  }
-
-  /** Its workspaces go on, in their order, after the others: last among the workspaces in no group. */
+  /** Its workspaces stay where it was in the sidebar, in their order, in no group. */
   deleteWorkspaceGroup(groupId: string) {
     this.db.transaction(() => {
-      const workspaces = this.listWorkspaces();
-      const staying = workspaces.filter((workspace) => workspace.groupId !== groupId);
-      const leaving = workspaces.filter((workspace) => workspace.groupId === groupId);
-      this.setPositions("workspaces", [...staying, ...leaving].map(({ id }) => id));
+      this.setSidebarOrder(sidebarIds(sidebarItems(this.listWorkspaces(), this.listWorkspaceGroups())).filter((id) => id !== groupId));
       this.db.query("UPDATE workspaces SET group_id = NULL WHERE group_id = ?").run(groupId);
       this.db.query("DELETE FROM workspace_groups WHERE id = ?").run(groupId);
     })();
@@ -908,6 +912,25 @@ export class Store {
   private setPositions(table: "workspaces" | "workspace_groups" | "conversations", ids: string[]) {
     const setPosition = this.db.query(`UPDATE ${table} SET position = ? WHERE id = ?`);
     this.db.transaction(() => ids.forEach((id, position) => setPosition.run(position, id)))();
+  }
+
+  /**
+   * The groups once had an order of their own, below every workspace in no group, and the workspaces one across the
+   * groups: numbered once into the order they share now, so the sidebar looks as it did. A workspace whose group is
+   * gone, which showed among those in none, is put there.
+   */
+  private shareSidebarOrder() {
+    if (this.setting("sidebar_order") === "shared") return;
+    this.db.transaction(() => {
+      const workspaces = this.listWorkspaces();
+      const groups = this.listWorkspaceGroups();
+      const groupIds = new Set(groups.map(({ id }) => id));
+      const ungrouped = workspaces.filter(({ groupId }) => groupId === null || !groupIds.has(groupId));
+      const membersOf = (groupId: string) => workspaces.filter((workspace) => workspace.groupId === groupId).map(({ id }) => id);
+      this.db.query("UPDATE workspaces SET group_id = NULL WHERE group_id NOT IN (SELECT id FROM workspace_groups)").run();
+      this.setSidebarOrder([...ungrouped.map(({ id }) => id), ...groups.flatMap(({ id }) => [id, ...membersOf(id)])]);
+      this.setSetting("sidebar_order", "shared");
+    })();
   }
 
   private addMissingColumns() {

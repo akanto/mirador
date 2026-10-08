@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import type { CanvasItem, Conversation, ConversationEvent, JobWait, Profile } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
+import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
 
 function seededStore() {
   const store = new Store(":memory:");
@@ -38,19 +39,22 @@ function seededStore() {
   return { store, conversation };
 }
 
+const sidebarOrder = (store: Store) => sidebarIds(sidebarItems(store.listWorkspaces(), store.listWorkspaceGroups()));
+
 const canvasItem: CanvasItem = { id: "i1", conversationId: "c1", kind: "show", title: "x", html: "<p>", status: "shown", createdAt: 1 };
 
 describe("Store", () => {
-  test("new workspaces and conversations go last, and keep the order they are given", () => {
+  test("a new workspace goes first and a new conversation last, and they keep the order they are given", () => {
     const { store, conversation } = seededStore();
-    const second = store.insertWorkspace({ id: "w2", name: "second", path: "/tmp/second", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 2 });
+    store.insertWorkspace({ id: "w2", name: "second", path: "/tmp/second", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 2 });
     const later = store.insertConversation({ ...conversation, id: "c2", createdAt: 2 });
     const elsewhere = store.insertConversation({ ...conversation, id: "c3", workspaceId: "w2", createdAt: 3 });
-    expect([second.position, later.position, elsewhere.position]).toEqual([1, 1, 0]);
-
-    store.setWorkspaceOrder(["w2", "w1"]);
-    store.setConversationOrder(["c2", "c1"]);
     expect(store.listWorkspaces().map(({ id }) => id)).toEqual(["w2", "w1"]);
+    expect([later.position, elsewhere.position]).toEqual([1, 0]);
+
+    store.setSidebarOrder(["w1", "w2"]);
+    store.setConversationOrder(["c2", "c1"]);
+    expect(store.listWorkspaces().map(({ id }) => id)).toEqual(["w1", "w2"]);
     expect(store.findConversation("c2")?.position).toBe(0);
     expect(store.findConversation("c1")?.position).toBe(1);
   });
@@ -171,39 +175,71 @@ describe("Store", () => {
     expect(store.listWorkspaces()[0]?.color).toBeNull();
   });
 
-  test("new groups go last and keep the order and names they are given, and a workspace remembers its group", () => {
+  test("a new group goes first, before the workspaces too, and groups keep the order and names they are given", () => {
     const { store } = seededStore();
-    const clients = store.insertWorkspaceGroup({ id: "g1", name: "Clients", createdAt: 1 });
-    const own = store.insertWorkspaceGroup({ id: "g2", name: "Own", createdAt: 2 });
-    expect([clients.position, own.position]).toEqual([0, 1]);
-    store.setWorkspaceGroupOrder(["g2", "g1"]);
+    store.insertWorkspaceGroup({ id: "g1", name: "Clients", createdAt: 1 });
+    store.insertWorkspaceGroup({ id: "g2", name: "Own", createdAt: 2 });
+    expect(sidebarOrder(store)).toEqual(["g2", "g1", "w1"]);
+    store.setSidebarOrder(["g1", "w1", "g2"]);
     store.renameWorkspaceGroup("g1", "Customers");
-    expect(store.listWorkspaceGroups().map(({ name }) => name)).toEqual(["Own", "Customers"]);
+    expect(store.listWorkspaceGroups().map(({ name }) => name)).toEqual(["Customers", "Own"]);
+    expect(sidebarOrder(store)).toEqual(["g1", "w1", "g2"]);
 
     expect(store.findWorkspace("w1")?.groupId).toBeNull();
     store.setWorkspaceGroup("w1", "g1");
     expect(store.findWorkspace("w1")?.groupId).toBe("g1");
   });
 
-  test("deleting a group puts its workspaces last among those in none, in their order, and keeps the other groups'", () => {
+  test("deleting a group leaves its workspaces where it was, in their order, in no group, and keeps the other groups'", () => {
     const { store } = seededStore();
-    const workspace = (id: string, createdAt: number) =>
-      store.insertWorkspace({ id, name: id, path: `/tmp/${id}`, defaultLaunch: { harness: "claude", profileId: null }, createdAt });
-    ["w2", "w3", "w4"].forEach((id, index) => workspace(id, index + 2));
+    ["w2", "w3", "w4"].forEach((id, index) =>
+      store.insertWorkspace({ id, name: id, path: `/tmp/${id}`, defaultLaunch: { harness: "claude", profileId: null }, createdAt: index + 2 }),
+    );
     store.insertWorkspaceGroup({ id: "g1", name: "Gone", createdAt: 1 });
     store.insertWorkspaceGroup({ id: "g2", name: "Kept", createdAt: 2 });
     store.setWorkspaceGroup("w1", "g1");
     store.setWorkspaceGroup("w3", "g1");
     store.setWorkspaceGroup("w4", "g2");
+    store.setSidebarOrder(["w2", "g1", "w1", "w3", "g2", "w4"]);
 
     store.deleteWorkspaceGroup("g1");
     expect(store.listWorkspaceGroups().map(({ id }) => id)).toEqual(["g2"]);
+    expect(sidebarOrder(store)).toEqual(["w2", "w1", "w3", "g2", "w4"]);
     expect(store.listWorkspaces().map(({ id, groupId }) => [id, groupId])).toEqual([
       ["w2", null],
-      ["w4", "g2"],
       ["w1", null],
       ["w3", null],
+      ["w4", "g2"],
     ]);
+  });
+
+  test("keeps the sidebar as it looked when the groups had an order of their own, below the workspaces in none, and numbers it only once", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    ["a", "b", "c", "d", "e"].forEach((id) => store.insertWorkspace({ id, name: id, path: `/tmp/${id}`, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 }));
+    store.insertWorkspaceGroup({ id: "g1", name: "One", createdAt: 1 });
+    store.insertWorkspaceGroup({ id: "g2", name: "Two", createdAt: 2 });
+    store.close();
+    const old = new Database(path);
+    old.run("DELETE FROM settings WHERE key = 'sidebar_order'");
+    const placeWorkspace = old.query("UPDATE workspaces SET position = ?, group_id = ? WHERE id = ?");
+    placeWorkspace.run(0, "g2", "a");
+    placeWorkspace.run(1, null, "b");
+    placeWorkspace.run(2, "g1", "c");
+    placeWorkspace.run(3, null, "d");
+    placeWorkspace.run(4, "gone", "e");
+    old.query("UPDATE workspace_groups SET position = ? WHERE id = ?").run(0, "g1");
+    old.query("UPDATE workspace_groups SET position = ? WHERE id = ?").run(1, "g2");
+    old.close();
+
+    const shared = new Store(path);
+    expect(sidebarOrder(shared)).toEqual(["b", "d", "e", "g1", "c", "g2", "a"]);
+    expect(shared.findWorkspace("e")?.groupId).toBeNull();
+    shared.setSidebarOrder(["g2", "a", "b", "d", "e", "g1", "c"]);
+    shared.close();
+    const reopened = new Store(path);
+    expect(sidebarOrder(reopened)).toEqual(["g2", "a", "b", "d", "e", "g1", "c"]);
+    reopened.close();
   });
 
   test("remembers a machine's colour until the user takes it away", () => {

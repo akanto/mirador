@@ -220,9 +220,9 @@ export interface Workspace {
   defaultLaunch: Launch;
   /** Picked by the user to tell workspaces apart in the sidebar. */
   color: Pastel | null;
-  /** Its place among the workspaces in the sidebar, the ones of every group alike. */
+  /** Its place in the sidebar's one order of workspaces and groups: among its group's workspaces, or among the groups and the workspaces in none. */
   position: number;
-  /** The group it is shown in, or null for the workspaces above the groups. */
+  /** The group it is shown in, or null for one among the groups. */
   groupId: string | null;
   createdAt: number;
 }
@@ -231,7 +231,7 @@ export interface Workspace {
 export interface WorkspaceGroup {
   id: string;
   name: string;
-  /** Its place among the groups, which come after the workspaces in none. */
+  /** Its place in the order it shares with the workspaces in no group. */
   position: number;
   createdAt: number;
 }

@@ -66,16 +66,17 @@ export type ClientMessage =
   | { type: "workspace.delete"; workspaceId: string }
   | { type: "workspace.set-default-launch"; workspaceId: string; launch: Launch }
   /**
-   * Puts the workspace just before another of the group in the sidebar, or last in it; null for the workspaces in none.
-   * Without a group it keeps its own, as the phone app, which shows no groups, moves it.
+   * Puts the workspace just before another of the group in the sidebar, or last in it; with a null group, among the
+   * groups and the workspaces in none, where it can land before a group too. Without a group it keeps its own, as the
+   * phone app, which shows no groups, moves it.
    */
-  | { type: "workspace.move"; workspaceId: string; groupId?: string | null; beforeWorkspaceId: string | null }
+  | { type: "workspace.move"; workspaceId: string; groupId?: string | null; beforeWorkspaceId: string | null; beforeGroupId?: string | null }
   | { type: "workspace.set-color"; workspaceId: string; color: Pastel | null }
   | { type: "workspace-group.create"; name: string }
   | { type: "workspace-group.rename"; groupId: string; name: string }
-  /** Puts the group just before another in the sidebar, or last. */
-  | { type: "workspace-group.move"; groupId: string; beforeGroupId: string | null }
-  /** Its workspaces go on, last, among the workspaces in no group. */
+  /** Puts the group just before another, or before a workspace in no group, in the sidebar; or last. */
+  | { type: "workspace-group.move"; groupId: string; beforeGroupId: string | null; beforeWorkspaceId?: string | null }
+  /** Its workspaces stay where it was in the sidebar, in no group. */
   | { type: "workspace-group.delete"; groupId: string }
   | { type: "profile.save"; requestId: string; profile: ProfileDraft }
   | { type: "profile.delete"; profileId: string }
