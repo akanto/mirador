@@ -86,16 +86,8 @@ export class HarnessProcess {
     return this.agent().request(acp.methods.agent.session.list, { cwd });
   }
 
-  /** A turn the agent process goes away during fails with why it went away, rather than with the closed connection. */
   async prompt(sessionId: string, prompt: acp.ContentBlock[]) {
-    const connection = this.connection;
-    try {
-      return await this.agent().request(acp.methods.agent.session.prompt, { sessionId, prompt });
-    } catch (error) {
-      if (!connection?.signal.aborted) throw error;
-      const reason = await Promise.race([this.exited, Bun.sleep(EXIT_WAIT_MS).then(() => null)]);
-      throw reason === null ? error : new Error(`The ${this.spec.label} agent process ${reason}.`);
-    }
+    return this.failingWithExitReason((agent) => agent.request(acp.methods.agent.session.prompt, { sessionId, prompt }));
   }
 
   /**
@@ -124,7 +116,7 @@ export class HarnessProcess {
   async setConfigOption(sessionId: string, configId: string, value: ConfigValue) {
     const request: acp.SetSessionConfigOptionRequest =
       typeof value === "boolean" ? { sessionId, configId, type: "boolean", value } : { sessionId, configId, value };
-    return this.agent().request(acp.methods.agent.session.setConfigOption, request);
+    return this.failingWithExitReason((agent) => agent.request(acp.methods.agent.session.setConfigOption, request));
   }
 
   /**
@@ -144,6 +136,21 @@ export class HarnessProcess {
   private agent() {
     if (!this.connection) throw new Error(`The ${this.spec.label} agent is not running`);
     return this.connection.agent;
+  }
+
+  /**
+   * A request the agent process goes away during fails with why it went away, rather than with the closed connection,
+   * and only once the process has exited, so by then the process is known to be gone.
+   */
+  private async failingWithExitReason<T>(request: (agent: acp.ClientConnection["agent"]) => Promise<T>): Promise<T> {
+    const connection = this.connection;
+    try {
+      return await request(this.agent());
+    } catch (error) {
+      if (!connection?.signal.aborted) throw error;
+      const reason = await Promise.race([this.exited, Bun.sleep(EXIT_WAIT_MS).then(() => null)]);
+      throw reason === null ? error : new Error(`The ${this.spec.label} agent process ${reason}.`);
+    }
   }
 
   private launchInTurn() {

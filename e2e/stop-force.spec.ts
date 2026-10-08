@@ -6,6 +6,7 @@ import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5270, { fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
+const agentLogFile = join(host.root, "agent-log");
 const profileName = "wedged";
 
 /** An opencode that is an agent of its own, taking prompts and never finishing them. */
@@ -13,7 +14,7 @@ function fakeOpencode() {
   mkdirSync(host.fakeProgramsDir, { recursive: true });
   writeFileSync(
     join(host.fakeProgramsDir, "opencode"),
-    `#!/bin/sh\nFAKE_ACP_PROMPTS='${promptsFile}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
+    `#!/bin/sh\nFAKE_ACP_PROMPTS='${promptsFile}' FAKE_ACP_LOG='${agentLogFile}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
   );
   chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
 }
@@ -29,6 +30,7 @@ test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fakeOpencode();
   writeFileSync(promptsFile, "");
+  writeFileSync(agentLogFile, "");
   await host.start();
 });
 test.afterAll(async () => {
@@ -138,4 +140,65 @@ test("Saving a changed profile stops the turns its agent runs, as Stop does, and
   await expect.poll(() => sentTimes("WEDGE before the edit"), { timeout: 30_000 }).toBe(2);
   await expect(status(page)).toHaveText("running");
   await expect(timeline(page).locator(".error-line")).toHaveCount(0);
+});
+
+/** What the agents with a FAKE_ACP_NAME did: started, changed an option, closed a session. */
+const agentLog = () =>
+  readFileSync(agentLogFile, "utf8")
+    .split("\n")
+    .filter((line) => line !== "");
+const SLOW_ANSWER_MS = 12_000;
+
+test("A profile switch goes on without an agent that doesn't answer: its options land once it answers, and Force stop ends the wait", async ({ page }) => {
+  await signInToWorkspace(page);
+  for (const [name, environment] of [
+    ["answering", "FAKE_ACP_MODES=1\nFAKE_ACP_NAME=answering"],
+    ["slow", `FAKE_ACP_MODES=1\nFAKE_ACP_NAME=slow\nFAKE_ACP_ANSWERS_AFTER_MS=${SLOW_ANSWER_MS}`],
+  ]) {
+    const profiles = await createProfile(page, name!, environment!, "", "opencode");
+    await profiles.getByRole("button", { name: "Close" }).click();
+  }
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "answering · opencode" });
+  await startConversationWithoutModel(page);
+  const option = (name: string) => page.getByLabel(name, { exact: true }).filter({ visible: true });
+  await option("Mode").selectOption({ label: "Plan" });
+  await option("Effort").selectOption({ label: "High" });
+  await expect.poll(agentLog).toEqual(expect.arrayContaining(["answering set mode to plan", "answering set effort to high"]));
+
+  await test.step("on an agent slow to answer, the switch stops waiting for the first change, and the picker follows once the agent answers", async () => {
+    await profilePicker(page).selectOption({ label: "slow" });
+    await expect(timeline(page).locator(".error-line")).toHaveText(
+      "Mode is still default: the agent has not answered the change to plan for 10 seconds. It changes once the agent answers.",
+      { timeout: 15_000 },
+    );
+    await expect(status(page)).toHaveText("idle");
+    await expect(option("Mode")).toHaveValue("default");
+    await expect(option("Mode")).toHaveValue("plan", { timeout: SLOW_ANSWER_MS });
+    await expect(timeline(page).locator(".error-line")).toHaveCount(1);
+  });
+
+  await test.step("switching away waits only a few seconds for the slow agent to let go of its session", async () => {
+    await profilePicker(page).selectOption({ label: "answering" });
+    await expect(timeline(page)).toContainText("Now using the profile “answering”");
+    await expect(status(page)).toHaveText("idle", { timeout: 10_000 });
+    expect(agentLog().filter((line) => line.startsWith("slow closed"))).toEqual([]);
+    await expect(option("Mode")).toHaveValue("plan");
+    await option("Effort").selectOption({ label: "High" });
+    await expect.poll(() => agentLog().filter((line) => line === "answering set effort to high").length).toBe(2);
+  });
+
+  await test.step("Force stop ends a switch that waits for the agent, and starts no other agent for the changes left", async () => {
+    const slowStarts = () => agentLog().filter((line) => line === "slow started").length;
+    expect(slowStarts()).toBe(1);
+    const errorsBefore = await timeline(page).locator(".error-line").count();
+    await profilePicker(page).selectOption({ label: "slow" });
+    const stop = page.locator(".composer:visible .stop");
+    await stop.click();
+    await expect(stop).toHaveText("Force stop", { timeout: 5_000 });
+    await stop.click();
+    await expect(status(page)).toHaveText("idle", { timeout: 5_000 });
+    await expect(timeline(page).locator(".error-line")).toHaveCount(errorsBefore + 1);
+    await expect(timeline(page).locator(".error-line").last()).toHaveText("Could not set Mode to plan: The opencode (slow) agent process was force stopped.");
+    expect(slowStarts()).toBe(1);
+  });
 });

@@ -66,6 +66,9 @@ const ONLY_CLAUDE_CODE_REWINDS = "Taking a conversation back needs the agent to 
 const ONLY_GIT_REPOSITORIES = "Mirador keeps a turn's files only in a workspace that is a git repository.";
 const FILES_NO_LONGER_KEPT = `Mirador no longer keeps the files of that turn: it keeps those of a workspace's newest ${SNAPSHOTS_KEPT} turns.`;
 const TURN_STOP_TIMEOUT_MS = 10_000;
+/** Letting go of a session is a courtesy to its agent; one that doesn't answer must not hold up what comes next. */
+const SESSION_CLOSE_TIMEOUT_MS = 5_000;
+const OPTION_ANSWER_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
 const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
 const AUTOMATIC_CONTINUES_IN_A_ROW = 2;
@@ -115,6 +118,8 @@ export class ConversationService {
   /** One agent process per profile, by its id. */
   private readonly harnessesByProfile = new Map<string, HarnessProcess>();
   private readonly conversationBySession = new Map<string, string>();
+  /** Sessions whose agent left an option change unanswered for too long, so their next changes don't wait. */
+  private readonly sessionsSlowToAnswer = new Set<string>();
   private readonly updatesForUnknownSessions = new Map<string, acp.SessionNotification[]>();
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
@@ -855,7 +860,8 @@ export class ConversationService {
     const harness = runtime.harness;
     runtime.harness = undefined;
     runtime.sessionId = undefined;
-    return harness && sessionId ? harness.closeSession(sessionId).catch(() => {}) : Promise.resolve();
+    if (!harness || !sessionId) return Promise.resolve();
+    return Promise.race([harness.closeSession(sessionId).catch(() => {}), Bun.sleep(SESSION_CLOSE_TIMEOUT_MS)]);
   }
 
   /**
@@ -1023,17 +1029,36 @@ export class ConversationService {
 
   /**
    * Options depend on each other (haiku has no effort option), so one that no longer exists
-   * or is refused must not cost the user their session.
+   * or is refused must not cost the user their session. Nor may an agent that doesn't answer: Claude Code answers one
+   * request at a time, and its first, counting its context's tokens, can wait for a model server to load the model.
+   * Such a change still lands once the agent answers, and the session's later changes stop waiting for it meanwhile.
+   * A session whose agent process has gone has nothing to change.
    */
   private async trySetConfigOption(conversationId: string, sessionId: string, configId: string, value: ConfigValue) {
     const current = this.get(conversationId).configOptions.find(({ id }) => id === configId);
-    if (!current || current.currentValue === value) return;
-    try {
-      const response = await this.harnessFor(this.get(conversationId)).setConfigOption(sessionId, configId, value);
-      this.save({ ...this.get(conversationId), configOptions: response.configOptions });
-    } catch (error) {
-      this.append(conversationId, { type: "error", message: `Could not set ${current.name} to ${value}: ${errorMessage(error)}` });
-    }
+    const harness = this.runtime(conversationId).harness;
+    if (!current || current.currentValue === value || !harness) return;
+    const answered = harness.setConfigOption(sessionId, configId, value).then(
+      (response) => {
+        this.sessionsSlowToAnswer.delete(sessionId);
+        if (this.isOnSession(conversationId, sessionId)) this.save({ ...this.get(conversationId), configOptions: response.configOptions });
+      },
+      (error) => {
+        if (this.isOnSession(conversationId, sessionId)) this.append(conversationId, { type: "error", message: `Could not set ${current.name} to ${value}: ${errorMessage(error)}` });
+      },
+    );
+    if (this.sessionsSlowToAnswer.has(sessionId)) return;
+    const answeredInTime = await Promise.race([answered.then(() => true), Bun.sleep(OPTION_ANSWER_TIMEOUT_MS).then(() => false)]);
+    if (answeredInTime) return;
+    this.sessionsSlowToAnswer.add(sessionId);
+    this.append(conversationId, {
+      type: "error",
+      message: `${current.name} is still ${current.currentValue}: the agent has not answered the change to ${value} for ${OPTION_ANSWER_TIMEOUT_MS / 1000} seconds. It changes once the agent answers.`,
+    });
+  }
+
+  private isOnSession(conversationId: string, sessionId: string) {
+    return this.store.hasConversation(conversationId) && this.get(conversationId).acpSessionId === sessionId;
   }
 
   private canvasServerFor(conversationId: string): acp.McpServer {
