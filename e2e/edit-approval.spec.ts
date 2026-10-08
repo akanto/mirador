@@ -81,6 +81,7 @@ test("an edit the agent waits to make takes the canvas with the file's line numb
 
   await editView(page).getByRole("button", { name: "Allow", exact: true }).click();
   await expect(canvas(page).locator(".settled-note")).toHaveText("✓ Allowed: edit to src/app.ts");
+  await expect(canvas(page).locator(".settled-note")).toHaveClass(/done/);
   await expect(editView(page)).toHaveCount(0);
   await expect(lastAgentMessage(page)).toHaveText("Edit src/app.ts: allow");
   await expect(page.locator(".timeline:visible .permission.resolved .permission-outcome")).toHaveText("Allow");
@@ -109,6 +110,7 @@ test("edits waiting at once show oldest first, one not found in the file shows t
   await pendingCard(page).first().getByRole("button", { name: "Reject" }).click();
   await expect(canvas(page).locator(".canvas-title")).toHaveText("Write src/app.ts");
   await expect(view.locator(".settled-note")).toHaveText("✗ Rejected: edit to src/app.ts");
+  await expect(view.locator(".settled-note")).toHaveClass(/neutral/);
   await expect(view.locator(".edits-more")).toHaveCount(0);
   await expect(view.locator(".edit-counts")).toHaveText("+1 −1");
   await expect(view.locator(".code-row.removed .line-number")).toHaveText("3");

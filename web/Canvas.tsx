@@ -5,6 +5,7 @@ import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
+import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
@@ -260,13 +261,13 @@ function outcomeOf(item: CanvasItem) {
 /** Once a question is answered or withdrawn, it has had its turn on the canvas. */
 const isSettledQuestion = (item: CanvasItem) => item.kind === "ask" && item.status !== "waiting";
 
-function settledMessage(item: CanvasItem) {
-  return item.status === "answered" ? `✓ Answer sent: “${item.answer?.label ?? ""}”` : "The agent withdrew its question.";
+function settledMessage(item: CanvasItem): SettledNote {
+  return item.status === "answered" ? { text: `✓ Answer sent: “${item.answer?.label ?? ""}”`, tone: "done" } : { text: "The agent withdrew its question.", tone: "neutral" };
 }
 
 /** A note that goes away by itself a few seconds after it is set. */
 function useFadingNote() {
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<SettledNote | null>(null);
   useEffect(() => {
     if (note === null) return;
     const timer = setTimeout(() => setNote(null), 4000);
@@ -465,11 +466,7 @@ export function CanvasPanel({
         )}
         {!selected && !edit.shown && (
           <div className="empty-state">
-            {settledNote && (
-              <div className="settled-note" role="status">
-                {settledNote}
-              </div>
-            )}
+            <SettledNoteLine note={settledNote} />
             {items.length === 0
               ? "When the agent shows something or asks you to choose, it appears here."
               : "Nothing on the canvas right now. Earlier drawings and questions are in History."}

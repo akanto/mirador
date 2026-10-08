@@ -2660,6 +2660,10 @@ button.edits-waiting {
   animation: settled-fade 4s ease-in forwards;
 }
 
+.settled-note.neutral {
+  color: var(--muted);
+}
+
 @keyframes settled-fade {
   0%,
   70% {

@@ -31,12 +31,12 @@ describe("the edits the agent asked permission for", () => {
     ]);
   });
 
-  test("leave a note of the answer on the canvas", () => {
+  test("leave a note of the answer on the canvas, plain rather than green when the edit did not go ahead", () => {
     const request = { permissionId: "p", title: "Edit a.ts", options, edits: [edit("web/Chat.tsx")], resolved: true };
-    expect(settledEditNote({ ...request, chosenOptionId: "yes" })).toBe("✓ Allowed: edit to web/Chat.tsx");
-    expect(settledEditNote({ ...request, chosenOptionId: "always" })).toBe("✓ Always allowed: edit to web/Chat.tsx");
-    expect(settledEditNote({ ...request, chosenOptionId: "no" })).toBe("✗ Rejected: edit to web/Chat.tsx");
-    expect(settledEditNote({ ...request, chosenOptionId: null })).toBe("The agent no longer waits to edit web/Chat.tsx.");
+    expect(settledEditNote({ ...request, chosenOptionId: "yes" })).toEqual({ text: "✓ Allowed: edit to web/Chat.tsx", tone: "done" });
+    expect(settledEditNote({ ...request, chosenOptionId: "always" })).toEqual({ text: "✓ Always allowed: edit to web/Chat.tsx", tone: "done" });
+    expect(settledEditNote({ ...request, chosenOptionId: "no" })).toEqual({ text: "✗ Rejected: edit to web/Chat.tsx", tone: "neutral" });
+    expect(settledEditNote({ ...request, chosenOptionId: null })).toEqual({ text: "The agent no longer waits to edit web/Chat.tsx.", tone: "neutral" });
   });
 });
 

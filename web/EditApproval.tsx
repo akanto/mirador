@@ -7,6 +7,7 @@ import { highlightRows, type CodeSpan } from "./highlight.ts";
 import { hints } from "./hints.ts";
 import { CodeText } from "./Review.tsx";
 import { gapsOf, type Gap } from "./review-context.ts";
+import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { storedChoice } from "./stored-choice.ts";
 
 const diffStyles = ["unified", "split"] as const;
@@ -116,15 +117,11 @@ function EditedFile({ edit, style }: { edit: EditDiff; style: DiffStyle }) {
 }
 
 /** An edit the agent waits for permission to make, shown on the canvas with the agent's own answers to it. */
-export function EditApproval({ request, moreWaiting, note, conversationId }: { request: EditRequest; moreWaiting: number; note: string | null; conversationId: string }) {
+export function EditApproval({ request, moreWaiting, note, conversationId }: { request: EditRequest; moreWaiting: number; note: SettledNote | null; conversationId: string }) {
   const style = diffStyle.use();
   return (
     <div className="edit-approval">
-      {note && (
-        <div className="settled-note" role="status">
-          {note}
-        </div>
-      )}
+      <SettledNoteLine note={note} />
       <div className="edit-approval-bar">
         {moreWaiting > 0 && <span className="edits-more">{plural(moreWaiting, "more edit")} waiting</span>}
         <span className="spacer" />

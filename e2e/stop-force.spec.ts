@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, openProfiles, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, openProfiles, sendMessage, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5270, { fakePrograms: true });
@@ -201,4 +201,17 @@ test("A profile switch goes on without an agent that doesn't answer: its options
     await expect(timeline(page).locator(".error-line").last()).toHaveText("Could not set Mode to plan: The opencode (slow) agent process was force stopped.");
     expect(slowStarts()).toBe(1);
   });
+});
+
+test("Stop withdraws the question the turn waits on, and the canvas notes it plainly rather than as a success", async ({ page }) => {
+  await signInToWorkspace(page);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  const conversationId = await wedgedConversation(page, "WEDGE asking");
+  void callCanvasTool(host, conversationId, "ask", { question: "Keep going?", options: [{ label: "Yes" }, { label: "No" }] }).catch(() => {});
+  await expect(page.locator(".canvas-panel .ask-option")).toHaveCount(2);
+
+  await page.locator(".composer:visible .stop").click();
+  const note = page.locator(".canvas-panel .settled-note");
+  await expect(note).toHaveText("The agent withdrew its question.");
+  await expect(note).toHaveClass(/neutral/);
 });

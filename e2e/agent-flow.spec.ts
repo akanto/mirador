@@ -73,6 +73,7 @@ test("shows a page and returns an ask answer as the tool result", async () => {
   );
   await answerCanvasQuestion(page, "Blue");
   await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue”");
+  await expect(page.locator(".settled-note")).toHaveClass(/done/);
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Blue");
   await openFromCanvasHistory(page, "Pick a color");

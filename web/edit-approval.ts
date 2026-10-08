@@ -1,6 +1,7 @@
 import type { PermissionOption } from "@agentclientprotocol/sdk";
 import type { StoredEvent } from "../shared/model.ts";
 import type { DiffRow, EditDiff } from "../shared/review.ts";
+import type { SettledNote } from "./SettledNote.tsx";
 
 /** A permission request to change files, and what the user answered. */
 export interface EditRequest {
@@ -35,10 +36,11 @@ const outcomeLabels: Record<PermissionOption["kind"], string> = {
 };
 
 /** What the user answered to an edit, for the note left on the canvas. */
-export function settledEditNote(request: EditRequest) {
+export function settledEditNote(request: EditRequest): SettledNote {
   const kind = request.options.find(({ optionId }) => optionId === request.chosenOptionId)?.kind;
   const files = request.edits.map(({ path }) => path).join(", ");
-  return kind ? `${outcomeLabels[kind]}: edit to ${files}` : `The agent no longer waits to edit ${files}.`;
+  if (!kind) return { text: `The agent no longer waits to edit ${files}.`, tone: "neutral" };
+  return { text: `${outcomeLabels[kind]}: edit to ${files}`, tone: kind.startsWith("allow") ? "done" : "neutral" };
 }
 
 /** A row of a side-by-side diff: the index of the old version's row on the left and of the new version's on the right. */
