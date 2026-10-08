@@ -243,8 +243,13 @@ const placedTerminalsIn = (splits: HTMLElement | null): PlacedTerminal[] =>
     return { id: split.dataset.terminalId!, left, top, right, bottom };
   });
 
+/**
+ * Every tab stays mounted, the ones not shown hidden in place, so a tab shown again keeps its scroll position and
+ * selection rather than replaying its scrollback.
+ */
 function TabLayout({
   tab,
+  shown,
   focus,
   zoomed,
   busy,
@@ -253,11 +258,12 @@ function TabLayout({
   onShowAll,
 }: {
   tab: TerminalTab;
+  shown: boolean;
   focus: FocusRequest | null;
   zoomed: string | null;
   busy: BusyClose | null;
   events: RefObject<TerminalEvents>;
-  splitsRef: RefObject<HTMLDivElement | null>;
+  splitsRef?: RefObject<HTMLDivElement | null>;
   onShowAll: () => void;
 }) {
   const [, rerender] = useReducer((count: number) => count + 1, 0);
@@ -330,7 +336,7 @@ function TabLayout({
   };
 
   return (
-    <div className="terminal-splits" ref={splitsRef}>
+    <div className={`terminal-splits ${shown ? "shown" : ""}`} ref={splitsRef} inert={!shown}>
       {node(tab.layout, { flex: "1 1 0" })}
     </div>
   );
@@ -521,8 +527,25 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
           Hide
         </button>
       </header>
-      {activeTab ? (
-        <TabLayout key={activeTab.id} tab={activeTab} focus={focus} zoomed={zoomed} busy={busy} events={events} splitsRef={splits} onShowAll={() => setZoomed(null)} />
+      {tabs && activeTab ? (
+        <div className="terminal-tab-layouts">
+          {tabs.map((tab) => {
+            const shown = tab.id === activeTab.id;
+            return (
+              <TabLayout
+                key={tab.id}
+                tab={tab}
+                shown={shown}
+                focus={shown ? focus : null}
+                zoomed={zoomed}
+                busy={busy}
+                events={events}
+                splitsRef={shown ? splits : undefined}
+                onShowAll={() => setZoomed(null)}
+              />
+            );
+          })}
+        </div>
       ) : (
         <div className="terminal-view terminal-start">
           {tabs && (

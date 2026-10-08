@@ -12,8 +12,15 @@ test.afterAll(async () => {
   await host.cleanUp();
 });
 
-const screens = (page: Page) => page.locator(".terminal-pane .xterm-rows");
+const screens = (page: Page) => page.locator(".terminal-pane .terminal-splits.shown .xterm-rows");
 const screenOf = (page: Page, index: number) => screens(page).nth(index);
+const terminalToggle = (page: Page, name: "Show terminal" | "Hide terminal") => page.locator(".chat-header:visible").getByRole("button", { name });
+
+/** Shown again, the pane mounts its terminals afresh, and they replay their history. */
+async function hideTerminalPane(page: Page) {
+  await terminalToggle(page, "Hide terminal").click();
+  await expect(page.locator(".terminal-pane")).toHaveCount(0);
+}
 
 /** What a program asks its terminal: where the cursor is, and what colour the background is. */
 const queries = "\x1b[6n\x1b]11;?\x07";
@@ -25,7 +32,7 @@ test("replaying a terminal's log does not answer the questions in it as though t
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();
-  const terminal = page.locator(".terminal-pane .xterm");
+  const terminal = page.locator(".terminal-pane .terminal-splits.shown .xterm");
   await expect(terminal).toHaveCount(1);
 
   const query = join(host.projectDir, "query");
@@ -33,13 +40,13 @@ test("replaying a terminal's log does not answer the questions in it as though t
   await terminal.click();
   await page.keyboard.type(`while [ ! -f ${query} ]; do sleep 0.2; done; cat ${query}; echo REBUILT-FROM-LOG; stty raw -echo; touch ${reading}; cat -v\n`);
 
-  await page.getByRole("button", { name: "New terminal tab" }).click();
-  await expect(screens(page)).toHaveCount(1);
+  await hideTerminalPane(page);
   writeFileSync(query, queries);
   await expect.poll(() => existsSync(reading)).toBe(true);
 
-  await page.getByRole("tab", { name: "sh", exact: true }).click();
+  await terminalToggle(page, "Show terminal").click();
   await expect(screenOf(page, 0)).toContainText("REBUILT-FROM-LOG");
+  await terminal.click();
   await page.keyboard.type("MARKER\n");
   await expect(screenOf(page, 0)).toContainText("MARKER");
 
@@ -49,8 +56,8 @@ test("replaying a terminal's log does not answer the questions in it as though t
 
   await test.step("a question a program asks now, on a terminal the reader is looking at, is still answered", async () => {
     await page.getByRole("button", { name: "New terminal tab" }).click();
-    await expect(screens(page)).toHaveCount(1);
-    await page.locator(".terminal-pane .xterm").click();
+    await expect(page.getByRole("tab", { name: "sh 2" })).toHaveAttribute("aria-selected", "true");
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.type(`stty raw -echo; cat ${query}; cat -v\n`);
     await expect(screenOf(page, 0)).toContainText(cursorPositionAnswer);
   });
@@ -92,11 +99,11 @@ test("what the user pastes or types while a terminal's history replays reaches t
   await page.getByRole("button", { name: "New terminal tab" }).click();
   await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
   await expect(screenOf(page, 0)).toContainText("$");
-  const terminalId = (await page.locator(".terminal-pane .terminal-split").getAttribute("data-terminal-id"))!;
+  const terminalId = (await page.locator(".terminal-pane .terminal-splits.shown .terminal-split").getAttribute("data-terminal-id"))!;
 
-  await tabs.first().click();
-  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await hideTerminalPane(page);
   await armPaste({ terminalId, text: "echo pasted-$((6*7))\n" });
-  await tabs.last().click();
+  await terminalToggle(page, "Show terminal").click();
+  await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
   await expect(screenOf(page, 0)).toContainText("pasted-42");
 });

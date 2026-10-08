@@ -68,7 +68,7 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
   await expect.poll(sessionId).not.toBeNull();
 
   const waits = page.getByRole("region", { name: "Jobs waited for" });
-  const terminalScreen = page.locator(".terminal-pane .xterm-rows");
+  const terminalScreen = page.locator(".terminal-pane .terminal-splits.shown .xterm-rows");
   const followTab = (job: ChildProcess) => page.locator(".terminal-tab", { hasText: `process ${job.pid}` });
 
   await test.step("the job's command line, running time and log file show, then its lines as it writes them", async () => {
@@ -95,7 +95,7 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
       await expect(terminalScreen).toContainText(`Process ${job.pid} ended.`);
       await expect(terminalScreen).toContainText("Press Enter to close this tab.");
       await expect(waits).toHaveCount(0);
-      await page.locator(".terminal-pane .xterm").click();
+      await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
       await page.keyboard.press("Enter");
       await expect(followTab(job)).toHaveCount(0);
     });
@@ -107,7 +107,7 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
     await waits.getByRole("button", { name: `process ${job.pid}` }).click();
     await expect(terminalScreen).toContainText("Command: sleep 300");
     await expect(terminalScreen).toContainText("Its output goes to no file this tab can follow");
-    await page.locator(".terminal-pane .xterm").click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.press("Control+C");
     await expect(followTab(job)).toHaveCount(0);
     await expect(waits).toContainText(`Waiting for process ${job.pid} to end`);

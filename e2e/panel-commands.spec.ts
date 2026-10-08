@@ -63,7 +63,7 @@ test("/plugin opens a terminal tab running Claude Code itself, with the conversa
   await composer.press("Enter");
 
   await expect(page.locator(".terminal-tab", { hasText: "/plugin" })).toBeVisible();
-  await expect(page.locator(".terminal-pane .xterm-rows")).toContainText("panel /plugin with from-profile");
+  await expect(page.locator(".terminal-pane .terminal-splits.shown .xterm-rows")).toContainText("panel /plugin with from-profile");
   expect(ran()).toEqual(["command=/plugin", "marker=from-profile", `directory=${realpathSync(host.projectDir)}`]);
   await expect(composer).toHaveValue("");
   await expect(page.locator(".timeline:visible .message.user"), "the command is Claude Code's, not a message to the agent").toHaveCount(0);

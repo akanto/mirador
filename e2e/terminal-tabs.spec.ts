@@ -11,9 +11,9 @@ test.afterAll(async () => {
 });
 
 const tabs = (page: Page) => page.getByRole("tab");
-const views = (page: Page) => page.locator(".terminal-pane .xterm");
-const screenOf = (page: Page, index: number) => page.locator(".terminal-pane .xterm-rows").nth(index);
-const typingInto = (page: Page, index: number) => page.locator(".terminal-pane .xterm-helper-textarea").nth(index);
+const views = (page: Page) => page.locator(".terminal-pane .terminal-splits.shown .xterm");
+const screenOf = (page: Page, index: number) => page.locator(".terminal-pane .terminal-splits.shown .xterm-rows").nth(index);
+const typingInto = (page: Page, index: number) => page.locator(".terminal-pane .terminal-splits.shown .xterm-helper-textarea").nth(index);
 
 async function typeInto(page: Page, index: number, command: string) {
   await views(page).nth(index).click();
@@ -60,14 +60,14 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(screenOf(page, 1)).toContainText("right-6");
   await expect(screenOf(page, 0)).not.toContainText("right-6");
 
-  const leftWidth = () => page.locator(".terminal-split").first().evaluate((element) => element.getBoundingClientRect().width);
+  const leftWidth = () => page.locator(".terminal-splits.shown .terminal-split").first().evaluate((element) => element.getBoundingClientRect().width);
   const evenWidth = await leftWidth();
-  await dragBy(page, ".terminal-group > .splitter", -80);
+  await dragBy(page, ".terminal-splits.shown .terminal-group > .splitter", -80);
   expect(await leftWidth()).toBeLessThan(evenWidth - 60);
 
   await typeInto(page, 0, "printf '\\033]0;my-title\\007'");
   await expect(tabs(page)).toHaveText(["sh", "my-title"]);
-  await expect(page.locator(".split-title")).toHaveText(["my-title", "Terminal 2"]);
+  await expect(page.locator(".terminal-splits.shown .split-title")).toHaveText(["my-title", "Terminal 2"]);
 
   const other = await context.newPage();
   await other.goto(page.url());
@@ -98,4 +98,25 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(tabs(page)).toHaveText(["sh"]);
   await expect(views(page)).toHaveCount(4);
   await expect(screenOf(page, 0)).toContainText("first-2");
+
+  const topRow = () => screenOf(page, 0).locator(":scope > div").first().textContent();
+  const settledTopRow = async () => {
+    for (let last = await topRow(); ; ) {
+      await page.waitForTimeout(150);
+      const now = await topRow();
+      if (now === last) return now;
+      last = now;
+    }
+  };
+  await typeInto(page, 0, "seq 1 400");
+  await expect(screenOf(page, 0)).toContainText("400");
+  const atBottom = await settledTopRow();
+  for (const _ of [1, 2, 3, 4]) await page.mouse.wheel(0, -1500);
+  await expect.poll(topRow).not.toBe(atBottom);
+  const scrolledUp = await settledTopRow();
+  await page.getByRole("button", { name: "New terminal tab" }).click();
+  await expect(tabs(page)).toHaveCount(2);
+  await page.getByRole("tab", { name: "sh", exact: true }).click();
+  await expect(views(page)).toHaveCount(4);
+  expect(await settledTopRow()).toBe(scrolledUp);
 });

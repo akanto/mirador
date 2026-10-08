@@ -3696,6 +3696,21 @@ button.shell-more:hover {
   background: #1b1c22;
 }
 
+.terminal-tab-layouts {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.terminal-tab-layouts > .terminal-splits {
+  position: absolute;
+  inset: 0;
+}
+
+.terminal-tab-layouts > .terminal-splits:not(.shown) {
+  visibility: hidden;
+}
+
 .terminal-group {
   display: flex;
   min-width: 0;

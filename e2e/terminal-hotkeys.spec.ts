@@ -12,10 +12,10 @@ test.afterAll(async () => {
 });
 
 const tabs = (page: Page) => page.getByRole("tab");
-const splits = (page: Page) => page.locator(".terminal-pane .terminal-split");
-const shownSplits = (page: Page) => page.locator(".terminal-pane .terminal-split:visible");
-const typingInto = (page: Page, index: number) => page.locator(".terminal-pane .xterm-helper-textarea").nth(index);
-const screenOf = (page: Page, index: number) => page.locator(".terminal-pane .xterm-rows").nth(index);
+const splits = (page: Page) => page.locator(".terminal-pane .terminal-splits.shown .terminal-split");
+const shownSplits = (page: Page) => page.locator(".terminal-pane .terminal-splits.shown .terminal-split:visible");
+const typingInto = (page: Page, index: number) => page.locator(".terminal-pane .terminal-splits.shown .xterm-helper-textarea").nth(index);
+const screenOf = (page: Page, index: number) => page.locator(".terminal-pane .terminal-splits.shown .xterm-rows").nth(index);
 const boxOf = async (page: Page, index: number) => (await splits(page).nth(index).boundingBox())!;
 
 test("on macOS the cmux and iTerm2 keys split side by side and stacked, move between splits and tabs, zoom, and close what runs nothing", async ({ page }) => {
@@ -23,7 +23,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();
-  await page.locator(".terminal-pane .xterm").click();
+  await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
   await expect(typingInto(page, 0)).toBeFocused();
 
   await test.step("⌘D splits right and ⌘⇧D splits the new one down, each new shell taking the keys", async () => {
@@ -80,7 +80,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
   });
 
   await test.step("⌘T opens a tab; ⌘⇧[ ⌘⇧], ⌘1 and ⌃2 switch tabs, each coming back to the split it left", async () => {
-    await page.locator(".terminal-pane .xterm").nth(1).click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").nth(1).click();
     await page.keyboard.press("Meta+T");
     await expect(tabs(page)).toHaveCount(2);
     const second = tabs(page).nth(1);
@@ -110,7 +110,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
   });
 
   await test.step("⌘W on a split running a command asks first: Esc keeps it, Enter ends it", async () => {
-    await page.locator(".terminal-pane .xterm").nth(1).click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").nth(1).click();
     await page.keyboard.type("sleep 30\n");
     await page.keyboard.press("Meta+W");
     const confirm = page.getByRole("button", { name: "Confirm: Close terminal 2", exact: true });
@@ -120,7 +120,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
     await expect(page.getByRole("button", { name: "Close terminal 2", exact: true })).toBeVisible();
     await expect(splits(page)).toHaveCount(2);
 
-    await page.locator(".terminal-pane .xterm").nth(1).click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").nth(1).click();
     await page.keyboard.press("Meta+W");
     await expect(confirm).toBeFocused();
     await page.keyboard.press("Enter");
@@ -128,7 +128,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
   });
 
   await test.step("⌘W on the only terminal of a tab running a command arms the tab's close", async () => {
-    await page.locator(".terminal-pane .xterm").click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.type("sleep 30\n");
     await page.keyboard.press("Meta+W");
     const closeTab = page.locator(".terminal-tab.active .close-tab");
@@ -147,7 +147,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
 
     await newTab.click();
     await expect(tabs(page)).toHaveCount(2);
-    await page.locator(".terminal-pane .xterm").click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.press("Meta+D");
     await expect(splits(page)).toHaveCount(2);
     await page.keyboard.type("sleep 30\n");

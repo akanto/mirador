@@ -13,8 +13,8 @@ test.afterAll(async () => {
 
 const terminalPane = (page: Page) => page.locator(".terminal-pane");
 const tabs = (page: Page) => terminalPane(page).getByRole("tab");
-const splits = (page: Page) => page.locator(".terminal-pane .terminal-split");
-const terminalHasFocus = (page: Page) => page.evaluate(() => Boolean(document.activeElement?.closest(".terminal-pane .xterm")));
+const splits = (page: Page) => page.locator(".terminal-pane .terminal-splits.shown .terminal-split");
+const terminalHasFocus = (page: Page) => page.evaluate(() => Boolean(document.activeElement?.closest(".terminal-pane .terminal-splits.shown .xterm")));
 const focusMessageBox = (page: Page) => page.locator(".composer textarea:visible").click();
 
 /** From the sidebar's button: a macOS terminal keeps ⌘K to clear itself, and a fullscreen pane covers the message box. */
@@ -50,7 +50,7 @@ test("keys and the palette show, hide, open, split, focus and fullscreen the ter
 
   await runFromPalette(page, "Fullscreen terminals");
   await expect(page.locator('[data-pane="terminals"]')).toHaveClass(/fullscreen/);
-  await page.locator(".terminal-pane .xterm").first().click();
+  await page.locator(".terminal-pane .terminal-splits.shown .xterm").first().click();
   await page.keyboard.press(`${await primaryModifier(page)}+Shift+ArrowLeft`);
   await expect(page.locator('[data-pane="terminals"]')).not.toHaveClass(/fullscreen/);
   await expect(page.locator(".composer textarea:visible")).toBeFocused();

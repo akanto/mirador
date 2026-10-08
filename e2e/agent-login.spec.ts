@@ -61,7 +61,7 @@ test("Log in runs the agent's sign-in with the conversation's profile in a termi
 
   const logIn = signInLine(page).getByRole("button", { name: "Log in" });
   const signInTab = page.locator(".terminal-tab", { hasText: "opencode sign-in" });
-  const terminalScreen = page.locator(".terminal-pane .xterm-rows");
+  const terminalScreen = page.locator(".terminal-pane .terminal-splits.shown .xterm-rows");
   await expect(signInLine(page)).toContainText("Authentication required");
 
   await test.step("a refused sign-in keeps its tab open to show why, until Enter", async () => {
@@ -70,7 +70,7 @@ test("Log in runs the agent's sign-in with the conversation's profile in a termi
     await expect(signInTab).toBeVisible();
     await expect(terminalScreen).toContainText("sign-in refused");
     await expect(terminalScreen).toContainText("Press Enter to close this tab.");
-    await page.locator(".terminal-pane .xterm").click();
+    await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.press("Enter");
     await expect(signInTab).toHaveCount(0);
     await expect(notice(page, "Signing in did not finish.")).toBeVisible();
