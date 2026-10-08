@@ -17,7 +17,7 @@ import { useProgramRequest } from "./program-request.ts";
 import { requestOfTerminalPane, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
-import { DEFAULT_SIDEBAR_WIDTH, inView, paneLabels, sidebarWidthWithinLimits, toggledInView, type PaneId, type PaneLayout } from "./layout.ts";
+import { DEFAULT_SIDEBAR_WIDTH, inView, paneLabels, sidebarWidthWithinLimits, swapPanes, toggledInView, type PaneId, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { FirstProfile, ProfilesDialog } from "./Profiles.tsx";
 import { AskToRevert, RevertDialog } from "./Revert.tsx";
@@ -95,6 +95,7 @@ interface PanesInPalette {
   askTerminals: (request: TerminalPaneRequest) => void;
   fullscreen: PaneId | null;
   setFullscreen: (pane: PaneId | null) => void;
+  swap: (first: PaneId, second: PaneId) => void;
   resetLayout: () => void;
 }
 
@@ -181,6 +182,16 @@ function paletteEntries(
   const fullscreenActions: PaletteEntry[] = fullscreen
     ? [{ id: "exit-fullscreen", label: "Exit fullscreen", detail: paneLabels[fullscreen], kind: "action", run: () => panes.setFullscreen(null) }]
     : panesInView.map((pane) => ({ id: `fullscreen-${pane}`, label: `Fullscreen ${paneLabels[pane].toLowerCase()}`, kind: "action", run: () => panes.setFullscreen(pane) }));
+  const swapActions: PaletteEntry[] = fullscreen
+    ? []
+    : panesInView.flatMap((first, index) =>
+        panesInView.slice(index + 1).map((second) => ({
+          id: `swap-${first}-${second}`,
+          label: `Swap ${paneLabels[first].toLowerCase()} and ${paneLabels[second].toLowerCase()}`,
+          kind: "action",
+          run: () => panes.swap(first, second),
+        })),
+      );
   const openConversationActions: PaletteEntry[] =
     openHistory && openConversation
       ? [
@@ -188,6 +199,7 @@ function paletteEntries(
           { id: "toggle-canvas", label: canvas.visible ? "Hide canvas" : "Show canvas", kind: "action", run: canvas.toggle },
           ...terminalActions,
           ...fullscreenActions,
+          ...swapActions,
           { id: "reset-layout", label: "Reset layout to default", detail: openConversation.title, kind: "action", run: panes.resetLayout },
           ...rewindable,
           ...undoable,
@@ -504,6 +516,7 @@ export function App() {
               askTerminals,
               fullscreen: layout.fullscreen,
               setFullscreen,
+              swap: (first, second) => changeLayout((current) => swapPanes(current, first, second)),
               resetLayout: () => state.selectedConversationId && conversationLayouts.reset(state.selectedConversationId),
             },
             showMachine,

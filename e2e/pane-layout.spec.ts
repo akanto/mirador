@@ -149,6 +149,11 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
 
   await runFromPalette(page, "Reset layout to default");
   expect(await placesOf(page)).toEqual({ conversation: "right top", canvas: "left", terminals: "right bottom" });
+
+  await runFromPalette(page, "Swap conversation and canvas");
+  expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right top", terminals: "right bottom" });
+  await runFromPalette(page, "Swap canvas and terminals");
+  expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right bottom", terminals: "right top" });
 });
 
 test("the sidebar resizes between its limits, keeps its width after a reload, and a double-click restores it", async ({ page }) => {

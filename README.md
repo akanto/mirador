@@ -211,7 +211,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### Layout
 
-- **Three panes**: conversation, canvas and terminals. Drag a pane's grip onto another to swap them, in six arrangements.
+- **Three panes**: conversation, canvas and terminals, in six arrangements. Drag a pane's grip onto another to swap them, or pick *Swap* in the palette.
 - **Per conversation**: each conversation remembers its arrangement, split sizes, hidden panes and full screen. *Settings → Layout* sets the default for new ones; the palette resets it.
 - **Full screen** any pane (button, or double-click its bar); Esc comes back.
 - **Show or hide** the canvas and terminals from the header, the palette or ⌘\.
