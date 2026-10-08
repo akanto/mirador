@@ -14,3 +14,4 @@ desktop/release/
 desktop/node_modules/
 desktop/.hutch/
 desktop/.cottontail-tmp/
+/dist/

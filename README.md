@@ -362,4 +362,13 @@ MIRADOR_LINUX_RELEASE=1 scripts/linux-desktop.sh   # the same for the release in
 
 Build the arm64 release installer on an x64 Linux machine too: in Docker on Apple Silicon, Electrobun's toolchain crashes (see `desktop/README.md`).
 
+The release assets go to `dist/` (`make help` lists the goals):
+
+```bash
+make macos                               # the macOS app carrying Mirador, zipped (on a Mac)
+make linux                               # both Linux release installers, built and checked as above (on an x64 Linux machine)
+make linux-remote LINUX_HOST=user@host   # from a Mac: make linux on that machine, with the installers copied back
+make checksums                           # their SHA-256, for the release notes
+```
+
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).
