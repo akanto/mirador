@@ -5,8 +5,11 @@ type MessagesRequest = {
   model: string;
   stream?: boolean;
   system?: string | { text: string }[];
+  tools?: { name: string }[];
   messages: { role: string; content: string | { type: string; text?: string }[] }[];
 };
+
+type Answer = { type: "text"; text: string } | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> };
 
 const systemTextOf = ({ system }: MessagesRequest) => (typeof system === "string" ? system : (system ?? []).map(({ text }) => text).join("\n"));
 
@@ -20,10 +23,22 @@ const lastTypedText = ({ messages }: MessagesRequest) =>
     .at(-1)!
     .trim();
 
+const BACKGROUND = "BACKGROUND ";
+
+const offersBash = ({ tools }: MessagesRequest) => (tools ?? []).some(({ name }) => name === "Bash");
+
+/** A request Claude Code makes on its own once a command it ran in the background ends. */
+const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
+  const content = messages.findLast(({ role }) => role === "user")?.content ?? "";
+  return textOf(content).includes("<task-notification>") && (typeof content === "string" || content.every(({ type }) => type === "text"));
+};
+
 /**
  * Claude's Messages API for a subscription that Claude Code believes it signs in to (CLAUDE_CODE_OAUTH_TOKEN): while
  * `limited`, every request is refused the way the API refuses once a usage limit is reached; otherwise each reply
- * quotes the user's newest message.
+ * quotes the user's newest message. A message starting with `BACKGROUND ` runs the rest as a Bash command in the
+ * background; once it ends, the reply to Claude Code's notification of it waits until `answerEndedCommands`, then
+ * runs `true` in Bash, so the turn Claude Code started on its own asks for one more reply after it.
  */
 export class FakeClaudeApi {
   limited = true;
@@ -41,6 +56,7 @@ export class FakeClaudeApi {
   readonly refused: string[] = [];
   private server?: Server;
   private heldReplies: (() => void)[] | null = null;
+  private heldNotificationReplies: (() => void)[] = [];
   private replies = 0;
 
   async start() {
@@ -75,6 +91,15 @@ export class FakeClaudeApi {
     held.forEach((answer) => answer());
   }
 
+  /** How many replies to notifications of ended background commands wait for `answerEndedCommands`. */
+  get endedCommandsWaiting() {
+    return this.heldNotificationReplies.length;
+  }
+
+  answerEndedCommands() {
+    this.heldNotificationReplies.splice(0).forEach((answer) => answer());
+  }
+
   private reply(body: MessagesRequest, response: ServerResponse) {
     if (this.heldReplies) return void this.heldReplies.push(() => this.reply(body, response));
     const typed = lastTypedText(body);
@@ -86,21 +111,30 @@ export class FakeClaudeApi {
       response.writeHead(429, { "content-type": "application/json", ...this.limitHeaders() });
       return response.end(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: "Rate limited" } }));
     }
+    if (offersBash(body) && answersEndedBackgroundCommand(body)) return void this.heldNotificationReplies.push(() => this.send(body, response, this.bashCall("true", false)));
     this.answered.push(typed);
-    const text = `Answered: ${typed}`;
+    this.send(body, response, offersBash(body) && typed.startsWith(BACKGROUND) ? this.bashCall(typed.slice(BACKGROUND.length), true) : { type: "text", text: `Answered: ${typed}` });
+  }
+
+  private bashCall(command: string, inBackground: boolean): Answer {
+    return { type: "tool_use", id: `toolu_fake_${this.replies + 1}`, name: "Bash", input: { command, description: `Run ${command}`, run_in_background: inBackground } };
+  }
+
+  private send(body: MessagesRequest, response: ServerResponse, answer: Answer) {
     const id = `msg_fake_${++this.replies}`;
     const usage = { input_tokens: 10, output_tokens: 5 };
+    const stopReason = answer.type === "tool_use" ? "tool_use" : "end_turn";
     if (!body.stream) {
       response.writeHead(200, { "content-type": "application/json", ...this.planUsageHeaders() });
-      return response.end(JSON.stringify({ id, type: "message", role: "assistant", model: body.model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null, usage }));
+      return response.end(JSON.stringify({ id, type: "message", role: "assistant", model: body.model, content: [answer], stop_reason: stopReason, stop_sequence: null, usage }));
     }
     response.writeHead(200, { "content-type": "text/event-stream", ...this.planUsageHeaders() });
     const send = (event: { type: string } & Record<string, unknown>) => response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
     send({ type: "message_start", message: { id, type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage } });
-    send({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
-    send({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } });
+    send({ type: "content_block_start", index: 0, content_block: answer.type === "text" ? { type: "text", text: "" } : { ...answer, input: {} } });
+    send({ type: "content_block_delta", index: 0, delta: answer.type === "text" ? { type: "text_delta", text: answer.text } : { type: "input_json_delta", partial_json: JSON.stringify(answer.input) } });
     send({ type: "content_block_stop", index: 0 });
-    send({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 5 } });
+    send({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: 5 } });
     send({ type: "message_stop" });
     response.end();
   }
