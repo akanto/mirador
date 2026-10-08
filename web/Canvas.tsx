@@ -3,6 +3,7 @@ import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from ".
 import type { AskOption, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
+import { ChangesView } from "./Changes.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
@@ -360,6 +361,7 @@ export function CanvasPanel({
   items,
   edits,
   assetsOrigin,
+  changesRefreshPoint,
   onHide,
 }: {
   conversationId: string;
@@ -367,6 +369,7 @@ export function CanvasPanel({
   /** The edits the agent asked permission for; none when Settings keep them in the chat. */
   edits: EditRequest[];
   assetsOrigin: string;
+  changesRefreshPoint: number;
   onHide: () => void;
 }) {
   const newestFirst = useMemo(() => [...items].sort((a, b) => b.createdAt - a.createdAt), [items]);
@@ -374,14 +377,21 @@ export function CanvasPanel({
   const onCanvasByDefault = newest && !isSettledQuestion(newest) ? newest.id : null;
   const [selectedId, setSelectedId] = useState<string | null>(onCanvasByDefault);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
   const placeForReview = useReviewPlacement();
   useEffect(() => {
     setSelectedId(onCanvasByDefault);
+    setChangesOpen(false);
     if (takeArrivedReview(newest)) placeForReview(newest);
   }, [newest?.id]);
   const edit = useEditsOnCanvas(edits, () => setSelectedId(null));
+  useEffect(() => {
+    if (edit.shown) setChangesOpen(false);
+  }, [edit.shown?.permissionId]);
   const selectedIndex = edit.shown ? -1 : newestFirst.findIndex(({ id }) => id === selectedId);
   const selected = newestFirst[selectedIndex];
+  const somethingElseShown = Boolean(selected || edit.shown);
+  const changesShown = changesOpen || !somethingElseShown;
   const outcome = selected && outcomeOf(selected);
   const questionNote = useClearWhenSettled(selected, () => setSelectedId(null));
   const settledNote = edit.note ?? questionNote;
@@ -390,6 +400,7 @@ export function CanvasPanel({
   const pick = (id: string) => {
     setSelectedId(id);
     setHistoryOpen(false);
+    setChangesOpen(false);
     edit.setAside();
     placeForReview(items.find((item) => item.id === id));
   };
@@ -403,7 +414,9 @@ export function CanvasPanel({
     <aside className="canvas-panel" onKeyDown={closeHistoryOnEscape}>
       <div className="canvas-header" data-pane-bar>
         <PaneGrip pane="canvas" />
-        {edit.shown ? (
+        {changesOpen ? (
+          <span className="canvas-title">Changes</span>
+        ) : edit.shown ? (
           <>
             <span className="canvas-kind">✎</span>
             <span className="canvas-title">{edit.shown.title}</span>
@@ -422,8 +435,16 @@ export function CanvasPanel({
         ) : (
           <span className="canvas-title empty-title">Canvas</span>
         )}
-        {!edit.shown && edit.waiting > 0 && (
-          <button type="button" className="canvas-outcome status-waiting edits-waiting" data-hint={hints.canvasEditsWaiting} onClick={edit.bringBack}>
+        {(changesOpen || !edit.shown) && edit.waiting > 0 && (
+          <button
+            type="button"
+            className="canvas-outcome status-waiting edits-waiting"
+            data-hint={hints.canvasEditsWaiting}
+            onClick={() => {
+              setChangesOpen(false);
+              edit.bringBack();
+            }}
+          >
             {edit.waiting === 1 ? "1 edit waiting" : `${edit.waiting} edits waiting`}
           </button>
         )}
@@ -433,6 +454,16 @@ export function CanvasPanel({
         </button>
         <button type="button" className="icon canvas-nav" aria-label="Newer" data-hint={hints.canvasNewer} disabled={!newer} onClick={() => newer && pick(newer.id)}>
           ›
+        </button>
+        <button
+          type="button"
+          className={`changes-toggle ${changesShown ? "on" : ""}`}
+          aria-pressed={changesShown}
+          data-hint={hints.canvasChanges}
+          disabled={!somethingElseShown}
+          onClick={() => setChangesOpen((open) => !open)}
+        >
+          Changes
         </button>
         <button
           type="button"
@@ -448,9 +479,10 @@ export function CanvasPanel({
           type="button"
           className="canvas-clear"
           data-hint={hints.canvasClear}
-          disabled={!selected && !edit.shown}
+          disabled={!somethingElseShown}
           onClick={() => {
             setSelectedId(null);
+            setChangesOpen(false);
             edit.setAside();
             placeForReview(undefined);
           }}
@@ -464,18 +496,23 @@ export function CanvasPanel({
       </div>
       {historyOpen && <CanvasHistory items={newestFirst} selectedId={selected?.id ?? null} onPick={pick} />}
       <div className="canvas-body">
-        {edit.shown && (
+        {changesShown && (
+          <>
+            {!somethingElseShown && (
+              <div className="empty-state">
+                <SettledNoteLine note={settledNote} />
+                {items.length === 0
+                  ? "When the agent shows something or asks you to choose, it appears here."
+                  : "Nothing on the canvas right now. Earlier drawings and questions are in History."}
+              </div>
+            )}
+            <ChangesView conversationId={conversationId} refreshPoint={changesRefreshPoint} />
+          </>
+        )}
+        {!changesOpen && edit.shown && (
           <EditApproval key={edit.shown.permissionId} request={edit.shown} moreWaiting={edit.waiting - 1} note={settledNote} conversationId={conversationId} />
         )}
-        {!selected && !edit.shown && (
-          <div className="empty-state">
-            <SettledNoteLine note={settledNote} />
-            {items.length === 0
-              ? "When the agent shows something or asks you to choose, it appears here."
-              : "Nothing on the canvas right now. Earlier drawings and questions are in History."}
-          </div>
-        )}
-        {selected?.kind === "show" && (
+        {!changesOpen && selected?.kind === "show" && (
           <CanvasFrame
             key={selected.id}
             frameId={selected.id}
@@ -485,10 +522,10 @@ export function CanvasPanel({
             onRendered={reportRender(selected.id)}
           />
         )}
-        {selected?.kind === "review" && selected.review && (
+        {!changesOpen && selected?.kind === "review" && selected.review && (
           <ReviewView key={selected.id} item={selected as ReviewItem} conversationId={selected.conversationId} />
         )}
-        {selected?.kind === "ask" && (
+        {!changesOpen && selected?.kind === "ask" && (
           <AskView
             key={selected.id}
             item={selected}

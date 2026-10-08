@@ -105,11 +105,11 @@ export interface ReviewFile {
   hiddenBecause: string | null;
 }
 
-/** A file the agent asks to edit or write, as the edit would change it. */
+/** A file the agent asks to edit or write, as the edit would change it; or a file of the changes list, as it changed. */
 export interface EditDiff {
   /** As the workspace names it, when the file is inside the workspace. */
   path: string;
-  change: "added" | "modified";
+  change: "added" | "modified" | "deleted";
   added: number;
   removed: number;
   hunks: DiffHunk[];

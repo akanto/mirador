@@ -13,7 +13,7 @@ import { storedChoice } from "./stored-choice.ts";
 const diffStyles = ["unified", "split"] as const;
 type DiffStyle = (typeof diffStyles)[number];
 const diffStyleLabels: Record<DiffStyle, string> = { unified: "Unified", split: "Split" };
-const diffStyle = storedChoice<DiffStyle>("mirador-edit-diff-style", diffStyles, "unified");
+export const diffStyle = storedChoice<DiffStyle>("mirador-edit-diff-style", diffStyles, "unified");
 
 const marker = (row: DiffRow) => (row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " ");
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -93,16 +93,19 @@ function EditedRows({ path, rows, style }: { path: string; rows: DiffRow[]; styl
   return style === "split" ? <SplitRows rows={rows} highlighted={highlighted} /> : <UnifiedRows rows={rows} highlighted={highlighted} />;
 }
 
-function EditedFile({ edit, style }: { edit: EditDiff; style: DiffStyle }) {
+const UNLOCATED_EDIT = "The change could not be found in the file as it is now, so this is the agent's own snippet, without line numbers.";
+
+export function EditedFile({ edit, style, unlocatedHint = UNLOCATED_EDIT }: { edit: EditDiff; style: DiffStyle; unlocatedHint?: string | null }) {
   const gaps = edit.located ? gapsOf(edit) : [];
   return (
     <section className="edited-file" aria-label={edit.path}>
       <header className="file-header">
         <h3>{edit.path}</h3>
         {edit.change === "added" && <span className="edit-new-file">new file</span>}
+        {edit.change === "deleted" && <span className="edit-new-file">deleted</span>}
         <EditCounts edits={[edit]} />
       </header>
-      {!edit.located && <p className="hint">The change could not be found in the file as it is now, so this is the agent's own snippet, without line numbers.</p>}
+      {!edit.located && unlocatedHint && <p className="hint">{unlocatedHint}</p>}
       {edit.hiddenBecause && <p className="review-empty">Not shown: {edit.hiddenBecause}.</p>}
       {!edit.hiddenBecause && edit.hunks.length === 0 && <p className="review-empty">It changes no lines.</p>}
       {edit.hunks.map((hunk, index) => (
@@ -116,6 +119,18 @@ function EditedFile({ edit, style }: { edit: EditDiff; style: DiffStyle }) {
   );
 }
 
+export function DiffStyleChoice({ style }: { style: DiffStyle }) {
+  return (
+    <div className="diff-style" role="group" aria-label="Diff style" data-hint={hints.editDiffStyle}>
+      {diffStyles.map((each) => (
+        <button key={each} type="button" className={style === each ? "on" : ""} aria-pressed={style === each} onClick={() => diffStyle.set(each)}>
+          {diffStyleLabels[each]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** An edit the agent waits for permission to make, shown on the canvas with the agent's own answers to it. */
 export function EditApproval({ request, moreWaiting, note, conversationId }: { request: EditRequest; moreWaiting: number; note: SettledNote | null; conversationId: string }) {
   const style = diffStyle.use();
@@ -125,13 +140,7 @@ export function EditApproval({ request, moreWaiting, note, conversationId }: { r
       <div className="edit-approval-bar">
         {moreWaiting > 0 && <span className="edits-more">{plural(moreWaiting, "more edit")} waiting</span>}
         <span className="spacer" />
-        <div className="diff-style" role="group" aria-label="Diff style" data-hint={hints.editDiffStyle}>
-          {diffStyles.map((each) => (
-            <button key={each} type="button" className={style === each ? "on" : ""} aria-pressed={style === each} onClick={() => diffStyle.set(each)}>
-              {diffStyleLabels[each]}
-            </button>
-          ))}
-        </div>
+        <DiffStyleChoice style={style} />
       </div>
       {request.edits.map((edit, index) => (
         <EditedFile key={index} edit={edit} style={style} />

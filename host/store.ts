@@ -722,6 +722,32 @@ export class Store {
       .map((row: any) => ({ seq: row.seq, at: row.at, event: JSON.parse(row.event) }));
   }
 
+  /** The agent's tool calls from `fromSeq` on, with every update to them. */
+  toolCallEventsFrom(conversationId: string, fromSeq: number): StoredEvent[] {
+    return this.db
+      .query(
+        `SELECT seq, at, event FROM events WHERE conversation_id = ? AND seq >= ? AND json_extract(event, '$.type') = 'acp'
+         AND json_extract(event, '$.update.sessionUpdate') IN ('tool_call', 'tool_call_update') ORDER BY seq`,
+      )
+      .all(conversationId, fromSeq)
+      .map((row: any) => ({ seq: row.seq, at: row.at, event: JSON.parse(row.event) }));
+  }
+
+  /**
+   * Where the latest turn starts: the latest message that kept the workspace's files, since messages that joined a
+   * running turn keep none; in a workspace with no repository, where no message keeps them, the latest message.
+   */
+  latestTurnStart(conversationId: string): { seq: number; checkpoint: string | null } | null {
+    const latest = (condition: string) =>
+      this.db
+        .query(
+          `SELECT seq, json_extract(event, '$.checkpoint') AS checkpoint FROM events WHERE conversation_id = ?
+           AND json_extract(event, '$.type') = 'user-message' ${condition} ORDER BY seq DESC LIMIT 1`,
+        )
+        .get(conversationId) as { seq: number; checkpoint: string | null } | null;
+    return latest("AND json_extract(event, '$.checkpoint') IS NOT NULL") ?? latest("");
+  }
+
   findEvent(conversationId: string, seq: number): StoredEvent | null {
     return this.listEventsBetween(conversationId, seq, seq + 1)[0] ?? null;
   }

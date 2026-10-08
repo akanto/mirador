@@ -14,6 +14,11 @@ export function openInIdea(repository: string, path: string, line: number) {
   if (isAbsolute(path) || !file.startsWith(repository + sep) || !Number.isInteger(line) || line < 1) {
     throw new Error(`${path}:${line} is not a line in the reviewed checkout.`);
   }
+  launchIdea(file, line);
+}
+
+/** Opens an absolute path at a line in IntelliJ IDEA; the caller decides which files a page may open. */
+export function launchIdea(file: string, line: number) {
   const executable = Bun.which("idea") ?? Bun.which("idea", { PATH: IDEA_INSTALL_DIRECTORIES.join(":") });
   if (!executable) {
     throw new Error("IntelliJ IDEA's command-line launcher (idea) was not found. In IDEA, choose Tools › Create Command-line Launcher…, then try again.");

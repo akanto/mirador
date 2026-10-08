@@ -9,6 +9,8 @@ const MAX_FILE_BYTES = 1024 * 1024;
 const CONTEXT_LINES = 3;
 /** The diff runs while the agent waits for the answer, and blocks every conversation on the host as long as it runs. */
 const DIFF_TIMEOUT_MS = 100;
+/** A whole changed file takes longer, and the user asked for it. */
+const FILE_DIFF_TIMEOUT_MS = 500;
 
 type ProposedChange = Extract<ToolCallContent, { type: "diff" }>;
 
@@ -38,8 +40,8 @@ function wholeFile(change: ProposedChange, file: FileBefore, replaceAll: boolean
   return { before: file.text, after: replaced(file.text, oldText, change.newText, replaceAll) };
 }
 
-function hunksBetween(before: string, after: string, context: number): DiffHunk[] | null {
-  const patch = structuredPatch("", "", before, after, undefined, undefined, { context, timeout: DIFF_TIMEOUT_MS });
+function hunksBetween(before: string, after: string, context: number, timeout = DIFF_TIMEOUT_MS): DiffHunk[] | null {
+  const patch = structuredPatch("", "", before, after, undefined, undefined, { context, timeout });
   if (!patch) return null;
   return patch.hunks.map(({ oldStart, newStart, lines }) => {
     let [oldLine, newLine] = [oldStart, newStart];
@@ -92,7 +94,44 @@ export function editDiff(change: ProposedChange, file: FileBefore, replaceAll: b
   };
 }
 
-async function fileBefore(path: string): Promise<FileBefore> {
+/** A file's line changes from one version to another, with the file's line numbers and a few lines around each change. */
+export function fileChangeDiff(path: string, before: FileBefore, after: FileBefore): EditDiff {
+  const change = before.kind === "missing" ? "added" : after.kind === "missing" ? "deleted" : "modified";
+  const unchanged: Omit<EditDiff, "hiddenBecause"> = { path, change, added: 0, removed: 0, hunks: [], located: true, lineCount: null };
+  if (before.kind === "unreadable" || after.kind === "unreadable") return { ...unchanged, hiddenBecause: "a binary or very large file" };
+  const [beforeText, afterText] = [before, after].map((file) => (file.kind === "text" ? file.text : ""));
+  const hunks = hunksBetween(beforeText!, afterText!, CONTEXT_LINES, FILE_DIFF_TIMEOUT_MS);
+  if (!hunks) return { ...unchanged, hiddenBecause: "the diff took too long" };
+  const rows = hunks.flatMap((hunk) => hunk.rows);
+  const tooLong = rows.length > MAX_ROWS_PER_FILE;
+  return {
+    ...unchanged,
+    added: rows.filter((row) => row.kind === "added").length,
+    removed: rows.filter((row) => row.kind === "removed").length,
+    hunks: tooLong ? [] : hunks,
+    hiddenBecause: tooLong ? `more than ${MAX_ROWS_PER_FILE.toLocaleString("en")} diff lines` : null,
+    lineCount: linesOf(afterText!).length,
+  };
+}
+
+/** One edit as the agent sent it, without the file's line numbers. */
+export function snippetDiff(path: string, oldText: string | null, newText: string): EditDiff {
+  const hunks = snippetHunks(oldText ?? "", newText);
+  const rows = hunks.flatMap((hunk) => hunk.rows);
+  return {
+    path,
+    change: "modified",
+    added: rows.filter((row) => row.kind === "added").length,
+    removed: rows.filter((row) => row.kind === "removed").length,
+    hunks,
+    hiddenBecause: null,
+    located: false,
+    lineCount: null,
+  };
+}
+
+/** The file as it is on disk: its text, or that there is no such file, or that it can't be read as text. */
+export async function textFileAt(path: string): Promise<FileBefore> {
   let handle;
   try {
     handle = await open(path, "r");
@@ -111,7 +150,7 @@ async function fileBefore(path: string): Promise<FileBefore> {
   }
 }
 
-function shownPath(path: string, workspaceDirectories: string[]) {
+export function shownPath(path: string, workspaceDirectories: string[]) {
   const inside = workspaceDirectories.map((directory) => relative(directory, path)).find((within) => within !== "" && !within.startsWith("..") && !isAbsolute(within));
   return inside ?? path;
 }
@@ -127,7 +166,7 @@ export async function editDiffsOf(toolCall: ToolCallUpdate, workspaceDirectories
   return Promise.all(
     changes.map(async (change) => {
       const path = resolve(workspaceDirectories[0]!, change.path);
-      return editDiff(change, await fileBefore(path), replaceAll, shownPath(path, workspaceDirectories));
+      return editDiff(change, await textFileAt(path), replaceAll, shownPath(path, workspaceDirectories));
     }),
   );
 }

@@ -3,6 +3,7 @@ import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conver
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
+import { changesRefreshPoint } from "./changes.ts";
 import { editRequestsIn } from "./edit-approval.ts";
 import { useEditsInCanvas } from "./edits-in-canvas.ts";
 import { ChatPanel } from "./Chat.tsx";
@@ -318,6 +319,7 @@ export function App() {
   useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
   const editsInCanvas = useEditsInCanvas();
   const editRequests = useMemo(() => (open && editsInCanvas ? editRequestsIn(open.events) : []), [open?.events, editsInCanvas]);
+  const changesRefresh = useMemo(() => (open ? changesRefreshPoint(open.events) : 0), [open?.events]);
 
   const closeOverlay = useCallback(() => {
     dispatch({ type: "close-overlay" });
@@ -501,6 +503,7 @@ export function App() {
                 items={open!.canvas}
                 edits={editRequests}
                 assetsOrigin={state.canvasAssetsOrigin}
+                changesRefreshPoint={changesRefresh}
                 onHide={toggleCanvas}
               />
             ) : null,

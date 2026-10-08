@@ -1,0 +1,281 @@
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ToolKind } from "@agentclientprotocol/sdk";
+import { agentEditsIn, Changes } from "../host/changes.ts";
+import { Checkpoints } from "../host/checkpoints.ts";
+import { Store } from "../host/store.ts";
+import { treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
+import type { StoredEvent } from "../shared/model.ts";
+import { changesRefreshPoint, firstChangedLine } from "../web/changes.ts";
+
+let root: string;
+let projectDir: string;
+let outsideDir: string;
+let store: Store;
+let checkpoints: Checkpoints;
+let opened: { file: string; line: number }[];
+let changes: Changes;
+
+async function git(directory: string, args: string[]) {
+  const child = Bun.spawn(["git", "-C", directory, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  if (exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${stderr}`);
+  return stdout.trim();
+}
+
+const write = (relative: string, content: string) => writeFile(join(projectDir, relative), content);
+
+const workspace = () => store.listWorkspaces()[0]!;
+
+beforeEach(async () => {
+  root = await realpath(await mkdtemp(join(tmpdir(), "mirador-changes-")));
+  projectDir = join(root, "project");
+  outsideDir = join(root, "elsewhere");
+  await mkdir(projectDir);
+  await mkdir(outsideDir);
+  await git(projectDir, ["init", "-q"]);
+  await write(".gitignore", "build\n");
+  await write("kept.txt", "one\ntwo\nthree\n");
+  await write("doomed.txt", "doomed\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "base"]);
+  store = new Store(":memory:");
+  store.insertWorkspace({ id: "w1", name: "project", path: projectDir, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+  store.insertConversation({
+    id: "c1",
+    workspaceId: "w1",
+    harness: "claude",
+    profileId: null,
+    title: "t",
+    titleSetByUser: false,
+    acpSessionId: null,
+    askMode: "wait",
+    bypassPermissions: false,
+    status: "idle",
+    statusDetail: null,
+    openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
+    usageLimit: null,
+    jobWaits: [],
+    waitingFor: null,
+    activity: null,
+    configOptions: [],
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  checkpoints = new Checkpoints(root);
+  opened = [];
+  changes = new Changes(store, checkpoints, () => workspace(), (file, line) => opened.push({ file, line }));
+});
+
+afterEach(() => rm(root, { recursive: true, force: true }));
+
+async function startTurn() {
+  const checkpoint = await checkpoints.snapshot(workspace());
+  return store.appendEvent("c1", { type: "user-message", text: "go", ...(checkpoint && { checkpoint }) });
+}
+
+/** A finished edit as Claude Code reports it: the kind first, then the path and diff, then done. */
+function agentEdits(toolCallId: string, path: string, oldText: string | null, newText: string, kind: ToolKind = "edit") {
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call", toolCallId, title: "Edit", kind, status: "pending" } });
+  store.appendEvent("c1", {
+    type: "acp",
+    update: { sessionUpdate: "tool_call_update", toolCallId, locations: [{ path }], content: [{ type: "diff", path, oldText, newText }] },
+  });
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId, status: "completed" } });
+}
+
+test("git's raw and numstat output give each file's status and line counts, with binaries uncounted and submodules left out", () => {
+  const raw = [":100644 100644 aaa bbb M", "src/a b.ts", ":000000 100644 000 ccc A", "logo.png", ":160000 160000 ddd eee M", "vendor/lib", ":100644 000000 fff 000 D", "gone.txt", ""].join("\0");
+  const numstat = ["3\t1\tsrc/a b.ts", "-\t-\tlogo.png", "1\t1\tvendor/lib", "0\t2\tgone.txt", ""].join("\0");
+  expect(treeChangesIn(raw, numstat)).toEqual([
+    { path: "src/a b.ts", status: "modified", added: 3, removed: 1 },
+    { path: "logo.png", status: "added", added: null, removed: null },
+    { path: "gone.txt", status: "deleted", added: 0, removed: 2 },
+  ]);
+});
+
+test("uncommitted changes are git status against HEAD, staged or not, with untracked files and without ignored ones", async () => {
+  await write("kept.txt", "one\ntwo\nthree\nfour\n");
+  await write("new.txt", "a\nb\n");
+  await mkdir(join(projectDir, "build"));
+  await write("build/out.js", "ignored\n");
+  await rm(join(projectDir, "doomed.txt"));
+  await git(projectDir, ["add", "kept.txt"]);
+
+  expect(await uncommittedChanges(projectDir)).toEqual([
+    { path: "doomed.txt", status: "deleted", added: 0, removed: 1 },
+    { path: "kept.txt", status: "modified", added: 1, removed: 0 },
+    { path: "new.txt", status: "added", added: 2, removed: 0 },
+  ]);
+});
+
+test("in a folder below the repository's top, paths are the folder's own and files elsewhere in the repository are left out", async () => {
+  await mkdir(join(projectDir, "sub"));
+  await write("sub/inner.txt", "inner\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "sub"]);
+  await write("sub/inner.txt", "inner\nmore\n");
+  await write("kept.txt", "changed\n");
+
+  expect(await uncommittedChanges(join(projectDir, "sub"))).toEqual([{ path: "inner.txt", status: "modified", added: 1, removed: 0 }]);
+});
+
+test("the agent's edits come from its finished edit tool calls, each file with the last and fullest diff of each call", () => {
+  agentEdits("t1", "/p/a.ts", "x", "y");
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t1", content: [{ type: "diff", path: "/p/a.ts", oldText: "x\nz", newText: "y\nz" }] } });
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call", toolCallId: "t2", title: "Read", kind: "read", status: "pending", locations: [{ path: "/p/read.ts" }] } });
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t2", status: "completed" } });
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call", toolCallId: "t3", title: "Edit", kind: "edit", status: "pending" } });
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t3", locations: [{ path: "/p/rejected.ts" }], status: "failed" } });
+  agentEdits("t4", "/p/a.ts", "y", "w");
+
+  expect(agentEditsIn(store.toolCallEventsFrom("c1", 0))).toEqual([
+    {
+      path: "/p/a.ts",
+      deleted: false,
+      snippets: [
+        { oldText: "x\nz", newText: "y\nz" },
+        { oldText: "y", newText: "w" },
+      ],
+    },
+  ]);
+});
+
+test("this turn lists what differs from the turn's start, marks the agent's files, and keeps files outside the project apart", async () => {
+  await write("kept.txt", "one\nTWO\nthree\n");
+  await startTurn();
+  await write("kept.txt", "one\nTWO\nthree\nfour\n");
+  agentEdits("t1", join(projectDir, "kept.txt"), "three\n", "three\nfour\n");
+  await write("by-hand.txt", "typed\n");
+  await writeFile(join(outsideDir, "notes.md"), "outside\n");
+  agentEdits("t2", join(outsideDir, "notes.md"), null, "outside\n");
+
+  const list = await changes.list("c1", "turn");
+  expect(list.base).toBe("turn-start");
+  expect(list.project).toEqual([
+    { path: "by-hand.txt", status: "added", added: 1, removed: 0, byAgent: false },
+    { path: "kept.txt", status: "modified", added: 1, removed: 0, byAgent: true },
+  ]);
+  expect(list.outside).toEqual([{ path: join(outsideDir, "notes.md"), status: "modified", added: null, removed: null, byAgent: true }]);
+
+  const uncommitted = await changes.list("c1", "uncommitted");
+  expect(uncommitted.base).toBe("head");
+  expect(uncommitted.project.map(({ path, added, removed }) => [path, added, removed])).toEqual([
+    ["by-hand.txt", 1, 0],
+    ["kept.txt", 2, 1],
+  ]);
+});
+
+test("a new turn starts with an empty list, and edits of an earlier turn stay under uncommitted", async () => {
+  await startTurn();
+  await write("kept.txt", "changed\n");
+  agentEdits("t1", join(projectDir, "kept.txt"), "one\ntwo\nthree\n", "changed\n");
+  await startTurn();
+
+  expect((await changes.list("c1", "turn")).project).toEqual([]);
+  expect((await changes.list("c1", "uncommitted")).project).toEqual([{ path: "kept.txt", status: "modified", added: 1, removed: 3, byAgent: true }]);
+});
+
+test("a path the agent gives relative to the workspace counts as the project's file", async () => {
+  await startTurn();
+  await write("kept.txt", "changed\n");
+  agentEdits("t1", "kept.txt", "one\ntwo\nthree\n", "changed\n");
+
+  const list = await changes.list("c1", "turn");
+  expect(list.project).toEqual([{ path: "kept.txt", status: "modified", added: 1, removed: 3, byAgent: true }]);
+  expect(list.outside).toEqual([]);
+});
+
+test("before the first turn there is nothing to list for this turn", async () => {
+  expect(await changes.list("c1", "turn")).toEqual({ scope: "turn", base: "no-turn", project: [], outside: [] });
+});
+
+test("a file's diff has the file's line numbers against the turn's start, and against HEAD for uncommitted", async () => {
+  await write("kept.txt", "one\nTWO\nthree\n");
+  await startTurn();
+  await write("kept.txt", "one\nTWO\nthree\nfour\n");
+
+  const turn = await changes.diff("c1", "turn", "kept.txt");
+  expect(turn.source).toBe("files");
+  const rows = turn.diffs[0]!.hunks.flatMap((hunk) => hunk.rows);
+  expect(rows.filter(({ kind }) => kind !== "context")).toEqual([{ kind: "added", oldLine: null, newLine: 4, text: "four" }]);
+  expect(firstChangedLine(turn)).toBe(4);
+
+  const uncommitted = await changes.diff("c1", "uncommitted", "kept.txt");
+  expect(uncommitted.diffs[0]!.hunks.flatMap((hunk) => hunk.rows).filter(({ kind }) => kind !== "context")).toEqual([
+    { kind: "removed", oldLine: 2, newLine: null, text: "two" },
+    { kind: "added", oldLine: null, newLine: 2, text: "TWO" },
+    { kind: "added", oldLine: null, newLine: 4, text: "four" },
+  ]);
+  expect(firstChangedLine(uncommitted)).toBe(2);
+});
+
+test("a deleted file's diff shows all its lines removed", async () => {
+  await rm(join(projectDir, "doomed.txt"));
+  const diff = await changes.diff("c1", "uncommitted", "doomed.txt");
+  expect(diff.diffs[0]).toMatchObject({ change: "deleted", added: 0, removed: 1 });
+});
+
+test("a file outside the project shows only the agent's own snippets, and one it did not edit is refused", async () => {
+  await startTurn();
+  const notes = join(outsideDir, "notes.md");
+  await writeFile(notes, "on disk, never read\n");
+  agentEdits("t1", notes, "old line", "new line");
+
+  const diff = await changes.diff("c1", "turn", notes);
+  expect(diff.source).toBe("agent");
+  expect(diff.diffs.map((each) => each.hunks.flatMap((hunk) => hunk.rows).map(({ kind, text }) => [kind, text]))).toEqual([
+    [
+      ["removed", "old line"],
+      ["added", "new line"],
+    ],
+  ]);
+  expect(firstChangedLine(diff)).toBe(1);
+  await expect(changes.diff("c1", "turn", "/etc/hosts")).rejects.toThrow("did not change");
+});
+
+test("a page can name only the project's files, or a file the agent edited, to show or open", async () => {
+  await startTurn();
+  const notes = join(outsideDir, "notes.md");
+  agentEdits("t1", notes, null, "x");
+
+  await expect(changes.diff("c1", "turn", "../elsewhere/notes.md")).rejects.toThrow("not a file of this workspace");
+  await expect(changes.diff("c1", "uncommitted", "../../etc/hosts")).rejects.toThrow("not a file of this workspace");
+  await expect(changes.openInEditor("c1", "/etc/hosts", 1)).rejects.toThrow("did not change");
+  await expect(changes.openInEditor("c1", "../elsewhere/notes.md", 1)).rejects.toThrow("not a file of this workspace");
+  await expect(changes.openInEditor("c1", "kept.txt", 0)).rejects.toThrow("not a line number");
+
+  await changes.openInEditor("c1", "kept.txt", 3);
+  await changes.openInEditor("c1", notes, 1);
+  expect(opened).toEqual([
+    { file: join(projectDir, "kept.txt"), line: 3 },
+    { file: notes, line: 1 },
+  ]);
+});
+
+test("outside a git repository, the list and the diffs are the agent's own edits", async () => {
+  await rm(join(projectDir, ".git"), { recursive: true });
+  await startTurn();
+  agentEdits("t1", join(projectDir, "kept.txt"), "two", "TWO");
+
+  const list = await changes.list("c1", "turn");
+  expect(list).toMatchObject({ base: "not-a-repository", project: [{ path: "kept.txt", status: "modified", added: null, byAgent: true }] });
+  expect((await changes.list("c1", "uncommitted")).base).toBe("not-a-repository");
+  expect((await changes.diff("c1", "turn", "kept.txt")).source).toBe("agent");
+});
+
+test("the Changes view loads again after finished tool calls, turns, the user's commands and undos, and not on streamed text", () => {
+  const events = (...each: StoredEvent["event"][]): StoredEvent[] => each.map((event, index) => ({ seq: index + 1, at: 0, event }));
+  const chunk: StoredEvent["event"] = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hi" } } };
+  const finished: StoredEvent["event"] = { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t", status: "completed" } };
+  const running: StoredEvent["event"] = { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId: "t", status: "in_progress" } };
+
+  expect(changesRefreshPoint(events({ type: "user-message", text: "go" }, chunk, running))).toBe(1);
+  expect(changesRefreshPoint(events({ type: "user-message", text: "go" }, finished, chunk))).toBe(2);
+  expect(changesRefreshPoint(events(chunk, { type: "turn-end", stopReason: "end_turn" }))).toBe(2);
+  expect(changesRefreshPoint(events(chunk))).toBe(0);
+});

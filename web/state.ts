@@ -240,6 +240,9 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "sessions.failed":
     case "review.file-read":
     case "review.file-failed":
+    case "changes.listed":
+    case "changes.diffed":
+    case "changes.failed":
     case "slash-commands.listed":
     case "prompt-history.listed":
     case "mentions.suggested":

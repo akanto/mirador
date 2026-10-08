@@ -28,6 +28,7 @@ import type {
   WorkspaceGroup,
   Pastel,
 } from "./model.ts";
+import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { FindingDecision } from "./review.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
@@ -153,6 +154,9 @@ export type ClientMessage =
   | { type: "review.open-in-editor"; itemId: string; path: string; line: number }
   /** The reviewed version of a changed file, for showing the lines around the diff's hunks. */
   | { type: "review.read-file"; requestId: string; itemId: string; path: string }
+  | { type: "changes.list"; requestId: string; conversationId: string; scope: ChangeScope }
+  | { type: "changes.diff"; requestId: string; conversationId: string; scope: ChangeScope; path: string }
+  | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
   | { type: "fs.complete"; requestId: string; prefix: string }
   | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
   | { type: "terminals.attach"; workspaceId: string | null }
@@ -277,6 +281,9 @@ export type ServerMessage =
   | { type: "prompt-history.listed"; requestId: string; prompts: string[]; ownEarlier?: PromptHistoryEntry[] }
   | { type: "mentions.suggested"; requestId: string; suggestions: MentionSuggestion[] }
   | { type: "review.file-failed"; requestId: string; message: string }
+  | { type: "changes.listed"; requestId: string; list: ChangeList }
+  | { type: "changes.diffed"; requestId: string; changes: FileChanges }
+  | { type: "changes.failed"; requestId: string; message: string }
   | { type: "terminals.listed"; workspaceId: string; tabs: TerminalTab[] }
   | { type: "terminal.opened"; requestId: string; tabId: string; terminalId: string }
   | { type: "terminal.replayed"; terminalId: string; data: string }

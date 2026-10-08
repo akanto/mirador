@@ -1,4 +1,5 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 
@@ -7,6 +8,9 @@ import * as acp from "@agentclientprotocol/sdk";
  * llama.cpp still loading its model leaves a turn: the agent is wedged, so only killing its process ends the turn.
  * A prompt starting with CRASH makes the process die in the middle of the turn instead. One of `EDIT ` and a JSON
  * array of edits asks permission for each edit at once, and ends the turn with what the user answered to each.
+ * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
+ * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, and
+ * `{"waitFor": path}` holds the turn until that file exists.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -82,6 +86,29 @@ async function askToEdit(client: acp.AgentContext, sessionId: string, edits: Pro
   return { stopReason: "end_turn" as const };
 }
 
+type WriteStep = { edit: string; content: string } | { shell: string; content: string } | { waitFor: string };
+
+let nextToolCall = 0;
+
+async function writeFiles(client: acp.AgentContext, sessionId: string, steps: WriteStep[]) {
+  const update = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  for (const step of steps) {
+    if ("waitFor" in step) {
+      while (!existsSync(step.waitFor)) await Bun.sleep(50);
+      continue;
+    }
+    const toolCallId = `write-${++nextToolCall}`;
+    const path = "edit" in step ? step.edit : step.shell;
+    await update({ sessionUpdate: "tool_call", toolCallId, title: "edit" in step ? `Write ${path}` : `echo > ${path}`, kind: "edit" in step ? "edit" : "execute", status: "pending" });
+    const oldText = existsSync(path) ? readFileSync(path, "utf8") : null;
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, step.content);
+    if ("edit" in step) await update({ sessionUpdate: "tool_call_update", toolCallId, locations: [{ path }], content: [{ type: "diff", path, oldText, newText: step.content }] });
+    await update({ sessionUpdate: "tool_call_update", toolCallId, status: "completed" });
+  }
+  return { stopReason: "end_turn" as const };
+}
+
 log("started");
 acp
   .agent()
@@ -110,6 +137,7 @@ acp
     const text = ctx.params.prompt.map((block) => (block.type === "text" ? block.text : "")).join("");
     appendFileSync(promptsFile!, `${text}\n`);
     if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
+    if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
   })

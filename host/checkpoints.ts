@@ -1,6 +1,7 @@
 import { mkdir, readdir, rm, rmdir } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { RestorePlan, Workspace } from "../shared/model.ts";
+import { treeChangesIn, type TreeChange } from "./working-tree.ts";
 
 /** Where snapshots hung, one after another, before each got a ref of its own. */
 const chainRefOf = (workspaceId: string) => `refs/mirador/${workspaceId}`;
@@ -69,6 +70,19 @@ export class Checkpoints {
   /** Whether the snapshot's files are still in the repository: once its ref is dropped, git's gc may take them. */
   keeps(workspace: Workspace, commit: string): Promise<boolean> {
     return this.inOrder(workspace.id, async () => (await this.git(workspace, ["cat-file", "-e", `${commit}^{tree}`])).exitCode === 0);
+  }
+
+  /**
+   * The workspace's files that differ from the snapshot `commit`, staged into our index as the snapshot was, so a file
+   * .gitignore hides counts on neither side; null when the workspace is not a git repository.
+   */
+  changesSince(workspace: Workspace, commit: string): Promise<TreeChange[] | null> {
+    return this.inOrder(workspace.id, async () => {
+      if (!(await this.isRepository(workspace))) return null;
+      const now = await this.stageEverything(workspace);
+      const diff = async (format: string) => (await this.mustGit(workspace, ["diff-tree", "-r", "-z", "--relative", "--no-renames", format, commit, now])).stdout;
+      return treeChangesIn(await diff("--raw"), await diff("--numstat"));
+    });
   }
 
   /** What restoring `commit` would do, without touching a file; null when the workspace is not a git repository. */

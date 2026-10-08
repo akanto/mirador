@@ -30,6 +30,7 @@ import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
+import { launchIdea } from "./review/editor.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
@@ -44,6 +45,7 @@ import type { Hub } from "./hub.ts";
 import type { ImageStore } from "./images.ts";
 import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
+import { Changes } from "./changes.ts";
 import { Checkpoints, SNAPSHOTS_KEPT } from "./checkpoints.ts";
 import { profileToLaunch } from "./profiles.ts";
 import type { Store, UnseenTurnEnd } from "./store.ts";
@@ -137,6 +139,7 @@ export class ConversationService {
   private readonly commands = new UserCommandRunner();
   private readonly jobWaits: JobWaits;
   private readonly checkpoints: Checkpoints;
+  readonly changes: Changes;
   /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
   private stopping = false;
 
@@ -149,6 +152,7 @@ export class ConversationService {
     private readonly notifications: SystemNotifications,
   ) {
     this.checkpoints = new Checkpoints(config.dataDir);
+    this.changes = new Changes(store, this.checkpoints, (conversationId) => this.workspaceOf(conversationId), launchIdea);
     this.cancelPermissionsOrphanedByRestart();
     this.endTurnsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());

@@ -174,6 +174,14 @@ export const hints = {
   canvasHistory: "Everything the agent drew or asked in this conversation, newest first.",
   canvasClear: "Empty the canvas. Nothing is deleted: the item stays in History.",
   canvasEditsWaiting: "Show the edit the agent waits for you to allow or reject.",
+  canvasChanges: "The files this turn changed, or all uncommitted changes, with their line changes.",
+  changesScope: {
+    turn: "The files that differ from how they were when this turn began, as the agent or anything else left them.",
+    uncommitted: "git status: the files that differ from the last commit, and the files outside the project the agent edited in this conversation.",
+  },
+  changesRefresh: "Load the list again. It also loads after each tool call the agent finishes and when the turn ends.",
+  changesByAgent: "This conversation's agent changed this file with its edit tools.",
+  changesOpenInIdea: "Open the file in IntelliJ IDEA at its first changed line.",
   editDiffStyle: "Unified shows the old and new lines in one column; Split shows the old version on the left and the new one on the right. Remembered in this browser.",
 } as const;
 

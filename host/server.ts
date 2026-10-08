@@ -785,6 +785,20 @@ export function startServer(services: HostServices) {
           .then((lines) => reply({ type: "review.file-read", requestId: message.requestId, lines }))
           .catch((error) => reply({ type: "review.file-failed", requestId: message.requestId, message: errorMessage(error) }));
         return;
+      case "changes.list":
+        conversations.changes
+          .list(message.conversationId, message.scope)
+          .then((list) => reply({ type: "changes.listed", requestId: message.requestId, list }))
+          .catch((error) => reply({ type: "changes.failed", requestId: message.requestId, message: errorMessage(error) }));
+        return;
+      case "changes.diff":
+        conversations.changes
+          .diff(message.conversationId, message.scope, message.path)
+          .then((changes) => reply({ type: "changes.diffed", requestId: message.requestId, changes }))
+          .catch((error) => reply({ type: "changes.failed", requestId: message.requestId, message: errorMessage(error) }));
+        return;
+      case "changes.open-in-editor":
+        return conversations.changes.openInEditor(message.conversationId, message.path, message.line);
       case "fs.complete":
         return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
       case "statusline.render":
