@@ -125,7 +125,10 @@ function copySelectionWhenReleased(view: Terminal) {
   document.addEventListener("mouseup", () => copiesOnSelect() && copySelection(view), { once: true });
 }
 
-/** A split hidden behind a zoomed one has no size; fitting it then would shrink its shell to two columns. */
+/**
+ * A split hidden behind a zoomed one has no size; fitting it then would shrink its shell to two columns. Nor has a
+ * screen React just took out of the page, whose observer may still report that before its effect is cleaned up.
+ */
 const isShown = (element: HTMLElement) => element.offsetWidth > 0 && element.offsetHeight > 0;
 
 /** Keys, pastes and clicks reach the terminal's onData while their event is handled; its own answers, while it parses output. */
@@ -171,7 +174,8 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: terminalFontSize(), cursorBlink: true, scrollback: 5_000, theme: terminalTheme, allowProposedApi: true });
     const fit = new FitAddon();
     const searcher = new SearchAddon({ highlightLimit: HIGHLIGHT_LIMIT });
-    const fitIfShown = () => isShown(screen.current!) && fit.fit();
+    const screenElement = screen.current!;
+    const fitIfShown = () => isShown(screenElement) && fit.fit();
     const applyFontSize = () => {
       view.options.fontSize = terminalFontSize();
       fitIfShown();
@@ -194,7 +198,6 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       }
       return false;
     });
-    const screenElement = screen.current!;
     view.open(screenElement);
     const startSelecting = () => copySelectionWhenReleased(view);
     screenElement.addEventListener("mousedown", startSelecting);
@@ -211,7 +214,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     const typed = view.onData((data) => history.letsThrough() && connection.send({ type: "terminal.input", terminalId, data }));
     const resized = view.onResize(({ cols, rows }) => connection.send({ type: "terminal.resize", terminalId, columns: cols, rows }));
     const observer = new ResizeObserver(fitIfShown);
-    observer.observe(screen.current!);
+    observer.observe(screenElement);
     const stopFontListening = subscribeTerminalFontSize(applyFontSize);
 
     fitIfShown();
