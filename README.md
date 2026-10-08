@@ -118,9 +118,12 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### The canvas
 
+![The Changes view on the canvas: the uncommitted files of shop-api, the agent's edit of src/checkout.ts marked and open under its row](docs/screenshots/changes.png)
+
 - **`show`**: the agent renders a page next to the conversation: diagrams, mockups, charts, comparisons, 3D scenes.
 - **Libraries built in**: three.js (with OrbitControls), D3 v7 and Mermaid load from Mirador itself, so pages work offline.
 - **Script errors come back**: the agent hears either "rendered without script errors" or the list of errors, and can fix its page.
+- **Changes**: *Changes* in the canvas bar lists the files this turn changed, or the workspace's uncommitted work (*This turn* or *Uncommitted*), and marks the ones the agent's edit tools changed. Files outside the project the agent edited are listed apart. Click a file for its line changes right under its row, Unified or Split, and *Open in IDEA* at its first change. The list shows at once when you come back to it, and refreshes as the agent works.
 - **History**: everything shown or asked is kept per conversation, across reloads and restarts. *Older* and *Newer* step through it, and *History* lists it newest first, with each question's outcome. *Clear* empties the canvas without deleting anything.
 - **Hide, show and full screen**: the canvas keeps receiving pages while hidden.
 - **How often Claude Code uses it** (*Settings → Canvas*): *As needed*, or *Often*, which adds guidance to Claude Code's system prompt. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode gets the same instructions.
@@ -211,8 +214,8 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 ### Sidebar and workspaces
 
 - **Workspaces** are project folders (*Add workspace*, Tab completes paths), each a card with its conversations oldest first and *+ New* at the bottom. The chip beside *+ New* chooses the profile for new conversations, and each workspace remembers it. Removing a workspace never touches its files.
-- **Drag to reorder** workspaces (by their heading) and conversations (within their workspace). Every window and reload keeps the order.
-- **Groups**: ⊞ next to + adds a group, e.g. per project or client, named in place. Drag a workspace by its heading into a group, out of it or within it; dropping it on a folded group's heading puts it last there. Drag a group's heading to reorder the groups, and hover it to rename or delete the group (its workspaces move to the top). A group folds to its heading, which then counts what waits in it; opening a conversation in a folded group unfolds it. The palette has *New group…* and moves a workspace into a group or out of its own. Every window keeps the groups; folding is per browser. The phone app shows the workspaces without their groups.
+- **Drag to reorder** workspaces (by their heading), groups (by theirs) and conversations (within their workspace). Workspaces outside a group and the groups share one order, so a workspace can sit between two groups or below them. New workspaces and groups go first. Every window and reload keeps the order.
+- **Groups**: ⊞ next to + adds a group, e.g. per project or client, named in place. Drag a workspace by its heading into a group, out of it or within it: dropped on the top edge of a group's heading it lands above the group, and lower on the heading last in it, folded or not. A group's workspaces are indented a little. Hover a group's heading to rename or delete the group; its workspaces stay where it was. A group folds to its heading, which then counts what waits in it; opening a conversation in a folded group unfolds it. The palette has *New group…*, and moves a workspace into a group or out of its own, to just below it. Every window keeps the groups; folding is per browser. The phone app shows the workspaces in the same order, without their groups.
 - **Colours**: eight pastels, picked from the workspace's initials badge or the palette, drawn as a tinted card, a heading or an edge stripe.
 - **Waiting marks**: *Needs you*, *Done* and *Failed* (see [Notifications](#notifications-and-waiting-for-you)).
 - **Devices connected**: a line at the bottom says how many devices are connected; it can be switched off.

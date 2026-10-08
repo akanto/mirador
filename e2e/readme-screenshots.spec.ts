@@ -78,6 +78,8 @@ const retry = `export async function withRetries<T>(run: () => Promise<T>, { att
 }
 `;
 
+const checkoutFixed = checkoutAfter.replace("payments.capture(card, cart.total)", "payments.capture(card, cart.total, { idempotencyKey: cart.id })");
+
 /** shop-api on a branch that retries card payments, the change the demo review is about. */
 function createProjects() {
   writeFiles(shopApi, { "README.md": "# shop-api\n", "src/checkout.ts": checkoutBefore });
@@ -148,6 +150,22 @@ const coldStart = [
   userSays("Profile the cold start on a mid-range phone and cut it below a second."),
   agentSays("Starting a trace on the emulator…"),
   { type: "turn-end", stopReason: "refusal" },
+];
+
+const captureLine = "withRetries(() => payments.capture(card, cart.total), { attempts: 3 })";
+const stopDoubleCharge = [
+  userSays("Fix the blocker from the review: a retried capture must not charge the card twice."),
+  update({
+    sessionUpdate: "tool_call",
+    toolCallId: "toolu_edit",
+    title: "Edit src/checkout.ts",
+    kind: "edit",
+    status: "completed",
+    locations: [{ path: join(shopApi, "src/checkout.ts") }],
+    content: [{ type: "diff", path: join(shopApi, "src/checkout.ts"), oldText: captureLine, newText: captureLine.replace("cart.total)", "cart.total, { idempotencyKey: cart.id })") }],
+  }),
+  agentSays("The capture now sends the cart's id as its idempotency key, so retrying a capture the bank already took doesn't charge the card again. The change is under *Changes* on the canvas."),
+  turnEnd,
 ];
 
 const postgres = [
@@ -319,10 +337,12 @@ test("the README's screenshots", async ({ page }) => {
     coldStart: await newConversationIn(page, mobileApp),
     postgres: await newConversationIn(page, infra),
     explainCheckout: await newConversationIn(page, shopApi),
+    stopDoubleCharge: await newConversationIn(page, shopApi),
   };
   const conversation = (id: string, title: string, minutesAgo: number, events: unknown[], unseenTurnEnd?: DemoConversation["unseenTurnEnd"]): DemoConversation => ({ id, title, minutesAgo, events, unseenTurnEnd });
   const demo: Demo = {
     workspaceColors: { [shopApi]: "sky", [mobileApp]: "mint", [infra]: "peach" },
+    sidebar: [{ group: "Shop", workspaces: [shopApi, mobileApp] }, infra],
     conversations: [
       conversation(ids.explainCheckout, "Explain the checkout flow", 12, explainCheckout),
       conversation(ids.reviewRetries, "Review: retry card payments", 40, reviewRetries),
@@ -330,6 +350,7 @@ test("the README's screenshots", async ({ page }) => {
       conversation(ids.settingsLayout, "Pick a settings layout", 8, settingsLayout),
       conversation(ids.coldStart, "Speed up the cold start", 30, coldStart, "error"),
       conversation(ids.postgres, "Plan the Postgres 18 upgrade", 90, postgres),
+      conversation(ids.stopDoubleCharge, "Stop the double charge", 4, stopDoubleCharge),
     ],
   };
   await host.stop();
@@ -375,5 +396,15 @@ test("the README's screenshots", async ({ page }) => {
     await expect(page.locator(".terminal-pane .xterm-rows").nth(1)).toContainText("2 files changed");
     await save(page, "terminals");
     await page.getByRole("button", { name: "Hide terminal" }).click();
+  });
+
+  await test.step("the files a change touched, on the canvas", async () => {
+    writeFiles(shopApi, { "src/checkout.ts": checkoutFixed, "README.md": "# shop-api\n\nCheckout retries a failed card capture up to three times.\n" });
+    await openConversation(page, ids.stopDoubleCharge);
+    const changes = page.locator(".changes");
+    await changes.getByRole("button", { name: "Uncommitted" }).click();
+    await changes.getByRole("button", { name: /src\/checkout\.ts/ }).click();
+    await expect(changes.locator(".changes-diff")).toContainText("idempotencyKey");
+    await save(page, "changes");
   });
 });
