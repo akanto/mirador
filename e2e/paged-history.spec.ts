@@ -90,6 +90,14 @@ test("a long conversation opens with its newest part, and earlier parts come fro
     await page.keyboard.press("Control+KeyF");
     await bar.getByLabel("Find in this conversation").fill("reply");
     await expect(bar.locator(".find-tally")).toHaveText(`${TURNS} of ${TURNS}`);
+    const matchCase = bar.getByRole("button", { name: "Match case" });
+    await matchCase.click();
+    await bar.getByLabel("Find in this conversation").fill("Reply");
+    await expect(bar.locator(".find-tally")).toHaveText("No matches");
+    await matchCase.click();
+    await expect(bar.locator(".find-tally")).toHaveText(`${TURNS} of ${TURNS}`);
+    await bar.getByLabel("Find in this conversation").fill("reply");
+    await expect(bar.locator(".find-tally")).toHaveText(`${TURNS} of ${TURNS}`);
     await bar.getByRole("button", { name: "Newer match" }).click();
     await expect(bar.locator(".find-tally")).toHaveText(`1 of ${TURNS}`);
     await expect.poll(() => currentMatch(page)).toMatchObject({ text: "reply", entry: expect.stringContaining(numbered("reply", 0)), inView: true });

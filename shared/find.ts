@@ -4,18 +4,25 @@ export const MIN_SEARCH_LENGTH = 2;
 
 const escapedForRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const patternFor = (query: string) => new RegExp(escapedForRegExp(query), "gi");
-
-/** Where the query occurs in the text, ignoring case: [start, end) offsets of each occurrence, in order. */
-export function matchOffsets(text: string, query: string): [number, number][] {
-  if (query === "") return [];
-  return [...text.matchAll(patternFor(query))].map((match) => [match.index, match.index + match[0].length]);
+/** Finding ignores case unless the find bar's Match case is on. */
+export interface MatchOptions {
+  caseSensitive: boolean;
 }
 
-/** How often the query occurs in the text, ignoring case; a one-letter query can occur millions of times, so none is kept. */
-export function matchCount(text: string, query: string) {
+export const ignoringCase: MatchOptions = { caseSensitive: false };
+
+const patternFor = (query: string, { caseSensitive }: MatchOptions) => new RegExp(escapedForRegExp(query), caseSensitive ? "g" : "gi");
+
+/** Where the query occurs in the text: [start, end) offsets of each occurrence, in order. */
+export function matchOffsets(text: string, query: string, options = ignoringCase): [number, number][] {
+  if (query === "") return [];
+  return [...text.matchAll(patternFor(query, options))].map((match) => [match.index, match.index + match[0].length]);
+}
+
+/** How often the query occurs in the text; a one-letter query can occur millions of times, so none is kept. */
+export function matchCount(text: string, query: string, options = ignoringCase) {
   if (query === "") return 0;
-  const pattern = patternFor(query);
+  const pattern = patternFor(query, options);
   let count = 0;
   while (pattern.exec(text)) count++;
   return count;
@@ -67,4 +74,4 @@ export function textsOf(block: TimelineBlock): string[] {
 }
 
 /** How often an entry not in the page holds the query; once in the page, its rendered text counts instead. */
-export const occurrencesIn = (block: TimelineBlock, query: string) => matchCount(textsOf(block).join("\n"), query);
+export const occurrencesIn = (block: TimelineBlock, query: string, options = ignoringCase) => matchCount(textsOf(block).join("\n"), query, options);

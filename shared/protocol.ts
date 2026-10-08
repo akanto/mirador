@@ -113,7 +113,7 @@ export type ClientMessage =
    */
   | { type: "conversation.load-earlier"; requestId: string; conversationId: string; beforeSeq: number; turns?: number; reaching?: number }
   /** How often the query occurs in each entry of the conversation that starts before `beforeSeq`, which the page does not hold. */
-  | { type: "conversation.find"; requestId: string; conversationId: string; query: string; beforeSeq: number }
+  | { type: "conversation.find"; requestId: string; conversationId: string; query: string; caseSensitive: boolean; beforeSeq: number }
   /** A tool call's raw output, which a page gets only when it shows it. */
   | { type: "tool-raw-output.get"; requestId: string; conversationId: string; toolCallId: string }
   /** Tool output the low-data form shortened, whole: the content of the stored event its mark names, images still as links. */

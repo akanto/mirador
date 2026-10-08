@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ConversationSearch, snippetAround } from "../host/search.ts";
+import { ignoringCase } from "../shared/find.ts";
 import { Store } from "../host/store.ts";
 import type { Conversation, ConversationEvent } from "../shared/model.ts";
 
@@ -70,12 +71,25 @@ describe("ConversationSearch", () => {
     store.appendEvent("older", agentSays("and needle"));
     store.appendEvent("older", { type: "user-message", text: "needle held by the page" });
     const search = new ConversationSearch(store);
-    expect(search.matchesBefore("older", "needle", 4)).toEqual([
+    expect(search.matchesBefore("older", "needle", ignoringCase, 4)).toEqual([
       { key: "1", count: 1 },
       { key: "2", count: 2 },
     ]);
-    expect(search.matchesBefore("older", "needle", 2)).toEqual([{ key: "1", count: 1 }]);
-    expect(search.matchesBefore("older", "haystack", 4)).toEqual([]);
+    expect(search.matchesBefore("older", "needle", ignoringCase, 2)).toEqual([{ key: "1", count: 1 }]);
+    expect(search.matchesBefore("older", "haystack", ignoringCase, 4)).toEqual([]);
+  });
+
+  test("counts only the matches written the same way when the find bar matches case", () => {
+    const store = storeWithTwoConversations();
+    store.appendEvent("older", { type: "user-message", text: "Needle and needle" });
+    store.appendEvent("older", agentSays("NEEDLE"));
+    store.appendEvent("older", { type: "user-message", text: "held by the page" });
+    const search = new ConversationSearch(store);
+    expect(search.matchesBefore("older", "Needle", ignoringCase, 3)).toEqual([
+      { key: "1", count: 2 },
+      { key: "2", count: 1 },
+    ]);
+    expect(search.matchesBefore("older", "Needle", { caseSensitive: true }, 3)).toEqual([{ key: "1", count: 1 }]);
   });
 
   test("needs two characters", () => {

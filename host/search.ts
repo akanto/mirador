@@ -1,4 +1,4 @@
-import { MIN_SEARCH_LENGTH, matchCount, matchOffsets, textsOf } from "../shared/find.ts";
+import { MIN_SEARCH_LENGTH, matchCount, matchOffsets, textsOf, type MatchOptions } from "../shared/find.ts";
 import type { ConversationMatches, EntryMatchCount, SearchHit, StoredEvent } from "../shared/model.ts";
 import { buildTimeline, withChunksCoalesced } from "../shared/timeline.ts";
 import { pageEvent } from "./low-data.ts";
@@ -58,13 +58,13 @@ export class ConversationSearch {
   }
 
   /** How often the query occurs in each entry before `beforeSeq`, for the page that holds only the events from there. */
-  matchesBefore(conversationId: string, query: string, beforeSeq: number): EntryMatchCount[] {
+  matchesBefore(conversationId: string, query: string, options: MatchOptions, beforeSeq: number): EntryMatchCount[] {
     this.forgetLater();
     const known = this.earlierParts.get(conversationId);
     const entries = known?.beforeSeq === beforeSeq ? known.entries : searchableEntries(this.store.listEventsBetween(conversationId, 0, beforeSeq));
     this.earlierParts.set(conversationId, { beforeSeq, entries });
     return entries.flatMap(({ key, text }) => {
-      const count = matchCount(text, query);
+      const count = matchCount(text, query, options);
       return count > 0 ? [{ key, count }] : [];
     });
   }

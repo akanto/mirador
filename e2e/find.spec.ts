@@ -111,6 +111,23 @@ test("Cmd+F finds text anywhere in the conversation, in entries not loaded yet a
     await expect(tally).toHaveText("No matches");
   });
 
+  await test.step("Match case counts only the matches written the same way, in entries not loaded yet and in folded output too", async () => {
+    const matchCase = bar.getByRole("button", { name: "Match case" });
+    await input.fill("needle");
+    await expect(tally).toHaveText("6 of 6");
+    await matchCase.click();
+    await expect(matchCase).toHaveAttribute("aria-pressed", "true");
+    await expect(input).toBeFocused();
+    await expect(tally).toHaveText("5 of 5");
+    await input.fill("Needle");
+    await expect(tally).toHaveText("1 of 1");
+    expect(await currentMatch(page)).toMatchObject({ text: "Needle", entry: expect.stringContaining("Where is the Needle?"), inView: true });
+    await expect(page.locator(".shell-more")).toHaveCount(1);
+    await matchCase.click();
+    await expect(tally).toHaveText("6 of 6");
+    await expect(page.locator(".shell-more")).toHaveCount(0);
+  });
+
   await test.step("Esc closes the bar and clears the highlights; the header's Find opens it again", async () => {
     await input.press("Escape");
     await expect(bar).toHaveCount(0);
@@ -119,6 +136,7 @@ test("Cmd+F finds text anywhere in the conversation, in entries not loaded yet a
     await page.locator(".chat-header").getByRole("button", { name: "Find" }).click();
     await expect(input).toBeFocused();
     await expect(input).toHaveValue("");
+    await expect(bar.getByRole("button", { name: "Match case" })).toHaveAttribute("aria-pressed", "false");
   });
 });
 

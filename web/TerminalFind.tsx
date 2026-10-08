@@ -1,17 +1,15 @@
 import type { ISearchResultChangeEvent, SearchAddon } from "@xterm/addon-search";
-import { useEffect, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react";
+import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
+import { FindToggle, keepsFocusInQuery } from "./FindToggle.tsx";
 import { hints } from "./hints.ts";
 import { findTally, isSearchable, noToggles, searchOptions, type FindToggles } from "./terminal-find.ts";
 import { terminalKeyAction } from "./terminal-keys.ts";
 
 const toggleButtons: { toggle: keyof FindToggles; label: string; name: string; hint: string }[] = [
-  { toggle: "caseSensitive", label: "Aa", name: "Match case", hint: hints.terminalFindCase },
+  { toggle: "caseSensitive", label: "Aa", name: "Match case", hint: hints.findMatchCase },
   { toggle: "wholeWord", label: "ab", name: "Match whole word", hint: hints.terminalFindWholeWord },
   { toggle: "regex", label: ".*", name: "Use regular expression", hint: hints.terminalFindRegex },
 ];
-
-/** Clicking a button leaves the caret in the query, so Enter goes on stepping through the matches. */
-const keepsFocusInQuery = (event: MouseEvent) => event.preventDefault();
 
 /** Finds in a terminal's scrollback: every match highlighted, and the current one selected and scrolled to. */
 export function TerminalFind({ search, inputRef, onClose }: { search: SearchAddon; inputRef: RefObject<HTMLInputElement | null>; onClose: () => void }) {
@@ -68,18 +66,15 @@ export function TerminalFind({ search, inputRef, onClose }: { search: SearchAddo
         autoComplete="off"
       />
       {toggleButtons.map(({ toggle, label, name, hint }) => (
-        <button
+        <FindToggle
           key={toggle}
-          type="button"
-          className={`find-toggle ${toggle}${toggles[toggle] ? " on" : ""}`}
-          aria-label={name}
-          aria-pressed={toggles[toggle]}
-          data-hint={hint}
-          onMouseDown={keepsFocusInQuery}
-          onClick={() => setToggles((current) => ({ ...current, [toggle]: !current[toggle] }))}
-        >
-          {label}
-        </button>
+          className={toggle}
+          label={label}
+          name={name}
+          hint={hint}
+          on={toggles[toggle]}
+          onToggle={() => setToggles((current) => ({ ...current, [toggle]: !current[toggle] }))}
+        />
       ))}
       <span className="find-tally" aria-live="polite">
         {findTally(query, toggles, results)}

@@ -700,8 +700,8 @@ export function startServer(services: HostServices) {
         return reply({ type: "conversation.earlier", requestId: message.requestId, conversationId, beforeSeq, events, hasEarlier });
       }
       case "conversation.find": {
-        const { requestId, conversationId, query, beforeSeq } = message;
-        return reply({ type: "conversation.found", requestId, conversationId, entries: search.matchesBefore(conversationId, query, beforeSeq) });
+        const { requestId, conversationId, query, caseSensitive, beforeSeq } = message;
+        return reply({ type: "conversation.found", requestId, conversationId, entries: search.matchesBefore(conversationId, query, { caseSensitive }, beforeSeq) });
       }
       case "tool-raw-output.get":
         return reply({ type: "tool-raw-output.got", requestId: message.requestId, rawOutput: store.latestRawOutput(message.conversationId, message.toolCallId) });

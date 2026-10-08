@@ -76,7 +76,6 @@ export const hints = {
   terminalNewTab: "Open a shell in a new tab, in this workspace's folder. Every window shows the same tabs.",
   terminalSplit: "Open another shell beside the focused one, in the same tab (up to 4).",
   terminalSplitDown: "Open another shell below the focused one, in the same tab (up to 4).",
-  terminalFindCase: "Match case: capital and small letters count as different.",
   terminalFindWholeWord: "Match whole word: only where the text stands on its own, not inside a longer word.",
   terminalFindRegex: "Use regular expression: the text is a JavaScript regular expression, such as error|warn.",
   terminalShowAll: "Show this tab's other terminals again; this one stopped filling the tab.",
@@ -93,6 +92,7 @@ export const hints = {
   find: "Find text anywhere in this conversation: in earlier entries not loaded yet, and in folded cards, which unfold where it is found.",
   findOlder: "Previous match, further up (Enter)",
   findNewer: "Next match, further down (Shift+Enter)",
+  findMatchCase: "Match case: capital and small letters count as different.",
   runningSubagent: "A subagent at work. Click to open its card in the conversation and see what it has done so far.",
   inTerminal:
     "This Claude Code session is also running in a terminal. The host sees that in Claude Code's session registry (<config dir>/sessions/<pid>.json) and shows what the terminal is doing.",

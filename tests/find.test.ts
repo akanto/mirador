@@ -28,6 +28,10 @@ describe("matchOffsets", () => {
   test("finds nothing for an empty query", () => {
     expect(matchOffsets("anything", "")).toEqual([]);
   });
+
+  test("finds only what is written the same way when matching case", () => {
+    expect(matchOffsets("Needle, needle, NEEDLE", "needle", { caseSensitive: true })).toEqual([[8, 14]]);
+  });
 });
 
 describe("matchCount", () => {
@@ -36,6 +40,7 @@ describe("matchCount", () => {
     expect(matchCount("a.b axb (c)", "a.b")).toBe(1);
     expect(matchCount("anything", "")).toBe(0);
     expect(matchCount("e".repeat(1_000_000), "E")).toBe(1_000_000);
+    expect(matchCount("Needle, needle, NEEDLE", "NEEDLE", { caseSensitive: true })).toBe(1);
   });
 });
 
@@ -66,6 +71,8 @@ describe("occurrencesIn", () => {
   test("counts a message by its markdown source", () => {
     const [message] = buildTimeline(stored([acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "A **needle** and a needle" } })]));
     expect(occurrencesIn(message!, "needle")).toBe(2);
+    expect(occurrencesIn(message!, "A needle", { caseSensitive: true })).toBe(0);
+    expect(occurrencesIn(message!, "a needle", { caseSensitive: true })).toBe(1);
   });
 });
 

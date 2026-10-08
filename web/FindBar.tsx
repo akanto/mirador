@@ -1,14 +1,15 @@
-import { createContext, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
+import { createContext, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { focusPane } from "./actions.ts";
-import { matchCount, matchOffsets, occurrencesIn } from "../shared/find.ts";
+import { ignoringCase, matchCount, matchOffsets, occurrencesIn, type MatchOptions } from "../shared/find.ts";
 import type { EntryMatchCount } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import type { EarlierHistory } from "./earlier-history.ts";
+import { FindToggle } from "./FindToggle.tsx";
 import { hints } from "./hints.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
 
-/** The query while the find bar is open, so that output folded away unfolds where it matches. */
-export const FindQuery = createContext("");
+/** Whether text matches what the find bar looks for, so that output folded away unfolds where it matches. */
+export const MatchesFind = createContext<(text: string) => boolean>(() => false);
 
 /** A search hit to show: its conversation opens with the find bar on the hit's entry. */
 interface FindRequest {
@@ -78,13 +79,13 @@ function entryText(entry: Element) {
   return { pieces, text: pieces.map(({ node }) => node.data).join("") };
 }
 
-function rangesIn(entry: Element, query: string, limit: number): Range[] {
+function rangesIn(entry: Element, query: string, options: MatchOptions, limit: number): Range[] {
   const { pieces, text } = entryText(entry);
   const at = (offset: number, holds: (start: number) => boolean) => {
     const piece = pieces.findLast(({ start }) => holds(start))!;
     return [piece.node, offset - piece.start] as const;
   };
-  return matchOffsets(text, query)
+  return matchOffsets(text, query, options)
     .slice(0, limit)
     .map(([start, end]) => {
       const range = document.createRange();
@@ -94,18 +95,18 @@ function rangesIn(entry: Element, query: string, limit: number): Range[] {
     });
 }
 
-const rangeAt = (entry: Element, query: string, occurrence: number) => rangesIn(entry, query, occurrence + 1)[occurrence] ?? null;
+const rangeAt = (entry: Element, query: string, options: MatchOptions, occurrence: number) => rangesIn(entry, query, options, occurrence + 1)[occurrence] ?? null;
 
 const loadedEntries = (timeline: HTMLElement) => [...timeline.querySelectorAll(":scope > .timeline-entry")];
 
-function visibleMatches(timeline: HTMLElement, query: string) {
+function visibleMatches(timeline: HTMLElement, query: string, options: MatchOptions) {
   const view = timeline.getBoundingClientRect();
   return loadedEntries(timeline)
     .filter((entry) => {
       const box = entry.getBoundingClientRect();
       return box.bottom > view.top && box.top < view.bottom;
     })
-    .flatMap((entry) => rangesIn(entry, query, MAX_HIGHLIGHTED))
+    .flatMap((entry) => rangesIn(entry, query, options, MAX_HIGHLIGHTED))
     .slice(0, MAX_HIGHLIGHTED);
 }
 
@@ -170,14 +171,21 @@ function stepped(entries: EntryMatches[], place: Place, direction: 1 | -1): Plac
  * How often the query occurs in each entry of the history the host holds and the page does not, asked of the host
  * as typing pauses; null until it answers.
  */
-function useUnheldMatches(conversationId: string, query: string | null, earlier: EarlierHistory, firstHeldSeq: number | undefined): EntryMatchCount[] | null {
-  const [answered, setAnswered] = useState<{ conversationId: string; query: string; beforeSeq: number; entries: EntryMatchCount[] } | null>(null);
+function useUnheldMatches(
+  conversationId: string,
+  query: string | null,
+  { caseSensitive }: MatchOptions,
+  earlier: EarlierHistory,
+  firstHeldSeq: number | undefined,
+): EntryMatchCount[] | null {
+  const [answered, setAnswered] = useState<{ conversationId: string; query: string; caseSensitive: boolean; beforeSeq: number; entries: EntryMatchCount[] } | null>(null);
   const asksHost = !!query && earlier.available && firstHeldSeq !== undefined;
-  const current = asksHost && answered?.conversationId === conversationId && answered.query === query && answered.beforeSeq >= firstHeldSeq ? answered : null;
+  const answersThis = answered?.conversationId === conversationId && answered.query === query && answered.caseSensitive === caseSensitive;
+  const current = asksHost && answersThis && answered.beforeSeq >= firstHeldSeq ? answered : null;
   const waiting = asksHost && !current;
   useEffect(() => {
     if (!waiting) return;
-    const asked = { requestId: crypto.randomUUID(), conversationId, query: query!, beforeSeq: firstHeldSeq! };
+    const asked = { requestId: crypto.randomUUID(), conversationId, query: query!, caseSensitive, beforeSeq: firstHeldSeq! };
     const stopListening = connection.onMessage((message) => {
       if (message.type === "conversation.found" && message.requestId === asked.requestId) setAnswered({ ...asked, entries: message.entries });
     });
@@ -186,7 +194,7 @@ function useUnheldMatches(conversationId: string, query: string | null, earlier:
       clearTimeout(timer);
       stopListening();
     };
-  }, [waiting, conversationId, query, firstHeldSeq]);
+  }, [waiting, conversationId, query, caseSensitive, firstHeldSeq]);
   return useMemo(() => {
     if (!asksHost) return [];
     return current && current.entries.filter(({ key }) => Number(key) < firstHeldSeq);
@@ -218,14 +226,15 @@ export function useFind({
   firstHeldSeq: number | undefined;
 }) {
   const [query, setQuery] = useState<string | null>(null);
+  const [options, setOptions] = useState(ignoringCase);
   const [tally, setTally] = useState({ position: 0, total: 0 });
   const [placeChanges, showPlace] = useReducer((count: number) => count + 1, 0);
   const place = useRef<Place | null>(null);
   const placeShown = useRef<string | null>(null);
   const withMatches = useRef<EntryMatches[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const storedCounts = useMemo(() => new Map<string, number>(), [query]);
-  const unheldMatches = useUnheldMatches(conversationId, query, earlier, firstHeldSeq);
+  const storedCounts = useMemo(() => new Map<string, number>(), [query, options]);
+  const unheldMatches = useUnheldMatches(conversationId, query, options, earlier, firstHeldSeq);
 
   const request = useSyncExternalStore(subscribeToRequests, () => waitingRequest);
   useEffect(() => {
@@ -234,11 +243,12 @@ export function useFind({
     place.current = { key: request.entryKey, occurrence: 0 };
     placeShown.current = null;
     setQuery(request.query);
+    setOptions(ignoringCase);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [request, historyLoaded]);
 
   const countStored = (block: TimelineBlock) => {
-    if (!storedCounts.has(block.key)) storedCounts.set(block.key, occurrencesIn(block, query!));
+    if (!storedCounts.has(block.key)) storedCounts.set(block.key, occurrencesIn(block, query!, options));
     return storedCounts.get(block.key)!;
   };
 
@@ -254,7 +264,7 @@ export function useFind({
       ...loadedEntries(element).map((entryElement, offset) => ({
         key: timeline[firstLoaded + offset]!.key,
         entry: firstLoaded + offset,
-        count: matchCount(entryText(entryElement).text, query),
+        count: matchCount(entryText(entryElement).text, query, options),
         element: entryElement,
       })),
     ].filter(({ count }) => count > 0);
@@ -269,7 +279,7 @@ export function useFind({
     const holder = entries[indexOf(entries, current)]!;
     if (holder.entry === null) return void earlier.load(Number(holder.key));
     if (!holder.element) return loadFrom(holder.entry);
-    const currentRange = rangeAt(holder.element, query, current.occurrence);
+    const currentRange = rangeAt(holder.element, query, options, current.occurrence);
     if (!currentRange) return;
     const placeKey = `${current.key}:${current.occurrence}`;
     if (placeShown.current !== placeKey) {
@@ -277,7 +287,7 @@ export function useFind({
       unfoldAround(currentRange);
       scrollToMiddle(element, currentRange);
     }
-    const highlightVisible = () => highlight(visibleMatches(element, query), currentRange);
+    const highlightVisible = () => highlight(visibleMatches(element, query, options), currentRange);
     highlightVisible();
     let frame = 0;
     const highlightOnScroll = () => {
@@ -290,13 +300,21 @@ export function useFind({
       cancelAnimationFrame(frame);
       clearHighlights();
     };
-  }, [query, timeline, firstLoaded, placeChanges, unheldMatches]);
+  }, [query, options, timeline, firstLoaded, placeChanges, unheldMatches]);
 
-  const search = (text: string) => {
+  const searchAgain = () => {
     place.current = null;
     placeShown.current = null;
+  };
+  const search = (text: string) => {
+    searchAgain();
     setQuery(text);
   };
+  const toggleCase = () => {
+    searchAgain();
+    setOptions(({ caseSensitive }) => ({ caseSensitive: !caseSensitive }));
+  };
+  const matches = useCallback((text: string) => !!query && matchCount(text, query, options) > 0, [query, options]);
   const step = (direction: 1 | -1) => {
     const entries = withMatches.current;
     const current = placeOf(entries, place.current);
@@ -309,17 +327,17 @@ export function useFind({
     requestAnimationFrame(() => inputRef.current?.select());
   };
   const close = () => {
-    place.current = null;
-    placeShown.current = null;
+    searchAgain();
     setQuery(null);
+    setOptions(ignoringCase);
     focusPane("chat");
   };
-  return { query, tally, search, step, open, close, inputRef };
+  return { query, options, tally, search, toggleCase, matches, step, open, close, inputRef };
 }
 
 export type Find = ReturnType<typeof useFind>;
 
-export function FindBar({ find: { query, tally, search, step, close, inputRef } }: { find: Find }) {
+export function FindBar({ find: { query, options, tally, search, toggleCase, step, close, inputRef } }: { find: Find }) {
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -342,6 +360,7 @@ export function FindBar({ find: { query, tally, search, step, close, inputRef } 
         spellCheck={false}
         autoComplete="off"
       />
+      <FindToggle label="Aa" name="Match case" hint={hints.findMatchCase} on={options.caseSensitive} onToggle={toggleCase} />
       <span className="find-tally" aria-live="polite">
         {query ? (tally.total > 0 ? `${tally.position} of ${tally.total}` : "No matches") : ""}
       </span>

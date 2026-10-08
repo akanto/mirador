@@ -227,7 +227,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### Find and search
 
-- **⌘F** finds in the open conversation, including entries not loaded yet and folded cards, which it unfolds. It shows the match count; Enter goes to the older match and Shift+Enter to the newer.
+- **⌘F** finds in the open conversation, including entries not loaded yet and folded cards, which it unfolds. It shows the match count; Enter goes to the older match and Shift+Enter to the newer. *Aa* matches case.
 - **⌘⇧F** searches every conversation in every workspace, newest first, with snippets. Opening a result jumps to it with the find bar on it.
 
 ![Two terminals side by side under the conversation: git log on the left, git diff --stat on the right](docs/screenshots/terminals.png)

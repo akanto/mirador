@@ -31,9 +31,8 @@ import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
 import { answerPermission, EditCounts, PermissionOptions } from "./EditApproval.tsx";
 import { useEditsInCanvas } from "./edits-in-canvas.ts";
-import { matchOffsets } from "../shared/find.ts";
 import { isRawOutputOnHost } from "../shared/low-data.ts";
-import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
+import { FindBar, MatchesFind, useFind } from "./FindBar.tsx";
 import { useDragToReorder } from "./drag-to-reorder.ts";
 import { useEarlierHistory, type EarlierHistory } from "./earlier-history.ts";
 import { joinDrafts, useDraft } from "./drafts.ts";
@@ -350,7 +349,7 @@ function CommandLine({ command, directory }: { command: string; directory?: stri
 function TerminalOutput({ output, finished, awaitingPermission }: { output: string; finished: boolean; awaitingPermission: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const lines = output ? output.split("\n") : [];
-  const foldedLinesMatch = matchOffsets(lines.slice(PREVIEW_LINES).join("\n"), useContext(FindQuery)).length > 0;
+  const foldedLinesMatch = useContext(MatchesFind)(lines.slice(PREVIEW_LINES).join("\n"));
   const hiddenCount = expanded || foldedLinesMatch ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
   if (lines.length === 0) {
     const quiet = finished ? "(no output)" : awaitingPermission ? "waiting for your approval…" : "running…";
@@ -1527,7 +1526,7 @@ export function ChatPanel({
             onFind={find.open}
           />
           {find.query !== null && <FindBar find={find} />}
-          <FindQuery.Provider value={find.query ?? ""}>
+          <MatchesFind.Provider value={find.matches}>
             <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
               {!open.loaded && <div className="notice-line">Loading…</div>}
               {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
@@ -1547,7 +1546,7 @@ export function ChatPanel({
               ))}
               {conversation.status === "running" && <div className="working">Working…</div>}
             </div>
-          </FindQuery.Provider>
+          </MatchesFind.Provider>
           {runningSubagents.length > 0 && <RunningSubagents subagents={runningSubagents} onShow={showSubagent} />}
           {conversation.openInTerminal && (
             <div className="terminal-warning" role="status">
