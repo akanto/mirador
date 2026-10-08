@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { hints } from "./hints.ts";
 import { DEFAULT_LEFT_SHARE, DEFAULT_TOP_SHARE, paneLabels, placement, swapPanes, type PaneId, type PaneLayout } from "./layout.ts";
 import { Splitter, type SplitAxis } from "./Splitter.tsx";
@@ -82,14 +83,24 @@ function useFullscreen(
 
   useEffect(() => {
     if (!fullscreen) return;
+    const dialogOpen = () => document.querySelector(".modal-backdrop") !== null;
     const restoreOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector(".modal-backdrop")) return;
+      if (event.key !== "Escape" || event.defaultPrevented || dialogOpen()) return;
       const target = event.target as Node;
       const keptByTerminal = target instanceof Element && target.closest(".terminal-pane");
       if ((target === document.body || area.current?.contains(target)) && !keptByTerminal) setFullscreen(null);
     };
+    const restoreOnCanvasPageEscape = (event: MessageEvent) => {
+      const focused = document.activeElement;
+      if (!(focused instanceof HTMLIFrameElement) || event.source !== focused.contentWindow || !area.current?.contains(focused)) return;
+      if (isCanvasFrameMessage(event.data) && event.data.kind === "key" && event.data.key === "Escape" && !event.data.typing && !dialogOpen()) setFullscreen(null);
+    };
     window.addEventListener("keydown", restoreOnEscape);
-    return () => window.removeEventListener("keydown", restoreOnEscape);
+    window.addEventListener("message", restoreOnCanvasPageEscape);
+    return () => {
+      window.removeEventListener("keydown", restoreOnEscape);
+      window.removeEventListener("message", restoreOnCanvasPageEscape);
+    };
   }, [fullscreen, onChange]);
 
   const toggleFullscreen = (pane: PaneId) => setFullscreen(fullscreen === pane ? null : pane);

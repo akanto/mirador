@@ -111,7 +111,7 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   expect(await placesOf(page)).toEqual({ conversation: "right", canvas: "hidden", terminals: "left" });
 
   const second = await startConversation(page);
-  await callCanvasTool(host, second, "show", { title: "Second drawing", html: "<h1>canvas</h1>" });
+  await callCanvasTool(host, second, "show", { title: "Second drawing", html: '<h1>canvas</h1><input aria-label="Note">' });
   await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
   expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right", terminals: "hidden" });
   await page.getByRole("button", { name: "Fullscreen canvas" }).click();
@@ -127,8 +127,13 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   await page.reload();
   await expect(page.locator(".canvas-title")).toHaveText("Second drawing");
   expect(await boxOf(page, "canvas")).toEqual(area);
-  await page.getByRole("button", { name: "Exit fullscreen" }).click();
-  expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right", terminals: "hidden" });
+  const canvasPage = page.frameLocator(".canvas-frame.show iframe");
+  await canvasPage.getByLabel("Note").click();
+  await page.keyboard.press("Escape");
+  expect(await boxOf(page, "canvas")).toEqual(area);
+  await canvasPage.locator("h1").click();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => placesOf(page)).toEqual({ conversation: "left", canvas: "right", terminals: "hidden" });
 
   const settings = await openSettings(page, "Layout");
   await settings.getByRole("radio", { name: "Canvas on the left, conversation top right, terminals bottom right" }).click();

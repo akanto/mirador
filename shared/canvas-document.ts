@@ -160,13 +160,20 @@ function frameReporter(itemId: string, theme: CanvasTheme) {
     }
     scrollWhereTheEngineDoesNot(node, event);
   }, { passive: false });
-  addEventListener("keydown", (event) => {
-    if (!event.isTrusted || !(event.metaKey || event.ctrlKey || event.altKey)) return;
+  const forwardKey = (event) => {
     const target = event.target;
     const typing = Boolean(target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)));
     const { key, code, metaKey, ctrlKey, altKey, shiftKey } = event;
     post({ kind: "key", key, code, metaKey, ctrlKey, altKey, shiftKey, typing });
+  };
+  const withModifier = (event) => event.metaKey || event.ctrlKey || event.altKey;
+  addEventListener("keydown", (event) => {
+    if (event.isTrusted && withModifier(event)) forwardKey(event);
   }, true);
+  // Listened to after the page's own handlers, so an Esc that closes something on the page stays with the page.
+  addEventListener("keydown", (event) => {
+    if (event.isTrusted && event.key === "Escape" && !withModifier(event) && !event.defaultPrevented) forwardKey(event);
+  });
 })();`;
 }
 
