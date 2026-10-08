@@ -1,5 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
@@ -8,19 +7,19 @@ import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5246);
 const api = new FakeClaudeApi();
-const configDir = mkdtempSync(join(tmpdir(), "mirador-e2e-claude-"));
+const configDir = join(host.root, "claude-config");
 const REQUEST = "Remember the word heliotrope";
 
 test.beforeAll(async () => {
   api.limited = false;
   await api.start();
+  mkdirSync(configDir, { recursive: true });
   await host.start();
 });
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
   api.stop();
-  rmSync(configDir, { recursive: true, force: true });
 });
 
 const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");

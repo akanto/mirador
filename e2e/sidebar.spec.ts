@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, signIn, startConversation, workspaceCard } from "./helpers.ts";
@@ -40,7 +39,8 @@ test("a workspace added while the page reconnects to the host is added once it h
   await signIn(page, host);
   await host.stop();
   await expect(page.locator(".banner")).toHaveText("Connection lost, reconnecting…");
-  const directory = mkdtempSync(join(tmpdir(), "mirador-e2e-offline-"));
+  const directory = join(host.root, "added-offline");
+  mkdirSync(directory, { recursive: true });
   await page.getByRole("button", { name: "Add workspace" }).click();
   const input = page.getByLabel("Workspace directory");
   await input.fill(directory);
@@ -50,8 +50,8 @@ test("a workspace added while the page reconnects to the host is added once it h
 });
 
 test("Enter takes the highlighted folder while its name is being typed, and adds a path that names a folder", async ({ page }) => {
-  const parent = mkdtempSync(join(tmpdir(), "mirador-e2e-complete-"));
-  ["alpha-one", "alpha-two", "beta"].forEach((name) => mkdirSync(join(parent, name)));
+  const parent = join(host.root, "completions");
+  ["alpha-one", "alpha-two", "beta"].forEach((name) => mkdirSync(join(parent, name), { recursive: true }));
   await signIn(page, host);
   await page.getByRole("button", { name: "Add workspace" }).click();
   const input = page.getByLabel("Workspace directory");

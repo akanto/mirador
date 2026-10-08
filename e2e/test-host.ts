@@ -23,6 +23,12 @@ function appMuteMarkers() {
     .filter((name) => readFileSync(join(notifierDir, name), "utf8").includes("(mirador)"));
 }
 
+/**
+ * A path for a spec's own folder, to make in its hooks: Playwright also imports spec files in a process that never runs
+ * their hooks, so a folder made on import is never removed.
+ */
+export const scratchPath = (name: string) => join(tmpdir(), `mirador-e2e-${name}-${crypto.randomUUID().slice(0, 8)}`);
+
 /** Runs the real host (and through it a real Claude Code on a cheap model) in throwaway directories. */
 export class TestHost {
   /** Only a path until start(): Playwright also imports spec files in a process that never runs their hooks. */

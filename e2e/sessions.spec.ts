@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { agentEnvironment } from "../host/acp/environment.ts";
@@ -96,7 +95,8 @@ test("a terminal session continues and forks on the model that answered in it, n
   const api = new FakeClaudeApi();
   api.limited = false;
   await api.start();
-  const configDir = mkdtempSync(join(tmpdir(), "mirador-e2e-claude-"));
+  const configDir = join(host.root, "claude-config");
+  mkdirSync(configDir, { recursive: true });
   writeFileSync(join(configDir, "settings.json"), JSON.stringify({ model: "opus" }));
   const environment = `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${configDir}`;
   const sessionId = await runClaudeInTerminal(host.projectDir, "Say hi", environment);

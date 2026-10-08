@@ -1,14 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { FakeClaudeApi } from "./fake-claude-api.ts";
 import { addWorkspace, openSettings, sendMessage, signIn, startConversation } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { scratchPath, TestHost } from "./test-host.ts";
 
 const api = new FakeClaudeApi();
-const scratch = mkdtempSync(join(tmpdir(), "mirador-e2e-claude-program-"));
+const scratch = scratchPath("claude-program");
 const installedClaude = execFileSync("which", ["claude"], { encoding: "utf8" }).trim();
 const wrapperLog = join(scratch, "wrapper.log");
 const wrapper = join(scratch, "claude-wrapper");
@@ -18,6 +17,7 @@ test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   api.limited = false;
   await api.start();
+  mkdirSync(scratch, { recursive: true });
   writeFileSync(wrapper, `#!/bin/sh\necho "$@" >> "${wrapperLog}"\nexec "${installedClaude}" "$@"\n`);
   chmodSync(wrapper, 0o755);
   host = new TestHost(5250, { environment: { ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_OAUTH_TOKEN: "e2e-subscription-token", CLAUDE_CODE_MAX_RETRIES: "0" } });
