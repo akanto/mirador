@@ -59,6 +59,13 @@ describe("CanvasService", () => {
     expect(notified).toEqual([["c1", { kind: "question", question: "Color?" }]]);
   });
 
+  test("a question keeps the least width the agent asked for its answer boxes", () => {
+    const { store, canvas, ask } = setUp();
+    const roomy = canvas.openAsk("c1", { question: "Which fix?", options: [{ label: "Fix" }, { label: "Leave" }], optionWidth: 480 });
+    expect(store.findCanvasItem(roomy.id)?.optionWidth).toBe(480);
+    expect(store.findCanvasItem(ask().id)).not.toHaveProperty("optionWidth");
+  });
+
   test("the conversation hears when its question opens, is answered and is withdrawn, but not about pages shown", async () => {
     const { canvas, ask, questionsChanged } = setUp();
     canvas.answer(ask().id, "Red");

@@ -59,6 +59,26 @@ test("previews show whole: option columns widen to fit them, and what is wider t
   expect(blue!.y).toBe(green!.y);
 });
 
+test("the agent can make the answer boxes wider, up to the canvas's width", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const options = page.locator(".ask-option");
+
+  askInBackground(conversationId, { question: "Which colour?", optionWidth: 300, options: [{ label: "Green" }, { label: "Blue" }] });
+  await expect(options.first()).toHaveText(/Green/);
+  const [green, blue] = await Promise.all([options.nth(0).boundingBox(), options.nth(1).boundingBox()]);
+  expect(blue!.y, "two boxes 300px wide do not fit side by side").toBeGreaterThan(green!.y);
+  expect(green!.width).toBeGreaterThanOrEqual(300);
+  await answerCanvasQuestion(page, "Green");
+
+  askInBackground(conversationId, { question: "Which size?", optionWidth: 5000, options: [{ label: "Huge" }, { label: "Small" }] });
+  await expect(options.first()).toHaveText(/Huge/);
+  const [huge, room] = await Promise.all([options.first().boundingBox(), page.locator(".ask-options").boundingBox()]);
+  expect(huge!.width).toBeLessThanOrEqual(room!.width);
+  await answerCanvasQuestion(page, "Huge");
+});
+
 test("a long unbroken word wraps inside its option and the question's page, rather than running past the box or shrinking the page", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await signIn(page, host);

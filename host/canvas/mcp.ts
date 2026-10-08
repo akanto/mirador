@@ -212,6 +212,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
         html: z.string().optional().describe("Optional HTML shown above the options: the explanation or mockup the question is about. Put it here rather than in a show call just before."),
         options: z.array(optionSchema).min(2).max(8),
         allowOther: z.boolean().optional().describe("Let the user type an answer that is not one of the options."),
+        optionWidth: z.number().int().positive().optional().describe("Optional least width of each answer box in CSS pixels, for options whose descriptions need more room. Boxes still sit side by side while they fit and never get wider than the canvas. Without it they are at least 200px, or as wide as the widest preview."),
       }),
       _meta: loadedUpFront,
     },

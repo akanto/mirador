@@ -23,6 +23,7 @@ export interface AskRequest {
   html?: string;
   options: AskOption[];
   allowOther?: boolean;
+  optionWidth?: number;
 }
 
 export interface RenderReport {
@@ -88,6 +89,7 @@ export class CanvasService {
       html: request.html,
       options: request.options,
       allowOther: request.allowOther ?? false,
+      ...(request.optionWidth && { optionWidth: request.optionWidth }),
       ...(shownBefore.length > 0 && { shownBefore }),
       status: "waiting",
       createdAt: Date.now(),

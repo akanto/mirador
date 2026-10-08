@@ -443,6 +443,8 @@ export interface CanvasItem {
   question?: string;
   options?: AskOption[];
   allowOther?: boolean;
+  /** The least width, in CSS pixels, the agent asked for each answer box. */
+  optionWidth?: number;
   status: CanvasItemStatus;
   answer?: CanvasAnswer;
   /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */

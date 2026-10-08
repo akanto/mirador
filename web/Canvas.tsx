@@ -155,7 +155,10 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
   const answer = choice === SOMETHING_ELSE ? other.trim() : choice;
   const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
   const widestPreview = Math.max(0, ...Object.values(previewWidths));
-  const optionsStyle = widestPreview > 0 ? ({ "--preview-width": `${widestPreview}px` } as CSSProperties) : undefined;
+  const optionsStyle = {
+    ...(widestPreview > 0 && { "--preview-width": `${widestPreview}px` }),
+    ...(item.optionWidth && { "--option-width": `${item.optionWidth}px` }),
+  } as CSSProperties;
   const isChosen = (label: string) => (waiting ? choice === label : item.answer?.label === label);
   const submit = (event: FormEvent) => {
     event.preventDefault();
