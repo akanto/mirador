@@ -66,6 +66,7 @@ const turn: [seconds: number, event: Record<string, unknown>][] = [
   ],
   [51, update({ sessionUpdate: "tool_call_update", toolCallId: "toolu_watch", status: "completed", _meta: agentCall })],
   [55, update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: buildPlan }, _meta: madeBy("toolu_watch") })],
+  [57, update({ sessionUpdate: "tool_call", toolCallId: "toolu_lockfile", title: "Read bun.lock", kind: "read", status: "completed", _meta: madeBy("toolu_watch", "Read") })],
   [60, update({ sessionUpdate: "tool_call", toolCallId: "toolu_build", title: "bun run build", kind: "execute", status: "in_progress", _meta: madeBy("toolu_watch", "Bash") })],
   [61, update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Both subagents are on it." } })],
 ];

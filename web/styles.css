@@ -1766,7 +1766,7 @@ input.picker-search {
   white-space: nowrap;
 }
 
-.subagent-running .tool-status {
+.subagent-running > summary > .tool-status {
   color: var(--accent);
   animation: pulse 1.4s infinite;
 }
@@ -1834,11 +1834,11 @@ button.running-subagent:hover {
   animation: pulse 1.4s infinite;
 }
 
-.subagent-done .tool-status {
+.subagent-done > summary > .tool-status {
   color: var(--ok);
 }
 
-.subagent-failed .tool-status {
+.subagent-failed > summary > .tool-status {
   color: var(--danger);
 }
 
