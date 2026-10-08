@@ -137,7 +137,7 @@ function useAgentEdited(review: Review, part: string) {
   return flashing;
 }
 
-function CodeText({ text, spans }: { text: string; spans: CodeSpan[] | undefined }) {
+export function CodeText({ text, spans }: { text: string; spans: CodeSpan[] | undefined }) {
   if (!spans) return <code className="code-text">{text || " "}</code>;
   return (
     <code className="code-text">

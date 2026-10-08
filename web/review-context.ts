@@ -23,7 +23,7 @@ const newLinesOf = (hunk: DiffHunk) => hunk.rows.flatMap((row) => (row.newLine =
 const firstNewLine = (hunk: DiffHunk) => newLinesOf(hunk)[0] ?? hunk.newStart + 1;
 const lastNewLine = (hunk: DiffHunk) => newLinesOf(hunk).at(-1) ?? hunk.newStart;
 
-export function gapsOf(file: ReviewFile): Gap[] {
+export function gapsOf(file: Pick<ReviewFile, "hunks" | "change">): Gap[] {
   const { hunks } = file;
   if (hunks.length === 0 || file.change === "deleted") return [];
   const beforeEachHunk = hunks.map((hunk, index) => ({ start: index === 0 ? 1 : lastNewLine(hunks[index - 1]!) + 1, end: firstNewLine(hunk) - 1 }));

@@ -29,6 +29,7 @@ import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
+import { editDiffsOf } from "./edit-diff.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
@@ -99,6 +100,8 @@ interface Runtime {
   /** The latest profile switch; the next one starts after it. */
   profileSwitch?: Promise<void>;
   pendingPermissions: Map<string, PendingPermission>;
+  /** The latest permission request still reading the files it would edit; the next one shows after it. */
+  permissionArriving?: Promise<unknown>;
   queuedMessages: QueuedMessage[];
   openToolCalls: OpenToolCalls;
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
@@ -1181,23 +1184,31 @@ export class ConversationService {
     return [{ type: "text", text }, ...images];
   }
 
-  private handlePermissionRequest(
+  private async handlePermissionRequest(
     request: acp.RequestPermissionRequest,
     signal: AbortSignal,
   ): Promise<acp.RequestPermissionResponse> {
     const conversationId = this.conversationBySession.get(request.sessionId);
-    if (!conversationId) return Promise.resolve({ outcome: { outcome: "cancelled" } });
+    if (!conversationId) return { outcome: { outcome: "cancelled" } };
     const allowOptionId = optionThatAllows(request.options);
     if (allowOptionId && this.get(conversationId).bypassPermissions) {
-      return Promise.resolve({ outcome: { outcome: "selected", optionId: allowOptionId } });
+      return { outcome: { outcome: "selected", optionId: allowOptionId } };
     }
     const runtime = this.runtime(conversationId);
+    const editsRead = this.editsAskedFor(conversationId, request.toolCall);
+    const inArrivalOrder = (runtime.permissionArriving ?? Promise.resolve()).then(() => editsRead);
+    runtime.permissionArriving = inArrivalOrder;
+    const edits = await inArrivalOrder;
+    if (signal.aborted || !this.store.hasConversation(conversationId)) return { outcome: { outcome: "cancelled" } };
+    // YOLO switched on while the files were read approves only the requests already waiting.
+    if (allowOptionId && this.get(conversationId).bypassPermissions) return { outcome: { outcome: "selected", optionId: allowOptionId } };
     const permissionId = crypto.randomUUID();
     this.append(conversationId, {
       type: "permission",
       permissionId,
       toolCall: request.toolCall,
       options: request.options,
+      ...(edits && { edits }),
     });
     this.notifications.notify(conversationId, { kind: "permission", tool: request.toolCall.title });
     return new Promise((resolve) => {
@@ -1211,6 +1222,16 @@ export class ConversationService {
       this.publish(this.get(conversationId));
       signal.addEventListener("abort", () => settle(null), { once: true });
     });
+  }
+
+  /** Read before the user answers, since the file changes once they allow the edit. */
+  private async editsAskedFor(conversationId: string, toolCall: acp.ToolCallUpdate) {
+    try {
+      const workspace = this.existingWorkspace(this.get(conversationId).workspaceId);
+      return await editDiffsOf(toolCall, [await recordedDirectory(workspace), workspace.path]);
+    } catch {
+      return undefined;
+    }
   }
 
   private handleHarnessExit(harness: HarnessProcess) {

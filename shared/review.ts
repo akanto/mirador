@@ -105,6 +105,22 @@ export interface ReviewFile {
   hiddenBecause: string | null;
 }
 
+/** A file the agent asks to edit or write, as the edit would change it. */
+export interface EditDiff {
+  /** As the workspace names it, when the file is inside the workspace. */
+  path: string;
+  change: "added" | "modified";
+  added: number;
+  removed: number;
+  hunks: DiffHunk[];
+  /** Why the diff is left out; its counts still show. */
+  hiddenBecause: string | null;
+  /** Whether the edit was found in the file; when it was not, the rows are the agent's snippet, without line numbers. */
+  located: boolean;
+  /** How many lines the file has after the edit, when it was found. */
+  lineCount: number | null;
+}
+
 export interface PullRequestRef {
   url: string;
   host: string;

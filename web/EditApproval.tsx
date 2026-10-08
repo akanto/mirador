@@ -1,0 +1,145 @@
+import { Fragment, useMemo } from "react";
+import type { PermissionOption } from "@agentclientprotocol/sdk";
+import type { DiffRow, EditDiff } from "../shared/review.ts";
+import { connection } from "./connection.ts";
+import { splitRows, type EditRequest } from "./edit-approval.ts";
+import { highlightRows, type CodeSpan } from "./highlight.ts";
+import { hints } from "./hints.ts";
+import { CodeText } from "./Review.tsx";
+import { gapsOf, type Gap } from "./review-context.ts";
+import { storedChoice } from "./stored-choice.ts";
+
+const diffStyles = ["unified", "split"] as const;
+type DiffStyle = (typeof diffStyles)[number];
+const diffStyleLabels: Record<DiffStyle, string> = { unified: "Unified", split: "Split" };
+const diffStyle = storedChoice<DiffStyle>("mirador-edit-diff-style", diffStyles, "unified");
+
+const marker = (row: DiffRow) => (row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " ");
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+export function answerPermission(conversationId: string, permissionId: string, optionId: string | null) {
+  connection.send({ type: "permission.respond", conversationId, permissionId, optionId });
+}
+
+/** The agent's own answers to its request, Allow first as it orders them. */
+export function PermissionOptions({ options, onChoose }: { options: PermissionOption[]; onChoose: (optionId: string) => void }) {
+  return (
+    <div className="permission-options">
+      {options.map((option) => (
+        <button key={option.optionId} type="button" className={`option-${option.kind}`} onClick={() => onChoose(option.optionId)}>
+          {option.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function EditCounts({ edits }: { edits: EditDiff[] }) {
+  const added = edits.reduce((sum, edit) => sum + edit.added, 0);
+  const removed = edits.reduce((sum, edit) => sum + edit.removed, 0);
+  return (
+    <span className="edit-counts">
+      <span className="added-count">+{added}</span> <span className="removed-count">−{removed}</span>
+    </span>
+  );
+}
+
+function GapLine({ gap, lineCount }: { gap: Gap | undefined; lineCount: number | null }) {
+  const end = gap && (gap.end ?? lineCount);
+  if (!gap || end === null || end === undefined || end < gap.start) return null;
+  return <div className="edit-gap">⋯ {end === gap.start ? `line ${end}` : `lines ${gap.start}–${end}`}</div>;
+}
+
+function UnifiedRows({ rows, highlighted }: { rows: DiffRow[]; highlighted: CodeSpan[][] | null }) {
+  return (
+    <div className="code-block">
+      {rows.map((row, index) => (
+        <div key={index} className={`code-row ${row.kind}`}>
+          <span className="line-number">{row.newLine ?? row.oldLine}</span>
+          <span className="diff-marker">{marker(row)}</span>
+          <CodeText text={row.text} spans={highlighted?.[index]} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SplitRows({ rows, highlighted }: { rows: DiffRow[]; highlighted: CodeSpan[][] | null }) {
+  const sides = useMemo(() => splitRows(rows), [rows]);
+  const side = (index: number | null, lineOf: (row: DiffRow) => number | null) => {
+    const row = index === null ? undefined : rows[index];
+    return (
+      <div className={`split-side ${row?.kind ?? "blank"}`}>
+        <span className="line-number">{row && lineOf(row)}</span>
+        {row && index !== null ? <CodeText text={row.text} spans={highlighted?.[index]} /> : <span />}
+      </div>
+    );
+  };
+  return (
+    <div className="code-block split">
+      {sides.map(({ left, right }, index) => (
+        <div key={index} className="split-row">
+          {side(left, (row) => row.oldLine)}
+          {side(right, (row) => row.newLine)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EditedRows({ path, rows, style }: { path: string; rows: DiffRow[]; style: DiffStyle }) {
+  const highlighted = useMemo(() => highlightRows(path, rows), [path, rows]);
+  return style === "split" ? <SplitRows rows={rows} highlighted={highlighted} /> : <UnifiedRows rows={rows} highlighted={highlighted} />;
+}
+
+function EditedFile({ edit, style }: { edit: EditDiff; style: DiffStyle }) {
+  const gaps = edit.located ? gapsOf(edit) : [];
+  return (
+    <section className="edited-file" aria-label={edit.path}>
+      <header className="file-header">
+        <h3>{edit.path}</h3>
+        {edit.change === "added" && <span className="edit-new-file">new file</span>}
+        <EditCounts edits={[edit]} />
+      </header>
+      {!edit.located && <p className="hint">The change could not be found in the file as it is now, so this is the agent's own snippet, without line numbers.</p>}
+      {edit.hiddenBecause && <p className="review-empty">Not shown: {edit.hiddenBecause}.</p>}
+      {!edit.hiddenBecause && edit.hunks.length === 0 && <p className="review-empty">It changes no lines.</p>}
+      {edit.hunks.map((hunk, index) => (
+        <Fragment key={index}>
+          <GapLine gap={gaps[index]} lineCount={edit.lineCount} />
+          <EditedRows path={edit.path} rows={hunk.rows} style={style} />
+        </Fragment>
+      ))}
+      <GapLine gap={gaps[edit.hunks.length]} lineCount={edit.lineCount} />
+    </section>
+  );
+}
+
+/** An edit the agent waits for permission to make, shown on the canvas with the agent's own answers to it. */
+export function EditApproval({ request, moreWaiting, note, conversationId }: { request: EditRequest; moreWaiting: number; note: string | null; conversationId: string }) {
+  const style = diffStyle.use();
+  return (
+    <div className="edit-approval">
+      {note && (
+        <div className="settled-note" role="status">
+          {note}
+        </div>
+      )}
+      <div className="edit-approval-bar">
+        {moreWaiting > 0 && <span className="edits-more">{plural(moreWaiting, "more edit")} waiting</span>}
+        <span className="spacer" />
+        <div className="diff-style" role="group" aria-label="Diff style" data-hint={hints.editDiffStyle}>
+          {diffStyles.map((each) => (
+            <button key={each} type="button" className={style === each ? "on" : ""} aria-pressed={style === each} onClick={() => diffStyle.set(each)}>
+              {diffStyleLabels[each]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {request.edits.map((edit, index) => (
+        <EditedFile key={index} edit={edit} style={style} />
+      ))}
+      <PermissionOptions options={request.options} onChoose={(optionId) => answerPermission(conversationId, request.permissionId, optionId)} />
+    </div>
+  );
+}

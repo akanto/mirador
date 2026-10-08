@@ -96,6 +96,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 - [The canvas](#the-canvas)
 - [Questions](#questions)
+- [Edit approvals](#edit-approvals)
 - [Code review](#code-review)
 - [Conversations and agents](#conversations-and-agents)
 - [The message box](#the-message-box)
@@ -132,6 +133,14 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Context stays**: a page the agent showed just before asking stays above the question.
 - **Two ways to answer**, chosen per conversation: *Agent waits for my answer* returns your choice as the tool's result. *My answer is sent as the next message* lets the agent end its turn, and your choice arrives later as your message.
 - **Answered or withdrawn** questions leave a short note in place of the question.
+
+### Edit approvals
+
+- **The edit takes the canvas**: when the agent asks to edit or write a file, the change shows on the canvas with the agent's own *Allow*, *Always allow* and *Reject*. The chat keeps a small card with the `+`/`−` counts and the same buttons.
+- **The file's own line numbers**: Claude Code sends only the snippet it replaces, so Mirador finds it in the file, reading only the file the request names, and shows three lines around each change. A snippet it can't find shows as sent, without line numbers.
+- **Unified or Split**: a toggle switches between one column and old-beside-new; the browser remembers the choice.
+- **One at a time**: several waiting edits show oldest first, with how many more wait. *Clear* or *History* sets them aside, and *N edits waiting* in the canvas bar brings them back. Once answered, the canvas clears with a short note of the answer. Edits don't go into the canvas history.
+- **Or in the chat**: switch off *Settings → Canvas → Show edits waiting for approval in the canvas* to keep the diff in the chat card, as it also is while the canvas is hidden.
 
 ### Code review
 
@@ -191,7 +200,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Grouped by author**, with avatars and times. Point at a line for its time, or switch on *Show timestamps* for every line.
 - **Markdown** with tables, links that open in a new tab, and code blocks.
 - **Thinking** (folded), the agent's **plan** as a checklist, mode changes, turn ends and errors.
-- **Permission requests** show the tool and its command, with the agent's own allow and reject options, and the outcome afterwards.
+- **Permission requests** show the tool and its command, with the agent's own allow and reject options, and the outcome afterwards. Edits show on the canvas (see [Edit approvals](#edit-approvals)).
 - **Tool calls** with diffs for edits, raw input and output a click away, and readable MCP tool names.
 - **Shell commands** look like a terminal. *Settings → Appearance → Shell commands* picks how much shows: output a click away, output only on failure, one line, or everything.
 - **Subagents** nest under their Agent card. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time); a click opens its latest work.
@@ -260,7 +269,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Appearance**: theme (Light, Dark, Match system), *Waiting for you* style, workspace colours, machine colours, shell commands, timestamps. The choices come with pictures.
 - **Conversations**: *Sending while the agent works* (Enter or ⌥Enter to steer), prompt templates, and macOS typing aids.
 - **Terminal**: copy on select.
-- **Canvas**: how often Claude Code uses it, and where reviews open.
+- **Canvas**: how often Claude Code uses it, where reviews open, and whether edits waiting for approval show on it.
 - **Layout**: the default arrangement for new conversations, and whether the canvas and terminals start hidden.
 - **Devices** and **Notifications**, as above.
 

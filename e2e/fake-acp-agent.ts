@@ -5,7 +5,8 @@ import * as acp from "@agentclientprotocol/sdk";
 /**
  * An agent that takes every prompt and never finishes it, ignoring `session/cancel`, the way a model request against a
  * llama.cpp still loading its model leaves a turn: the agent is wedged, so only killing its process ends the turn.
- * A prompt starting with CRASH makes the process die in the middle of the turn instead.
+ * A prompt starting with CRASH makes the process die in the middle of the turn instead. One of `EDIT ` and a JSON
+ * array of edits asks permission for each edit at once, and ends the turn with what the user answered to each.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -53,6 +54,34 @@ const configOptions = (sessionId: string): acp.SessionConfigOption[] => [
 
 let nextSession = 0;
 
+interface ProposedEdit {
+  title: string;
+  path: string;
+  oldText: string | null;
+  newText: string;
+}
+
+const editOptions: acp.PermissionOption[] = [
+  { optionId: "allow", name: "Allow", kind: "allow_once" },
+  { optionId: "always", name: "Always allow", kind: "allow_always" },
+  { optionId: "reject", name: "Reject", kind: "reject_once" },
+];
+
+async function askToEdit(client: acp.AgentContext, sessionId: string, edits: ProposedEdit[]) {
+  const answers = await Promise.all(
+    edits.map(async ({ title, path, oldText, newText }, index) => {
+      const response = await client.request(acp.methods.client.session.requestPermission, {
+        sessionId,
+        toolCall: { toolCallId: `edit-${index}`, title, kind: "edit", status: "pending", locations: [{ path }], content: [{ type: "diff", path, oldText, newText }] },
+        options: editOptions,
+      });
+      return `${title}: ${response.outcome.outcome === "selected" ? response.outcome.optionId : "cancelled"}`;
+    }),
+  );
+  await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answers.join("; ") } } });
+  return { stopReason: "end_turn" as const };
+}
+
 log("started");
 acp
   .agent()
@@ -80,6 +109,7 @@ acp
   .onRequest(acp.methods.agent.session.prompt, (ctx) => {
     const text = ctx.params.prompt.map((block) => (block.type === "text" ? block.text : "")).join("");
     appendFileSync(promptsFile!, `${text}\n`);
+    if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
   })

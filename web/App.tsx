@@ -1,8 +1,10 @@
-import { Activity, memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
+import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
 import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
+import { editRequestsIn } from "./edit-approval.ts";
+import { useEditsInCanvas } from "./edits-in-canvas.ts";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { useClosesAsDialog } from "./desktop-close.ts";
@@ -314,6 +316,8 @@ export function App() {
     if (programRequest) setHidden("terminals", () => false);
   }, [programRequest]);
   useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
+  const editsInCanvas = useEditsInCanvas();
+  const editRequests = useMemo(() => (open && editsInCanvas ? editRequestsIn(open.events) : []), [open?.events, editsInCanvas]);
 
   const closeOverlay = useCallback(() => {
     dispatch({ type: "close-overlay" });
@@ -490,7 +494,16 @@ export function App() {
           onChange={changeLayout}
           content={{
             conversation: conversationPane,
-            canvas: showCanvas ? <CanvasPanel key={conversation!.id} items={open!.canvas} assetsOrigin={state.canvasAssetsOrigin} onHide={toggleCanvas} /> : null,
+            canvas: showCanvas ? (
+              <CanvasPanel
+                key={conversation!.id}
+                conversationId={conversation!.id}
+                items={open!.canvas}
+                edits={editRequests}
+                assetsOrigin={state.canvasAssetsOrigin}
+                onHide={toggleCanvas}
+              />
+            ) : null,
             terminals: terminalWorkspace ? <TerminalPane key={terminalWorkspace.id} workspace={terminalWorkspace} status={status} onHide={toggleTerminal} /> : null,
           }}
         />

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import type { AskOption, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
+import { settledEditNote, type EditRequest } from "./edit-approval.ts";
+import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
@@ -262,9 +264,20 @@ function settledMessage(item: CanvasItem) {
   return item.status === "answered" ? `✓ Answer sent: “${item.answer?.label ?? ""}”` : "The agent withdrew its question.";
 }
 
+/** A note that goes away by itself a few seconds after it is set. */
+function useFadingNote() {
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (note === null) return;
+    const timer = setTimeout(() => setNote(null), 4000);
+    return () => clearTimeout(timer);
+  }, [note]);
+  return [note, setNote] as const;
+}
+
 /** Clears the canvas when the question on it gets settled, leaving a short note of what happened. */
 function useClearWhenSettled(selected: CanvasItem | undefined, clear: () => void) {
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useFadingNote();
   const previous = useRef<{ id: string; status: CanvasItem["status"] } | null>(null);
   useEffect(() => {
     const wasWaiting = previous.current?.id === selected?.id && previous.current?.status === "waiting";
@@ -274,12 +287,32 @@ function useClearWhenSettled(selected: CanvasItem | undefined, clear: () => void
       clear();
     }
   }, [selected?.id, selected?.status]);
-  useEffect(() => {
-    if (note === null) return;
-    const timer = setTimeout(() => setNote(null), 4000);
-    return () => clearTimeout(timer);
-  }, [note]);
   return note;
+}
+
+/**
+ * The oldest edit the agent waits for permission to make takes the canvas, unless the user set the edits aside to look
+ * at something else; a new one takes it back. Once the edit on the canvas is answered, the canvas clears and notes the answer.
+ */
+function useEditsOnCanvas(edits: EditRequest[], clear: () => void) {
+  const waiting = edits.filter((edit) => !edit.resolved);
+  const [setAside, setSetAside] = useState(false);
+  const [note, setNote] = useFadingNote();
+  const shown = setAside ? undefined : waiting[0];
+  const previouslyShown = useRef<string | null>(null);
+  const oldestWaiting = waiting[0]?.permissionId;
+  useEffect(() => {
+    if (oldestWaiting) setSetAside(false);
+  }, [oldestWaiting]);
+  useEffect(() => {
+    const before = previouslyShown.current;
+    previouslyShown.current = shown?.permissionId ?? null;
+    const answered = before === shown?.permissionId ? undefined : edits.find((edit) => edit.permissionId === before && edit.resolved);
+    if (!answered) return;
+    setNote(settledEditNote(answered));
+    clear();
+  }, [shown?.permissionId, edits]);
+  return { shown, waiting: waiting.length, note, setAside: () => setSetAside(true), bringBack: () => setSetAside(false) };
 }
 
 function CanvasHistory({ items, selectedId, onPick }: { items: CanvasItem[]; selectedId: string | null; onPick: (id: string) => void }) {
@@ -318,7 +351,20 @@ function useReviewPlacement() {
   };
 }
 
-export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem[]; assetsOrigin: string; onHide: () => void }) {
+export function CanvasPanel({
+  conversationId,
+  items,
+  edits,
+  assetsOrigin,
+  onHide,
+}: {
+  conversationId: string;
+  items: CanvasItem[];
+  /** The edits the agent asked permission for; none when Settings keep them in the chat. */
+  edits: EditRequest[];
+  assetsOrigin: string;
+  onHide: () => void;
+}) {
   const newestFirst = useMemo(() => [...items].sort((a, b) => b.createdAt - a.createdAt), [items]);
   const newest = newestFirst[0];
   const onCanvasByDefault = newest && !isSettledQuestion(newest) ? newest.id : null;
@@ -329,15 +375,18 @@ export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem
     setSelectedId(onCanvasByDefault);
     if (takeArrivedReview(newest)) placeForReview(newest);
   }, [newest?.id]);
-  const selectedIndex = newestFirst.findIndex(({ id }) => id === selectedId);
+  const edit = useEditsOnCanvas(edits, () => setSelectedId(null));
+  const selectedIndex = edit.shown ? -1 : newestFirst.findIndex(({ id }) => id === selectedId);
   const selected = newestFirst[selectedIndex];
   const outcome = selected && outcomeOf(selected);
-  const settledNote = useClearWhenSettled(selected, () => setSelectedId(null));
+  const questionNote = useClearWhenSettled(selected, () => setSelectedId(null));
+  const settledNote = edit.note ?? questionNote;
   const older = selected ? newestFirst[selectedIndex + 1] : newest;
   const newer = selected ? newestFirst[selectedIndex - 1] : undefined;
   const pick = (id: string) => {
     setSelectedId(id);
     setHistoryOpen(false);
+    edit.setAside();
     placeForReview(items.find((item) => item.id === id));
   };
   const closeHistoryOnEscape = (event: KeyboardEvent<HTMLElement>) => {
@@ -350,7 +399,13 @@ export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem
     <aside className="canvas-panel" onKeyDown={closeHistoryOnEscape}>
       <div className="canvas-header" data-pane-bar>
         <PaneGrip pane="canvas" />
-        {selected ? (
+        {edit.shown ? (
+          <>
+            <span className="canvas-kind">✎</span>
+            <span className="canvas-title">{edit.shown.title}</span>
+            <span className="canvas-outcome status-waiting">needs your answer</span>
+          </>
+        ) : selected ? (
           <>
             <span className="canvas-kind">{kindIcons[selected.kind]}</span>
             <span className="canvas-title">{selected.title}</span>
@@ -362,6 +417,11 @@ export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem
           </>
         ) : (
           <span className="canvas-title empty-title">Canvas</span>
+        )}
+        {!edit.shown && edit.waiting > 0 && (
+          <button type="button" className="canvas-outcome status-waiting edits-waiting" data-hint={hints.canvasEditsWaiting} onClick={edit.bringBack}>
+            {edit.waiting === 1 ? "1 edit waiting" : `${edit.waiting} edits waiting`}
+          </button>
         )}
         <span className="spacer" />
         <button type="button" className="icon canvas-nav" aria-label="Older" data-hint={hints.canvasOlder} disabled={!older} onClick={() => older && pick(older.id)}>
@@ -384,9 +444,10 @@ export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem
           type="button"
           className="canvas-clear"
           data-hint={hints.canvasClear}
-          disabled={!selected}
+          disabled={!selected && !edit.shown}
           onClick={() => {
             setSelectedId(null);
+            edit.setAside();
             placeForReview(undefined);
           }}
         >
@@ -399,7 +460,10 @@ export function CanvasPanel({ items, assetsOrigin, onHide }: { items: CanvasItem
       </div>
       {historyOpen && <CanvasHistory items={newestFirst} selectedId={selected?.id ?? null} onPick={pick} />}
       <div className="canvas-body">
-        {!selected && (
+        {edit.shown && (
+          <EditApproval key={edit.shown.permissionId} request={edit.shown} moreWaiting={edit.waiting - 1} note={settledNote} conversationId={conversationId} />
+        )}
+        {!selected && !edit.shown && (
           <div className="empty">
             {settledNote && (
               <div className="settled-note" role="status">

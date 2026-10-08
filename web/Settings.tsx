@@ -6,6 +6,7 @@ import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterW
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
+import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
@@ -105,6 +106,7 @@ export function SettingsDialog({
       <>
         <CanvasSettings canvasUse={canvasUse} />
         <ReviewSettings />
+        <EditApprovalSettings />
       </>
     ),
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
@@ -452,6 +454,22 @@ function ReviewSettings() {
               </option>
             ))}
           </select>
+        </label>
+      </div>
+    </>
+  );
+}
+
+function EditApprovalSettings() {
+  const editsInCanvas = useEditsInCanvas();
+  return (
+    <>
+      <h3>Edit approvals</h3>
+      <p className="hint">When the agent asks to edit or write a file. With the canvas pane hidden, the chat shows the diff either way. Remembered in this browser.</p>
+      <div className="sending-settings">
+        <label data-hint={hints.editsInCanvasSetting}>
+          <input type="checkbox" checked={editsInCanvas} onChange={(event) => setEditsInCanvas(event.target.checked)} />
+          Show edits waiting for approval in the canvas
         </label>
       </div>
     </>

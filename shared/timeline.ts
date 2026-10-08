@@ -13,6 +13,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 import { jobWaitEndedNotice } from "./job-waits.ts";
 import type { StoredEvent } from "./model.ts";
+import type { EditDiff } from "./review.ts";
 import { turnTitle, whatWasLeft } from "./reverts.ts";
 import { UserCommandLog, type UserCommand } from "./user-commands.ts";
 
@@ -85,6 +86,7 @@ export interface PermissionBlock extends Origin {
   permissionId: string;
   toolCall: ToolCallUpdate;
   options: PermissionOption[];
+  edits?: EditDiff[];
   resolved: boolean;
   chosenOptionId: string | null;
 }
@@ -260,6 +262,7 @@ class TimelineBuilder {
           permissionId: event.permissionId,
           toolCall: event.toolCall,
           options: event.options,
+          ...(event.edits && { edits: event.edits }),
           resolved: false,
           chosenOptionId: null,
         };

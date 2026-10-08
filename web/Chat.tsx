@@ -29,6 +29,8 @@ import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
+import { answerPermission, EditCounts, PermissionOptions } from "./EditApproval.tsx";
+import { useEditsInCanvas } from "./edits-in-canvas.ts";
 import { matchOffsets } from "../shared/find.ts";
 import { isRawOutputOnHost } from "../shared/low-data.ts";
 import { FindBar, FindQuery, useFind } from "./FindBar.tsx";
@@ -326,6 +328,9 @@ const PREVIEW_LINES = 8;
 
 const ToolCallsAwaitingPermission = createContext<ReadonlySet<string>>(new Set());
 
+/** Whether the canvas, in view, shows the diffs of edits waiting for permission, so their chat cards can stay small. */
+const CanvasShowsEdits = createContext(false);
+
 const toolCallsAwaitingPermission = (timeline: TimelineBlock[]) =>
   new Set(timeline.flatMap((block) => (block.kind === "permission" && !block.resolved ? [block.toolCall.toolCallId] : [])));
 
@@ -539,8 +544,7 @@ function permissionSubject(toolCall: PermissionBlock["toolCall"]) {
 }
 
 function PermissionCard({ block, conversationId }: { block: PermissionBlock; conversationId: string }) {
-  const respond = (optionId: string | null) =>
-    connection.send({ type: "permission.respond", conversationId, permissionId: block.permissionId, optionId });
+  const editsInCanvas = useContext(CanvasShowsEdits) && block.edits?.length ? block.edits : null;
   const chosen = block.options.find(({ optionId }) => optionId === block.chosenOptionId);
   return (
     <div className={`permission ${block.resolved ? "resolved" : "pending"}`}>
@@ -551,6 +555,11 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
         <div className="shell-body">
           <CommandLine command={commandLineOf(block.toolCall.rawInput, block.toolCall.title ?? "")} />
         </div>
+      ) : editsInCanvas ? (
+        <div className="permission-edit-summary">
+          <EditCounts edits={editsInCanvas} />
+          {!block.resolved && <span className="shown-in-canvas"> · Shown in the canvas</span>}
+        </div>
       ) : (
         <>
           {block.toolCall.content?.map((content, index) => <ToolContent key={index} content={content} />)}
@@ -560,13 +569,7 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
       {block.resolved ? (
         <div className="permission-outcome">{chosen ? chosen.name : "Cancelled"}</div>
       ) : (
-        <div className="permission-options">
-          {block.options.map((option) => (
-            <button key={option.optionId} className={`option-${option.kind}`} onClick={() => respond(option.optionId)}>
-              {option.name}
-            </button>
-          ))}
-        </div>
+        <PermissionOptions options={block.options} onChoose={(optionId) => answerPermission(conversationId, block.permissionId, optionId)} />
       )}
     </div>
   );
@@ -1506,59 +1509,63 @@ export function ChatPanel({
     if (runningSubagents[0]) showSubagent(runningSubagents[0]);
   };
   const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom, earlier, firstHeldSeq: open.events[0]?.seq });
+  const editsInCanvas = useEditsInCanvas();
+  const canvasShowsEdits = canvasVisible && editsInCanvas;
   return (
     <ToolCallsAwaitingPermission.Provider value={awaitingPermission}>
       <SubagentStates.Provider value={subagentStates}>
-        <ChatHeader
-          conversation={conversation}
-          profiles={profiles}
-          canvasVisible={canvasVisible}
-          onToggleCanvas={onToggleCanvas}
-          terminalVisible={terminalVisible}
-          onToggleTerminal={onToggleTerminal}
-          runningSubagents={runningSubagents.length}
-          onShowRunningSubagent={showRunningSubagent}
-          onFind={find.open}
-        />
-        {find.query !== null && <FindBar find={find} />}
-        <FindQuery.Provider value={find.query ?? ""}>
-          <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
-            {!open.loaded && <div className="notice-line">Loading…</div>}
-            {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
-            {(firstLoaded > 0 || earlier.available) && (
-              <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
-                {earlierEntriesLabel(firstLoaded, earlier)}
-              </button>
-            )}
-            {timeline.slice(firstLoaded).map((block, offset) => (
-              <TimestampedEntry
-                key={block.key}
-                block={block}
-                startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
-                harness={conversation.harness}
-                conversationId={conversation.id}
-              />
-            ))}
-            {conversation.status === "running" && <div className="working">Working…</div>}
-          </div>
-        </FindQuery.Provider>
-        {runningSubagents.length > 0 && <RunningSubagents subagents={runningSubagents} onShow={showSubagent} />}
-        {conversation.openInTerminal && (
-          <div className="terminal-warning" role="status">
-            This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
-            there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
-            it there first.
-          </div>
-        )}
-        <Composer
-          conversation={conversation}
-          events={open.events}
-          holdsEarliest={!open.hasEarlier}
-          pendingCommands={pendingCommands}
-          promptTemplates={promptTemplates}
-          onManageTemplates={onManageTemplates}
-        />
-        <Statusline conversation={conversation} profiles={profiles} />
+        <CanvasShowsEdits.Provider value={canvasShowsEdits}>
+          <ChatHeader
+            conversation={conversation}
+            profiles={profiles}
+            canvasVisible={canvasVisible}
+            onToggleCanvas={onToggleCanvas}
+            terminalVisible={terminalVisible}
+            onToggleTerminal={onToggleTerminal}
+            runningSubagents={runningSubagents.length}
+            onShowRunningSubagent={showRunningSubagent}
+            onFind={find.open}
+          />
+          {find.query !== null && <FindBar find={find} />}
+          <FindQuery.Provider value={find.query ?? ""}>
+            <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
+              {!open.loaded && <div className="notice-line">Loading…</div>}
+              {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
+              {(firstLoaded > 0 || earlier.available) && (
+                <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
+                  {earlierEntriesLabel(firstLoaded, earlier)}
+                </button>
+              )}
+              {timeline.slice(firstLoaded).map((block, offset) => (
+                <TimestampedEntry
+                  key={block.key}
+                  block={block}
+                  startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
+                  harness={conversation.harness}
+                  conversationId={conversation.id}
+                />
+              ))}
+              {conversation.status === "running" && <div className="working">Working…</div>}
+            </div>
+          </FindQuery.Provider>
+          {runningSubagents.length > 0 && <RunningSubagents subagents={runningSubagents} onShow={showSubagent} />}
+          {conversation.openInTerminal && (
+            <div className="terminal-warning" role="status">
+              This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
+              there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
+              it there first.
+            </div>
+          )}
+          <Composer
+            conversation={conversation}
+            events={open.events}
+            holdsEarliest={!open.hasEarlier}
+            pendingCommands={pendingCommands}
+            promptTemplates={promptTemplates}
+            onManageTemplates={onManageTemplates}
+          />
+          <Statusline conversation={conversation} profiles={profiles} />
+        </CanvasShowsEdits.Provider>
       </SubagentStates.Provider>
     </ToolCallsAwaitingPermission.Provider>
   );

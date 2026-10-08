@@ -56,6 +56,8 @@ export const hints = {
   revealAll: "Shows every line of the file between the two changes (or up to the file's start or end).",
   reviewPlacement: "Show the review over the whole workspace, or in the canvas pane next to the chat. Settings picks where reviews open.",
   reviewPlacementSetting: "Where a code review from the agent opens. Either way, the button in the review's bar switches between the two.",
+  editsInCanvasSetting:
+    "On, an edit the agent waits for you to allow takes the canvas, with a Unified / Split toggle and the file's line numbers, and the chat keeps a small card. Off, the chat card shows the diff and the canvas stays as it is.",
   askPageBefore: "The agent showed this page just before asking, in the same turn. It stays above the question so you can read both; it is also in History on its own.",
   canvasToggle: "Hide or show the canvas pane. Drawings and questions still arrive while it's hidden and stay in History.",
   runCommand: "Runs the command after ! in this workspace's folder with your login shell, without input. Its output shows here and goes to the agent with your next message, as with ! in Claude Code. For interactive programs, use the terminal.",
@@ -168,6 +170,8 @@ export const hints = {
   canvasNewer: "Show the next canvas item.",
   canvasHistory: "Everything the agent drew or asked in this conversation, newest first.",
   canvasClear: "Empty the canvas. Nothing is deleted: the item stays in History.",
+  canvasEditsWaiting: "Show the edit the agent waits for you to allow or reject.",
+  editDiffStyle: "Unified shows the old and new lines in one column; Split shows the old version on the left and the new one on the right. Remembered in this browser.",
 } as const;
 
 export const waitingHints: Record<WaitingFor, string> = {

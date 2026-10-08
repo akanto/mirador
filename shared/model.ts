@@ -5,7 +5,7 @@ import type {
   StopReason,
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
-import type { Review } from "./review.ts";
+import type { EditDiff, Review } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
 
 export type HarnessId = "claude" | "opencode";
@@ -384,7 +384,8 @@ export type ConversationEvent =
   | { type: "user-command-ended"; commandId: string; exitCode: number | null }
   | { type: "user-command-dropped"; commandIds: string[] }
   | { type: "acp"; update: SessionUpdate }
-  | { type: "permission"; permissionId: string; toolCall: ToolCallUpdate; options: PermissionOption[] }
+  /** `edits`: the files the tool would change, as the host found the change in each, for a request that changes files. */
+  | { type: "permission"; permissionId: string; toolCall: ToolCallUpdate; options: PermissionOption[]; edits?: EditDiff[] }
   | { type: "permission-resolved"; permissionId: string; optionId: string | null }
   | { type: "turn-end"; stopReason: StopReason }
   | { type: "profile-changed"; profileName: string | null }

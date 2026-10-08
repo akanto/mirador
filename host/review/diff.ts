@@ -7,7 +7,7 @@ const GENERATED_FILES = [
   /\.min\.(js|css)$/,
   /\.map$/,
 ];
-const MAX_ROWS_PER_FILE = 3_000;
+export const MAX_ROWS_PER_FILE = 3_000;
 const MAX_ROWS_PER_REVIEW = 40_000;
 
 /** Git quotes paths with unusual characters, C style. */
