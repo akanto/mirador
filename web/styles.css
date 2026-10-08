@@ -2753,6 +2753,7 @@ button.edits-waiting {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-wrap: anywhere;
 }
 
 .ask h3 {

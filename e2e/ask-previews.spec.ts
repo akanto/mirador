@@ -59,6 +59,27 @@ test("previews show whole: option columns widen to fit them, and what is wider t
   expect(blue!.y).toBe(green!.y);
 });
 
+test("a long unbroken word wraps inside its option and the question's page, rather than running past the box or shrinking the page", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const identifier = "AvailabilityChecker.doesAllImageSucceedForEveryInstanceGroupOfTheStackWhenItsMetadataIsReadLazily";
+  askInBackground(conversationId, {
+    question: "Which fix?",
+    html: `<div style="border:1px solid #888;border-radius:8px;padding:12px">Note: <code>${identifier}</code> reads the lazy collection.</div>`,
+    options: [{ label: "Fix the checker", description: `Change ${identifier} to read instance metadata.` }, { label: "Leave it" }],
+  });
+
+  const option = page.locator(".ask-option").first();
+  await expect(option).toContainText(identifier);
+  expect(await option.evaluate((box) => box.scrollWidth <= box.clientWidth)).toBe(true);
+  const context = page.locator(".ask-context iframe");
+  await expect(context.contentFrame().getByText(identifier)).toBeVisible();
+  await expect(context, "the page has reported its size").toHaveAttribute("style", /height/);
+  await expect(context).not.toHaveAttribute("style", /scale/);
+  await answerCanvasQuestion(page, "Leave it");
+});
+
 test("a question's page and previews taller than the window show whole, so a wheel turn over them scrolls the canvas toward the answer", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 700 });
   await signIn(page, host);

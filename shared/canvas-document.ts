@@ -194,7 +194,7 @@ export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: 
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
     `<script>${frameReporter(itemId, theme)}</script>`,
-    "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif}</style>",
+    "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif;overflow-wrap:anywhere}</style>",
     withoutDoctype,
   ].join("\n");
 }
