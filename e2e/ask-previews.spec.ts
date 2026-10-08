@@ -79,14 +79,15 @@ test("the agent can make the answer boxes wider, up to the canvas's width", asyn
   await answerCanvasQuestion(page, "Huge");
 });
 
-test("a long unbroken word wraps inside its option and the question's page, rather than running past the box or shrinking the page", async ({ page }) => {
+test("a long unbroken word wraps inside its option and the question's page, rather than running past the box or shrinking the page, and short words stay whole", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await signIn(page, host);
   const conversationId = await startConversation(page);
   const identifier = "AvailabilityChecker.doesAllImageSucceedForEveryInstanceGroupOfTheStackWhenItsMetadataIsReadLazily";
   askInBackground(conversationId, {
     question: "Which fix?",
-    html: `<div style="border:1px solid #888;border-radius:8px;padding:12px">Note: <code>${identifier}</code> reads the lazy collection.</div>`,
+    html: `<div style="border:1px solid #888;border-radius:8px;padding:12px">Note: <code>${identifier}</code> reads the lazy collection.</div>
+<table style="width:100%"><tr><td id="commit">a94e17d</td><td>${"Stop the page crashing when a terminal is split, closed or hidden. ".repeat(3)}</td></tr></table>`,
     options: [{ label: "Fix the checker", description: `Change ${identifier} to read instance metadata.` }, { label: "Leave it" }],
   });
 
@@ -97,6 +98,12 @@ test("a long unbroken word wraps inside its option and the question's page, rath
   await expect(context.contentFrame().getByText(identifier)).toBeVisible();
   await expect(context, "the page has reported its size").toHaveAttribute("style", /height/);
   await expect(context).not.toHaveAttribute("style", /scale/);
+  const linesOf = (cell: HTMLElement) => {
+    const text = document.createRange();
+    text.selectNodeContents(cell);
+    return text.getClientRects().length;
+  };
+  expect(await context.contentFrame().locator("#commit").evaluate(linesOf), "a table's short column is not squeezed to a letter a line").toBe(1);
   await answerCanvasQuestion(page, "Leave it");
 });
 
