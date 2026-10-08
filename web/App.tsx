@@ -459,7 +459,7 @@ export function App() {
         (state.profiles.length === 0 ? (
           <FirstProfile installedAgents={state.installedAgents} conversations={state.conversations} />
         ) : (
-          <div className="empty">
+          <div className="empty-state">
             <h2>No conversation selected</h2>
             <p>Add a workspace (a project directory) on the left, then start a conversation in it on one of your profiles.</p>
           </div>

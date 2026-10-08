@@ -292,7 +292,7 @@ body.resizing iframe {
 }
 
 .gate,
-.empty {
+.empty-state {
   margin: auto;
   max-width: 520px;
   padding: 48px 24px;

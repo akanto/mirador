@@ -239,14 +239,14 @@ function ProfileEditor({
 export function FirstProfile({ installedAgents, conversations }: { installedAgents: HarnessId[]; conversations: Conversation[] }) {
   if (installedAgents.length === 0) {
     return (
-      <div className="empty">
+      <div className="empty-state">
         <h2>Install an agent to start</h2>
         <p>Mirador runs Claude Code or opencode, and this machine has neither. Install one, then reload this page.</p>
       </div>
     );
   }
   return (
-    <div className="empty first-profile">
+    <div className="empty-state first-profile">
       <h2>Set up a profile to start</h2>
       <p>
         Every conversation runs on a profile: an agent and the environment it starts with. With nothing more set, it runs the agent as

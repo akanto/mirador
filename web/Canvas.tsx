@@ -464,7 +464,7 @@ export function CanvasPanel({
           <EditApproval key={edit.shown.permissionId} request={edit.shown} moreWaiting={edit.waiting - 1} note={settledNote} conversationId={conversationId} />
         )}
         {!selected && !edit.shown && (
-          <div className="empty">
+          <div className="empty-state">
             {settledNote && (
               <div className="settled-note" role="status">
                 {settledNote}
