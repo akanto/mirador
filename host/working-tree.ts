@@ -88,19 +88,19 @@ async function untrackedChange(directory: string, path: string): Promise<TreeCha
 
 const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store"]);
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
-const MAX_SCANNED_ENTRIES = 50_000;
+export const MAX_SCANNED_FILES = 200_000;
 
-/** The files under `directory`, relative to it, skipping the folders nothing of the user's lives in; it stops after MAX_SCANNED_ENTRIES. */
-async function scannedFiles(directory: string): Promise<string[]> {
+/** The files under `directory`, relative to it, skipping the folders nothing of the user's lives in; it stops after `limit` of them, and says so. */
+async function scannedFiles(directory: string, limit: number) {
   const files: string[] = [];
   const pending = [""];
-  for (let folder = pending.pop(); folder !== undefined && files.length < MAX_SCANNED_ENTRIES; folder = pending.pop()) {
+  for (let folder = pending.pop(); folder !== undefined && files.length <= limit; folder = pending.pop()) {
     const entries = await readdir(join(directory, folder), { withFileTypes: true }).catch(() => []);
     entries
       .filter(({ name }) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name))
       .forEach((entry) => (entry.isDirectory() ? pending.push(join(folder, entry.name)) : entry.isFile() && files.push(join(folder, entry.name))));
   }
-  return files;
+  return { files: files.slice(0, limit), truncated: files.length > limit };
 }
 
 /** Not the change time: opening a file in Finder moves that, and a file made with an old modified time still has its birth. */
@@ -109,18 +109,21 @@ const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(
 /**
  * The files of a folder that is not a git repository which were written at or after `since` (epoch ms), by their times
  * alone: a file made since then is added with its line counts, any other is modified. Nothing says what a file held
- * before, and a deleted file leaves nothing to find.
+ * before, and a deleted file leaves nothing to find. A folder of more than `limit` files is checked only in part, which
+ * `truncated` says.
  */
-export async function filesWrittenSince(directory: string, since: number): Promise<TreeChange[]> {
+export async function filesWrittenSince(directory: string, since: number, limit = MAX_SCANNED_FILES): Promise<{ changes: TreeChange[]; truncated: boolean }> {
+  const { files, truncated } = await scannedFiles(directory, limit);
   const written = await Promise.all(
-    (await scannedFiles(directory)).map(async (path) => {
+    files.map(async (path) => {
       const stats = await stat(join(directory, path)).catch(() => null);
       return stats && writtenAt(stats) >= since ? [{ path, createdSince: stats.birthtimeMs >= since }] : [];
     }),
   );
-  return Promise.all(
+  const changes = await Promise.all(
     written.flat().map(({ path, createdSince }) => (createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null })),
   );
+  return { changes, truncated };
 }
 
 /** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */

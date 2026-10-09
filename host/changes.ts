@@ -6,7 +6,7 @@ import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
-import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, isRepository, uncommittedChanges, type TreeChange } from "./working-tree.ts";
+import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
 
@@ -118,14 +118,14 @@ export class Changes {
     const edits = this.agentEdits(conversationId, workspace, start.fromSeq);
     const agentProjectFiles = new Map(edits.flatMap((edit) => (projectPathOf(edit.path, directories) === null ? [] : [[projectPathOf(edit.path, directories)!, edit] as const])));
     const outside = edits.filter((edit) => projectPathOf(edit.path, directories) === null).map((edit) => agentOnly(edit.path, edit));
-    const changes = await this.treeChanges(workspace, scope, start);
+    const { changes, truncated } = await this.treeChanges(workspace, scope, start);
     const project = changes
       ? [
           ...changes.map((change) => ({ ...change, byAgent: agentProjectFiles.has(change.path) })),
           ...(scope === "turn" ? [...agentProjectFiles].filter(([path]) => !changes.some((change) => change.path === path)).map(([path, edit]) => agentOnly(path, edit)) : []),
         ]
       : [...agentProjectFiles].map(([path, edit]) => agentOnly(path, edit));
-    return { scope, base: start.base, project: project.sort(byPath), outside: outside.sort(byPath) };
+    return { scope, base: start.base, project: project.sort(byPath), outside: outside.sort(byPath), ...(truncated && { filesCheckedAtMost: MAX_SCANNED_FILES }) };
   }
 
   async diff(conversationId: string, scope: ChangeScope, path: string): Promise<FileChanges> {
@@ -185,9 +185,10 @@ export class Changes {
     return kept ? { fromSeq: turn.seq, revision: turn.checkpoint, base: "turn-start" } : { fromSeq: turn.seq, revision: null, base: "turn-not-kept" };
   }
 
-  private treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<TreeChange[] | null> {
+  private async treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<{ changes: TreeChange[] | null; truncated: boolean }> {
     if (start.since !== undefined) return filesWrittenSince(workspace.path, start.since);
-    if (!start.revision) return Promise.resolve(null);
-    return scope === "turn" ? this.checkpoints.changesSince(workspace, start.revision) : uncommittedChanges(workspace.path);
+    if (!start.revision) return { changes: null, truncated: false };
+    const changes = scope === "turn" ? await this.checkpoints.changesSince(workspace, start.revision) : await uncommittedChanges(workspace.path);
+    return { changes, truncated: false };
   }
 }

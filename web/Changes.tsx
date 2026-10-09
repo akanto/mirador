@@ -208,6 +208,9 @@ export function ChangesView({ conversationId, refreshPoint }: { conversationId: 
       </div>
       {loadedList && "error" in loadedList ? <p className="review-empty">{loadedList.error}</p> : !list && <p className="changes-none">Loading…</p>}
       {list && listNotes[list.base] && <p className="hint">{listNotes[list.base]}</p>}
+      {list?.filesCheckedAtMost !== undefined && (
+        <p className="review-empty">This folder holds more than {list.filesCheckedAtMost.toLocaleString("en")} files, so only that many were checked and some changed files may be missing.</p>
+      )}
       {list && files.length === 0 && <p className="changes-none">{nothingChanged(list)}</p>}
       {list && (
         <>

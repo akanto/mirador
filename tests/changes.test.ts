@@ -6,7 +6,7 @@ import type { ToolKind } from "@agentclientprotocol/sdk";
 import { agentEditsIn, Changes } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
 import { Store } from "../host/store.ts";
-import { treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
+import { filesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
 import type { StoredEvent } from "../shared/model.ts";
 import { changesRefreshPoint, firstChangedLine } from "../web/changes.ts";
 
@@ -305,4 +305,18 @@ test("the Changes view loads again after finished tool calls, turns, the user's 
   expect(changesRefreshPoint(events({ type: "user-message", text: "go" }, finished, chunk))).toBe(2);
   expect(changesRefreshPoint(events(chunk, { type: "turn-end", stopReason: "end_turn" }))).toBe(2);
   expect(changesRefreshPoint(events(chunk))).toBe(0);
+});
+
+test("a folder of more files than the limit is checked in part, and says so", async () => {
+  await leaveGit();
+  await Promise.all(["a", "b", "c", "d"].map((name) => write(`${name}.txt`, `${name}\n`)));
+  const everythingSinceEver = 0;
+
+  const whole = await filesWrittenSince(projectDir, everythingSinceEver, 100);
+  expect(whole.truncated).toBe(false);
+  expect(whole.changes).toHaveLength(7);
+
+  const part = await filesWrittenSince(projectDir, everythingSinceEver, 3);
+  expect(part.truncated).toBe(true);
+  expect(part.changes).toHaveLength(3);
 });

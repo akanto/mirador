@@ -30,6 +30,8 @@ export interface ChangeList {
   base: ChangesBase;
   project: ChangedFile[];
   outside: ChangedFile[];
+  /** Set when the folder held more files than were checked, to how many were: the list may lack some. */
+  filesCheckedAtMost?: number;
 }
 
 /** A file's line changes: the file compared with the scope's base, or else the agent's edits to it, one by one. */
