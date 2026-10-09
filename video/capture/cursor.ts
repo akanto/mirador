@@ -107,7 +107,7 @@ function drawPointer() {
   const install = () => {
     const pointer = document.createElement("div");
     pointer.setAttribute("aria-hidden", "true");
-    pointer.style.cssText = "position:fixed;left:0;top:0;width:24px;height:24px;z-index:2147483647;pointer-events:none;will-change:transform;filter:drop-shadow(0 1.5px 2.5px rgba(0,0,0,.35))";
+    pointer.style.cssText = "position:fixed;left:0;top:0;width:24px;height:24px;z-index:2147483647;pointer-events:none;will-change:translate,scale;transform-origin:5px 2.5px;filter:drop-shadow(0 1.5px 2.5px rgba(0,0,0,.35))";
     pointer.innerHTML =
       '<svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 2.5v17.2l4.3-4.1 2.9 6.6 3-1.3-2.9-6.5h6z" fill="#111" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
     document.documentElement.appendChild(pointer);
@@ -115,7 +115,9 @@ function drawPointer() {
     const place = (x: number, y: number) => {
       state.x = x;
       state.y = y;
-      pointer.style.transform = `translate(${x - 5}px, ${y - 2.5}px)`;
+      // The individual translate property, not transform: the click pulse animates scale, which CSS applies before
+      // transform, so a position held in transform would make the pulse pull the pointer toward the page's corner.
+      pointer.style.translate = `${x - 5}px ${y - 2.5}px`;
     };
     const glide = (x: number, y: number, milliseconds: number) =>
       new Promise<void>((resolve) => {
