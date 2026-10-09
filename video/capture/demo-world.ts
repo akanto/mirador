@@ -44,14 +44,42 @@ function createProject(directory: string, files: Record<string, string>, message
   git(directory, "commit", "-q", "-m", message);
 }
 
-/** shop-api on a branch that retries card payments: the change the trailer's review is about. */
+/**
+ * shop-api on a branch that retries card payments: the change the trailer's review is about. On top of it, Ada's own
+ * staged note in the README, and the test an earlier turn of the agent's wrote, so the uncommitted work holds both.
+ */
 function createShopApi(directory: string) {
   createProject(directory, { "README.md": "# shop-api\n", "src/checkout.ts": checkoutBefore, "src/services.ts": services, "src/types.ts": types }, "Checkout reserves stock, captures the payment and creates the order");
   git(directory, "checkout", "-q", "-b", "retry-payments");
   writeFiles(directory, { "src/checkout.ts": checkoutAfter, "src/retry.ts": retry });
   git(directory, "add", ".");
   git(directory, "commit", "-q", "-m", "Retry failed card payments and release the stock");
+  writeFiles(directory, { "README.md": readmeWithPayments });
+  git(directory, "add", "README.md");
+  writeFiles(directory, { [CHECKOUT_TEST]: checkoutTest });
 }
+
+const readmeWithPayments = "# shop-api\n\n## Payments\n\nCheckout captures the card once per cart. A capture that times out is retried.\n";
+
+/** The test and the script an earlier turn of the agent's wrote, to reproduce the double charge. */
+export const CHECKOUT_TEST = "src/checkout.test.ts";
+export const checkoutTest = `import { expect, test } from "bun:test";
+import { checkout } from "./checkout";
+import { payments } from "./services";
+
+test("a capture that times out charges the card once", async () => {
+  payments.timeOutOnce();
+  await checkout(cart, card);
+  expect(payments.chargesOf(card)).toHaveLength(1);
+});
+`;
+export const REPLAY_SCRIPT = "/tmp/replay-capture.sh";
+export const replayScript = `#!/bin/sh
+# Replays a capture that timed out, against the payments sandbox.
+curl -s -X POST localhost:4000/checkout -d @cart.json --max-time 1
+curl -s -X POST localhost:4000/checkout -d @cart.json
+curl -s localhost:4010/sandbox/charges | jq length
+`;
 
 export const checkoutBefore = `import { inventory, mail, orders, payments } from "./services";
 import type { Card, Cart } from "./types";

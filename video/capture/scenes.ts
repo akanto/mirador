@@ -10,6 +10,7 @@ export const prompts = {
   review: "Review the retry-payments branch against main.",
   questionAboutBlocker: "Is the cart id enough if the customer changes the cart?",
   fix: "Fix the blocker from the review: a retried capture must not charge the card twice.",
+  reproduce: "Reproduce the double charge: a failing test, and a script that replays a capture that timed out.",
 };
 
 export const LAYOUT_CHOICE = "Grouped list (recommended)";

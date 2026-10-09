@@ -5,7 +5,8 @@
 export const LINES = {
   wall: "Coding agents are fast. In minutes, they read your code, change ten files, and explain it all...",
   wallOfText: "in a wall of text.",
-  humans: "But you're human. You take in a picture faster than a page of text.",
+  human: "But you're human.",
+  picture: "You take in a picture faster than a page of text.",
   canvas: "Mirador gives your agent a canvas.",
   show: "So instead of describing, it shows you. Flows, architecture, mockups and charts, drawn right beside the conversation.",
   ask: "When a decision is yours, it asks with pictures. Click an option, and it carries on.",
@@ -14,8 +15,10 @@ export const LINES = {
   reviewPost: "Keep the ones you agree with, and post them to the pull request.",
   overview: "Run your agents across all your projects. See who's working, who's done, and who needs you.",
   edit: "Approve every edit with its diff.",
+  changes: "Every change since your last commit, even outside the project.",
   terminals: "Your terminals sit right beside the conversation.",
-  end: "Mirador. See what your coding agent means.",
+  mirador: "Mirador.",
+  end: "See what your coding agent means.",
 } as const;
 
 export type LineName = keyof typeof LINES;

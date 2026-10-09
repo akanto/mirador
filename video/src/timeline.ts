@@ -22,16 +22,27 @@ export type Caption = { kicker: string; title: string; at?: number; seconds?: nu
  */
 export type Spoken = { line: string; at: number; musicDipsTo?: number };
 
-/** Words shown large over a card from a second of it on. */
-export type Statement = { text: string; at: number };
+/** Words shown large over a card, its parts landing one after another from a second of it on. */
+export type Statement = { parts: string[]; at: number };
+
+/** How far apart a statement's parts land, in seconds. */
+export const STATEMENT_BEAT = 0.5;
+
+/** When each part of a statement lands, in seconds of its scene. */
+export const statementBeats = ({ parts, at }: Statement) => parts.map((_, index) => at + index * STATEMENT_BEAT);
 
 /** How a scene comes in: over the one before it for `fadeInFrames` frames (0 cuts straight to it), the trailer's crossfade by default. */
 type Transition = { fadeInFrames?: number };
 
-/** A clip scene lasts as long as its shots, or `seconds` when given: shorter cuts the footage, longer holds its last frame. */
-export type ClipScene = Transition & { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[]; seconds?: number };
-export type CardScene = Transition & { kind: "logo" | "end"; id: string; seconds: number; narration?: Spoken[] };
-export type WallScene = Transition & { kind: "text-wall"; id: string; seconds: number; narration?: Spoken[]; statement?: Statement };
+/**
+ * A clip scene lasts as long as its shots, or `seconds` when given: shorter cuts the footage, longer holds its last frame.
+ * A `flash` comes in with a burst of light, for the quick cuts before the end.
+ */
+export type ClipScene = Transition & { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[]; seconds?: number; flash?: boolean };
+/** The logo, the end card, or black, for a silence. */
+export type CardScene = Transition & { kind: "logo" | "end" | "black"; id: string; seconds: number; narration?: Spoken[] };
+/** The wall of text goes black at `goesBlackAt`, and from `pictureAt` its lines fly together into a picture, under the statement. */
+export type WallScene = Transition & { kind: "text-wall"; id: string; seconds: number; narration?: Spoken[]; goesBlackAt?: number; pictureAt?: number; statement?: Statement };
 export type Scene = ClipScene | CardScene | WallScene;
 
 export type NarrationLine = { text: string; file: string; seconds: number };

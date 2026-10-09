@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ClipInfo, type ClipScene, type Scene, clipSeconds, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf } from "../src/timeline.ts";
+import { type ClipInfo, type ClipScene, type Scene, clipSeconds, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf, statementBeats } from "../src/timeline.ts";
 
 const clip: ClipInfo = { name: "demo", seconds: 20, moments: { sent: 4, shown: 10 }, rects: {} };
 
@@ -92,4 +92,8 @@ test("a scene that cuts straight in doesn't overlap the one before it", () => {
     { id: "b", from: 10, frames: 23, fadeInFrames: 0 },
     { id: "c", from: 30, frames: 10, fadeInFrames: 3 },
   ]);
+});
+
+test("a statement's parts land one beat apart from its start", () => {
+  expect(statementBeats({ parts: ["Humans", "see faster", "than they read."], at: 12 })).toEqual([12, 12.5, 13]);
 });

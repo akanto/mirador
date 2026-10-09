@@ -29,6 +29,7 @@ const demo = JSON.parse(demoJson!) as Demo;
 const insertEvent = db.prepare("INSERT INTO events (conversation_id, seq, at, event) VALUES (?, ?, ?, ?)");
 const lastSeq = db.prepare("SELECT max(seq) AS seq FROM events WHERE conversation_id = ?");
 const nameConversation = db.prepare("UPDATE conversations SET title = ?, title_set_by_user = 1, unseen_turn_end = ? WHERE id = ?");
+const forgetAgentSession = db.prepare("UPDATE conversations SET acp_session_id = NULL WHERE id = ?");
 const colorWorkspace = db.prepare("UPDATE workspaces SET color = ? WHERE path = ?");
 const insertGroup = db.prepare("INSERT INTO workspace_groups (id, name, position, created_at) VALUES (?, ?, ?, ?)");
 const placeWorkspace = db.prepare("UPDATE workspaces SET position = ?, group_id = ? WHERE path = ?");
@@ -48,5 +49,7 @@ db.transaction(() => {
     const { seq } = lastSeq.get(id) as { seq: number | null };
     const start = Date.now() - minutesAgo * minute;
     events.forEach((event, index) => insertEvent.run(id, (seq ?? 0) + index + 1, start + index * minute, JSON.stringify(event)));
+    // No agent ever saw a seeded history, so a message sent there starts a fresh session instead of failing to resume one.
+    if (events.length > 0) forgetAgentSession.run(id);
   });
 })();

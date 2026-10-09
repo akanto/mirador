@@ -1,15 +1,17 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { CROSSFADE_FRAMES, FRAME } from "../src/brand.ts";
-import { STORYBOARD } from "../src/storyboard.ts";
-import type { ClipInfo, NarrationLine } from "../src/timeline.ts";
-import { placeScenes } from "../src/timeline.ts";
+import { BEAT, STORYBOARD } from "../src/storyboard.ts";
+import type { ClipInfo, NarrationLine, WallScene } from "../src/timeline.ts";
+import { placeScenes, statementBeats } from "../src/timeline.ts";
 
 /**
- * The trailer's score, synthesised here so there is no track to licence or credit: a drone and quickening ticks
- * under the wall of text that stop for its statement, a riser into a hit on the logo, then a warm I–V–vi–IV pad with a
- * pluck and a soft pulse under the features that lifts at the review, a riser into a brighter, busier section for the
- * quick cuts, resolving on the end card. It is timed by the storyboard, so the hits land on the scene changes. Its bars
+ * The trailer's score, synthesised here so there is no track to licence or credit. A drone and quickening ticks under
+ * the wall of text rise until it goes black, and stop dead for the voice. A warm swell comes in as the wall's lines
+ * become a picture, each part of the statement lands on a hit, and a riser leads into a hit on the logo. Then a warm
+ * I–V–vi–IV pad with a pluck and a soft pulse under the features lifts at the review, and a riser leads into a brighter,
+ * busier section for the quick cuts, which builds through the flashes and stops dead again for the name, before the
+ * biggest hit lands on the end card. It is timed by the storyboard, so the hits land on the scene changes. Its bars
  * count back from the first quick cut, so that cut falls on a downbeat however long the scenes before it run.
  * Run with bun after encode and narrate: bun audio/compose.ts
  */
@@ -158,6 +160,18 @@ function echo(mix: Mix, beat: number) {
   }
 }
 
+/** Silences the mix between two seconds, fading into it over a few milliseconds so the cut doesn't click. */
+function silence(mix: Mix, from: number, to: number) {
+  const fade = Math.round(0.012 * RATE);
+  const start = Math.round(from * RATE);
+  const end = Math.min(mix.left.length, Math.round(to * RATE));
+  for (let index = Math.max(0, start - fade); index < end; index++) {
+    const gain = index < start ? (start - index) / fade : 0;
+    mix.left[index]! *= gain;
+    mix.right[index]! *= gain;
+  }
+}
+
 function writeWav(path: string, { left, right }: Mix) {
   const peak = [left, right].reduce((loudest, channel) => channel.reduce((most, sample) => Math.max(most, Math.abs(sample)), loudest), 0);
   const gain = 0.89 / peak;
@@ -189,18 +203,31 @@ function compose() {
   const plucks = new Mix(seconds);
   const logo = starts.logo!;
   const features = starts.show!;
-  const ending = starts.end!;
   const lift = starts.review!;
   const montage = starts.edit!;
-  const beat = 60 / 96;
+  const hush = starts.silence!;
+  const ending = starts.end!;
+  const beat = BEAT;
   const bar = beat * 4;
-  const wall = STORYBOARD.find((scene) => scene.kind === "text-wall");
-  const ticksStop = wall?.kind === "text-wall" && wall.statement ? starts[wall.id]! + wall.statement.at : logo;
+  const wall = STORYBOARD.find((scene): scene is WallScene => scene.kind === "text-wall");
+  if (!wall?.goesBlackAt || wall.pictureAt === undefined || !wall.statement) throw new Error("The score expects the wall to go black, then show its picture and its statement");
+  const goesBlack = starts[wall.id]! + wall.goesBlackAt;
+  const picture = starts[wall.id]! + wall.pictureAt;
+  const landings = statementBeats(wall.statement).map((at) => starts[wall.id]! + at);
+  const lastLanding = landings.at(-1)!;
 
-  mix.add(0, pad([38, 45, 50], logo + 0.5, 4), 0.5);
+  mix.add(0, pad([38, 45, 50], goesBlack + 2, 4), 0.5);
   let tick = 0.6;
-  for (let gap = 0.5; tick < ticksStop - 0.3; tick += gap, gap = Math.max(0.07, gap * 0.9)) mix.add(tick, hat(110), 0.12 + 0.1 * (tick / ticksStop), tick % 2 < 1 ? -0.4 : 0.4);
-  mix.add(logo - 2.6, riser(2.6), 0.5);
+  for (let gap = 0.5; tick < goesBlack - 0.04; tick += gap, gap = Math.max(0.06, gap * 0.9)) mix.add(tick, hat(110), 0.12 + 0.16 * (tick / goesBlack), tick % 2 < 1 ? -0.4 : 0.4);
+  mix.add(goesBlack - 2.4, riser(2.4), 0.55);
+  mix.add(picture, pad([50, 57, 62, 66, 69], logo - picture + 0.6, 6), 0.45);
+  mix.add(picture, riser(landings[0]! - picture), 0.18);
+  [74, 78, 81, 86].forEach((note, index) => plucks.add(picture + 1.3 + index * 0.12, pluck(note, 2), 0.22, index % 2 ? 0.4 : -0.4));
+  landings.forEach((at, index) => {
+    mix.add(at, boom().subarray(0, Math.round(1.4 * RATE)), 0.55 + 0.15 * index);
+    mix.add(at, clap(), 0.22);
+  });
+  mix.add(lastLanding, riser(logo - lastLanding), 0.45);
   mix.add(logo, boom(), 1);
   mix.add(logo, pad([50, 54, 57, 64, 69], features - logo + 1.2, 6), 0.55);
   [74, 81, 78, 86].forEach((note, index) => plucks.add(logo + 0.08 + index * 0.16, pluck(note, 2.4), 0.3, index % 2 ? 0.45 : -0.45));
@@ -247,15 +274,20 @@ function compose() {
   const liftsAtBar = Math.round((lift - grooveStarts) / bar);
   groove(grooveStarts, montage, { lifted: (index) => index >= liftsAtBar, drumsFromBar: 2, lastChordRingsOn: false });
   mix.add(montage - bar, riser(bar), 0.4);
-  groove(montage, ending, { transpose: 2, lifted: () => true });
+  groove(montage, hush, { transpose: 2, lifted: () => true });
   STORYBOARD.slice(2).forEach((scene) => {
+    if (scene.kind !== "clip" || scene.flash) return;
     if (scene.fadeInFrames === 0) mix.add(starts[scene.id]!, boom().subarray(0, Math.round(1.2 * RATE)), scene.id === "edit" ? 0.8 : 0.45);
     else mix.add(starts[scene.id]! - 0.55, whoosh(0.7), 0.18);
   });
+  mix.add(hush - 3.5, riser(3.5), 0.55);
+  STORYBOARD.filter((scene) => scene.kind === "clip" && scene.flash).forEach((scene, index) => {
+    mix.add(starts[scene.id]!, kick(), 0.7);
+    mix.add(starts[scene.id]!, clap(), 0.3 + 0.04 * index, index % 2 ? 0.2 : -0.2);
+  });
 
-  mix.add(ending - 1.6, riser(1.6), 0.25);
-  mix.add(ending, boom(), 0.6);
-  mix.add(ending, pad([50, 57, 62, 66, 69, 76], seconds - ending, 6), 0.55);
+  mix.add(ending, boom(), 1.2);
+  mix.add(ending, pad([50, 57, 62, 66, 69, 76], seconds - ending, 6), 0.6);
   [74, 78, 81, 86, 90].forEach((note, index) => plucks.add(ending + 0.9 + index * 0.2, pluck(note, 3), 0.22, index % 2 ? 0.4 : -0.4));
 
   echo(plucks, beat);
@@ -263,6 +295,8 @@ function compose() {
     mix.left[index]! += sample;
     mix.right[index]! += plucks.right[index]!;
   });
+  silence(mix, goesBlack, picture);
+  silence(mix, hush, ending);
   const fadeOut = Math.round(1.8 * RATE);
   for (let index = mix.left.length - fadeOut; index < mix.left.length; index++) {
     const gain = (mix.left.length - index) / fadeOut;
@@ -270,7 +304,9 @@ function compose() {
     mix.right[index]! *= gain;
   }
   writeWav(output, mix);
-  console.log(`${output}: ${seconds.toFixed(1)} s; logo at ${logo.toFixed(2)} s, groove from ${grooveStarts.toFixed(2)} s, lift at ${(grooveStarts + liftsAtBar * bar).toFixed(2)} s, montage from ${montage.toFixed(2)} s, end card at ${ending.toFixed(2)} s`);
+  console.log(
+    `${output}: ${seconds.toFixed(1)} s; black at ${goesBlack.toFixed(2)} s, picture at ${picture.toFixed(2)} s, logo at ${logo.toFixed(2)} s, groove from ${grooveStarts.toFixed(2)} s, lift at ${(grooveStarts + liftsAtBar * bar).toFixed(2)} s, montage from ${montage.toFixed(2)} s, silence at ${hush.toFixed(2)} s, end card at ${ending.toFixed(2)} s`,
+  );
 }
 
 if (import.meta.main) compose();

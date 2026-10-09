@@ -7,7 +7,7 @@ import { signIn, waitForTurnToEnd, workspaceCard } from "../../e2e/helpers.ts";
 import type { Demo, DemoConversation } from "../../e2e/seed-demo.ts";
 import { TestHost } from "../../e2e/test-host.ts";
 import { Cursor } from "./cursor.ts";
-import { createWorld, worldIn } from "./demo-world.ts";
+import { CHECKOUT_TEST, checkoutTest, createWorld, REPLAY_SCRIPT, replayScript, worldIn } from "./demo-world.ts";
 import { Director } from "./director.ts";
 import { ClipRecorder } from "./recorder.ts";
 import { LAYOUT_CHOICE, PULL_REQUEST, prompts, scripts } from "./scenes.ts";
@@ -129,6 +129,8 @@ const agentSays = (text: string) => update({ sessionUpdate: "agent_message_chunk
 const turnEnd = { type: "turn-end", stopReason: "end_turn" };
 const ranCommand = (toolCallId: string, command: string, description: string, output: string) =>
   update({ sessionUpdate: "tool_call", toolCallId, title: command, kind: "execute", status: "completed", rawInput: { command, description }, content: [{ type: "content", content: { type: "text", text: output } }] });
+const wroteFile = (toolCallId: string, title: string, path: string, content: string) =>
+  update({ sessionUpdate: "tool_call", toolCallId, title, kind: "edit", status: "completed", locations: [{ path }], rawInput: { file_path: path, content }, content: [{ type: "diff", path, oldText: null, newText: content }] });
 
 test("the trailer's clips", async ({ page }) => {
   mkdirSync(clips, { recursive: true });
@@ -166,7 +168,13 @@ test("the trailer's clips", async ({ page }) => {
         "finished",
       ),
       conversation(ids.reviewRetries, "Review: retry card payments", 3, []),
-      conversation(ids.stopDoubleCharge, "Stop the double charge", 2, []),
+      conversation(ids.stopDoubleCharge, "Stop the double charge", 6, [
+        userSays(prompts.reproduce),
+        wroteFile("toolu_test", `Write ${CHECKOUT_TEST}`, join(shopApi, CHECKOUT_TEST), checkoutTest),
+        wroteFile("toolu_replay", `Write ${REPLAY_SCRIPT}`, REPLAY_SCRIPT, replayScript),
+        agentSays(`The test fails: the card is charged twice. ${REPLAY_SCRIPT} replays it against the sandbox.`),
+        turnEnd,
+      ]),
       conversation(ids.explainCheckout, "Explain the checkout flow", 1, []),
       conversation(ids.coldStart, "Speed up the cold start", 30, [userSays("Profile the cold start on a mid-range phone and cut it below a second."), agentSays("Starting a trace on the emulator…"), { type: "turn-end", stopReason: "refusal" }], "error"),
       conversation(ids.settingsLayout, "Pick a settings layout", 2, []),
@@ -347,15 +355,18 @@ test("the trailer's clips", async ({ page }) => {
       await cursor.click(canvasPane(page).getByRole("button", { name: "Changes" }));
       recorder.mark("changes");
       const changes = page.locator(".changes");
-      const file = changes.getByRole("button", { name: /src\/checkout\.ts/ });
-      await expect(file).toBeVisible();
+      await expect(changes.getByRole("button", { name: /src\/checkout\.ts/ })).toBeVisible();
       await expect(canvasPane(page).getByText(/Allowed: edit/)).toBeHidden({ timeout: 15_000 });
-      await page.waitForTimeout(500);
-      await cursor.click(file);
-      await expect(changes.locator(".changes-diff")).toContainText("idempotencyKey");
-      recorder.mark("diff");
-      await recorder.markRect("changes", canvasPane(page));
-      await page.waitForTimeout(2200);
+      recorder.mark("turnListed");
+      await page.waitForTimeout(900);
+      await cursor.click(changes.getByRole("button", { name: "Uncommitted", exact: true }));
+      recorder.mark("uncommitted");
+      await expect(changes.getByRole("region", { name: "Outside the project" })).toContainText(REPLAY_SCRIPT);
+      await expect(changes.getByRole("region", { name: "Project", exact: true }).locator(".changed-path")).toHaveText(["README.md", "src/checkout.test.ts", "src/checkout.ts"]);
+      await expect(page.locator(".timeline:visible .error-line")).toHaveCount(0);
+      recorder.mark("uncommittedListed");
+      await recorder.markRect("changesList", changes);
+      await page.waitForTimeout(2600);
     });
   });
 

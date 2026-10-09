@@ -15,10 +15,17 @@
       "voice": "am_fenrir",
       "speed": 1
     },
-    "humans": {
-      "text": "But you're human. You take in a picture faster than a page of text.",
-      "file": "humans.wav",
-      "seconds": 3.498666666666667,
+    "human": {
+      "text": "But you're human.",
+      "file": "human.wav",
+      "seconds": 0.9173333333333333,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "picture": {
+      "text": "You take in a picture faster than a page of text.",
+      "file": "picture.wav",
+      "seconds": 2.56,
       "voice": "am_fenrir",
       "speed": 1
     },
@@ -78,6 +85,13 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "changes": {
+      "text": "Every change since your last commit, even outside the project.",
+      "file": "changes.wav",
+      "seconds": 3.584,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
     "terminals": {
       "text": "Your terminals sit right beside the conversation.",
       "file": "terminals.wav",
@@ -85,10 +99,17 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "mirador": {
+      "text": "Mirador.",
+      "file": "mirador.wav",
+      "seconds": 0.768,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
     "end": {
-      "text": "Mirador. See what your coding agent means.",
+      "text": "See what your coding agent means.",
       "file": "end.wav",
-      "seconds": 2.3253333333333335,
+      "seconds": 1.6853333333333333,
       "voice": "am_fenrir",
       "speed": 1
     }
