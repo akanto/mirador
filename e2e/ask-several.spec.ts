@@ -66,7 +66,7 @@ test("several questions come one page at a time, can be changed on a review page
   await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue · Huge”");
 });
 
-test("the ask tool advertises one question or several, and neither form is required alone", async ({ page }) => {
+test("the ask tool advertises one question or several, tells the agent to ask several with questions, and neither form is required alone", async ({ page }) => {
   await signIn(page, host);
   await page.goto(host.origin);
   const conversationId = await startConversation(page);
@@ -92,6 +92,8 @@ test("the ask tool advertises one question or several, and neither form is requi
   expect(ask.inputSchema.required ?? []).toEqual([]);
   expect(ask.inputSchema.properties.questions.items.required).toEqual(expect.arrayContaining(["question", "options"]));
   expect(ask.inputSchema.properties.questions).toMatchObject({ minItems: 2, maxItems: 10 });
+  expect(ask.description).toContain("When you have two or more things to ask, pass questions");
+  expect(ask.description).toContain("never offer options such as \"Accept all\"");
 
   expect(await callCanvasTool(host, conversationId, "ask", { question: "Only a question" })).toContain("Give question and options, or questions");
   const oneQuestion = { question: "Q", options: [{ label: "A" }, { label: "B" }] };

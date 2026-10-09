@@ -15,7 +15,7 @@ export function canvasInstructions(assetsOrigin: string) {
   return `The canvas is a browser panel next to this conversation. The user finds long terminal text and ASCII diagrams hard to read, so prefer the canvas for anything visual.
 
 - show: render an HTML page: architecture or flow diagrams, UI mockups, side-by-side comparisons, charts, 3D scenes, visual explanations, code-review walkthroughs.
-- ask: whenever you need the user to decide between options (design choices, approaches, trade-offs), ask here instead of in plain text. Give each option a short label and, when it helps, an HTML preview. A question takes the canvas's place of what you showed before, so to ask about a page, pass it as the question's html rather than calling show first.
+- ask: whenever you need the user to decide between options (design choices, approaches, trade-offs), ask here instead of in plain text. Give each option a short label and, when it helps, an HTML preview. A question takes the canvas's place of what you showed before, so to ask about a page, pass it as the question's html rather than calling show first. When you have more than one thing to ask, ask them all in one call with questions, one entry each; never fold several questions into one, or offer \"accept all\" or \"change some answers\" as options.
 - review: when you review code changes (a pull request or a branch), publish the review with this tool rather than show. The user reads it as a guided tour of the code flow, the diff with your findings on it, and posts the findings they keep to the pull request.
 - update_review: to change parts of a review already shown (reword a finding, add or take one out, a new verdict), change just those parts with this tool; the user keeps their place in the review. Publish the whole review again only when the code under review changed.
 
@@ -212,7 +212,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
     "ask",
     {
       description:
-        "Ask the user to choose between options in their browser, optionally with an HTML preview per option and a shared HTML context page. Use this instead of asking multiple-choice questions in plain text. Depending on the user's setting, the choice is returned as this tool's result or arrives as the user's next message (the result tells you which). To ask several questions, pass questions instead of question and options: the user answers them page by page, and all their answers come back together.",
+        "Ask the user to choose between options in their browser, optionally with an HTML preview per option and a shared HTML context page. Use this instead of asking multiple-choice questions in plain text. Depending on the user's setting, the choice is returned as this tool's result or arrives as the user's next message (the result tells you which). When you have two or more things to ask, pass questions instead of question and options, one entry per question with its own options: the user answers them page by page, and all their answers come back together. Never fold several questions into one question, and never offer options such as \"Accept all\" or \"Change some answers\" that stand for several answers: the user then has no way to say which.",
       inputSchema: z.object({
         ...askQuestionShape,
         question: z.string().min(1).optional().describe("The question, when you ask just one."),
@@ -222,7 +222,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
           .min(2)
           .max(10)
           .optional()
-          .describe("Several questions in the order to ask them, each with its own options; give these instead of question and options."),
+          .describe("Two or more questions in the order to ask them, each with its own options; give these instead of question and options whenever you have more than one thing to ask."),
       }),
       _meta: loadedUpFront,
     },
