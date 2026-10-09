@@ -57,6 +57,11 @@ describe("a scene's length", () => {
     expect(sceneSeconds({ ...scene, narration: [{ line: "intro", at: 1.5 }] }, { demo: clip }, narration)).toBeCloseTo(5.1);
   });
 
+  test("can be set shorter than the footage, but still waits for its narration", () => {
+    expect(sceneSeconds({ ...scene, seconds: 1.5 }, { demo: clip }, {})).toBe(1.5);
+    expect(sceneSeconds({ ...scene, seconds: 1.5, narration: [{ line: "intro", at: 1 }] }, { demo: clip }, narration)).toBeCloseTo(4.6);
+  });
+
   test("asks for the narration to be made when a line is missing", () => {
     expect(() => sceneSeconds({ ...scene, narration: [{ line: "outro", at: 0 }] }, { demo: clip }, narration)).toThrow('No narration line "outro"; run bun run narrate');
   });
@@ -73,5 +78,18 @@ test("scenes overlap by the transition, and the last one ends the trailer", () =
     { id: "a", from: 0, frames: 13 },
     { id: "b", from: 10, frames: 23 },
     { id: "c", from: 30, frames: 10 },
+  ]);
+});
+
+test("a scene that cuts straight in doesn't overlap the one before it", () => {
+  const cards: Scene[] = [
+    { kind: "logo", id: "a", seconds: 1 },
+    { kind: "logo", id: "b", seconds: 2, fadeInFrames: 0 },
+    { kind: "end", id: "c", seconds: 1 },
+  ];
+  expect(placeScenes(cards, {}, {}, 10, 3).map(({ scene, from, frames, fadeInFrames }) => ({ id: scene.id, from, frames, fadeInFrames }))).toEqual([
+    { id: "a", from: 0, frames: 10, fadeInFrames: 0 },
+    { id: "b", from: 10, frames: 23, fadeInFrames: 0 },
+    { id: "c", from: 30, frames: 10, fadeInFrames: 3 },
   ]);
 });

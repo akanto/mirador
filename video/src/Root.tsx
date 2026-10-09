@@ -25,7 +25,7 @@ const calculateMetadata: CalculateMetadataFunction<TrailerProps> = async () => {
   if (stale.length > 0) throw new Error(`The narration of ${stale.map(([name]) => name).join(", ")} doesn't match narration/lines.ts; run bun run narrate`);
   const placed = placeScenes(STORYBOARD, clips, narration, FRAME.fps, CROSSFADE_FRAMES);
   const last = placed.at(-1)!;
-  return { durationInFrames: last.from + last.frames, props: { placed, clips, narration, overlapFrames: CROSSFADE_FRAMES } };
+  return { durationInFrames: last.from + last.frames, props: { placed, clips, narration } };
 };
 
 export function Root() {
@@ -37,7 +37,7 @@ export function Root() {
       height={FRAME.height}
       fps={FRAME.fps}
       durationInFrames={FRAME.fps}
-      defaultProps={{ placed: [], clips: {}, narration: {}, overlapFrames: CROSSFADE_FRAMES }}
+      defaultProps={{ placed: [], clips: {}, narration: {} }}
       calculateMetadata={calculateMetadata}
     />
   );

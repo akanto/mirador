@@ -11,7 +11,7 @@ type MessagesRequest = {
 };
 
 /** A tool by Claude Code's own name, or one of the canvas's by its action, whatever the canvas server is called. */
-export type ToolCall = { tool: "Read" | "Bash" | "Edit" | "Write" | "canvas.show" | "canvas.ask" | "canvas.review"; input: Record<string, unknown> };
+export type ToolCall = { tool: "Read" | "Bash" | "Edit" | "Write" | "canvas.show" | "canvas.ask" | "canvas.review" | "canvas.update_review"; input: Record<string, unknown> };
 
 /** One reply of the agent: a pause as if thinking, some text, and the tool it calls next, if any. */
 export type Step = { thinkMs?: number; say?: string; call?: ToolCall };

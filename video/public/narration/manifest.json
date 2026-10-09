@@ -43,6 +43,13 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "reviewAsk": {
+      "text": "Question a finding, and the agent answers and rewrites it in place.",
+      "file": "reviewAsk.wav",
+      "seconds": 3.7973333333333334,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
     "overview": {
       "text": "Run your agents across all your projects. See who's working, who's done, and who needs you.",
       "file": "overview.wav",
@@ -51,9 +58,9 @@
       "speed": 1
     },
     "edit": {
-      "text": "Approve edits with the diff in view, then see every file the turn touched.",
+      "text": "Approve every edit with its diff.",
       "file": "edit.wav",
-      "seconds": 4.096,
+      "seconds": 1.6213333333333333,
       "voice": "am_fenrir",
       "speed": 1
     },

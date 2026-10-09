@@ -8,7 +8,8 @@ import { placeScenes } from "../src/timeline.ts";
 /**
  * The trailer's score, synthesised here so there is no track to licence or credit: a drone and quickening ticks
  * under the wall of text, a riser into a hit on the logo, then a warm I–V–vi–IV pad with a pluck and a soft pulse
- * under the features, resolving on the end card. It is timed by the storyboard, so the hits land on the scene changes.
+ * under the features that lifts at the review, a riser into a brighter, busier section for the quick cuts, resolving on the
+ * end card. It is timed by the storyboard, so the hits land on the scene changes.
  * Run with bun after encode and narrate: bun audio/compose.ts
  */
 const RATE = 48_000;
@@ -108,6 +109,19 @@ function kick() {
   });
 }
 
+/** A hand clap: a few quick bursts of mid-range noise. */
+function clap() {
+  const raw = render(0.22, (t) => noise() * ([0, 0.011, 0.022].some((burst) => t >= burst && t < burst + 0.008) || t >= 0.03 ? Math.exp(-Math.max(0, t - 0.03) * 28) : 0));
+  return highpass(lowpass(raw, () => 2600), 700);
+}
+
+/** A rounded bass note, filtered so it thumps rather than buzzes. */
+function bassNote(note: number, seconds: number) {
+  const frequency = midi(note);
+  const raw = render(seconds, (t) => (Math.sin(2 * Math.PI * frequency * t) + 0.35 * Math.sin(4 * Math.PI * frequency * t)) * envelope(t, seconds, 0.006, 0.06));
+  return lowpass(raw, () => 420);
+}
+
 function hat(decay = 70) {
   return highpass(render(0.12, (t) => noise() * Math.exp(-t * decay)), 7000);
 }
@@ -175,6 +189,8 @@ function compose() {
   const logo = starts.logo!;
   const features = starts.show!;
   const ending = starts.end!;
+  const lift = starts.review!;
+  const montage = starts.edit!;
   const beat = 60 / 96;
   const bar = beat * 4;
 
@@ -192,19 +208,42 @@ function compose() {
     { chord: [47, 50, 54, 59], bass: 35, arpeggio: [59, 66, 71, 62] },
     { chord: [43, 50, 55, 59], bass: 31, arpeggio: [59, 67, 71, 62] },
   ];
-  const bars = Math.floor((ending - features) / bar);
-  Array.from({ length: bars }, (_, index) => {
-    const at = features + index * bar;
-    const { chord, bass, arpeggio } = progression[Math.floor(index / 2) % progression.length]!;
-    if (index % 2 === 0) {
-      mix.add(at, pad(chord, Math.min(bar * 2, ending - at) + 1.2, 7), 0.42);
-      mix.add(at, lowpass(render(Math.min(bar * 2, ending - at), (t) => Math.sin(2 * Math.PI * midi(bass) * t) * envelope(t, bar * 2, 0.05, 0.4)), () => 200), 0.5);
-    }
-    Array.from({ length: 8 }, (_, eighth) => plucks.add(at + eighth * (beat / 2), pluck(arpeggio[eighth % 4]! + (eighth >= 4 ? 12 : 0), 0.9), 0.1 + (eighth % 4 === 0 ? 0.04 : 0), eighth % 2 ? 0.35 : -0.35));
-    if (index >= 2) [0, 2].forEach((step) => mix.add(at + step * beat, kick(), 0.55));
-    if (index >= 4) Array.from({ length: 8 }, (_, eighth) => mix.add(at + eighth * (beat / 2), hat(eighth % 2 ? 90 : 60), eighth % 2 ? 0.07 : 0.045, eighth % 2 ? 0.3 : -0.3));
+
+  /** The groove from one second to another, on its own bar grid; a lifted bar adds four-on-the-floor, claps, busier hats and a pulsing bass. */
+  const groove = (from: number, to: number, { transpose = 0, lifted = (_bar: number): boolean => false, drumsFromBar = 0 } = {}) => {
+    const bars = Math.ceil((to - from) / bar - 0.01);
+    Array.from({ length: bars }, (_, index) => {
+      const at = from + index * bar;
+      const left = to - at;
+      const { chord, bass, arpeggio } = progression[Math.floor(index / 2) % progression.length]!;
+      const up = (note: number) => note + transpose;
+      if (index % 2 === 0) {
+        mix.add(at, pad(chord.map(up), Math.min(bar * 2, left) + 1.2, 7), 0.42);
+        mix.add(at, lowpass(render(Math.min(bar * 2, left), (t) => Math.sin(2 * Math.PI * midi(up(bass)) * t) * envelope(t, Math.min(bar * 2, left), 0.05, 0.4)), () => 200), 0.5);
+      }
+      const onBeat = (step: number) => at + step * beat < to - 0.05;
+      Array.from({ length: 8 }, (_, eighth) => onBeat(eighth / 2) && plucks.add(at + eighth * (beat / 2), pluck(up(arpeggio[eighth % 4]!) + (eighth >= 4 ? 12 : 0), 0.9), 0.1 + (eighth % 4 === 0 ? 0.04 : 0), eighth % 2 ? 0.35 : -0.35));
+      if (index < drumsFromBar) return;
+      if (!lifted(index)) {
+        [0, 2].filter(onBeat).forEach((step) => mix.add(at + step * beat, kick(), 0.55));
+        if (index >= drumsFromBar + 2) Array.from({ length: 8 }, (_, eighth) => onBeat(eighth / 2) && mix.add(at + eighth * (beat / 2), hat(eighth % 2 ? 90 : 60), eighth % 2 ? 0.07 : 0.045, eighth % 2 ? 0.3 : -0.3));
+        return;
+      }
+      [0, 1, 2, 3].filter(onBeat).forEach((step) => mix.add(at + step * beat, kick(), 0.6));
+      [1, 3].filter(onBeat).forEach((step) => mix.add(at + step * beat, clap(), 0.32, step === 1 ? -0.15 : 0.15));
+      Array.from({ length: 16 }, (_, sixteenth) => onBeat(sixteenth / 4) && mix.add(at + sixteenth * (beat / 4), hat(sixteenth % 4 === 2 ? 28 : 95), sixteenth % 4 === 2 ? 0.07 : 0.035, sixteenth % 2 ? 0.35 : -0.35));
+      Array.from({ length: 8 }, (_, eighth) => onBeat(eighth / 2) && mix.add(at + eighth * (beat / 2), bassNote(up(bass) + (eighth % 2 ? 12 : 0), beat / 2.2), 0.3));
+    });
+  };
+
+  const liftsAtBar = Math.round((lift - features) / bar);
+  groove(features, montage, { lifted: (index) => index >= liftsAtBar, drumsFromBar: 2 });
+  mix.add(montage - bar, riser(bar), 0.4);
+  groove(montage, ending, { transpose: 2, lifted: () => true });
+  STORYBOARD.slice(2).forEach((scene) => {
+    if (scene.fadeInFrames === 0) mix.add(starts[scene.id]!, boom().subarray(0, Math.round(1.2 * RATE)), scene.id === "edit" ? 0.8 : 0.45);
+    else mix.add(starts[scene.id]! - 0.55, whoosh(0.7), 0.18);
   });
-  STORYBOARD.slice(2).forEach(({ id }) => mix.add(starts[id]! - 0.55, whoosh(0.7), 0.18));
 
   mix.add(ending - 1.6, riser(1.6), 0.25);
   mix.add(ending, boom(), 0.6);
@@ -223,7 +262,7 @@ function compose() {
     mix.right[index]! *= gain;
   }
   writeWav(output, mix);
-  console.log(`${output}: ${seconds.toFixed(1)} s; logo at ${logo.toFixed(2)} s, features from ${features.toFixed(2)} s, end card at ${ending.toFixed(2)} s`);
+  console.log(`${output}: ${seconds.toFixed(1)} s; logo at ${logo.toFixed(2)} s, features from ${features.toFixed(2)} s, lift at ${lift.toFixed(2)} s, montage from ${montage.toFixed(2)} s, end card at ${ending.toFixed(2)} s`);
 }
 
 if (import.meta.main) compose();

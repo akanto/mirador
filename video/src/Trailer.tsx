@@ -11,13 +11,12 @@ export type TrailerProps = {
   placed: PlacedScene[];
   clips: Record<string, ClipInfo>;
   narration: Record<string, NarrationLine>;
-  overlapFrames: number;
 };
 
-/** A scene that fades in over the one before it. */
-function Crossfade({ children, overlapFrames, first }: { children: React.ReactNode; overlapFrames: number; first: boolean }) {
+/** A scene that fades in over the one before it, or cuts straight to it. */
+function FadeIn({ children, frames }: { children: React.ReactNode; frames: number }) {
   const frame = useCurrentFrame();
-  const opacity = first ? 1 : interpolate(frame, [0, overlapFrames], [0, 1], { extrapolateRight: "clamp" });
+  const opacity = frames === 0 ? 1 : interpolate(frame, [0, frames], [0, 1], { extrapolateRight: "clamp" });
   return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
 }
 
@@ -40,18 +39,18 @@ function musicVolume(frame: number, spoken: { from: number; to: number }[], fps:
   return MUSIC_VOLUME * interpolate(ducking, [0, 1], [1, DUCKED]);
 }
 
-export function Trailer({ placed, clips, narration, overlapFrames }: TrailerProps) {
+export function Trailer({ placed, clips, narration }: TrailerProps) {
   const { fps } = useVideoConfig();
   const spoken = placed.flatMap(({ scene, from }) =>
     (scene.narration ?? []).map(({ line, at }) => ({ from: from + (at - 0.15) * fps, to: from + (at + narration[line]!.seconds + 0.2) * fps })),
   );
   return (
     <AbsoluteFill style={{ background: "#08070f" }}>
-      {placed.map(({ scene, from, frames }, index) => (
+      {placed.map(({ scene, from, frames, fadeInFrames }) => (
         <Sequence key={scene.id} from={from} durationInFrames={frames} name={scene.id}>
-          <Crossfade overlapFrames={overlapFrames} first={index === 0}>
+          <FadeIn frames={fadeInFrames}>
             <SceneView scene={scene} clips={clips} frames={frames} />
-          </Crossfade>
+          </FadeIn>
         </Sequence>
       ))}
       <Audio src={staticFile(MUSIC)} volume={(frame) => musicVolume(frame, spoken, fps)} />

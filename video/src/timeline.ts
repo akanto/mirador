@@ -19,14 +19,18 @@ export type Caption = { kicker: string; title: string; at?: number; seconds?: nu
 /** A line of narration (narration/lines.ts) and when in its scene it starts, in seconds. */
 export type Spoken = { line: string; at: number };
 
-export type ClipScene = { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[] };
-export type CardScene = { kind: "text-wall" | "logo" | "end"; id: string; seconds: number; narration?: Spoken[] };
+/** How a scene comes in: over the one before it for `fadeInFrames` frames (0 cuts straight to it), the trailer's crossfade by default. */
+type Transition = { fadeInFrames?: number };
+
+/** A clip scene lasts as long as its shots, or `seconds` when given: shorter cuts the footage, longer holds its last frame. */
+export type ClipScene = Transition & { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[]; seconds?: number };
+export type CardScene = Transition & { kind: "text-wall" | "logo" | "end"; id: string; seconds: number; narration?: Spoken[] };
 export type Scene = ClipScene | CardScene;
 
 export type NarrationLine = { text: string; file: string; seconds: number };
 
-/** A scene as the composition plays it: where it starts, how long it runs, in frames. */
-export type PlacedScene = { scene: Scene; from: number; frames: number };
+/** A scene as the composition plays it: where it starts, how long it runs and how long it fades in over the one before, in frames. */
+export type PlacedScene = { scene: Scene; from: number; frames: number; fadeInFrames: number };
 
 /** How long after a scene's narration ends before the next scene starts, in seconds. */
 const NARRATION_TAIL = 0.6;
@@ -66,9 +70,9 @@ export function narrationLine(narration: Record<string, NarrationLine>, name: st
   return line;
 }
 
-/** A scene lasts as long as its footage, or longer when its narration needs it: the last frame then holds. */
+/** A scene lasts its footage's length or its own, and longer when its narration needs it: the last frame then holds. */
 export function sceneSeconds(scene: Scene, clips: Record<string, ClipInfo>, narration: Record<string, NarrationLine>) {
-  const footage = scene.kind === "clip" ? shotsOf(scene, clipNamed(clips, scene.clip)).at(-1)!.sceneTo : scene.seconds;
+  const footage = scene.kind === "clip" ? (scene.seconds ?? shotsOf(scene, clipNamed(clips, scene.clip)).at(-1)!.sceneTo) : scene.seconds;
   const spokenUntil = (scene.narration ?? []).map(({ line, at }) => at + narrationLine(narration, line).seconds + NARRATION_TAIL);
   return Math.max(footage, ...spokenUntil);
 }
@@ -79,13 +83,14 @@ export function clipNamed(clips: Record<string, ClipInfo>, name: string) {
   return clip;
 }
 
-/** Scenes one after another, each overlapping the one before by `overlapFrames` for the transition between them. */
-export function placeScenes(scenes: Scene[], clips: Record<string, ClipInfo>, narration: Record<string, NarrationLine>, fps: number, overlapFrames: number): PlacedScene[] {
+/** Scenes one after another, each overlapping the one before by its fade in, `crossfadeFrames` unless it says otherwise. */
+export function placeScenes(scenes: Scene[], clips: Record<string, ClipInfo>, narration: Record<string, NarrationLine>, fps: number, crossfadeFrames: number): PlacedScene[] {
+  const fadeInOf = (scene: Scene | undefined, index: number) => (!scene || index === 0 ? 0 : (scene.fadeInFrames ?? crossfadeFrames));
   let from = 0;
   return scenes.map((scene, index) => {
-    const frames = Math.round(sceneSeconds(scene, clips, narration) * fps) + (index < scenes.length - 1 ? overlapFrames : 0);
-    const placed = { scene, from, frames };
-    from += frames - overlapFrames;
+    const overlapWithNext = fadeInOf(scenes[index + 1], index + 1);
+    const placed = { scene, from, frames: Math.round(sceneSeconds(scene, clips, narration) * fps) + overlapWithNext, fadeInFrames: fadeInOf(scene, index) };
+    from += placed.frames - overlapWithNext;
     return placed;
   });
 }

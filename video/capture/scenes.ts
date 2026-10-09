@@ -8,6 +8,7 @@ export const prompts = {
   translate: "Translate the checkout pages to German and French.",
   runbook: "Draft the runbook for the Postgres 18 switch-over.",
   review: "Review the retry-payments branch against main.",
+  questionAboutBlocker: "Is the cart id enough if the customer changes the cart?",
   fix: "Fix the blocker from the review: a retried capture must not charge the card twice.",
 };
 
@@ -194,6 +195,27 @@ export function scripts({ projects, assetsOrigin }: { projects: { shopApi: strin
         { thinkMs: 900, say: "Reading the branch's changes against main.", call: { tool: "Bash", input: { command: "git diff --stat main", description: "See what the branch changes" } } },
         { thinkMs: 1000, call: { tool: "canvas.review", input: review(shopApi) } },
         { thinkMs: 500, say: "The review is on the canvas: one blocker, one issue and a nit. Start with the flow tour, it is four steps." },
+      ],
+    },
+    {
+      prompt: prompts.questionAboutBlocker,
+      steps: [
+        {
+          thinkMs: 1300,
+          say: "No. The cart id stays the same when the customer changes the cart, so the bank would take the new total for a retry and drop it. I reworded the blocker to key on the id and the total.",
+          call: {
+            tool: "canvas.update_review",
+            input: {
+              findings: [
+                {
+                  id: "finding-1",
+                  body: "`payments.capture` gets no idempotency key, so a retry after a timeout charges the card again. Pass `{ idempotencyKey: cartKey(cart) }`, built from the cart's id **and its total**: a retry reuses the key, but a changed cart gets a new one.",
+                },
+              ],
+            },
+          },
+        },
+        { thinkMs: 400, say: "Updated: the blocker now keys the capture on the cart's id and total." },
       ],
     },
     {
