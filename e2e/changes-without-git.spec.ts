@@ -1,0 +1,44 @@
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
+import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { TestHost } from "./test-host.ts";
+
+const host = new TestHost(5355, { fakePrograms: true });
+const reportFile = join(host.projectDir, "report.txt");
+
+test.beforeAll(async () => {
+  mkdirSync(host.fakeProgramsDir, { recursive: true });
+  writeFileSync(
+    join(host.fakeProgramsDir, "opencode"),
+    `#!/bin/sh\nFAKE_ACP_PROMPTS='${join(host.root, "prompts")}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
+  );
+  chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
+  mkdirSync(host.projectDir, { recursive: true });
+  await host.start();
+});
+test.afterAll(async () => {
+  await host.stop();
+  await host.cleanUp();
+});
+
+const changes = (page: Page) => page.locator(".canvas-panel .changes");
+
+test("in a folder that is no git repository, a file a script wrote shows in Changes", async ({ page }) => {
+  await signIn(page, host);
+  await addWorkspace(page, host.projectDir);
+  const profiles = await createProfile(page, "no git", "", "", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "no git · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  await sendMessage(page, `WRITE ${JSON.stringify([{ shell: reportFile, content: "made by a script\n" }])}`);
+  await waitForTurnToEnd(page);
+
+  const row = changes(page).locator(".changed-file").filter({ hasText: "report.txt" });
+  await expect(row.locator(".change-status")).toHaveText("A");
+  await expect(row.locator(".by-agent")).toHaveCount(0);
+  await expect(changes(page)).toContainText("not a git repository");
+  await row.click();
+  await expect(changes(page).locator(".changes-diff .code-row.added")).toContainText("made by a script");
+});

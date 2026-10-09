@@ -20,9 +20,10 @@ export interface ChangedFile {
 
 /**
  * What the project's files were compared with. Without the files of the turn's start or a repository to compare
- * with, the project's list is the agent's own edits.
+ * with, the project's list is the agent's own edits; in a folder that is no repository, a turn's list is also the files
+ * written since the turn began.
  */
-export type ChangesBase = "head" | "turn-start" | "no-turn" | "turn-not-kept" | "not-a-repository";
+export type ChangesBase = "head" | "turn-start" | "turn-file-times" | "no-turn" | "turn-not-kept" | "not-a-repository";
 
 export interface ChangeList {
   scope: ChangeScope;

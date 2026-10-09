@@ -6,7 +6,7 @@ import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
-import { fileAtRevision, headOrEmptyTree, isRepository, uncommittedChanges, type TreeChange } from "./working-tree.ts";
+import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, isRepository, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
 
@@ -91,6 +91,8 @@ interface ScopeStart {
   fromSeq: number;
   /** What the project's files are compared with, when there is something to compare them with. */
   revision: string | null;
+  /** When the turn began, for a folder that is no repository: its files are told apart by when they were written. */
+  since?: number;
   base: ChangesBase;
 }
 
@@ -138,11 +140,20 @@ export class Changes {
       return agentDiffs();
     }
     if (!withinWorkspace(workspace, path)) throw new Error(`${path} is not a file of this workspace.`);
-    if (!start.revision) return agentDiffs();
+    if (!start.revision) return start.since === undefined ? agentDiffs() : this.writtenSinceDiff(workspace, path, start.since, agentEdits ? agentDiffs() : null);
     const [before, after] = await Promise.all([fileAtRevision(workspace.path, start.revision, path), textFileAt(join(workspace.path, path))]);
     const unchanged = before.kind === after.kind && (before.kind !== "text" || (after.kind === "text" && before.text === after.text));
     if (unchanged && agentEdits) return agentDiffs();
     return { path, source: "files", diffs: unchanged ? [] : [fileChangeDiff(path, before, after)] };
+  }
+
+  /** A file with no earlier version to compare with: the agent's own edits to it, or all of it if it is new, or else nothing to show. */
+  private async writtenSinceDiff(workspace: Workspace, path: string, since: number, agentDiffs: FileChanges | null): Promise<FileChanges> {
+    if (agentDiffs) return agentDiffs;
+    if (await createdSince(workspace.path, path, since)) {
+      return { path, source: "files", diffs: [fileChangeDiff(path, { kind: "missing" }, await textFileAt(join(workspace.path, path)))] };
+    }
+    return { path, source: "files", diffs: [{ ...fileChangeDiff(path, { kind: "missing" }, { kind: "missing" }), change: "modified", hiddenBecause: "this folder is not a git repository, so there is no earlier version to compare with" }] };
   }
 
   /** Opens a file of the project, or one the agent changed anywhere in this conversation, in IntelliJ IDEA. */
@@ -169,12 +180,13 @@ export class Changes {
     }
     const turn = this.store.latestTurnStart(conversationId);
     if (!turn) return { fromSeq: 0, revision: null, base: "no-turn" };
-    if (!(await isRepository(workspace.path))) return { fromSeq: turn.seq, revision: null, base: "not-a-repository" };
+    if (!(await isRepository(workspace.path))) return { fromSeq: turn.seq, revision: null, since: turn.at, base: "turn-file-times" };
     const kept = turn.checkpoint !== null && (await this.checkpoints.keeps(workspace, turn.checkpoint));
     return kept ? { fromSeq: turn.seq, revision: turn.checkpoint, base: "turn-start" } : { fromSeq: turn.seq, revision: null, base: "turn-not-kept" };
   }
 
   private treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<TreeChange[] | null> {
+    if (start.since !== undefined) return filesWrittenSince(workspace.path, start.since);
     if (!start.revision) return Promise.resolve(null);
     return scope === "turn" ? this.checkpoints.changesSince(workspace, start.revision) : uncommittedChanges(workspace.path);
   }

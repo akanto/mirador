@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
@@ -257,15 +257,41 @@ test("a page can name only the project's files, or a file the agent edited, to s
   ]);
 });
 
-test("outside a git repository, the list and the diffs are the agent's own edits", async () => {
+async function leaveGit() {
   await rm(join(projectDir, ".git"), { recursive: true });
+  const longAgo = new Date(Date.now() - 60_000);
+  await Promise.all(["kept.txt", "doomed.txt", ".gitignore"].map((file) => utimes(join(projectDir, file), longAgo, longAgo)));
+}
+
+test("outside a git repository, the uncommitted list and its diffs are the agent's own edits", async () => {
+  await leaveGit();
   await startTurn();
   agentEdits("t1", join(projectDir, "kept.txt"), "two", "TWO");
 
+  expect(await changes.list("c1", "uncommitted")).toMatchObject({ base: "not-a-repository", project: [{ path: "kept.txt", status: "modified", added: null, byAgent: true }] });
+  expect((await changes.diff("c1", "uncommitted", "kept.txt")).source).toBe("agent");
+});
+
+test("outside a git repository, a turn lists the files written since it began, a script's included", async () => {
+  await leaveGit();
+  await startTurn();
+  await mkdir(join(projectDir, "out"));
+  await write("out/report.txt", "a\nb\n");
+  await write("doomed.txt", "rewritten by a script\n");
+  agentEdits("t1", join(projectDir, "kept.txt"), "two", "TWO");
+
   const list = await changes.list("c1", "turn");
-  expect(list).toMatchObject({ base: "not-a-repository", project: [{ path: "kept.txt", status: "modified", added: null, byAgent: true }] });
-  expect((await changes.list("c1", "uncommitted")).base).toBe("not-a-repository");
+  expect(list.base).toBe("turn-file-times");
+  expect(list.project).toEqual([
+    { path: "doomed.txt", status: "modified", added: null, removed: null, byAgent: false },
+    { path: "kept.txt", status: "modified", added: null, removed: null, byAgent: true },
+    { path: "out/report.txt", status: "added", added: 2, removed: 0, byAgent: false },
+  ]);
+
   expect((await changes.diff("c1", "turn", "kept.txt")).source).toBe("agent");
+  const created = await changes.diff("c1", "turn", "out/report.txt");
+  expect(created.diffs[0]).toMatchObject({ change: "added", added: 2 });
+  expect((await changes.diff("c1", "turn", "doomed.txt")).diffs[0]).toMatchObject({ hiddenBecause: expect.stringContaining("no earlier version") });
 });
 
 test("the Changes view loads again after finished tool calls, turns, the user's commands and undos, and not on streamed text", () => {

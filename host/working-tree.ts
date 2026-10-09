@@ -1,3 +1,4 @@
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ChangeStatus } from "../shared/changes.ts";
 import type { FileBefore } from "./edit-diff.ts";
@@ -83,6 +84,48 @@ async function untrackedChange(directory: string, path: string): Promise<TreeCha
   const text = file.size <= MAX_FILE_BYTES ? await file.text().catch(() => null) : null;
   const countable = text !== null && !text.includes("\0");
   return { path, status: "added", added: countable ? lineCount(text) : null, removed: countable ? 0 : null };
+}
+
+const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store"]);
+const isOfficeLockFile = (name: string) => name.startsWith("~$");
+const MAX_SCANNED_ENTRIES = 50_000;
+
+/** The files under `directory`, relative to it, skipping the folders nothing of the user's lives in; it stops after MAX_SCANNED_ENTRIES. */
+async function scannedFiles(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  const pending = [""];
+  for (let folder = pending.pop(); folder !== undefined && files.length < MAX_SCANNED_ENTRIES; folder = pending.pop()) {
+    const entries = await readdir(join(directory, folder), { withFileTypes: true }).catch(() => []);
+    entries
+      .filter(({ name }) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name))
+      .forEach((entry) => (entry.isDirectory() ? pending.push(join(folder, entry.name)) : entry.isFile() && files.push(join(folder, entry.name))));
+  }
+  return files;
+}
+
+/** Not the change time: opening a file in Finder moves that, and a file made with an old modified time still has its birth. */
+const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(stats.mtimeMs, stats.birthtimeMs);
+
+/**
+ * The files of a folder that is not a git repository which were written at or after `since` (epoch ms), by their times
+ * alone: a file made since then is added with its line counts, any other is modified. Nothing says what a file held
+ * before, and a deleted file leaves nothing to find.
+ */
+export async function filesWrittenSince(directory: string, since: number): Promise<TreeChange[]> {
+  const written = await Promise.all(
+    (await scannedFiles(directory)).map(async (path) => {
+      const stats = await stat(join(directory, path)).catch(() => null);
+      return stats && writtenAt(stats) >= since ? [{ path, createdSince: stats.birthtimeMs >= since }] : [];
+    }),
+  );
+  return Promise.all(
+    written.flat().map(({ path, createdSince }) => (createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null })),
+  );
+}
+
+/** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */
+export async function createdSince(directory: string, path: string, since: number) {
+  return ((await stat(join(directory, path)).catch(() => null))?.birthtimeMs ?? 0) >= since;
 }
 
 /** A file as `revision` holds it: its text, or that it has no such file, or that it is binary or too large to show. */

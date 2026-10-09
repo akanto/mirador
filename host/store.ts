@@ -741,14 +741,14 @@ export class Store {
    * Where the latest turn starts: the latest message that kept the workspace's files, since messages that joined a
    * running turn keep none; in a workspace with no repository, where no message keeps them, the latest message.
    */
-  latestTurnStart(conversationId: string): { seq: number; checkpoint: string | null } | null {
+  latestTurnStart(conversationId: string): { seq: number; at: number; checkpoint: string | null } | null {
     const latest = (condition: string) =>
       this.db
         .query(
-          `SELECT seq, json_extract(event, '$.checkpoint') AS checkpoint FROM events WHERE conversation_id = ?
+          `SELECT seq, at, json_extract(event, '$.checkpoint') AS checkpoint FROM events WHERE conversation_id = ?
            AND json_extract(event, '$.type') = 'user-message' ${condition} ORDER BY seq DESC LIMIT 1`,
         )
-        .get(conversationId) as { seq: number; checkpoint: string | null } | null;
+        .get(conversationId) as { seq: number; at: number; checkpoint: string | null } | null;
     return latest("AND json_extract(event, '$.checkpoint') IS NOT NULL") ?? latest("");
   }
 

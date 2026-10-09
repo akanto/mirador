@@ -11,7 +11,8 @@ const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitte
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 
-const onlyAgentEdits: Partial<Record<ChangesBase, string>> = {
+const listNotes: Partial<Record<ChangesBase, string>> = {
+  "turn-file-times": "This folder is not a git repository, so the list holds the files written since this turn began, and the agent's edits. Deleted files and earlier versions are not known.",
   "not-a-repository": "This folder is not a git repository, so the list holds only the files the agent edited.",
   "turn-not-kept": "The files from this turn's start are no longer kept, so the list holds only the files the agent edited.",
 };
@@ -206,7 +207,7 @@ export function ChangesView({ conversationId, refreshPoint }: { conversationId: 
         </button>
       </div>
       {loadedList && "error" in loadedList ? <p className="review-empty">{loadedList.error}</p> : !list && <p className="changes-none">Loading…</p>}
-      {list && onlyAgentEdits[list.base] && <p className="hint">{onlyAgentEdits[list.base]}</p>}
+      {list && listNotes[list.base] && <p className="hint">{listNotes[list.base]}</p>}
       {list && files.length === 0 && <p className="changes-none">{nothingChanged(list)}</p>}
       {list && (
         <>
