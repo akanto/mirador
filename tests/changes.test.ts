@@ -275,6 +275,7 @@ test("outside a git repository, the uncommitted list and its diffs are the agent
 test("outside a git repository, a turn lists the files written since it began, a script's included", async () => {
   await leaveGit();
   await startTurn();
+  await Bun.sleep(20);
   await mkdir(join(projectDir, "out"));
   await write("out/report.txt", "a\nb\n");
   await write("doomed.txt", "rewritten by a script\n");
