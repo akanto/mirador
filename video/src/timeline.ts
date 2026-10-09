@@ -74,6 +74,14 @@ export function shotsOf(scene: ClipScene, clip: ClipInfo) {
   });
 }
 
+/**
+ * The frames of the clip a shot plays. A shot's scene frames and clip frames are rounded apart, so its last frame can ask
+ * for one frame past its stretch of the clip; the trim keeps that frame too, within the clip.
+ */
+export function shotTrim(shot: { clipFrom: number; clipTo: number }, clip: ClipInfo, fps: number) {
+  return { trimBefore: Math.round(shot.clipFrom * fps), trimAfter: Math.min(Math.round(shot.clipTo * fps) + 1, Math.round(clip.seconds * fps)) };
+}
+
 /** Where a point of the clip plays in the scene; a point between shots plays where the next shot starts. */
 export function sceneSecondsOf(scene: ClipScene, clip: ClipInfo, time: ClipTime) {
   const at = clipSeconds(clip, time);

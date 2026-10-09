@@ -5,7 +5,7 @@ import { AppWindow, ClipVideo } from "../components/AppWindow.tsx";
 import { Backdrop } from "../components/Backdrop.tsx";
 import { CaptionCard } from "../components/CaptionCard.tsx";
 import type { ClipInfo, ClipScene } from "../timeline.ts";
-import { shotsOf } from "../timeline.ts";
+import { shotsOf, shotTrim } from "../timeline.ts";
 
 /** A filmed scene: the clip's shots in the app window, the camera moving between its views, and the scene's caption. */
 export function ClipSceneView({ scene, clip, frames }: { scene: ClipScene; clip: ClipInfo; frames: number }) {
@@ -26,7 +26,7 @@ export function ClipSceneView({ scene, clip, frames }: { scene: ClipScene; clip:
             const from = Math.round(shot.sceneFrom * fps);
             return (
               <Sequence key={from} from={from} durationInFrames={Math.round(shot.sceneTo * fps) - from} layout="none">
-                <ClipVideo src={src} trimBefore={Math.round(shot.clipFrom * fps)} trimAfter={Math.round(shot.clipTo * fps)} playbackRate={shot.speed} />
+                <ClipVideo src={src} {...shotTrim(shot, clip, fps)} playbackRate={shot.speed} />
               </Sequence>
             );
           })}

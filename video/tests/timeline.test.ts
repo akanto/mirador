@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ClipInfo, type ClipScene, type Scene, clipSeconds, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf, statementBeats } from "../src/timeline.ts";
+import { type ClipInfo, type ClipScene, type Scene, clipSeconds, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf, shotTrim, statementBeats } from "../src/timeline.ts";
 
 const clip: ClipInfo = { name: "demo", seconds: 20, moments: { sent: 4, shown: 10 }, rects: {} };
 
@@ -96,4 +96,13 @@ test("a scene that cuts straight in doesn't overlap the one before it", () => {
 
 test("a statement's parts land one beat apart from its start", () => {
   expect(statementBeats({ parts: ["Humans", "see faster", "than they read."], at: 12 })).toEqual([12, 12.5, 13]);
+});
+
+test("a shot's trim covers its last frame however its times round", () => {
+  const scene: ClipScene = { kind: "clip", id: "s", clip: "demo", shots: [{ from: 0, to: 1.008 }, { from: 5, to: 9.991 }], camera: [] };
+  for (const shot of shotsOf(scene, clip)) {
+    const frames = Math.round(shot.sceneTo * 60) - Math.round(shot.sceneFrom * 60);
+    const { trimBefore, trimAfter } = shotTrim(shot, clip, 60);
+    expect(Math.ceil((frames - 1) * shot.speed)).toBeLessThan(trimAfter - trimBefore);
+  }
 });
