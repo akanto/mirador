@@ -112,7 +112,7 @@ export const STORYBOARD: Scene[] = [
       { from: ["allowed", 0.3], to: "changes", speed: 3 },
       { from: "changes", to: ["diff", 1.6], speed: 1.1 },
     ],
-    camera: [{ at: ["approval", -0.4], look: { x: 256, y: 72, width: 1280, height: 720 }, zoom: 1.2 }],
+    camera: [{ at: ["approval", -0.4], look: "app" }],
     caption: { kicker: "Approve", title: "Every edit, with its diff.", at: 0.5, seconds: 3 },
     narration: [{ line: "edit", at: 0.9, musicDipsTo: 0.6 }],
     seconds: 7.5,
