@@ -187,6 +187,30 @@ test("Changes opens over a page, and a new page takes the canvas back", async ({
   });
 });
 
+test("a conversation's canvas comes back as it was left: Changes still open, or the page still shown", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  const canvas = page.locator(".canvas-panel");
+  const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
+  await callCanvasTool(host, conversationId, "show", { title: "Third page", html: "<p>third</p>" });
+  await expect(canvas.locator(".canvas-title")).toHaveText("Third page");
+
+  await changesButton.click();
+  await expect(canvas.locator(".canvas-title")).toHaveText("Changes");
+  const otherId = await startConversation(page);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  await expect(canvas.locator(".canvas-title")).toHaveText("Changes");
+
+  await changesButton.click();
+  await expect(canvas.locator(".canvas-title")).toHaveText("Third page");
+  await page.goto(`${host.origin}/#/c/${otherId}`);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  await expect(canvas.locator(".canvas-title")).toHaveText("Third page");
+
+  await callCanvasTool(host, conversationId, "show", { title: "Fourth page", html: "<p>fourth</p>" });
+  await expect(canvas.locator(".canvas-title")).toHaveText("Fourth page");
+});
+
 test("Changes shows the files it listed last as soon as it opens again, and still updates them when they change", async ({ page }) => {
   let heldLists: string[] | null = null;
   let sendHeldLists = () => {};

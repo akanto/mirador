@@ -356,6 +356,9 @@ function useReviewPlacement() {
   };
 }
 
+/** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */
+const leftViews = new Map<string, { newestId: string | undefined; selectedId: string | null; changesOpen: boolean }>();
+
 export function CanvasPanel({
   conversationId,
   items,
@@ -375,15 +378,24 @@ export function CanvasPanel({
   const newestFirst = useMemo(() => [...items].sort((a, b) => b.createdAt - a.createdAt), [items]);
   const newest = newestFirst[0];
   const onCanvasByDefault = newest && !isSettledQuestion(newest) ? newest.id : null;
-  const [selectedId, setSelectedId] = useState<string | null>(onCanvasByDefault);
+  const left = leftViews.get(conversationId);
+  const nothingNewSinceLeft = left?.newestId === newest?.id;
+  const [selectedId, setSelectedId] = useState<string | null>(left && nothingNewSinceLeft ? left.selectedId : onCanvasByDefault);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [changesOpen, setChangesOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(Boolean(left?.changesOpen && nothingNewSinceLeft));
   const placeForReview = useReviewPlacement();
+  const keptSinceLeft = useRef(nothingNewSinceLeft);
   useEffect(() => {
-    setSelectedId(onCanvasByDefault);
-    setChangesOpen(false);
+    if (!keptSinceLeft.current) {
+      setSelectedId(onCanvasByDefault);
+      setChangesOpen(false);
+    }
+    keptSinceLeft.current = false;
     if (takeArrivedReview(newest)) placeForReview(newest);
   }, [newest?.id]);
+  useEffect(() => {
+    leftViews.set(conversationId, { newestId: newest?.id, selectedId, changesOpen });
+  }, [conversationId, newest?.id, selectedId, changesOpen]);
   const edit = useEditsOnCanvas(edits, () => setSelectedId(null));
   useEffect(() => {
     if (edit.shown) setChangesOpen(false);
