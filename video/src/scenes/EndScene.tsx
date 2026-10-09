@@ -5,7 +5,7 @@ import { Backdrop } from "../components/Backdrop.tsx";
 import { Reveal } from "../components/Reveal.tsx";
 
 /**
- * The last word, landing on the hit out of a silence: the name, the promise and what it saves you, what it runs with
+ * The last word, landing on the hit after a breath: the name, the promise and what it saves you, what it runs with
  * and on, and where to get it. Each line comes in as the narrator says it.
  */
 export function EndScene({ frames, url }: { frames: number; url: string }) {
@@ -39,7 +39,7 @@ export function EndScene({ frames, url }: { frames: number; url: string }) {
           <div style={{ padding: "26px 60px", borderRadius: 999, border: `3px solid ${BRAND.violet}`, background: "rgba(118, 118, 242, 0.12)", font: `500 64px ${MONO}`, color: BRAND.ink }}>{url}</div>
         </Reveal>
       </AbsoluteFill>
-      <AbsoluteFill style={{ background: "#fff", opacity: interpolate(frame, [0, 10], [0.55, 0], { extrapolateRight: "clamp" }) }} />
+      <AbsoluteFill style={{ background: "#fff", opacity: interpolate(frame, [0, 10], [0.3, 0], { extrapolateRight: "clamp" }) }} />
     </AbsoluteFill>
   );
 }

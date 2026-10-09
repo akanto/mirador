@@ -35,9 +35,9 @@ export const statementBeats = ({ parts, at }: Statement) => parts.map(({ after }
 type Transition = { fadeInFrames?: number };
 
 /** A clip scene lasts as long as its shots, or `seconds` when given: shorter cuts the footage, longer holds its last frame. */
-export type ClipScene = Transition & { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[]; seconds?: number };
-/** The logo, the end card, or black, for a silence. */
-export type CardScene = Transition & { kind: "logo" | "end" | "black"; id: string; seconds: number; narration?: Spoken[] };
+export type ClipScene = Transition & { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; captions?: Caption[]; narration?: Spoken[]; seconds?: number };
+/** The logo, the end card, or the backdrop alone, for a breath before the end card. */
+export type CardScene = Transition & { kind: "logo" | "end" | "backdrop"; id: string; seconds: number; narration?: Spoken[] };
 /** The wall of text goes black at `goesBlackAt` for the statement to land in, and from `pictureAt` a picture draws itself. */
 export type WallScene = Transition & { kind: "text-wall"; id: string; seconds: number; narration?: Spoken[]; goesBlackAt?: number; pictureAt?: number; statement?: Statement };
 export type Scene = ClipScene | CardScene | WallScene;

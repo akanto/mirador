@@ -1,6 +1,6 @@
 import type { Scene } from "./timeline.ts";
 
-/** The score's beat, at 96 beats a minute: the cuts after the review fall on it. */
+/** The score's beat, at 96 beats a minute: the scene changes after the review fall on it. */
 export const BEAT = 60 / 96;
 
 /** The canvas and the chat from the app's top edge, where the canvas's buttons are, down past the edit to allow. */
@@ -54,7 +54,7 @@ export const STORYBOARD: Scene[] = [
       { at: ["canvasShown", -0.3], look: "canvas", zoom: 1.3 },
       { at: ["turnEnded", -0.2], look: "app" },
     ],
-    caption: { kicker: "Show", title: "Your agent draws what it means.", at: 6.8, seconds: 3.6 },
+    captions: [{ kicker: "Show", title: "Your agent draws what it means.", at: 6.8, seconds: 3.6 }],
     narration: [{ line: "show", at: 1.2 }],
   },
   {
@@ -69,7 +69,7 @@ export const STORYBOARD: Scene[] = [
       { at: 3.5, look: "app" },
       { at: 4.2, look: { x: 0, y: 330, width: 256, height: 420 }, zoom: 1.55 },
     ],
-    caption: { kicker: "Every project", title: "See who needs you.", at: 3.6, seconds: 3.4, side: "right" },
+    captions: [{ kicker: "Every project", title: "See who needs you.", at: 3.6, seconds: 3.4, side: "right" }],
     narration: [{ line: "overview", at: 0.3 }],
   },
   {
@@ -86,7 +86,7 @@ export const STORYBOARD: Scene[] = [
       { at: ["opened", 0.1], look: "app" },
       { at: ["submitted", 0.4], look: "timeline", zoom: 1.35 },
     ],
-    caption: { kicker: "Ask", title: "Decisions come with pictures.", at: 1.8, seconds: 3.6 },
+    captions: [{ kicker: "Ask", title: "Decisions come with pictures.", at: 1.8, seconds: 3.6 }],
     narration: [{ line: "ask", at: 0.6 }],
   },
   {
@@ -117,7 +117,7 @@ export const STORYBOARD: Scene[] = [
       { at: "answered", look: { x: 852, y: 99, width: 668, height: 130 }, zoom: 2.2 },
       { at: ["answered", 1.8], look: { x: 836, y: 393, width: 700, height: 394 }, zoom: 2.19 },
     ],
-    caption: { kicker: "Review", title: "A guided tour of the change.", at: 4.2, seconds: 3.4 },
+    captions: [{ kicker: "Review", title: "A guided tour of the change.", at: 4.2, seconds: 3.4 }],
     narration: [
       { line: "review", at: 3.4 },
       { line: "reviewAsk", at: 10.8 },
@@ -128,27 +128,25 @@ export const STORYBOARD: Scene[] = [
     kind: "clip",
     id: "edit",
     clip: "edit",
-    shots: [{ from: "approval", to: ["allowed", 0.6] }],
-    camera: [{ at: "approval", look: CANVAS_AND_CHAT, zoom: 1.2 }],
-    caption: { kicker: "Approve", title: "Every edit, with its diff.", at: 0.3, seconds: 3 },
-    narration: [{ line: "edit", at: 0.5, musicDipsTo: 0.6 }],
-    seconds: 6 * BEAT,
-    fadeInFrames: 0,
-  },
-  {
-    kind: "clip",
-    id: "changes",
-    clip: "edit",
     shots: [
-      { from: ["turnEnded", 0.6], to: ["turnListed", 0.3], speed: 1.25 },
+      { from: "approval", to: ["allowed", 0.6] },
+      { from: ["allowed", 0.6], to: ["turnListed", 0.3], speed: 1.4 },
       { from: ["turnListed", 0.3], to: "uncommitted", speed: 1.4 },
-      { from: "uncommitted", to: ["uncommittedListed", 1.9] },
+      { from: "uncommitted", to: ["uncommittedListed", 2.5] },
     ],
-    camera: [{ at: ["turnEnded", 0.6], look: TOP_OF_CANVAS, zoom: 2.19 }],
-    caption: { kicker: "Changes", title: "Even changes outside the project.", at: 0.4, seconds: 4 },
-    narration: [{ line: "changes", at: 0.3, musicDipsTo: 0.6 }],
-    seconds: 9 * BEAT,
-    fadeInFrames: 0,
+    camera: [
+      { at: "approval", look: CANVAS_AND_CHAT, zoom: 1.2 },
+      { at: ["allowed", 0.5], look: TOP_OF_CANVAS, zoom: 2.19 },
+    ],
+    captions: [
+      { kicker: "Approve", title: "Every edit, with its diff.", at: 0.3, seconds: 3 },
+      { kicker: "Changes", title: "Even changes outside the project.", at: 4.1, seconds: 4.5 },
+    ],
+    narration: [
+      { line: "edit", at: 0.5, musicDipsTo: 0.6 },
+      { line: "changes", at: 4, musicDipsTo: 0.6 },
+    ],
+    seconds: 16 * BEAT,
   },
   {
     kind: "clip",
@@ -157,16 +155,15 @@ export const STORYBOARD: Scene[] = [
     shots: [
       { from: ["shown", -0.3], to: ["logged", 0.3], speed: 2.6 },
       { from: ["logged", 0.3], to: ["diffed", 0.1], speed: 2.9 },
-      { from: ["diffed", 0.1], to: ["diffed", 1.5] },
+      { from: ["diffed", 0.1], to: ["diffed", 1.75] },
     ],
     camera: [
       { at: ["shown", -0.3], look: "app" },
       { at: ["shown", 0.4], look: "terminals" },
     ],
-    caption: { kicker: "Terminals", title: "A shell beside every conversation.", at: 0.3, seconds: 2.8 },
+    captions: [{ kicker: "Terminals", title: "A shell beside every conversation.", at: 0.3, seconds: 2.8 }],
     narration: [{ line: "terminals", at: 0.3, musicDipsTo: 0.6 }],
     seconds: 8 * BEAT,
-    fadeInFrames: 0,
   },
   {
     kind: "clip",
@@ -177,11 +174,10 @@ export const STORYBOARD: Scene[] = [
       { at: 0.3, look: { x: 0, y: 0, width: 300, height: 520 }, zoom: 1.6 },
       { at: ["grouped", 0.2], look: "app" },
     ],
-    caption: { kicker: "Groups", title: "Your projects, in your order.", at: 0.4, seconds: 3, side: "right" },
+    captions: [{ kicker: "Groups", title: "Your projects, in your order.", at: 0.4, seconds: 3, side: "right" }],
     seconds: 8 * BEAT,
-    fadeInFrames: 0,
   },
-  { kind: "black", id: "silence", seconds: BEAT, fadeInFrames: 0 },
+  { kind: "backdrop", id: "backdrop", seconds: BEAT },
   {
     kind: "end",
     id: "end",

@@ -10,9 +10,10 @@ import { placeScenes, statementBeats } from "../src/timeline.ts";
  * the wall of text rise until it goes black, and stop dead for the voice: in the silence, each part of the statement
  * lands on a clap, and from its stressed part on a hit. A warm swell comes in as the picture draws itself, and a riser
  * leads into a hit on the logo. Then a warm I–V–vi–IV pad with a pluck and a soft pulse under the features lifts at the
- * review, and a riser leads into a brighter, busier section for the quick cuts, which stops dead again for the name,
+ * review, and moves up to a brighter, busier section for the last features, whose last chord rings out over the backdrop
  * before the biggest hit lands on the end card. It is timed by the storyboard, so the hits land on the scene changes.
- * Its bars count back from the first quick cut, so that cut falls on a downbeat however long the scenes before it run.
+ * Its bars count back from the first of the last features, so it starts on a downbeat however long the scenes before
+ * it run.
  * Run with bun after encode and narrate: bun audio/compose.ts
  */
 const RATE = 48_000;
@@ -205,7 +206,7 @@ function compose() {
   const features = starts.show!;
   const lift = starts.review!;
   const montage = starts.edit!;
-  const hush = starts.silence!;
+  const lastChord = starts.backdrop!;
   const ending = starts.end!;
   const beat = BEAT;
   const bar = beat * 4;
@@ -273,14 +274,12 @@ function compose() {
   const grooveStarts = montage - bar * Math.ceil((montage - features) / bar - 1e-6);
   const liftsAtBar = Math.round((lift - grooveStarts) / bar);
   groove(grooveStarts, montage, { lifted: (index) => index >= liftsAtBar, drumsFromBar: 2, lastChordRingsOn: false });
-  mix.add(montage - bar, riser(bar), 0.4);
-  groove(montage, hush, { transpose: 2, lifted: () => true });
+  groove(montage, lastChord, { transpose: 2, lifted: () => true });
   STORYBOARD.slice(2).forEach((scene) => {
     if (scene.kind !== "clip") return;
-    if (scene.fadeInFrames === 0) mix.add(starts[scene.id]!, boom().subarray(0, Math.round(1.2 * RATE)), scene.id === "edit" ? 0.8 : 0.45);
+    if (scene.fadeInFrames === 0) mix.add(starts[scene.id]!, boom().subarray(0, Math.round(1.2 * RATE)), 0.45);
     else mix.add(starts[scene.id]! - 0.55, whoosh(0.7), 0.18);
   });
-  mix.add(hush - 3.5, riser(3.5), 0.55);
 
   mix.add(ending, boom(), 1.2);
   mix.add(ending, pad([50, 57, 62, 66, 69, 76], seconds - ending, 6), 0.6);
@@ -291,7 +290,6 @@ function compose() {
     mix.left[index]! += sample;
     mix.right[index]! += plucks.right[index]!;
   });
-  silence(mix, hush, ending);
   const fadeOut = Math.round(1.8 * RATE);
   for (let index = mix.left.length - fadeOut; index < mix.left.length; index++) {
     const gain = (mix.left.length - index) / fadeOut;
@@ -300,7 +298,7 @@ function compose() {
   }
   writeWav(output, mix);
   console.log(
-    `${output}: ${seconds.toFixed(1)} s; black at ${goesBlack.toFixed(2)} s, picture at ${picture.toFixed(2)} s, logo at ${logo.toFixed(2)} s, groove from ${grooveStarts.toFixed(2)} s, lift at ${(grooveStarts + liftsAtBar * bar).toFixed(2)} s, montage from ${montage.toFixed(2)} s, silence at ${hush.toFixed(2)} s, end card at ${ending.toFixed(2)} s`,
+    `${output}: ${seconds.toFixed(1)} s; black at ${goesBlack.toFixed(2)} s, picture at ${picture.toFixed(2)} s, logo at ${logo.toFixed(2)} s, groove from ${grooveStarts.toFixed(2)} s, lift at ${(grooveStarts + liftsAtBar * bar).toFixed(2)} s, montage from ${montage.toFixed(2)} s, last chord at ${lastChord.toFixed(2)} s, end card at ${ending.toFixed(2)} s`,
   );
 }
 

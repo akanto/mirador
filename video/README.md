@@ -31,8 +31,9 @@ camera logic, and that the storyboard speaks every line.
 - **A scene's cut, camera or caption**: `src/storyboard.ts`. Shots, camera moves and captions are keyed to the moments the
   capture marked, such as `["sent", 0.2]`, so they stay right when the footage is filmed again. A scene's `seconds` sets
   its length, and `fadeInFrames: 0` cuts straight to it instead of crossfading; the score puts a hit on such a cut. A
-  line of narration's `musicDipsTo` makes the music dip less under it. The cuts after the review last whole beats of
-  the score (`BEAT`). The score goes silent from the black scene with the id `silence` until the end card.
+  line of narration's `musicDipsTo` makes the music dip less under it. A clip scene can have several `captions`. The
+  scenes after the review last whole beats of the score (`BEAT`), so each starts on the beat. The score's last chord
+  rings out over the `backdrop` scene before the end card.
 - **The opening**: the wall scene's `goesBlackAt` is when the wall cuts to black and silence. In the black its
   `statement` lands its `parts` as the narrator says them: `STATEMENT_AT` is when the `statement` line starts, and each
   part's `after` is how far into the spoken line its words begin, so measure them again when the line is spoken again.

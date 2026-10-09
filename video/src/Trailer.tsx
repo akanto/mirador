@@ -1,5 +1,6 @@
 import { Audio } from "@remotion/media";
 import { AbsoluteFill, interpolate, Sequence, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { Backdrop } from "./components/Backdrop.tsx";
 import { musicVolume, spokenSpans } from "./mix.ts";
 import { ClipSceneView } from "./scenes/ClipSceneView.tsx";
 import { EndScene } from "./scenes/EndScene.tsx";
@@ -25,7 +26,7 @@ function SceneView({ scene, clips, frames }: { scene: Scene; clips: Record<strin
   if (scene.kind === "clip") return <ClipSceneView scene={scene} clip={clips[scene.clip]!} frames={frames} />;
   if (scene.kind === "text-wall") return <TextWallScene scene={scene} />;
   if (scene.kind === "logo") return <LogoScene frames={frames} />;
-  if (scene.kind === "black") return <AbsoluteFill style={{ background: "#000" }} />;
+  if (scene.kind === "backdrop") return <Backdrop />;
   return <EndScene frames={frames} url={WHERE_TO_GET_IT} />;
 }
 

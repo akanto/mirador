@@ -7,7 +7,7 @@ import { CaptionCard } from "../components/CaptionCard.tsx";
 import type { ClipInfo, ClipScene } from "../timeline.ts";
 import { shotsOf, shotTrim } from "../timeline.ts";
 
-/** A filmed scene: the clip's shots in the app window, the camera moving between its views, and the scene's caption. */
+/** A filmed scene: the clip's shots in the app window, the camera moving between its views, and the scene's captions. */
 export function ClipSceneView({ scene, clip, frames }: { scene: ClipScene; clip: ClipInfo; frames: number }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -15,8 +15,7 @@ export function ClipSceneView({ scene, clip, frames }: { scene: ClipScene; clip:
   const shots = shotsOf(scene, clip);
   const footageEnds = Math.round(shots.at(-1)!.sceneTo * fps);
   const last = shots.at(-1)!;
-  const camera = cameraTransform(viewAt(scene, clip, frame / fps), WINDOW.app, FRAME, (frame / frames) * 0.025);
-  const caption = scene.caption;
+  const camera = cameraTransform(viewAt(scene, clip, frame / fps), WINDOW.app, FRAME);
   return (
     <AbsoluteFill>
       <Backdrop />
@@ -39,7 +38,9 @@ export function ClipSceneView({ scene, clip, frames }: { scene: ClipScene; clip:
           )}
         </AppWindow>
       </AbsoluteFill>
-      {caption && <CaptionCard kicker={caption.kicker} title={caption.title} side={caption.side} from={Math.round((caption.at ?? 0.5) * fps)} to={caption.seconds ? Math.round(((caption.at ?? 0.5) + caption.seconds) * fps) : frames - 12} />}
+      {(scene.captions ?? []).map((caption) => (
+        <CaptionCard key={caption.title} kicker={caption.kicker} title={caption.title} side={caption.side} from={Math.round((caption.at ?? 0.5) * fps)} to={caption.seconds ? Math.round(((caption.at ?? 0.5) + caption.seconds) * fps) : frames - 12} />
+      ))}
     </AbsoluteFill>
   );
 }
