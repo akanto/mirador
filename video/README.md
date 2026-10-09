@@ -20,7 +20,7 @@ whole build takes about 10 minutes on an M-series Mac.
 | Film | `bun run capture` | `capture/trailer.spec.ts` starts Mirador on port 5900 with the demo projects in `capture/demo-world.ts`, and films each scene in a 4K Chrome window at 250% zoom. The agents' answers come from `capture/scenes.ts`, through the fake model in `capture/director.ts`. Each scene becomes `public/clips/<scene>.frames` and `<scene>.json`, with the moments and boxes the edit uses. |
 | Encode | `bun run encode` | Turns the frames into 60 fps videos at the speed they were filmed, and deletes the frames. |
 | Narrate | `bun run narrate` | Speaks `narration/lines.ts` with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), on this machine, into `public/narration`. Only changed lines are spoken again. The model is downloaded once to `~/.cache/mirador-video` and checked against its hash. |
-| Score | `bun run music` | Synthesises a placeholder score into `public/music/score.wav` (`audio/compose.ts`), timed to the storyboard. |
+| Score | `bun run music` | Synthesises the score into `public/music/score.wav` (`audio/compose.ts`), timed to the storyboard. |
 | Render | `bun run render` | Renders the [Remotion](https://www.remotion.dev) composition in `src` to `out/render.mp4`, then `audio/master.ts` brings its sound to YouTube's loudness (-14 LUFS) in `out/mirador-trailer.mp4`. |
 
 `bun run studio` opens the composition in Remotion's editor, to scrub through it. `bun run test` checks the timing and

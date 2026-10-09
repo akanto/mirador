@@ -6,7 +6,7 @@ import type { ClipInfo, NarrationLine } from "../src/timeline.ts";
 import { placeScenes } from "../src/timeline.ts";
 
 /**
- * A placeholder score, synthesised here so the trailer builds without a licensed track: a drone and quickening ticks
+ * The trailer's score, synthesised here so there is no track to licence or credit: a drone and quickening ticks
  * under the wall of text, a riser into a hit on the logo, then a warm I–V–vi–IV pad with a pluck and a soft pulse
  * under the features, resolving on the end card. It is timed by the storyboard, so the hits land on the scene changes.
  * Run with bun after encode and narrate: bun audio/compose.ts
