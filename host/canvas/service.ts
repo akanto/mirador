@@ -1,4 +1,5 @@
-import type { AskOption, CanvasAnswer, CanvasItem } from "../../shared/model.ts";
+import { answersSummary, questionsOf } from "../../shared/ask.ts";
+import type { AskAnswerEntry, AskQuestion, CanvasAnswer, CanvasItem } from "../../shared/model.ts";
 import { answersOf, type FindingDecision, type Review } from "../../shared/review.ts";
 import type { ConversationService } from "../conversations.ts";
 import type { Hub } from "../hub.ts";
@@ -18,13 +19,8 @@ export interface ShowRequest {
   html: string;
 }
 
-export interface AskRequest {
-  question: string;
-  html?: string;
-  options: AskOption[];
-  allowOther?: boolean;
-  optionWidth?: number;
-}
+/** One question, or several that the user answers page by page and the agent hears all at once. */
+export type AskRequest = AskQuestion | { questions: AskQuestion[] };
 
 export interface RenderReport {
   errors: string[];
@@ -80,26 +76,22 @@ export class CanvasService {
 
   openAsk(conversationId: string, request: AskRequest): CanvasItem {
     const shownBefore = this.pagesShownSinceUserSpoke(conversationId).map(({ id }) => id);
+    const asked = "questions" in request ? severalQuestionsAsked(request.questions) : singleQuestionAsked(request);
     const item = this.save({
       id: crypto.randomUUID(),
       conversationId,
       kind: "ask",
-      title: request.question,
-      question: request.question,
-      html: request.html,
-      options: request.options,
-      allowOther: request.allowOther ?? false,
-      ...(request.optionWidth && { optionWidth: request.optionWidth }),
+      ...asked,
       ...(shownBefore.length > 0 && { shownBefore }),
       status: "waiting",
       createdAt: Date.now(),
     });
-    this.notifications.notify(conversationId, { kind: "question", question: request.question });
+    this.notifications.notify(conversationId, { kind: "question", question: item.title });
     return item;
   }
 
   /** Resolves with the user's answer, or rejects when `signal` aborts first; a later answer then arrives as the next message. */
-  waitForAnswer(item: CanvasItem, signal: AbortSignal): Promise<Pick<CanvasAnswer, "label" | "note">> {
+  waitForAnswer(item: CanvasItem, signal: AbortSignal): Promise<Pick<CanvasAnswer, "label" | "note" | "answers">> {
     return new Promise((resolve, reject) => {
       const stopWaiting = () => {
         this.answerWaiters.delete(item.id);
@@ -120,20 +112,16 @@ export class CanvasService {
     });
   }
 
-  answer(itemId: string, label: string, note?: string) {
+  answer(itemId: string, label: string, note?: string, answers?: AskAnswerEntry[]) {
     const item = this.store.findCanvasItem(itemId);
     if (!item || item.kind !== "ask") throw new Error("Unknown question.");
     if (item.status !== "waiting") throw new Error("This question was already answered or withdrawn.");
+    const given = answersFor(item, label, note, answers);
     const waiter = this.answerWaiters.get(itemId);
     this.answerWaiters.delete(itemId);
-    const trimmedNote = note?.trim() || undefined;
-    this.save({
-      ...item,
-      status: "answered",
-      answer: { label, note: trimmedNote, deliveredAs: waiter ? "tool-result" : "next-message" },
-    });
-    if (waiter) waiter.answered({ label, note: trimmedNote });
-    else this.conversations.send(item.conversationId, answerAsMessage(item, label, trimmedNote)).catch(() => {});
+    this.save({ ...item, status: "answered", answer: { ...given, deliveredAs: waiter ? "tool-result" : "next-message" } });
+    if (waiter) waiter.answered(given);
+    else this.conversations.send(item.conversationId, answerAsMessage(item, given)).catch(() => {});
   }
 
   async review(conversationId: string, request: ReviewRequest): Promise<ReviewItem> {
@@ -301,10 +289,51 @@ export class CanvasService {
   }
 }
 
-export function answerAsToolResult(answer: Pick<CanvasAnswer, "label" | "note">) {
-  return [`The user chose: ${answer.label}`, answer.note && `Their note: ${answer.note}`].filter(Boolean).join("\n");
+const singleQuestionAsked = ({ question, html, options, allowOther, optionWidth }: AskQuestion): Partial<CanvasItem> & Pick<CanvasItem, "title"> => ({
+  title: question,
+  question,
+  html,
+  options,
+  allowOther: allowOther ?? false,
+  ...(optionWidth && { optionWidth }),
+});
+
+const severalQuestionsAsked = (questions: AskQuestion[]) => ({
+  title: `${questions.length} questions: ${questions[0]!.question}`,
+  question: questions[0]!.question,
+  questions,
+});
+
+type GivenAnswer = Pick<CanvasAnswer, "label" | "note" | "answers">;
+
+/** What the user sent, checked against what was asked: one answer for a question, one for each of several. */
+function answersFor(item: CanvasItem, label: string, note: string | undefined, answers: AskAnswerEntry[] | undefined): GivenAnswer {
+  const questions = questionsOf(item);
+  if (!item.questions) {
+    if (answers) throw new Error("This question takes one answer.");
+    return { label, note: note?.trim() || undefined };
+  }
+  if (!answers || answers.length !== questions.length || answers.some((entry) => !entry.label.trim())) {
+    throw new Error(`Answer all ${questions.length} questions.`);
+  }
+  const entries = answers.map(({ label, note }, index) => ({ question: questions[index]!.question, label, note: note?.trim() || undefined }));
+  return { label: answersSummary(entries), answers: entries };
 }
 
-function answerAsMessage(item: CanvasItem, label: string, note?: string) {
-  return [`My answer to your question "${item.question}": ${label}`, note && `Note: ${note}`].filter(Boolean).join("\n");
+const noteLine = (note: string | undefined, prefix: string) => (note ? [`${prefix}${note}`] : []);
+
+export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
+  if (answers) {
+    const each = answers.flatMap((entry, index) => [`${index + 1}. ${entry.question}`, `   The user chose: ${entry.label}`, ...noteLine(entry.note, "   Their note: ")]);
+    return [`The user answered ${answers.length} questions:`, ...each].join("\n");
+  }
+  return [`The user chose: ${label}`, ...noteLine(note, "Their note: ")].join("\n");
+}
+
+function answerAsMessage(item: CanvasItem, { label, note, answers }: GivenAnswer) {
+  if (answers) {
+    const each = answers.flatMap((entry, index) => [`${index + 1}. "${entry.question}": ${entry.label}`, ...noteLine(entry.note, "   Note: ")]);
+    return ["My answers to your questions:", ...each].join("\n");
+  }
+  return [`My answer to your question "${item.question}": ${label}`, ...noteLine(note, "Note: ")].join("\n");
 }

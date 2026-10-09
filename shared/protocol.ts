@@ -1,6 +1,7 @@
 import type { ToolCallContent } from "@agentclientprotocol/sdk";
 import type {
   AdoptMode,
+  AskAnswerEntry,
   AskMode,
   CanvasItem,
   CanvasUse,
@@ -146,7 +147,7 @@ export type ClientMessage =
   | { type: "conversation.set-bypass-permissions"; conversationId: string; bypassPermissions: boolean }
   | { type: "conversation.set-config"; conversationId: string; configId: string; value: string | boolean }
   | { type: "permission.respond"; conversationId: string; permissionId: string; optionId: string | null }
-  | { type: "ask.answer"; itemId: string; label: string; note?: string }
+  | { type: "ask.answer"; itemId: string; label: string; note?: string; answers?: AskAnswerEntry[] }
   | { type: "canvas.report"; itemId: string; errors: string[] }
   | { type: "review.update-finding"; itemId: string; findingId: string; decision?: FindingDecision; body?: string }
   | { type: "review.update-answer"; itemId: string; answerId: string; decision?: FindingDecision; body?: string; resolve?: boolean }

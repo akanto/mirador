@@ -780,7 +780,7 @@ export function startServer(services: HostServices) {
       case "permission.respond":
         return conversations.respondToPermission(message.conversationId, message.permissionId, message.optionId);
       case "ask.answer":
-        return canvas.answer(message.itemId, message.label, message.note);
+        return canvas.answer(message.itemId, message.label, message.note, message.answers);
       case "canvas.report":
         return canvas.reportRender(message.itemId, { errors: message.errors });
       case "review.update-finding":

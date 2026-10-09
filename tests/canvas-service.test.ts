@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConversationService } from "../host/conversations.ts";
-import { CanvasService } from "../host/canvas/service.ts";
+import { answerAsToolResult, CanvasService } from "../host/canvas/service.ts";
 import { Hub } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
 import type { SystemNotifications } from "../host/system-notifications.ts";
+import { questionsOf } from "../shared/ask.ts";
 import type { Review, ReviewAnswer, ReviewFinding } from "../shared/review.ts";
 import type { NotificationReason } from "../shared/system-notifications.ts";
 import { completeDirectories } from "../host/paths.ts";
@@ -49,7 +50,14 @@ function setUp() {
   const notifications = { notify: (conversationId: string, reason: NotificationReason) => void notified.push([conversationId, reason]) } as SystemNotifications;
   const canvas = new CanvasService(store, new Hub(), conversations, notifications);
   const ask = () => canvas.openAsk("c1", { question: "Color?", options: [{ label: "Red" }, { label: "Blue" }] });
-  return { store, canvas, nextMessages, ask, notified, questionsChanged };
+  const askSeveral = () =>
+    canvas.openAsk("c1", {
+      questions: [
+        { question: "Color?", options: [{ label: "Red" }, { label: "Blue" }] },
+        { question: "Size?", options: [{ label: "Small" }, { label: "Large" }], allowOther: true },
+      ],
+    });
+  return { store, canvas, nextMessages, ask, askSeveral, notified, questionsChanged };
 }
 
 describe("CanvasService", () => {
@@ -111,6 +119,44 @@ describe("CanvasService", () => {
     canvas.answer(item.id, "Red");
     expect(nextMessages).toEqual(['My answer to your question "Color?": Red']);
     expect(store.findCanvasItem(item.id)?.answer?.deliveredAs).toBe("next-message");
+  });
+
+  test("several questions are one item, and their answers come back together as the tool result", async () => {
+    const { canvas, askSeveral, notified } = setUp();
+    const item = askSeveral();
+    expect(item).toMatchObject({ title: "2 questions: Color?", status: "waiting" });
+    expect(notified.at(-1)).toEqual(["c1", { kind: "question", question: "2 questions: Color?" }]);
+    const answer = canvas.waitForAnswer(item, new AbortController().signal);
+    canvas.answer(item.id, "", undefined, [{ label: "Blue", note: " subtle " }, { label: "Huge" }]);
+    const given = await answer;
+    expect(given.label).toBe("Blue · Huge");
+    expect(answerAsToolResult(given)).toBe(
+      ["The user answered 2 questions:", "1. Color?", "   The user chose: Blue", "   Their note: subtle", "2. Size?", "   The user chose: Huge"].join("\n"),
+    );
+  });
+
+  test("several answers sent late arrive as one next message", async () => {
+    const { store, canvas, nextMessages, askSeveral } = setUp();
+    const item = askSeveral();
+    canvas.answer(item.id, "", undefined, [{ label: "Red" }, { label: "Small", note: "tight fit" }]);
+    expect(nextMessages).toEqual(['My answers to your questions:\n1. "Color?": Red\n2. "Size?": Small\n   Note: tight fit']);
+    expect(store.findCanvasItem(item.id)?.answer).toMatchObject({ label: "Red · Small", deliveredAs: "next-message" });
+  });
+
+  test("an answer to several questions must answer each, and one question takes one answer", () => {
+    const { canvas, ask, askSeveral } = setUp();
+    const several = askSeveral();
+    expect(() => canvas.answer(several.id, "Red")).toThrow("Answer all 2 questions");
+    expect(() => canvas.answer(several.id, "", undefined, [{ label: "Red" }])).toThrow("Answer all 2 questions");
+    expect(() => canvas.answer(several.id, "", undefined, [{ label: "Red" }, { label: " " }])).toThrow("Answer all 2 questions");
+    expect(canvas.list("c1").find(({ id }) => id === several.id)?.status).toBe("waiting");
+    expect(() => canvas.answer(ask().id, "Red", undefined, [{ label: "Red" }])).toThrow("takes one answer");
+  });
+
+  test("questionsOf gives the one question of an item that holds just one", () => {
+    const { ask, askSeveral } = setUp();
+    expect(questionsOf(ask())).toEqual([{ question: "Color?", options: [{ label: "Red" }, { label: "Blue" }], allowOther: false }]);
+    expect(questionsOf(askSeveral()).map(({ question }) => question)).toEqual(["Color?", "Size?"]);
   });
 
   test("withdrawing waiting asks fails their tool calls and refuses later answers", async () => {

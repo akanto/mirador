@@ -163,6 +163,12 @@ const optionSchema = z.object({
   html: z.string().optional().describe("Optional HTML preview of this option (mockup, diagram, code sample)."),
 });
 
+const askQuestionShape = {
+  html: z.string().optional().describe("Optional HTML shown above the options: the explanation or mockup the question is about. Put it here rather than in a show call just before."),
+  allowOther: z.boolean().optional().describe("Let the user type an answer that is not one of the options."),
+  optionWidth: z.number().int().positive().optional().describe("Optional least width of each answer box in CSS pixels, for options whose descriptions need more room. Boxes still sit side by side while they fit and never get wider than the canvas. Without it they are at least 200px, or as wide as the widest preview."),
+};
+
 function describeRender(itemId: string, render: RenderOutcome) {
   if (render === "no-viewer") {
     return `Saved to the canvas as item ${itemId}. Nobody is viewing this conversation right now, so rendering was not verified.`;
@@ -206,18 +212,24 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
     "ask",
     {
       description:
-        "Ask the user to choose between options in their browser, optionally with an HTML preview per option and a shared HTML context page. Use this instead of asking multiple-choice questions in plain text. Depending on the user's setting, the choice is returned as this tool's result or arrives as the user's next message (the result tells you which).",
+        "Ask the user to choose between options in their browser, optionally with an HTML preview per option and a shared HTML context page. Use this instead of asking multiple-choice questions in plain text. Depending on the user's setting, the choice is returned as this tool's result or arrives as the user's next message (the result tells you which). To ask several questions, pass questions instead of question and options: the user answers them page by page, and all their answers come back together.",
       inputSchema: z.object({
-        question: z.string().min(1),
-        html: z.string().optional().describe("Optional HTML shown above the options: the explanation or mockup the question is about. Put it here rather than in a show call just before."),
-        options: z.array(optionSchema).min(2).max(8),
-        allowOther: z.boolean().optional().describe("Let the user type an answer that is not one of the options."),
-        optionWidth: z.number().int().positive().optional().describe("Optional least width of each answer box in CSS pixels, for options whose descriptions need more room. Boxes still sit side by side while they fit and never get wider than the canvas. Without it they are at least 200px, or as wide as the widest preview."),
+        ...askQuestionShape,
+        question: z.string().min(1).optional().describe("The question, when you ask just one."),
+        options: z.array(optionSchema).min(2).max(8).optional().describe("The choices to the question, when you ask just one."),
+        questions: z
+          .array(z.object({ ...askQuestionShape, question: z.string().min(1), options: z.array(optionSchema).min(2).max(8) }))
+          .min(2)
+          .max(10)
+          .optional()
+          .describe("Several questions in the order to ask them, each with its own options; give these instead of question and options."),
       }),
       _meta: loadedUpFront,
     },
-    async (request, ctx) => {
-      const item = canvas.openAsk(conversationId, request);
+    async ({ questions, question, options, ...rest }, ctx) => {
+      if (questions && (question || options)) return toolError("Give either question and options, or questions, not both.");
+      if (!questions && (!question || !options)) return toolError("Give question and options, or questions.");
+      const item = canvas.openAsk(conversationId, questions ? { questions } : { question: question!, options: options!, ...rest });
       if (conversations.get(conversationId).askMode === "next-message") {
         return {
           content: [

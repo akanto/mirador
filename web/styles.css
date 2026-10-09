@@ -5857,3 +5857,17 @@ body.reordering * {
   min-width: 0;
   font-variant-numeric: tabular-nums;
 }
+
+.ask-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.ask-review {
+  margin: 4px 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

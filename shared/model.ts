@@ -426,11 +426,30 @@ export interface AskOption {
   html?: string;
 }
 
+/** One question of an ask: what the user is asked, and what they can choose from. */
+export interface AskQuestion {
+  question: string;
+  html?: string;
+  options: AskOption[];
+  allowOther?: boolean;
+  /** The least width, in CSS pixels, the agent asked for each answer box. */
+  optionWidth?: number;
+}
+
+/** What the user answered to one question: the option or their own words, and an optional note. */
+export interface AskAnswerEntry {
+  label: string;
+  note?: string;
+}
+
 export type CanvasItemStatus = "shown" | "waiting" | "answered" | "cancelled";
 
 export interface CanvasAnswer {
+  /** The answer, or for several questions a short summary of all of them. */
   label: string;
   note?: string;
+  /** For an ask of several questions: each answer beside its question. */
+  answers?: (AskAnswerEntry & { question: string })[];
   deliveredAs: "tool-result" | "next-message";
 }
 
@@ -445,6 +464,8 @@ export interface CanvasItem {
   allowOther?: boolean;
   /** The least width, in CSS pixels, the agent asked for each answer box. */
   optionWidth?: number;
+  /** An ask of several questions, one page each; then `title` and `question` say so and name the first, for readers that know one question. */
+  questions?: AskQuestion[];
   status: CanvasItemStatus;
   answer?: CanvasAnswer;
   /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */

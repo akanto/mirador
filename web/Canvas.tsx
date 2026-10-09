@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
-import type { AskOption, CanvasItem } from "../shared/model.ts";
+import { answersSummary, questionsOf } from "../shared/ask.ts";
+import type { AskQuestion, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
 import { ChangesView } from "./Changes.tsx";
@@ -146,66 +147,86 @@ function reportRender(itemId: string) {
 
 const SOMETHING_ELSE = Symbol("something else");
 
-function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesBefore: CanvasItem[]; assetsOrigin: string }) {
-  const [choice, setChoice] = useState<string | typeof SOMETHING_ELSE | null>(null);
-  const [other, setOther] = useState("");
-  const [note, setNote] = useState("");
+interface AskDraft {
+  choice: string | typeof SOMETHING_ELSE | null;
+  other: string;
+  note: string;
+}
+
+const emptyDraft = (): AskDraft => ({ choice: null, other: "", note: "" });
+const draftAnswer = ({ choice, other }: AskDraft) => (choice === SOMETHING_ELSE ? other.trim() : choice) || null;
+
+interface AskProgress {
+  drafts: AskDraft[];
+  page: number;
+}
+
+/** What the user has answered so far and which question they are on, kept for as long as the page lives, so leaving the conversation and coming back loses nothing. */
+const askProgressByItem = new Map<string, AskProgress>();
+
+function useAskProgress(itemId: string, questionCount: number) {
+  const [progress, setProgress] = useState<AskProgress>(() => askProgressByItem.get(itemId) ?? { drafts: Array.from({ length: questionCount }, emptyDraft), page: 0 });
+  useEffect(() => {
+    askProgressByItem.set(itemId, progress);
+  }, [itemId, progress]);
+  return {
+    drafts: progress.drafts,
+    page: progress.page,
+    setPage: (page: number) => setProgress((current) => ({ ...current, page })),
+    changeDraft: (index: number, change: Partial<AskDraft>) =>
+      setProgress((current) => ({ ...current, drafts: current.drafts.map((draft, at) => (at === index ? { ...draft, ...change } : draft)) })),
+  };
+}
+
+function AskQuestionFields({
+  question,
+  draft,
+  onChange,
+  waiting,
+  chosenLabel,
+  idPrefix,
+  radioName,
+  assetsOrigin,
+}: {
+  question: AskQuestion;
+  draft: AskDraft;
+  onChange: (change: Partial<AskDraft>) => void;
+  waiting: boolean;
+  chosenLabel: string | undefined;
+  idPrefix: string;
+  radioName: string;
+  assetsOrigin: string;
+}) {
   const typingAidAttributes = useTypingAidAttributes();
-  const waiting = item.status === "waiting";
-  const options: AskOption[] = item.options ?? [];
-  const answer = choice === SOMETHING_ELSE ? other.trim() : choice;
   const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
   const widestPreview = Math.max(0, ...Object.values(previewWidths));
   const optionsStyle = {
     ...(widestPreview > 0 && { "--preview-width": `${widestPreview}px` }),
-    ...(item.optionWidth && { "--option-width": `${item.optionWidth}px` }),
+    ...(question.optionWidth && { "--option-width": `${question.optionWidth}px` }),
   } as CSSProperties;
-  const isChosen = (label: string) => (waiting ? choice === label : item.answer?.label === label);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (answer) connection.send({ type: "ask.answer", itemId: item.id, label: answer, note: note.trim() || undefined });
-  };
+  const isChosen = (label: string) => (waiting ? draft.choice === label : chosenLabel === label);
 
   return (
-    <form className="ask" onSubmit={submit}>
-      <h3>{item.question}</h3>
-      {item.status === "answered" && item.answer && (
-        <div className="ask-answer">
-          You chose <strong>{item.answer.label}</strong>
-          {item.answer.note && <> — “{item.answer.note}”</>}
-          <span className="delivered">
-            {item.answer.deliveredAs === "tool-result" ? " (returned to the agent)" : " (sent as your next message)"}
-          </span>
-        </div>
-      )}
-      {item.status === "cancelled" && <div className="ask-answer">This question was withdrawn.</div>}
-      {pagesBefore.map((page) => (
-        <section key={page.id} className="ask-page-before" aria-label={`Shown before the question: ${page.title}`}>
-          <div className="ask-page-before-title" data-hint={hints.askPageBefore}>
-            Shown just before: {page.title}
-          </div>
-          <CanvasFrame frameId={`${item.id}-before-${page.id}`} html={page.html ?? ""} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />
-        </section>
-      ))}
-      {item.html && <CanvasFrame frameId={`${item.id}-context`} html={item.html} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />}
-      <div className="ask-options" role="radiogroup" aria-label={item.question} style={optionsStyle}>
-        {options.map((option, index) => (
+    <>
+      {question.html && <CanvasFrame frameId={`${idPrefix}-context`} html={question.html} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />}
+      <div className="ask-options" role="radiogroup" aria-label={question.question} style={optionsStyle}>
+        {question.options.map((option, index) => (
           <label key={option.label} className={`ask-option ${isChosen(option.label) ? "chosen" : ""}`}>
             <span className="ask-option-head">
               <input
                 type="radio"
-                name={`ask-${item.id}`}
+                name={radioName}
                 aria-label={option.label}
                 checked={isChosen(option.label)}
                 disabled={!waiting}
-                onChange={() => setChoice(option.label)}
+                onChange={() => onChange({ choice: option.label })}
               />
               <span className="ask-option-label">{option.label}</span>
             </span>
             {option.description && <span className="ask-option-description">{option.description}</span>}
             {option.html && (
               <CanvasFrame
-                frameId={`${item.id}-option-${index}`}
+                frameId={`${idPrefix}-option-${index}`}
                 html={option.html}
                 assetsOrigin={assetsOrigin}
                 className="ask-preview"
@@ -218,34 +239,146 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
       </div>
       {waiting && (
         <div className="ask-extras">
-          {item.allowOther && (
-            <label className={`ask-other ${choice === SOMETHING_ELSE ? "chosen" : ""}`}>
-              <input
-                type="radio"
-                name={`ask-${item.id}`}
-                aria-label="Something else"
-                checked={choice === SOMETHING_ELSE}
-                onChange={() => setChoice(SOMETHING_ELSE)}
-              />
+          {question.allowOther && (
+            <label className={`ask-other ${draft.choice === SOMETHING_ELSE ? "chosen" : ""}`}>
+              <input type="radio" name={radioName} aria-label="Something else" checked={draft.choice === SOMETHING_ELSE} onChange={() => onChange({ choice: SOMETHING_ELSE })} />
               <input
                 {...typingAidAttributes}
-                value={other}
+                value={draft.other}
                 placeholder="Something else…"
                 aria-label="Your own answer"
-                onFocus={() => setChoice(SOMETHING_ELSE)}
-                onChange={(event) => setOther(event.target.value)}
+                onFocus={() => onChange({ choice: SOMETHING_ELSE })}
+                onChange={(event) => onChange({ other: event.target.value })}
               />
             </label>
           )}
-          <textarea {...typingAidAttributes} value={note} placeholder="Optional note for the agent (sent with your answer)" onChange={(event) => setNote(event.target.value)} />
+          <textarea
+            {...typingAidAttributes}
+            value={draft.note}
+            placeholder="Optional note for the agent (sent with your answer)"
+            onChange={(event) => onChange({ note: event.target.value })}
+          />
         </div>
       )}
-      {waiting && (
+    </>
+  );
+}
+
+const deliveredNote = (answer: NonNullable<CanvasItem["answer"]>) => (answer.deliveredAs === "tool-result" ? " (returned to the agent)" : " (sent as your next message)");
+
+function AnsweredSeveral({ answer }: { answer: NonNullable<CanvasItem["answer"]> }) {
+  return (
+    <div className="ask-answer">
+      You answered:
+      <ol className="ask-review">
+        {(answer.answers ?? []).map((entry, index) => (
+          <li key={index}>
+            {entry.question} <strong>{entry.label}</strong>
+            {entry.note && <> — “{entry.note}”</>}
+          </li>
+        ))}
+      </ol>
+      <span className="delivered">{deliveredNote(answer)}</span>
+    </div>
+  );
+}
+
+function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesBefore: CanvasItem[]; assetsOrigin: string }) {
+  const questions = questionsOf(item);
+  const several = item.questions !== undefined;
+  const waiting = item.status === "waiting";
+  const { drafts, page, setPage, changeDraft } = useAskProgress(item.id, questions.length);
+  const answers = drafts.map(draftAnswer);
+  const onReviewPage = several && waiting && page >= questions.length;
+  const shownQuestion = questions[Math.min(page, questions.length - 1)];
+  const questionIndex = several ? Math.min(page, questions.length - 1) : 0;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (several) {
+      if (!onReviewPage || answers.some((answer) => !answer)) return;
+      const entries = drafts.map((draft) => ({ label: draftAnswer(draft)!, note: draft.note.trim() || undefined }));
+      connection.send({ type: "ask.answer", itemId: item.id, label: answersSummary(entries), answers: entries });
+      return;
+    }
+    const [answer] = answers;
+    if (answer) connection.send({ type: "ask.answer", itemId: item.id, label: answer, note: drafts[0]!.note.trim() || undefined });
+  };
+
+  if (!shownQuestion) return null;
+  const pagesBeforeShown = !several || page === 0 ? pagesBefore : [];
+  const currentAnswer = answers[questionIndex];
+
+  return (
+    <form className="ask" onSubmit={submit}>
+      {several && waiting && !onReviewPage && <p className="ask-progress">{`Question ${page + 1} of ${questions.length}`}</p>}
+      {several && waiting && onReviewPage && <p className="ask-progress">Review your answers</p>}
+      <h3>{several ? (waiting ? (onReviewPage ? "Is this right?" : shownQuestion.question) : item.title) : item.question}</h3>
+      {item.status === "answered" && item.answer && !several && (
+        <div className="ask-answer">
+          You chose <strong>{item.answer.label}</strong>
+          {item.answer.note && <> — “{item.answer.note}”</>}
+          <span className="delivered">{deliveredNote(item.answer)}</span>
+        </div>
+      )}
+      {item.status === "answered" && item.answer && several && <AnsweredSeveral answer={item.answer} />}
+      {item.status === "cancelled" && <div className="ask-answer">This question was withdrawn.</div>}
+      {pagesBeforeShown.map((before) => (
+        <section key={before.id} className="ask-page-before" aria-label={`Shown before the question: ${before.title}`}>
+          <div className="ask-page-before-title" data-hint={hints.askPageBefore}>
+            Shown just before: {before.title}
+          </div>
+          <CanvasFrame frameId={`${item.id}-before-${before.id}`} html={before.html ?? ""} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />
+        </section>
+      ))}
+      {onReviewPage && (
+        <ol className="ask-review">
+          {questions.map((question, index) => (
+            <li key={index}>
+              {question.question} <strong>{answers[index]}</strong>
+              {drafts[index]!.note.trim() && <> — “{drafts[index]!.note.trim()}”</>}{" "}
+              <button type="button" className="link" onClick={() => setPage(index)}>
+                Change
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {!onReviewPage && (!several || waiting) && (
+        <AskQuestionFields
+          key={questionIndex}
+          question={shownQuestion}
+          draft={drafts[questionIndex]!}
+          onChange={(change) => changeDraft(questionIndex, change)}
+          waiting={waiting}
+          chosenLabel={item.answer?.label}
+          idPrefix={several ? `${item.id}-${questionIndex}` : item.id}
+          radioName={several ? `ask-${item.id}-${questionIndex}` : `ask-${item.id}`}
+          assetsOrigin={assetsOrigin}
+        />
+      )}
+      {waiting && !several && (
         <div className="ask-submit">
-          <span className="ask-selection">{answer ? <>Your answer: <strong>{answer}</strong></> : "Pick an option to answer"}</span>
-          <button type="submit" className="primary" disabled={!answer}>
+          <span className="ask-selection">{currentAnswer ? <>Your answer: <strong>{currentAnswer}</strong></> : "Pick an option to answer"}</span>
+          <button type="submit" className="primary" disabled={!currentAnswer}>
             Submit
           </button>
+        </div>
+      )}
+      {waiting && several && (
+        <div className="ask-submit">
+          <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            Back
+          </button>
+          <span className="ask-selection">{onReviewPage ? "" : currentAnswer ? <>Your answer: <strong>{currentAnswer}</strong></> : "Pick an option to answer"}</span>
+          {onReviewPage ? (
+            <button key="submit" type="submit" className="primary" disabled={answers.some((answer) => !answer)}>
+              Submit
+            </button>
+          ) : (
+            <button key="next" type="button" className="primary" disabled={!currentAnswer} onClick={() => setPage(page + 1)}>
+              Next
+            </button>
+          )}
         </div>
       )}
     </form>
