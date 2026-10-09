@@ -16,16 +16,23 @@ export type CameraKey = { at: ClipTime; look: "app" | string | Rect; zoom?: numb
 /** A scene's idea in a few words, on the side of the frame away from where the scene happens. */
 export type Caption = { kicker: string; title: string; at?: number; seconds?: number; side?: "left" | "right" };
 
-/** A line of narration (narration/lines.ts) and when in its scene it starts, in seconds. */
-export type Spoken = { line: string; at: number };
+/**
+ * A line of narration (narration/lines.ts) and when in its scene it starts, in seconds. The music dips under it to
+ * `musicDipsTo` of its volume, or the trailer's usual dip: a shallower one keeps a fast section's beat going.
+ */
+export type Spoken = { line: string; at: number; musicDipsTo?: number };
+
+/** Words shown large over a card from a second of it on. */
+export type Statement = { text: string; at: number };
 
 /** How a scene comes in: over the one before it for `fadeInFrames` frames (0 cuts straight to it), the trailer's crossfade by default. */
 type Transition = { fadeInFrames?: number };
 
 /** A clip scene lasts as long as its shots, or `seconds` when given: shorter cuts the footage, longer holds its last frame. */
 export type ClipScene = Transition & { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[]; seconds?: number };
-export type CardScene = Transition & { kind: "text-wall" | "logo" | "end"; id: string; seconds: number; narration?: Spoken[] };
-export type Scene = ClipScene | CardScene;
+export type CardScene = Transition & { kind: "logo" | "end"; id: string; seconds: number; narration?: Spoken[] };
+export type WallScene = Transition & { kind: "text-wall"; id: string; seconds: number; narration?: Spoken[]; statement?: Statement };
+export type Scene = ClipScene | CardScene | WallScene;
 
 export type NarrationLine = { text: string; file: string; seconds: number };
 

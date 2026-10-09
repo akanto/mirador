@@ -30,7 +30,8 @@ camera logic, and that the storyboard speaks every line.
 
 - **A scene's cut, camera or caption**: `src/storyboard.ts`. Shots, camera moves and captions are keyed to the moments the
   capture marked, such as `["sent", 0.2]`, so they stay right when the footage is filmed again. A scene's `seconds` sets
-  its length, and `fadeInFrames: 0` cuts straight to it instead of crossfading; the score puts a hit on such a cut.
+  its length, and `fadeInFrames: 0` cuts straight to it instead of crossfading; the score puts a hit on such a cut. A
+  line of narration's `musicDipsTo` makes the music dip less under it, and the wall's `statement` puts words over it.
 - **What the agents say and draw**: `capture/scenes.ts`, then film again.
 - **The narration**: edit `narration/lines.ts` and run `bun run narrate`. The render stops with an error while the
   spoken lines don't match the text.

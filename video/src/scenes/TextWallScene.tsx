@@ -1,10 +1,12 @@
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { BRAND, FONT, MONO } from "../brand.ts";
+import { Reveal } from "../components/Reveal.tsx";
+import type { Statement } from "../timeline.ts";
 import { TRANSCRIPT, type TranscriptBlock } from "./wall-transcript.ts";
 
 const COLUMN_WIDTH = 2300;
 const COLUMN_GAP = 300;
-const COPIES = 8;
+const COPIES = 16;
 const FIRST_LINE_AT = 1150;
 
 function Block({ block }: { block: TranscriptBlock }) {
@@ -38,9 +40,10 @@ function Column({ x, scrolled }: { x: number; scrolled: number }) {
 
 /**
  * An agent's answer scrolling past faster and faster, until the camera pulls back and it is a wall: the problem the
- * trailer opens on. The neighbouring columns start further along, so the wall doesn't repeat itself side by side.
+ * trailer opens on. The neighbouring columns start further along, so the wall doesn't repeat itself side by side. A
+ * statement then fades the wall back and stands over it.
  */
-export function TextWallScene() {
+export function TextWallScene({ statement }: { statement?: Statement }) {
   const frame = useCurrentFrame();
   const { fps, width } = useVideoConfig();
   const seconds = frame / fps;
@@ -51,9 +54,12 @@ export function TextWallScene() {
   const blur = Math.min(4, Math.max(0, (speedPerFrame * zoom - 40) / 25));
   const centreX = (width - COLUMN_WIDTH) / 2;
   const fadeIn = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
+  const statementAt = (statement?.at ?? 0) * fps;
+  const recede = statement ? interpolate(frame, [statementAt - 6, statementAt + 24], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
+  const wallBlur = blur + 10 * recede;
   return (
     <AbsoluteFill style={{ background: "radial-gradient(120% 90% at 50% 40%, #16142a 0%, #0b0a12 60%, #060509 100%)", opacity: fadeIn }}>
-      <AbsoluteFill style={{ transform: `scale(${zoom})`, transformOrigin: "50% 50%", filter: blur > 0.2 ? `blur(${blur}px)` : undefined }}>
+      <AbsoluteFill style={{ transform: `scale(${zoom})`, transformOrigin: "50% 50%", filter: wallBlur > 0.2 ? `blur(${wallBlur}px)` : undefined, opacity: 1 - 0.75 * recede }}>
         <Column x={centreX} scrolled={scrolled} />
         {[-2, -1, 1, 2].map((offset) => (
           <div key={offset} style={{ opacity: neighbours }}>
@@ -62,6 +68,13 @@ export function TextWallScene() {
         ))}
       </AbsoluteFill>
       <AbsoluteFill style={{ background: "linear-gradient(#0b0a12 0%, transparent 18%, transparent 80%, #0b0a12 100%)" }} />
+      {statement && (
+        <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+          <Reveal at={statementAt}>
+            <div style={{ font: `760 170px ${FONT}`, letterSpacing: "-0.035em", color: BRAND.ink, textAlign: "center", maxWidth: 3000 }}>{statement.text}</div>
+          </Reveal>
+        </AbsoluteFill>
+      )}
     </AbsoluteFill>
   );
 }

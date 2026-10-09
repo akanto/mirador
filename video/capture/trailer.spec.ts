@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
@@ -10,7 +10,7 @@ import { Cursor } from "./cursor.ts";
 import { createWorld, worldIn } from "./demo-world.ts";
 import { Director } from "./director.ts";
 import { ClipRecorder } from "./recorder.ts";
-import { LAYOUT_CHOICE, prompts, scripts } from "./scenes.ts";
+import { LAYOUT_CHOICE, PULL_REQUEST, prompts, scripts } from "./scenes.ts";
 import { expect, test } from "./studio.ts";
 import { typeLikeAPerson } from "./typing.ts";
 
@@ -24,14 +24,40 @@ const world = worldIn(root);
 const { shopApi, mobileApp, storefront, infra } = world.projects;
 const host = new TestHost(5900, {
   shell: "/bin/zsh",
+  fakePrograms: true,
   environment: { HOME: world.home, ZDOTDIR: world.home, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default" },
 });
 const director = new Director(scripts({ projects: world.projects, assetsOrigin: `http://127.0.0.1:${host.port + 1}` }));
 const clips = join(import.meta.dirname, "..", "public", "clips");
 const theme = process.env.MIRADOR_VIDEO_THEME ?? "dark";
 
+/** A gh that answers like GitHub for the review's pull request, so posting the review needs no account and reaches no one. */
+function writeFakeGh() {
+  const pulls = `pulls/${PULL_REQUEST.number}`;
+  const gh = `#!/bin/bash
+input=""
+if [[ " $* " == *" --input - "* ]]; then input=$(cat); fi
+case "$*" in
+  *"${pulls}/reviews"*) echo '[]' ;;
+  *"${pulls}"*) echo "{\\"node_id\\":\\"PR_42\\",\\"head\\":{\\"sha\\":\\"$(git -C '${shopApi}' rev-parse HEAD)\\"}}" ;;
+  *graphql*)
+    if [[ "$input" == *"reviewThreads("* ]]; then
+      echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
+    elif [[ "$input" == *"addPullRequestReview("* ]]; then
+      echo '{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"PRR_1","url":"${PULL_REQUEST.url}#pullrequestreview-1"}}}}'
+    else
+      echo "{\\"data\\":{\\"addPullRequestReviewThread\\":{\\"thread\\":{\\"id\\":\\"PRRT_$RANDOM\\"}}}}"
+    fi ;;
+  *) echo "The capture's gh stand-in doesn't know: $*" >&2; exit 1 ;;
+esac
+`;
+  mkdirSync(host.fakeProgramsDir, { recursive: true });
+  writeFileSync(join(host.fakeProgramsDir, "gh"), gh, { mode: 0o755 });
+}
+
 test.beforeAll(async () => {
   createWorld(world);
+  writeFakeGh();
   await director.start();
   mkdirSync(host.dataDir, { recursive: true });
   execFileSync("bun", [join(import.meta.dirname, "seed-profile.ts"), join(host.dataDir, "state.sqlite"), director.environment]);
@@ -90,6 +116,12 @@ async function sendOnCamera(page: Page, cursor: Cursor, recorder: ClipRecorder, 
 
 const sidebarItem = (page: Page, directory: string, title: string) => workspaceCard(page, directory).locator("li", { hasText: title });
 const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
+
+/** Scrolls a target to the middle of its scroller as a person's wheel would, instead of the jump Playwright makes. */
+async function scrollSmoothlyTo(page: Page, target: Locator) {
+  await target.evaluate((element) => element.scrollIntoView({ behavior: "smooth", block: "center" }));
+  await page.waitForTimeout(800);
+}
 
 const update = (update: Record<string, unknown>) => ({ type: "acp", update });
 const userSays = (text: string) => ({ type: "user-message", text });
@@ -276,6 +308,22 @@ test("the trailer's clips", async ({ page }) => {
       await recorder.markRect("rewrittenBlocker", view.locator(".finding").first());
       await waitForTurnToEnd(page);
       recorder.mark("answered");
+      await page.waitForTimeout(1600);
+      const nit = view.locator(".finding.severity-nit");
+      await scrollSmoothlyTo(page, nit);
+      await recorder.markRect("nit", nit);
+      await cursor.click(nit.getByRole("button", { name: "Kept", exact: true }));
+      recorder.mark("dropped");
+      await expect(nit).toHaveClass(/dropped/);
+      await page.waitForTimeout(500);
+      const postPanel = view.locator(".post-panel");
+      await scrollSmoothlyTo(page, postPanel);
+      await recorder.markRect("postPanel", postPanel);
+      await cursor.click(postPanel.getByRole("button", { name: "Post 2 findings to the pull request" }));
+      recorder.mark("postClicked");
+      await expect(postPanel.locator(".posted-note")).toContainText("2 findings are on your pending review");
+      recorder.mark("posted");
+      await recorder.markRect("postedPanel", postPanel);
       await page.waitForTimeout(2200);
     });
   });
@@ -289,6 +337,7 @@ test("the trailer's clips", async ({ page }) => {
       await expect(approval).toBeVisible();
       recorder.mark("approval");
       await recorder.markRect("canvas", canvasPane(page));
+      await recorder.markRect("timeline", page.locator(".timeline:visible"));
       await page.waitForTimeout(1800);
       await cursor.click(approval.getByRole("button", { name: "Yes", exact: true }));
       recorder.mark("allowed");

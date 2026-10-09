@@ -15,6 +15,13 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "humans": {
+      "text": "But you're human. You take in a picture faster than a page of text.",
+      "file": "humans.wav",
+      "seconds": 3.498666666666667,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
     "canvas": {
       "text": "Mirador gives your agent a canvas.",
       "file": "canvas.wav",
@@ -47,6 +54,13 @@
       "text": "Question a finding, and the agent answers and rewrites it in place.",
       "file": "reviewAsk.wav",
       "seconds": 3.7973333333333334,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "reviewPost": {
+      "text": "Keep the ones you agree with, and post them to the pull request.",
+      "file": "reviewPost.wav",
+      "seconds": 3.2213333333333334,
       "voice": "am_fenrir",
       "speed": 1
     },

@@ -96,10 +96,14 @@ const settingsQuestion = {
   ],
 };
 
+/** The pull request the review is of. Only the capture's stand-in for gh ever hears of it, never GitHub. */
+export const PULL_REQUEST = { url: "https://github.com/acme/shop-api/pull/42", number: 42 };
+
 const review = (shopApi: string) => ({
   title: "Retry failed card payments",
   repository: shopApi,
   base: "main",
+  pullRequest: PULL_REQUEST.url,
   verdict: "Request changes: a retried capture can charge the card twice.",
   summary: [
     "The branch retries a failed card capture up to three times, and releases the reserved stock when checkout fails.",

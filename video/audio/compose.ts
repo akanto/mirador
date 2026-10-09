@@ -7,9 +7,10 @@ import { placeScenes } from "../src/timeline.ts";
 
 /**
  * The trailer's score, synthesised here so there is no track to licence or credit: a drone and quickening ticks
- * under the wall of text, a riser into a hit on the logo, then a warm I–V–vi–IV pad with a pluck and a soft pulse
- * under the features that lifts at the review, a riser into a brighter, busier section for the quick cuts, resolving on the
- * end card. It is timed by the storyboard, so the hits land on the scene changes.
+ * under the wall of text that stop for its statement, a riser into a hit on the logo, then a warm I–V–vi–IV pad with a
+ * pluck and a soft pulse under the features that lifts at the review, a riser into a brighter, busier section for the
+ * quick cuts, resolving on the end card. It is timed by the storyboard, so the hits land on the scene changes. Its bars
+ * count back from the first quick cut, so that cut falls on a downbeat however long the scenes before it run.
  * Run with bun after encode and narrate: bun audio/compose.ts
  */
 const RATE = 48_000;
@@ -193,10 +194,12 @@ function compose() {
   const montage = starts.edit!;
   const beat = 60 / 96;
   const bar = beat * 4;
+  const wall = STORYBOARD.find((scene) => scene.kind === "text-wall");
+  const ticksStop = wall?.kind === "text-wall" && wall.statement ? starts[wall.id]! + wall.statement.at : logo;
 
   mix.add(0, pad([38, 45, 50], logo + 0.5, 4), 0.5);
   let tick = 0.6;
-  for (let gap = 0.5; tick < logo - 0.3; tick += gap, gap = Math.max(0.07, gap * 0.9)) mix.add(tick, hat(110), 0.12 + 0.1 * (tick / logo), tick % 2 < 1 ? -0.4 : 0.4);
+  for (let gap = 0.5; tick < ticksStop - 0.3; tick += gap, gap = Math.max(0.07, gap * 0.9)) mix.add(tick, hat(110), 0.12 + 0.1 * (tick / ticksStop), tick % 2 < 1 ? -0.4 : 0.4);
   mix.add(logo - 2.6, riser(2.6), 0.5);
   mix.add(logo, boom(), 1);
   mix.add(logo, pad([50, 54, 57, 64, 69], features - logo + 1.2, 6), 0.55);
@@ -209,8 +212,11 @@ function compose() {
     { chord: [43, 50, 55, 59], bass: 31, arpeggio: [59, 67, 71, 62] },
   ];
 
-  /** The groove from one second to another, on its own bar grid; a lifted bar adds four-on-the-floor, claps, busier hats and a pulsing bass. */
-  const groove = (from: number, to: number, { transpose = 0, lifted = (_bar: number): boolean => false, drumsFromBar = 0 } = {}) => {
+  /**
+   * The groove from one bar line to another; a lifted bar adds four-on-the-floor, claps, busier hats and a pulsing bass.
+   * Unless the last chord rings on, it fades out by `to`, so it doesn't clash with a section in another key.
+   */
+  const groove = (from: number, to: number, { transpose = 0, lifted = (_bar: number): boolean => false, drumsFromBar = 0, lastChordRingsOn = true } = {}) => {
     const bars = Math.ceil((to - from) / bar - 0.01);
     Array.from({ length: bars }, (_, index) => {
       const at = from + index * bar;
@@ -218,7 +224,8 @@ function compose() {
       const { chord, bass, arpeggio } = progression[Math.floor(index / 2) % progression.length]!;
       const up = (note: number) => note + transpose;
       if (index % 2 === 0) {
-        mix.add(at, pad(chord.map(up), Math.min(bar * 2, left) + 1.2, 7), 0.42);
+        const ringsOn = left > bar * 2 || lastChordRingsOn ? 1.2 : 0;
+        mix.add(at, pad(chord.map(up), Math.min(bar * 2, left) + ringsOn, 7), 0.42);
         mix.add(at, lowpass(render(Math.min(bar * 2, left), (t) => Math.sin(2 * Math.PI * midi(up(bass)) * t) * envelope(t, Math.min(bar * 2, left), 0.05, 0.4)), () => 200), 0.5);
       }
       const onBeat = (step: number) => at + step * beat < to - 0.05;
@@ -236,8 +243,9 @@ function compose() {
     });
   };
 
-  const liftsAtBar = Math.round((lift - features) / bar);
-  groove(features, montage, { lifted: (index) => index >= liftsAtBar, drumsFromBar: 2 });
+  const grooveStarts = montage - bar * Math.ceil((montage - features) / bar - 1e-6);
+  const liftsAtBar = Math.round((lift - grooveStarts) / bar);
+  groove(grooveStarts, montage, { lifted: (index) => index >= liftsAtBar, drumsFromBar: 2, lastChordRingsOn: false });
   mix.add(montage - bar, riser(bar), 0.4);
   groove(montage, ending, { transpose: 2, lifted: () => true });
   STORYBOARD.slice(2).forEach((scene) => {
@@ -262,7 +270,7 @@ function compose() {
     mix.right[index]! *= gain;
   }
   writeWav(output, mix);
-  console.log(`${output}: ${seconds.toFixed(1)} s; logo at ${logo.toFixed(2)} s, features from ${features.toFixed(2)} s, lift at ${lift.toFixed(2)} s, montage from ${montage.toFixed(2)} s, end card at ${ending.toFixed(2)} s`);
+  console.log(`${output}: ${seconds.toFixed(1)} s; logo at ${logo.toFixed(2)} s, groove from ${grooveStarts.toFixed(2)} s, lift at ${(grooveStarts + liftsAtBar * bar).toFixed(2)} s, montage from ${montage.toFixed(2)} s, end card at ${ending.toFixed(2)} s`);
 }
 
 if (import.meta.main) compose();
