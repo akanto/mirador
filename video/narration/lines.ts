@@ -18,7 +18,7 @@ export const LINES = {
 export type LineName = keyof typeof LINES;
 
 /** Kokoro's voice and pace. Hear the others with bun run narrate --samples. */
-export const VOICE = process.env.MIRADOR_VIDEO_VOICE ?? "af_heart";
+export const VOICE = process.env.MIRADOR_VIDEO_VOICE ?? "am_fenrir";
 export const SPEED = 1;
 
 /** The voices bun run narrate --samples speaks a line in, to pick from. */

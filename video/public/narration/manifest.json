@@ -1,74 +1,74 @@
 {
-  "voice": "af_heart",
+  "voice": "am_fenrir",
   "lines": {
     "wall": {
       "text": "Coding agents are fast. In minutes, they read your code, change ten files, and explain it all...",
       "file": "wall.wav",
-      "seconds": 5.546666666666667,
-      "voice": "af_heart",
+      "seconds": 5.653333333333333,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "wallOfText": {
       "text": "in a wall of text.",
       "file": "wallOfText.wav",
-      "seconds": 1.2373333333333334,
-      "voice": "af_heart",
+      "seconds": 1.0666666666666667,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "canvas": {
       "text": "Mirador gives your agent a canvas.",
       "file": "canvas.wav",
       "seconds": 1.984,
-      "voice": "af_heart",
+      "voice": "am_fenrir",
       "speed": 1
     },
     "show": {
       "text": "So instead of describing, it shows you. Flows, architecture, mockups and charts, drawn right beside the conversation.",
       "file": "show.wav",
-      "seconds": 7.36,
-      "voice": "af_heart",
+      "seconds": 7.402666666666667,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "ask": {
       "text": "When a decision is yours, it asks with pictures. Click an option, and it carries on.",
       "file": "ask.wav",
-      "seconds": 4.778666666666667,
-      "voice": "af_heart",
+      "seconds": 4.736,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "review": {
       "text": "Reviews become a guided tour of the change, in the order the code runs, with findings pinned to the lines they're about.",
       "file": "review.wav",
-      "seconds": 6.933333333333334,
-      "voice": "af_heart",
+      "seconds": 7.061333333333334,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "overview": {
       "text": "Run your agents across all your projects. See who's working, who's done, and who needs you.",
       "file": "overview.wav",
-      "seconds": 5.077333333333334,
-      "voice": "af_heart",
+      "seconds": 5.269333333333333,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "edit": {
       "text": "Approve edits with the diff in view, then see every file the turn touched.",
       "file": "edit.wav",
-      "seconds": 4.010666666666666,
-      "voice": "af_heart",
+      "seconds": 4.096,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "terminals": {
       "text": "Your terminals sit right beside the conversation.",
       "file": "terminals.wav",
-      "seconds": 2.8586666666666667,
-      "voice": "af_heart",
+      "seconds": 2.5813333333333333,
+      "voice": "am_fenrir",
       "speed": 1
     },
     "end": {
       "text": "Mirador. See what your coding agent means.",
       "file": "end.wav",
-      "seconds": 2.3893333333333335,
-      "voice": "af_heart",
+      "seconds": 2.3253333333333335,
+      "voice": "am_fenrir",
       "speed": 1
     }
   }
