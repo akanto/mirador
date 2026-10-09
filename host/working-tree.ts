@@ -88,7 +88,7 @@ async function untrackedChange(directory: string, path: string): Promise<TreeCha
 
 const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store"]);
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
-export const MAX_SCANNED_FILES = 200_000;
+export const MAX_SCANNED_FILES = 50_000;
 
 /** The files under `directory`, relative to it, skipping the folders nothing of the user's lives in; it stops after `limit` of them, and says so. */
 async function scannedFiles(directory: string, limit: number) {
