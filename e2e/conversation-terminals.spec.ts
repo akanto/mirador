@@ -28,7 +28,7 @@ async function runInTerminal(page: Page, command: string) {
   await page.keyboard.press("Enter");
 }
 
-test("each conversation of a workspace has terminals of its own, which keep running while another conversation is shown and close when it is deleted", async ({ page }) => {
+test("each conversation of a workspace has terminals of its own, which keep running while another conversation is shown, close when it is deleted, and come back as new shells under their output after a restart", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const first = await startConversation(page);
@@ -57,4 +57,19 @@ test("each conversation of a workspace has terminals of its own, which keep runn
   await deleteButton.click();
   await deleteButton.click();
   await expect.poll(() => isRunning(secondShell)).toBe(false);
+
+  await test.step("after a restart, the first conversation's tab shows what its shell printed, out of the full-screen program it ran, above a new shell", async () => {
+    await page.goto(`${host.origin}/#/c/${first}`);
+    await runInTerminal(page, "printf '\\033[?1049h\\033[Hfull-screen-%s' program; sleep 600");
+    await expect(screen(page)).toContainText("full-screen-program");
+    await host.restart();
+    await page.goto(`${host.origin}/#/c/${first}`);
+    await expect(screen(page)).toContainText("A new shell: the one above ended when Mirador stopped.", { timeout: 30_000 });
+    await expect(screen(page)).not.toContainText("full-screen-program");
+    await expect(tabs(page)).toHaveCount(1);
+    await runInTerminal(page, "echo mark-${MARK:-gone}");
+    await expect(screen(page)).toContainText("mark-gone");
+    await expect(screen(page)).toContainText("first-21");
+    await expect(screen(page)).toContainText("mark-first-shell");
+  });
 });

@@ -2,12 +2,14 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MAX_TERMINALS_PER_TAB, type TerminalTab } from "../shared/model.ts";
+import { MAX_TERMINALS_PER_TAB, type Conversation, type TerminalTab } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { Hub, type BrowserSocket } from "../host/hub.ts";
-import { TerminalService } from "../host/terminals.ts";
+import { Store } from "../host/store.ts";
+import { RESTARTED_NOTE, TerminalService } from "../host/terminals.ts";
 
 let workspaceDir: string;
+let store: Store;
 let terminals: TerminalService;
 let hub: Hub;
 const originalShell = process.env.SHELL;
@@ -44,13 +46,49 @@ const below = (terminalId: string) => ({ terminalId, axis: "rows" as const });
 const tabsOnceSettled = (received: ServerMessage[], isSettled: (tabs: TerminalTab[]) => boolean) =>
   eventually(() => lastTabs(received) ?? [], isSettled);
 
+const conversationInWorkspace = (id: string): Omit<Conversation, "position"> => ({
+  id,
+  workspaceId: "w1",
+  harness: "claude",
+  profileId: null,
+  title: id,
+  titleSetByUser: false,
+  acpSessionId: null,
+  askMode: "wait",
+  bypassPermissions: false,
+  status: "idle",
+  statusDetail: null,
+  openInTerminal: null,
+  contextUsage: null,
+  queuedMessages: [],
+  usageLimit: null,
+  jobWaits: [],
+  waitingFor: null,
+  activity: null,
+  configOptions: [],
+  createdAt: 1,
+  updatedAt: 1,
+});
+
 beforeEach(async () => {
   workspaceDir = await realpath(await mkdtemp(join(tmpdir(), "mirador-terminals-")));
   process.env.SHELL = "/bin/sh";
   process.env.HOME = workspaceDir;
+  store = new Store(":memory:");
+  store.insertWorkspace({ id: "w1", name: "project", path: workspaceDir, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+  ["c1", "c2"].forEach((id) => store.insertConversation(conversationInWorkspace(id)));
   hub = new Hub();
-  terminals = new TerminalService(hub, (conversationId) => (["c1", "c2"].includes(conversationId) ? workspaceDir : undefined));
+  terminals = new TerminalService(hub, store);
 });
+
+/** Stops the host's terminals and starts the next run's on the same store, as a restart does. */
+async function restartHost() {
+  await terminals.shutdown();
+  terminals = new TerminalService(hub, store);
+}
+
+const replayed = (received: ServerMessage[], terminalId: string) =>
+  received.flatMap((message) => (message.type === "terminal.replayed" && message.terminalId === terminalId ? [message.data] : [])).at(-1) ?? "";
 
 afterEach(async () => {
   await terminals.shutdown();
@@ -268,6 +306,83 @@ test("two conversations of a workspace have tabs of their own, and closing one c
   terminals.input(ofSecond.terminalId, "echo still-$((40+2))\n");
   expect(await outputContaining(second.received, "still-42")).toContain("still-42");
   expect(lastTabs(second.received)?.map(({ id }) => id)).toEqual([ofSecond.tabId]);
+});
+
+test("after a restart, a conversation's tabs and splits come back with new shells, under what the old shells showed", async () => {
+  const before = fakeBrowser();
+  terminals.attach(before.socket, "c1");
+  const first = terminals.open("c1", 80, 24);
+  terminals.open("c1", 80, 24, below(first.terminalId));
+  const second = terminals.open("c1", 80, 24);
+  terminals.input(first.terminalId, "OLD=old-shell; echo before-$((1+1))\n");
+  await outputContaining(before.received, "before-2");
+  const tabsBefore = lastTabs(before.received)!;
+
+  await restartHost();
+  const after = fakeBrowser();
+  terminals.attach(after.socket, "c1");
+  expect(lastTabs(after.received)).toEqual(tabsBefore.map((tab) => ({ ...tab, terminals: tab.terminals.map(({ id }) => ({ id, title: null })) })));
+  expect(lastTabs(after.received)!.map(({ id }) => id)).toEqual([first.tabId, second.tabId]);
+
+  terminals.replay(after.socket, first.terminalId);
+  const history = replayed(after.received, first.terminalId);
+  expect(history).toContain("before-2");
+  expect(history.indexOf(RESTARTED_NOTE)).toBeGreaterThan(history.lastIndexOf("before-2"));
+  terminals.input(first.terminalId, "echo after-${OLD:-new-shell}\n");
+  expect(await outputContaining(after.received, "after-new-shell")).toContain("after-new-shell");
+});
+
+test("a full scrollback kept over a restart loses only its oldest lines to the new shell's output", async () => {
+  const before = fakeBrowser();
+  terminals.attach(before.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  terminals.input(terminalId, "awk 'BEGIN { for (i = 0; i < 4000; i++) printf \"line-%d %080d\\n\", i, 0 }'; echo filled-$((2*3))\n");
+  await eventually(() => outputOf(before.received), (output) => output.includes("filled-6"), 20_000);
+
+  await restartHost();
+  const after = fakeBrowser();
+  terminals.attach(after.socket, "c1");
+  terminals.input(terminalId, "echo after-$((5+5))\n");
+  await outputContaining(after.received, "after-10");
+  terminals.replay(after.socket, terminalId);
+  const history = replayed(after.received, terminalId);
+  expect(history).toContain("line-3999");
+  expect(history).toContain(RESTARTED_NOTE);
+  expect(history).toContain("after-10");
+}, 30_000);
+
+test("a program's tab, a closed tab and a closed split are not there after a restart", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const kept = terminals.open("c1", 80, 24);
+  const closedSplit = terminals.open("c1", 80, 24, beside(kept.terminalId));
+  terminals.openProgram("c1", 80, 24, { tabName: "follow", command: ["sh", "-c", "read line"] });
+  const closedTab = terminals.open("c1", 80, 24);
+  terminals.close(closedSplit.terminalId);
+  terminals.closeTab(closedTab.tabId);
+  await tabsOnceSettled(browser.received, (tabs) => tabs.length === 2 && tabs[0]!.terminals.length === 1);
+
+  await restartHost();
+  const after = fakeBrowser();
+  terminals.attach(after.socket, "c1");
+  expect(lastTabs(after.received)).toEqual([{ id: kept.tabId, name: "sh", layout: { terminalId: kept.terminalId }, terminals: [{ id: kept.terminalId, title: null }] }]);
+});
+
+test("clearing a terminal clears its saved output at once, and deleting the conversation forgets its tabs", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  terminals.input(terminalId, "echo secret-$((3*3))\n");
+  const savedOutput = () => store.listTerminalTabs("c1")[0]?.scrollback.get(terminalId) ?? "";
+  expect(await eventually(savedOutput, (saved) => saved.includes("secret-9"))).toContain("secret-9");
+
+  terminals.clear(terminalId);
+  expect(savedOutput()).not.toContain("secret-9");
+
+  terminals.closeConversation("c1");
+  store.deleteConversation("c1");
+  expect(store.listTerminalTabs("c1")).toEqual([]);
+  expect(await tabsOnceSettled(browser.received, (tabs) => tabs.length === 0)).toEqual([]);
 });
 
 test("opening a terminal for a conversation that no longer exists fails", () => {

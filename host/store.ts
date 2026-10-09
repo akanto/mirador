@@ -22,6 +22,7 @@ import type {
 import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
+import type { TerminalLayout } from "../shared/terminal-layout.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
 const deviceColumns = "id, name, joined_at AS joinedAt, last_seen_at AS lastSeenAt";
@@ -74,7 +75,20 @@ const schema = `
     conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE);
   CREATE TABLE IF NOT EXISTS workspace_groups (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, position INTEGER NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS terminal_tabs (
+    id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL, name TEXT NOT NULL, layout TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS terminal_scrollback (
+    terminal_id TEXT PRIMARY KEY, tab_id TEXT NOT NULL REFERENCES terminal_tabs(id) ON DELETE CASCADE, text TEXT NOT NULL);
 `;
+
+/** A conversation's terminal tab as the host left it, with what each of its terminals showed by then. */
+export interface SavedTerminalTab {
+  id: string;
+  name: string;
+  layout: TerminalLayout;
+  scrollback: Map<string, string>;
+}
 
 const addedColumns = [
   { table: "workspaces", column: "default_profile_id", definition: "TEXT" },
@@ -611,6 +625,53 @@ export class Store {
 
   deleteJobWait(id: string) {
     this.db.query("DELETE FROM job_waits WHERE id = ?").run(id);
+  }
+
+  listTerminalTabs(conversationId: string): SavedTerminalTab[] {
+    const tabs = this.db.query("SELECT id, name, layout FROM terminal_tabs WHERE conversation_id = ? ORDER BY position").all(conversationId) as {
+      id: string;
+      name: string;
+      layout: string;
+    }[];
+    const scrollbackOf = this.db.query("SELECT terminal_id AS terminalId, text FROM terminal_scrollback WHERE tab_id = ?");
+    return tabs.map(({ id, name, layout }) => ({
+      id,
+      name,
+      layout: JSON.parse(layout),
+      scrollback: new Map((scrollbackOf.all(id) as { terminalId: string; text: string }[]).map(({ terminalId, text }) => [terminalId, text])),
+    }));
+  }
+
+  /** After the conversation's other tabs. */
+  addTerminalTab(conversationId: string, { id, name, layout }: { id: string; name: string; layout: TerminalLayout }) {
+    this.db
+      .query(
+        `INSERT INTO terminal_tabs (id, conversation_id, position, name, layout)
+         VALUES (?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM terminal_tabs WHERE conversation_id = ?), ?, ?)`,
+      )
+      .run(id, conversationId, conversationId, name, JSON.stringify(layout));
+  }
+
+  /** Changes nothing once the tab is gone, as it is when its conversation was deleted while its shells were ending. */
+  setTerminalTabLayout(tabId: string, layout: TerminalLayout) {
+    this.db.query("UPDATE terminal_tabs SET layout = ? WHERE id = ?").run(JSON.stringify(layout), tabId);
+  }
+
+  deleteTerminalTab(tabId: string) {
+    this.db.query("DELETE FROM terminal_tabs WHERE id = ?").run(tabId);
+  }
+
+  addTerminalScrollback(tabId: string, terminalId: string) {
+    this.db.query("INSERT OR IGNORE INTO terminal_scrollback (terminal_id, tab_id, text) VALUES (?, ?, '')").run(terminalId, tabId);
+  }
+
+  /** Changes nothing once the terminal's tab is gone. */
+  setTerminalScrollback(terminalId: string, text: string) {
+    this.db.query("UPDATE terminal_scrollback SET text = ? WHERE terminal_id = ?").run(text, terminalId);
+  }
+
+  deleteTerminalScrollback(terminalId: string) {
+    this.db.query("DELETE FROM terminal_scrollback WHERE terminal_id = ?").run(terminalId);
   }
 
   addInvite(codeHash: string, expiresAt: number) {

@@ -1,17 +1,46 @@
 import type { Subprocess } from "bun";
+import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { MAX_TERMINALS_PER_TAB, type TerminalTab } from "../shared/model.ts";
 import type { ServerMessage, TerminalSplit } from "../shared/protocol.ts";
 import { splitTerminal, terminalsIn, withoutTerminal, type TerminalLayout } from "../shared/terminal-layout.ts";
 import { agentEnvironment, loginShell } from "./acp/environment.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
+import type { Store } from "./store.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
+const SCROLLBACK_SAVE_DELAY_MS = 2_000;
+/** A restarted shell's size until a window fits it to its pane. */
+const RESTARTED_SIZE = { columns: 80, rows: 24 };
 /** Every listing of a conversation's terminals carries the titles, so a runaway one is cut short. */
 const TITLE_CHARACTERS = 200;
 const MAX_DIMENSION = 1_000;
 
 const titleSequence = /\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+
+const alternateScreenSwitch = /\x1b\[\?(1049|1047|47)([hl])/g;
+
+/**
+ * Leaves the alternate screen a full-screen program left the old output in, the way the program went in, so the cursor
+ * comes back to where it was before. Leaving when not in it would move the cursor, onto the old output.
+ */
+function alternateScreenLeft(text: string) {
+  const [, mode, setOrReset] = [...text.matchAll(alternateScreenSwitch)].at(-1) ?? [];
+  return setOrReset === "h" ? `\x1b[?${mode}l` : "";
+}
+
+/**
+ * Ends what else the old output left switched on, without wiping it as a full reset would: mouse reporting, bracketed
+ * paste, application cursor keys, colours and a hidden cursor.
+ */
+const LEFTOVER_MODES_RESET = "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?1l\x1b[0m\x1b[?25h";
+export const RESTARTED_NOTE = "A new shell: the one above ended when Mirador stopped.";
+/** CAN cancels an escape sequence the old output was cut off in. */
+const restartedScrollback = (saved: string) =>
+  `${saved}\x18${alternateScreenLeft(saved)}${LEFTOVER_MODES_RESET}\r\n\x1b[2m${RESTARTED_NOTE}\x1b[0m\r\n`;
+
+/** Kept apart, so the oldest lines go first once new output fills the scrollback, as live output's chunks do. */
+const linesOf = (text: string) => text.split(/(?<=\n)/);
 
 interface Shell {
   id: string;
@@ -22,6 +51,7 @@ interface Shell {
   scrollbackLength: number;
   title: string | null;
   programKey: string | undefined;
+  saved: boolean;
 }
 
 /** A program to run in a terminal tab of its own instead of the login shell; without an environment, it gets the shell's. */
@@ -39,6 +69,14 @@ interface Tab {
   name: string;
   /** Null only until its first terminal starts. */
   layout: TerminalLayout | null;
+  /** A program's tab is not: it ends for good when the host stops. */
+  saved: boolean;
+}
+
+interface ShellStart {
+  program?: TerminalProgram;
+  /** A shell started again after the host stopped keeps the id its terminal has in the saved layout. */
+  restarting?: { terminalId: string; scrollback: string };
 }
 
 const terminalIdsOf = (tab: Tab) => (tab.layout ? terminalsIn(tab.layout) : []);
@@ -63,20 +101,27 @@ async function foregroundCommand(shellPid: number): Promise<string | null> {
  * Login shells on pseudo-terminals, each conversation's own, started in its workspace's folder and grouped into tabs of
  * splits, side by side and one above the other. They keep running while another conversation is shown.
  * They live in the host, so every window shows the same tabs and reloading the page reattaches to them (the recent
- * output is replayed); they end when the host stops. Their output is only ever sent to browsers, never logged or stored.
+ * output is replayed). Their output is never logged, but the store keeps it with the tabs and splits: shells end when
+ * the host stops, and the next run starts new ones in their place, under what the old ones showed.
  */
 export class TerminalService {
   private readonly shells = new Map<string, Shell>();
   private readonly tabs = new Map<string, Tab>();
+  private readonly restartedConversations = new Set<string>();
+  private readonly unsavedScrollback = new Set<Shell>();
+  private scrollbackSave: ReturnType<typeof setTimeout> | undefined;
+  private stopping = false;
 
   constructor(
     private readonly hub: Hub,
-    private readonly folderOf: (conversationId: string) => string | undefined,
+    private readonly store: Store,
   ) {}
 
   attach(socket: BrowserSocket, conversationId: string | null) {
     socket.data.terminalConversationId = conversationId;
-    if (conversationId) this.hub.send(socket, this.listing(conversationId));
+    if (!conversationId) return;
+    this.restartSavedTabs(conversationId);
+    this.hub.send(socket, this.listing(conversationId));
   }
 
   replay(socket: BrowserSocket, terminalId: string) {
@@ -86,12 +131,13 @@ export class TerminalService {
 
   /** Starts a shell in a new tab, or beside or below the terminal `split` names. */
   open(conversationId: string, columns: number, rows: number, split: TerminalSplit | null = null) {
-    const cwd = this.folderOf(conversationId);
-    if (!cwd) throw new Error("This conversation no longer exists.");
+    const cwd = this.existingFolderOf(conversationId);
+    this.restartSavedTabs(conversationId);
     const tab = split ? this.splittableTabOf(split.terminalId) : this.newTab(conversationId);
-    const shell = this.spawn(conversationId, tab.id, cwd, columns, rows);
+    const shell = this.spawn(tab, cwd, columns, rows);
     tab.layout = split && tab.layout ? splitTerminal(tab.layout, split.terminalId, shell.id, split.axis) : { terminalId: shell.id };
     this.tabs.set(tab.id, tab);
+    if (tab.saved) this.saveOpened(tab, shell.id, split === null);
     this.publishListing(conversationId);
     return { tabId: tab.id, terminalId: shell.id };
   }
@@ -100,10 +146,10 @@ export class TerminalService {
   openProgram(conversationId: string, columns: number, rows: number, program: TerminalProgram) {
     const running = program.key === undefined ? undefined : this.shellsIn(conversationId).find(({ programKey }) => programKey === program.key);
     if (running) return { tabId: running.tabId, terminalId: running.id, exited: running.child.exited };
-    const cwd = this.folderOf(conversationId);
-    if (!cwd) throw new Error("This conversation no longer exists.");
-    const tab = this.newTab(conversationId, program.tabName);
-    const shell = this.spawn(conversationId, tab.id, cwd, columns, rows, program);
+    const cwd = this.existingFolderOf(conversationId);
+    this.restartSavedTabs(conversationId);
+    const tab = this.newTab(conversationId, program);
+    const shell = this.spawn(tab, cwd, columns, rows, { program });
     tab.layout = { terminalId: shell.id };
     this.tabs.set(tab.id, tab);
     this.publishListing(conversationId);
@@ -125,6 +171,7 @@ export class TerminalService {
     const cursorLine = shell.scrollback.join("").split("\n").at(-1) ?? "";
     shell.scrollback = [cursorLine];
     shell.scrollbackLength = cursorLine.length;
+    if (shell.saved) this.saveScrollbackNow(shell);
     this.publish(shell.conversationId, { type: "terminal.cleared", terminalId });
   }
 
@@ -161,11 +208,76 @@ export class TerminalService {
     this.shellsIn(conversationId).forEach(({ id }) => this.close(id));
   }
 
-  /** Waits for the shells to exit: one still running when the host re-executes itself would be left a zombie. */
+  /**
+   * Saves what every terminal shows, then waits for the shells to exit: one still running when the host re-executes
+   * itself would be left a zombie. Their tabs stay saved for the next run.
+   */
   async shutdown() {
+    this.stopping = true;
+    this.saveScrollback();
     const exits = [...this.shells.values()].map(({ child }) => child.exited);
     this.shells.forEach(({ id }) => this.close(id));
     await Promise.all(exits);
+  }
+
+  private folderOf(conversationId: string) {
+    const conversation = this.store.findConversation(conversationId);
+    return conversation && this.store.findWorkspace(conversation.workspaceId)?.path;
+  }
+
+  private existingFolderOf(conversationId: string) {
+    const folder = this.folderOf(conversationId);
+    if (!folder) throw new Error("This conversation no longer exists.");
+    return folder;
+  }
+
+  /**
+   * Once a host run, before the conversation's terminals are first listed or added to: the tabs the last run left, each
+   * terminal with a new shell under what the old one showed. A folder that is gone leaves them saved for later.
+   */
+  private restartSavedTabs(conversationId: string) {
+    if (this.restartedConversations.has(conversationId)) return;
+    this.restartedConversations.add(conversationId);
+    const cwd = this.folderOf(conversationId);
+    if (!cwd || !existsSync(cwd)) return;
+    this.store.listTerminalTabs(conversationId).forEach(({ id, name, layout, scrollback }) => {
+      const tab: Tab = { id, conversationId, name, layout, saved: true };
+      this.tabs.set(id, tab);
+      terminalsIn(layout).forEach((terminalId) =>
+        this.spawn(tab, cwd, RESTARTED_SIZE.columns, RESTARTED_SIZE.rows, {
+          restarting: { terminalId, scrollback: restartedScrollback(scrollback.get(terminalId) ?? "") },
+        }),
+      );
+    });
+  }
+
+  private saveOpened(tab: Tab, terminalId: string, inNewTab: boolean) {
+    if (inNewTab) this.store.addTerminalTab(tab.conversationId, { id: tab.id, name: tab.name, layout: tab.layout! });
+    else this.store.setTerminalTabLayout(tab.id, tab.layout!);
+    this.store.addTerminalScrollback(tab.id, terminalId);
+  }
+
+  private saveClosed(tab: Tab, terminalId: string) {
+    if (tab.layout === null) return this.store.deleteTerminalTab(tab.id);
+    this.store.setTerminalTabLayout(tab.id, tab.layout);
+    this.store.deleteTerminalScrollback(terminalId);
+  }
+
+  private scrollbackChanged(shell: Shell) {
+    this.unsavedScrollback.add(shell);
+    this.scrollbackSave ??= setTimeout(() => this.saveScrollback(), SCROLLBACK_SAVE_DELAY_MS);
+  }
+
+  private saveScrollback() {
+    clearTimeout(this.scrollbackSave);
+    this.scrollbackSave = undefined;
+    this.unsavedScrollback.forEach((shell) => this.store.setTerminalScrollback(shell.id, shell.scrollback.join("")));
+    this.unsavedScrollback.clear();
+  }
+
+  private saveScrollbackNow(shell: Shell) {
+    this.unsavedScrollback.delete(shell);
+    this.store.setTerminalScrollback(shell.id, shell.scrollback.join(""));
   }
 
   private splittableTabOf(terminalId: string) {
@@ -176,17 +288,28 @@ export class TerminalService {
   }
 
   /** Named after the shell (or the program), numbered from 2 with the lowest number no open tab uses: zsh, zsh 2, zsh 3… */
-  private newTab(conversationId: string, baseName = basename(loginShell())): Tab {
+  private newTab(conversationId: string, program?: TerminalProgram): Tab {
+    const baseName = program?.tabName ?? basename(loginShell());
     const taken = new Set(this.tabsIn(conversationId).map(({ name }) => name));
     const numbered = (number: number) => (number === 1 ? baseName : `${baseName} ${number}`);
     let number = 1;
     while (taken.has(numbered(number))) number++;
-    return { id: crypto.randomUUID(), conversationId, name: numbered(number), layout: null };
+    return { id: crypto.randomUUID(), conversationId, name: numbered(number), layout: null, saved: program === undefined };
   }
 
-  private spawn(conversationId: string, tabId: string, cwd: string, columns: number, rows: number, program?: TerminalProgram) {
+  private spawn(tab: Tab, cwd: string, columns: number, rows: number, { program, restarting }: ShellStart = {}) {
     const decoder = new TextDecoder();
-    const shell: Shell = { id: crypto.randomUUID(), conversationId, tabId, child: undefined!, scrollback: [], scrollbackLength: 0, title: null, programKey: program?.key };
+    const shell: Shell = {
+      id: restarting?.terminalId ?? crypto.randomUUID(),
+      conversationId: tab.conversationId,
+      tabId: tab.id,
+      child: undefined!,
+      scrollback: restarting ? linesOf(restarting.scrollback) : [],
+      scrollbackLength: restarting?.scrollback.length ?? 0,
+      title: null,
+      programKey: program?.key,
+      saved: tab.saved,
+    };
     shell.child = Bun.spawn(program?.command ?? [loginShell(), "-l"], {
       cwd,
       env: { ...(program?.environment ?? agentEnvironment()), TERM: "xterm-256color", COLORTERM: "truecolor" },
@@ -208,6 +331,7 @@ export class TerminalService {
     while (shell.scrollbackLength > SCROLLBACK_CHARACTERS && shell.scrollback.length > 1) {
       shell.scrollbackLength -= shell.scrollback.shift()!.length;
     }
+    if (shell.saved && !this.stopping) this.scrollbackChanged(shell);
     this.publish(shell.conversationId, { type: "terminal.output", terminalId: shell.id, data: text });
     this.retitle(shell, lastTitleIn(text));
   }
@@ -223,6 +347,7 @@ export class TerminalService {
   private ended(shell: Shell, exitCode: number) {
     shell.child.terminal?.close();
     this.shells.delete(shell.id);
+    this.unsavedScrollback.delete(shell);
     this.removeFromTab(shell);
     this.publish(shell.conversationId, { type: "terminal.exited", terminalId: shell.id, exitCode });
     this.publishListing(shell.conversationId);
@@ -233,6 +358,7 @@ export class TerminalService {
     if (!tab?.layout) return;
     tab.layout = withoutTerminal(tab.layout, shell.id);
     if (tab.layout === null) this.tabs.delete(tab.id);
+    if (tab.saved && !this.stopping) this.saveClosed(tab, shell.id);
   }
 
   private shellsIn(conversationId: string) {
