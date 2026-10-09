@@ -60,7 +60,7 @@ export const STORYBOARD: Scene[] = [
     ],
     camera: [
       { at: ["opened", -0.9], look: { x: 0, y: 330, width: 256, height: 420 }, zoom: 1.55 },
-      { at: ["opened", 0.1], look: "question", zoom: 1.3 },
+      { at: ["opened", 0.1], look: "app" },
       { at: ["submitted", 0.4], look: "timeline", zoom: 1.35 },
     ],
     caption: { kicker: "Ask", title: "Decisions come with pictures.", at: 1.8, seconds: 3.6 },
