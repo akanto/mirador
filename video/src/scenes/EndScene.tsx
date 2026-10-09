@@ -4,7 +4,10 @@ import { AppIcon } from "../components/AppIcon.tsx";
 import { Backdrop } from "../components/Backdrop.tsx";
 import { Reveal } from "../components/Reveal.tsx";
 
-/** The last word, landing on the hit out of a silence: the name, the promise, what it runs with and on, and where to get it. */
+/**
+ * The last word, landing on the hit out of a silence: the name, the promise and what it saves you, what it runs with
+ * and on, and where to get it. Each line comes in as the narrator says it.
+ */
 export function EndScene({ frames, url }: { frames: number; url: string }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -24,12 +27,15 @@ export function EndScene({ frames, url }: { frames: number; url: string }) {
             <span style={{ background: `linear-gradient(90deg, ${BRAND.violet}, ${BRAND.coral})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>means.</span>
           </div>
         </Reveal>
-        <Reveal at={100} style={{ marginTop: 90, display: "flex", gap: 70, fontSize: 60, fontWeight: 550, color: BRAND.muted }}>
+        <Reveal at={175} style={{ marginTop: 34 }}>
+          <div style={{ fontSize: 84, fontWeight: 620, letterSpacing: "-0.02em", color: "#cfcde8" }}>Understand it at a glance.</div>
+        </Reveal>
+        <Reveal at={225} style={{ marginTop: 90, display: "flex", gap: 70, fontSize: 60, fontWeight: 550, color: BRAND.muted }}>
           <span>Claude Code · opencode</span>
           <span style={{ opacity: 0.45 }}>|</span>
           <span>macOS · Linux · Android</span>
         </Reveal>
-        <Reveal at={120} style={{ marginTop: 80 }}>
+        <Reveal at={245} style={{ marginTop: 80 }}>
           <div style={{ padding: "26px 60px", borderRadius: 999, border: `3px solid ${BRAND.violet}`, background: "rgba(118, 118, 242, 0.12)", font: `500 64px ${MONO}`, color: BRAND.ink }}>{url}</div>
         </Reveal>
       </AbsoluteFill>

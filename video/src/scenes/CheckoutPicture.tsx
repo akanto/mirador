@@ -108,15 +108,15 @@ function Risk({ title, detail, slow, at, seconds }: { title: string; detail: str
 
 /**
  * Out of the black, the picture of what the wall of text said: the checkout diagram the agent draws later in the
- * trailer, drawn here part by part, with the places an order gets stuck flaring red. It dims for the statement.
+ * trailer, drawn here part by part, with the places an order gets stuck flaring red.
  */
-export function CheckoutPicture({ secondsIn, dimmed }: { secondsIn: number; dimmed: number }) {
+export function CheckoutPicture({ secondsIn }: { secondsIn: number }) {
   const { fps } = useVideoConfig();
   const diagram = useDiagram();
   const appear = interpolate(secondsIn, [0, 0.25], [0, 1], clamped);
   const pushIn = interpolate(secondsIn, [0, 3], [0.94, 1], { ...clamped, easing: easeOut });
   return (
-    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", background: "radial-gradient(80% 70% at 50% 45%, #14122a 0%, #060509 75%)", opacity: appear * (1 - 0.72 * dimmed), filter: dimmed > 0 ? `blur(${10 * dimmed}px)` : undefined }}>
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", background: "radial-gradient(80% 70% at 50% 45%, #14122a 0%, #060509 75%)", opacity: appear }}>
       <div style={{ width: PAGE_WIDTH, flex: "none", transform: `scale(${PAGE_SCALE * pushIn})`, padding: "22px 26px", borderRadius: 18, background: "#17161f", border: "1px solid #2c2a3e", boxShadow: "0 30px 90px rgba(0, 0, 0, 0.6), 0 0 140px rgba(118, 118, 242, 0.16)", font: `15px/1.5 ${PAGE_FONT}`, color: "#ecebf5" }}>
         <h1 style={{ fontSize: 21, margin: "0 0 4px" }}>{CHECKOUT_TITLE}</h1>
         <p style={{ color: "#a9a6bd", margin: "0 0 14px" }}>{CHECKOUT_LEAD}</p>

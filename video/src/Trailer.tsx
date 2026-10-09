@@ -21,20 +21,8 @@ function FadeIn({ children, frames }: { children: React.ReactNode; frames: numbe
   return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
 }
 
-/** A burst of light that fades in a few frames, for a quick cut. */
-function FlashOfLight() {
-  const frame = useCurrentFrame();
-  return <AbsoluteFill style={{ background: "#fff", opacity: interpolate(frame, [0, 6], [0.5, 0], { extrapolateRight: "clamp" }) }} />;
-}
-
 function SceneView({ scene, clips, frames }: { scene: Scene; clips: Record<string, ClipInfo>; frames: number }) {
-  if (scene.kind === "clip")
-    return (
-      <>
-        <ClipSceneView scene={scene} clip={clips[scene.clip]!} frames={frames} />
-        {scene.flash && <FlashOfLight />}
-      </>
-    );
+  if (scene.kind === "clip") return <ClipSceneView scene={scene} clip={clips[scene.clip]!} frames={frames} />;
   if (scene.kind === "text-wall") return <TextWallScene scene={scene} />;
   if (scene.kind === "logo") return <LogoScene frames={frames} />;
   if (scene.kind === "black") return <AbsoluteFill style={{ background: "#000" }} />;

@@ -80,11 +80,18 @@ function Landing({ at, children }: { at: number; children: ReactNode }) {
   return <span style={{ display: "inline-block", whiteSpace: "nowrap", opacity: since < 0 ? 0 : Math.min(1, (since + 1) / 3), transform: `scale(${1.4 - 0.4 * landed})`, transformOrigin: "left center" }}>{children}</span>;
 }
 
-const LAST_PART = { background: `linear-gradient(90deg, ${BRAND.violet}, ${BRAND.coral})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } as const;
+const STRESSED = {
+  fontSize: "1.3em",
+  background: `linear-gradient(90deg, ${BRAND.violet}, ${BRAND.coral})`,
+  WebkitBackgroundClip: "text",
+  backgroundClip: "text",
+  color: "transparent",
+  filter: "drop-shadow(0 0 40px rgba(118, 118, 242, 0.45))",
+} as const;
 
 /**
- * The problem the trailer opens on: a wall of text that piles up until it goes black and silent. Out of the black, the
- * picture of what it said draws itself, and the statement lands over it, part by part.
+ * The problem the trailer opens on: a wall of text that piles up until it goes black and silent. In the black the
+ * statement lands part by part as it's said, and clears for the picture of what the wall said to draw itself.
  */
 export function TextWallScene({ scene }: { scene: WallScene }) {
   const frame = useCurrentFrame();
@@ -93,23 +100,23 @@ export function TextWallScene({ scene }: { scene: WallScene }) {
   const goesBlackAt = scene.goesBlackAt ?? scene.seconds;
   const fadeIn = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: "clamp" });
   const { statement, pictureAt } = scene;
-  const dimmed = statement ? interpolate(seconds, [statement.at - 0.06, statement.at + 0.2], [0, 1], clamped) : 0;
   const beats = statement ? statementBeats(statement) : [];
+  const statementCleared = pictureAt === undefined ? 0 : interpolate(seconds, [pictureAt - 0.3, pictureAt], [0, 1], clamped);
   return (
     <AbsoluteFill style={{ background: "#000", opacity: fadeIn }}>
       {seconds < goesBlackAt && <Wall seconds={seconds} goesBlackAt={goesBlackAt} />}
-      {pictureAt !== undefined && seconds >= pictureAt && <CheckoutPicture secondsIn={seconds - pictureAt} dimmed={dimmed} />}
-      {statement && (
-        <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
-          <div style={{ display: "flex", gap: "0.26em", font: `780 170px ${FONT}`, letterSpacing: "-0.035em", color: BRAND.ink }}>
-            {statement.parts.map((part, index) => (
-              <Landing key={part} at={beats[index]!}>
-                <span style={index === statement.parts.length - 1 ? LAST_PART : undefined}>{part}</span>
+      {statement && statementCleared < 1 && (
+        <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", opacity: 1 - statementCleared, filter: statementCleared > 0 ? `blur(${12 * statementCleared}px)` : undefined }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "0.26em", font: `780 150px ${FONT}`, letterSpacing: "-0.035em", color: BRAND.ink }}>
+            {statement.parts.map(({ words, stressed }, index) => (
+              <Landing key={words} at={beats[index]!}>
+                <span style={stressed ? STRESSED : undefined}>{words}</span>
               </Landing>
             ))}
           </div>
         </AbsoluteFill>
       )}
+      {pictureAt !== undefined && seconds >= pictureAt && <CheckoutPicture secondsIn={seconds - pictureAt} />}
     </AbsoluteFill>
   );
 }

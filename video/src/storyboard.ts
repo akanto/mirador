@@ -1,4 +1,4 @@
-import type { CameraKey, ClipScene, ClipTime, Scene } from "./timeline.ts";
+import type { Scene } from "./timeline.ts";
 
 /** The score's beat, at 96 beats a minute: the cuts after the review fall on it. */
 export const BEAT = 60 / 96;
@@ -8,11 +8,8 @@ const CANVAS_AND_CHAT = { x: 256, y: 0, width: 1280, height: 720 };
 /** The top of the canvas, from its Changes button down past the list of changed files. */
 const TOP_OF_CANVAS = { x: 836, y: 0, width: 700, height: 394 };
 
-/** A glimpse of a moment for half a beat, cut in with a burst of light. */
-function flash(id: string, clip: string, at: [string, number], look: CameraKey["look"], zoom?: number): ClipScene {
-  const until: ClipTime = [at[0], at[1] + 0.4];
-  return { kind: "clip", id, clip, shots: [{ from: at, to: until }], camera: [{ at, look, ...(zoom ? { zoom } : {}) }], seconds: BEAT / 2, flash: true, fadeInFrames: 0 };
-}
+/** When the narrator starts the statement, in seconds of the wall scene; its parts land as they're said. */
+const STATEMENT_AT = 8;
 
 /**
  * The trailer, scene by scene. A clip scene plays stretches of a filmed clip (capture/trailer.spec.ts films them) and
@@ -23,17 +20,23 @@ export const STORYBOARD: Scene[] = [
   {
     kind: "text-wall",
     id: "wall",
-    seconds: 14.5,
+    seconds: 13.8,
     narration: [
       { line: "wall", at: 0.3 },
       { line: "wallOfText", at: 6.4 },
-      { line: "human", at: 8.1 },
-      { line: "picture", at: 9.45, musicDipsTo: 0.55 },
-      { line: "statement", at: 12.26, musicDipsTo: 0.75 },
+      { line: "statement", at: STATEMENT_AT, musicDipsTo: 0.75 },
     ],
     goesBlackAt: 7.6,
-    pictureAt: 9.3,
-    statement: { parts: ["Humans", "see faster", "than they read."], at: 12.3 },
+    statement: {
+      at: STATEMENT_AT,
+      parts: [
+        { words: "But", after: 0.02 },
+        { words: "humans", after: 0.16, stressed: true },
+        { words: "see faster", after: 0.7 },
+        { words: "than they read.", after: 1.18 },
+      ],
+    },
+    pictureAt: 10.2,
   },
   { kind: "logo", id: "logo", seconds: 3.8, narration: [{ line: "canvas", at: 0.8 }], fadeInFrames: 0 },
   {
@@ -125,8 +128,8 @@ export const STORYBOARD: Scene[] = [
     kind: "clip",
     id: "edit",
     clip: "edit",
-    shots: [{ from: ["approval", -0.5], to: ["allowed", 0.45], speed: 1.08 }],
-    camera: [{ at: ["approval", -0.5], look: CANVAS_AND_CHAT, zoom: 1.2 }],
+    shots: [{ from: "approval", to: ["allowed", 0.6] }],
+    camera: [{ at: "approval", look: CANVAS_AND_CHAT, zoom: 1.2 }],
     caption: { kicker: "Approve", title: "Every edit, with its diff.", at: 0.3, seconds: 3 },
     narration: [{ line: "edit", at: 0.5, musicDipsTo: 0.6 }],
     seconds: 6 * BEAT,
@@ -153,7 +156,8 @@ export const STORYBOARD: Scene[] = [
     clip: "terminals",
     shots: [
       { from: ["shown", -0.3], to: ["logged", 0.3], speed: 2.6 },
-      { from: ["logged", 0.3], to: ["diffed", 0.6], speed: 2.9 },
+      { from: ["logged", 0.3], to: ["diffed", 0.1], speed: 2.9 },
+      { from: ["diffed", 0.1], to: ["diffed", 1.5] },
     ],
     camera: [
       { at: ["shown", -0.3], look: "app" },
@@ -161,7 +165,7 @@ export const STORYBOARD: Scene[] = [
     ],
     caption: { kicker: "Terminals", title: "A shell beside every conversation.", at: 0.3, seconds: 2.8 },
     narration: [{ line: "terminals", at: 0.3, musicDipsTo: 0.6 }],
-    seconds: 6 * BEAT,
+    seconds: 8 * BEAT,
     fadeInFrames: 0,
   },
   {
@@ -177,20 +181,15 @@ export const STORYBOARD: Scene[] = [
     seconds: 8 * BEAT,
     fadeInFrames: 0,
   },
-  flash("flash-show", "show", ["turnEnded", 0.6], "canvas", 1.3),
-  flash("flash-ask", "ask", ["picked", 0.1], { x: 846, y: 50, width: 680, height: 400 }, 2),
-  flash("flash-tour", "review", ["flowStep", 0.5], { x: 560, y: 90, width: 962, height: 380 }, 1.55),
-  flash("flash-posted", "review", ["posted", 0.8], "postedPanel", 2.19),
-  flash("flash-changes", "edit", ["uncommittedListed", 1], TOP_OF_CANVAS, 2.19),
-  flash("flash-terminals", "terminals", ["diffed", 0.4], "terminals"),
   { kind: "black", id: "silence", seconds: BEAT, fadeInFrames: 0 },
   {
     kind: "end",
     id: "end",
-    seconds: 6,
+    seconds: 7.5,
     narration: [
       { line: "mirador", at: 0.1, musicDipsTo: 0.8 },
       { line: "end", at: 1.05 },
+      { line: "glance", at: 2.95 },
     ],
     fadeInFrames: 0,
   },

@@ -32,12 +32,12 @@ camera logic, and that the storyboard speaks every line.
   capture marked, such as `["sent", 0.2]`, so they stay right when the footage is filmed again. A scene's `seconds` sets
   its length, and `fadeInFrames: 0` cuts straight to it instead of crossfading; the score puts a hit on such a cut. A
   line of narration's `musicDipsTo` makes the music dip less under it. The cuts after the review last whole beats of
-  the score (`BEAT`), and a clip scene with `flash` is a half-beat glimpse cut in with a burst of light. The score goes
-  silent from the black scene with the id `silence` until the end card.
-- **The opening**: the wall scene's `goesBlackAt` is when the wall cuts to black and silence, `pictureAt` when the
-  checkout diagram the agent draws in the show clip (`capture/checkout-flow.ts`) starts drawing itself, and its
-  `statement` lands its `parts` one by one from `at`, `STATEMENT_BEAT` apart, in time with the narrator saying them:
-  its `statement` line starts just before, so move the two together. The score follows all three.
+  the score (`BEAT`). The score goes silent from the black scene with the id `silence` until the end card.
+- **The opening**: the wall scene's `goesBlackAt` is when the wall cuts to black and silence. In the black its
+  `statement` lands its `parts` as the narrator says them: `STATEMENT_AT` is when the `statement` line starts, and each
+  part's `after` is how far into the spoken line its words begin, so measure them again when the line is spoken again.
+  At `pictureAt` the statement clears and the checkout diagram the agent draws in the show clip
+  (`capture/checkout-flow.ts`) draws itself. The score follows all three.
 - **What the agents say and draw**: `capture/scenes.ts`, then film again.
 - **The narration**: edit `narration/lines.ts` and run `bun run narrate`. The render stops with an error while the
   spoken lines don't match the text.

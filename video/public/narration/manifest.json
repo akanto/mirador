@@ -15,24 +15,10 @@
       "voice": "am_fenrir",
       "speed": 1
     },
-    "human": {
-      "text": "But you're human.",
-      "file": "human.wav",
-      "seconds": 0.9173333333333333,
-      "voice": "am_fenrir",
-      "speed": 1
-    },
-    "picture": {
-      "text": "You take in a picture faster than a page of text.",
-      "file": "picture.wav",
-      "seconds": 2.56,
-      "voice": "am_fenrir",
-      "speed": 1
-    },
     "statement": {
-      "text": "Humans see faster than they read.",
+      "text": "But humans see faster than they read.",
       "file": "statement.wav",
-      "seconds": 1.6,
+      "seconds": 1.792,
       "voice": "am_fenrir",
       "speed": 1
     },
@@ -117,6 +103,13 @@
       "text": "See what your coding agent means.",
       "file": "end.wav",
       "seconds": 1.6853333333333333,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "glance": {
+      "text": "Understand it at a glance.",
+      "file": "glance.wav",
+      "seconds": 1.3013333333333332,
       "voice": "am_fenrir",
       "speed": 1
     }
