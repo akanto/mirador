@@ -18,18 +18,18 @@ export function EndScene({ frames, url }: { frames: number; url: string }) {
           <AppIcon size={300} />
           <div style={{ font: `780 200px ${FONT}`, letterSpacing: "-0.04em", color: BRAND.ink }}>Mirador</div>
         </div>
-        <Reveal at={34} style={{ marginTop: 80 }}>
+        <Reveal at={60} style={{ marginTop: 80 }}>
           <div style={{ fontSize: 124, fontWeight: 740, letterSpacing: "-0.03em", color: BRAND.ink }}>
             See what your coding agent{" "}
             <span style={{ background: `linear-gradient(90deg, ${BRAND.violet}, ${BRAND.coral})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>means.</span>
           </div>
         </Reveal>
-        <Reveal at={62} style={{ marginTop: 90, display: "flex", gap: 70, fontSize: 60, fontWeight: 550, color: BRAND.muted }}>
+        <Reveal at={100} style={{ marginTop: 90, display: "flex", gap: 70, fontSize: 60, fontWeight: 550, color: BRAND.muted }}>
           <span>Claude Code · opencode</span>
           <span style={{ opacity: 0.45 }}>|</span>
           <span>macOS · Linux · Android</span>
         </Reveal>
-        <Reveal at={80} style={{ marginTop: 80 }}>
+        <Reveal at={120} style={{ marginTop: 80 }}>
           <div style={{ padding: "26px 60px", borderRadius: 999, border: `3px solid ${BRAND.violet}`, background: "rgba(118, 118, 242, 0.12)", font: `500 64px ${MONO}`, color: BRAND.ink }}>{url}</div>
         </Reveal>
       </AbsoluteFill>

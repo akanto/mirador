@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { AbsoluteFill, Easing, interpolate, interpolateColors, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { BRAND, FONT, FRAME, MONO } from "../brand.ts";
-import { statementBeats, type Rect, type WallScene } from "../timeline.ts";
+import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { BRAND, FONT, MONO } from "../brand.ts";
+import { statementBeats, type WallScene } from "../timeline.ts";
+import { CheckoutPicture } from "./CheckoutPicture.tsx";
 import { TRANSCRIPT, type TranscriptBlock } from "./wall-transcript.ts";
 
 const COLUMN_WIDTH = 2300;
@@ -70,104 +71,6 @@ function Wall({ seconds, goesBlackAt }: { seconds: number; goesBlackAt: number }
   );
 }
 
-const NODES = ["Browser", "Checkout", "Payments", "Orders"];
-const NODE = { width: 600, height: 300, gap: 220 };
-const ROWS_PER_NODE = 10;
-const LINE_COLOURS = ["#dcdaf0", "#9be8b4", "#ffaaa0", "#bdbad6"];
-const nodeLeft = (node: number) => FRAME.width / 2 + (node - NODES.length / 2) * (NODE.width + NODE.gap) + NODE.gap / 2;
-const nodeTop = (FRAME.height - NODE.height) / 2;
-
-function seededRandom(seed: number) {
-  let state = seed;
-  return () => {
-    state = (state * 1664525 + 1013904223) % 4294967296;
-    return state / 4294967296;
-  };
-}
-
-/** The wall's lines, each from a place on the screen to a row of one of the picture's boxes. */
-const LINES = (() => {
-  const random = seededRandom(42);
-  return NODES.flatMap((_, node) =>
-    Array.from({ length: ROWS_PER_NODE }, (_, row) => {
-      const width = 320 + random() * 1080;
-      const scattered: Rect = { x: 120 + random() * (FRAME.width - 240 - width), y: 140 + random() * (FRAME.height - 300), width, height: 24 };
-      const inBox: Rect = { x: nodeLeft(node), y: nodeTop + (row * NODE.height) / ROWS_PER_NODE, width: NODE.width, height: NODE.height / ROWS_PER_NODE };
-      return { scattered, inBox, colour: LINE_COLOURS[Math.floor(random() * LINE_COLOURS.length)]!, delay: random() * 0.35 };
-    }),
-  );
-})();
-
-const between = (from: number, to: number, progress: number) => from + (to - from) * progress;
-
-/** From black, the wall's lines come back scattered, then fly together into four boxes and the arrows between them. */
-function Picture({ seconds, pictureAt, dimmed }: { seconds: number; pictureAt: number; dimmed: number }) {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const appear = interpolate(seconds, [pictureAt, pictureAt + 0.15], [0, 0.9], clamped);
-  const boxesShown = interpolate(seconds, [pictureAt + 1.25, pictureAt + 1.55], [0, 1], clamped);
-  return (
-    <AbsoluteFill style={{ opacity: 1 - 0.72 * dimmed, filter: dimmed > 0 ? `blur(${10 * dimmed}px)` : undefined }}>
-      {LINES.map(({ scattered, inBox, colour, delay }, index) => {
-        const flown = spring({ frame: frame - (pictureAt + 0.25 + delay) * fps, fps, config: { damping: 16, mass: 0.9, stiffness: 90 } });
-        return (
-          <div
-            key={index}
-            style={{
-              position: "absolute",
-              left: between(scattered.x, inBox.x, flown),
-              top: between(scattered.y, inBox.y, flown),
-              width: between(scattered.width, inBox.width, flown),
-              height: between(scattered.height, inBox.height, flown),
-              borderRadius: 12 * (1 - flown),
-              background: interpolateColors(flown, [0, 1], [colour, BRAND.violet]),
-              opacity: appear,
-            }}
-          />
-        );
-      })}
-      {NODES.map((name, node) => (
-        <div
-          key={name}
-          style={{
-            position: "absolute",
-            left: nodeLeft(node),
-            top: nodeTop,
-            width: NODE.width,
-            height: NODE.height,
-            borderRadius: 40,
-            background: `linear-gradient(160deg, ${BRAND.violet}, ${BRAND.indigo})`,
-            boxShadow: `0 0 120px rgba(118, 118, 242, ${0.45 * boxesShown})`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            font: `720 76px ${FONT}`,
-            color: BRAND.ink,
-            opacity: boxesShown,
-          }}
-        >
-          {name}
-        </div>
-      ))}
-      <svg width={FRAME.width} height={FRAME.height} style={{ position: "absolute", inset: 0 }}>
-        {NODES.slice(1).map((name, index) => {
-          const drawn = interpolate(seconds, [pictureAt + 1.5 + index * 0.18, pictureAt + 1.8 + index * 0.18], [0, 1], clamped);
-          const from = nodeLeft(index) + NODE.width + 28;
-          const to = nodeLeft(index + 1) - 28;
-          const tip = between(from, to, drawn);
-          const middle = FRAME.height / 2;
-          return (
-            <g key={name} opacity={drawn > 0 ? 1 : 0}>
-              <line x1={from} y1={middle} x2={tip - 26} y2={middle} stroke={BRAND.ink} strokeWidth={12} strokeLinecap="round" />
-              <polygon points={`${tip},${middle} ${tip - 44},${middle - 26} ${tip - 44},${middle + 26}`} fill={BRAND.ink} />
-            </g>
-          );
-        })}
-      </svg>
-    </AbsoluteFill>
-  );
-}
-
 /** A word that lands: big and faint for a frame, then snapping to its place. */
 function Landing({ at, children }: { at: number; children: ReactNode }) {
   const frame = useCurrentFrame();
@@ -180,8 +83,8 @@ function Landing({ at, children }: { at: number; children: ReactNode }) {
 const LAST_PART = { background: `linear-gradient(90deg, ${BRAND.violet}, ${BRAND.coral})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" } as const;
 
 /**
- * The problem the trailer opens on: a wall of text that piles up until it goes black and silent. Out of the black, its
- * lines fly together into a picture, and the statement lands over it, part by part.
+ * The problem the trailer opens on: a wall of text that piles up until it goes black and silent. Out of the black, the
+ * picture of what it said draws itself, and the statement lands over it, part by part.
  */
 export function TextWallScene({ scene }: { scene: WallScene }) {
   const frame = useCurrentFrame();
@@ -195,7 +98,7 @@ export function TextWallScene({ scene }: { scene: WallScene }) {
   return (
     <AbsoluteFill style={{ background: "#000", opacity: fadeIn }}>
       {seconds < goesBlackAt && <Wall seconds={seconds} goesBlackAt={goesBlackAt} />}
-      {pictureAt !== undefined && seconds >= pictureAt && <Picture seconds={seconds} pictureAt={pictureAt} dimmed={dimmed} />}
+      {pictureAt !== undefined && seconds >= pictureAt && <CheckoutPicture secondsIn={seconds - pictureAt} dimmed={dimmed} />}
       {statement && (
         <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
           <div style={{ display: "flex", gap: "0.26em", font: `780 170px ${FONT}`, letterSpacing: "-0.035em", color: BRAND.ink }}>

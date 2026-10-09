@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { CHECKOUT_FLOW, CHECKOUT_LEAD, CHECKOUT_RISKS, CHECKOUT_TITLE, MERMAID_SEQUENCE } from "./checkout-flow.ts";
 import type { Script } from "./director.ts";
 
 /** What the user types in each filmed conversation; the director's scripts answer to these. */
@@ -26,36 +27,17 @@ const checkoutDiagram = (assetsOrigin: string) => `<style>
   .risk.slow { border-left-color: #f5a524; }
   .risk b { display: block; }
 </style>
-<h1>Checkout, end to end</h1>
-<p class="lead">One request, four services, in the order they run. ⚠ marks where an order can get stuck.</p>
+<h1>${CHECKOUT_TITLE}</h1>
+<p class="lead">${CHECKOUT_LEAD}</p>
 <div class="diagram"><pre class="mermaid">
-sequenceDiagram
-  autonumber
-  participant B as Browser
-  participant A as Checkout API
-  participant I as Inventory
-  participant P as Payments
-  participant O as Orders
-  B->>A: POST /checkout
-  A->>I: reserve(cart.items)
-  I-->>A: reservation
-  A->>P: capture(card, total)
-  Note over A,P: ⚠ no idempotency key
-  P-->>A: payment
-  A->>O: create(cart, payment)
-  O-->>A: order 1042
-  A->>A: ⚠ send the email in the request
-  A-->>B: 201 Created
-</pre></div>
+${CHECKOUT_FLOW}</pre></div>
 <div class="risks">
-  <div class="risk"><b>Declined card</b>Stock stays reserved until the nightly job.</div>
-  <div class="risk"><b>Retried capture</b>Without a key, the card is charged twice.</div>
-  <div class="risk slow"><b>Slow mail server</b>Holds the order open while it sends.</div>
+${CHECKOUT_RISKS.map(({ title, detail, slow }) => `  <div class="risk${slow ? " slow" : ""}"><b>${title}</b>${detail}</div>`).join("\n")}
 </div>
 <script src="${assetsOrigin}/mermaid.min.js"></script>
 <script>
   const dark = getComputedStyle(document.documentElement).colorScheme === "dark" || matchMedia("(prefers-color-scheme: dark)").matches;
-  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", sequence: { mirrorActors: false, showSequenceNumbers: true } });
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", sequence: ${JSON.stringify(MERMAID_SEQUENCE)} });
 </script>`;
 
 /** A phone showing a settings screen; the phone stays light, as the app it previews does. */
@@ -156,7 +138,7 @@ export function scripts({ projects, assetsOrigin }: { projects: { shopApi: strin
         {
           thinkMs: 900,
           say: "Checkout touches four services in one request. I drew the whole path on the canvas, with the three places an order can get stuck.",
-          call: { tool: "canvas.show", input: { title: "Checkout, end to end", html: checkoutDiagram(assetsOrigin) } },
+          call: { tool: "canvas.show", input: { title: CHECKOUT_TITLE, html: checkoutDiagram(assetsOrigin) } },
         },
         {
           thinkMs: 600,

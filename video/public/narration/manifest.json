@@ -29,6 +29,13 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "statement": {
+      "text": "Humans see faster than they read.",
+      "file": "statement.wav",
+      "seconds": 1.6,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
     "canvas": {
       "text": "Mirador gives your agent a canvas.",
       "file": "canvas.wav",

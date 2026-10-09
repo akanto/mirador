@@ -23,12 +23,13 @@ export const STORYBOARD: Scene[] = [
   {
     kind: "text-wall",
     id: "wall",
-    seconds: 14.4,
+    seconds: 14.5,
     narration: [
       { line: "wall", at: 0.3 },
       { line: "wallOfText", at: 6.4 },
       { line: "human", at: 8.1 },
       { line: "picture", at: 9.45, musicDipsTo: 0.55 },
+      { line: "statement", at: 12.26, musicDipsTo: 0.75 },
     ],
     goesBlackAt: 7.6,
     pictureAt: 9.3,
@@ -100,8 +101,8 @@ export const STORYBOARD: Scene[] = [
       { from: ["asked", 0.5], to: "chatShown", speed: 1.3 },
       { from: "chatShown", to: ["answered", 1.6], speed: 0.8 },
       { from: ["answered", 1.6], to: ["dropped", -0.9], speed: 1.8 },
-      { from: ["dropped", -0.9], to: ["postClicked", -0.5], speed: 1.5 },
-      { from: ["postClicked", -0.5], to: ["posted", 1.8] },
+      { from: ["dropped", -0.9], to: ["postClicked", -0.3], speed: 2.2 },
+      { from: ["postClicked", -0.3], to: ["posted", 0.9], speed: 1.2 },
     ],
     camera: [
       { at: ["typing", -0.4], look: "composer", zoom: 1.6 },
@@ -167,13 +168,13 @@ export const STORYBOARD: Scene[] = [
     kind: "clip",
     id: "groups",
     clip: "groups",
-    shots: [{ from: 0.3, to: ["moved", 0.9], speed: 2.6 }],
+    shots: [{ from: 0.3, to: ["moved", 0.9], speed: 1.35 }],
     camera: [
       { at: 0.3, look: { x: 0, y: 0, width: 300, height: 520 }, zoom: 1.6 },
       { at: ["grouped", 0.2], look: "app" },
     ],
-    caption: { kicker: "Groups", title: "Your projects, in your order.", at: 0.2, seconds: 2.1, side: "right" },
-    seconds: 4 * BEAT,
+    caption: { kicker: "Groups", title: "Your projects, in your order.", at: 0.4, seconds: 3, side: "right" },
+    seconds: 8 * BEAT,
     fadeInFrames: 0,
   },
   flash("flash-show", "show", ["turnEnded", 0.6], "canvas", 1.3),
@@ -182,8 +183,17 @@ export const STORYBOARD: Scene[] = [
   flash("flash-posted", "review", ["posted", 0.8], "postedPanel", 2.19),
   flash("flash-changes", "edit", ["uncommittedListed", 1], TOP_OF_CANVAS, 2.19),
   flash("flash-terminals", "terminals", ["diffed", 0.4], "terminals"),
-  { kind: "black", id: "silence", seconds: 1, narration: [{ line: "mirador", at: 0.3 }], fadeInFrames: 0 },
-  { kind: "end", id: "end", seconds: 5.5, narration: [{ line: "end", at: 0.7 }], fadeInFrames: 0 },
+  { kind: "black", id: "silence", seconds: BEAT, fadeInFrames: 0 },
+  {
+    kind: "end",
+    id: "end",
+    seconds: 6,
+    narration: [
+      { line: "mirador", at: 0.1, musicDipsTo: 0.8 },
+      { line: "end", at: 1.05 },
+    ],
+    fadeInFrames: 0,
+  },
 ];
 
 /** Where the end card sends people. The repository is private for now, so check this before publishing. */

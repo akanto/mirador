@@ -95,7 +95,8 @@ test("a scene that cuts straight in doesn't overlap the one before it", () => {
 });
 
 test("a statement's parts land one beat apart from its start", () => {
-  expect(statementBeats({ parts: ["Humans", "see faster", "than they read."], at: 12 })).toEqual([12, 12.5, 13]);
+  const beats = statementBeats({ parts: ["Humans", "see faster", "than they read."], at: 12 });
+  expect(beats.map((at) => Math.round(at * 100) / 100)).toEqual([12, 12.48, 12.96]);
 });
 
 test("a shot's trim covers its last frame however its times round", () => {

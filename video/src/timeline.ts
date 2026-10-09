@@ -26,7 +26,7 @@ export type Spoken = { line: string; at: number; musicDipsTo?: number };
 export type Statement = { parts: string[]; at: number };
 
 /** How far apart a statement's parts land, in seconds. */
-export const STATEMENT_BEAT = 0.5;
+export const STATEMENT_BEAT = 0.48;
 
 /** When each part of a statement lands, in seconds of its scene. */
 export const statementBeats = ({ parts, at }: Statement) => parts.map((_, index) => at + index * STATEMENT_BEAT);

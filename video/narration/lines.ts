@@ -7,6 +7,7 @@ export const LINES = {
   wallOfText: "in a wall of text.",
   human: "But you're human.",
   picture: "You take in a picture faster than a page of text.",
+  statement: "Humans see faster than they read.",
   canvas: "Mirador gives your agent a canvas.",
   show: "So instead of describing, it shows you. Flows, architecture, mockups and charts, drawn right beside the conversation.",
   ask: "When a decision is yours, it asks with pictures. Click an option, and it carries on.",
