@@ -58,9 +58,9 @@ const tabLabel = (tab: TerminalTab) => tab.terminals[0]?.title ?? tab.name;
 const splitLabel = (terminal: TabTerminal, index: number) => terminal.title ?? `Terminal ${index + 1}`;
 
 /** The host answers this window alone with terminal.opened. */
-function requestTerminal(workspaceId: string, split: TerminalSplit | null) {
+function requestTerminal(conversationId: string, split: TerminalSplit | null) {
   const requestId = crypto.randomUUID();
-  connection.send({ type: "terminal.open", requestId, workspaceId, split, columns: INITIAL_COLUMNS, rows: INITIAL_ROWS });
+  connection.send({ type: "terminal.open", requestId, conversationId, split, columns: INITIAL_COLUMNS, rows: INITIAL_ROWS });
   return requestId;
 }
 
@@ -71,15 +71,15 @@ function requestProgramTerminal(request: ProgramRequest) {
 }
 
 /**
- * The workspace's terminal tabs as the host lists them, the shell this window opened last, and the terminal ⌘W left
+ * The conversation's terminal tabs as the host lists them, the shell this window opened last, and the terminal ⌘W left
  * open because it runs a command. A pane that opens onto no tabs starts one; after the last shell exits, the user decides.
  */
-function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
+function useConversationTerminals(conversationId: string, status: ConnectionStatus) {
   const [tabs, setTabs] = useState<TerminalTab[] | null>(null);
   const [opened, setOpened] = useState<{ tabId: string; terminalId: string } | null>(null);
   const [busy, setBusy] = useState<BusyClose | null>(null);
   const requests = useRef(new Set<string>());
-  const open = (split: TerminalSplit | null) => requests.current.add(requestTerminal(workspaceId, split));
+  const open = (split: TerminalSplit | null) => requests.current.add(requestTerminal(conversationId, split));
   const programRequest = useProgramRequest();
 
   useEffect(() => {
@@ -95,20 +95,20 @@ function useWorkspaceTerminals(workspaceId: string, status: ConnectionStatus) {
     const stopListening = connection.onMessage((message) => {
       if (message.type === "terminal.opened" && requests.current.delete(message.requestId)) setOpened({ tabId: message.tabId, terminalId: message.terminalId });
       if (message.type === "terminal.busy") setBusy({ terminalId: message.terminalId, command: message.command, tabId: message.tabId });
-      if (message.type !== "terminals.listed" || message.workspaceId !== workspaceId) return;
-      if (firstListing && message.tabs.length === 0) requests.current.add(requestTerminal(workspaceId, null));
+      if (message.type !== "terminals.listed" || message.conversationId !== conversationId) return;
+      if (firstListing && message.tabs.length === 0) requests.current.add(requestTerminal(conversationId, null));
       firstListing = false;
       forgetSharesOfEndedTerminals(listed, message.tabs);
       listed = message.tabs;
       setTabs(message.tabs);
     });
-    connection.send({ type: "terminals.attach", workspaceId });
+    connection.send({ type: "terminals.attach", conversationId });
     return () => {
       stopListening();
       setTabs(null);
-      connection.send({ type: "terminals.attach", workspaceId: null });
+      connection.send({ type: "terminals.attach", conversationId: null });
     };
-  }, [workspaceId, status]);
+  }, [conversationId, status]);
 
   return { tabs, opened, open, busy, opening: () => requests.current.size > 0 };
 }
@@ -378,12 +378,19 @@ function TabLayout({
   );
 }
 
-/** The tab each workspace showed last, kept while the page is open. */
+/** The tab each conversation showed last, kept while the page is open. */
 const lastActiveTabs = new Map<string, string>();
 
-export function TerminalPane({ workspace, status, onHide }: { workspace: Workspace; status: ConnectionStatus; onHide: () => void }) {
-  const { tabs, opened, open, busy, opening } = useWorkspaceTerminals(workspace.id, status);
-  const [activeTabId, setActiveTabId] = useState(() => lastActiveTabs.get(workspace.id) ?? null);
+interface TerminalPaneProps {
+  conversationId: string;
+  workspace: Workspace;
+  status: ConnectionStatus;
+  onHide: () => void;
+}
+
+export function TerminalPane({ conversationId, workspace, status, onHide }: TerminalPaneProps) {
+  const { tabs, opened, open, busy, opening } = useConversationTerminals(conversationId, status);
+  const [activeTabId, setActiveTabId] = useState(() => lastActiveTabs.get(conversationId) ?? null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [zoomed, setZoomed] = useState<string | null>(null);
   const [armedTabClose, setArmedTabClose] = useState<string | null>(null);
@@ -402,8 +409,8 @@ export function TerminalPane({ workspace, status, onHide }: { workspace: Workspa
   };
 
   useEffect(() => {
-    if (activeTab) lastActiveTabs.set(workspace.id, activeTab.id);
-  }, [workspace.id, activeTab?.id]);
+    if (activeTab) lastActiveTabs.set(conversationId, activeTab.id);
+  }, [conversationId, activeTab?.id]);
 
   useEffect(() => {
     if (activeTab && !terminalIds.includes(focus?.terminalId ?? "")) setFocus({ terminalId: lastFocusedIn(activeTab) });

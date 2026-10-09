@@ -23,7 +23,7 @@ export interface SocketData {
   readsDeflatedMessages: boolean;
   /** The socket's page edits profiles, so it gets their environments and prelaunch commands. */
   readsProfileLaunch: boolean;
-  terminalWorkspaceId: string | null;
+  terminalConversationId: string | null;
   presence: Presence;
   /** Where the page loads canvas libraries from, fitting the address it reached the host at. */
   canvasAssetsOrigin: string;
@@ -52,7 +52,7 @@ export const socketData = (
   desktopAppCode,
   subscriptions: new Set<string>(),
   lowDataSubscriptions: new Set<string>(),
-  terminalWorkspaceId: null,
+  terminalConversationId: null,
   presence: { conversationId: null, attentive: false },
 });
 

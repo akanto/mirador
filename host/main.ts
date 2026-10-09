@@ -49,7 +49,11 @@ const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
 const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, certificate);
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
-const terminals = new TerminalService(hub, (workspaceId) => store.findWorkspace(workspaceId)?.path);
+const workspaceFolderOf = (conversationId: string) => {
+  const conversation = store.findConversation(conversationId);
+  return conversation && store.findWorkspace(conversation.workspaceId)?.path;
+};
+const terminals = new TerminalService(hub, workspaceFolderOf);
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
 const sourceDir = dirname(import.meta.dir);
 const desktopApp = new DesktopAppCheck(

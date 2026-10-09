@@ -67,7 +67,7 @@ test("a canvas page cannot open, show, hide or focus a terminal, by the websocke
   const hostile = `<h1>hostile</h1>
 <script>
   const socket = new WebSocket("ws://127.0.0.1:${host.port}/ws");
-  socket.onopen = () => socket.send(JSON.stringify({ type: "terminal.open", requestId: "r", workspaceId: "w", split: null, columns: 80, rows: 24 }));
+  socket.onopen = () => socket.send(JSON.stringify({ type: "terminal.open", requestId: "r", conversationId: "${conversationId}", split: null, columns: 80, rows: 24 }));
   const press = (code, modifiers) =>
     parent.postMessage({ source: "mirador-canvas", itemId: "x", kind: "key", key: "", code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, typing: false, ...modifiers }, "*");
   addEventListener("click", () => {
@@ -87,11 +87,11 @@ test("a canvas page cannot open, show, hide or focus a terminal, by the websocke
 
   await test.step("with the terminal shown, its keys from the page neither hide it nor move the keyboard into it", async () => {
     await page.getByRole("button", { name: "Show terminal" }).click();
-    await expect(tabs(page)).toHaveCount(2);
+    await expect(tabs(page)).toHaveCount(1);
     await hostilePage.click();
     await page.waitForTimeout(1_000);
     await expect(terminalPane(page)).toBeVisible();
     expect(await terminalHasFocus(page)).toBe(false);
-    await expect(tabs(page)).toHaveCount(2);
+    await expect(tabs(page)).toHaveCount(1);
   });
 });

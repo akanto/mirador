@@ -161,14 +161,14 @@ export type ClientMessage =
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
   | { type: "fs.complete"; requestId: string; prefix: string }
   | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
-  | { type: "terminals.attach"; workspaceId: string | null }
+  | { type: "terminals.attach"; conversationId: string | null }
   /** Opens a terminal in a new tab, or beside or below the one `split` names, in its tab. */
-  | { type: "terminal.open"; requestId: string; workspaceId: string; split: TerminalSplit | null; columns: number; rows: number }
+  | { type: "terminal.open"; requestId: string; conversationId: string; split: TerminalSplit | null; columns: number; rows: number }
   | { type: "terminal.replay"; terminalId: string }
-  /** Signs the conversation's agent in again, in a new terminal tab of its workspace. */
+  /** Signs the conversation's agent in again, in a new tab of its terminals. */
   | { type: "terminal.open-login"; requestId: string; conversationId: string; columns: number; rows: number }
   | { type: "terminal.follow-job"; requestId: string; conversationId: string; waitId: string; columns: number; rows: number }
-  /** Runs a command Claude Code opens a panel for only in its own terminal, in a new terminal tab of its workspace. */
+  /** Runs a command Claude Code opens a panel for only in its own terminal, in a new tab of the conversation's terminals. */
   | { type: "terminal.open-panel-command"; requestId: string; conversationId: string; line: string; columns: number; rows: number }
   | { type: "terminal.input"; terminalId: string; data: string }
   | { type: "terminal.resize"; terminalId: string; columns: number; rows: number }
@@ -286,7 +286,7 @@ export type ServerMessage =
   | { type: "changes.listed"; requestId: string; list: ChangeList }
   | { type: "changes.diffed"; requestId: string; changes: FileChanges }
   | { type: "changes.failed"; requestId: string; message: string }
-  | { type: "terminals.listed"; workspaceId: string; tabs: TerminalTab[] }
+  | { type: "terminals.listed"; conversationId: string; tabs: TerminalTab[] }
   | { type: "terminal.opened"; requestId: string; tabId: string; terminalId: string }
   | { type: "terminal.replayed"; terminalId: string; data: string }
   | { type: "terminal.output"; terminalId: string; data: string }

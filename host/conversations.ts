@@ -603,10 +603,10 @@ export class ConversationService {
   }
 
   /** A terminal tab that shows what the job runs and follows its output. */
-  jobFollowProgram(conversationId: string, waitId: string): { workspaceId: string; program: TerminalProgram } {
+  jobFollowProgram(conversationId: string, waitId: string): TerminalProgram {
     const wait = this.jobWaits.in(conversationId).find(({ id }) => id === waitId);
     if (!wait) throw new Error("Mirador no longer waits for that job.");
-    return { workspaceId: this.get(conversationId).workspaceId, program: followJobProgram(wait) };
+    return followJobProgram(wait);
   }
 
   private jobWaitEnded(conversationId: string, wait: JobWait, end: Exclude<JobWaitEnd, "stopped">) {
@@ -660,31 +660,20 @@ export class ConversationService {
   }
 
   /** The agent's own sign-in, with the environment of the conversation's profile, so a profile with its own account signs that one in. */
-  loginProgram(conversationId: string): { workspaceId: string; program: TerminalProgram } {
+  loginProgram(conversationId: string): TerminalProgram {
     const conversation = this.get(conversationId);
     const environment = launchEnvironment(conversation.harness, this.profileOf(conversation), this.store.claudeProgramSetting());
-    return {
-      workspaceId: conversation.workspaceId,
-      program: { tabName: `${harnessLabels[conversation.harness]} sign-in`, command: loginCommand(conversation.harness, environment), environment },
-    };
+    return { tabName: `${harnessLabels[conversation.harness]} sign-in`, command: loginCommand(conversation.harness, environment), environment };
   }
 
-  /** A command Claude Code shows a panel for only in its own terminal, run in a tab of the conversation's workspace. */
-  panelCommandProgram(conversationId: string, line: string): { workspaceId: string; program: TerminalProgram } {
+  /** A command Claude Code shows a panel for only in its own terminal, run in a tab of the conversation's terminals. */
+  panelCommandProgram(conversationId: string, line: string): TerminalProgram {
     const command = panelCommandRun(line);
     if (command === null) throw new Error(`${line} is not a slash command.`);
     const conversation = this.get(conversationId);
     if (conversation.harness !== "claude") throw new Error(`${harnessLabels[conversation.harness]} has no command like ${line}.`);
     const environment = launchEnvironment(conversation.harness, this.profileOf(conversation), this.store.claudeProgramSetting());
-    return {
-      workspaceId: conversation.workspaceId,
-      program: {
-        tabName: command,
-        command: [environment.CLAUDE_CODE_EXECUTABLE!, command],
-        environment,
-        key: `panel ${command}`,
-      },
-    };
+    return { tabName: command, command: [environment.CLAUDE_CODE_EXECUTABLE!, command], environment, key: `panel ${command}` };
   }
 
   loginEnded(conversationId: string, signedIn: boolean) {

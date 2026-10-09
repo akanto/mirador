@@ -432,7 +432,7 @@ export function App() {
 
   const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId) ?? null;
   const showCanvas = canvasVisible && conversation !== null && open !== null;
-  const terminalWorkspace = terminalVisible ? workspace : undefined;
+  const showTerminals = terminalVisible && conversation !== null && workspace !== undefined;
   const overlay = state.overlay;
   const sessionsWorkspace = overlay?.kind === "sessions" ? state.workspaces.find(({ id }) => id === overlay.workspaceId) : undefined;
   const conversationPane = (
@@ -515,7 +515,9 @@ export function App() {
                 onHide={toggleCanvas}
               />
             ) : null,
-            terminals: terminalWorkspace ? <TerminalPane key={terminalWorkspace.id} workspace={terminalWorkspace} status={status} onHide={toggleTerminal} /> : null,
+            terminals: showTerminals ? (
+              <TerminalPane key={conversation!.id} conversationId={conversation!.id} workspace={workspace!} status={status} onHide={toggleTerminal} />
+            ) : null,
           }}
         />
       </div>

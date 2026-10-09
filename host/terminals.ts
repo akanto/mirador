@@ -7,7 +7,7 @@ import { agentEnvironment, loginShell } from "./acp/environment.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
-/** Every listing of the workspace's terminals carries the titles, so a runaway one is cut short. */
+/** Every listing of a conversation's terminals carries the titles, so a runaway one is cut short. */
 const TITLE_CHARACTERS = 200;
 const MAX_DIMENSION = 1_000;
 
@@ -15,7 +15,7 @@ const titleSequence = /\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
 interface Shell {
   id: string;
-  workspaceId: string;
+  conversationId: string;
   tabId: string;
   child: Subprocess;
   scrollback: string[];
@@ -29,13 +29,13 @@ export interface TerminalProgram {
   tabName: string;
   command: string[];
   environment?: Record<string, string>;
-  /** While a program with the same key runs in the workspace, opening this one shows that one instead. */
+  /** While a program with the same key runs in the conversation's terminals, opening this one shows that one instead. */
   key?: string;
 }
 
 interface Tab {
   id: string;
-  workspaceId: string;
+  conversationId: string;
   name: string;
   /** Null only until its first terminal starts. */
   layout: TerminalLayout | null;
@@ -60,8 +60,8 @@ async function foregroundCommand(shellPid: number): Promise<string | null> {
 }
 
 /**
- * Login shells on pseudo-terminals, started in a workspace's folder and grouped into tabs of splits, side by side and
- * one above the other.
+ * Login shells on pseudo-terminals, each conversation's own, started in its workspace's folder and grouped into tabs of
+ * splits, side by side and one above the other. They keep running while another conversation is shown.
  * They live in the host, so every window shows the same tabs and reloading the page reattaches to them (the recent
  * output is replayed); they end when the host stops. Their output is only ever sent to browsers, never logged or stored.
  */
@@ -71,12 +71,12 @@ export class TerminalService {
 
   constructor(
     private readonly hub: Hub,
-    private readonly workspacePath: (workspaceId: string) => string | undefined,
+    private readonly folderOf: (conversationId: string) => string | undefined,
   ) {}
 
-  attach(socket: BrowserSocket, workspaceId: string | null) {
-    socket.data.terminalWorkspaceId = workspaceId;
-    if (workspaceId) this.hub.send(socket, this.listing(workspaceId));
+  attach(socket: BrowserSocket, conversationId: string | null) {
+    socket.data.terminalConversationId = conversationId;
+    if (conversationId) this.hub.send(socket, this.listing(conversationId));
   }
 
   replay(socket: BrowserSocket, terminalId: string) {
@@ -85,28 +85,28 @@ export class TerminalService {
   }
 
   /** Starts a shell in a new tab, or beside or below the terminal `split` names. */
-  open(workspaceId: string, columns: number, rows: number, split: TerminalSplit | null = null) {
-    const cwd = this.workspacePath(workspaceId);
-    if (!cwd) throw new Error("This workspace no longer exists.");
-    const tab = split ? this.splittableTabOf(split.terminalId) : this.newTab(workspaceId);
-    const shell = this.spawn(workspaceId, tab.id, cwd, columns, rows);
+  open(conversationId: string, columns: number, rows: number, split: TerminalSplit | null = null) {
+    const cwd = this.folderOf(conversationId);
+    if (!cwd) throw new Error("This conversation no longer exists.");
+    const tab = split ? this.splittableTabOf(split.terminalId) : this.newTab(conversationId);
+    const shell = this.spawn(conversationId, tab.id, cwd, columns, rows);
     tab.layout = split && tab.layout ? splitTerminal(tab.layout, split.terminalId, shell.id, split.axis) : { terminalId: shell.id };
     this.tabs.set(tab.id, tab);
-    this.publishListing(workspaceId);
+    this.publishListing(conversationId);
     return { tabId: tab.id, terminalId: shell.id };
   }
 
   /** Runs `program` in a new tab, which closes when it exits, unless the program's key says it already runs. */
-  openProgram(workspaceId: string, columns: number, rows: number, program: TerminalProgram) {
-    const running = program.key === undefined ? undefined : this.shellsIn(workspaceId).find(({ programKey }) => programKey === program.key);
+  openProgram(conversationId: string, columns: number, rows: number, program: TerminalProgram) {
+    const running = program.key === undefined ? undefined : this.shellsIn(conversationId).find(({ programKey }) => programKey === program.key);
     if (running) return { tabId: running.tabId, terminalId: running.id, exited: running.child.exited };
-    const cwd = this.workspacePath(workspaceId);
-    if (!cwd) throw new Error("This workspace no longer exists.");
-    const tab = this.newTab(workspaceId, program.tabName);
-    const shell = this.spawn(workspaceId, tab.id, cwd, columns, rows, program);
+    const cwd = this.folderOf(conversationId);
+    if (!cwd) throw new Error("This conversation no longer exists.");
+    const tab = this.newTab(conversationId, program.tabName);
+    const shell = this.spawn(conversationId, tab.id, cwd, columns, rows, program);
     tab.layout = { terminalId: shell.id };
     this.tabs.set(tab.id, tab);
-    this.publishListing(workspaceId);
+    this.publishListing(conversationId);
     return { tabId: tab.id, terminalId: shell.id, exited: shell.child.exited };
   }
 
@@ -125,7 +125,7 @@ export class TerminalService {
     const cursorLine = shell.scrollback.join("").split("\n").at(-1) ?? "";
     shell.scrollback = [cursorLine];
     shell.scrollbackLength = cursorLine.length;
-    this.publish(shell.workspaceId, { type: "terminal.cleared", terminalId });
+    this.publish(shell.conversationId, { type: "terminal.cleared", terminalId });
   }
 
   close(terminalId: string) {
@@ -157,8 +157,8 @@ export class TerminalService {
     else this.closeTab(tabId);
   }
 
-  closeWorkspace(workspaceId: string) {
-    this.shellsIn(workspaceId).forEach(({ id }) => this.close(id));
+  closeConversation(conversationId: string) {
+    this.shellsIn(conversationId).forEach(({ id }) => this.close(id));
   }
 
   /** Waits for the shells to exit: one still running when the host re-executes itself would be left a zombie. */
@@ -176,17 +176,17 @@ export class TerminalService {
   }
 
   /** Named after the shell (or the program), numbered from 2 with the lowest number no open tab uses: zsh, zsh 2, zsh 3… */
-  private newTab(workspaceId: string, baseName = basename(loginShell())): Tab {
-    const taken = new Set(this.tabsIn(workspaceId).map(({ name }) => name));
+  private newTab(conversationId: string, baseName = basename(loginShell())): Tab {
+    const taken = new Set(this.tabsIn(conversationId).map(({ name }) => name));
     const numbered = (number: number) => (number === 1 ? baseName : `${baseName} ${number}`);
     let number = 1;
     while (taken.has(numbered(number))) number++;
-    return { id: crypto.randomUUID(), workspaceId, name: numbered(number), layout: null };
+    return { id: crypto.randomUUID(), conversationId, name: numbered(number), layout: null };
   }
 
-  private spawn(workspaceId: string, tabId: string, cwd: string, columns: number, rows: number, program?: TerminalProgram) {
+  private spawn(conversationId: string, tabId: string, cwd: string, columns: number, rows: number, program?: TerminalProgram) {
     const decoder = new TextDecoder();
-    const shell: Shell = { id: crypto.randomUUID(), workspaceId, tabId, child: undefined!, scrollback: [], scrollbackLength: 0, title: null, programKey: program?.key };
+    const shell: Shell = { id: crypto.randomUUID(), conversationId, tabId, child: undefined!, scrollback: [], scrollbackLength: 0, title: null, programKey: program?.key };
     shell.child = Bun.spawn(program?.command ?? [loginShell(), "-l"], {
       cwd,
       env: { ...(program?.environment ?? agentEnvironment()), TERM: "xterm-256color", COLORTERM: "truecolor" },
@@ -208,7 +208,7 @@ export class TerminalService {
     while (shell.scrollbackLength > SCROLLBACK_CHARACTERS && shell.scrollback.length > 1) {
       shell.scrollbackLength -= shell.scrollback.shift()!.length;
     }
-    this.publish(shell.workspaceId, { type: "terminal.output", terminalId: shell.id, data: text });
+    this.publish(shell.conversationId, { type: "terminal.output", terminalId: shell.id, data: text });
     this.retitle(shell, lastTitleIn(text));
   }
 
@@ -217,15 +217,15 @@ export class TerminalService {
     const kept = title.slice(0, TITLE_CHARACTERS) || null;
     if (kept === shell.title) return;
     shell.title = kept;
-    this.publishListing(shell.workspaceId);
+    this.publishListing(shell.conversationId);
   }
 
   private ended(shell: Shell, exitCode: number) {
     shell.child.terminal?.close();
     this.shells.delete(shell.id);
     this.removeFromTab(shell);
-    this.publish(shell.workspaceId, { type: "terminal.exited", terminalId: shell.id, exitCode });
-    this.publishListing(shell.workspaceId);
+    this.publish(shell.conversationId, { type: "terminal.exited", terminalId: shell.id, exitCode });
+    this.publishListing(shell.conversationId);
   }
 
   private removeFromTab(shell: Shell) {
@@ -235,28 +235,28 @@ export class TerminalService {
     if (tab.layout === null) this.tabs.delete(tab.id);
   }
 
-  private shellsIn(workspaceId: string) {
-    return [...this.shells.values()].filter((shell) => shell.workspaceId === workspaceId);
+  private shellsIn(conversationId: string) {
+    return [...this.shells.values()].filter((shell) => shell.conversationId === conversationId);
   }
 
-  private tabsIn(workspaceId: string) {
-    return [...this.tabs.values()].filter((tab) => tab.workspaceId === workspaceId);
+  private tabsIn(conversationId: string) {
+    return [...this.tabs.values()].filter((tab) => tab.conversationId === conversationId);
   }
 
-  private listing(workspaceId: string): ServerMessage {
-    const tabs: TerminalTab[] = this.tabsIn(workspaceId).flatMap((tab) =>
+  private listing(conversationId: string): ServerMessage {
+    const tabs: TerminalTab[] = this.tabsIn(conversationId).flatMap((tab) =>
       tab.layout
         ? [{ id: tab.id, name: tab.name, layout: tab.layout, terminals: terminalIdsOf(tab).map((terminalId) => ({ id: terminalId, title: this.shells.get(terminalId)?.title ?? null })) }]
         : [],
     );
-    return { type: "terminals.listed", workspaceId, tabs };
+    return { type: "terminals.listed", conversationId, tabs };
   }
 
-  private publishListing(workspaceId: string) {
-    this.publish(workspaceId, this.listing(workspaceId));
+  private publishListing(conversationId: string) {
+    this.publish(conversationId, this.listing(conversationId));
   }
 
-  private publish(workspaceId: string, message: ServerMessage) {
-    this.hub.publishWhere((socket) => socket.data.terminalWorkspaceId === workspaceId, message);
+  private publish(conversationId: string, message: ServerMessage) {
+    this.hub.publishWhere((socket) => socket.data.terminalConversationId === conversationId, message);
   }
 }

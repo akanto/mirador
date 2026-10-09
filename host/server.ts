@@ -495,6 +495,7 @@ export function startServer(services: HostServices) {
 
   function deleteConversation(conversationId: string) {
     canvas.withdrawWaitingAsks(conversationId);
+    terminals.closeConversation(conversationId);
     conversations.delete(conversationId);
     mcp.forget(conversationId);
   }
@@ -632,7 +633,6 @@ export function startServer(services: HostServices) {
           .list()
           .filter((conversation) => conversation.workspaceId === message.workspaceId)
           .forEach((conversation) => deleteConversation(conversation.id));
-        terminals.closeWorkspace(message.workspaceId);
         store.deleteWorkspace(message.workspaceId);
         return hub.broadcast({ type: "workspace.deleted", workspaceId: message.workspaceId });
       case "workspace.set-default-launch":
@@ -819,23 +819,23 @@ export function startServer(services: HostServices) {
           .then((render) => reply({ type: "statusline.rendered", requestId: message.requestId, statusline: render }))
           .catch((error) => reply({ type: "error", message: errorMessage(error) }));
       case "terminals.attach":
-        return terminals.attach(socket, message.workspaceId);
+        return terminals.attach(socket, message.conversationId);
       case "terminal.open":
-        return reply({ type: "terminal.opened", requestId: message.requestId, ...terminals.open(message.workspaceId, message.columns, message.rows, message.split) });
+        return reply({ type: "terminal.opened", requestId: message.requestId, ...terminals.open(message.conversationId, message.columns, message.rows, message.split) });
       case "terminal.open-login": {
-        const { workspaceId, program } = conversations.loginProgram(message.conversationId);
-        const { exited, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
+        const program = conversations.loginProgram(message.conversationId);
+        const { exited, ...opened } = terminals.openProgram(message.conversationId, message.columns, message.rows, program);
         void exited.then((exitCode) => conversations.loginEnded(message.conversationId, exitCode === 0));
         return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
       }
       case "terminal.follow-job": {
-        const { workspaceId, program } = conversations.jobFollowProgram(message.conversationId, message.waitId);
-        const { exited: _, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
+        const program = conversations.jobFollowProgram(message.conversationId, message.waitId);
+        const { exited: _, ...opened } = terminals.openProgram(message.conversationId, message.columns, message.rows, program);
         return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
       }
       case "terminal.open-panel-command": {
-        const { workspaceId, program } = conversations.panelCommandProgram(message.conversationId, message.line);
-        const { exited: _, ...opened } = terminals.openProgram(workspaceId, message.columns, message.rows, program);
+        const program = conversations.panelCommandProgram(message.conversationId, message.line);
+        const { exited: _, ...opened } = terminals.openProgram(message.conversationId, message.columns, message.rows, program);
         return reply({ type: "terminal.opened", requestId: message.requestId, ...opened });
       }
       case "terminal.replay":
