@@ -8,6 +8,7 @@
 ./desktop/artifacts
 ./desktop/.hutch
 ./spike
+./video
 ./.agents
 ./.beads
 ./.claude

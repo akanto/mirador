@@ -1,0 +1,91 @@
+/** A box in the app's own points (1536 x 864), as the capture measured it. */
+export type Rect = { x: number; y: number; width: number; height: number };
+
+/** A filmed clip: its length, its named moments in seconds from its start, and the boxes the camera can move to. */
+export type ClipInfo = { name: string; seconds: number; moments: Record<string, number>; rects: Record<string, Rect> };
+
+/** A point in a clip: seconds from its start, a moment's name, or a moment's name with seconds before (-) or after (+). */
+export type ClipTime = number | string | [string, number];
+
+/** A stretch of a clip, played at a speed: typing can run faster than the agent's answer. */
+export type Shot = { from: ClipTime; to: ClipTime; speed?: number };
+
+/** Where the camera looks from a point of the clip on: the whole app, one of the clip's boxes, or a box given here, at a zoom. */
+export type CameraKey = { at: ClipTime; look: "app" | string | Rect; zoom?: number };
+
+/** A scene's idea in a few words, on the side of the frame away from where the scene happens. */
+export type Caption = { kicker: string; title: string; at?: number; seconds?: number; side?: "left" | "right" };
+
+/** A line of narration (narration/lines.ts) and when in its scene it starts, in seconds. */
+export type Spoken = { line: string; at: number };
+
+export type ClipScene = { kind: "clip"; id: string; clip: string; shots: Shot[]; camera: CameraKey[]; caption?: Caption; narration?: Spoken[] };
+export type CardScene = { kind: "text-wall" | "logo" | "end"; id: string; seconds: number; narration?: Spoken[] };
+export type Scene = ClipScene | CardScene;
+
+export type NarrationLine = { text: string; file: string; seconds: number };
+
+/** A scene as the composition plays it: where it starts, how long it runs, in frames. */
+export type PlacedScene = { scene: Scene; from: number; frames: number };
+
+/** How long after a scene's narration ends before the next scene starts, in seconds. */
+const NARRATION_TAIL = 0.6;
+
+export function clipSeconds(clip: ClipInfo, time: ClipTime): number {
+  if (typeof time === "number") return time;
+  const [moment, offset] = typeof time === "string" ? [time, 0] : time;
+  const at = clip.moments[moment];
+  if (at === undefined) throw new Error(`${clip.name} has no moment "${moment}"; it has ${Object.keys(clip.moments).join(", ")}`);
+  return Math.min(clip.seconds, Math.max(0, at + offset));
+}
+
+/** Each shot's stretch of the clip and where it plays in the scene, in seconds. */
+export function shotsOf(scene: ClipScene, clip: ClipInfo) {
+  let sceneAt = 0;
+  return scene.shots.map(({ from, to, speed = 1 }) => {
+    const clipFrom = clipSeconds(clip, from);
+    const clipTo = clipSeconds(clip, to);
+    if (clipTo <= clipFrom) throw new Error(`${scene.id}: a shot ends (${clipTo}s) before it starts (${clipFrom}s)`);
+    const placed = { clipFrom, clipTo, speed, sceneFrom: sceneAt, sceneTo: sceneAt + (clipTo - clipFrom) / speed };
+    sceneAt = placed.sceneTo;
+    return placed;
+  });
+}
+
+/** Where a point of the clip plays in the scene; a point between shots plays where the next shot starts. */
+export function sceneSecondsOf(scene: ClipScene, clip: ClipInfo, time: ClipTime) {
+  const at = clipSeconds(clip, time);
+  const shots = shotsOf(scene, clip);
+  const shot = shots.find(({ clipTo }) => at <= clipTo) ?? shots.at(-1)!;
+  return shot.sceneFrom + Math.max(0, Math.min(at, shot.clipTo) - shot.clipFrom) / shot.speed;
+}
+
+export function narrationLine(narration: Record<string, NarrationLine>, name: string) {
+  const line = narration[name];
+  if (!line) throw new Error(`No narration line "${name}"; run bun run narrate`);
+  return line;
+}
+
+/** A scene lasts as long as its footage, or longer when its narration needs it: the last frame then holds. */
+export function sceneSeconds(scene: Scene, clips: Record<string, ClipInfo>, narration: Record<string, NarrationLine>) {
+  const footage = scene.kind === "clip" ? shotsOf(scene, clipNamed(clips, scene.clip)).at(-1)!.sceneTo : scene.seconds;
+  const spokenUntil = (scene.narration ?? []).map(({ line, at }) => at + narrationLine(narration, line).seconds + NARRATION_TAIL);
+  return Math.max(footage, ...spokenUntil);
+}
+
+export function clipNamed(clips: Record<string, ClipInfo>, name: string) {
+  const clip = clips[name];
+  if (!clip) throw new Error(`No clip "${name}" in public/clips; run bun run capture and bun run encode`);
+  return clip;
+}
+
+/** Scenes one after another, each overlapping the one before by `overlapFrames` for the transition between them. */
+export function placeScenes(scenes: Scene[], clips: Record<string, ClipInfo>, narration: Record<string, NarrationLine>, fps: number, overlapFrames: number): PlacedScene[] {
+  let from = 0;
+  return scenes.map((scene, index) => {
+    const frames = Math.round(sceneSeconds(scene, clips, narration) * fps) + (index < scenes.length - 1 ? overlapFrames : 0);
+    const placed = { scene, from, frames };
+    from += frames - overlapFrames;
+    return placed;
+  });
+}

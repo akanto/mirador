@@ -1,0 +1,77 @@
+import { describe, expect, test } from "bun:test";
+import { type ClipInfo, type ClipScene, type Scene, clipSeconds, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf } from "../src/timeline.ts";
+
+const clip: ClipInfo = { name: "demo", seconds: 20, moments: { sent: 4, shown: 10 }, rects: {} };
+
+const scene: ClipScene = {
+  kind: "clip",
+  id: "demo",
+  clip: "demo",
+  shots: [
+    { from: 2, to: "sent", speed: 2 },
+    { from: ["shown", -1], to: "shown" },
+  ],
+  camera: [],
+};
+
+describe("a point in a clip", () => {
+  test("is a moment, shifted by its offset", () => {
+    expect(clipSeconds(clip, 3)).toBe(3);
+    expect(clipSeconds(clip, "sent")).toBe(4);
+    expect(clipSeconds(clip, ["shown", -1.5])).toBe(8.5);
+  });
+
+  test("stays inside the clip", () => {
+    expect(clipSeconds(clip, ["sent", -9])).toBe(0);
+    expect(clipSeconds(clip, ["shown", 30])).toBe(20);
+  });
+
+  test("names the moments the clip has when it asks for another", () => {
+    expect(() => clipSeconds(clip, "typed")).toThrow('demo has no moment "typed"; it has sent, shown');
+  });
+});
+
+describe("a scene's shots", () => {
+  test("play one after another, a faster shot in less time", () => {
+    expect(shotsOf(scene, clip)).toEqual([
+      { clipFrom: 2, clipTo: 4, speed: 2, sceneFrom: 0, sceneTo: 1 },
+      { clipFrom: 9, clipTo: 10, speed: 1, sceneFrom: 1, sceneTo: 2 },
+    ]);
+  });
+
+  test("can't end before they start", () => {
+    expect(() => shotsOf({ ...scene, shots: [{ from: "shown", to: "sent" }] }, clip)).toThrow("demo: a shot ends (4s) before it starts (10s)");
+  });
+
+  test("place a moment of the clip in the scene, and one that was cut where the next shot starts", () => {
+    expect(sceneSecondsOf(scene, clip, ["sent", -1])).toBe(0.5);
+    expect(sceneSecondsOf(scene, clip, 6)).toBe(1);
+  });
+});
+
+describe("a scene's length", () => {
+  const narration = { intro: { text: "Hello.", file: "intro.wav", seconds: 3 } };
+
+  test("is its footage's, held until its narration ends", () => {
+    expect(sceneSeconds(scene, { demo: clip }, {})).toBe(2);
+    expect(sceneSeconds({ ...scene, narration: [{ line: "intro", at: 1.5 }] }, { demo: clip }, narration)).toBeCloseTo(5.1);
+  });
+
+  test("asks for the narration to be made when a line is missing", () => {
+    expect(() => sceneSeconds({ ...scene, narration: [{ line: "outro", at: 0 }] }, { demo: clip }, narration)).toThrow('No narration line "outro"; run bun run narrate');
+  });
+});
+
+test("scenes overlap by the transition, and the last one ends the trailer", () => {
+  const cards: Scene[] = [
+    { kind: "logo", id: "a", seconds: 1 },
+    { kind: "logo", id: "b", seconds: 2 },
+    { kind: "end", id: "c", seconds: 1 },
+  ];
+  const placed = placeScenes(cards, {}, {}, 10, 3).map(({ scene, from, frames }) => ({ id: scene.id, from, frames }));
+  expect(placed).toEqual([
+    { id: "a", from: 0, frames: 13 },
+    { id: "b", from: 10, frames: 23 },
+    { id: "c", from: 30, frames: 10 },
+  ]);
+});
