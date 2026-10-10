@@ -109,6 +109,8 @@ interface Runtime {
   /** The latest permission request still reading the files it would edit; the next one shows after it. */
   permissionArriving?: Promise<unknown>;
   queuedMessages: QueuedMessage[];
+  /** The latest steer still on its way to the agent; the next one goes after it, so messages join the turn in the order they were sent. */
+  steering?: Promise<void>;
   openToolCalls: OpenToolCalls;
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
@@ -455,8 +457,9 @@ export class ConversationService {
   }
 
   /**
-   * Sends `text` as the next user message. While a turn is running it waits in the queue: like in Claude Code it joins
-   * the turn once the tools the agent is waiting on have finished, or, sent `afterTurn`, it goes out when the turn ends.
+   * Sends `text` as the next user message. While a turn is running it joins the turn: at once, cutting off what the agent
+   * is writing, or, while the agent waits on tools, once they have finished. Sent `afterTurn`, it waits in the queue for
+   * the turn to end.
    */
   async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, afterTurn = false } = {}) {
     const runtime = this.runtime(conversationId);
@@ -464,6 +467,7 @@ export class ConversationService {
     const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(afterTurn && { afterTurn }) };
     this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
     this.publish(this.get(conversationId));
+    if (!afterTurn) this.steerQueuedMessages(conversationId);
   }
 
   /** What undoing the turn that began with this message would do to the files, or why it cannot be undone. */
@@ -663,6 +667,7 @@ export class ConversationService {
   setQueuedMessageAfterTurn(conversationId: string, messageId: string, afterTurn: boolean) {
     const switched = ({ afterTurn: _, ...message }: QueuedMessage): QueuedMessage => ({ ...message, ...(afterTurn && { afterTurn }) });
     this.replaceQueue(conversationId, (queue) => queue.map((message) => (message.id === messageId ? switched(message) : message)), messageId);
+    if (!afterTurn) this.steerQueuedMessages(conversationId);
   }
 
   /** The agent's own sign-in, with the environment of the conversation's profile, so a profile with its own account signs that one in. */
@@ -1146,15 +1151,24 @@ export class ConversationService {
     const activityBefore = this.activity(conversationId);
     const finishedOne = runtime.openToolCalls.follow(update);
     if (!isDeepStrictEqual(this.activity(conversationId), activityBefore)) this.publish(this.get(conversationId));
-    if (finishedOne && runtime.openToolCalls.size === 0) this.steerQueuedMessages(conversationId).catch(() => {});
+    if (finishedOne) this.steerQueuedMessages(conversationId);
   }
 
-  /** Messages that join the running turn; those the agent cannot take go back to the front of the queue, to go out when it ends. */
-  private async steerQueuedMessages(conversationId: string) {
+  private steerQueuedMessages(conversationId: string) {
+    const runtime = this.runtime(conversationId);
+    runtime.steering = (runtime.steering ?? Promise.resolve()).then(() => this.steerWhileNoToolRuns(conversationId)).catch(() => {});
+  }
+
+  /**
+   * Messages that join the running turn. Not while a tool call is open: Claude Code would move a running command to the
+   * background, and a question or permission prompt the agent waits on with it. Those the agent cannot take go back to
+   * the front of the queue, to go out when the turn ends.
+   */
+  private async steerWhileNoToolRuns(conversationId: string) {
     const runtime = this.runtime(conversationId);
     const { harness } = runtime;
     const sessionId = this.get(conversationId).acpSessionId;
-    if (!harness || !sessionId || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
+    if (!harness || !sessionId || !runtime.running || runtime.openToolCalls.size > 0 || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
     const messages = queuedBeforeClear(runtime.queuedMessages).filter((message) => !message.afterTurn);
     const [first, ...rest] = messages;
     if (!first) return;

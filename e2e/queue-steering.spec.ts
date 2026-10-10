@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, lastAgentMessage, openSettings, pasteImage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -6,28 +6,36 @@ const host = new TestHost(4730);
 const QUEUED = "Also, which colour fills [Image #1] - answer with the colour's name.";
 const AFTER_TURN = "Reply with just the word LATER.";
 
+test.describe.configure({ mode: "serial" });
+
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
 });
 
-test("a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end", async ({ page }) => {
-  const eventsInOrder: string[] = [];
+/** The user messages and turn ends the page hears about, in the order they come. */
+function eventsInOrderOn(page: Page) {
+  const events: string[] = [];
   page.on("websocket", (socket) =>
     socket.on("framereceived", ({ payload }) => {
       const event = JSON.parse(String(payload)).event?.event;
-      if (event?.type === "turn-end") eventsInOrder.push("turn-end");
-      if (event?.type === "user-message") eventsInOrder.push(event.text);
+      if (event?.type === "turn-end") events.push("turn-end");
+      if (event?.type === "user-message") events.push(event.text);
     }),
   );
+  return events;
+}
+
+test("a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end", async ({ page }) => {
+  const eventsInOrder = eventsInOrderOn(page);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
-  await sendMessage(page, "Run the shell command `sleep 15; echo slept` with your Bash tool, then reply with what it printed.");
+  await sendMessage(page, "Run the shell command `sleep 30; echo slept` with your Bash tool, then reply with what it printed.");
   await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
 
   const composer = page.locator(".composer textarea");
@@ -67,5 +75,42 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
   await expect(page.locator(".message.agent", { hasText: /red/i })).not.toHaveCount(0);
   await expect(lastAgentMessage(page)).toContainText("LATER");
   await expect(userMessages.filter({ hasText: QUEUED }).locator(".message-images img")).toHaveJSProperty("naturalWidth", 64);
-  expect(eventsInOrder).toEqual([expect.stringContaining("sleep 15"), QUEUED, "turn-end", AFTER_TURN, "turn-end"]);
+  expect(eventsInOrder).toEqual([expect.stringContaining("sleep 30"), QUEUED, "turn-end", AFTER_TURN, "turn-end"]);
+});
+
+test("a message sent while Claude Code writes, with no tool running, joins the turn at once, and so does a waiting one switched to join it", async ({ page }) => {
+  const eventsInOrder = eventsInOrderOn(page);
+  await signIn(page, host);
+  await page.goto(host.origin);
+  await startConversation(page);
+  const composer = page.locator(".composer textarea");
+  const story = (keeper: string) => `Write a 1500-word story about a lighthouse keeper called ${keeper}, as plain text in your reply. Use no tools.`;
+  const stopWith = (word: string) => `Stop the story there and reply with only the word ${word}.`;
+  const agentMessages = page.locator(".timeline .message.agent");
+  const tellStory = async (keeper: string) => {
+    const before = await agentMessages.count();
+    await sendMessage(page, story(keeper));
+    await expect(agentMessages, "the agent is writing").toHaveCount(before + 1, { timeout: 120_000 });
+  };
+
+  await test.step("sent with Enter", async () => {
+    await tellStory("Ada");
+    await composer.fill(stopWith("PINEAPPLE"));
+    await composer.press("Enter");
+    await waitForTurnToEnd(page);
+    await expect(lastAgentMessage(page)).toContainText("PINEAPPLE");
+  });
+
+  await test.step("waiting for the turn to end, then switched to join it", async () => {
+    await tellStory("Bo");
+    await composer.fill(stopWith("MANGO"));
+    await page.locator(".composer .queue-message", { hasText: "After turn" }).click();
+    const delivery = page.locator(".queued", { hasText: stopWith("MANGO") }).locator(".queued-delivery");
+    await expect(delivery).toHaveText("after the turn");
+    await delivery.click();
+    await waitForTurnToEnd(page);
+    await expect(lastAgentMessage(page)).toContainText("MANGO");
+  });
+
+  expect(eventsInOrder).toEqual([story("Ada"), stopWith("PINEAPPLE"), "turn-end", story("Bo"), stopWith("MANGO"), "turn-end"]);
 });
