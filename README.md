@@ -34,7 +34,7 @@ The agent renders a page on the canvas: a diagram, a mockup, a chart, a comparis
 
 ![The agent asks which settings layout to build, with a phone mockup preview for each option](docs/screenshots/ask.png)
 
-Instead of a numbered list of options in text, the agent asks on the canvas: a question, an optional page explaining it, and up to eight options with a preview each. You click one, or type your own answer, and add a note if you like. The answer goes back to the agent, either as the tool's result or as your next message.
+Instead of a numbered list of options in text, the agent asks on the canvas: a question, an optional page explaining it, and up to eight options with a preview each. You click one, or type your own answer, and add a note if you like. Several questions come at once, a page each, with a review before you send. The answer goes back to the agent, either as the tool's result or as your next message.
 
 ### Review: a guided tour of the change
 
@@ -123,7 +123,10 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **`show`**: the agent renders a page next to the conversation: diagrams, mockups, charts, comparisons, 3D scenes.
 - **Libraries built in**: three.js (with OrbitControls), D3 v7 and Mermaid load from Mirador itself, so pages work offline.
 - **Script errors come back**: the agent hears either "rendered without script errors" or the list of errors, and can fix its page.
+- **Pages follow the theme**: a page is light when Mirador is light and dark when it is dark, from its first paint, and changes with the theme without reloading. Agents are told to colour their pages with `light-dark()`.
 - **Changes**: *Changes* in the canvas bar lists the files this turn changed, or the workspace's uncommitted work (*This turn* or *Uncommitted*), and marks the ones the agent's edit tools changed. Files outside the project the agent edited are listed apart. Click a file for its line changes right under its row, Unified or Split, and *Open in IDEA* at its first change. The list shows at once when you come back to it, and refreshes as the agent works.
+  - In a folder that is not a git repository, *This turn* lists the files written since the turn began, a script's included, along with the agent's edits. Mirador checks up to 50,000 files there, and says when a folder holds more.
+- **As you left it**: coming back to a conversation brings its canvas back as it was, with *Changes* still open or the page still shown.
 - **History**: everything shown or asked is kept per conversation, across reloads and restarts. *Older* and *Newer* step through it, and *History* lists it newest first, with each question's outcome. *Clear* empties the canvas without deleting anything.
 - **Hide, show and full screen**: the canvas keeps receiving pages while hidden.
 - **How often Claude Code uses it** (*Settings → Canvas*): *As needed*, or *Often*, which adds guidance to Claude Code's system prompt. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode gets the same instructions.
@@ -131,6 +134,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 ### Questions
 
 - **`ask`**: a question with 2 to 8 options, each with a description and an optional HTML preview, plus an optional page explaining the question.
+- **Several questions at once**: up to ten in one call, each with its own options. You answer them page by page, can change any answer on a review page, and send them together. Agents are told to ask this way rather than fold several questions into one.
 - **Previews are shown whole**: option columns widen to the widest preview, and a page wider than the canvas is scaled down to fit.
 - **Your own answer**: *Something else…* takes a typed answer, and every answer can carry a note.
 - **Context stays**: a page the agent showed just before asking stays above the question.
@@ -157,7 +161,8 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Curate**: keep or drop each finding, reword it, ask the agent about it, or open it in IDEA.
 - **Ask about any lines**: click line numbers (Shift+click extends), then `a` asks the agent with the code attached and `o` opens IDEA at that line. *Ask and update the review* (⌘Enter) has the agent republish when its answer changes anything.
 - **Post to GitHub**: kept findings become comments on your pending review on the pull request, through `gh` (GitHub Enterprise too). You submit it on GitHub. Findings outside the pull request's diff stay in the review, marked as such, and GitHub refusals are reported per finding.
-- **Re-review**: republishing keeps your keep/drop choices and rewordings. The agent is told which findings you dropped or already posted.
+- **Updates in place**: when you ask about a finding, the agent changes only what its answer changes: a comment's wording, severity or lines, a finding added or taken out, an answer, the tour, the summary or the verdict. You stay on your tab and finding, your choices stay, and each changed part flashes once. A comment you are editing takes the agent's rewording until you type; after that your draft stays, with the agent's version under it and *Use its wording*.
+- **Re-review**: when the code under review changed, the agent publishes the whole review again. That keeps your keep/drop choices and rewordings, and the agent is told which findings you dropped or already posted.
 - **Answer the pull request's conversations**: on a re-review the agent can reply to existing review threads, shown as GitHub has them (outdated, resolved). You keep, edit or drop each answer, and choose *Resolve when posted*.
 - **Keys**: `1`–`5` tabs, `j`/`k` changes, `n`/`p` findings, `f` files, `a` ask, `o` open in IDEA.
 
@@ -175,9 +180,11 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Every agent option** in the header: model, mode, effort and whatever else the agent offers. Lists of more than 20 choices get a search box (opencode has 500+ models).
 - **YOLO** (off by default): Mirador approves every permission request of that conversation without asking, including requests already waiting. Claude Code's own *Bypass permissions* mode is separate.
 - **Continue…** (in each workspace's card) lists the sessions the agent recorded for that folder, including ones started in a terminal, and replays the chosen one into a new conversation. *Continue* keeps the same session; *Fork* copies it.
-- **A session still open in a terminal** is flagged (header badge, sidebar dot, a note above the message box), with what it is doing there: working, waiting for you, or idle. Mirador reads this from Claude Code's session registry (`~/.claude/sessions`, or the profile's `CLAUDE_CONFIG_DIR`); it doesn't show the terminal's new messages.
+- **A session still open in a terminal** is flagged (header badge, sidebar dot, a note above the message box), with what it is doing there: working, waiting for you, or idle. Mirador reads this from Claude Code's session registry (`~/.claude/sessions`, or the profile's `CLAUDE_CONFIG_DIR`). The turns you take in the terminal join the conversation once the terminal is idle, and the agent goes on from them.
 - **Status**: idle, starting, running or error, with what each means on hover.
-- **Stop**: Esc in the message box, or the Stop button.
+- **Stop**: Esc in the message box, or the Stop button. When the agent hasn't stopped within a few seconds, the button becomes *Force stop*, which ends the agent's process; other conversations on the same profile go on.
+- **Rewind to here** (Claude Code): hover one of your messages. That turn and every turn after it leave the conversation, the agent goes on in a session that holds only what came before, and in a git repository the files go back to how they were when the turn began. The palette offers it too.
+- **Undo files**: puts the workspace's files back to how they were before a turn began, and keeps the conversation; the agent hears about it with your next message. It's on the message for opencode, and in the palette for both agents. Mirador keeps the files of each workspace's newest 100 turns in the workspace's git repository, under refs of its own, so your branches, history and staging area are untouched. A submodule that changed stays as it is, and the dialog says so. In a workspace below its repository's top, only that folder's files go back.
 - **`/clear`** starts the agent afresh while the transcript stays on screen. It works queued, and across restarts.
 - **Log in again**: when the agent's sign-in expires, *Log in* (or `/login`) opens the agent's own sign-in in a terminal tab, with the conversation's profile.
 - **Usage limits**: when Claude's usage limit is reached, queued messages wait, and Mirador asks the agent to continue about a minute after the limit resets (at most twice in a row). *Continue now* and *Stop waiting* are there too. It survives a host restart.
@@ -187,12 +194,14 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### The message box
 
-- **Images**: paste or drag them in; each lands as `[Image #n]` where the caret is. Deleting the marker drops the image.
+- **Images**: paste or drag them in; each lands as `[Image #n]` where the caret is, and shows as a chip while it uploads. Deleting the marker drops the image, and a pasted image you never send is deleted from the host.
 - **`@` paths**: completes workspace files, folder by folder, as well as absolute and `~` paths, anywhere in the message.
 - **`/` commands**: the agent's commands plus Mirador's `/clear` and `/login`. Tab writes one out, Enter runs one that takes no arguments, Esc closes the list.
+- **Claude Code's panels**: `/plugin`, `/hooks`, `/permissions`, `/memory`, `/status`, `/help` and the other commands Claude Code shows only in its own terminal open a terminal tab running Claude Code with the conversation's profile.
+- **Edit a stopped message**: press ↑ after stopping an answer. Enter replaces the message, its answer and the files it changed; Esc keeps them, and your edit goes out as a new message after them.
 - **`!` shell commands**: run in the workspace's folder with your login shell. The output shows inline with Run/Stop, and goes to the agent with your next message unless you drop it.
 - **Prompt history**: ↑/↓ step through earlier messages, this conversation's first and then the workspace's, images included.
-- **Prompt templates** with `{{parameters}}`: *Templates* sends one or inserts it, with a form for the parameters. Add, edit and delete them in *Settings → Conversations*; a *Deep PR review* template comes with Mirador.
+- **Prompt templates** with `{{parameters}}`: *Templates* sends one or inserts it, with a form for the parameters. Or press `⌘J` in the message box: typing narrows the list, Enter puts the template in at the caret with its first value selected, and Tab / Shift+Tab go through its values. Add, edit and delete them in *Settings → Conversations*; a *Deep PR review* template comes with Mirador.
 - **Queue while the agent works**: with Claude Code each message either joins the running turn (steering, once its tools finish) or waits until after the turn; Enter and ⌥Enter pick, and Settings can swap them. opencode can't be steered, so its messages wait. Drag queued messages to reorder them, *Edit* one back into the box, or press ↑ in an empty box to pull back the last. The queue lives in the database, so it survives reloads and restarts.
 - **Drafts**: text and images are kept per conversation.
 - **Resizable**: drag the box's top edge; double-click resets it.
@@ -207,7 +216,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Tool calls** with diffs for edits, raw input and output a click away, and readable MCP tool names.
 - **Shell commands** look like a terminal. *Settings → Appearance → Shell commands* picks how much shows: output a click away, output only on failure, one line, or everything.
 - **Subagents** nest under their Agent card. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time); a click opens its latest work.
-- **Images** show inline; click for full size.
+- **Images** show inline, also in replayed sessions and the agent's replies; click for full size.
 - **Long conversations** load the newest 200 entries and the earlier ones as you scroll up. Switching between recent conversations is instant and keeps your scroll position, and resizing panes keeps your place.
 - **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage (weekly turns amber past 75%), cost and profile. Or run your own Claude Code `statusLine` command, exactly as Claude Code would.
 
@@ -226,7 +235,8 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Three panes**: conversation, canvas and terminals, in six arrangements. Drag a pane's grip onto another to swap them, or pick *Swap* in the palette.
 - **Per conversation**: each conversation remembers its arrangement, split sizes, hidden panes and full screen. *Settings → Layout* sets the default for new ones; the palette resets it.
 - **Full screen** any pane (button, or double-click its bar); Esc comes back.
-- **Show or hide** the canvas and terminals from the header, the palette or ⌘\.
+- **Show or hide** the canvas and terminals from the header or the palette, the canvas with ⌘\ and the terminals with `` ⌃` ``.
+- **Text size** across the app, from 50% to 200%: *Settings → Appearance*, or ⌘+ and ⌘− (⌘0 resets).
 
 ### Find and search
 
@@ -237,7 +247,9 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### Terminals
 
-- **The workspace's shells**, in tabs, each with up to four splits side by side (*Split right*) or stacked (*Split down*); drag a divider to resize. Every window shares them, and they keep running while hidden and across reloads.
+- **Each conversation's own shells**, in the workspace's folder, in tabs, each with up to four splits side by side (*Split right*) or stacked (*Split down*); drag a divider to resize. They keep running while another conversation is shown, while hidden and across reloads, every window shows the same ones, and they close when the conversation is deleted. Each tab keeps where it was scrolled to.
+- **Back after a restart**: a conversation's tabs and splits come back with what their shells printed, and a new shell under that output.
+- **From the keyboard and the palette**: `` ⌃` `` shows or hides them and ⌘⇧↓ focuses them; the palette also opens a tab, splits, and fills the window with the terminal. ⌘+ and ⌘− change their font size (11 to 24 px).
 - **macOS keys**, the ones cmux and iTerm2 share: `⌘D` splits right and `⌘⇧D` down, `⌥⌘←→↑↓` move between splits, `⌘[`/`⌘]` go to the previous or next split, `⌘T` opens a tab, `⌘⇧[`/`⌘⇧]`, `⌘1…⌘9` and `⌃1…⌃9` switch tabs, and `⌘⇧↩` zooms the focused split (*Show all* brings the others back). In Chrome, `⌘T`, `⌘W`, `⌘⇧[`/`⌘⇧]` and `⌥⌘←→` stay Chrome's.
 - **Closing**: `⌘W` closes the focused shell, and a middle click closes a tab. Either asks first while a command runs: Enter ends it, and so does `⌘W` again when `⌘W` asked; Esc keeps it.
 - **Line editing** as in a macOS terminal: `⌘←`, `⌘→`, `⌘⌫`, `⌥←`, `⌥→`, and `⌘K` clears for good.
@@ -270,12 +282,14 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 *Settings…* opens a dialog of pages (Up/Down switch between them). Each page says whether a setting is kept in this browser or on the host.
 
-- **Appearance**: theme (Light, Dark, Match system), *Waiting for you* style, workspace colours, machine colours, shell commands, timestamps. The choices come with pictures.
+- **Appearance**: text size, theme (Light, Dark, Match system), *Waiting for you* style, workspace colours, machine colours, shell commands, timestamps. The choices come with pictures.
 - **Conversations**: *Sending while the agent works* (Enter or ⌥Enter to steer), prompt templates, and macOS typing aids.
-- **Terminal**: copy on select.
+- **Agents**: which Claude Code program the host runs, when not the one it finds.
+- **Terminal**: font size and copy on select.
 - **Canvas**: how often Claude Code uses it, where reviews open, and whether edits waiting for approval show on it.
 - **Layout**: the default arrangement for new conversations, and whether the canvas and terminals start hidden.
 - **Devices** and **Notifications**, as above.
+- **About**: the Mirador version, and the Claude Code it runs.
 
 Hovering almost any control explains what it does behind the scenes, together with its keyboard shortcut.
 
@@ -283,13 +297,15 @@ Hovering almost any control explains what it does behind the scenes, together wi
 
 | Keys | What they do |
 | --- | --- |
-| `⌘K` | The palette: any conversation, new conversation, continue a session, workspace colour, rename, canvas and terminal, layout reset, machines, search, settings, restart the host |
+| `⌘K` | The palette: any conversation, new conversation, continue a session, rewind or undo a turn's files, workspace colour and group, rename, canvas and terminal, layout reset, machines, search, settings, restart the host |
 | `⌥↑` `⌥↓` / `⌥⇧↑` `⌥⇧↓` | Previous or next conversation / workspace |
 | `⌥1`…`⌥9` | The n-th conversation of the current workspace |
 | `⌥T` / `⌥⇧T` | New conversation / add a workspace |
-| `⌘\` | Show or hide the canvas |
-| `⌘⇧←` `⌘⇧→` | Focus the message box / the canvas |
+| `⌘\` / `` ⌃` `` | Show or hide the canvas / the terminals |
+| `⌘⇧←` `⌘⇧→` `⌘⇧↓` | Focus the message box / the canvas / the terminal |
 | `⌘F` / `⌘⇧F` | Find in the conversation (in a terminal, in its output) / search everywhere |
+| `⌘J` | In the message box, find a prompt template and put it in |
+| `⌘+` `⌘−` / `⌘0` | Text size bigger or smaller / back to 100% (in a terminal, its font size) |
 | `⌘R` / `⌘⇧R` | Reload the page / restart the host |
 | `?` | Every shortcut, terminal keys included |
 
@@ -299,7 +315,7 @@ Off macOS, Ctrl stands in for ⌘ and Alt for ⌥. The ⌥ bindings go by physic
 
 A native window around Mirador, for macOS and Linux ([full details](desktop/README.md)).
 
-- **Menu bar or tray app**: closing the window leaves it running, and on macOS the Dock icon hides until the window comes back. On macOS `⌘W` closes the open dialog, else the focused terminal's shell, and asks before it closes the window. The menu has the host's status, *Open*, *Restart host*, *Run host in the background*, *Open at login* and *Quit*. On a Linux desktop without a tray, *Desktop app…* in the sidebar has the same menu.
+- **Menu bar or tray app**: closing the window leaves it running, and on macOS the Dock icon hides until the window comes back. On macOS `⌘W` closes the open dialog, else the focused terminal's shell, and asks before it closes the window. The menu has the Mirador version and the host's status, *Open*, *Restart host*, *Run host in the background*, *Open at login* and *Quit*. On a Linux desktop without a tray, *Desktop app…* in the sidebar has the same menu.
 - **Uses a host that is already running** and never stops one it didn't start. Otherwise it starts one through your login shell, so agents see the same environment as in your terminal.
 - **Run the host in the background**: a LaunchAgent on macOS, or a systemd user service on Linux, so the host keeps running without the app and starts at login.
 - **Open at login** (on by default).
@@ -327,7 +343,8 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 ### Working on Mirador in Mirador
 
 - **The host watches its own source.** `⌘R` reloads the page with the UI code as it is now (the bundle rebuilds when `web/` or `shared/` changes), also in the desktop window.
-- **Restart in place**: when `host/` or `shared/` changed, a banner offers a restart (also `⌘⇧R`, or *Restart the host* in the palette). The host stops working agents' turns the way Stop does, re-executes itself in the same process (so the desktop app, launchd or your terminal keeps seeing the same host), and then asks those agents to continue. Terminal shells start over. Queued messages and waiting marks survive any restart, open pages reload by themselves, and the phone app shows the restart offer too.
+- **Restart in place**: when `host/` or `shared/` changed, a banner offers a restart (also `⌘⇧R`, or *Restart the host* in the palette). The host stops working agents' turns the way Stop does, re-executes itself in the same process (so the desktop app, launchd or your terminal keeps seeing the same host), and then asks those agents to continue. Terminal shells start again, under the output they had. Queued messages and waiting marks survive any restart, open pages reload by themselves, and the phone app shows the restart offer too.
+- **A desktop app older than its checkout** shows a banner until it quits, so you know to rebuild it.
 - **`bun run dev`** hot-reloads the UI, for working on `web/`.
 
 ### Security
