@@ -16,6 +16,7 @@ export function canvasInstructions(assetsOrigin: string) {
 
 - show: render an HTML page: architecture or flow diagrams, UI mockups, side-by-side comparisons, charts, 3D scenes, visual explanations, code-review walkthroughs.
 - ask: whenever you need the user to decide between options (design choices, approaches, trade-offs), ask here instead of in plain text. Give each option a short label and, when it helps, an HTML preview. A question takes the canvas's place of what you showed before, so to ask about a page, pass it as the question's html rather than calling show first. When you have more than one thing to ask, ask them all in one call with questions, one entry each; never fold several questions into one, or offer \"accept all\" or \"change some answers\" as options.
+- tour: when you explain how code works, or walk the user through code you changed, publish a guided tour of its flow with this tool rather than show: steps anchored to lines, which the page shows with the code. Pass since to mark what you changed and show its diff.
 - review: when you review code changes (a pull request or a branch), publish the review with this tool rather than show. The user reads it as a guided tour of the code flow, the diff with your findings on it, and posts the findings they keep to the pull request.
 - update_review: to change parts of a review already shown (reword a finding, add or take one out, a new verdict), change just those parts with this tool; the user keeps their place in the review. Publish the whole review again only when the code under review changed.
 
@@ -33,6 +34,26 @@ const flowStepSchema = z.object({
   title: z.string().min(1).describe("A few words, e.g. \"Controller accepts the request\"."),
   at: anchorSchema("Where this step happens; a range for a whole method. May be unchanged code the flow passes through."),
   say: z.string().min(1).describe("Markdown: what happens here and why it matters, in a few sentences."),
+});
+
+const tourStepSchema = flowStepSchema.extend({
+  at: z
+    .string()
+    .min(3)
+    .describe('Where this step happens; a range for a whole method. Written "path:line" or "path:start-end": the path relative to folder, lines of the file as it is now.'),
+});
+
+const tourSchema = z.object({
+  title: z.string().min(1).describe('What the tour is about, e.g. "How a message reaches the agent".'),
+  folder: z.string().min(1).describe("Absolute path of the folder the steps' paths are relative to, usually your working directory."),
+  since: z
+    .string()
+    .optional()
+    .describe(
+      "To walk the user through what you changed: the git ref the changes count from, e.g. HEAD for uncommitted work, or the commit the task started from. Changed lines are marked in the steps and the diff gets a tab. Leave it out to show the code as it is.",
+    ),
+  summary: z.string().min(1).describe("Markdown for the user: what the code does, or what you changed, and how it flows, in plain words, so they understand it fast."),
+  flow: z.array(tourStepSchema).min(1).describe("The tour, in the order the code runs: the entry point first, then each place control or data goes."),
 });
 
 const findingSchema = z.object({
@@ -259,6 +280,26 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
         return { content: [{ type: "text", text: answerAsToolResult(answer) }] };
       } finally {
         clearInterval(heartbeat);
+      }
+    },
+  );
+
+  server.registerTool(
+    "tour",
+    {
+      description:
+        "Publish a guided tour of the code flow to the user's canvas: a summary, then steps in the order the code runs, each anchored to lines the page shows with the code around them (read from the files, so do not paste code). Use it to explain how code works, or with since to walk the user through what you changed: changed lines are marked and the diff gets a tab. The user can ask you about any lines. Anchors are checked; if any are wrong, nothing is shown and the result lists them all. To change a tour, publish it again.",
+      inputSchema: tourSchema,
+      _meta: loadedUpFront,
+    },
+    async (request) => {
+      try {
+        const { id, tour } = await canvas.tour(conversationId, request);
+        const changes = tour.changes ? `, ${tour.files.length} files changed since ${tour.changes.since}` : "";
+        return { content: [{ type: "text", text: `Shown to the user as tour ${id}: ${tour.flow.length} flow steps${changes}.` }] };
+      } catch (error) {
+        if (error instanceof ReviewProblems) return toolError(error.message);
+        throw error;
       }
     },
   );

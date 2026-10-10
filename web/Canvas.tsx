@@ -12,7 +12,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
-import { ReviewView, type ReviewItem } from "./Review.tsx";
+import { WalkthroughView, type ReviewItem, type TourItem } from "./Review.tsx";
 import { currentReviewPlacement, takeArrivedReview } from "./review-placement.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
 
@@ -385,7 +385,7 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
   );
 }
 
-const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄" };
+const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄", tour: "↯" };
 
 function outcomeOf(item: CanvasItem) {
   if (item.review) return item.review.verdict;
@@ -668,7 +668,10 @@ export function CanvasPanel({
           />
         )}
         {!changesOpen && selected?.kind === "review" && selected.review && (
-          <ReviewView key={selected.id} item={selected as ReviewItem} conversationId={selected.conversationId} />
+          <WalkthroughView key={selected.id} item={selected as ReviewItem} conversationId={selected.conversationId} />
+        )}
+        {!changesOpen && selected?.kind === "tour" && selected.tour && (
+          <WalkthroughView key={selected.id} item={selected as TourItem} conversationId={selected.conversationId} />
         )}
         {!changesOpen && selected?.kind === "ask" && (
           <AskView

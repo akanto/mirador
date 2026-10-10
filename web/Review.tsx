@@ -14,6 +14,8 @@ import {
   type ReviewAnswer,
   type ReviewFile,
   type ReviewFinding,
+  type Tour,
+  type Walkthrough,
 } from "../shared/review.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
@@ -26,6 +28,10 @@ import { useTypingAidAttributes } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
 export type ReviewItem = CanvasItem & { review: Review };
+export type TourItem = CanvasItem & { tour: Tour };
+type WalkthroughItem = ReviewItem | TourItem;
+
+const isReviewItem = (item: WalkthroughItem): item is ReviewItem => item.review !== undefined;
 
 type Tab = "overview" | "flow" | "files" | "findings" | "conversations";
 
@@ -64,17 +70,17 @@ interface LineSelection {
 
 const changeLetters: Record<ReviewFile["change"], string> = { added: "A", modified: "M", deleted: "D", renamed: "R" };
 
-const fileOf = (review: Review, path: string) => review.files.find((file) => file.path === path);
+const fileOf = (walk: Walkthrough, path: string) => walk.files.find((file) => file.path === path);
 
 const isWithin = (newLine: number | null, { line, endLine }: CodeAnchor) => newLine !== null && newLine >= line && newLine <= endLine;
 
 const marker = (row: DiffRow) => (row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " ");
 
 /** The files the tour walks through first, in its order, then the rest as git lists them. */
-function filesInReadingOrder(review: Review) {
-  const tourPaths = [...new Set(review.flow.map((step) => step.at.path))];
-  const inTour = tourPaths.flatMap((path) => review.files.filter((file) => file.path === path));
-  return [...inTour, ...review.files.filter((file) => !tourPaths.includes(file.path))];
+function filesInReadingOrder(walk: Walkthrough) {
+  const tourPaths = [...new Set(walk.flow.map((step) => step.at.path))];
+  const inTour = tourPaths.flatMap((path) => walk.files.filter((file) => file.path === path));
+  return [...inTour, ...walk.files.filter((file) => !tourPaths.includes(file.path))];
 }
 
 function selectionLabel({ path, rows }: Pick<LineSelection, "path" | "rows">) {
@@ -102,11 +108,11 @@ type AskingAbout = Pick<LineSelection, "path" | "rows"> & { findingId?: string }
 const quoted = (text: string) => text.split("\n").map((line) => `> ${line}`).join("\n");
 
 /** A question from a finding names it and carries its comment as the user sees it, their own rewording included. */
-function questionAbout(title: string, place: AskingAbout, finding: ReviewFinding | undefined, question: string, updatesReview: boolean) {
+function questionAbout(item: WalkthroughItem, place: AskingAbout, finding: ReviewFinding | undefined, question: string, updatesReview: boolean) {
   const code = place.rows.map((row) => `${marker(row)}${row.text}`).join("\n");
   const subject = finding ? `${finding.id} ("${finding.title}") at ${selectionLabel(place)}` : selectionLabel(place);
   const comment = finding ? `\n\nIts comment now reads:\n\n${quoted(finding.body)}` : "";
-  const asked = `About ${subject} in the review "${title}":${comment}\n\n${fenced(code)}\n\n${question.trim()}`;
+  const asked = `About ${subject} in the ${item.kind} "${item.title}":${comment}\n\n${fenced(code)}\n\n${question.trim()}`;
   return updatesReview ? `${asked}\n\n${UPDATE_THE_REVIEW}` : asked;
 }
 
@@ -120,9 +126,8 @@ const ShownAgentEdits = createContext({ openedWith: undefined as number | undefi
  * flashes once, when the part is first on screen: a finding the agent adds as it appears, a verdict changed while
  * another tab was open when that tab opens.
  */
-function useAgentEdited(review: Review, part: string) {
+function useAgentEdited(edit: Review["agentEdit"], part: string) {
   const shown = useContext(ShownAgentEdits);
-  const edit = review.agentEdit;
   const [flashing, setFlashing] = useState(false);
   useEffect(() => {
     if (!edit || edit.at === shown.openedWith || !edit.parts.includes(part) || shown.flashed.get(part) === edit.at) return;
@@ -223,7 +228,7 @@ function FindingCard({
 }) {
   const { review } = item;
   const [editing, setEditing] = useState(false);
-  const agentEdited = useAgentEdited(review, finding.id);
+  const agentEdited = useAgentEdited(review.agentEdit, finding.id);
   const file = fileOf(review, finding.at.path);
   const update = (change: { decision?: FindingDecision; body?: string }) =>
     connection.send({ type: "review.update-finding", itemId: item.id, findingId: finding.id, ...change });
@@ -334,7 +339,7 @@ function BodyEditor({ body, onSave, onCancel }: { body: string; onSave: (body: s
 
 function AnswerCard({ item, answer, selected }: { item: ReviewItem; answer: ReviewAnswer; selected: boolean }) {
   const [editing, setEditing] = useState(false);
-  const agentEdited = useAgentEdited(item.review, answer.id);
+  const agentEdited = useAgentEdited(item.review.agentEdit, answer.id);
   const update = (change: { decision?: FindingDecision; body?: string; resolve?: boolean }) =>
     connection.send({ type: "review.update-answer", itemId: item.id, answerId: answer.id, ...change });
   const posted = Boolean(answer.postedAs);
@@ -469,6 +474,51 @@ function PostPanel({ item }: { item: ReviewItem }) {
   );
 }
 
+function FlowOutline({ walk, onStep }: { walk: Walkthrough; onStep: (index: number) => void }) {
+  if (walk.flow.length === 0) return null;
+  return (
+    <>
+      <h3>How the code flows</h3>
+      <ol className="overview-flow">
+        {walk.flow.map((step, index) => (
+          <li key={index}>
+            <button type="button" className="link" onClick={() => onStep(index)}>
+              {step.title}
+            </button>{" "}
+            <span className="anchor">{anchorLabel(step.at)}</span>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
+const changeCounts = (walk: Walkthrough) => {
+  const added = walk.files.reduce((sum, file) => sum + file.added, 0);
+  const removed = walk.files.reduce((sum, file) => sum + file.removed, 0);
+  return (
+    <>
+      {walk.files.length} files changed · <span className="added-count">+{added}</span> <span className="removed-count">−{removed}</span>
+    </>
+  );
+};
+
+function TourOverview({ tour, onStep }: { tour: Tour; onStep: (index: number) => void }) {
+  return (
+    <div className="review-overview tour-overview">
+      <section className="overview-story">
+        {tour.changes && (
+          <p className="review-stats">
+            {changeCounts(tour)} · since {tour.changes.since} ({tour.changes.sinceCommit.slice(0, 8)})
+          </p>
+        )}
+        <MarkdownText text={tour.summary} />
+        <FlowOutline walk={tour} onStep={onStep} />
+      </section>
+    </div>
+  );
+}
+
 function Overview({
   item,
   onStep,
@@ -482,36 +532,19 @@ function Overview({
 }) {
   const { review } = item;
   const answers = answersOf(review);
-  const added = review.files.reduce((sum, file) => sum + file.added, 0);
-  const removed = review.files.reduce((sum, file) => sum + file.removed, 0);
-  const verdictEdited = useAgentEdited(review, "verdict");
-  const summaryEdited = useAgentEdited(review, "summary");
+  const verdictEdited = useAgentEdited(review.agentEdit, "verdict");
+  const summaryEdited = useAgentEdited(review.agentEdit, "summary");
   return (
     <div className="review-overview">
       <section className="overview-story">
         <p className={`verdict ${verdictEdited ? "agent-edited" : ""}`}>{review.verdict}</p>
         <p className="review-stats">
-          {review.files.length} files changed · <span className="added-count">+{added}</span> <span className="removed-count">−{removed}</span> ·{" "}
-          {review.base} ({review.baseCommit.slice(0, 8)}) → {review.headCommit.slice(0, 8)}
+          {changeCounts(review)} · {review.base} ({review.baseCommit.slice(0, 8)}) → {review.headCommit.slice(0, 8)}
         </p>
         <div className={summaryEdited ? "agent-edited" : ""}>
           <MarkdownText text={review.summary} />
         </div>
-        {review.flow.length > 0 && (
-          <>
-            <h3>How the code flows</h3>
-            <ol className="overview-flow">
-              {review.flow.map((step, index) => (
-                <li key={index}>
-                  <button type="button" className="link" onClick={() => onStep(index)}>
-                    {step.title}
-                  </button>{" "}
-                  <span className="anchor">{anchorLabel(step.at)}</span>
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
+        <FlowOutline walk={review} onStep={onStep} />
       </section>
       <section className="overview-findings">
         <h3>Findings</h3>
@@ -555,29 +588,32 @@ function Overview({
 }
 
 function FlowTour({
-  item,
+  itemId,
+  walk,
+  agentEdit,
   stepIndex,
   onStep,
   selection,
   onSelect,
   onGoToCode,
 }: {
-  item: ReviewItem;
+  itemId: string;
+  walk: Walkthrough;
+  agentEdit: Review["agentEdit"];
   stepIndex: number;
   onStep: (index: number) => void;
   selection: LineSelection | null;
   onSelect: (selection: LineSelection) => void;
   onGoToCode: (anchor: CodeAnchor) => void;
 }) {
-  const { review } = item;
-  const step = review.flow[stepIndex];
-  const tourEdited = useAgentEdited(review, "flow");
+  const step = walk.flow[stepIndex];
+  const tourEdited = useAgentEdited(agentEdit, "flow");
   if (!step) return <p className="review-empty">The agent described no code flow.</p>;
   return (
     <div className={`review-split flow-tour ${tourEdited ? "agent-edited" : ""}`}>
       <nav className="review-list" aria-label="Flow steps">
         <ol>
-          {review.flow.map((each, index) => (
+          {walk.flow.map((each, index) => (
             <li key={index}>
               <button type="button" className={index === stepIndex ? "selected" : ""} onClick={() => onStep(index)}>
                 <span className="step-number">{index + 1}</span>
@@ -591,13 +627,13 @@ function FlowTour({
       <section className="review-main flow-step">
         <header className="flow-step-header">
           <span className="step-count">
-            Step {stepIndex + 1} of {review.flow.length}
+            Step {stepIndex + 1} of {walk.flow.length}
           </span>
           <h3>{step.title}</h3>
           <button type="button" className="link anchor" onClick={() => onGoToCode(step.at)}>
             {anchorLabel(step.at)}
           </button>
-          <button type="button" className="link" onClick={() => openInEditor(item.id, step.at.path, step.at.line)}>
+          <button type="button" className="link" onClick={() => openInEditor(itemId, step.at.path, step.at.line)}>
             Open in IDEA
           </button>
         </header>
@@ -607,7 +643,7 @@ function FlowTour({
             <button type="button" disabled={stepIndex === 0} onClick={() => onStep(stepIndex - 1)}>
               ← Previous
             </button>
-            <button type="button" disabled={stepIndex === review.flow.length - 1} onClick={() => onStep(stepIndex + 1)}>
+            <button type="button" disabled={stepIndex === walk.flow.length - 1} onClick={() => onStep(stepIndex + 1)}>
               Next →
             </button>
           </div>
@@ -615,7 +651,7 @@ function FlowTour({
         <CodeBlock
           blockId={`flow-${stepIndex}`}
           path={step.at.path}
-          rows={excerptRows(fileOf(review, step.at.path), step.excerpt)}
+          rows={excerptRows(fileOf(walk, step.at.path), step.excerpt)}
           anchored={step.at}
           selection={selection}
           onSelect={onSelect}
@@ -627,20 +663,22 @@ function FlowTour({
 
 function FileList({
   files,
-  review,
+  walk,
+  findings,
   path,
   onPath,
   filterField,
 }: {
   files: ReviewFile[];
-  review: Review;
+  walk: Walkthrough;
+  findings: ReviewFinding[];
   path: string | null;
   onPath: (path: string) => void;
   filterField: RefObject<HTMLInputElement | null>;
 }) {
   const [filter, setFilter] = useState("");
   const typingAidAttributes = useTypingAidAttributes();
-  const tourPaths = new Set(review.flow.map((step) => step.at.path));
+  const tourPaths = new Set(walk.flow.map((step) => step.at.path));
   const shown = files.filter((file) => file.path.toLowerCase().includes(filter.trim().toLowerCase()));
   const openFirstOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && shown[0]) onPath(shown[0].path);
@@ -664,7 +702,7 @@ function FileList({
       />
       <ol>
         {shown.map((file) => {
-          const findings = review.findings.filter((finding) => finding.at.path === file.path).length;
+          const findingCount = findings.filter((finding) => finding.at.path === file.path).length;
           const slash = file.path.lastIndexOf("/");
           return (
             <li key={file.path}>
@@ -679,7 +717,7 @@ function FileList({
                     tour
                   </span>
                 )}
-                {findings > 0 && <span className="finding-count">{findings}</span>}
+                {findingCount > 0 && <span className="finding-count">{findingCount}</span>}
                 <span className="added-count">+{file.added}</span>
                 <span className="removed-count">−{file.removed}</span>
               </button>
@@ -840,41 +878,30 @@ function useRevealedContext(itemId: string, file: ReviewFile) {
 }
 
 function FileDiff({
-  item,
+  itemId,
+  walk,
+  findings: allFindings,
+  findingCard: card,
   file,
   hunkIndex,
-  findingId,
   selection,
   onSelect,
-  onAsk,
 }: {
-  item: ReviewItem;
+  itemId: string;
+  walk: Walkthrough;
+  findings: ReviewFinding[];
+  findingCard: (finding: ReviewFinding) => ReactNode;
   file: ReviewFile;
   hunkIndex: number;
-  findingId: string | null;
   selection: LineSelection | null;
   onSelect: (selection: LineSelection) => void;
-  onAsk: (finding: ReviewFinding) => void;
 }) {
-  const { review } = item;
-  const { hunkRows, gapRow, lastGap } = useRevealedContext(item.id, file);
-  const findings = review.findings.filter((finding) => finding.at.path === file.path);
+  const { hunkRows, gapRow, lastGap } = useRevealedContext(itemId, file);
+  const findings = allFindings.filter((finding) => finding.at.path === file.path);
   const shownLines = new Set(hunkRows.flat().map((row) => row.newLine));
   const onDiff = findings.filter((finding) => shownLines.has(finding.at.endLine));
   const elsewhere = findings.filter((finding) => !onDiff.includes(finding));
-  const steps = review.flow.map((step, index) => ({ step, index })).filter(({ step }) => step.at.path === file.path);
-  const card = (finding: ReviewFinding) => (
-    <FindingCard
-      key={finding.id}
-      item={item}
-      finding={finding}
-      selected={finding.id === findingId}
-      showsCode={false}
-      selection={selection}
-      onSelect={onSelect}
-      onAsk={() => onAsk(finding)}
-    />
-  );
+  const steps = walk.flow.map((step, index) => ({ step, index })).filter(({ step }) => step.at.path === file.path);
   const afterRow = (row: DiffRow) => (
     <>
       {steps
@@ -896,7 +923,7 @@ function FileDiff({
         <span className="removed-count">−{file.removed}</span>
         <span className="spacer" />
         {file.change !== "deleted" && (
-          <button type="button" className="link" onClick={() => openInEditor(item.id, file.path, lineToOpen(file.hunks[hunkIndex]?.rows ?? []))}>
+          <button type="button" className="link" onClick={() => openInEditor(itemId, file.path, lineToOpen(file.hunks[hunkIndex]?.rows ?? []))}>
             Open in IDEA
           </button>
         )}
@@ -920,14 +947,24 @@ function FileDiff({
   );
 }
 
-function AskAboutLines({ label, onSend, onClose }: { label: string; onSend: (question: string, updatesReview: boolean) => void; onClose: () => void }) {
+function AskAboutLines({
+  label,
+  canUpdateReview,
+  onSend,
+  onClose,
+}: {
+  label: string;
+  canUpdateReview: boolean;
+  onSend: (question: string, updatesReview: boolean) => void;
+  onClose: () => void;
+}) {
   const [question, setQuestion] = useState("");
   const typingAidAttributes = useTypingAidAttributes();
   const { primary } = keyLabels();
   const sendOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      if (question.trim()) onSend(question, isMac ? event.metaKey : event.ctrlKey);
+      if (question.trim()) onSend(question, canUpdateReview && (isMac ? event.metaKey : event.ctrlKey));
     }
     if (event.key === "Escape") {
       event.preventDefault();
@@ -943,7 +980,7 @@ function AskAboutLines({ label, onSend, onClose }: { label: string; onSend: (que
         autoFocus
         value={question}
         rows={2}
-        placeholder={`Your question (Enter asks, ${primary}Enter asks and updates the review, Shift+Enter for a new line, Esc cancels)`}
+        placeholder={`Your question (Enter asks, ${canUpdateReview ? `${primary}Enter asks and updates the review, ` : ""}Shift+Enter for a new line, Esc cancels)`}
         onChange={(event) => setQuestion(event.target.value)}
         onKeyDown={sendOnEnter}
       />
@@ -951,9 +988,11 @@ function AskAboutLines({ label, onSend, onClose }: { label: string; onSend: (que
         <button type="button" className="primary" disabled={!question.trim()} onClick={() => onSend(question, false)}>
           Ask
         </button>
-        <button type="button" disabled={!question.trim()} onClick={() => onSend(question, true)} data-hint={hints.askAndUpdateReview}>
-          Ask and update the review
-        </button>
+        {canUpdateReview && (
+          <button type="button" disabled={!question.trim()} onClick={() => onSend(question, true)} data-hint={hints.askAndUpdateReview}>
+            Ask and update the review
+          </button>
+        )}
         <button type="button" onClick={onClose}>
           Cancel
         </button>
@@ -971,32 +1010,37 @@ function useScrollIntoView(root: RefObject<HTMLElement | null>, selector: string
 }
 
 /**
- * A review as a guided read: the agent's summary, a tour of the code flow, the diff with the findings on their lines,
- * and the findings to keep, drop, edit and post. Keys: 1-4 tabs, ←/→ tour steps, j/k changes, n/p findings,
+ * A review or a tour as a guided read: the agent's summary, a tour of the code flow and the diff; a review adds the
+ * findings on their lines, to keep, drop, edit and post. Keys: 1-5 tabs, ←/→ tour steps, j/k changes, n/p findings,
  * f files, o open in IDEA, a ask the agent about the selected lines.
  */
-export function ReviewView({ item, conversationId }: { item: ReviewItem; conversationId: string }) {
-  const { review } = item;
+export function WalkthroughView({ item, conversationId }: { item: WalkthroughItem; conversationId: string }) {
+  const reviewItem = isReviewItem(item) ? item : null;
+  const review = reviewItem?.review ?? null;
+  const walk: Walkthrough = isReviewItem(item) ? item.review : item.tour;
+  const showsChanges = isReviewItem(item) || item.tour.changes !== null;
+  const findings = review?.findings ?? [];
   const root = useRef<HTMLDivElement>(null);
   const filterField = useRef<HTMLInputElement>(null);
-  const files = useMemo(() => filesInReadingOrder(review), [review.files, review.flow]);
+  const files = useMemo(() => filesInReadingOrder(walk), [walk.files, walk.flow]);
   const [tab, setTab] = useState<Tab>("overview");
   const [chosenStep, setStepIndex] = useState(0);
-  const stepIndex = Math.min(chosenStep, Math.max(review.flow.length - 1, 0));
+  const stepIndex = Math.min(chosenStep, Math.max(walk.flow.length - 1, 0));
   const [path, setPath] = useState<string | null>(files[0]?.path ?? null);
   const [hunkIndex, setHunkIndex] = useState(0);
-  const [findingId, setFindingId] = useState<string | null>(review.findings[0]?.id ?? null);
-  const answers = answersOf(review);
+  const [findingId, setFindingId] = useState<string | null>(findings[0]?.id ?? null);
+  const answers = review ? answersOf(review) : [];
   const [answerId, setAnswerId] = useState<string | null>(null);
-  const shownTabs = tabs.filter(({ id }) => id !== "conversations" || answers.length > 0);
+  const tabShown: Record<Tab, boolean> = { overview: true, flow: true, files: showsChanges, findings: review !== null, conversations: answers.length > 0 };
+  const shownTabs = tabs.filter(({ id }) => tabShown[id]);
   const [selection, setSelection] = useState<LineSelection | null>(null);
   const [asking, setAsking] = useState<AskingAbout | null>(null);
   const [sentNote, setSentNote] = useState<string | null>(null);
-  const [shownAgentEdits] = useState(() => ({ openedWith: review.agentEdit?.at, flashed: new Map<string, number>() }));
+  const [shownAgentEdits] = useState(() => ({ openedWith: review?.agentEdit?.at, flashed: new Map<string, number>() }));
   const enterWhileBusy = useEnterWhileBusy();
   const fullscreen = usePaneFullscreen("canvas");
   const file = files.find((each) => each.path === path) ?? files[0];
-  const finding = review.findings.find(({ id }) => id === findingId);
+  const finding = findings.find(({ id }) => id === findingId);
 
   useEffect(() => {
     evictStaleReviewCaches(item.id);
@@ -1016,21 +1060,21 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
     setHunkIndex(nextHunk);
   };
   const goToCode = (anchor: CodeAnchor) => {
-    const target = fileOf(review, anchor.path);
+    const target = fileOf(walk, anchor.path);
     if (!target) return openInEditor(item.id, anchor.path, anchor.line);
     const hunk = target.hunks.findIndex((each) => each.rows.some((row) => isWithin(row.newLine, anchor)));
     showFile(anchor.path, Math.max(0, hunk));
   };
   const showFinding = (id: string, where: "files" | "findings") => {
     setFindingId(id);
-    const target = review.findings.find((each) => each.id === id);
-    if (where === "files" && target && fileOf(review, target.at.path)) goToCode(target.at);
+    const target = findings.find((each) => each.id === id);
+    if (where === "files" && target && fileOf(walk, target.at.path)) goToCode(target.at);
     else setTab("findings");
   };
   const stepFinding = (step: 1 | -1) => {
-    if (review.findings.length === 0) return;
-    const index = review.findings.findIndex(({ id }) => id === findingId);
-    const next = review.findings[(index + step + review.findings.length) % review.findings.length]!;
+    if (findings.length === 0) return;
+    const index = findings.findIndex(({ id }) => id === findingId);
+    const next = findings[(index + step + findings.length) % findings.length]!;
     showFinding(next.id, tab === "files" ? "files" : "findings");
   };
   const stepHunk = (step: 1 | -1) => {
@@ -1041,13 +1085,18 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
     const nextFile = following.find((each) => each.hunks.length > 0);
     if (nextFile) showFile(nextFile.path, step === 1 ? 0 : nextFile.hunks.length - 1);
   };
-  const stepTour = (step: 1 | -1) => setStepIndex((index) => Math.min(Math.max(index + step, 0), Math.max(review.flow.length - 1, 0)));
+  const showStep = (index: number) => {
+    setStepIndex(index);
+    setTab("flow");
+    root.current?.focus({ preventScroll: true });
+  };
+  const stepTour = (step: 1 | -1) => setStepIndex((index) => Math.min(Math.max(index + step, 0), Math.max(walk.flow.length - 1, 0)));
 
   const currentPlace = (): AskingAbout | null => {
     if (selection) return selection;
-    if (tab === "flow" && review.flow[stepIndex]) {
-      const step = review.flow[stepIndex]!;
-      return { path: step.at.path, rows: excerptRows(fileOf(review, step.at.path), step.excerpt).filter((row) => isWithin(row.newLine, step.at)) };
+    if (tab === "flow" && walk.flow[stepIndex]) {
+      const step = walk.flow[stepIndex]!;
+      return { path: step.at.path, rows: excerptRows(fileOf(walk, step.at.path), step.excerpt).filter((row) => isWithin(row.newLine, step.at)) };
     }
     if (tab === "files" && file?.hunks[hunkIndex]) return { path: file.path, rows: file.hunks[hunkIndex]!.rows };
     if (tab === "findings" && finding) return placeOfFinding(finding);
@@ -1056,10 +1105,10 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   const placeOfFinding = (target: ReviewFinding): AskingAbout => ({
     findingId: target.id,
     path: target.at.path,
-    rows: excerptRows(fileOf(review, target.at.path), target.excerpt).filter((row) => isWithin(row.newLine, target.at)),
+    rows: excerptRows(fileOf(walk, target.at.path), target.excerpt).filter((row) => isWithin(row.newLine, target.at)),
   });
   const askingLabel = (place: AskingAbout) => {
-    const askedFinding = review.findings.find(({ id }) => id === place.findingId);
+    const askedFinding = findings.find(({ id }) => id === place.findingId);
     return askedFinding ? `the finding "${askedFinding.title}" at ${selectionLabel(place)}` : selectionLabel(place);
   };
   const askAboutCurrentPlace = () => {
@@ -1072,8 +1121,8 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
   };
   const send = (question: string, updatesReview: boolean) => {
     if (!asking) return;
-    const askedFinding = review.findings.find(({ id }) => id === asking.findingId);
-    const text = questionAbout(item.title, asking, askedFinding, question, updatesReview);
+    const askedFinding = findings.find(({ id }) => id === asking.findingId);
+    const text = questionAbout(item, asking, askedFinding, question, updatesReview);
     if (!connection.send({ type: "conversation.prompt", conversationId, text, imageIds: [], afterTurn: enterWhileBusy === "after-turn" })) return;
     const updating = updatesReview ? ", and the agent updates the parts of the review it changes" : "";
     setSentNote(`Asked about ${askingLabel(asking)}. The answer comes in the chat${updating}.`);
@@ -1090,6 +1139,7 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
     n: () => stepFinding(1),
     p: () => stepFinding(-1),
     f: () => {
+      if (!showsChanges) return;
       setTab("files");
       requestAnimationFrame(() => filterField.current?.focus());
     },
@@ -1119,13 +1169,13 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
     <ShownAgentEdits.Provider value={shownAgentEdits}>
       <div className="review" ref={root} tabIndex={-1} onKeyDown={onKeyDown}>
         <div className="review-bar">
-          <div className="review-tabs" role="tablist" aria-label="Review">
+          <div className="review-tabs" role="tablist" aria-label={reviewItem ? "Review" : "Tour"}>
             {shownTabs.map(({ id, label, key }) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "selected" : ""} data-shortcut={key} onClick={() => setTab(id)}>
                 {label}
-                {id === "flow" && <span className="tab-count">{review.flow.length}</span>}
-                {id === "files" && <span className="tab-count">{review.files.length}</span>}
-                {id === "findings" && <span className="tab-count">{review.findings.filter((each) => each.decision === "keep").length}</span>}
+                {id === "flow" && <span className="tab-count">{walk.flow.length}</span>}
+                {id === "files" && <span className="tab-count">{walk.files.length}</span>}
+                {id === "findings" && <span className="tab-count">{findings.filter((each) => each.decision === "keep").length}</span>}
                 {id === "conversations" && <span className="tab-count">{answers.filter((each) => each.decision === "keep").length}</span>}
               </button>
             ))}
@@ -1143,19 +1193,21 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
             </span>
           )}
           {fullscreen && (
-            <button type="button" className="placement-toggle" data-hint={hints.reviewPlacement} onClick={() => fullscreen.setFullscreen(!fullscreen.isFullscreen)}>
+            <button
+              type="button"
+              className="placement-toggle"
+              data-hint={reviewItem ? hints.reviewPlacement : hints.tourPlacement}
+              onClick={() => fullscreen.setFullscreen(!fullscreen.isFullscreen)}
+            >
               {fullscreen.isFullscreen ? "Beside the chat" : "Full screen"}
             </button>
           )}
         </div>
         <div className="review-body">
-          {tab === "overview" && (
+          {tab === "overview" && reviewItem && (
             <Overview
-              item={item}
-              onStep={(index) => {
-                setStepIndex(index);
-                setTab("flow");
-              }}
+              item={reviewItem}
+              onStep={showStep}
               onFinding={(id) => showFinding(id, "findings")}
               onAnswer={(id) => {
                 setAnswerId(id);
@@ -1163,33 +1215,59 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
               }}
             />
           )}
-          {tab === "flow" && <FlowTour item={item} stepIndex={stepIndex} onStep={setStepIndex} selection={selection} onSelect={select} onGoToCode={goToCode} />}
+          {tab === "overview" && !isReviewItem(item) && <TourOverview tour={item.tour} onStep={showStep} />}
+          {tab === "flow" && (
+            <FlowTour
+              itemId={item.id}
+              walk={walk}
+              agentEdit={review?.agentEdit}
+              stepIndex={stepIndex}
+              onStep={setStepIndex}
+              selection={selection}
+              onSelect={select}
+              onGoToCode={goToCode}
+            />
+          )}
           {tab === "files" && (
             <div className="review-split files-view">
-              <FileList files={files} review={review} path={file?.path ?? null} onPath={(next) => showFile(next)} filterField={filterField} />
+              <FileList files={files} walk={walk} findings={findings} path={file?.path ?? null} onPath={(next) => showFile(next)} filterField={filterField} />
               {file ? (
                 <FileDiff
                   key={file.path}
-                  item={item}
+                  itemId={item.id}
+                  walk={walk}
+                  findings={findings}
+                  findingCard={(target) =>
+                    reviewItem && (
+                      <FindingCard
+                        key={target.id}
+                        item={reviewItem}
+                        finding={target}
+                        selected={target.id === findingId}
+                        showsCode={false}
+                        selection={selection}
+                        onSelect={select}
+                        onAsk={() => setAsking(placeOfFinding(target))}
+                      />
+                    )
+                  }
                   file={file}
                   hunkIndex={hunkIndex}
-                  findingId={findingId}
                   selection={selection}
                   onSelect={select}
-                  onAsk={(target) => setAsking(placeOfFinding(target))}
                 />
               ) : (
                 <p className="review-empty">No files changed.</p>
               )}
             </div>
           )}
-          {tab === "findings" && (
+          {tab === "findings" && reviewItem && (
             <div className="findings-view">
-              {review.findings.length === 0 && <p className="review-empty">The agent found nothing to comment on.</p>}
-              {review.findings.map((each) => (
+              {findings.length === 0 && <p className="review-empty">The agent found nothing to comment on.</p>}
+              {findings.map((each) => (
                 <FindingCard
                   key={each.id}
-                  item={item}
+                  item={reviewItem}
                   finding={each}
                   selected={each.id === findingId}
                   showsCode
@@ -1199,21 +1277,22 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
                   onAsk={() => setAsking(placeOfFinding(each))}
                 />
               ))}
-              <PostPanel item={item} />
+              <PostPanel item={reviewItem} />
             </div>
           )}
-          {tab === "conversations" && (
+          {tab === "conversations" && reviewItem && (
             <div className="findings-view">
               {answers.map((each) => (
-                <AnswerCard key={each.id} item={item} answer={each} selected={each.id === answerId} />
+                <AnswerCard key={each.id} item={reviewItem} answer={each} selected={each.id === answerId} />
               ))}
-              <PostPanel item={item} />
+              <PostPanel item={reviewItem} />
             </div>
           )}
         </div>
         {asking && (
           <AskAboutLines
             label={askingLabel(asking)}
+            canUpdateReview={reviewItem !== null}
             onSend={send}
             onClose={() => {
               setAsking(null);
@@ -1232,8 +1311,23 @@ export function ReviewView({ item, conversationId }: { item: ReviewItem; convers
           </div>
         )}
         <footer className="review-keys" aria-hidden="true">
-          <kbd>1</kbd>–<kbd>{shownTabs.length}</kbd> tabs · <kbd>←</kbd>/<kbd>→</kbd> tour · <kbd>j</kbd>/<kbd>k</kbd> changes · <kbd>n</kbd>/<kbd>p</kbd> findings ·{" "}
-          <kbd>f</kbd> files · click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in IDEA
+          <kbd>1</kbd>–<kbd>{shownTabs.length}</kbd> tabs · <kbd>←</kbd>/<kbd>→</kbd> tour ·{" "}
+          {showsChanges && (
+            <>
+              <kbd>j</kbd>/<kbd>k</kbd> changes ·{" "}
+            </>
+          )}
+          {reviewItem && (
+            <>
+              <kbd>n</kbd>/<kbd>p</kbd> findings ·{" "}
+            </>
+          )}
+          {showsChanges && (
+            <>
+              <kbd>f</kbd> files ·{" "}
+            </>
+          )}
+          click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in IDEA
         </footer>
       </div>
     </ShownAgentEdits.Provider>

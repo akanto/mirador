@@ -1,0 +1,140 @@
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
+import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { TestHost } from "./test-host.ts";
+
+const host = new TestHost(5375, { fakePrograms: true });
+const ideaLog = join(host.root, "idea.log");
+
+const serviceBefore = `export function serve(request) {
+  const user = authenticate(request);
+  return load(user);
+}
+
+function authenticate(request) {
+  return request.user;
+}
+
+function load(user) {
+  return { user, items: [] };
+}
+`;
+const serviceAfter = serviceBefore.replace("const user = authenticate(request);", "const user = authenticate(request) ?? anonymous();");
+
+function git(...args: string[]) {
+  return execFileSync("git", ["-C", host.projectDir, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();
+}
+
+/** A checkout where the task changed service.ts, wrote items.ts and a gitignored build file, none of it committed yet. */
+function createUncommittedWork() {
+  mkdirSync(host.projectDir, { recursive: true });
+  git("init", "-q", "-b", "main");
+  writeFileSync(join(host.projectDir, ".gitignore"), "build/\n");
+  writeFileSync(join(host.projectDir, "service.ts"), serviceBefore);
+  git("add", ".");
+  git("commit", "-q", "-m", "base");
+  writeFileSync(join(host.projectDir, "service.ts"), serviceAfter);
+  writeFileSync(join(host.projectDir, "items.ts"), "export function fetchItems(user) {\n  return [];\n}\n");
+  mkdirSync(join(host.projectDir, "build"));
+  writeFileSync(join(host.projectDir, "build", "routes.js"), "export const routes = ['/serve'];\n");
+}
+
+function writeFakeIdea() {
+  mkdirSync(host.fakeProgramsDir, { recursive: true });
+  writeFileSync(join(host.fakeProgramsDir, "idea"), `#!/bin/bash\nprintf '%s\\n' "$*" >> "${ideaLog}"\n`);
+  chmodSync(join(host.fakeProgramsDir, "idea"), 0o755);
+}
+
+const tour = (change: Record<string, unknown> = {}) => ({
+  title: "How a request is served",
+  folder: host.projectDir,
+  summary: "serve() authenticates the request, then **loads the user's items**.",
+  flow: [
+    { title: "Request comes in", at: "service.ts:1-4", say: "serve() authenticates the request, then loads." },
+    { title: "Routes are built", at: "build/routes.js:1", say: "The build lists the route." },
+  ],
+  ...change,
+});
+
+const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
+const logLines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n") : []);
+
+test.beforeAll(async () => {
+  createUncommittedWork();
+  writeFakeIdea();
+  await host.start();
+});
+test.afterAll(async () => {
+  await host.stop();
+  await host.cleanUp();
+});
+
+test("a tour walks through the code as it is, or through what the task changed with the diff, and the user asks about its lines", async ({ page }) => {
+  await signIn(page, host);
+  await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const view = canvasPane(page).locator(".review");
+
+  await test.step("wrong anchors are all sent back to the agent, and nothing is shown", async () => {
+    const result = await callCanvasTool(host, conversationId, "tour", tour({ flow: [{ title: "Nowhere", at: "service.ts:99", say: "?" }] }));
+    expect(result).toContain("The tour was not shown");
+    expect(result).toContain('flow step 1 ("Nowhere"): service.ts:99 is outside the file, which has 12 lines.');
+    await expect(view).toHaveCount(0);
+  });
+
+  await test.step("a tour of the code as it is has no files, findings or verdict, and shows a file git ignores too", async () => {
+    expect(await callCanvasTool(host, conversationId, "tour", tour())).toMatch(/^Shown to the user as tour .*: 2 flow steps\.$/);
+    await expect(view.getByRole("tab")).toHaveText([/Overview/, /Flow/]);
+    await expect(view.locator(".overview-story")).toContainText("loads the user's items");
+    await expect(view.locator(".verdict")).toHaveCount(0);
+    await view.getByRole("button", { name: "Routes are built" }).click();
+    await expect(view.locator(".flow-step h3")).toHaveText("Routes are built");
+    await expect(view.locator(".code-row.anchored")).toHaveText([/export const routes/]);
+    await page.keyboard.press("ArrowLeft");
+    await expect(view.locator(".flow-step h3")).toHaveText("Request comes in");
+    await expect(view.locator(".code-row.anchored")).toHaveCount(4);
+    await expect(view.locator(".code-row.added, .code-row.removed")).toHaveCount(0);
+    await page.keyboard.press("o");
+    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 1 \/.*\/service\.ts$/);
+    await expect(view.locator(".review-keys")).not.toContainText("findings");
+  });
+
+  await test.step("with since, the steps mark what changed and the Files tab shows the diff, in tour order, with the rest of a file as it was published", async () => {
+    const result = await callCanvasTool(
+      host,
+      conversationId,
+      "tour",
+      tour({ since: "HEAD", flow: [{ title: "Request comes in", at: "service.ts:1-4", say: "Now falls back to anonymous." }, { title: "Items", at: "items.ts:1-3", say: "New." }] }),
+    );
+    expect(result).toMatch(/: 2 flow steps, 2 files changed since HEAD\.$/);
+    writeFileSync(join(host.projectDir, "service.ts"), "rewritten after the tour\n");
+    await expect(view.getByRole("tab")).toHaveText([/Overview/, /Flow/, /Files/]);
+    await expect(view.locator(".review-stats")).toContainText("2 files changed");
+    await expect(view.locator(".review-stats")).toContainText("since HEAD");
+    await page.keyboard.press("2");
+    await expect(view.locator(".code-row.added")).toHaveText([/authenticate\(request\) \?\? anonymous\(\);$/]);
+    await expect(view.locator(".code-row.removed")).toHaveText([/const user = authenticate\(request\);$/]);
+    await page.keyboard.press("3");
+    await expect(view.locator(".review-list .file-name")).toHaveText(["service.ts", "items.ts"]);
+    await view.getByRole("button", { name: "Show the rest of the file" }).click();
+    await expect(view.locator(".code-block")).toContainText("return { user, items: [] };");
+    await expect(view.locator(".code-block")).not.toContainText("rewritten after the tour");
+  });
+
+  await test.step("selected lines go to the agent as a question about the tour, with no review to update", async () => {
+    await page.keyboard.press("2");
+    await view.locator(".code-row.added .line-number").click();
+    await page.keyboard.press("a");
+    const dialog = page.getByRole("dialog", { name: "Ask the agent about these lines" });
+    await expect(dialog.getByRole("button", { name: "Ask and update the review" })).toHaveCount(0);
+    await dialog.locator("textarea").fill("Reply with just the word NOTED.");
+    await dialog.locator("textarea").press("Enter");
+    await expect(view.locator(".review-sent")).toContainText("Asked about service.ts:2");
+    const asked = page.locator(".message.user").last();
+    await expect(asked).toContainText('About service.ts:2 in the tour "How a request is served"');
+    await expect(asked).toContainText("+  const user = authenticate(request) ?? anonymous();");
+    await expect(asked).not.toContainText("update_review");
+  });
+});

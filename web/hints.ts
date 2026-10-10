@@ -55,6 +55,7 @@ export const hints = {
   revealOverNext: "Shows the lines of the file right above the change below.",
   revealAll: "Shows every line of the file between the two changes (or up to the file's start or end).",
   reviewPlacement: "Show the review over the whole workspace, or in the canvas pane next to the chat. Settings picks where reviews open.",
+  tourPlacement: "Show the tour over the whole workspace, or in the canvas pane next to the chat.",
   reviewPlacementSetting: "Where a code review from the agent opens. Either way, the button in the review's bar switches between the two.",
   editsInCanvasSetting:
     "On, an edit the agent waits for you to allow takes the canvas, with a Unified / Split toggle and the file's line numbers, and the chat keeps a small card. Off, the chat card shows the diff and the canvas stays as it is.",

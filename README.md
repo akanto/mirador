@@ -18,6 +18,7 @@ Mirador was born from that gap. It keeps everything that makes a coding agent po
 
 - **It shows you** what it means: architecture, flows, data, mockups, charts, even 3D scenes, instead of describing them.
 - **It asks you** with pictures: two to eight options, each with a preview, and you click one.
+- **It walks you through code**: how something works, or what it just changed, as a tour of the code in the order it runs, with the changed lines marked.
 - **It hands you a review** to walk through: the change as a guided tour of the code in the order it runs, with findings pinned to the lines they are about, ready to post to the pull request.
 
 Understanding gets faster. Reviewing gets far, far faster. And you stay the one who decides.
@@ -97,6 +98,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - [The canvas](#the-canvas)
 - [Questions](#questions)
 - [Edit approvals](#edit-approvals)
+- [Code tours](#code-tours)
 - [Code review](#code-review)
 - [Conversations and agents](#conversations-and-agents)
 - [The message box](#the-message-box)
@@ -129,7 +131,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **As you left it**: coming back to a conversation brings its canvas back as it was, with *Changes* still open or the page still shown.
 - **History**: everything shown or asked is kept per conversation, across reloads and restarts. *Older* and *Newer* step through it, and *History* lists it newest first, with each question's outcome. *Clear* empties the canvas without deleting anything.
 - **Hide, show and full screen**: the canvas keeps receiving pages while hidden.
-- **How often Claude Code uses it** (*Settings → Canvas*): *As needed*, or *Often*, which adds guidance to Claude Code's system prompt. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode gets the same instructions.
+- **How often Claude Code uses it** (*Settings → Canvas*): *As needed*, or *Often*, which adds guidance to Claude Code's system prompt, such as ending a larger coding task with a tour of what changed. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode gets the same instructions.
 
 ### Questions
 
@@ -148,6 +150,15 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Unified or Split**: a toggle switches between one column and old-beside-new; the browser remembers the choice.
 - **One at a time**: several waiting edits show oldest first, with how many more wait. *Clear* or *History* sets them aside, and *N edits waiting* in the canvas bar brings them back. Once answered, the canvas clears with a short note of the answer. Edits don't go into the canvas history.
 - **Or in the chat**: switch off *Settings → Canvas → Show edits waiting for approval in the canvas* to keep the diff in the chat card, as it also is while the canvas is hidden.
+
+### Code tours
+
+- **`tour`**: the agent walks you through code without reviewing it: a title, a summary and steps in the order the code runs, each anchored to its lines. It explains how something works, or shows what a task changed.
+- **The code as it was shown**: each step's lines are read from the files when the tour is published, from gitignored files and folders outside git too, so later edits don't change the tour.
+- **What the task changed**: given a git ref to count from (such as `HEAD` for uncommitted work), the steps mark added and removed lines, and a *Files* tab shows the diff, new files included. Mirador snapshots the folder for it without touching your git index.
+- **Checked before shown**: wrong anchors send the whole list of problems back to the agent, and nothing is shown.
+- **Read it like a review**: the Overview with the summary, the Flow one step at a time, and the Files; ask the agent about any lines or open them in IDEA, with the same keys. There is no verdict, findings or posting.
+- **When the agent makes one**: with *Often*, Claude Code ends a larger coding task with a tour of what it changed instead of a summary page. With *As needed*, when you ask, or when it explains how code works.
 
 ### Code review
 

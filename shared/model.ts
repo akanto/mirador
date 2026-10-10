@@ -5,7 +5,7 @@ import type {
   StopReason,
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
-import type { EditDiff, Review } from "./review.ts";
+import type { EditDiff, Review, Tour } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
 
 export type HarnessId = "claude" | "opencode";
@@ -456,7 +456,7 @@ export interface CanvasAnswer {
 export interface CanvasItem {
   id: string;
   conversationId: string;
-  kind: "show" | "ask" | "review";
+  kind: "show" | "ask" | "review" | "tour";
   title: string;
   html?: string;
   question?: string;
@@ -471,6 +471,7 @@ export interface CanvasItem {
   /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */
   shownBefore?: string[];
   review?: Review;
+  tour?: Tour;
   createdAt: number;
   /** When the item last changed, so a client catching up after a reconnect gets only the items that changed since. */
   updatedAt?: number;

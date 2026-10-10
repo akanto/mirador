@@ -1,6 +1,6 @@
 import { answersSummary, questionsOf } from "../../shared/ask.ts";
 import type { AskAnswerEntry, AskQuestion, CanvasAnswer, CanvasItem } from "../../shared/model.ts";
-import { answersOf, type FindingDecision, type Review } from "../../shared/review.ts";
+import { answersOf, type FindingDecision, type Review, type Tour } from "../../shared/review.ts";
 import type { ConversationService } from "../conversations.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
@@ -11,6 +11,7 @@ import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit }
 import { openInIdea } from "../review/editor.ts";
 import { ghCli, postPendingReview, type GitHubCli } from "../review/github.ts";
 import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
+import { snapshotTour, touredFileLines, type TourRequest } from "../review/tour.ts";
 
 const RENDER_REPORT_TIMEOUT_MS = 6000;
 
@@ -29,6 +30,9 @@ export interface RenderReport {
 export type RenderOutcome = RenderReport | "no-viewer";
 
 type ReviewItem = CanvasItem & { review: Review };
+type TourItem = CanvasItem & { tour: Tour };
+
+const UNKNOWN_WALKTHROUGH = "Unknown review or tour.";
 
 export interface FindingChange {
   decision?: FindingDecision;
@@ -141,6 +145,19 @@ export class CanvasService {
     }) as ReviewItem;
   }
 
+  async tour(conversationId: string, request: TourRequest): Promise<TourItem> {
+    const tour = await snapshotTour(request);
+    return this.save({
+      id: crypto.randomUUID(),
+      conversationId,
+      kind: "tour",
+      title: request.title,
+      tour,
+      status: "shown",
+      createdAt: Date.now(),
+    }) as TourItem;
+  }
+
   /**
    * Changes parts of a review already shown, in the same canvas item, so the user keeps their place in it. The edit is
    * applied to the review as it is once git has been read, so a choice the user made meanwhile stays.
@@ -206,11 +223,17 @@ export class CanvasService {
   }
 
   openInEditor(itemId: string, path: string, line: number) {
-    openInIdea(this.reviewItem(itemId).review.repository, path, line);
+    const { review, tour } = this.store.findCanvasItem(itemId) ?? {};
+    const root = review?.repository ?? tour?.folder;
+    if (!root) throw new Error(UNKNOWN_WALKTHROUGH);
+    openInIdea(root, path, line);
   }
 
   async readReviewedFile(itemId: string, path: string) {
-    return reviewedFileLines(this.reviewItem(itemId).review, path);
+    const { review, tour } = this.store.findCanvasItem(itemId) ?? {};
+    if (review) return reviewedFileLines(review, path);
+    if (tour) return touredFileLines(tour, path);
+    throw new Error(UNKNOWN_WALKTHROUGH);
   }
 
   withdrawWaitingAsks(conversationId: string) {

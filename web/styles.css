@@ -5168,6 +5168,10 @@ button.picture-option.chosen {
   .review-overview {
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
+
+  .review-overview.tour-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .review-overview h3 {

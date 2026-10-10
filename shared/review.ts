@@ -129,7 +129,14 @@ export interface PullRequestRef {
   number: number;
 }
 
-export interface Review {
+/** What a review and a tour both show: the agent's summary, its tour of the code flow, and the files that changed. */
+export interface Walkthrough {
+  summary: string;
+  flow: ReviewFlowStep[];
+  files: ReviewFile[];
+}
+
+export interface Review extends Walkthrough {
   /** The root of the checkout the change was reviewed in. */
   repository: string;
   base: string;
@@ -137,18 +144,30 @@ export interface Review {
   headCommit: string;
   pullRequest: PullRequestRef | null;
   verdict: string;
-  summary: string;
-  flow: ReviewFlowStep[];
   findings: ReviewFinding[];
   /** Missing on reviews published before answers existed; read it with answersOf. */
   answers?: ReviewAnswer[];
-  files: ReviewFile[];
   posting: boolean;
   pendingReviewUrl: string | null;
   /** The agent's latest change to parts of the review in place: finding and answer ids, "summary", "verdict" or "flow". */
   agentEdit?: { at: number; parts: string[] };
   /** The highest finding number handed out so far, so a removed finding's id never names another one; missing until the agent changes the review. */
   lastFindingNumber?: number;
+}
+
+/** A tour of the code flow outside a review: how some code works, or what a task changed. */
+export interface Tour extends Walkthrough {
+  /** The folder its paths are relative to. */
+  folder: string;
+  /** What changed since a git ref, when the tour shows that; its `files` are then those changes. */
+  changes: TourChanges | null;
+}
+
+export interface TourChanges {
+  since: string;
+  sinceCommit: string;
+  /** The git tree of the folder as it was published, so a changed file can be shown beyond its diff. */
+  snapshot: string;
 }
 
 export const answersOf = (review: Review) => review.answers ?? [];

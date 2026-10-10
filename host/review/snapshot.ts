@@ -1,5 +1,5 @@
-import { existsSync, realpathSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   anchorLabel,
   parseAnchor,
@@ -48,14 +48,19 @@ export async function allOrEveryProblem<A, B>(first: Promise<A>, second: Promise
 const EXCERPT_CONTEXT_LINES = 6;
 const MAX_EXCERPT_LINES = 160;
 
-async function git(directory: string, args: string[]) {
-  const child = Bun.spawn(["git", "-C", directory, "-c", "core.quotepath=false", ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+export async function git(directory: string, args: string[], environment: Record<string, string> = {}) {
+  const child = Bun.spawn(["git", "-C", directory, "-c", "core.quotepath=false", ...args], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, ...environment },
+  });
   const [output, errors, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
   if (exitCode !== 0) throw new Error(errors.trim() || `git ${args[0]} failed`);
   return output;
 }
 
-async function gitOrProblem(directory: string, args: string[], problems: string[], describe: (error: string) => string) {
+export async function gitOrProblem(directory: string, args: string[], problems: string[], describe: (error: string) => string) {
   try {
     return await git(directory, args);
   } catch (error) {
@@ -64,7 +69,40 @@ async function gitOrProblem(directory: string, args: string[], problems: string[
   }
 }
 
-const linesAt = async (root: string, commit: string, path: string) => (await git(root, ["show", `${commit}:${path}`])).replace(/\n$/, "").split("\n");
+const linesOfText = (text: string) => text.replace(/\n$/, "").split("\n");
+
+export const linesAt = async (root: string, treeish: string, path: string) => linesOfText(await git(root, ["cat-file", "blob", `${treeish}:${path}`]));
+
+/** Where anchors read their lines from, named the way a problem with a missing file says it. */
+export interface LineSource {
+  lines(path: string): Promise<string[] | null>;
+  /** e.g. "in the reviewed version (1a2b3c4d5e)". */
+  where: string;
+}
+
+export const commitLines = (root: string, commit: string): LineSource => ({
+  lines: (path) => linesAt(root, commit, path).catch(() => null),
+  where: `in the reviewed version (${commit.slice(0, 10)})`,
+});
+
+const isOutside = (relativePath: string) => relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
+
+/** `path` from `folder` with no `.` or `..` left in it, or null when it leads out of the folder. */
+export function pathInside(folder: string, path: string) {
+  const inside = relative(folder, resolve(folder, path));
+  return isOutside(inside) ? null : inside;
+}
+
+/** Files as they are on disk now, gitignored ones included, as long as they are inside `folder`. */
+export const diskLines = (folder: string): LineSource => ({
+  lines: async (path) => {
+    const inside = pathInside(folder, path);
+    const file = inside && join(folder, inside);
+    if (!file || !existsSync(file) || !statSync(file).isFile()) return null;
+    return linesOfText(await Bun.file(file).text());
+  },
+  where: `in ${folder}`,
+});
 
 /** The reviewed version of one of the review's changed files, so the page can show more of it than the diff does. */
 export async function reviewedFileLines(review: Review, path: string) {
@@ -85,7 +123,7 @@ export class AnchorReader {
 
   constructor(
     private readonly root: string,
-    private readonly headCommit: string,
+    private readonly source: LineSource,
     private readonly problems: string[],
   ) {}
 
@@ -98,7 +136,7 @@ export class AnchorReader {
     const at = { ...parsed, path: this.relativePath(parsed.path) };
     const lines = await this.linesOf(at.path);
     if (!lines) {
-      this.problems.push(`${where}: ${at.path} is not a file in the reviewed version (${this.headCommit.slice(0, 10)}); paths are relative to ${this.root}.`);
+      this.problems.push(`${where}: ${at.path} is not a file ${this.source.where}; paths are relative to ${this.root}.`);
       return null;
     }
     if (at.line < 1 || at.endLine < at.line || at.endLine > lines.length) {
@@ -115,10 +153,7 @@ export class AnchorReader {
 
   private linesOf(path: string) {
     if (!this.fileLines.has(path)) {
-      this.fileLines.set(
-        path,
-        linesAt(this.root, this.headCommit, path).catch(() => null),
-      );
+      this.fileLines.set(path, this.source.lines(path));
     }
     return this.fileLines.get(path)!;
   }
@@ -142,7 +177,7 @@ export async function snapshotReview(request: ReviewRequest): Promise<Review> {
   if (!headCommit || !baseCommit) throw new ReviewProblems(problems);
 
   const diff = await git(root, ["diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", baseCommit, headCommit]);
-  const anchors = new AnchorReader(root, headCommit, problems);
+  const anchors = new AnchorReader(root, commitLines(root, headCommit), problems);
   const flow = await mapInOrder(request.flow, async (step, index) => {
     const anchored = await anchors.read(step.at, `flow step ${index + 1} ("${step.title}")`);
     return anchored && { title: step.title, say: step.say, ...anchored };

@@ -8,7 +8,7 @@ import {
   type ReviewAnswer,
   type ReviewFinding,
 } from "../../shared/review.ts";
-import { AnchorReader, mapInOrder, ReviewProblems } from "./snapshot.ts";
+import { AnchorReader, commitLines, mapInOrder, ReviewProblems } from "./snapshot.ts";
 
 export interface NewFinding {
   severity: FindingSeverity;
@@ -54,7 +54,7 @@ export const REVIEW_NOT_CHANGED = "The review was not changed. Fix these and cal
 /** Reads git, so it runs before the edit is applied to the review as it is by then. */
 export async function readEditAnchors(review: Review, edit: ReviewEdit): Promise<EditAnchors> {
   const problems: string[] = [];
-  const anchors = new AnchorReader(review.repository, review.headCommit, problems);
+  const anchors = new AnchorReader(review.repository, commitLines(review.repository, review.headCommit), problems);
   const readEach = <T extends { at?: string }>(entries: T[] | undefined, where: (entry: T, index: number) => string) =>
     mapInOrder(entries ?? [], (entry, index) => (entry.at === undefined ? Promise.resolve(null) : anchors.read(entry.at, where(entry, index))));
   return {
