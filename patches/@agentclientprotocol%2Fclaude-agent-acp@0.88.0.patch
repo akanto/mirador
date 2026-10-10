@@ -1,8 +1,19 @@
 diff --git a/dist/acp-agent.js b/dist/acp-agent.js
-index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..fccf1b7fa6f8940a1c2db9229e62b3e6220d7e12 100644
+index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..541aa77f473be60671edef8d0fe97fcd96ce805d 100644
 --- a/dist/acp-agent.js
 +++ b/dist/acp-agent.js
-@@ -8778,6 +8778,24 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
+@@ -8424,8 +8424,9 @@ function recordDispatchedToolUses(session, content) {
+     if (!Array.isArray(content))
+         return;
+     for (const block of content) {
++        // A server_tool_use, such as the advisor's, runs on the API, not in the tool runner, and one without a result
++        // never ran: the API skips a server tool that follows a tool_use in the same response.
+         if ((block?.type === "tool_use" ||
+-            block?.type === "server_tool_use" ||
+             block?.type === "mcp_tool_use") &&
+             typeof block.id === "string") {
+             recordDispatchedToolCall(session, block.id);
+@@ -8778,6 +8779,24 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
                  delete toolUseCache[chunk.tool_use_id];
                  break;
              }
@@ -27,7 +38,7 @@ index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..fccf1b7fa6f8940a1c2db9229e62b3e6
              case "document":
              case "search_result":
              case "redacted_thinking":
-@@ -8787,7 +8805,6 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
+@@ -8787,7 +8806,6 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
              case "container_upload":
              case "compaction":
              case "compaction_delta":
