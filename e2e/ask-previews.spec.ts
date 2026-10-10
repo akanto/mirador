@@ -178,3 +178,34 @@ test("a question asked right after a page carries that page, so both are in the 
   await expect(page.locator(".ask h3")).toHaveText("And the next one?");
   await expect(page.locator(".ask-page-before")).toHaveCount(0);
 });
+
+test("a question's page and previews keep space from the box's edge even when they set the body's margin to 0, while a page on the canvas stays as the agent wrote it", async ({ page }) => {
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const flush = (text: string) => `<style>body{margin:0}</style><ol style="margin:0"><li>${text}</li></ol>`;
+  const listLeft = (frame: Locator) => frame.contentFrame().locator("ol").evaluate((list) => list.getBoundingClientRect().left);
+  const wideAndFlush = `<style>body{margin:0}</style><div id="wide" style="width:1400px">wide</div>`;
+  askInBackground(conversationId, {
+    question: "Which fix?",
+    html: flush("What happened"),
+    options: [
+      { label: "Drop-in", html: flush("Add a file") },
+      { label: "Unstick only", html: wideAndFlush },
+    ],
+  });
+
+  const context = page.locator(".ask-context iframe");
+  await expect(context.contentFrame().getByText("What happened")).toBeVisible();
+  expect(await listLeft(context)).toBe(8);
+  expect(await listLeft(preview(page.locator(".ask-option").first()))).toBe(8);
+  const wide = preview(page.locator(".ask-option").nth(1));
+  await expect(wide, "a page wider than its box is scaled down").toHaveAttribute("style", /scale/);
+  const spaceAfterWide = () => wide.contentFrame().locator("#wide").evaluate((element) => document.documentElement.clientWidth - element.getBoundingClientRect().right);
+  await expect.poll(spaceAfterWide, "a scaled page keeps its spacing on the right as well").toBe(8);
+  await answerCanvasQuestion(page, "Drop-in");
+
+  await callCanvasTool(host, conversationId, "show", { title: "Flush page", html: flush("Edge to edge") });
+  const shown = page.locator(".canvas-frame.show iframe");
+  await expect(shown.contentFrame().getByText("Edge to edge")).toBeVisible();
+  expect(await listLeft(shown)).toBe(0);
+});

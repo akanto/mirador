@@ -92,8 +92,8 @@ function frameReporter(itemId: string, theme: CanvasTheme) {
   addEventListener("load", () => setTimeout(() => post({ kind: "rendered", errors }), 1500));
   const reportSize = () => {
     const root = document.documentElement;
-    const leftMargin = document.body ? parseFloat(getComputedStyle(document.body).marginLeft) || 0 : 0;
-    const overflowWidth = root.scrollWidth > root.clientWidth ? Math.ceil(root.scrollWidth + leftMargin) : null;
+    const bodyLeft = document.body ? document.body.getBoundingClientRect().left + scrollX : 0;
+    const overflowWidth = root.scrollWidth > root.clientWidth ? Math.ceil(root.scrollWidth + bodyLeft) : null;
     post({ kind: "size", height: Math.ceil(root.getBoundingClientRect().height), overflowWidth });
   };
   new ResizeObserver(reportSize).observe(document.documentElement);
@@ -181,12 +181,15 @@ function escapeAttribute(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 }
 
+/** A page in a box among a question's fields keeps its side spacing on html, where a page's own body{margin:0} does not take it away; the body's top and bottom margins stay, to collapse with its first and last elements' as before. */
+const PADDED_PAGE_STYLE = "<style>html{padding:0 8px}body{margin-left:0;margin-right:0}</style>";
+
 /**
  * Wraps agent HTML (a fragment or a full document) so our CSP, import map and error
  * reporter come before anything the agent wrote; the parser folds the agent's own
  * <html>/<head> tags into the already-open elements.
  */
-export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string, theme: CanvasTheme) {
+export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string, theme: CanvasTheme, { padded = false } = {}) {
   const withoutDoctype = html.replace(/^\s*<!doctype[^>]*>/i, "");
   return [
     "<!doctype html>",
@@ -195,6 +198,7 @@ export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: 
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
     `<script>${frameReporter(itemId, theme)}</script>`,
     "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif;overflow-wrap:break-word}</style>",
+    ...(padded ? [PADDED_PAGE_STYLE] : []),
     withoutDoctype,
   ].join("\n");
 }

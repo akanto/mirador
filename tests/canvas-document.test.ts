@@ -18,6 +18,14 @@ describe("buildCanvasDocument", () => {
     expect(document).toContain(`"three/addons/":"${assetsOrigin}/three/addons/"`);
   });
 
+  test("a padded page keeps its side spacing on html, ahead of the agent's own styles; other pages are left as the agent wrote them", () => {
+    const agentStyle = "<style>body{margin:0}</style>";
+    const padded = buildCanvasDocument(agentStyle, "item", assetsOrigin, "light", { padded: true });
+    expect(padded.indexOf("html{padding:0 8px}body{margin-left:0;margin-right:0}")).toBeGreaterThan(-1);
+    expect(padded.indexOf("html{padding:0 8px}")).toBeLessThan(padded.indexOf(agentStyle));
+    expect(buildCanvasDocument(agentStyle, "item", assetsOrigin, "light")).not.toContain("html{padding");
+  });
+
   test("embeds the item id safely in the error reporter", () => {
     const document = buildCanvasDocument("<p>", '"; alert(1); "', assetsOrigin, "light");
     expect(document).toContain(JSON.stringify('"; alert(1); "'));

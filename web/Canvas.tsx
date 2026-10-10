@@ -91,7 +91,7 @@ function CanvasFrame({
   const [errors, setErrors] = useState<string[]>([]);
   const [contentSize, setContentSize] = useState<ContentSize>();
   // The theme is not a dependency: changing it would reload the page, so it reaches a shown page by message instead.
-  const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme()), [html, frameId, assetsOrigin]);
+  const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme(), { padded: fitsContent }), [html, frameId, assetsOrigin, fitsContent]);
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
   const onContentWidthRef = useRef(onContentWidth);
