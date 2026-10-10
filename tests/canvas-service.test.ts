@@ -35,6 +35,7 @@ function setUp() {
     usageLimit: null,
     jobWaits: [],
     waitingFor: null,
+    pendingRequest: null,
     activity: null,
     configOptions: [],
     createdAt: 1,

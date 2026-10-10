@@ -287,6 +287,36 @@ export interface StatuslineRender {
 /** Why the agent waits for you: a tool to approve, a canvas question to answer, or a turn that ended (or failed) while you looked elsewhere. */
 export type WaitingFor = "permission" | "question" | "finished" | "error";
 
+/** A tool the agent waits for your approval of: what it would do, and the answers the agent offers. */
+export interface PendingPermissionRequest {
+  kind: "permission";
+  permissionId: string;
+  title: string;
+  /**
+   * The shell command it would run, cut short, and the agent's description of it; null for other tools, whose input,
+   * diffs or plan only the conversation shows.
+   */
+  command: string | null;
+  description: string | null;
+  options: PermissionOption[];
+}
+
+/** A canvas question the agent waits on: its first question and that question's answers, without their pages. */
+export interface PendingAsk {
+  kind: "ask";
+  itemId: string;
+  question: string;
+  choices: Pick<AskOption, "label" | "description">[];
+  allowOther: boolean;
+  /** How many questions it asks; the ones after the first show only in the conversation. */
+  questions: number;
+  /** It shows a page or previews, which only the conversation shows. */
+  previews: boolean;
+}
+
+/** What the agent waits on, so a list of waiting conversations can answer it without loading their events. */
+export type PendingRequest = PendingPermissionRequest | PendingAsk;
+
 /** While Claude's usage limit is reached, queued messages wait; the agent continues by itself at `continuesAt`, or only when told to (null). */
 export interface UsageLimitWait {
   resetsAt: number | null;
@@ -340,6 +370,8 @@ export interface Conversation {
   jobWaits: JobWait[];
   /** Kept in memory, except for questions, so a host restart forgets the turns that ended unseen. */
   waitingFor: WaitingFor | null;
+  /** The permission request or question it waits for, the oldest first; worked out from those, never stored. */
+  pendingRequest: PendingRequest | null;
   /** What the agent does now, while a turn runs; kept in memory only. */
   activity: Activity | null;
   configOptions: SessionConfigOption[];

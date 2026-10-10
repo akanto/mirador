@@ -29,6 +29,7 @@ function seededStore() {
     usageLimit: null,
     jobWaits: [],
     waitingFor: null,
+    pendingRequest: null,
     activity: null,
     configOptions: [],
     position: 0,

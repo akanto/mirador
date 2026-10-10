@@ -15,6 +15,9 @@ import {
   type JobWait,
   type JobWaitEnd,
   type Launch,
+  type PendingAsk,
+  type PendingPermissionRequest,
+  type PendingRequest,
   type QueuedMessage,
   type RestorePlan,
   type StoredEvent,
@@ -30,6 +33,7 @@ import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
+import { pendingAsk, pendingPermission } from "./pending-requests.ts";
 import { launchIdea } from "./review/editor.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
@@ -81,7 +85,7 @@ type PermissionResolver = (optionId: string | null) => void;
 interface PendingPermission {
   settle: PermissionResolver;
   allowOptionId: string | null;
-  tool: string;
+  request: PendingPermissionRequest;
 }
 
 interface PromptStart {
@@ -135,7 +139,7 @@ export class ConversationService {
   private readonly contextUsage = new Map<string, ContextUsage>();
   private readonly planQuotas = new PlanQuotasByProfile();
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
-  private readonly conversationsWithQuestions: Set<string>;
+  private readonly asksWaitedOn: Map<string, PendingAsk>;
   private readonly commands = new UserCommandRunner();
   private readonly jobWaits: JobWaits;
   private readonly checkpoints: Checkpoints;
@@ -156,7 +160,8 @@ export class ConversationService {
     this.cancelPermissionsOrphanedByRestart();
     this.endTurnsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
-    this.conversationsWithQuestions = new Set(store.listCanvasItemsWithStatus("waiting").map(({ conversationId }) => conversationId));
+    const waitingAsksOldestLast = store.listCanvasItemsWithStatus("waiting").sort((a, b) => b.createdAt - a.createdAt);
+    this.asksWaitedOn = new Map(waitingAsksOldestLast.map((item) => [item.conversationId, pendingAsk(item)]));
     this.jobWaits = new JobWaits(store, {
       changed: (conversationId) => this.republish(conversationId),
       ended: (conversationId, wait, end) => this.jobWaitEnded(conversationId, wait, end),
@@ -253,6 +258,7 @@ export class ConversationService {
       usageLimit: null,
       jobWaits: [],
       waitingFor: null,
+      pendingRequest: null,
       activity: null,
       configOptions: [],
       createdAt: now,
@@ -292,7 +298,7 @@ export class ConversationService {
     this.terminalActivity.delete(conversationId);
     this.contextUsage.delete(conversationId);
     this.unseenTurnEnds.delete(conversationId);
-    this.conversationsWithQuestions.delete(conversationId);
+    this.asksWaitedOn.delete(conversationId);
     this.store.deleteConversation(conversationId);
     this.images.deleteConversation(conversationId);
     this.hub.broadcast({ type: "conversation.deleted", conversationId });
@@ -623,9 +629,9 @@ export class ConversationService {
 
   /** The canvas reports each question it opens, has answered or withdraws. */
   questionsChanged(conversationId: string) {
-    const waiting = this.store.listCanvasItems(conversationId).some(({ status }) => status === "waiting");
-    if (waiting) this.conversationsWithQuestions.add(conversationId);
-    else this.conversationsWithQuestions.delete(conversationId);
+    const waiting = this.store.listCanvasItems(conversationId).find(({ status }) => status === "waiting");
+    if (waiting) this.asksWaitedOn.set(conversationId, pendingAsk(waiting));
+    else this.asksWaitedOn.delete(conversationId);
     if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
   }
 
@@ -1211,7 +1217,7 @@ export class ConversationService {
         if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
         resolve(optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } });
       };
-      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId, tool: request.toolCall.title ?? "a tool" });
+      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId, request: pendingPermission(permissionId, request) });
       this.publish(this.get(conversationId));
       signal.addEventListener("abort", () => settle(null), { once: true });
     });
@@ -1387,13 +1393,18 @@ export class ConversationService {
   private activity(conversationId: string): Activity | null {
     const runtime = this.runtimes.get(conversationId);
     if (!runtime?.running) return null;
-    return currentActivity(runtime.openToolCalls, [...runtime.pendingPermissions.values()].map(({ tool }) => tool));
+    return currentActivity(runtime.openToolCalls, [...runtime.pendingPermissions.values()].map(({ request }) => request.title));
   }
 
   private waitingFor(conversationId: string): WaitingFor | null {
     if ((this.runtimes.get(conversationId)?.pendingPermissions.size ?? 0) > 0) return "permission";
-    if (this.conversationsWithQuestions.has(conversationId)) return "question";
+    if (this.asksWaitedOn.has(conversationId)) return "question";
     return this.unseenTurnEnds.get(conversationId) ?? null;
+  }
+
+  private pendingRequest(conversationId: string): PendingRequest | null {
+    const [oldestPermission] = this.runtimes.get(conversationId)?.pendingPermissions.values() ?? [];
+    return oldestPermission?.request ?? this.asksWaitedOn.get(conversationId) ?? null;
   }
 
   private setStatus(conversationId: string, status: ConversationStatus, statusDetail: string | null = null) {
@@ -1412,6 +1423,7 @@ export class ConversationService {
       usageLimit: this.runtimes.get(conversation.id)?.usageLimit?.wait ?? null,
       jobWaits: this.jobWaits.in(conversation.id),
       waitingFor: this.waitingFor(conversation.id),
+      pendingRequest: this.pendingRequest(conversation.id),
       activity: this.activity(conversation.id),
     };
   }

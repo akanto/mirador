@@ -27,6 +27,7 @@ describe("moveProfilelessOntoProfiles", () => {
       usageLimit: null,
       jobWaits: [],
       waitingFor: null,
+      pendingRequest: null,
       activity: null,
       configOptions: [],
       position: 0,

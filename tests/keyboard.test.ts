@@ -214,6 +214,7 @@ const conversation = (id: string, workspaceId: string, createdAt: number, positi
     usageLimit: null,
     jobWaits: [],
     waitingFor: null,
+    pendingRequest: null,
     activity: null,
   configOptions: [],
   position,
