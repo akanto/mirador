@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, primaryModifier, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, addWorkspaceFromSidebar, createProfile, primaryModifier, sendMessage, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5272, { fakePrograms: true });
@@ -30,7 +30,7 @@ const noteAboutAddAFile =
 const git = (...args: string[]) =>
   execFileSync("git", ["-C", host.projectDir, "-c", "user.name=e2e", "-c", "user.email=e2e@localhost", ...args], { encoding: "utf8" }).trim();
 
-// The second test goes on in the conversation the first one leaves.
+// The later tests go on from the first one: the second in the conversation it leaves, the third with its profile.
 test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fakeOpencode();
@@ -51,9 +51,9 @@ const userMessage = (page: Page) => page.locator(".timeline:visible .message.use
 const undoFiles = (page: Page) => page.locator(".timeline:visible .undo-files").last();
 
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
-async function startConversationWithoutModel(page: Page) {
+async function startConversationWithoutModel(page: Page, directory = host.projectDir) {
   const previousUrl = page.url();
-  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await workspaceCard(page, directory).getByRole("button", { name: "+ New conversation" }).click();
   await expect(page).not.toHaveURL(previousUrl);
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
@@ -164,4 +164,37 @@ test("an undo leaves a submodule that moved as it is and says so, and a turn who
     await expect(dialog).toContainText("Mirador no longer keeps the files of that turn: it keeps those of a workspace's newest 100 turns.");
     await expect(dialog.getByRole("button", { name: "Put the files back" })).toHaveCount(0);
   });
+});
+
+test("in a workspace below the repository's top, an undo puts back that folder's files and leaves the rest of the repository as it is", async ({ page }) => {
+  const app = join(host.projectDir, "app");
+  const appFile = join(app, "app.txt");
+  const madeInApp = join(app, "made.txt");
+  const madeAtTop = join(host.projectDir, "top.txt");
+  mkdirSync(app);
+  writeFileSync(appFile, "the app as it was\n");
+  git("add", "-A");
+  git("commit", "-qm", "the app");
+
+  await signIn(page, host);
+  await addWorkspaceFromSidebar(page, app);
+  await workspaceCard(page, app).getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  await startConversationWithoutModel(page, app);
+  await sendMessage(page, "Change the app");
+  await expect(status(page)).toHaveText("idle", { timeout: 60_000 });
+  writeFileSync(appFile, "changed by the turn\n");
+  writeFileSync(madeInApp, "made by the turn\n");
+  writeFileSync(readme, "the user's own change\n");
+  writeFileSync(madeAtTop, "made outside the app\n");
+
+  await userMessage(page).hover();
+  await undoFiles(page).click();
+  const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+  await expect(dialog).toContainText("1 file put back as they were and 1 file created since deleted");
+  await dialog.getByRole("button", { name: "Put the files back" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(readFileSync(appFile, "utf8")).toBe("the app as it was\n");
+  expect(() => readFileSync(madeInApp, "utf8")).toThrow();
+  expect(readFileSync(readme, "utf8")).toBe("the user's own change\n");
+  expect(readFileSync(madeAtTop, "utf8")).toBe("made outside the app\n");
 });

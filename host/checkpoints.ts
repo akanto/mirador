@@ -132,7 +132,7 @@ export class Checkpoints {
   /** What a restore would change: what to put back or rewrite, what to delete, the paths to delete, and the submodules it leaves. */
   private async diffToNow(workspace: Workspace, commit: string) {
     const now = await this.stageEverything(workspace);
-    const diff = await this.git(workspace, ["diff-tree", "-r", "-z", "--raw", "--no-renames", commit, now]);
+    const diff = await this.git(workspace, ["diff-tree", "-r", "-z", "--raw", "--relative", "--no-renames", commit, now]);
     const changes = changesIn(diff.stdout);
     const files = changes.filter(({ submodule }) => !submodule);
     const withStatus = (letters: string[]) => files.filter(({ status }) => letters.includes(status)).length;

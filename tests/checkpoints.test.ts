@@ -81,6 +81,29 @@ test("what the user's repository shows is untouched: same branch, same log, same
   expect((await git(projectDir, ["status", "--porcelain"])).stdout).toBe(before.stdout);
 });
 
+test("in a folder below the repository's top, a restore puts back and deletes the folder's own files and leaves the rest of the repository as it is", async () => {
+  await mkdir(join(projectDir, "sub"));
+  await write("sub/inner.txt", "inner\n");
+  await write("sub/notes.md", "the folder's notes\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "sub"]);
+  const folder = { ...workspace, path: join(projectDir, "sub") };
+  const snapshot = (await checkpoints.snapshot(folder))!;
+
+  await write("sub/inner.txt", "changed by the agent\n");
+  await write("sub/added.txt", "new\n");
+  await write("notes.md", "notes at the top\n");
+  await write("kept.txt", "the user's own change\n");
+
+  expect(await checkpoints.preview(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
+  expect(await checkpoints.restore(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
+  expect(await read("sub/inner.txt")).toBe("inner\n");
+  await expect(read("sub/added.txt")).rejects.toThrow();
+  expect(await read("sub/notes.md")).toBe("the folder's notes\n");
+  expect(await read("notes.md")).toBe("notes at the top\n");
+  expect(await read("kept.txt")).toBe("the user's own change\n");
+});
+
 test("ignored files are neither stored nor deleted by a restore", async () => {
   const snapshot = (await checkpoints.snapshot(workspace))!;
   await mkdir(join(projectDir, "build"));
