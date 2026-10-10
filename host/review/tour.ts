@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync, statSync }
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { ReviewFile, Tour, TourChanges } from "../../shared/review.ts";
+import { IDENTITY } from "../checkpoints.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "./diff.ts";
 import { AnchorReader, diskLines, git, gitOrProblem, linesAt, mapInOrder, pathInside, ReviewProblems, type LineSource } from "./snapshot.ts";
 
@@ -15,6 +16,12 @@ export interface TourRequest {
 
 const TOUR_NOT_SHOWN = "The tour was not shown. Fix these and call tour again";
 
+export const TOURS_KEPT = 100;
+const TOUR_REFS = "refs/mirador/tours/";
+const TOUR_SNAPSHOT_MESSAGE = "mirador: the files a tour was made from";
+/** Named by when it was taken, so the names sort oldest first. */
+const tourRefOf = (commit: string, takenAt: number) => `${TOUR_REFS}${String(takenAt).padStart(16, "0")}-${commit}`;
+
 function folderOrProblem(folder: string, problems: string[]) {
   if (!isAbsolute(folder) || !existsSync(folder) || !statSync(folder).isDirectory()) {
     problems.push(`folder: ${folder} is not an absolute path of a folder.`);
@@ -23,7 +30,10 @@ function folderOrProblem(folder: string, problems: string[]) {
   return realpathSync(folder);
 }
 
-/** The folder's files as they are now, untracked ones included, as a git tree of the whole checkout; the user's index stays as it was. */
+/**
+ * The folder's files as they are now, untracked ones included, as a git tree of the whole checkout, and a commit of it
+ * for a ref to keep. The user's index, branches and HEAD stay as they were.
+ */
 async function workingTree(folder: string) {
   const scratch = mkdtempSync(join(tmpdir(), "mirador-tour-"));
   const index = join(scratch, "index");
@@ -31,23 +41,35 @@ async function workingTree(folder: string) {
     const usersIndex = (await git(folder, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim();
     if (existsSync(usersIndex)) copyFileSync(usersIndex, index);
     await git(folder, ["add", "--all", "--", "."], { GIT_INDEX_FILE: index });
-    return (await git(folder, ["write-tree"], { GIT_INDEX_FILE: index })).trim();
+    const tree = (await git(folder, ["write-tree"], { GIT_INDEX_FILE: index })).trim();
+    const commit = (await git(folder, [...IDENTITY, "commit-tree", tree, "-m", TOUR_SNAPSHOT_MESSAGE])).trim();
+    return { tree, commit };
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
 }
 
-async function changesSince(folder: string, since: string, problems: string[]): Promise<{ changes: TourChanges; files: ReviewFile[] } | null> {
+/**
+ * A ref of its own under refs/mirador/tours/ keeps git's gc from taking a shown tour's files, as Undo's snapshots do;
+ * only the newest `keep` stay. A tour sent back for its anchors gets none, so it takes no place among them.
+ */
+async function keepSnapshot(folder: string, commit: string, keep: number) {
+  await git(folder, ["update-ref", tourRefOf(commit, Date.now()), commit]);
+  const refs = await git(folder, ["for-each-ref", "--sort=-refname", "--format=%(refname)", TOUR_REFS]);
+  for (const dropped of refs.split("\n").filter(Boolean).slice(keep)) await git(folder, ["update-ref", "-d", dropped]);
+}
+
+async function changesSince(folder: string, since: string, problems: string[]): Promise<{ changes: TourChanges; files: ReviewFile[]; snapshotCommit: string } | null> {
   const notInGit = () => `since: ${folder} is not inside a git checkout, so the tour cannot show what changed; leave since out.`;
   const prefix = await gitOrProblem(folder, ["rev-parse", "--show-prefix"], problems, notInGit);
   if (prefix === null) return null;
   const sinceCommit = (await gitOrProblem(folder, ["rev-parse", "--verify", `${since}^{commit}`], problems, () => `since: ${since} is not a commit in ${folder}.`))?.trim();
   if (!sinceCommit) return null;
-  const tree = await workingTree(folder);
+  const { tree, commit } = await workingTree(folder);
   const snapshot = (await gitOrProblem(folder, ["rev-parse", `${tree}:${prefix.trim()}`], problems, () => `since: git ignores everything in ${folder}, so the tour cannot show what changed; leave since out.`))?.trim();
   if (!snapshot) return null;
   const diff = await git(folder, ["diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", "--relative", sinceCommit, tree]);
-  return { changes: { since, sinceCommit, snapshot }, files: hideUnreadableDiffs(parseGitDiff(diff)) };
+  return { changes: { since, sinceCommit, snapshot }, files: hideUnreadableDiffs(parseGitDiff(diff)), snapshotCommit: commit };
 }
 
 /**
@@ -64,7 +86,7 @@ const snapshotThenDisk = (folder: string, snapshot: string): LineSource => ({
 });
 
 /** The tour as the user will read it: each step's code as it was when published, and with `since`, what changed since then. */
-export async function snapshotTour(request: TourRequest): Promise<Tour> {
+export async function snapshotTour(request: TourRequest, keep = TOURS_KEPT): Promise<Tour> {
   const problems: string[] = [];
   const folder = folderOrProblem(request.folder, problems);
   if (!folder) throw new ReviewProblems(problems, TOUR_NOT_SHOWN);
@@ -75,6 +97,7 @@ export async function snapshotTour(request: TourRequest): Promise<Tour> {
     return anchored && { title: step.title, say: step.say, ...anchored };
   });
   if (problems.length > 0) throw new ReviewProblems(problems, TOUR_NOT_SHOWN);
+  if (changed) await keepSnapshot(folder, changed.snapshotCommit, keep);
   return {
     folder,
     changes: changed?.changes ?? null,
@@ -89,6 +112,6 @@ export async function touredFileLines(tour: Tour, path: string) {
   const file = tour.files.find((candidate) => candidate.path === path);
   if (!file || file.change === "deleted" || !tour.changes) throw new Error(`${path} is not a file this tour shows changes of.`);
   return linesAt(tour.folder, tour.changes.snapshot, path).catch(() => {
-    throw new Error(`Git no longer has ${path} as it was when the tour was published: git gc removes such copies after a while. The steps still show their lines.`);
+    throw new Error(`Git no longer has ${path} as it was when the tour was published: Mirador keeps the files of a repository's newest ${TOURS_KEPT} tours. The steps still show their lines.`);
   });
 }

@@ -101,7 +101,7 @@ test("a tour walks through the code as it is, or through what the task changed w
     await expect(view.locator(".review-keys")).not.toContainText("findings");
   });
 
-  await test.step("with since, the steps mark what changed and the Files tab shows the diff, in tour order, with the rest of a file as it was published", async () => {
+  await test.step("with since, the steps mark what changed and the Files tab shows the diff, in tour order, with the rest of a file as it was published, even after git gc", async () => {
     const result = await callCanvasTool(
       host,
       conversationId,
@@ -118,6 +118,7 @@ test("a tour walks through the code as it is, or through what the task changed w
     await expect(view.locator(".code-row.removed")).toHaveText([/const user = authenticate\(request\);$/]);
     await page.keyboard.press("3");
     await expect(view.locator(".review-list .file-name")).toHaveText(["service.ts", "items.ts"]);
+    git("gc", "--quiet", "--prune=now");
     await view.getByRole("button", { name: "Show the rest of the file" }).click();
     await expect(view.locator(".code-block")).toContainText("return { user, items: [] };");
     await expect(view.locator(".code-block")).not.toContainText("rewritten after the tour");

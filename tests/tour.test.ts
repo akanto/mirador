@@ -87,13 +87,28 @@ describe("snapshotTour", () => {
     expect(git("status", "--porcelain").split("\n").filter(Boolean).sort()).toEqual([" M app/service.ts", "?? app/new.ts"]);
   });
 
-  test("once git gc removes the snapshot, a changed file says so rather than failing with git's message", async () => {
-    const { directory, git } = checkoutWithUncommittedWork();
+  test("with since, git gc keeps the files the tour was made from, under a ref of Mirador's own, and the user's branches stay as they were", async () => {
+    const { directory, git, head } = checkoutWithUncommittedWork();
     const tour = await snapshotTour(request(join(directory, "app"), { since: "HEAD" }));
 
     git("gc", "--quiet", "--prune=now");
 
-    await expect(touredFileLines(tour, "service.ts")).rejects.toThrow("Git no longer has service.ts as it was when the tour was published");
+    expect(await touredFileLines(tour, "service.ts")).toContain("  return load() + 1;");
+    expect(git("for-each-ref", "--format=%(refname)").split("\n").filter(Boolean)).toEqual(["refs/heads/main", expect.stringMatching(/^refs\/mirador\/tours\/\d{16}-[0-9a-f]{40}$/)]);
+    expect(git("rev-parse", "HEAD").trim()).toBe(head);
+  });
+
+  test("only the newest tours keep their files; an older one's changed file says so rather than failing with git's message", async () => {
+    const { directory, git } = checkoutWithUncommittedWork();
+    const older = await snapshotTour(request(join(directory, "app"), { since: "HEAD" }), 1);
+    writeFileSync(join(directory, "app/service.ts"), lines("export function serve() {", "  return load() + 2;", "}", "", "function load() {", "  return 1;", "}"));
+    const newer = await snapshotTour(request(join(directory, "app"), { since: "HEAD" }), 1);
+
+    git("gc", "--quiet", "--prune=now");
+
+    expect(git("for-each-ref", "--format=%(refname)", "refs/mirador/tours/").split("\n").filter(Boolean)).toHaveLength(1);
+    expect(await touredFileLines(newer, "service.ts")).toContain("  return load() + 2;");
+    await expect(touredFileLines(older, "service.ts")).rejects.toThrow("Git no longer has service.ts as it was when the tour was published: Mirador keeps the files of a repository's newest 100 tours.");
   });
 
   test("with since, a step in a file git ignores still shows its code, read from disk", async () => {
@@ -126,6 +141,14 @@ describe("snapshotTour", () => {
     expect(problems[1]).toContain("service.ts:99 is outside the file, which has 7 lines");
     expect(problems[2]).toContain('"service.ts" is not "path:line"');
     expect(problems[3]).toContain("../readme.md is not a file in ");
+  });
+
+  test("a tour sent back for its anchors keeps none of its files, so it takes no place among the newest tours", async () => {
+    const { directory, git } = checkoutWithUncommittedWork();
+
+    await problemsOf(snapshotTour(request(join(directory, "app"), { since: "HEAD", flow: [{ title: "Past the end", at: "service.ts:99", say: "?" }] })));
+
+    expect(git("for-each-ref", "refs/mirador/tours/")).toBe("");
   });
 
   test("with since, a path out of the folder is reported even when the folder has a file of that name, and so is a folder", async () => {

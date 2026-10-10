@@ -32,7 +32,8 @@ function withinWorkspace(workspace: Workspace, path: string) {
   return resolve(root, path).startsWith(root + sep);
 }
 const SNAPSHOT_MESSAGE = "mirador: the files at the start of a turn";
-const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost", "-c", "commit.gpgsign=false"];
+/** Mirador's own commits need no identity or signing setup from the user's git config. */
+export const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost", "-c", "commit.gpgsign=false"];
 
 /**
  * The files of a workspace, kept per turn so a turn can be undone.

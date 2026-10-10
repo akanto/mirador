@@ -155,7 +155,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 - **`tour`**: the agent walks you through code without reviewing it: a title, a summary and steps in the order the code runs, each anchored to its lines. It explains how something works, or shows what a task changed.
 - **The code as it was shown**: each step's lines are read from the files when the tour is published, from gitignored files and folders outside git too, so later edits don't change the tour.
-- **What the task changed**: given a git ref to count from (such as `HEAD` for uncommitted work), the steps mark added and removed lines, and a *Files* tab shows the diff, new files included. Mirador snapshots the folder for it without touching your git index.
+- **What the task changed**: given a git ref to count from (such as `HEAD` for uncommitted work), the steps mark added and removed lines, and a *Files* tab shows the diff, new files included. Mirador keeps the files the tour was made from in the folder's git repository, under refs of its own, so *Show the rest of the file* works on older tours too, for each repository's newest 100 tours; your branches, history and staging area are untouched.
 - **Checked before shown**: wrong anchors send the whole list of problems back to the agent, and nothing is shown.
 - **Read it like a review**: the Overview with the summary, the Flow one step at a time, and the Files; ask the agent about any lines or open them in IDEA, with the same keys. There is no verdict, findings or posting.
 - **When the agent makes one**: with *Often*, Claude Code ends a larger coding task with a tour of what it changed instead of a summary page. With *As needed*, when you ask, or when it explains how code works.
