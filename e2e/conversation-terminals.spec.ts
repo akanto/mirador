@@ -35,6 +35,8 @@ test("each conversation of a workspace has terminals of its own, which keep runn
   await page.getByRole("button", { name: "Show terminal" }).click();
   await runInTerminal(page, "MARK=first-shell; echo first-$((20+1))");
   await expect(screen(page)).toContainText("first-21");
+  await expect(page.getByRole("button", { name: "Hide terminal" })).toHaveAttribute("data-hint", /^Hide or show this conversation's terminals/);
+  await expect(page.locator(".terminal-pane").getByRole("button", { name: "New terminal tab" })).toHaveAttribute("data-hint", /^Open a shell in a new tab of this conversation's terminals/);
 
   const second = await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();

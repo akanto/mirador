@@ -10,7 +10,7 @@ export const hints = {
   configOption:
     "The agent offers this setting for the session. Changing it sends the new value to the agent (ACP session/set_config_option), which applies it to this conversation.",
   restartHost:
-    "Starts the host again in place, so it runs its code as it is now. Agents that are working stop, then continue where they left off; queued messages are kept. Terminal shells start over. Open pages reload by themselves.",
+    "Starts the host again in place, so it runs its code as it is now. Agents that are working stop, then continue where they left off; queued messages are kept. Terminals come back as new shells under the output they had. Open pages reload by themselves.",
   stop: "Asks the agent to stop its turn, as Esc does. When it has not stopped within a few seconds, this becomes Force stop, which ends the agent process instead; other conversations on the same profile continue where they left off.",
   reviewLineNumber: "Click to select this line, Shift+click to select up to it. Then a asks the agent about the lines, o opens them in IntelliJ IDEA.",
   findingChecked: "Confirmed: the agent verified it (ran, traced or tested the code). Plausible: suspected, not verified.",
@@ -71,9 +71,9 @@ export const hints = {
     "The conversation loses this turn and every turn after it, and the agent's own history with them; the files go back to how they were when it began. Neither comes back from here. Use the terminal if you want the files as they are now.",
   commandDelivery: "Commands you run with ! go to the agent with your next message, in the tags Claude Code uses for its own ! commands.",
   commandOutputsAttached: "These outputs of commands you ran with ! go ahead of your next message to the agent. ✕ keeps them out of it.",
-  terminalToggle: "Hide or show a terminal in this workspace's folder. Its shell keeps running while the pane is hidden, and reloading the page reattaches to it.",
+  terminalToggle: "Hide or show this conversation's terminals, which run in its workspace's folder. Their shells keep running while the pane is hidden or another conversation is shown, and reloading the page reattaches to them.",
   terminalHide: "Hide the terminals. Their shells keep running; show them again from the conversation header or the command palette.",
-  terminalNewTab: "Open a shell in a new tab, in this workspace's folder. Every window shows the same tabs.",
+  terminalNewTab: "Open a shell in a new tab of this conversation's terminals, in its workspace's folder. Every window shows the same tabs for this conversation.",
   terminalSplit: "Open another shell beside the focused one, in the same tab (up to 4).",
   terminalSplitDown: "Open another shell below the focused one, in the same tab (up to 4).",
   terminalFindWholeWord: "Match whole word: only where the text stands on its own, not inside a longer word.",
@@ -142,16 +142,16 @@ export const hints = {
   jobWait:
     "The agent left this job running and ran mirador when-done, so it need not poll it. Mirador checks on it now and then: a process every second, a container every 5 seconds, a job on another machine every 20 seconds over ssh. When it ends, the message goes to the agent as your next message, or, if the agent asked so, only to you.\n\nThe wait survives a host restart.",
   followJob:
-    "Follow it in a terminal tab of this workspace: what it runs, how long it has run, then its output as it comes, from the file a process writes to or from the container's logs. The tab says when the job ends. Ctrl+C closes it; the job keeps running.",
+    "Follow it in a terminal tab of this conversation: what it runs, how long it has run, then its output as it comes, from the file a process writes to or from the container's logs. The tab says when the job ends. Ctrl+C closes it; the job keeps running.",
   stopWaitingForJob: "Stop waiting for this job: when it ends, nobody is told. It keeps running.",
   claudeProgram:
     "The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ~/.local/bin, /opt/homebrew/bin or /usr/local/bin.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.",
   canvasUse:
     "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
   terminalCommand:
-    "Claude Code shows this one only in its own terminal, so this opens it there: a terminal tab of this workspace, run by the Claude Code this conversation's profile uses. The panel is where the command happens; the agent's answer above is only its refusal.",
+    "Claude Code shows this one only in its own terminal, so this opens it there: a terminal tab of this conversation, run by the Claude Code this conversation's profile uses. The panel is where the command happens; the agent's answer above is only its refusal.",
   logIn:
-    "Opens the agent's own sign-in in a terminal tab of this workspace, with this conversation's profile, so a profile with an account of its own signs that one in. Once it says you are signed in, send your message again.",
+    "Opens the agent's own sign-in in a terminal tab of this conversation, with its profile, so a profile with an account of its own signs that one in. Once it says you are signed in, send your message again.",
   queuedGrip: "Drag to change the order queued messages go out in: they leave from the top.",
   queuedDelivery: "How this message goes out: into the running turn once the agent's tools finish, or after the turn ends. Click to switch.",
   steerMessage: "Adds the message to the running turn: Claude Code reads it as soon as the tools it is running finish, before its next step.",
