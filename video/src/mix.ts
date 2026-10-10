@@ -3,7 +3,7 @@ import type { NarrationLine, PlacedScene } from "./timeline.ts";
 
 const MUSIC_VOLUME = 0.5;
 /** How far the music dips while the narrator speaks, unless a line asks for less. */
-const DUCKED = 0.2;
+const DUCKED = 0.3;
 const DUCK_RAMP_SECONDS = 0.25;
 
 /** A line of narration in the trailer's frames, from just before it starts until just after it ends, and how low the music goes under it. */

@@ -1,304 +1,303 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CROSSFADE_FRAMES, FRAME } from "../src/brand.ts";
-import { BEAT, STORYBOARD } from "../src/storyboard.ts";
+import { spokenSpans } from "../src/mix.ts";
+import { STORYBOARD } from "../src/storyboard.ts";
 import type { ClipInfo, NarrationLine, WallScene } from "../src/timeline.ts";
 import { placeScenes, statementBeats } from "../src/timeline.ts";
+import {
+  boom, Buses, carve, clap, crash, fadeOut, grid, hat, kick, lead, limit, Mix, peakOf, phrase, pluck, range, riser, roll, sawPluck, silence, snare, subBass, subsonic, supersaw, swell, synthBass, tonalRiser, writeWav, type Grid,
+} from "./synth.ts";
 
 /**
- * The trailer's score, synthesised here so there is no track to licence or credit. A drone and quickening ticks under
- * the wall of text rise until it goes black, and stop dead for the voice: in the silence, each part of the statement
- * lands on a clap, and from its stressed part on a hit. A warm swell comes in as the picture draws itself, and a riser
- * leads into a hit on the logo. Then a warm I–V–vi–IV pad with a pluck and a soft pulse under the features lifts at the
- * review, and moves up to a brighter, busier section for the last features, whose last chord rings out over the backdrop
- * before the biggest hit lands on the end card. It is timed by the storyboard, so the hits land on the scene changes.
- * Its bars count back from the first of the last features, so it starts on a downbeat however long the scenes before
- * it run.
+ * The trailer's score, synthesised (synth.ts) so there is no track to licence or credit: driving electronic music in D
+ * minor near 144 BPM. A pumping drone and a quickening arpeggio under the wall of text build into a snare roll and stop
+ * dead for the voice: in the silence, each part of the statement lands on a clap, and from its stressed part on a hit.
+ * Pumping chords and a climbing arpeggio swell under the picture into a hit on the logo. Then a half-time groove with a
+ * rolling bass runs under the first features and builds into a four-on-the-floor drop on the review, a synth hook plays
+ * in the gaps between lines, and the music steps up to E minor for the montage. Its last chord rings over the backdrop
+ * and resolves to E major on the end card's hit.
+ * Each stretch's tempo bends a little so the scene changes land on beats; it is timed by the storyboard, so the hits land
+ * on the scene changes however long the scenes run. While the narrator speaks, the band where words are heard is turned
+ * down, on top of the ducking in src/mix.ts.
  * Run with bun after encode and narrate: bun audio/compose.ts
  */
-const RATE = 48_000;
 const video = join(import.meta.dirname, "..");
 const output = join(video, "public", "music", "score.wav");
+const TEMPO = 144;
+/** The score was chosen at this level, a little under its own peak, where it is as loud as the score before it. */
+const LEVEL = 10 ** (-1.07 / 20);
 
-function sceneStarts() {
+/** The storyboard's moments in seconds of the trailer, and when the narrator speaks. */
+function timeline() {
   const clipNames = [...new Set(STORYBOARD.flatMap((scene) => (scene.kind === "clip" ? [scene.clip] : [])))];
   const clips = Object.fromEntries(clipNames.map((name) => [name, JSON.parse(readFileSync(join(video, "public", "clips", `${name}.json`), "utf8")) as ClipInfo]));
   const { lines } = JSON.parse(readFileSync(join(video, "public", "narration", "manifest.json"), "utf8")) as { lines: Record<string, NarrationLine> };
   const placed = placeScenes(STORYBOARD, clips, lines, FRAME.fps, CROSSFADE_FRAMES);
   const last = placed.at(-1)!;
-  return { starts: Object.fromEntries(placed.map(({ scene, from }) => [scene.id, from / FRAME.fps])), seconds: (last.from + last.frames) / FRAME.fps };
-}
-
-function seededNoise(seed: number) {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return (((t ^ (t >>> 14)) >>> 0) / 4294967296) * 2 - 1;
+  const starts = Object.fromEntries(placed.map(({ scene, from }) => [scene.id, from / FRAME.fps]));
+  const wall = STORYBOARD.find((scene): scene is WallScene => scene.kind === "text-wall");
+  if (!wall?.goesBlackAt || wall.pictureAt === undefined || !wall.statement) throw new Error("The score expects the wall to go black, land its statement, then show its picture");
+  return {
+    seconds: (last.from + last.frames) / FRAME.fps,
+    goesBlack: starts[wall.id]! + wall.goesBlackAt,
+    picture: starts[wall.id]! + wall.pictureAt,
+    landings: statementBeats(wall.statement).map((at) => starts[wall.id]! + at),
+    stressed: Math.max(0, wall.statement.parts.findIndex(({ stressed }) => stressed)),
+    logo: starts.logo!,
+    show: starts.show!,
+    overview: starts.overview!,
+    ask: starts.ask!,
+    review: starts.review!,
+    montage: starts.edit!,
+    terminals: starts.terminals!,
+    groups: starts.groups!,
+    lastChord: starts.backdrop!,
+    ending: starts.end!,
+    spoken: spokenSpans(placed, lines, FRAME.fps).map(({ from, to }) => ({ from: from / FRAME.fps, to: to / FRAME.fps })),
   };
 }
-const noise = seededNoise(1729);
+type Moments = ReturnType<typeof timeline>;
 
-const midi = (note: number) => 440 * 2 ** ((note - 69) / 12);
+const DM = { chord: [50, 57, 62, 65, 69], bass: 38, arp: [62, 65, 69, 74] };
+const BB = { chord: [50, 53, 58, 62, 65], bass: 34, arp: [58, 62, 65, 70] };
+const F = { chord: [48, 53, 57, 60, 65], bass: 41, arp: [60, 65, 69, 72] };
+const C = { chord: [48, 52, 55, 60, 64], bass: 36, arp: [60, 64, 67, 72] };
+type Chord = typeof DM;
+const up = ({ chord, bass, arp }: Chord, semitones: number): Chord => ({ chord: chord.map((note) => note + semitones), bass: bass + semitones, arp: arp.map((note) => note + semitones) });
+const PROGRESSION = [DM, BB, F, C];
 
-class Mix {
-  readonly left: Float32Array;
-  readonly right: Float32Array;
-  constructor(seconds: number) {
-    this.left = new Float32Array(Math.ceil(seconds * RATE));
-    this.right = new Float32Array(Math.ceil(seconds * RATE));
+/** The synth hook, four bars of [sixteenth, note, sixteenths long]. */
+const HOOK: [number, number, number][] = [
+  [0, 74, 2], [2, 77, 2], [4, 81, 3], [7, 79, 1], [8, 77, 2], [10, 76, 2], [12, 74, 4],
+  [16, 74, 2], [18, 77, 2], [20, 82, 3], [23, 81, 1], [24, 79, 2], [26, 77, 2], [28, 81, 4],
+  [32, 81, 2], [34, 79, 2], [36, 77, 3], [39, 76, 1], [40, 77, 2], [42, 79, 2], [44, 81, 4],
+  [48, 79, 3], [51, 76, 1], [52, 72, 2], [54, 76, 2], [56, 79, 8],
+];
+const hookBars = (fromBar: number, toBar: number) => HOOK.filter(([step]) => step >= fromBar * 16 && step < toBar * 16).map(([step, note, length]): [number, number, number] => [step - fromBar * 16, note, length]);
+
+const drumKit = () => ({ kick: kick(), bigKick: kick({ punch: 190, decay: 5, seconds: 0.7 }), clap: clap(), snare: snare(), closedHat: hat(80), softHat: hat(120), openHat: hat(14) });
+
+/** The score, stretch by stretch. The wall plays on its own buses, so its echoes and reverb stop dead with it. */
+class Score {
+  private readonly drums = drumKit();
+  private readonly intro: Buses;
+  private readonly main: Buses;
+
+  constructor(private readonly at: Moments) {
+    this.intro = new Buses(at.seconds);
+    this.main = new Buses(at.seconds);
   }
-  /** Adds a sound at a second, panned from -1 (left) to 1 (right). */
-  add(at: number, sound: Float32Array, gain: number, pan = 0) {
-    const start = Math.round(at * RATE);
-    const leftGain = gain * Math.cos(((pan + 1) * Math.PI) / 4);
-    const rightGain = gain * Math.sin(((pan + 1) * Math.PI) / 4);
-    sound.forEach((sample, index) => {
-      const at = start + index;
-      if (at < 0 || at >= this.left.length) return;
-      this.left[at]! += sample * leftGain;
-      this.right[at]! += sample * rightGain;
+
+  render() {
+    const { at } = this;
+    this.wall();
+    this.picture();
+    const firstFeatureBeat = this.features();
+    this.logo(firstFeatureBeat);
+    this.drop();
+    this.montage();
+    this.ending();
+    const mix = new Mix(at.seconds);
+    const wall = this.intro.bounce({ depth: 0.5, release: 0.25, delaySeconds: (0.75 * 60) / TEMPO });
+    silence(wall, at.goesBlack, at.seconds);
+    mix.addStereo(0, wall, 1);
+    mix.addStereo(0, this.main.bounce({ depth: 0.65, release: 0.24, delaySeconds: (0.75 * 60) / TEMPO, feedback: 0.35 }), 1);
+    subsonic(mix);
+    const hits = subsonic(this.statement());
+    const ceiling = limit(mix, 12);
+    carve(mix, at.spoken);
+    silence(mix, at.goesBlack, at.picture);
+    mix.addStereo(0, hits, ceiling / peakOf(hits));
+    fadeOut(mix, 1.8);
+    return mix;
+  }
+
+  private wall() {
+    const { at, intro, drums } = this;
+    const g = grid(0, at.goesBlack, TEMPO);
+    const rise = (t: number) => Math.min(1, t / at.goesBlack);
+    intro.add(0, supersaw([38, 50, 57], at.goesBlack + 0.3, { cutoff: (t) => 180 * 14 ** rise(t), attack: 1.5, release: 0.1, detune: 18 }), 0.45, { pump: true, verb: 0.2 });
+    range(0, g.beats * 4).forEach((step) => {
+      const time = g.at(step / 4);
+      const progress = rise(time);
+      intro.add(time, sawPluck([62, 65, 69, 74][step % 4]! + (step % 8 >= 4 ? 12 : 0), 0.3, { open: 500 + 3500 * progress ** 2 }), 0.05 + 0.12 * progress, { pan: step % 2 ? 0.35 : -0.35, delay: 0.25 });
+    });
+    range(6, g.beats).forEach((beat) => {
+      intro.add(g.at(beat), drums.kick, 0.25 + 0.35 * (beat / g.beats));
+      intro.pumpAt(g.at(beat));
+    });
+    roll(intro, g, 12, g.beats, { from: 0.05, to: 0.3 });
+    intro.add(at.goesBlack - 2.4, riser(2.4), 0.45);
+    intro.add(g.at(g.beats - 4), tonalRiser([50, 57], 4 * g.beat), 0.25);
+  }
+
+  private statement() {
+    const { at, drums } = this;
+    const hits = new Buses(at.seconds);
+    at.landings.forEach((time, index) => {
+      hits.add(time, drums.clap, 0.25, { verb: 0.5 });
+      if (index < at.stressed) return;
+      const hardest = index === at.stressed;
+      hits.add(time, drums.bigKick, hardest ? 0.9 : 0.55);
+      hits.add(time, boom().subarray(0, Math.round(1.4 * 48_000)), hardest ? 0.85 : 0.55);
+      if (hardest) hits.add(time, supersaw(DM.chord, 0.7, { cutoff: (t) => 600 + 6000 * Math.exp(-t * 5), release: 0.5 }), 0.4, { verb: 0.6 });
+    });
+    return hits.bounce();
+  }
+
+  private picture() {
+    const { at, main, drums } = this;
+    const g = grid(at.logo - (8 * 60) / TEMPO, at.logo, TEMPO);
+    main.add(at.picture, supersaw(BB.chord, g.at(4) - at.picture + 0.1, { cutoff: (t) => 400 * 5 ** (t / 2), attack: 1, release: 0.1 }), 0.38, { pump: true, verb: 0.35 });
+    main.add(g.at(4), supersaw(C.chord, 4 * g.beat + 0.05, { cutoff: (t) => 2000 * 3 ** (t / (4 * g.beat)), attack: 0.02, release: 0.04 }), 0.4, { pump: true, verb: 0.35 });
+    main.pumpAt(...range(0, 8).map(g.at));
+    range(0, 32).forEach((step) => {
+      const chord = step < 16 ? BB : C;
+      const note = chord.arp[step % 4]! + 12 * Math.floor((step % 16) / 8);
+      main.add(g.at(step / 4), sawPluck(note, 0.3, { open: 1500 + 2500 * (step / 32) }), 0.07 + 0.07 * (step / 32), { pan: step % 2 ? 0.4 : -0.4, delay: 0.3 });
+    });
+    range(4, 8).forEach((beat) => main.add(g.at(beat), drums.kick, 0.5));
+    roll(main, g, 6, 8, { from: 0.08, to: 0.3 });
+    main.add(g.at(4), tonalRiser([62, 69], 4 * g.beat), 0.25, { verb: 0.2 });
+    main.add(at.picture, riser(at.logo - at.picture), 0.3);
+  }
+
+  private logo(firstBeat: Grid) {
+    const { at, main, drums } = this;
+    main.add(at.logo, drums.bigKick, 0.9);
+    main.add(at.logo, boom(), 1);
+    main.add(at.logo, crash(), 0.4, { verb: 0.3 });
+    main.add(at.logo, supersaw([38, ...DM.chord, 74], 2.6, { cutoff: (t) => 700 + 7000 * Math.exp(-t * 2.2), attack: 0.004, release: 1.8 }), 0.5, { verb: 0.5 });
+    main.add(at.logo + 0.6, supersaw(DM.chord, at.show - at.logo - 0.6, { cutoff: 900, attack: 1.2, release: 0.3, voices: 5 }), 0.28, { verb: 0.3 });
+    main.add(at.logo, subBass(38, at.show - at.logo, 0.01, 1), 0.3);
+    main.add(at.show - 4 * firstBeat.beat, swell(4 * firstBeat.beat), 0.25);
+    range(0, 4).forEach((sixteenth) => main.add(firstBeat.at(-1 + sixteenth / 4), drums.snare, 0.08 + 0.05 * sixteenth, { verb: 0.15 }));
+  }
+
+  /** Bars of the groove: the chord pumping, the sub and rolling bass, and the arpeggio when it's busy. */
+  private harmony(g: Grid, bar: number, chord: Chord, { bars = 1, cutoff = 2600 as number | ((t: number) => number), gain = 0.3, rolling = true, arp = false, arpGain = 0.06, ringsOn = 0 } = {}) {
+    const { main } = this;
+    main.add(g.at(bar * 4), supersaw(chord.chord, bars * g.bar + 0.04 + ringsOn, { cutoff, attack: 0.015, release: ringsOn ? ringsOn * 0.8 : 0.05 }), gain, { pump: true, verb: 0.15 });
+    range(0, bars).forEach((offset) => {
+      const barStart = bar + offset;
+      main.add(g.at(barStart * 4), subBass(chord.bass, g.bar - 0.02), 0.32, { pump: true });
+      if (rolling) range(0, 16).filter((step) => step % 4 !== 0).forEach((step) => main.add(g.at(barStart * 4 + step / 4), synthBass(chord.bass + 12 + (step % 4 === 2 ? 12 : 0), g.beat / 4.4), 0.22, { pump: true }));
+      if (arp) range(0, 16).forEach((step) => main.add(g.at(barStart * 4 + step / 4), sawPluck(chord.arp[(step * 3) % 4]! + (step >= 8 ? 12 : 0), 0.25), arpGain, { pan: step % 2 ? 0.45 : -0.45, delay: 0.3 }));
     });
   }
-}
 
-function render(seconds: number, sample: (t: number) => number) {
-  return Float32Array.from({ length: Math.ceil(seconds * RATE) }, (_, index) => sample(index / RATE));
-}
-
-function lowpass(sound: Float32Array, cutoff: (t: number) => number) {
-  let first = 0;
-  let second = 0;
-  return sound.map((sample, index) => {
-    const amount = 1 - Math.exp((-2 * Math.PI * cutoff(index / RATE)) / RATE);
-    first += (sample - first) * amount;
-    second += (first - second) * amount;
-    return second;
-  });
-}
-
-function highpass(sound: Float32Array, cutoff: number) {
-  const low = lowpass(sound, () => cutoff);
-  return sound.map((sample, index) => sample - low[index]!);
-}
-
-const envelope = (t: number, length: number, attack: number, release: number) => Math.min(1, t / attack) * Math.min(1, Math.max(0, (length - t) / release));
-
-/** Detuned saws through a soft filter: the warm bed. */
-function pad(notes: number[], seconds: number, detuneCents: number) {
-  const voices = notes.flatMap((note) => [-detuneCents, 0, detuneCents].map((cents) => ({ frequency: midi(note) * 2 ** (cents / 1200), phase: Math.abs(noise()) })));
-  const raw = render(seconds, (t) => {
-    const saws = voices.reduce((sum, { frequency, phase }) => {
-      const cycle = frequency * t + phase;
-      return sum + 2 * (cycle - Math.floor(cycle + 0.5));
-    }, 0);
-    return (saws / voices.length) * envelope(t, seconds, 1.4, 1.8);
-  });
-  return lowpass(raw, (t) => 900 + 500 * Math.sin(t * 0.4));
-}
-
-/** A soft bell-like pluck. */
-function pluck(note: number, seconds = 1.6) {
-  const frequency = midi(note);
-  return render(seconds, (t) => Math.sin(2 * Math.PI * frequency * t + 1.2 * Math.exp(-t * 9) * Math.sin(2 * Math.PI * frequency * 2 * t)) * Math.exp(-t * 3.2) * Math.min(1, t / 0.004));
-}
-
-function kick() {
-  let phase = 0;
-  return render(0.45, (t) => {
-    phase += (2 * Math.PI * (48 + 80 * Math.exp(-t * 32))) / RATE;
-    return Math.sin(phase) * Math.exp(-t * 7);
-  });
-}
-
-/** A hand clap: a few quick bursts of mid-range noise. */
-function clap() {
-  const raw = render(0.22, (t) => noise() * ([0, 0.011, 0.022].some((burst) => t >= burst && t < burst + 0.008) || t >= 0.03 ? Math.exp(-Math.max(0, t - 0.03) * 28) : 0));
-  return highpass(lowpass(raw, () => 2600), 700);
-}
-
-/** A rounded bass note, filtered so it thumps rather than buzzes. */
-function bassNote(note: number, seconds: number) {
-  const frequency = midi(note);
-  const raw = render(seconds, (t) => (Math.sin(2 * Math.PI * frequency * t) + 0.35 * Math.sin(4 * Math.PI * frequency * t)) * envelope(t, seconds, 0.006, 0.06));
-  return lowpass(raw, () => 420);
-}
-
-function hat(decay = 70) {
-  return highpass(render(0.12, (t) => noise() * Math.exp(-t * decay)), 7000);
-}
-
-function boom() {
-  let phase = 0;
-  const sub = render(3.2, (t) => {
-    phase += (2 * Math.PI * (30 + 42 * Math.exp(-t * 5))) / RATE;
-    return Math.sin(phase) * Math.exp(-t * 1.3);
-  });
-  const air = lowpass(render(1.6, (t) => noise() * Math.exp(-t * 3.5)), () => 1800);
-  return sub.map((sample, index) => sample + 0.5 * (air[index] ?? 0));
-}
-
-/** Noise swelling up through a rising filter, into a hit. */
-function riser(seconds: number) {
-  const raw = render(seconds, (t) => noise() * (t / seconds) ** 2.2);
-  return lowpass(raw, (t) => 250 * 30 ** (t / seconds));
-}
-
-/** A short swell of air into a scene change. */
-function whoosh(seconds = 0.7) {
-  const raw = render(seconds, (t) => noise() * Math.sin((Math.PI * t) / seconds) ** 2);
-  return highpass(lowpass(raw, (t) => 600 + 5000 * (t / seconds)), 300);
-}
-
-/** Adds a ping-pong echo to the plucks, for space without a reverb. */
-function echo(mix: Mix, beat: number) {
-  const delay = Math.round(beat * 0.75 * RATE);
-  for (let index = delay; index < mix.left.length; index++) {
-    mix.left[index]! += mix.right[index - delay]! * 0.32;
-    mix.right[index]! += mix.left[index - delay]! * 0.32;
+  /** A cymbal on the beat nearest a dissolve, swelling into it. */
+  private accent(g: Grid, time: number) {
+    const onBeat = g.nearestBeat(time);
+    this.main.add(onBeat - 2 * g.beat, swell(2 * g.beat), 0.18);
+    this.main.add(onBeat, crash(), 0.3, { verb: 0.2 });
   }
-}
 
-/** Silences the mix between two seconds, fading into it over a few milliseconds so the cut doesn't click. */
-function silence(mix: Mix, from: number, to: number) {
-  const fade = Math.round(0.012 * RATE);
-  const start = Math.round(from * RATE);
-  const end = Math.min(mix.left.length, Math.round(to * RATE));
-  for (let index = Math.max(0, start - fade); index < end; index++) {
-    const gain = index < start ? (start - index) / fade : 0;
-    mix.left[index]! *= gain;
-    mix.right[index]! *= gain;
+  private halfTime(g: Grid, bar: number, busy: boolean) {
+    const { main, drums } = this;
+    const beatAt = (offset: number) => g.at(bar * 4 + offset);
+    [0, 1.5, ...(busy ? [2.75] : [])].forEach((offset) => main.add(beatAt(offset), drums.kick, 0.55));
+    main.add(beatAt(2), drums.snare, 0.32, { verb: 0.2 });
+    if (busy) main.add(beatAt(2), drums.clap, 0.18, { verb: 0.2 });
+    range(0, busy ? 16 : 8).forEach((step) => main.add(beatAt(step / (busy ? 4 : 2)), step % 2 ? drums.closedHat : drums.softHat, busy ? (step % 2 ? 0.05 : 0.035) : 0.035, { pan: step % 2 ? 0.3 : -0.3 }));
+    if (busy) main.add(beatAt(3.5), drums.openHat, 0.05, { pan: 0.2 });
+    main.pumpAt(...range(0, 4).map(beatAt));
   }
-}
 
-function writeWav(path: string, { left, right }: Mix) {
-  const peak = [left, right].reduce((loudest, channel) => channel.reduce((most, sample) => Math.max(most, Math.abs(sample)), loudest), 0);
-  const gain = 0.89 / peak;
-  const data = Buffer.alloc(left.length * 4);
-  left.forEach((sample, index) => {
-    data.writeInt16LE(Math.round(Math.tanh(sample * gain * 1.1) * 32000), index * 4);
-    data.writeInt16LE(Math.round(Math.tanh(right[index]! * gain * 1.1) * 32000), index * 4 + 2);
-  });
-  const header = Buffer.alloc(44);
-  header.write("RIFF", 0);
-  header.writeUInt32LE(36 + data.length, 4);
-  header.write("WAVEfmt ", 8);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(2, 22);
-  header.writeUInt32LE(RATE, 24);
-  header.writeUInt32LE(RATE * 4, 28);
-  header.writeUInt16LE(4, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36);
-  header.writeUInt32LE(data.length, 40);
-  mkdirSync(join(path, ".."), { recursive: true });
-  writeFileSync(path, Buffer.concat([header, data]));
+  private fourOnTheFloor(g: Grid, bar: number) {
+    const { main, drums } = this;
+    const beatAt = (offset: number) => g.at(bar * 4 + offset);
+    range(0, 4).forEach((offset) => {
+      main.add(beatAt(offset), drums.kick, 0.6);
+      main.add(beatAt(offset + 0.5), drums.openHat, 0.05, { pan: 0.2 });
+    });
+    [1, 3].forEach((offset) => main.add(beatAt(offset), drums.clap, 0.3, { pan: offset === 1 ? -0.1 : 0.1, verb: 0.15 }));
+    range(0, 16).forEach((step) => main.add(beatAt(step / 4), step % 4 === 2 ? drums.closedHat : drums.softHat, step % 4 === 2 ? 0.05 : 0.03, { pan: step % 2 ? 0.3 : -0.3 }));
+    main.pumpAt(...range(0, 4).map(beatAt));
+  }
+
+  private playHook(g: Grid, bar: number, fromHookBar: number, toHookBar: number, transpose = 0, octave = false) {
+    const notes = phrase(g, bar * 4, hookBars(fromHookBar, toHookBar), transpose);
+    this.main.add(g.at(bar * 4), lead(notes), 0.2, { delay: 0.35, verb: 0.25 });
+    if (octave) this.main.add(g.at(bar * 4), lead(notes.map((note) => ({ ...note, note: note.note + 12 })), { square: 0.1, cutoff: 1800 }), 0.09, { delay: 0.35, verb: 0.25, pan: 0.2 });
+  }
+
+  /** From the first feature to the review: a light half-time groove, busier from its ninth bar, then a build. */
+  private features() {
+    const { at, main, drums } = this;
+    const g = grid(at.show, at.review, TEMPO, true);
+    const buildFrom = g.bars - 2;
+    range(0, g.bars).forEach((bar) => {
+      const chord = PROGRESSION[Math.floor(bar / 2) % 4]!;
+      const building = bar >= buildFrom;
+      if (bar % 2 === 0) {
+        const bars = Math.min(2, g.bars - bar);
+        const opening = bar >= 8;
+        this.harmony(g, bar, chord, { bars, cutoff: building ? (t) => 1800 * 4.5 ** (t / (bars * g.bar)) : opening ? 1800 : 950, gain: building ? 0.28 : opening ? 0.24 : 0.2, rolling: opening, arp: opening, arpGain: building ? 0.08 : 0.055 });
+      }
+      if (!building) return this.halfTime(g, bar, bar >= 8);
+      const beats = bar === g.bars - 1 ? [0, 1, 2] : [0, 2];
+      beats.forEach((offset) => main.add(g.at(bar * 4 + offset), drums.kick, 0.55));
+      main.pumpAt(...range(0, 4).map((offset) => g.at(bar * 4 + offset)));
+    });
+    roll(main, g, buildFrom * 4, g.beats, { from: 0.06, to: 0.34 });
+    main.add(g.at(buildFrom * 4), tonalRiser([62, 69, 74], 2 * g.bar), 0.26, { verb: 0.2 });
+    main.add(g.at(buildFrom * 4), riser(2 * g.bar), 0.25);
+    [at.overview, at.ask].forEach((time) => this.accent(g, time));
+    return g;
+  }
+
+  /** From the review to the montage: four on the floor, with the hook in the gaps between lines. */
+  private drop() {
+    const { at, main } = this;
+    const g = grid(at.review, at.montage, TEMPO, true);
+    main.add(at.review, crash(), 0.5, { verb: 0.3 });
+    range(0, g.bars).forEach((bar) => {
+      this.harmony(g, bar, PROGRESSION[bar % 4]!, { cutoff: 5000, gain: 0.32, arp: true });
+      this.fourOnTheFloor(g, bar);
+    });
+    this.playHook(g, 0, 0, 2);
+    this.playHook(g, 9, 0, 3);
+    roll(main, g, (g.bars - 1) * 4, g.beats, { from: 0.06, to: 0.3 });
+    main.add(g.at((g.bars - 1) * 4), tonalRiser([62, 69], g.bar), 0.22);
+    main.add(at.montage - 2 * g.beat, swell(2 * g.beat), 0.2);
+  }
+
+  /** From the montage to the backdrop, a step higher, with the whole hook doubled an octave up; the last chord rings on. */
+  private montage() {
+    const { at, main, drums } = this;
+    const g = grid(at.montage, at.lastChord, TEMPO, true);
+    const lifted = PROGRESSION.map((chord) => up(chord, 2));
+    main.add(at.montage, crash(), 0.5, { verb: 0.3 });
+    range(0, g.bars).forEach((bar) => {
+      const last = bar === g.bars - 1;
+      this.harmony(g, bar, lifted[bar % 4]!, { cutoff: bar === 7 ? (t) => 1500 * 4 ** (t / g.bar) : 6500, gain: 0.33, arp: true, arpGain: 0.07, ringsOn: last ? at.ending - at.lastChord + 0.9 : 0 });
+      this.fourOnTheFloor(g, bar);
+      if (bar >= 4) range(0, 4).forEach((offset) => main.add(g.at(bar * 4 + offset + 0.5), drums.snare, 0.05, { verb: 0.1 }));
+    });
+    roll(main, g, 7 * 4, 8 * 4, { from: 0.04, to: 0.2 });
+    this.playHook(g, 8, 0, 4, 2, true);
+    [at.terminals, at.groups].forEach((time) => this.accent(g, time));
+  }
+
+  private ending() {
+    const { at, main, drums } = this;
+    const eMajor = [40, 52, 59, 64, 68, 71, 78];
+    main.add(at.ending, drums.bigKick, 0.9);
+    main.add(at.ending, boom(), 1.2);
+    main.add(at.ending, crash(3), 0.45, { verb: 0.4 });
+    main.add(at.ending, supersaw(eMajor, at.seconds - at.ending, { cutoff: (t) => 800 + 5000 * Math.exp(-t * 2.5), attack: 0.004, release: 3 }), 0.48, { verb: 0.5 });
+    main.add(at.ending, subBass(28, 3, 0.005, 2.5), 0.4);
+    [76, 80, 83, 88, 90].forEach((note, index) => main.add(at.ending + 0.9 + index * 0.2, pluck(note, 3), 0.2, { pan: index % 2 ? 0.4 : -0.4, delay: 0.4, verb: 0.3 }));
+  }
 }
 
 function compose() {
-  const { starts, seconds } = sceneStarts();
-  const mix = new Mix(seconds);
-  const plucks = new Mix(seconds);
-  const logo = starts.logo!;
-  const features = starts.show!;
-  const lift = starts.review!;
-  const montage = starts.edit!;
-  const lastChord = starts.backdrop!;
-  const ending = starts.end!;
-  const beat = BEAT;
-  const bar = beat * 4;
-  const wall = STORYBOARD.find((scene): scene is WallScene => scene.kind === "text-wall");
-  if (!wall?.goesBlackAt || wall.pictureAt === undefined || !wall.statement) throw new Error("The score expects the wall to go black, land its statement, then show its picture");
-  const goesBlack = starts[wall.id]! + wall.goesBlackAt;
-  const picture = starts[wall.id]! + wall.pictureAt;
-  const landings = statementBeats(wall.statement).map((at) => starts[wall.id]! + at);
-  const firstHit = Math.max(0, wall.statement.parts.findIndex(({ stressed }) => stressed));
-
-  mix.add(0, pad([38, 45, 50], goesBlack + 2, 4), 0.5);
-  let tick = 0.6;
-  for (let gap = 0.5; tick < goesBlack - 0.04; tick += gap, gap = Math.max(0.06, gap * 0.9)) mix.add(tick, hat(110), 0.12 + 0.16 * (tick / goesBlack), tick % 2 < 1 ? -0.4 : 0.4);
-  mix.add(goesBlack - 2.4, riser(2.4), 0.55);
-  silence(mix, goesBlack, picture);
-  landings.forEach((at, index) => {
-    mix.add(at, clap(), 0.22);
-    if (index >= firstHit) mix.add(at, boom().subarray(0, Math.round(1.4 * RATE)), index === firstHit ? 0.85 : 0.55 + 0.1 * index);
-  });
-  mix.add(picture, pad([50, 57, 62, 66, 69], logo - picture + 0.6, 6), 0.45);
-  [74, 78, 81, 86].forEach((note, index) => plucks.add(picture + 1.3 + index * 0.12, pluck(note, 2), 0.22, index % 2 ? 0.4 : -0.4));
-  mix.add(picture, riser(logo - picture), 0.4);
-  mix.add(logo, boom(), 1);
-  mix.add(logo, pad([50, 54, 57, 64, 69], features - logo + 1.2, 6), 0.55);
-  [74, 81, 78, 86].forEach((note, index) => plucks.add(logo + 0.08 + index * 0.16, pluck(note, 2.4), 0.3, index % 2 ? 0.45 : -0.45));
-
-  const progression = [
-    { chord: [50, 54, 57, 62], bass: 38, arpeggio: [62, 69, 74, 66] },
-    { chord: [49, 52, 57, 61], bass: 37, arpeggio: [61, 69, 73, 64] },
-    { chord: [47, 50, 54, 59], bass: 35, arpeggio: [59, 66, 71, 62] },
-    { chord: [43, 50, 55, 59], bass: 31, arpeggio: [59, 67, 71, 62] },
-  ];
-
-  /**
-   * The groove from one bar line to another; a lifted bar adds four-on-the-floor, claps, busier hats and a pulsing bass.
-   * Unless the last chord rings on, it fades out by `to`, so it doesn't clash with a section in another key.
-   */
-  const groove = (from: number, to: number, { transpose = 0, lifted = (_bar: number): boolean => false, drumsFromBar = 0, lastChordRingsOn = true } = {}) => {
-    const bars = Math.ceil((to - from) / bar - 0.01);
-    Array.from({ length: bars }, (_, index) => {
-      const at = from + index * bar;
-      const left = to - at;
-      const { chord, bass, arpeggio } = progression[Math.floor(index / 2) % progression.length]!;
-      const up = (note: number) => note + transpose;
-      if (index % 2 === 0) {
-        const ringsOn = left > bar * 2 || lastChordRingsOn ? 1.2 : 0;
-        mix.add(at, pad(chord.map(up), Math.min(bar * 2, left) + ringsOn, 7), 0.42);
-        mix.add(at, lowpass(render(Math.min(bar * 2, left), (t) => Math.sin(2 * Math.PI * midi(up(bass)) * t) * envelope(t, Math.min(bar * 2, left), 0.05, 0.4)), () => 200), 0.5);
-      }
-      const onBeat = (step: number) => at + step * beat < to - 0.05;
-      Array.from({ length: 8 }, (_, eighth) => onBeat(eighth / 2) && plucks.add(at + eighth * (beat / 2), pluck(up(arpeggio[eighth % 4]!) + (eighth >= 4 ? 12 : 0), 0.9), 0.1 + (eighth % 4 === 0 ? 0.04 : 0), eighth % 2 ? 0.35 : -0.35));
-      if (index < drumsFromBar) return;
-      if (!lifted(index)) {
-        [0, 2].filter(onBeat).forEach((step) => mix.add(at + step * beat, kick(), 0.55));
-        if (index >= drumsFromBar + 2) Array.from({ length: 8 }, (_, eighth) => onBeat(eighth / 2) && mix.add(at + eighth * (beat / 2), hat(eighth % 2 ? 90 : 60), eighth % 2 ? 0.07 : 0.045, eighth % 2 ? 0.3 : -0.3));
-        return;
-      }
-      [0, 1, 2, 3].filter(onBeat).forEach((step) => mix.add(at + step * beat, kick(), 0.6));
-      [1, 3].filter(onBeat).forEach((step) => mix.add(at + step * beat, clap(), 0.32, step === 1 ? -0.15 : 0.15));
-      Array.from({ length: 16 }, (_, sixteenth) => onBeat(sixteenth / 4) && mix.add(at + sixteenth * (beat / 4), hat(sixteenth % 4 === 2 ? 28 : 95), sixteenth % 4 === 2 ? 0.07 : 0.035, sixteenth % 2 ? 0.35 : -0.35));
-      Array.from({ length: 8 }, (_, eighth) => onBeat(eighth / 2) && mix.add(at + eighth * (beat / 2), bassNote(up(bass) + (eighth % 2 ? 12 : 0), beat / 2.2), 0.3));
-    });
-  };
-
-  const grooveStarts = montage - bar * Math.ceil((montage - features) / bar - 1e-6);
-  const liftsAtBar = Math.round((lift - grooveStarts) / bar);
-  groove(grooveStarts, montage, { lifted: (index) => index >= liftsAtBar, drumsFromBar: 2, lastChordRingsOn: false });
-  groove(montage, lastChord, { transpose: 2, lifted: () => true });
-  STORYBOARD.slice(2).forEach((scene) => {
-    if (scene.kind !== "clip") return;
-    if (scene.fadeInFrames === 0) mix.add(starts[scene.id]!, boom().subarray(0, Math.round(1.2 * RATE)), 0.45);
-    else mix.add(starts[scene.id]! - 0.55, whoosh(0.7), 0.18);
-  });
-
-  mix.add(ending, boom(), 1.2);
-  mix.add(ending, pad([50, 57, 62, 66, 69, 76], seconds - ending, 6), 0.6);
-  [74, 78, 81, 86, 90].forEach((note, index) => plucks.add(ending + 0.9 + index * 0.2, pluck(note, 3), 0.22, index % 2 ? 0.4 : -0.4));
-
-  echo(plucks, beat);
-  plucks.left.forEach((sample, index) => {
-    mix.left[index]! += sample;
-    mix.right[index]! += plucks.right[index]!;
-  });
-  const fadeOut = Math.round(1.8 * RATE);
-  for (let index = mix.left.length - fadeOut; index < mix.left.length; index++) {
-    const gain = (mix.left.length - index) / fadeOut;
-    mix.left[index]! *= gain;
-    mix.right[index]! *= gain;
-  }
-  writeWav(output, mix);
+  const at = timeline();
+  writeWav(output, new Score(at).render(), LEVEL);
   console.log(
-    `${output}: ${seconds.toFixed(1)} s; black at ${goesBlack.toFixed(2)} s, picture at ${picture.toFixed(2)} s, logo at ${logo.toFixed(2)} s, groove from ${grooveStarts.toFixed(2)} s, lift at ${(grooveStarts + liftsAtBar * bar).toFixed(2)} s, montage from ${montage.toFixed(2)} s, last chord at ${lastChord.toFixed(2)} s, end card at ${ending.toFixed(2)} s`,
+    `${output}: ${at.seconds.toFixed(1)} s; black at ${at.goesBlack.toFixed(2)} s, picture at ${at.picture.toFixed(2)} s, logo at ${at.logo.toFixed(2)} s, groove from ${at.show.toFixed(2)} s, drop at ${at.review.toFixed(2)} s, montage from ${at.montage.toFixed(2)} s, last chord at ${at.lastChord.toFixed(2)} s, end card at ${at.ending.toFixed(2)} s`,
   );
 }
 
