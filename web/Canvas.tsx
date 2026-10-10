@@ -242,13 +242,15 @@ function AskQuestionFields({
           {question.allowOther && (
             <label className={`ask-other ${draft.choice === SOMETHING_ELSE ? "chosen" : ""}`}>
               <input type="radio" name={radioName} aria-label="Something else" checked={draft.choice === SOMETHING_ELSE} onChange={() => onChange({ choice: SOMETHING_ELSE })} />
-              <input
+              <textarea
                 {...typingAidAttributes}
+                rows={Math.min(6, draft.other.split("\n").length)}
                 value={draft.other}
                 placeholder="Something else…"
                 aria-label="Your own answer"
                 onFocus={() => onChange({ choice: SOMETHING_ELSE })}
                 onChange={(event) => onChange({ other: event.target.value })}
+                onKeyDown={answerOnEnter}
               />
             </label>
           )}
@@ -262,6 +264,13 @@ function AskQuestionFields({
       )}
     </>
   );
+}
+
+/** As in the message box: Enter answers, Shift+Enter starts a new line. */
+function answerOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
+  if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+  event.preventDefault();
+  event.currentTarget.form?.requestSubmit();
 }
 
 const deliveredNote = (answer: NonNullable<CanvasItem["answer"]>) => (answer.deliveredAs === "tool-result" ? " (returned to the agent)" : " (sent as your next message)");
@@ -295,7 +304,11 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (several) {
-      if (!onReviewPage || answers.some((answer) => !answer)) return;
+      if (!onReviewPage) {
+        if (answers[questionIndex]) setPage(page + 1);
+        return;
+      }
+      if (answers.some((answer) => !answer)) return;
       const entries = drafts.map((draft) => ({ label: draftAnswer(draft)!, note: draft.note.trim() || undefined }));
       connection.send({ type: "ask.answer", itemId: item.id, label: answersSummary(entries), answers: entries });
       return;

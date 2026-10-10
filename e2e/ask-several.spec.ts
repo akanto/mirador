@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openFromCanvasHistory, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5360);
@@ -45,13 +45,21 @@ test("several questions come one page at a time, can be changed on a review page
     await next.click();
   });
 
-  await ask.getByRole("textbox", { name: "Your own answer" }).fill("Huge");
-  await ask.getByRole("textbox", { name: /note/i }).fill("fits the wall");
-  await next.click();
+  await test.step("Shift+Enter starts a new line of your own answer, and Enter goes on to the next page", async () => {
+    const ownAnswer = ask.getByRole("textbox", { name: "Your own answer" });
+    await ask.getByRole("textbox", { name: /note/i }).fill("fits the wall");
+    await ownAnswer.pressSequentially("Huge");
+    await ownAnswer.press("Shift+Enter");
+    await ownAnswer.pressSequentially("and round");
+    await expect(ownAnswer).toHaveValue("Huge\nand round");
+    await expect(ownAnswer).toHaveAttribute("rows", "2");
+    await ownAnswer.press("Enter");
+  });
 
   await test.step("the review page lists every answer, and Change goes back to its question", async () => {
     await expect(ask).toContainText("Review your answers");
-    await expect(ask.locator(".ask-review li")).toHaveText([/Which color\?\s*Red/, /Which size\?\s*Huge\s*— “fits the wall”/]);
+    await expect(ask.locator(".ask-review li")).toHaveText([/Which color\?\s*Red/, /Which size\?\s*Huge\s*and round\s*— “fits the wall”/]);
+    expect(await ask.locator(".ask-review strong").last().innerText()).toBe("Huge\nand round");
     await ask.locator(".ask-review li").first().getByRole("button", { name: "Change" }).click();
     await ask.getByRole("radio", { name: "Blue", exact: true }).check();
     await next.click();
@@ -61,9 +69,36 @@ test("several questions come one page at a time, can be changed on a review page
 
   await ask.getByRole("button", { name: "Submit" }).click();
   expect(await toolResult).toBe(
-    ["The user answered 2 questions:", "1. Which color?", "   The user chose: Blue", "2. Which size?", "   The user chose: Huge", "   Their note: fits the wall"].join("\n"),
+    ["The user answered 2 questions:", "1. Which color?", "   The user chose: Blue", "2. Which size?", "   The user chose: Huge\nand round", "   Their note: fits the wall"].join("\n"),
   );
-  await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue · Huge”");
+  await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue · Huge and round”");
+});
+
+test("your own answer to one question can run over several lines with Shift+Enter, and Enter sends it", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(host.origin);
+  const conversationId = await startConversation(page);
+  const ask = page.locator(".ask");
+  const toolResult = callCanvasTool(host, conversationId, "ask", { question: "What should it say?", options: [{ label: "Hello" }, { label: "Goodbye" }], allowOther: true });
+  const ownAnswer = ask.getByRole("textbox", { name: "Your own answer" });
+
+  await test.step("the field takes the row beside its radio button", async () => {
+    const row = (await ask.locator(".ask-other").boundingBox())!;
+    const field = (await ownAnswer.boundingBox())!;
+    expect(field.x - row.x).toBeLessThan(40);
+    expect(field.x + field.width).toBeCloseTo(row.x + row.width, 0);
+  });
+
+  await ownAnswer.pressSequentially("First line");
+  await ownAnswer.press("Shift+Enter");
+  await ownAnswer.pressSequentially("Second line");
+  await expect(ask.getByRole("radio", { name: "Something else" })).toBeChecked();
+  await expect(ownAnswer).toHaveValue("First line\nSecond line");
+  await ownAnswer.press("Enter");
+
+  expect(await toolResult).toBe("The user chose: First line\nSecond line");
+  await openFromCanvasHistory(page, "What should it say?");
+  expect(await ask.locator(".ask-answer strong").innerText()).toBe("First line\nSecond line");
 });
 
 test("the ask tool advertises one question or several, tells the agent to ask several with questions, and neither form is required alone", async ({ page }) => {

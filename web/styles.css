@@ -2855,6 +2855,11 @@ button.edits-waiting {
   padding: 8px 10px;
 }
 
+.ask-answer strong,
+.ask-review strong {
+  white-space: pre-wrap;
+}
+
 .delivered {
   color: var(--muted);
   font-size: calc(12px * var(--font-scale));
@@ -2911,7 +2916,7 @@ button.edits-waiting {
   align-items: center;
 }
 
-.ask-other.chosen input:not([type="radio"]) {
+.ask-other.chosen textarea {
   border-color: var(--accent);
 }
 
@@ -2954,8 +2959,9 @@ button.edits-waiting {
   gap: 8px;
 }
 
-.ask-other input {
+.ask-other textarea {
   flex: 1;
+  resize: none;
 }
 
 .notices {
