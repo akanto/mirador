@@ -10,3 +10,4 @@ cd "$stage"
 bun install --production --frozen-lockfile
 # Mirador runs the Claude Code installed on the computer, so the copy claude-agent-acp's SDK bundles only takes room.
 rm -rf node_modules/@anthropic-ai/claude-agent-sdk-*
+bun "$desktop/scripts/prune-unused-modules.ts" "$stage"
