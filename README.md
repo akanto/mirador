@@ -346,7 +346,7 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 - **The queue**, usage limits and jobs left running, as on the computer.
 - **The canvas**: pages appear above the message box, and questions show their previews. Swipe left (or tap the canvas count) for the canvas screen, which pages through its history.
 - **Code reviews**: verdict, summary, the flow tour with its findings, keep, drop and edit, changed files, and posting to the pull request.
-- **Terminals**: the workspace's shells with a key row (Esc, Tab, Ctrl, Alt, arrows, Paste) and pinch to zoom.
+- **Terminals**: each conversation's own shells, from the *Terminals* tab, from *Search*, or from the `>_` button in the conversation's header, with a key row (Esc, Tab, Ctrl, Alt, arrows, Paste) and pinch to zoom.
 - **Workspaces**: add one, choose its agent, colour it, continue or fork a session, and hold-and-drag to reorder.
 - **Notifications** per kind and per machine, with a turn-progress notification that can stop the agent from the lock screen. Let devices join from the phone too.
 - **App lock**: fingerprint, face or screen lock, asked again before risky actions (approving, `!` commands, typing in a terminal, YOLO, inviting a device, posting a review).
