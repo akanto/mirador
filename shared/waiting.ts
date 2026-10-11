@@ -22,6 +22,10 @@ const urgencyOf = ({ waitingFor }: Conversation) => (waitingFor ? tonesByUrgency
 export const mostUrgentTone = (waiting: WaitingFor[]) =>
   tonesByUrgency.find((tone) => waiting.some((waitingFor) => waitingTones[waitingFor] === tone));
 
+export const isWaiting = ({ waitingFor }: Conversation) => waitingFor !== null;
+
+export const countWaiting = (conversations: Conversation[]) => conversations.filter(isWaiting).length;
+
 /** Decisions first, since those agents are stuck until you answer; otherwise in the order given. */
 export const waitingByUrgency = (conversations: Conversation[]) =>
-  conversations.filter(({ waitingFor }) => waitingFor !== null).sort((a, b) => urgencyOf(a) - urgencyOf(b));
+  conversations.filter(isWaiting).sort((a, b) => urgencyOf(a) - urgencyOf(b));

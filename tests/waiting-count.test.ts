@@ -1,0 +1,37 @@
+import { expect, test } from "bun:test";
+import { Hub, socketData, type BrowserSocket, type SocketData } from "../host/hub.ts";
+import type { Conversation } from "../shared/model.ts";
+import type { ServerMessage } from "../shared/protocol.ts";
+import { countWaiting } from "../shared/waiting.ts";
+import { tabTitle } from "../web/tab-title.ts";
+
+const c = (waitingFor: Conversation["waitingFor"]) => ({ waitingFor }) as Conversation;
+
+test("counts every conversation waiting for you, whatever it waits for", () => {
+  expect(countWaiting([c("permission"), c("question"), c("finished"), c("error"), c(null)])).toBe(4);
+  expect(countWaiting([])).toBe(0);
+  expect(countWaiting([c(null)])).toBe(0);
+});
+
+test("the tab title carries the count only while something waits", () => {
+  expect(tabTitle(0)).toBe("Mirador");
+  expect(tabTitle(2)).toBe("(2) Mirador");
+});
+
+test("only the desktop app hears the count", () => {
+  function connect(hub: Hub, role: SocketData["role"]) {
+    const received: ServerMessage[] = [];
+    const socket = { data: socketData(role, null), send: (payload: string) => received.push(JSON.parse(payload)) } as unknown as BrowserSocket;
+    hub.add(socket);
+    return { socket, received };
+  }
+  const hub = new Hub();
+  const page = connect(hub, "page");
+  const notifier = connect(hub, "notifier");
+  hub.announceWaitingCount(3);
+  expect(notifier.received).toEqual([{ type: "waiting.counted", count: 3 }]);
+  expect(page.received).toEqual([]);
+  expect(hub.hasNotifier()).toBe(true);
+  hub.remove(notifier.socket);
+  expect(hub.hasNotifier()).toBe(false);
+});

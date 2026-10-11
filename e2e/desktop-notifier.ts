@@ -7,6 +7,7 @@ new HostNotifications({
   origin,
   token: () => token,
   show: (notification) => console.log(JSON.stringify(notification)),
+  showWaitingCount: (count) => console.log(`waiting ${count}`),
   builtFromCode,
   open: (url, headers) => {
     const socket = openWebSocket(url, headers) as WebSocket;

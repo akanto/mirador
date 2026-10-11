@@ -31,10 +31,12 @@ class FakeSocket implements NotificationSocket {
 function listen(token: () => string | null = () => "secret") {
   const sockets: FakeSocket[] = [];
   const shown: SystemNotification[] = [];
+  const counts: number[] = [];
   const notifications = new HostNotifications({
     origin: "http://127.0.0.1:4600",
     token,
     show: (shownNotification) => void shown.push(shownNotification),
+    showWaitingCount: (count) => void counts.push(count),
     open: (url, headers) => {
       const socket = new FakeSocket(url, headers);
       sockets.push(socket);
@@ -42,7 +44,7 @@ function listen(token: () => string | null = () => "secret") {
     },
     retryDelayMilliseconds: 1,
   });
-  return { notifications, sockets, shown };
+  return { notifications, sockets, shown, counts };
 }
 
 describe("host notifications in the desktop app", () => {
@@ -59,6 +61,27 @@ describe("host notifications in the desktop app", () => {
     sockets[0]!.receive({ type: "workspace.deleted", workspaceId: "w1" });
     sockets[0]!.receive({ type: "system-notification", notification });
     expect(shown).toEqual([notification]);
+    notifications.stop();
+  });
+
+  test("shows the number of conversations waiting that the host sends", () => {
+    const { notifications, sockets, counts } = listen();
+    notifications.start();
+    sockets[0]!.receive({ type: "waiting.counted", count: 2 });
+    expect(counts).toEqual([2]);
+    notifications.stop();
+  });
+
+  test("forgets the count when the host goes away, and takes the next one on reconnecting", async () => {
+    const { notifications, sockets, counts } = listen();
+    notifications.start();
+    sockets[0]!.receive({ type: "waiting.counted", count: 2 });
+    sockets[0]!.hostGoesAway();
+    expect(counts).toEqual([2, 0]);
+    await Bun.sleep(20);
+    expect(sockets).toHaveLength(2);
+    sockets[1]!.receive({ type: "waiting.counted", count: 1 });
+    expect(counts).toEqual([2, 0, 1]);
     notifications.stop();
   });
 

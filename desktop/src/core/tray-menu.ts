@@ -38,3 +38,5 @@ export function trayMenu(state: TrayState): TrayItem[] {
     { type: "normal", label: "Quit", action: "quit" },
   ];
 }
+
+export const trayTitle = (waitingCount: number) => (waitingCount > 0 ? String(waitingCount) : "");

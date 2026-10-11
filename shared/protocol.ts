@@ -298,6 +298,8 @@ export type ServerMessage =
   | { type: "terminal.busy"; terminalId: string; command: string; tabId?: string }
   | { type: "terminal.cleared"; terminalId: string }
   | { type: "system-notification"; notification: SystemNotification }
+  /** Sent to the desktop app's notification socket, on connecting and whenever the number of conversations waiting for you may have changed. */
+  | { type: "waiting.counted"; count: number }
   | { type: "host.code-changed" }
   | { type: "desktop-app.outdated"; outdated: boolean }
   /** The host is stopping to start again in place; pages reload once they reconnect. */

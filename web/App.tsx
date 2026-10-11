@@ -2,6 +2,7 @@ import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, us
 import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { sidebarItems } from "../shared/sidebar-order.ts";
+import { countWaiting } from "../shared/waiting.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { changesRefreshPoint } from "./changes.ts";
@@ -35,6 +36,7 @@ import { Sidebar } from "./Sidebar.tsx";
 import { Splitter } from "./Splitter.tsx";
 import { initialStateFor, reducer, selectedOpen, type AppAction, type AppState, type OpenConversation } from "./state.ts";
 import { useSystemNotifications } from "./system-notifications.ts";
+import { useTabTitle } from "./tab-title.ts";
 import { TerminalPane } from "./Terminals.tsx";
 import { useShortcuts } from "./useShortcuts.ts";
 import { WorkspaceArea } from "./Workspace.tsx";
@@ -413,6 +415,7 @@ export function App() {
     [state.machines],
   );
   useSystemNotifications(shownMachine ? null : state.selectedConversationId, status === "open", openConversation);
+  useTabTitle(countWaiting(state.conversations));
 
   useEffect(() => {
     const selectFromHash = () => {

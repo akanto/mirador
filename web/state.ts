@@ -259,6 +259,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "terminal.cleared":
     case "terminal.busy":
     case "system-notification":
+    case "waiting.counted":
     case "devices.invited":
     case "address.found":
     case "search.results":

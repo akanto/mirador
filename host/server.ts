@@ -982,7 +982,10 @@ export function startServer(services: HostServices) {
     open(socket) {
       hub.add(socket);
       if (socket.data.role === "page") sendSnapshot(socket);
-      else desktopApp.connected(socket, socket.data.desktopAppCode);
+      else {
+        desktopApp.connected(socket, socket.data.desktopAppCode);
+        hub.send(socket, { type: "waiting.counted", count: conversations.waitingCount() });
+      }
       if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
       else if (socket.data.role === "page") hub.send(socket, devicesListed(socket));
     },

@@ -40,6 +40,7 @@ import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
+import { countWaiting } from "../shared/waiting.ts";
 import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
@@ -174,6 +175,10 @@ export class ConversationService {
 
   list(): Conversation[] {
     return this.store.listConversations().map((conversation) => this.withRuntimeStatus(conversation));
+  }
+
+  waitingCount(): number {
+    return countWaiting(this.list());
   }
 
   get(conversationId: string): Conversation {
@@ -313,6 +318,7 @@ export class ConversationService {
     this.store.deleteConversation(conversationId);
     this.images.deleteConversation(conversationId);
     this.hub.broadcast({ type: "conversation.deleted", conversationId });
+    this.announceWaitingCount();
   }
 
   deleteAllInWorkspace(workspaceId: string) {
@@ -1463,6 +1469,11 @@ export class ConversationService {
 
   private publish(conversation: Conversation) {
     this.hub.broadcast({ type: "conversation.upserted", conversation: this.withRuntimeStatus(conversation) });
+    this.announceWaitingCount();
+  }
+
+  private announceWaitingCount() {
+    if (this.hub.hasNotifier()) this.hub.announceWaitingCount(this.waitingCount());
   }
 }
 

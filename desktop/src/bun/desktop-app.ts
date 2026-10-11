@@ -78,6 +78,7 @@ export class DesktopApp {
       origin: runtime.origin,
       token: () => this.browserTokenOnceWritten(),
       show: (notification) => Utils.showNotification(nativeNotification(notification, process.platform)),
+      showWaitingCount: (count) => this.tray.showWaitingCount(count),
       builtFromCode: environment.builtFromCode,
     });
     this.renderTray();

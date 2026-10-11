@@ -111,6 +111,16 @@ export class Hub {
     this.notifyEachDevice([...this.sockets, ...this.notifiers], notification);
   }
 
+  hasNotifier() {
+    return this.notifiers.size > 0;
+  }
+
+  /** Only the desktop app's notification sockets hear it; pages work the count out from the conversations they already hold. */
+  announceWaitingCount(count: number) {
+    const payload = JSON.stringify({ type: "waiting.counted", count } satisfies ServerMessage);
+    this.notifiers.forEach((socket) => deliver(socket, payload));
+  }
+
   /** What this host passes on from its other machines; a device that wants those joins the machine itself. Whether a page or app here got it. */
   notifyThisComputer(notification: SystemNotification): boolean {
     const listeners = [...this.sockets, ...this.notifiers].filter(({ data }) => data.deviceId === null);

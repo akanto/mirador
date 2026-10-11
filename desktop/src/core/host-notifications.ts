@@ -39,6 +39,8 @@ export interface HostNotificationsOptions {
   /** Read again for every connection: the host writes it on its first start, which may come after the app's. */
   token: () => string | null;
   show: (notification: SystemNotification) => void;
+  /** The number of conversations waiting for you, which the host sends on connecting and whenever it may have changed. */
+  showWaitingCount?: (count: number) => void;
   /** What the app was built from, for the host to tell when its checkout has moved on; a release build has none. */
   builtFromCode?: string | null;
   open?: SocketOpener;
@@ -65,7 +67,7 @@ export class HostNotifications {
   }
 
   private connect() {
-    const { origin, token, show, builtFromCode = null, open = openWebSocket } = this.options;
+    const { origin, token, show, showWaitingCount = () => {}, builtFromCode = null, open = openWebSocket } = this.options;
     const currentToken = token();
     if (!currentToken) return this.connectLater();
     const socket = open(notificationSocketUrl(origin, builtFromCode), { Origin: origin, Cookie: `${TOKEN_COOKIE}=${currentToken}` });
@@ -73,8 +75,12 @@ export class HostNotifications {
     socket.onmessage = ({ data }) => {
       const message = JSON.parse(String(data)) as ServerMessage;
       if (message.type === "system-notification") show(message.notification);
+      if (message.type === "waiting.counted") showWaitingCount(message.count);
     };
-    socket.onclose = () => this.connectLater();
+    socket.onclose = () => {
+      showWaitingCount(0);
+      this.connectLater();
+    };
   }
 
   private connectLater() {
