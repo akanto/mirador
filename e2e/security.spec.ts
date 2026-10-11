@@ -3,7 +3,7 @@ import { PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE } from "../shared/protocol.ts";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4710);
+const host = new TestHost(4905);
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

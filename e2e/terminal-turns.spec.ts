@@ -9,7 +9,7 @@ import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { notifierDir, TestHost } from "./test-host.ts";
 
-const host = new TestHost(5313);
+const host = new TestHost(4875);
 const api = new FakeClaudeApi();
 const claudeConfigDir = join(host.root, "claude-config");
 const environment = () => `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${claudeConfigDir}`;

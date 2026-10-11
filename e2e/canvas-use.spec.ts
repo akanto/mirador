@@ -3,7 +3,7 @@ import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, lastAgentMessage, openSettings, sendMessage, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5156);
+const host = new TestHost(4815);
 const api = new FakeClaudeApi();
 const PROFILE = "fake subscription";
 const GUIDANCE = "This conversation runs in Mirador, where the user reads a canvas panel";
