@@ -6,6 +6,11 @@ import type { Hub } from "./hub.ts";
 const STOPPED_TURNS_FILE = "turns-stopped-for-restart.json";
 const SERVICES_STOP_TIMEOUT_MS = 5_000;
 
+/** Settles once the services have stopped, or after `timeoutMs` if one of them hangs; a hanging stop is left running, not cancelled. */
+export function stoppedWithinTimeout(stopServices: () => Promise<void>, timeoutMs = SERVICES_STOP_TIMEOUT_MS): Promise<void> {
+  return Promise.race([stopServices(), Bun.sleep(timeoutMs)]);
+}
+
 /**
  * The command line the host was started with: `bun host/main.ts` from the source directory. Bun reports the entry as an
  * absolute path, but the desktop app recognises the host it started by this exact command line.
@@ -54,7 +59,7 @@ export class HostRestart {
     this.hub.broadcast({ type: "host.restarting" });
     const stoppedTurns = await this.conversations.prepareForRestart();
     writeFileSync(join(this.dataDir, STOPPED_TURNS_FILE), JSON.stringify(stoppedTurns), { mode: 0o600 });
-    await Promise.race([this.stopServices(), Bun.sleep(SERVICES_STOP_TIMEOUT_MS)]);
+    await stoppedWithinTimeout(this.stopServices);
     reexecute(process.execPath, hostCommandLine(process.argv0, Bun.main, process.cwd(), process.argv.slice(2)), process.env);
   }
 }

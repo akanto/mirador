@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lastTurnRequest, openTurnTheAgentWorkedOn } from "../host/conversations.ts";
-import { hostCommandLine, takeTurnsStoppedForRestart } from "../host/restart.ts";
+import { hostCommandLine, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import type { ConversationEvent } from "../shared/model.ts";
 import { SourceWatcher } from "../host/source-watcher.ts";
 
@@ -90,5 +90,25 @@ describe("SourceWatcher", () => {
     } finally {
       watcher.stop();
     }
+  });
+});
+
+describe("stoppedWithinTimeout", () => {
+  test("settles as soon as the services have stopped, not after the timeout", async () => {
+    const startedAt = Date.now();
+    await stoppedWithinTimeout(() => Bun.sleep(20), 5_000);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+
+  test("settles after the timeout when a service never stops", async () => {
+    const startedAt = Date.now();
+    await stoppedWithinTimeout(() => new Promise(() => {}), 100);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(90);
+  });
+
+  test("starts stopping the services", async () => {
+    let started = false;
+    await stoppedWithinTimeout(async () => void (started = true), 100);
+    expect(started).toBe(true);
   });
 });

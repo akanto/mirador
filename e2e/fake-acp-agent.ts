@@ -16,11 +16,13 @@ import * as acp from "@agentclientprotocol/sdk";
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
  * `FAKE_ACP_ANSWERS_AFTER_MS` answers option changes and closes that late, as Claude Code does while its first
  * request waits for a model server to load the model. Starts, changes and closes go to the file in `FAKE_ACP_LOG`,
- * each with the name in `FAKE_ACP_NAME`.
+ * each with the name in `FAKE_ACP_NAME`. FAKE_ACP_IGNORES_SIGTERM=1 makes it survive SIGTERM, and FAKE_ACP_PID_FILE
+ * names a file it writes its pid to.
  */
 const promptsFile = process.env.FAKE_ACP_PROMPTS;
 const offersModes = process.env.FAKE_ACP_MODES === "1";
 const answersAfterMs = Number(process.env.FAKE_ACP_ANSWERS_AFTER_MS ?? 0);
+const ignoresSigterm = process.env.FAKE_ACP_IGNORES_SIGTERM === "1";
 const startsWith = (prompt: acp.ContentBlock[], word: string) => prompt.every((block) => block.type === "text" && block.text.startsWith(word));
 
 const log = (entry: string) => process.env.FAKE_ACP_LOG && appendFileSync(process.env.FAKE_ACP_LOG, `${process.env.FAKE_ACP_NAME ?? "agent"} ${entry}\n`);
@@ -108,6 +110,12 @@ async function writeFiles(client: acp.AgentContext, sessionId: string, steps: Wr
   }
   return { stopReason: "end_turn" as const };
 }
+
+if (ignoresSigterm) {
+  process.on("SIGTERM", () => {});
+  setInterval(() => {}, 60_000);
+}
+if (process.env.FAKE_ACP_PID_FILE) writeFileSync(process.env.FAKE_ACP_PID_FILE, String(process.pid));
 
 log("started");
 acp

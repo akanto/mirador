@@ -17,7 +17,7 @@ import { ImageStore } from "./images.ts";
 import { NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
-import { HostRestart, takeTurnsStoppedForRestart } from "./restart.ts";
+import { HostRestart, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "./restart.ts";
 import { DesktopAppCheck } from "./desktop-app-check.ts";
 import { desktopAppCode } from "../shared/desktop-app-code.ts";
 import { startServer } from "./server.ts";
@@ -115,10 +115,10 @@ async function stopServices() {
 }
 
 let stopping = false;
-function shutdown() {
-  if (stopping) return;
+async function shutdown() {
+  if (stopping) process.exit(0);
   stopping = true;
-  void stopServices();
+  await stoppedWithinTimeout(stopServices).catch((error) => console.error(`${new Date().toISOString()} stopping the services failed:`, error));
   process.exit(0);
 }
 

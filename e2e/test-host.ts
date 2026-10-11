@@ -166,8 +166,8 @@ export class TestHost {
   }
 
   /**
-   * The host exits as soon as it has signalled its agents and shells, which may still write into the root while they
-   * stop; cleanUp may remove it only once they have ended.
+   * The host exits once its agents and shells have ended, or after SERVICES_STOP_TIMEOUT_MS (host/restart.ts) at the
+   * latest; anything still running then is waited for here and killed, so cleanUp never removes the root under a writer.
    */
   async stop() {
     const child = this.process;
