@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5380, { shell: "/bin/sh" });
@@ -40,9 +40,11 @@ async function fingerOnTheTerminal(page: Page) {
   };
 }
 
-test("a finger drags the terminal's output and flings it till a touch stops it, and in a full-screen program scrolls as a wheel does there, also after the terminal grew and shrank", async ({ page }) => {
+async function showTheTerminalWith300Lines(page: Page) {
   await signIn(page, host);
-  await addWorkspace(page, host.projectDir);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();
   const shown = page.locator(".terminal-pane .xterm-rows");
@@ -57,6 +59,11 @@ test("a finger drags the terminal's output and flings it till a touch stops it, 
   const latest = await firstRowShown();
   const rowCount = await rows.count();
   const finger = await fingerOnTheTerminal(page);
+  return { shown, rows, row, firstRowShown, latest, rowCount, finger };
+}
+
+test("a finger drags the terminal's output and flings it till a touch stops it, and in a full-screen program scrolls as a wheel does there, also after the terminal grew and shrank", async ({ page }) => {
+  const { shown, rows, row, firstRowShown, latest, rowCount, finger } = await showTheTerminalWith300Lines(page);
 
   await finger.drag(0.15, 0.85, "after a pause");
   const linesTheFingerMoved = Math.trunc(rowCount * 0.7);
@@ -95,4 +102,17 @@ test("a finger drags the terminal's output and flings it till a touch stops it, 
   await expect(shown).toContainText("^[[<65;");
   await expect(shown).not.toContainText("^[[<64;");
   await page.keyboard.press("Control+C");
+});
+
+test("typing while the output is still flinging stops the fling, and the view stays at the prompt", async ({ page }) => {
+  const { firstRowShown, latest, finger } = await showTheTerminalWith300Lines(page);
+
+  await finger.drag(0.15, 0.85, "at once");
+  const whenLifted = await firstRowShown();
+  await expect.poll(firstRowShown).toBeLessThan(whenLifted - 3);
+
+  await page.keyboard.type("x");
+  await expect.poll(firstRowShown).toBe(latest);
+  await page.waitForTimeout(500);
+  expect(await firstRowShown()).toBe(latest);
 });

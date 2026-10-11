@@ -40,7 +40,9 @@ export const flingStopped = (velocity: number) => Math.abs(velocity) <= FLING_ST
 /**
  * xterm.js 6 has no touch scrolling. A finger drags the shell's output, and a quick one keeps it going a while. Over a
  * full-screen program it scrolls as a wheel does, which xterm turns into arrow keys or, for a program that follows the
- * mouse, into its wheel reports.
+ * mouse, into its wheel reports. The phone bundles this file into its WebView and calls scrollWithAFinger(view, screen)
+ * from a string in mirador-mobile's terminal-page.ts, which no type checker sees: renaming the export fails its vendor
+ * build, but changing the parameters fails only on the phone.
  */
 export function scrollWithAFinger(view: Terminal, screen: HTMLElement) {
   const counter = lineCounter();
@@ -51,8 +53,12 @@ export function scrollWithAFinger(view: Terminal, screen: HTMLElement) {
   const showsTheScrollback = () => view.buffer.active.type === "normal" && view.modes.mouseTrackingMode === "none";
   // To xterm's root, past its scroll area: a full-screen program's screen has lines to scroll there after the terminal
   // grew and shrank, which would take the wheel instead.
-  const wheelAt = (deltaY: number, { clientX, clientY }: Point) =>
+  let sendingItsOwnWheel = false;
+  const wheelAt = (deltaY: number, { clientX, clientY }: Point) => {
+    sendingItsOwnWheel = true;
     view.element?.dispatchEvent(new WheelEvent("wheel", { deltaY, deltaMode: WheelEvent.DOM_DELTA_PIXEL, clientX, clientY, cancelable: true }));
+    sendingItsOwnWheel = false;
+  };
   const scrollBy = (deltaY: number, point: Point) => (showsTheScrollback() ? view.scrollLines(counter.lines(deltaY, lineHeight())) : wheelAt(deltaY, point));
 
   const stopFling = () => {
@@ -97,8 +103,12 @@ export function scrollWithAFinger(view: Terminal, screen: HTMLElement) {
   screen.addEventListener("touchmove", touchMoved, { passive: true });
   screen.addEventListener("touchend", touchEnded);
   screen.addEventListener("touchcancel", touchCancelled);
+  const typing = view.onData(() => {
+    if (!sendingItsOwnWheel) stopFling();
+  });
   return () => {
     stopFling();
+    typing.dispose();
     screen.removeEventListener("touchstart", touchStarted);
     screen.removeEventListener("touchmove", touchMoved);
     screen.removeEventListener("touchend", touchEnded);
