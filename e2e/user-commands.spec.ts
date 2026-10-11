@@ -3,7 +3,7 @@ import { addWorkspace, createProfile, sendMessage, signIn, startConversation, wa
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4990, { shell: "/bin/sh" });
+const host = new TestHost(4990);
 const model = new ScriptedModel();
 const PROFILE = "scripted opencode";
 

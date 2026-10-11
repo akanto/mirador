@@ -14,6 +14,9 @@ const HOST_PROCESSES_EXIT_TIMEOUT_MS = 5_000;
 /** dash, Linux's /bin/sh, may run commands in the shell's own process group, so the busy check needs bash there. */
 export const jobControlShell = process.platform === "darwin" ? "/bin/sh" : "/bin/bash";
 
+/** What a spec's terminals and ! commands run unless it picks a shell: the developer's own shell would read their ~/.zshrc, which can stall a spec. */
+export const defaultShell = "/bin/sh";
+
 /**
  * Test sessions must be muted in the user's real claude-notifier directory; otherwise its
  * hooks (auto-approve in yolo mode, phone mirroring) act on them. These are the markers
@@ -138,7 +141,7 @@ export class TestHost {
         MIRADOR_TEST_SKIP_USER_SETTINGS: "1",
         MIRADOR_TAILSCALE: join(this.root, "no-tailscale-on-this-machine"),
         MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
-        ...(this.options.shell && { SHELL: this.options.shell }),
+        SHELL: this.options.shell ?? defaultShell,
         ...(this.options.fakePrograms && { PATH: `${this.fakeProgramsDir}:${this.baseEnvironment().PATH}` }),
         ...this.options.environment,
       },

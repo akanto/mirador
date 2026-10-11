@@ -5,7 +5,7 @@ import { addWorkspace, createProfile, pasteImage, sendMessage, signIn, startConv
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5090, { shell: "/bin/sh" });
+const host = new TestHost(5090);
 const model = new ScriptedModel();
 const PROFILE = "scripted opencode";
 

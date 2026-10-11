@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5290, { shell: "/bin/sh" });
+const host = new TestHost(5290);
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

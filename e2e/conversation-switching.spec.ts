@@ -4,7 +4,7 @@ import { expect, test, type Page, type WebSocket } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5159, { shell: "/bin/sh" });
+const host = new TestHost(5159);
 
 test.beforeAll(async () => {
   await host.start();
