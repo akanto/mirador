@@ -12,6 +12,9 @@ const DIFF_TIMEOUT_MS = 100;
 /** A whole changed file takes longer, and the user asked for it. */
 const FILE_DIFF_TIMEOUT_MS = 500;
 
+/** As many as the web keeps loads of: fewer would drop an outside file's snippets before a refresh asks for them again. */
+const DIFFS_KEPT = 100;
+
 type ProposedChange = Extract<ToolCallContent, { type: "diff" }>;
 
 /** The file as it is before the edit: its text, or that there is no such file, or that it can't be read as text. */
@@ -94,8 +97,29 @@ export function editDiff(change: ProposedChange, file: FileBefore, replaceAll: b
   };
 }
 
+const keptDiffs = new Map<string, EditDiff>();
+
+const textKey = (text: string) => `${text.length}:${Bun.hash(text)}`;
+const versionKey = (file: FileBefore) => (file.kind === "text" ? textKey(file.text) : file.kind);
+
+/**
+ * The diff worked out before for the same key, else `diffOf`'s: a diff blocks every conversation on the host while it
+ * runs, and the Changes view asks again after every finished tool call, mostly for files that did not change.
+ */
+function keptDiff(key: string, diffOf: () => EditDiff): EditDiff {
+  const diff = keptDiffs.get(key) ?? diffOf();
+  keptDiffs.delete(key);
+  keptDiffs.set(key, diff);
+  if (keptDiffs.size > DIFFS_KEPT) keptDiffs.delete(keptDiffs.keys().next().value!);
+  return diff;
+}
+
 /** A file's line changes from one version to another, with the file's line numbers and a few lines around each change. */
 export function fileChangeDiff(path: string, before: FileBefore, after: FileBefore): EditDiff {
+  return keptDiff(["file", path, versionKey(before), versionKey(after)].join("\0"), () => diffBetweenVersions(path, before, after));
+}
+
+function diffBetweenVersions(path: string, before: FileBefore, after: FileBefore): EditDiff {
   const change = before.kind === "missing" ? "added" : after.kind === "missing" ? "deleted" : "modified";
   const unchanged: Omit<EditDiff, "hiddenBecause"> = { path, change, added: 0, removed: 0, hunks: [], located: true, lineCount: null };
   if (before.kind === "unreadable" || after.kind === "unreadable") return { ...unchanged, hiddenBecause: "a binary or very large file" };
@@ -116,6 +140,10 @@ export function fileChangeDiff(path: string, before: FileBefore, after: FileBefo
 
 /** One edit as the agent sent it, without the file's line numbers. */
 export function snippetDiff(path: string, oldText: string | null, newText: string): EditDiff {
+  return keptDiff(["snippet", path, textKey(oldText ?? ""), textKey(newText)].join("\0"), () => diffOfSnippet(path, oldText, newText));
+}
+
+function diffOfSnippet(path: string, oldText: string | null, newText: string): EditDiff {
   const hunks = snippetHunks(oldText ?? "", newText);
   const rows = hunks.flatMap((hunk) => hunk.rows);
   return {

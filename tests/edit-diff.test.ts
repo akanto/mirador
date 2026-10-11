@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "bun:test";
 import type { ToolCallUpdate } from "@agentclientprotocol/sdk";
-import { editDiff, editDiffsOf, type FileBefore } from "../host/edit-diff.ts";
+import { editDiff, editDiffsOf, fileChangeDiff, snippetDiff, type FileBefore } from "../host/edit-diff.ts";
 import type { DiffRow, EditDiff } from "../shared/review.ts";
 
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
@@ -100,5 +100,29 @@ describe("the files a permission request would change", () => {
   test("are none for a request that changes no file", async () => {
     expect(await editDiffsOf(toolCall([{ type: "content", content: { type: "text", text: "hi" } }]), [workspace])).toBeUndefined();
     expect(await editDiffsOf(toolCall(undefined), [workspace])).toBeUndefined();
+  });
+});
+
+describe("a file's line changes, asked for again after every tool call", () => {
+  const withLine = (line: number, replacement: string) => numbered(30).replace(`line ${line}\n`, `${replacement}\n`);
+
+  test("the same versions of a file give back the diff worked out before, without diffing again", () => {
+    const first = fileChangeDiff("a.ts", text(numbered(30)), text(withLine(15, "line fifteen")));
+    expect(fileChangeDiff("a.ts", text(numbered(30)), text(withLine(15, "line fifteen")))).toBe(first);
+    expect(rowsOf(first).filter(({ kind }) => kind !== "context")).toEqual([row("removed", 15, null, "line 15"), row("added", null, 15, "line fifteen")]);
+  });
+
+  test("another version or another path is diffed anew", () => {
+    const first = fileChangeDiff("a.ts", text(numbered(30)), text(withLine(15, "line fifteen")));
+    const changedAgain = fileChangeDiff("a.ts", text(numbered(30)), text(withLine(16, "line sixteen")));
+    expect(changedAgain).not.toBe(first);
+    expect(rowsOf(changedAgain).filter(({ kind }) => kind === "added")).toEqual([row("added", null, 16, "line sixteen")]);
+    expect(fileChangeDiff("b.ts", text(numbered(30)), text(withLine(15, "line fifteen")))).toMatchObject({ path: "b.ts" });
+  });
+
+  test("the agent's same snippet gives back the diff worked out before", () => {
+    const first = snippetDiff("/work/a.ts", "old line", "new line");
+    expect(snippetDiff("/work/a.ts", "old line", "new line")).toBe(first);
+    expect(snippetDiff("/work/a.ts", "old line", "newer line")).not.toBe(first);
   });
 });
