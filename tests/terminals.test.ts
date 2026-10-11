@@ -12,6 +12,7 @@ let workspaceDir: string;
 let store: Store;
 let terminals: TerminalService;
 let hub: Hub;
+const TEST_SAVE_DELAY_MS = 50;
 const originalShell = process.env.SHELL;
 const originalHome = process.env.HOME;
 
@@ -79,17 +80,19 @@ beforeEach(async () => {
   store.insertWorkspace({ id: "w1", name: "project", path: workspaceDir, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
   ["c1", "c2"].forEach((id) => store.insertConversation(conversationInWorkspace(id)));
   hub = new Hub();
-  terminals = new TerminalService(hub, store);
+  terminals = new TerminalService(hub, store, TEST_SAVE_DELAY_MS);
 });
 
 /** Stops the host's terminals and starts the next run's on the same store, as a restart does. */
 async function restartHost() {
   await terminals.shutdown();
-  terminals = new TerminalService(hub, store);
+  terminals = new TerminalService(hub, store, TEST_SAVE_DELAY_MS);
 }
 
 const replayed = (received: ServerMessage[], terminalId: string) =>
   received.flatMap((message) => (message.type === "terminal.replayed" && message.terminalId === terminalId ? [message.data] : [])).at(-1) ?? "";
+
+const savedOutputOf = (terminalId: string) => store.listTerminalTabs("c1")[0]?.scrollback.get(terminalId) ?? "";
 
 afterEach(async () => {
   await terminals.shutdown();
@@ -367,6 +370,19 @@ test("a program's tab, a closed tab and a closed split are not there after a res
   const after = fakeBrowser();
   terminals.attach(after.socket, "c1");
   expect(lastTabs(after.received)).toEqual([{ id: kept.tabId, name: "sh", layout: { terminalId: kept.terminalId }, terminals: [{ id: kept.terminalId, title: null }] }]);
+});
+
+test("a terminal's output is not saved before the save delay, and is saved when the host stops", async () => {
+  terminals = new TerminalService(hub, store, 60_000);
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  terminals.input(terminalId, "echo pending-$((4*4))\n");
+  await outputContaining(browser.received, "pending-16");
+  expect(savedOutputOf(terminalId)).not.toContain("pending-16");
+
+  await terminals.shutdown();
+  expect(savedOutputOf(terminalId)).toContain("pending-16");
 });
 
 test("clearing a terminal clears its saved output at once, and deleting the conversation forgets its tabs", async () => {

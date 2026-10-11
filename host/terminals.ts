@@ -9,7 +9,7 @@ import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
-const SCROLLBACK_SAVE_DELAY_MS = 2_000;
+const SCROLLBACK_SAVE_DELAY_MS = 15_000;
 /** A restarted shell's size until a window fits it to its pane. */
 const RESTARTED_SIZE = { columns: 80, rows: 24 };
 /** Every listing of a conversation's terminals carries the titles, so a runaway one is cut short. */
@@ -115,6 +115,7 @@ export class TerminalService {
   constructor(
     private readonly hub: Hub,
     private readonly store: Store,
+    private readonly scrollbackSaveDelayMs = SCROLLBACK_SAVE_DELAY_MS,
   ) {}
 
   attach(socket: BrowserSocket, conversationId: string | null) {
@@ -265,7 +266,7 @@ export class TerminalService {
 
   private scrollbackChanged(shell: Shell) {
     this.unsavedScrollback.add(shell);
-    this.scrollbackSave ??= setTimeout(() => this.saveScrollback(), SCROLLBACK_SAVE_DELAY_MS);
+    this.scrollbackSave ??= setTimeout(() => this.saveScrollback(), this.scrollbackSaveDelayMs);
   }
 
   private saveScrollback() {
