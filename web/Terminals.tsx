@@ -177,6 +177,11 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     const searcher = new SearchAddon({ highlightLimit: HIGHLIGHT_LIMIT });
     const screenElement = screen.current!;
     const fitIfShown = () => isShown(screenElement) && fit.fit();
+    let pendingFit = 0;
+    const fitNextFrame = () => {
+      cancelAnimationFrame(pendingFit);
+      pendingFit = requestAnimationFrame(fitIfShown);
+    };
     const applyFontSize = () => {
       view.options.fontSize = terminalFontSize();
       fitIfShown();
@@ -215,7 +220,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     });
     const typed = view.onData((data) => history.letsThrough() && connection.send({ type: "terminal.input", terminalId, data }));
     const resized = view.onResize(({ cols, rows }) => connection.send({ type: "terminal.resize", terminalId, columns: cols, rows }));
-    const observer = new ResizeObserver(fitIfShown);
+    const observer = new ResizeObserver(fitNextFrame);
     observer.observe(screenElement);
     const stopFontListening = subscribeTerminalFontSize(applyFontSize);
 
@@ -229,6 +234,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       setSearch(null);
       screenElement.removeEventListener("mousedown", startSelecting);
       stopTouchScrolling();
+      cancelAnimationFrame(pendingFit);
       observer.disconnect();
       stopFontListening();
       typed.dispose();
