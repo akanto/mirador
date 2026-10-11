@@ -250,6 +250,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "tool-raw-output.got":
     case "conversation.found":
     case "statusline.rendered":
+    case "subagent-usage.got":
     case "terminals.listed":
     case "terminal.opened":
     case "terminal.replayed":

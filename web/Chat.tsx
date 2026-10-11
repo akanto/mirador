@@ -1,7 +1,9 @@
 import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { modelLabel } from "../shared/claude-models.ts";
 import { flatSelectOptions } from "../shared/config-options.ts";
 import { describeJob } from "../shared/job-waits.ts";
+import { formatTokens, tokensSpent, type SubagentUsage } from "../shared/subagent-usage.ts";
 import {
   harnessLabels,
   harnessRewinds,
@@ -54,6 +56,7 @@ import { commandLineOf, isShellCommand, shellCommandOf } from "./shell.ts";
 import { useShellOutputStyle } from "./shell-output.ts";
 import { Statusline } from "./Statusline.tsx";
 import type { OpenConversation } from "./state.ts";
+import { useSubagentUsage } from "./subagent-usage.ts";
 import {
   authorOf,
   buildTimeline,
@@ -472,7 +475,7 @@ const callsLabel = (count: number) => (count === 1 ? "1 call" : `${count} calls`
 function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock; conversationId: string; harness: HarnessId }) {
   const state = useContext(SubagentStates).get(block.toolCallId) ?? "done";
   const now = useClock(state === "running");
-  const { subagent_type, model } = subagentInput(block);
+  const { subagent_type, model, prompt } = subagentInput(block);
   const calls = block.subagent.blocks.filter((child) => child.kind === "tool");
   const latestCall = calls.at(-1);
   const facts = [
@@ -493,6 +496,12 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
         <span className="subagent-facts">{facts.join(" · ")}</span>
         {state === "running" && latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
       </summary>
+      {typeof prompt === "string" && (
+        <details className="raw subagent-prompt">
+          <summary>prompt</summary>
+          <pre>{prompt}</pre>
+        </details>
+      )}
       <div className="subagent-work">
         {block.subagent.blocks.map((child) => (
           <TimelineEntry key={child.key} block={child} conversationId={conversationId} harness={harness} canRewind={false} />
@@ -515,19 +524,31 @@ const subagentTask = (block: SubagentBlock) => {
   return typeof description === "string" ? description : readableToolTitle(block.title);
 };
 
+const tokensHint = ({ cacheReadTokens, cacheWriteTokens, inputTokens }: SubagentUsage) =>
+  hints.subagentTokens(formatTokens(cacheReadTokens), formatTokens(cacheWriteTokens), formatTokens(inputTokens));
+
 /** Pinned under the conversation while subagents work, however far the timeline has moved on since they started. */
-function RunningSubagents({ subagents, onShow }: { subagents: SubagentBlock[]; onShow: (block: SubagentBlock) => void }) {
+function RunningSubagents({ conversationId, subagents, onShow }: { conversationId: string; subagents: SubagentBlock[]; onShow: (block: SubagentBlock) => void }) {
   const now = useClock(true);
+  const spentBySubagent = useSubagentUsage(
+    conversationId,
+    subagents.map(({ toolCallId }) => toolCallId),
+  );
   return (
     <div className="running-subagents" role="status" aria-label="Subagents at work">
       {subagents.map((block) => {
-        const { subagent_type } = subagentInput(block);
+        const { subagent_type, model: requestedModel } = subagentInput(block);
+        const spent = spentBySubagent[block.toolCallId];
+        const model = spent?.model ?? (typeof requestedModel === "string" ? requestedModel : null);
+        const facts = [typeof subagent_type === "string" && subagent_type, model && modelLabel(model), spent && tokensSpent(spent), formatDuration(now - block.at)];
         const latestCall = block.subagent.blocks.filter((child) => child.kind === "tool").at(-1);
         return (
           <button key={block.toolCallId} type="button" className="running-subagent" data-hint={hints.runningSubagent} onClick={() => onShow(block)}>
             <span className="subagent-pulse" />
             <span className="subagent-task">{subagentTask(block)}</span>
-            <span className="subagent-facts">{[typeof subagent_type === "string" && subagent_type, formatDuration(now - block.at)].filter(Boolean).join(" · ")}</span>
+            <span className="subagent-facts" data-hint={spent ? tokensHint(spent) : undefined}>
+              {facts.filter(Boolean).join(" · ")}
+            </span>
             {latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
           </button>
         );
@@ -1547,7 +1568,7 @@ export function ChatPanel({
               {conversation.status === "running" && <div className="working">Working…</div>}
             </div>
           </MatchesFind.Provider>
-          {runningSubagents.length > 0 && <RunningSubagents subagents={runningSubagents} onShow={showSubagent} />}
+          {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
           {conversation.openInTerminal && (
             <div className="terminal-warning" role="status">
               This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens

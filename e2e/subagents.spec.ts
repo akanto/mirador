@@ -8,6 +8,7 @@ import { TestHost } from "./test-host.ts";
 const host = new TestHost(5100);
 const model = new ScriptedModel();
 const PROFILE = "scripted opencode";
+const claudeConfigDir = join(host.root, "claude-config");
 
 test.beforeAll(async () => {
   await model.start();
@@ -22,7 +23,7 @@ test.afterAll(async () => {
 test("a subagent's work folds into its card, and the header counts the subagents still at work", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const dialog = await createProfile(page, PROFILE, scriptedOpencodeEnvironment(model, host.root), "", "opencode");
+  const dialog = await createProfile(page, PROFILE, `${scriptedOpencodeEnvironment(model, host.root)}\nCLAUDE_CONFIG_DIR=${claudeConfigDir}`, "", "opencode");
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · opencode` });
   const conversationId = await startConversation(page);
@@ -31,6 +32,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
 
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-subagents.ts"), join(host.dataDir, "state.sqlite"), conversationId]);
+  execFileSync("bun", [join(import.meta.dirname, "seed-subagent-transcript.ts"), join(host.dataDir, "state.sqlite"), conversationId, claudeConfigDir]);
   await host.start();
   await page.reload();
 
@@ -52,6 +54,8 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(page.locator(".message.agent", { hasText: "Both subagents are on it." })).toBeVisible();
     await expect(page.locator(".message.agent", { hasText: "The cache lives in host/cache.ts." })).toBeHidden();
     await explore.locator("summary").first().click();
+    await explore.locator(".subagent-prompt > summary").click();
+    await expect(explore.locator(".subagent-prompt pre")).toHaveText("Find where the cache lives.");
     await expect(explore.locator(".subagent-work .message.agent")).toHaveText("The cache lives in host/cache.ts.");
     await expect(explore.locator(".tool-output").last()).toHaveText("Report: the cache is in host/cache.ts.");
   });
@@ -77,6 +81,11 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(dock.getByRole("button")).toHaveCount(1);
     await expect(dock.locator(".subagent-task")).toHaveText("Watch the build");
     await expect(dock.locator(".subagent-now")).toHaveText("now: bun run build");
+    await expect(dock.locator(".subagent-facts")).toHaveText(/^Sonnet 4\.5 · 2\.23M in · 3\.5k out · \d/);
+    await expect(dock.locator(".subagent-facts")).toHaveAttribute(
+      "data-hint",
+      "Input tokens: 2.2M read from the cache, 25k written to it, 5 new. Counted from Claude Code's transcript of the subagent.",
+    );
     await watch.locator("summary").first().click();
     await expect(watch).not.toHaveAttribute("open");
     await page.locator(".timeline").evaluate((timeline) => timeline.scrollTo(0, 0));

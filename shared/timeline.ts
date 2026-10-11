@@ -56,7 +56,7 @@ export type SubagentState = "running" | "done" | "failed" | "stopped";
 const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
 
 export const subagentInput = (block: ToolBlock) =>
-  (block.rawInput ?? {}) as { description?: unknown; subagent_type?: unknown; model?: unknown };
+  (block.rawInput ?? {}) as { description?: unknown; prompt?: unknown; subagent_type?: unknown; model?: unknown };
 
 export const runsInBackground = (block: ToolBlock) => block.launchedInBackground === true;
 

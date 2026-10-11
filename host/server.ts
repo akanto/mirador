@@ -818,6 +818,11 @@ export function startServer(services: HostServices) {
           .render(message.conversationId, message.columns, message.runCommand)
           .then((render) => reply({ type: "statusline.rendered", requestId: message.requestId, statusline: render }))
           .catch((error) => reply({ type: "error", message: errorMessage(error) }));
+      case "subagent-usage.get":
+        return conversations
+          .subagentUsage(message.conversationId, message.toolCallIds)
+          .then((usage) => reply({ type: "subagent-usage.got", requestId: message.requestId, usage }))
+          .catch((error) => reply({ type: "error", message: errorMessage(error) }));
       case "terminals.attach":
         return terminals.attach(socket, message.conversationId);
       case "terminal.open":

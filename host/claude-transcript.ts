@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import { resolveModelPreference } from "@agentclientprotocol/claude-agent-acp/dist/session-model.js";
+import { isRealModel } from "../shared/claude-models.ts";
 import { flatSelectOptions } from "../shared/config-options.ts";
 
 /**
@@ -25,9 +26,6 @@ const records = (transcript: string) =>
       return [];
     }
   });
-
-/** Claude Code records an API error as an answer from a made-up model such as "<synthetic>". */
-const isRealModel = (model: unknown): model is string => typeof model === "string" && model.trim() !== "" && !/^<[^>]+>$/.test(model.trim());
 
 /** The model that last answered in a Claude Code transcript's main thread, which Claude Code resumes the session on. */
 export function lastAnsweringModel(transcript: string): string | null {

@@ -37,6 +37,7 @@ import type { PromptHistoryEntry } from "./prompt-history.ts";
 import type { SlashCommand } from "./slash-commands.ts";
 import type { SplitAxis } from "./terminal-layout.ts";
 import type { SystemNotification } from "./system-notifications.ts";
+import type { SubagentUsage } from "./subagent-usage.ts";
 
 export interface TerminalSplit {
   terminalId: string;
@@ -161,6 +162,7 @@ export type ClientMessage =
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
   | { type: "fs.complete"; requestId: string; prefix: string }
   | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
+  | { type: "subagent-usage.get"; requestId: string; conversationId: string; toolCallIds: string[] }
   | { type: "terminals.attach"; conversationId: string | null }
   /** Opens a terminal in a new tab, or beside or below the one `split` names, in its tab. */
   | { type: "terminal.open"; requestId: string; conversationId: string; split: TerminalSplit | null; columns: number; rows: number }
@@ -276,6 +278,7 @@ export type ServerMessage =
   | { type: "canvas.upserted"; item: CanvasItem }
   | { type: "fs.completions"; requestId: string; directories: string[] }
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }
+  | { type: "subagent-usage.got"; requestId: string; usage: Record<string, SubagentUsage> }
   | { type: "sessions.listed"; requestId: string; sessions: ExternalSession[] }
   | { type: "sessions.failed"; requestId: string; message: string }
   | { type: "review.file-read"; requestId: string; lines: string[] }

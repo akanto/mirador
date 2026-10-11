@@ -59,6 +59,7 @@ import { claudeConfigDir } from "./terminal-sessions.ts";
 import { TerminalWork, updatesAfter } from "./terminal-catch-up.ts";
 import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "./claude-transcript.ts";
 import { UserCommandRunner } from "./user-commands.ts";
+import { SubagentUsageReader } from "./subagent-usage.ts";
 
 const UNTITLED = "New conversation";
 const MAX_TITLE_LENGTH = 200;
@@ -143,6 +144,7 @@ export class ConversationService {
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
   private readonly asksWaitedOn: Map<string, PendingAsk>;
   private readonly commands = new UserCommandRunner();
+  private readonly subagentUsageReader = new SubagentUsageReader();
   private readonly jobWaits: JobWaits;
   private readonly checkpoints: Checkpoints;
   readonly changes: Changes;
@@ -199,6 +201,13 @@ export class ConversationService {
 
   async mentionSuggestions(conversationId: string, query: string) {
     return mentionSuggestions(this.existingWorkspace(this.get(conversationId).workspaceId).path, query);
+  }
+
+  /** What the conversation's subagents spent so far, from Claude Code's transcripts of them. */
+  async subagentUsage(conversationId: string, toolCallIds: string[]) {
+    const conversation = this.get(conversationId);
+    if (!conversation.acpSessionId) return {};
+    return this.subagentUsageReader.usageOf(this.claudeConfigDirOf(conversation), conversation.acpSessionId, toolCallIds);
   }
 
   create(workspaceId: string, launch: Launch): Conversation {

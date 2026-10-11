@@ -95,6 +95,8 @@ export const hints = {
   findNewer: "Next match, further down (Shift+Enter)",
   findMatchCase: "Match case: capital and small letters count as different.",
   runningSubagent: "A subagent at work. Click to open its card in the conversation and see what it has done so far.",
+  subagentTokens: (read: string, written: string, fresh: string) =>
+    `Input tokens: ${read} read from the cache, ${written} written to it, ${fresh} new. Counted from Claude Code's transcript of the subagent.`,
   inTerminal:
     "This Claude Code session is also running in a terminal. The host sees that in Claude Code's session registry (<config dir>/sessions/<pid>.json) and shows what the terminal is doing.",
   launch:
