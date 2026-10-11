@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parentFolder } from "../web/workspace-folder.ts";
+import { parentFolder, withHomeAsTilde } from "../web/workspace-folder.ts";
 
 const home = "/Users/ada";
 
@@ -18,4 +18,12 @@ test("leaves folders outside home as they are, even ones whose name starts like 
 
 test("shows the full folder until the host has said where home is", () => {
   expect(parentFolder("/Users/ada/prj/mirador", "")).toBe("/Users/ada/prj");
+});
+
+test("shows a file under home as ~/..., and any other path as it is", () => {
+  expect(withHomeAsTilde("/Users/ada/notes/todo.md", home)).toBe("~/notes/todo.md");
+  expect(withHomeAsTilde("/Users/ada2/notes.md", home)).toBe("/Users/ada2/notes.md");
+  expect(withHomeAsTilde("/tmp/notes.md", home)).toBe("/tmp/notes.md");
+  expect(withHomeAsTilde("src/app.ts", home)).toBe("src/app.ts");
+  expect(withHomeAsTilde("/Users/ada/notes/todo.md", "")).toBe("/Users/ada/notes/todo.md");
 });

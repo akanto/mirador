@@ -510,6 +510,7 @@ export function CanvasPanel({
   items,
   edits,
   assetsOrigin,
+  homeDir,
   changesRefreshPoint,
   onHide,
 }: {
@@ -518,6 +519,7 @@ export function CanvasPanel({
   /** The edits the agent asked permission for; none when Settings keep them in the chat. */
   edits: EditRequest[];
   assetsOrigin: string;
+  homeDir: string;
   changesRefreshPoint: number;
   onHide: () => void;
 }) {
@@ -664,7 +666,7 @@ export function CanvasPanel({
                   : "Nothing on the canvas right now. Earlier drawings and questions are in History."}
               </div>
             )}
-            <ChangesView conversationId={conversationId} refreshPoint={changesRefreshPoint} />
+            <ChangesView conversationId={conversationId} refreshPoint={changesRefreshPoint} homeDir={homeDir} />
           </>
         )}
         {!changesOpen && edit.shown && (

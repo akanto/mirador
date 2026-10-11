@@ -1,14 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { scratchPath, TestHost } from "./test-host.ts";
 
-const host = new TestHost(5340, { fakePrograms: true });
+const home = scratchPath("changes-home");
+const host = new TestHost(5340, { fakePrograms: true, environment: { HOME: home } });
 const appFile = join(host.projectDir, "src", "app.ts");
 const generatedFile = join(host.projectDir, "src", "generated.txt");
-const outsideFile = join(host.root, "elsewhere", "notes.md");
+const outsideFile = join(home, "elsewhere", "notes.md");
+const outsideFileShown = "~/elsewhere/notes.md";
 const editNow = join(host.root, "edit-now");
 const finishNow = join(host.root, "finish-now");
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
@@ -29,6 +31,7 @@ const git = (...args: string[]) => execFileSync("git", ["-C", host.projectDir, "
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
+  mkdirSync(home, { recursive: true });
   fakeOpencode();
   mkdirSync(join(host.projectDir, "src"), { recursive: true });
   writeFileSync(appFile, numbered(30));
@@ -40,6 +43,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
+  rmSync(home, { recursive: true, force: true });
 });
 
 const changes = (page: Page) => page.locator(".canvas-panel .changes");
@@ -56,7 +60,7 @@ async function startConversation(page: Page) {
 
 let conversationId: string;
 
-test("the empty canvas lists the files this turn changed as the agent works, with its own edits marked and files outside the project apart", async ({ page }) => {
+test("the empty canvas lists the files this turn changed as the agent works, with its own edits marked and files outside the project apart, under home as ~/", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, "changes", "", "", "opencode");
@@ -88,8 +92,8 @@ test("the empty canvas lists the files this turn changed as the agent works, wit
   await expect(section(page, "Project").locator(".changed-path")).toHaveText(["src/app.ts", "src/generated.txt"]);
   await expect(fileRow(page, "src/generated.txt").locator(".change-status")).toHaveText("A");
   await expect(fileRow(page, "src/generated.txt").locator(".by-agent")).toHaveCount(0);
-  await expect(section(page, "Outside the project").locator(".changed-path")).toHaveText([outsideFile]);
-  await expect(fileRow(page, outsideFile).locator(".by-agent")).toHaveText("● agent");
+  await expect(section(page, "Outside the project").locator(".changed-path")).toHaveText([outsideFileShown]);
+  await expect(fileRow(page, outsideFileShown).locator(".by-agent")).toHaveText("● agent");
 });
 
 test("clicking a file opens its line changes under its row, with the file's line numbers, unified or split, and Open in IDEA", async ({ page }) => {
@@ -113,14 +117,14 @@ test("clicking a file opens its line changes under its row, with the file's line
   await diff.getByRole("button", { name: "Unified" }).click();
 
   await test.step("a file outside the project shows the agent's own edit", async () => {
-    await fileRow(page, outsideFile).click();
-    await expect(diff.locator(".edited-file h3")).toHaveText(outsideFile);
+    await fileRow(page, outsideFileShown).click();
+    await expect(diff.locator(".edited-file h3")).toHaveText(outsideFileShown);
     await expect(diff).toContainText("The agent's own edits to this file");
     await expect(diff.locator(".code-row.added")).toContainText("outside the project");
   });
 
   await test.step("clicking the selected file again closes its line changes", async () => {
-    await fileRow(page, outsideFile).click();
+    await fileRow(page, outsideFileShown).click();
     await expect(diff).toHaveCount(0);
   });
 });
@@ -136,7 +140,7 @@ test("a new turn starts with an empty list, while Uncommitted keeps git status a
   await changes(page).getByRole("button", { name: "Uncommitted" }).click();
   await expect(section(page, "Project").locator(".changed-path")).toHaveText(["src/app.ts", "src/generated.txt"]);
   await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
-  await expect(section(page, "Outside the project").locator(".changed-path")).toHaveText([outsideFile]);
+  await expect(section(page, "Outside the project").locator(".changed-path")).toHaveText([outsideFileShown]);
 
   await test.step("a change made by hand shows after Refresh", async () => {
     writeFileSync(join(host.projectDir, "by-hand.txt"), "typed\n");

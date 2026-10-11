@@ -511,6 +511,7 @@ export function App() {
                 items={open!.canvas}
                 edits={editRequests}
                 assetsOrigin={state.canvasAssetsOrigin}
+                homeDir={state.homeDir}
                 changesRefreshPoint={changesRefresh}
                 onHide={toggleCanvas}
               />

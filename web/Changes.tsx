@@ -6,6 +6,7 @@ import { connection } from "./connection.ts";
 import { DiffStyleChoice, diffStyle, EditedFile } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { storedChoice } from "./stored-choice.ts";
+import { withHomeAsTilde } from "./workspace-folder.ts";
 
 const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted" };
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
@@ -87,14 +88,14 @@ function useKeptLoad<T>(key: string, load: () => Promise<T>, trigger: string): L
   return (keptLoads.get(key) as Loaded<T> | undefined) ?? null;
 }
 
-function FileRow({ file, selected, onSelect, children }: { file: ChangedFile; selected: boolean; onSelect: () => void; children: ReactNode }) {
+function FileRow({ file, homeDir, selected, onSelect, children }: { file: ChangedFile; homeDir: string; selected: boolean; onSelect: () => void; children: ReactNode }) {
   return (
     <li>
       <button type="button" className={`changed-file status-${file.status} ${selected ? "selected" : ""}`} aria-pressed={selected} onClick={onSelect}>
         <span className="change-status" title={file.status}>
           {statusLetters[file.status]}
         </span>
-        <span className="changed-path">{file.path}</span>
+        <span className="changed-path">{withHomeAsTilde(file.path, homeDir)}</span>
         {file.added !== null && (
           <span className="edit-counts">
             <span className="added-count">+{file.added}</span> <span className="removed-count">−{file.removed}</span>
@@ -118,12 +119,14 @@ function FileSection({
   selectedPath,
   onSelect,
   selectedFile,
+  homeDir,
 }: {
   title: string;
   files: ChangedFile[];
   selectedPath: string | null;
   onSelect: (path: string) => void;
   selectedFile: ReactNode;
+  homeDir: string;
 }) {
   if (files.length === 0) return null;
   return (
@@ -131,7 +134,7 @@ function FileSection({
       <h3>{title}</h3>
       <ul>
         {files.map((file) => (
-          <FileRow key={file.path} file={file} selected={file.path === selectedPath} onSelect={() => onSelect(file.path)}>
+          <FileRow key={file.path} file={file} homeDir={homeDir} selected={file.path === selectedPath} onSelect={() => onSelect(file.path)}>
             {selectedFile}
           </FileRow>
         ))}
@@ -140,7 +143,7 @@ function FileSection({
   );
 }
 
-function SelectedFile({ conversationId, file, loaded }: { conversationId: string; file: ChangedFile; loaded: Loaded<FileChanges | null> | null }) {
+function SelectedFile({ conversationId, file, loaded, homeDir }: { conversationId: string; file: ChangedFile; loaded: Loaded<FileChanges | null> | null; homeDir: string }) {
   const style = diffStyle.use();
   const changes = loaded && "value" in loaded && loaded.value?.path === file.path ? loaded.value : null;
   return (
@@ -163,14 +166,14 @@ function SelectedFile({ conversationId, file, loaded }: { conversationId: string
       {changes?.source === "agent" && <p className="hint">The agent's own edits to this file, one by one, without line numbers.</p>}
       {changes && changes.diffs.length === 0 && <p className="review-empty">No line changes.</p>}
       {changes?.diffs.map((diff, index) => (
-        <EditedFile key={index} edit={diff} style={style} unlocatedHint={null} />
+        <EditedFile key={index} edit={{ ...diff, path: withHomeAsTilde(diff.path, homeDir) }} style={style} unlocatedHint={null} />
       ))}
     </div>
   );
 }
 
 /** The files this turn, or the uncommitted work, changed; the agent's own edits are marked, and a file's line changes open under its row. */
-export function ChangesView({ conversationId, refreshPoint }: { conversationId: string; refreshPoint: number }) {
+export function ChangesView({ conversationId, refreshPoint, homeDir }: { conversationId: string; refreshPoint: number; homeDir: string }) {
   const scope = changesScope.use();
   const [refreshes, setRefreshes] = useState(0);
   const reloadWhen = `${refreshPoint} ${refreshes}`;
@@ -189,7 +192,7 @@ export function ChangesView({ conversationId, refreshPoint }: { conversationId: 
     selectedPaths.set(conversationId, next);
     setSelectedPath(next);
   };
-  const selectedFile = selected && <SelectedFile conversationId={conversationId} file={selected} loaded={loadedDiff} />;
+  const selectedFile = selected && <SelectedFile conversationId={conversationId} file={selected} loaded={loadedDiff} homeDir={homeDir} />;
 
   return (
     <div className="changes">
@@ -214,8 +217,8 @@ export function ChangesView({ conversationId, refreshPoint }: { conversationId: 
       {list && files.length === 0 && <p className="changes-none">{nothingChanged(list)}</p>}
       {list && (
         <>
-          <FileSection title="Project" files={list.project} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} />
-          <FileSection title="Outside the project" files={list.outside} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} />
+          <FileSection title="Project" files={list.project} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
+          <FileSection title="Outside the project" files={list.outside} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
         </>
       )}
     </div>
