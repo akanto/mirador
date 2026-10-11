@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ChangeStatus } from "../shared/changes.ts";
 import type { FileBefore } from "./edit-diff.ts";
+import { LineCountCache } from "./line-count-cache.ts";
 
 /** A file that differs between two of git's trees, or between a tree and the working tree. */
 export interface TreeChange {
@@ -14,6 +15,9 @@ export interface TreeChange {
 
 const SUBMODULE_MODE = "160000";
 const MAX_FILE_BYTES = 1024 * 1024;
+const LINE_COUNTS_KEPT = 20_000;
+const FILES_HANDLED_AT_ONCE = 32;
+const untrackedLineCounts = new LineCountCache(LINE_COUNTS_KEPT);
 
 const statusOf = (letter: string): ChangeStatus => (letter === "A" ? "added" : letter === "D" ? "deleted" : "modified");
 const countOf = (field: string | undefined) => (field === undefined || field === "-" ? null : Number(field));
@@ -75,15 +79,32 @@ export async function uncommittedChanges(directory: string): Promise<TreeChange[
   const head = await headOrEmptyTree(directory);
   const diff = (format: string) => mustGit(directory, ["diff", "--relative", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", format, head]);
   const [raw, numstat, untracked] = await Promise.all([diff("--raw"), diff("--numstat"), mustGit(directory, ["ls-files", "--others", "--exclude-standard", "-z"])]);
-  const added = await Promise.all(untracked.split("\0").filter(Boolean).map((path) => untrackedChange(directory, path)));
+  const added = await inLimitedParallel(untracked.split("\0").filter(Boolean), (path) => untrackedChange(directory, path));
   return [...treeChangesIn(raw, numstat), ...added];
 }
 
 async function untrackedChange(directory: string, path: string): Promise<TreeChange> {
-  const file = Bun.file(join(directory, path));
-  const text = file.size <= MAX_FILE_BYTES ? await file.text().catch(() => null) : null;
-  const countable = text !== null && !text.includes("\0");
-  return { path, status: "added", added: countable ? lineCount(text) : null, removed: countable ? 0 : null };
+  const fullPath = join(directory, path);
+  const stats = await stat(fullPath).catch(() => null);
+  const added = stats?.isFile() ? await untrackedLineCounts.countOf(fullPath, stats, () => addedLinesOf(fullPath, stats.size)) : null;
+  return { path, status: "added", added, removed: added === null ? null : 0 };
+}
+
+async function addedLinesOf(fullPath: string, size: number) {
+  if (size > MAX_FILE_BYTES) return null;
+  const text = await Bun.file(fullPath).text().catch(() => null);
+  return text === null || text.includes("\0") ? null : lineCount(text);
+}
+
+/** Like `Promise.all(items.map(work))`, with at most FILES_HANDLED_AT_ONCE under way, so thousands of files are not opened at once. The results keep the items' order. */
+async function inLimitedParallel<T, R>(items: T[], work: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  const waiting = items.entries();
+  const workers = Array.from({ length: Math.min(FILES_HANDLED_AT_ONCE, items.length) }, async () => {
+    for (const [index, item] of waiting) results[index] = await work(item);
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store"]);
@@ -114,14 +135,12 @@ const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(
  */
 export async function filesWrittenSince(directory: string, since: number, limit = MAX_SCANNED_FILES): Promise<{ changes: TreeChange[]; truncated: boolean }> {
   const { files, truncated } = await scannedFiles(directory, limit);
-  const written = await Promise.all(
-    files.map(async (path) => {
-      const stats = await stat(join(directory, path)).catch(() => null);
-      return stats && writtenAt(stats) >= since ? [{ path, createdSince: stats.birthtimeMs >= since }] : [];
-    }),
-  );
-  const changes = await Promise.all(
-    written.flat().map(({ path, createdSince }) => (createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null })),
+  const written = await inLimitedParallel(files, async (path) => {
+    const stats = await stat(join(directory, path)).catch(() => null);
+    return stats && writtenAt(stats) >= since ? [{ path, createdSince: stats.birthtimeMs >= since }] : [];
+  });
+  const changes = await inLimitedParallel(written.flat(), async ({ path, createdSince }) =>
+    createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null },
   );
   return { changes, truncated };
 }

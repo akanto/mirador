@@ -321,3 +321,23 @@ test("a folder of more files than the limit is checked in part, and says so", as
   expect(part.truncated).toBe(true);
   expect(part.changes).toHaveLength(3);
 });
+
+test("an untracked file's line count follows the file as it is rewritten, even to the same size", async () => {
+  const addedOf = async () => (await uncommittedChanges(projectDir))!.find(({ path }) => path === "new.txt")!.added;
+  await write("new.txt", "a\nb\n");
+  expect(await addedOf()).toBe(2);
+  await write("new.txt", "a\nb\nc\n");
+  expect(await addedOf()).toBe(3);
+  await write("new.txt", "abcdef");
+  const later = new Date(Date.now() + 60_000);
+  await utimes(join(projectDir, "new.txt"), later, later);
+  expect(await addedOf()).toBe(1);
+});
+
+test("many untracked files are all counted, in the order git lists them", async () => {
+  await mkdir(join(projectDir, "many"));
+  const names = Array.from({ length: 150 }, (_, index) => `many/f${String(index).padStart(3, "0")}.txt`);
+  await Promise.all(names.map((name, index) => write(name, "x\n".repeat((index % 7) + 1))));
+  const found = (await uncommittedChanges(projectDir))!.filter(({ path }) => path.startsWith("many/"));
+  expect(found).toEqual(names.map((path, index) => ({ path, status: "added", added: (index % 7) + 1, removed: 0 })));
+});
