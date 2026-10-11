@@ -266,6 +266,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Line editing** as in a macOS terminal: `⌘←`, `⌘→`, `⌘⌫`, `⌥←`, `⌥→`, and `⌘K` clears for good.
 - **Find** with `⌘F` (`Ctrl+Shift+F` on Linux, where `Ctrl+F` stays the shell's) searches the focused split's scrollback. Every match is highlighted. Enter goes to the match further up, Shift+Enter further down. Match case, whole word and regular expression are toggles, as in VS Code. Esc, or `⌘W` in the desktop app, closes it and puts the cursor back in the shell.
 - **Copy on select** (*Settings → Terminal*). On Linux, `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste, and `Ctrl+C` stays the interrupt.
+- **On a touch screen**, a finger scrolls the output, and a quick swipe keeps it going until a touch stops it. In a full-screen program such as less or vim it scrolls as a wheel does there.
 - **Nerd Font aware**, with a dark terminal in both themes.
 
 ### Jobs left running and messages from scripts

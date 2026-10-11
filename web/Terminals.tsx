@@ -20,6 +20,7 @@ import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
 import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
 import { useClosesWhileFocused } from "./desktop-close.ts";
 import { copiesOnSelect } from "./terminal-settings.ts";
+import { scrollWithAFinger } from "./terminal-touch.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 
@@ -201,6 +202,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     view.open(screenElement);
     const startSelecting = () => copySelectionWhenReleased(view);
     screenElement.addEventListener("mousedown", startSelecting);
+    const stopTouchScrolling = scrollWithAFinger(view, screenElement);
     view.textarea?.setAttribute("writingsuggestions", "false");
     view.textarea?.addEventListener("focus", () => events.current.focused(terminalId));
 
@@ -226,6 +228,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       setFinding(false);
       setSearch(null);
       screenElement.removeEventListener("mousedown", startSelecting);
+      stopTouchScrolling();
       observer.disconnect();
       stopFontListening();
       typed.dispose();
