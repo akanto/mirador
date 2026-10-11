@@ -23,7 +23,7 @@ beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "mirador-checkpoints-"));
   projectDir = join(dataDir, "project");
   await mkdir(projectDir);
-  await git(projectDir, ["init", "-q"]);
+  await git(projectDir, ["-c", "init.defaultBranch=main", "init", "-q"]);
   await write(".gitignore", "build\n");
   await write("kept.txt", "one\n");
   await write("doomed.txt", "doomed\n");
