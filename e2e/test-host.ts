@@ -2,11 +2,14 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { processTreeOf, waitForProcessesToEnd } from "./process-tree.ts";
 
 const repoRoot = join(import.meta.dirname, "..");
 export const notifierDir = join(homedir(), ".config", "claude-notifier");
 const claudeProjectsDir = join(homedir(), ".claude", "projects");
 const TRANSCRIPT_WRITERS_GRACE_MS = 2_000;
+/** As long as a host restart waits for its services to stop (SERVICES_STOP_TIMEOUT_MS in host/restart.ts). */
+const HOST_PROCESSES_EXIT_TIMEOUT_MS = 5_000;
 
 /** dash, Linux's /bin/sh, may run commands in the shell's own process group, so the busy check needs bash there. */
 export const jobControlShell = process.platform === "darwin" ? "/bin/sh" : "/bin/bash";
@@ -159,13 +162,19 @@ export class TestHost {
     this.authUrl = `${this.origin}/auth?token=${readFileSync(join(this.dataDir, "browser-token"), "utf8").trim()}`;
   }
 
+  /**
+   * The host exits as soon as it has signalled its agents and shells, which may still write into the root while they
+   * stop; cleanUp may remove it only once they have ended.
+   */
   async stop() {
     const child = this.process;
     if (!child || child.exitCode !== null) return;
+    const hostProcesses = processTreeOf(child.pid!);
     const exited = new Promise((resolve) => child.once("exit", resolve));
     this.logFile?.write(`\n${new Date().toISOString()} [test host: sending SIGTERM]\n`);
     child.kill("SIGTERM");
     await exited;
+    await waitForProcessesToEnd(hostProcesses, HOST_PROCESSES_EXIT_TIMEOUT_MS);
   }
 
   async restart() {
