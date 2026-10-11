@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5334);
+const host = new TestHost(5334, { shell: "/bin/sh" });
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5295, { fakePrograms: true });
+const host = new TestHost(5295, { fakePrograms: true, shell: "/bin/sh" });
 const ranHere = join(host.root, "panel-command-ran");
 
 /**

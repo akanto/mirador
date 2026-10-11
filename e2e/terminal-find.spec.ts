@@ -3,7 +3,7 @@ import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 function useHost(port: number) {
-  const host = new TestHost(port);
+  const host = new TestHost(port, { shell: "/bin/sh" });
   test.beforeAll(() => host.start());
   test.afterAll(async () => {
     await host.stop();
