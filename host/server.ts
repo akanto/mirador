@@ -445,13 +445,14 @@ export function startServer(services: HostServices) {
     });
   }
 
-  /** A phone that held events before gets only the ones after them; otherwise the latest turns, and earlier ones when it asks. */
+  /** A phone that held events before gets only the ones after them, unless a rewind took the last of them away; otherwise the latest turns, and earlier ones when it asks. */
   function lowDataHistory(conversationId: string, { latestTurns, afterSeq, canvasChangedAfter }: LowDataSubscription): ServerMessage {
     const inLowData = (events: StoredEvent[]) => events.map((event) => lowDataEvent(conversationId, event));
     const history = { type: "conversation.history", conversationId, canvas: canvas.list(conversationId) } as const;
-    if (afterSeq !== undefined && afterSeq <= store.lastEventSeq(conversationId)) {
+    const missed = afterSeq === undefined ? null : store.eventsMissedAfter(conversationId, afterSeq);
+    if (missed) {
       const changedCanvas = canvasChangedAfter === undefined ? history.canvas : canvasChangedSince(history.canvas, canvasChangedAfter);
-      return { ...history, canvas: changedCanvas, events: inLowData(coalescedFromNextTurn(store.listEventsFrom(conversationId, afterSeq + 1))), continuesAfter: afterSeq };
+      return { ...history, canvas: changedCanvas, events: inLowData(coalescedFromNextTurn(missed)), continuesAfter: afterSeq };
     }
     const { fromSeq, hasEarlier } = store.latestTurns(conversationId, latestTurns);
     return { ...history, events: inLowData(withChunksCoalesced(store.listEventsFrom(conversationId, fromSeq))), hasEarlier };

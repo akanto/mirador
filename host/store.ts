@@ -110,6 +110,7 @@ const addedColumns = [
   { table: "profiles", column: "ask_mode", definition: "TEXT NOT NULL DEFAULT 'wait'" },
   { table: "workspaces", column: "color", definition: "TEXT" },
   { table: "workspaces", column: "group_id", definition: "TEXT" },
+  { table: "conversations", column: "rewound_through_seq", definition: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 /** A turn that ended while nobody looked at its conversation, until someone opens it. */
@@ -762,9 +763,11 @@ export class Store {
     return stored;
   }
 
-  /** Drops the events from `seq` on, as a rewind to that point does; the seqs it frees are not handed out again. */
+  /** Drops the events from `seq` on, as a rewind to that point does; the seqs it frees are not handed out again, also after a restart. */
   deleteEventsFrom(conversationId: string, seq: number) {
-    this.nextSeq.set(conversationId, Math.max(this.nextSeq.get(conversationId) ?? 0, this.lastEventSeq(conversationId) + 1));
+    const lastSeq = this.lastEventSeq(conversationId);
+    this.nextSeq.set(conversationId, Math.max(this.nextSeq.get(conversationId) ?? 0, lastSeq + 1));
+    this.db.query("UPDATE conversations SET rewound_through_seq = MAX(rewound_through_seq, ?) WHERE id = ?").run(lastSeq, conversationId);
     this.db.query("DELETE FROM events WHERE conversation_id = ? AND seq >= ?").run(conversationId, seq);
   }
 
@@ -816,6 +819,14 @@ export class Store {
 
   findEvent(conversationId: string, seq: number): StoredEvent | null {
     return this.listEventsBetween(conversationId, seq, seq + 1)[0] ?? null;
+  }
+
+  /**
+   * The events after `seq` for a reader that holds the conversation up to that event; null when the event is not there,
+   * taken away by a rewind or never held, so the reader needs the latest turns afresh.
+   */
+  eventsMissedAfter(conversationId: string, seq: number): StoredEvent[] | null {
+    return this.findEvent(conversationId, seq) ? this.listEventsFrom(conversationId, seq + 1) : null;
   }
 
   /**
@@ -1003,11 +1014,14 @@ export class Store {
   }
 
   private allocateSeq(conversationId: string) {
-    const current =
-      this.nextSeq.get(conversationId) ??
-      ((this.db.query("SELECT MAX(seq) AS max FROM events WHERE conversation_id = ?").get(conversationId) as any)?.max ??
-        0) + 1;
+    const current = this.nextSeq.get(conversationId) ?? Math.max(this.lastEventSeq(conversationId), this.rewoundThroughSeq(conversationId)) + 1;
     this.nextSeq.set(conversationId, current + 1);
     return current;
+  }
+
+  /** The highest seq a rewind took away: new events number after it, also once the host restarted. */
+  private rewoundThroughSeq(conversationId: string): number {
+    const row = this.db.query("SELECT rewound_through_seq FROM conversations WHERE id = ?").get(conversationId) as { rewound_through_seq: number } | null;
+    return row?.rewound_through_seq ?? 0;
   }
 }

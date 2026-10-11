@@ -76,6 +76,33 @@ describe("Store", () => {
     expect(store.listEvents("c1").map(({ seq }) => seq)).toEqual([1, 4]);
   });
 
+  test("the numbers a rewind frees are not handed out again after reopening the database either", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    store.insertWorkspace({ id: "w1", name: "project", path: "/tmp/project", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+    store.insertConversation(seededStore().conversation);
+    ["a", "b", "c"].forEach((text) => store.appendEvent("c1", { type: "user-message", text }));
+    store.deleteEventsFrom("c1", 2);
+    store.close();
+    const reopened = new Store(path);
+    reopened.appendEvent("c1", { type: "user-message", text: "d" });
+    expect(reopened.listEvents("c1").map(({ seq }) => seq)).toEqual([1, 4]);
+    reopened.close();
+  });
+
+  test("a phone whose last event a rewind took away while it was gone gets no continuation, however many events came since", () => {
+    const { store } = seededStore();
+    ["a", "b", "c", "d"].forEach((text) => store.appendEvent("c1", { type: "user-message", text }));
+    const phoneHeldThrough = 4;
+    expect(store.eventsMissedAfter("c1", phoneHeldThrough)).toEqual([]);
+    store.deleteEventsFrom("c1", 3);
+    ["e", "f", "g"].forEach((text) => store.appendEvent("c1", { type: "user-message", text }));
+    expect(store.eventsMissedAfter("c1", phoneHeldThrough)).toBeNull();
+    expect(store.eventsMissedAfter("c1", 2)?.map(({ seq }) => seq)).toEqual([5, 6, 7]);
+    expect(store.eventsMissedAfter("c1", 7)).toEqual([]);
+    expect(store.eventsMissedAfter("c1", 0)).toBeNull();
+  });
+
   test("a turn is recorded while it runs, and taken once by the host that comes after the one it ran on", () => {
     const { store } = seededStore();
     store.turnStarted("c1");
