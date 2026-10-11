@@ -140,6 +140,36 @@ test("Cmd+F finds text anywhere in the conversation, in entries not loaded yet a
   });
 });
 
+test("keys typed right after opening the find bar stay in its query", async ({ page }) => {
+  await signIn(page, host);
+  await startConversation(page);
+  const findButton = page.locator(".chat-header").getByRole("button", { name: "Find" });
+  const input = page.getByRole("search").getByLabel("Find in this conversation");
+  const composer = page.locator(".composer textarea");
+
+  await test.step("a fresh bar keeps the letters typed before the next frame", async () => {
+    await findButton.evaluate(async (button: HTMLElement) => {
+      button.click();
+      for (let microtask = 0; microtask < 20 && document.activeElement?.getAttribute("aria-label") !== "Find in this conversation"; microtask++) await Promise.resolve();
+      document.execCommand("insertText", false, "ne");
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      document.execCommand("insertText", false, "edle");
+    });
+    await expect(input).toHaveValue("needle");
+  });
+
+  await test.step("with the bar open and the cursor in the message box, the very next keys go to the query, replacing it", async () => {
+    await composer.focus();
+    await expect(input).not.toBeFocused();
+    await findButton.evaluate((button: HTMLElement) => {
+      button.click();
+      document.execCommand("insertText", false, "x");
+    });
+    await expect(input).toHaveValue("x");
+    await expect(composer).toHaveValue("");
+  });
+});
+
 /** The matches highlighted, and how many of them are in the conversation's view. */
 const highlighted = (page: Page) =>
   page.evaluate(() => {

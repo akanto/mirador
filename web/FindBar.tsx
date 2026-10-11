@@ -323,8 +323,11 @@ export function useFind({
     showPlace();
   };
   const open = () => {
-    setQuery((open) => open ?? "");
-    requestAnimationFrame(() => inputRef.current?.select());
+    const openQuery = inputRef.current;
+    if (openQuery) {
+      openQuery.focus();
+      openQuery.select();
+    } else setQuery("");
   };
   const close = () => {
     searchAgain();
