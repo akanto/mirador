@@ -25,6 +25,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
+import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
 import { landingBefore, movesWorkspace, setGroupFolded, useFoldedGroups, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
@@ -306,6 +307,7 @@ function WorkspaceSection({
             <li
               key={conversation.id}
               data-reorder-id={conversation.id}
+              data-waiting-tone={conversation.waitingFor ? waitingTones[conversation.waitingFor] : undefined}
               className={[...rowClasses(conversation, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
               onPointerDown={(event) => conversationDrag.startDrag(conversation.id, conversationList.current, event)}
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
@@ -412,9 +414,18 @@ function WorkspaceGroupSection({
     setRenaming(false);
     if (name !== group.name) connection.send({ type: "workspace-group.rename", groupId: group.id, name });
   };
+  const waitingHere = folded ? waitingInFoldedGroup(conversations) : null;
   return (
     <section className={["workspace-group", folded && "folded", ...dragClasses].filter(Boolean).join(" ")} aria-label={group.name} data-reorder-id={group.id}>
-      <header className={landingInto ? "drop-into" : undefined} data-drop-row="group-heading" data-group-id={group.id} onPointerDown={onStartDrag} onClick={toggleFromHeading}>
+      <header
+        className={landingInto ? "drop-into" : undefined}
+        data-drop-row="group-heading"
+        data-group-id={group.id}
+        data-waiting-tone={waitingHere?.tone}
+        data-waiting-count={waitingHere?.count}
+        onPointerDown={onStartDrag}
+        onClick={toggleFromHeading}
+      >
         <button type="button" className="icon group-fold" aria-expanded={!folded} aria-label={`${folded ? "Unfold" : "Fold"} ${group.name}`} onClick={toggleFolded}>
           ›
         </button>
@@ -472,6 +483,23 @@ function useUnfoldGroupOfOpenConversation(state: AppState) {
   }, [state.selectedConversationId]);
 }
 
+function WaitingEdge({ side, hidden, onClick }: { side: "above" | "below"; hidden: HiddenWaiting | null; onClick: () => void }) {
+  if (!hidden) return null;
+  return (
+    <div className={`waiting-edge ${side}`}>
+      <button
+        type="button"
+        className={`tone-${hidden.tone}`}
+        aria-label={`${hidden.count} waiting for you ${side}`}
+        data-hint={side === "above" ? hints.waitingAbove : hints.waitingBelow}
+        onClick={onClick}
+      >
+        {side === "above" ? "↑" : "↓"} {hidden.count} waiting
+      </button>
+    </div>
+  );
+}
+
 /** How many devices are connected now, besides the one looking; nothing while none is, or when switched off in Settings. */
 function ConnectedDevices({ listed, onOpen }: { listed: DevicesListed | null; onOpen: () => void }) {
   const shown = useConnectedDevicesInSidebar();
@@ -490,6 +518,8 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const openOverlay = (overlay: Overlay) => dispatch({ type: "open-overlay", overlay });
   const addingGroup = state.overlay?.kind === "add-workspace-group";
   const sidebar = useRef<HTMLElement>(null);
+  const outOfView = useWaitingOutOfView(sidebar);
+  const scrollToWaiting = (side: "above" | "below") => sidebar.current && scrollToNearestWaiting(sidebar.current, side);
   const folded = useFoldedGroups();
   useUnfoldGroupOfOpenConversation(state);
   const items = sidebarItems(state.workspaces, state.workspaceGroups);
@@ -547,6 +577,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   };
   return (
     <nav className="sidebar" ref={sidebar}>
+      <WaitingEdge side="above" hidden={outOfView.above} onClick={() => scrollToWaiting("above")} />
       <WaitingList state={state} dispatch={dispatch} />
       <header>
         <h1>Workspaces</h1>
@@ -591,6 +622,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
           </button>
         </div>
       </footer>
+      <WaitingEdge side="below" hidden={outOfView.below} onClick={() => scrollToWaiting("below")} />
     </nav>
   );
 }

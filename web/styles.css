@@ -429,6 +429,48 @@ body.resizing iframe {
   text-align: center;
 }
 
+.waiting-edge {
+  position: sticky;
+  z-index: 5;
+  flex: none;
+  height: 0;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.waiting-edge.above {
+  top: 0;
+}
+
+.waiting-edge.below {
+  bottom: 0;
+}
+
+.waiting-edge button {
+  position: absolute;
+  pointer-events: auto;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 12px;
+  background: var(--tone);
+  color: var(--bg);
+  font-size: calc(11.5px * var(--font-scale));
+  font-weight: 600;
+  line-height: calc(18px * var(--font-scale));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 25%, transparent);
+  cursor: pointer;
+}
+
+.waiting-edge.above button {
+  top: 4px;
+}
+
+.waiting-edge.below button {
+  bottom: 4px;
+}
+
 :root[data-waiting="dots"] .waiting-pill,
 :root[data-waiting="dots"] .waiting-count,
 :root:not([data-waiting="list"]) .waiting-list {

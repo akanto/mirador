@@ -119,6 +119,8 @@ export const hints = {
   addWorkspaceGroup: "Add a group: a heading that folds, to gather workspaces under, e.g. per project or client. Drag a workspace by its heading into a group, and workspaces and groups into any order.",
   workspaceGroupCount: "Workspaces in this group.",
   waitingInGroup: "Conversations in this group's workspaces waiting for you.",
+  waitingAbove: "Conversations waiting for you, scrolled out of view above. Click to show the nearest.",
+  waitingBelow: "Conversations waiting for you, scrolled out of view below. Click to show the nearest.",
   renameWorkspaceGroup: "Rename this group.",
   deleteWorkspaceGroup: "Delete this group. Its workspaces stay where it is.",
   deleteWorkspaceGroupArmed: "Click again to delete this group. Its workspaces stay where it is.",
