@@ -408,6 +408,8 @@ function outcomeOf(item: CanvasItem) {
   return "";
 }
 
+const outcomeIsFreeText = (item: CanvasItem) => Boolean(item.review) || item.status === "answered";
+
 /** Once a question is answered or withdrawn, it has had its turn on the canvas. */
 const isSettledQuestion = (item: CanvasItem) => item.kind === "ask" && item.status !== "waiting";
 
@@ -587,7 +589,7 @@ export function CanvasPanel({
             <span className="canvas-kind">{kindIcons[selected.kind]}</span>
             <span className="canvas-title">{selected.title}</span>
             {outcome && (
-              <span className={`canvas-outcome status-${selected.status}${selected.review ? " verdict" : ""}`} title={outcome}>
+              <span className={`canvas-outcome status-${selected.status}${selected.review ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
                 {outcome}
               </span>
             )}

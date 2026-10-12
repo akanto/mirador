@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openFromCanvasHistory, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -99,6 +99,41 @@ test("your own answer to one question can run over several lines with Shift+Ente
   expect(await toolResult).toBe("The user chose: First line\nSecond line");
   await openFromCanvasHistory(page, "What should it say?");
   expect(await ask.locator(".ask-answer strong").innerText()).toBe("First line\nSecond line");
+});
+
+test("a long answer in the canvas bar gives way to the title and the bar's buttons", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(host.origin);
+  const conversationId = await startConversation(page);
+  const ask = page.locator(".ask");
+  const longAnswers = ["Close it: I have seen it work on the menu bar", "Close it: the wheel scrolls less after a resize", "Keep it open until the owner checks it by hand"];
+  const toolResult = callCanvasTool(host, conversationId, "ask", {
+    questions: longAnswers.map((answer, index) => ({ question: `Bead ${index + 1}?`, options: [{ label: answer }, { label: "Keep" }] })),
+  });
+  for (const answer of longAnswers) {
+    await ask.getByRole("radio", { name: answer }).check();
+    await ask.getByRole("button", { name: "Next" }).click();
+  }
+  await ask.getByRole("button", { name: "Submit" }).click();
+  await toolResult;
+
+  await openFromCanvasHistory(page, "3 questions: Bead 1?");
+  const bar = page.locator(".canvas-header");
+  const rightEdge = async (locator: Locator) => {
+    const box = (await locator.boundingBox())!;
+    return box.x + box.width;
+  };
+  const fullyShown = (locator: Locator) =>
+    locator.evaluate((element) => {
+      const text = document.createRange();
+      text.selectNodeContents(element);
+      return text.getBoundingClientRect().width <= element.getBoundingClientRect().width;
+    });
+  await expect(bar.locator(".canvas-outcome")).toHaveAttribute("title", `→ ${longAnswers.join(" · ")}`);
+  for (const button of [/^History/, "Clear", "Hide"]) {
+    expect(await rightEdge(bar.getByRole("button", { name: button }))).toBeLessThanOrEqual(await rightEdge(bar));
+  }
+  expect(await fullyShown(bar.locator(".canvas-title"))).toBe(true);
 });
 
 test("the ask tool advertises one question or several, tells the agent to ask several with questions, and neither form is required alone", async ({ page }) => {

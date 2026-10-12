@@ -2622,8 +2622,8 @@ button.edits-waiting {
   white-space: nowrap;
 }
 
-/* A review's verdict is a sentence: it gets only the room the title and the bar's buttons leave, cut short with an ellipsis. */
-.canvas-outcome.verdict {
+/* A review's verdict or the user's answer can run long: it gets only the room the title and the bar's buttons leave, cut short with an ellipsis. */
+.canvas-outcome.free-text {
   flex: 1000 1 0;
   min-width: 4em;
   max-width: max-content;
