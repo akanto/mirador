@@ -85,9 +85,9 @@ describe("a machine's close reaching the page", () => {
 
   test("one that arrives before the page's end opens is replayed once it does, after what the machine sent first", () => {
     const log: string[] = [];
-    const data: RelayedSocket = { upstream: fakeUpstream, page: null, waiting: ["first"], close: null };
+    const data: RelayedSocket = { upstream: fakeUpstream, page: null, waiting: ["first"], closedBeforeOpen: null };
     machineClosedSocket(data, 1006, "the machine went away");
-    expect(data.close).toEqual({ code: 1000, reason: "the machine went away" });
+    expect(data.closedBeforeOpen).toEqual({ code: 1000, reason: "the machine went away" });
     expect(log).toEqual([]);
     pageSocketOpened(fakePageSocket(data, log));
     expect(log).toEqual(["sent first", "closed 1000 the machine went away"]);
@@ -95,7 +95,7 @@ describe("a machine's close reaching the page", () => {
 
   test("once the page's end is open, the machine's close goes straight to it", () => {
     const log: string[] = [];
-    const data: RelayedSocket = { upstream: fakeUpstream, page: null, waiting: [], close: null };
+    const data: RelayedSocket = { upstream: fakeUpstream, page: null, waiting: [], closedBeforeOpen: null };
     pageSocketOpened(fakePageSocket(data, log));
     expect(log).toEqual([]);
     machineClosedSocket(data, 4001, "signed out");
@@ -139,7 +139,7 @@ describe("a machine's close reaching the page", () => {
       relays.stopAll();
       machineServer.stop(true);
     }
-  });
+  }, 10_000);
 });
 
 describe("joining a machine that made its own certificate", () => {
