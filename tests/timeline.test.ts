@@ -140,6 +140,21 @@ describe("subagents", () => {
     expect(first!.subagent.lastActivityAt).toBe(9000);
   });
 
+  test("a call that says it starts a subagent only in a later update still gathers that subagent's work", () => {
+    const timeline = buildTimeline(
+      stored([
+        acp({ sessionUpdate: "tool_call", toolCallId: "a1", title: "Task", kind: "think", status: "pending" }),
+        acp({ sessionUpdate: "tool_call_update", toolCallId: "a1", _meta: { claudeCode: { toolName: "Agent" } } }),
+        read("r1", "a1"),
+        { type: "turn-end", stopReason: "cancelled" },
+      ]),
+    );
+    expect(timeline.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["Task", "notice"]);
+    const [subagent] = subagentsIn(timeline);
+    expect(subagent!.subagent.blocks.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["Read r1.ts"]);
+    expect(subagentState(subagent!, true)).toBe("stopped");
+  });
+
   test("one runs until its call completes, and one in the background until the turn that started it ends", () => {
     const states = (events: ConversationEvent[], busy = true) => subagentsIn(buildTimeline(stored(events))).map((block) => subagentState(block, busy));
     const background = [launch("b1", { description: "Watch the build" }), answeredAtOnce("b1"), finish("b1")];

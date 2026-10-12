@@ -364,6 +364,7 @@ class TimelineBuilder {
     const ends = update.status === "completed" || update.status === "failed";
     const { toolName, launchedInBackground } = claudeCodeMeta(update);
     if (existing) {
+      if (toolName) this.name(existing, toolName, origin.at);
       if (launchedInBackground) existing.launchedInBackground = true;
       if (update.title) existing.title = update.title;
       if (update.kind) existing.toolKind = update.kind;
@@ -389,13 +390,17 @@ class TimelineBuilder {
       ...(ends && { endedAt: origin.at }),
       ...(launchedInBackground && { launchedInBackground }),
     };
-    if (toolName) block.toolName = toolName;
-    if (toolName && SUBAGENT_TOOLS.has(toolName)) {
-      block.subagent = { blocks: [], lastActivityAt: origin.at, turnEnded: null };
-      this.subagentsOfThisTurn.push(block.subagent);
-    }
+    if (toolName) this.name(block, toolName, origin.at);
     this.toolBlocks.set(update.toolCallId, block);
     this.push(block, into);
+  }
+
+  /** The name may come with a later update of the call; a subagent's work gathers under its call from then on. */
+  private name(block: ToolBlock, toolName: string, at: number) {
+    block.toolName = toolName;
+    if (!SUBAGENT_TOOLS.has(toolName) || block.subagent) return;
+    block.subagent = { blocks: [], lastActivityAt: at, turnEnded: null };
+    this.subagentsOfThisTurn.push(block.subagent);
   }
 
   private push(block: TimelineBlock, into = this.blocks) {
