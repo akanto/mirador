@@ -75,13 +75,14 @@ bun start                  # host on 127.0.0.1:4600, canvas assets on :4601
 bun run dev                # the same, with UI hot reload
 bunx tsc --noEmit -p .     # type check
 bun test tests/            # unit tests
-bunx playwright test       # e2e, one worker; never two runs at once
+bunx playwright test       # e2e, one worker; never two native runs at once
 scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu via Docker
+scripts/test-spec.sh e2e/<spec>.spec.ts   # just those specs, in Docker; parallel-safe
 ```
 
 - **E2E ports:** each e2e spec starts its own host with `new TestHost(<port>)`, which also takes port+1 for canvas assets, and port+2 and +3 when it serves the network. Pick N in 4720–5499 so that none of these is another host's. `tests/e2e-ports.test.ts` checks it, counting the network ports of hosts started with `MIRADOR_NETWORK`; a host switched onto the network in Settings and restarted (`network.spec.ts`, 5196) needs its +2 and +3 kept free by hand. mirador-mobile's e2e uses 5800 and up.
 - **Serial specs:** run the whole file, not `-g`.
-- **Don't edit `web/` or `host/` while e2e runs:** the test hosts rebuild from the working tree.
+- **Don't edit `web/` or `host/` while e2e runs:** native test hosts rebuild from the working tree. Both native rules (one run at a time, no edits during a run) apply only to `bunx playwright` in this checkout; agents run their specs with `scripts/test-spec.sh` instead — it snapshots the tree into a container, and each run has its own ports and result files, so container runs never collide with edits or each other. Specs waiting on a real Claude reply need `ANTHROPIC_API_KEY` exported; two `linux-test.sh` full-suite runs still can't overlap (shared results dir).
 
 ## Architecture Overview
 
