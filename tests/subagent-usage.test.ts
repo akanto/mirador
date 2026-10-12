@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelLabel } from "../shared/claude-models.ts";
 import { formatTokens, subagentUsageFrom, tokensSpent } from "../shared/subagent-usage.ts";
-import { SubagentUsageReader } from "../host/subagent-usage.ts";
+import { findSubagentsDirectory, SubagentUsageReader } from "../host/subagent-usage.ts";
 
 const answer = (id: string, usage: Record<string, number>, model = "claude-haiku-5-5") =>
   JSON.stringify({ type: "assistant", isSidechain: true, message: { id, model, usage } });
@@ -70,4 +70,52 @@ test("a session with no subagent transcripts, or a config directory that does no
   const reader = new SubagentUsageReader();
   expect(await reader.usageOf(configDir, "session-2", ["toolu_watch"])).toEqual({});
   expect(await reader.usageOf(join(configDir, "missing"), "session-1", ["toolu_watch"])).toEqual({});
+});
+
+function writeSubagentIn(configDir: string, sessionId: string, agentId: string, toolUseId: string) {
+  const directory = join(configDir, "projects", "-work-project", sessionId, "subagents");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, `agent-${agentId}.meta.json`), JSON.stringify({ agentType: "Explore", toolUseId }));
+  writeFileSync(join(directory, `agent-${agentId}.jsonl`), answer("msg_1", { input_tokens: 1, output_tokens: 10 }) + "\n");
+}
+
+test("polling with a tool call whose transcript never comes does not search the projects again, yet a late transcript still shows", async () => {
+  const pollDir = mkdtempSync(join(tmpdir(), "subagent-usage-polls-"));
+  let searches = 0;
+  const reader = new SubagentUsageReader(async (config, session) => {
+    searches += 1;
+    return findSubagentsDirectory(config, session);
+  });
+  try {
+    writeSubagentIn(pollDir, "session-1", "a1", "toolu_known");
+    expect(await reader.usageOf(pollDir, "session-1", ["toolu_known", "toolu_missing"])).toEqual({
+      toolu_known: { model: "claude-haiku-5-5", inputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 10 },
+    });
+    expect(searches).toBe(1);
+    for (let poll = 0; poll < 3; poll++) await reader.usageOf(pollDir, "session-1", ["toolu_known", "toolu_missing"]);
+    expect(searches).toBe(1);
+
+    writeSubagentIn(pollDir, "session-1", "a2", "toolu_late");
+    expect(Object.keys(await reader.usageOf(pollDir, "session-1", ["toolu_late"]))).toEqual(["toolu_late"]);
+    expect(searches).toBe(1);
+  } finally {
+    rmSync(pollDir, { recursive: true, force: true });
+  }
+});
+
+test("the reader's caches keep only the newest entries and still read correctly past them", async () => {
+  const smallDir = mkdtempSync(join(tmpdir(), "subagent-usage-small-"));
+  const reader = new SubagentUsageReader(findSubagentsDirectory, { transcripts: 1, readings: 2, sessions: 1 });
+  try {
+    writeSubagentIn(smallDir, "s-a", "a1", "toolu_a1");
+    writeSubagentIn(smallDir, "s-a", "a2", "toolu_a2");
+    writeSubagentIn(smallDir, "s-b", "b1", "toolu_b1");
+    expect((await reader.usageOf(smallDir, "s-a", ["toolu_a1"])).toolu_a1?.outputTokens).toBe(10);
+    expect((await reader.usageOf(smallDir, "s-b", ["toolu_b1"])).toolu_b1?.outputTokens).toBe(10);
+    expect((await reader.usageOf(smallDir, "s-a", ["toolu_a2"])).toolu_a2?.outputTokens).toBe(10);
+    expect(reader.sizes()).toEqual({ transcripts: 1, readings: 2, subagents: 1 });
+    expect((await reader.usageOf(smallDir, "s-b", ["toolu_b1"])).toolu_b1?.outputTokens).toBe(10);
+  } finally {
+    rmSync(smallDir, { recursive: true, force: true });
+  }
 });

@@ -63,6 +63,7 @@ import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessag
 import { UserCommandRunner } from "./user-commands.ts";
 import { SubagentSessions } from "./subagent-sessions.ts";
 import { SubagentUsageReader } from "./subagent-usage.ts";
+import { UnknownSessionUpdates } from "./unknown-session-updates.ts";
 
 const UNTITLED = "New conversation";
 const MAX_TITLE_LENGTH = 200;
@@ -138,7 +139,7 @@ export class ConversationService {
   private readonly subagentSessions = new SubagentSessions();
   /** Sessions whose agent left an option change unanswered for too long, so their next changes don't wait. */
   private readonly sessionsSlowToAnswer = new Set<string>();
-  private readonly updatesForUnknownSessions = new Map<string, acp.SessionNotification[]>();
+  private readonly updatesForUnknownSessions = new UnknownSessionUpdates();
   private readonly statusOverrides = new Map<string, Pick<Conversation, "status" | "statusDetail">>();
   private readonly terminalActivity = new Map<string, TerminalActivity>();
   private readonly terminalWork = new TerminalWork();
@@ -313,8 +314,8 @@ export class ConversationService {
     if (conversation.acpSessionId) {
       this.cancel(conversationId).catch(() => {});
       this.notifier.unmute(conversation.acpSessionId);
-      this.conversationBySession.delete(conversation.acpSessionId);
     }
+    forgetSessionsOf(this.conversationBySession, conversationId);
     this.subagentSessions.forget(conversationId);
     const runtime = this.runtimes.get(conversationId);
     const wasRunning = runtime?.running ?? false;
@@ -989,7 +990,7 @@ export class ConversationService {
     const loadedId = mode === "fork" ? (await harness.forkSession({ sessionId, cwd: sessionRequest.cwd })).sessionId : sessionId;
     this.muteNotifier(conversation, loadedId);
     this.save({ ...this.get(conversationId), acpSessionId: loadedId });
-    this.conversationBySession.set(loadedId, conversationId);
+    this.bindConversationTo(conversationId, loadedId);
     const loaded = await harness.loadSession({ ...sessionRequest, sessionId: loadedId });
     this.bindSession(conversationId, loadedId, loaded.configOptions);
     if (conversation.harness === "claude") await this.restoreTranscriptModel(conversationId, loadedId, sessionId);
@@ -1040,11 +1041,15 @@ export class ConversationService {
   }
 
   private bindSession(conversationId: string, sessionId: string, configOptions: acp.SessionConfigOption[] | null | undefined) {
-    this.conversationBySession.set(sessionId, conversationId);
+    this.bindConversationTo(conversationId, sessionId);
     this.save({ ...this.get(conversationId), acpSessionId: sessionId, configOptions: configOptions ?? [] });
-    const early = this.updatesForUnknownSessions.get(sessionId) ?? [];
-    this.updatesForUnknownSessions.delete(sessionId);
-    early.forEach((notification) => this.handleSessionUpdate(notification));
+    this.updatesForUnknownSessions.take(sessionId).forEach((notification) => this.handleSessionUpdate(notification));
+  }
+
+  /** A conversation is reached by its newest session alone: the mapping of every session it left behind goes. */
+  private bindConversationTo(conversationId: string, sessionId: string) {
+    forgetSessionsOf(this.conversationBySession, conversationId, sessionId);
+    this.conversationBySession.set(sessionId, conversationId);
   }
 
   /** Claude Code resumes a session on the model that answered last, but claude-agent-acp moves it to the model the settings name. */
@@ -1173,8 +1178,7 @@ export class ConversationService {
     if (replay) return void replay.push(notification);
     const conversationId = this.conversationBySession.get(notification.sessionId);
     if (!conversationId) {
-      const pending = this.updatesForUnknownSessions.get(notification.sessionId) ?? [];
-      this.updatesForUnknownSessions.set(notification.sessionId, [...pending, notification]);
+      this.updatesForUnknownSessions.remember(notification);
       return;
     }
     const update = notification.update;
@@ -1581,6 +1585,13 @@ export const queuedBeforeClear = (queue: QueuedMessage[]) => {
   const clearAt = queue.findIndex(({ text }) => isClearCommand(text));
   return clearAt === -1 ? queue : queue.slice(0, clearAt);
 };
+
+/** A conversation is reached by one session at a time: forgets every other session mapped to it, the newest kept when named. */
+export function forgetSessionsOf(boundBySession: Map<string, string>, conversationId: string, newestSessionId?: string) {
+  for (const [sessionId, owner] of boundBySession) {
+    if (owner === conversationId && sessionId !== newestSessionId) boundBySession.delete(sessionId);
+  }
+}
 
 /** Allowing once leaves no trace behind; Claude Code saves an "always" answer into the project's settings. */
 export function optionThatAllows(options: acp.PermissionOption[]): string | null {
