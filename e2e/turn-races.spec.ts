@@ -92,3 +92,28 @@ test("a conversation deleted while its turn runs leaves nothing waiting for you 
     waiting.stop();
   }
 });
+
+test("a message queued behind a turn sent while /clear opens the fresh session goes out once that turn ends", async ({ page }) => {
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  await useProfile(page, "slow close", "FAKE_ACP_MODES=1\nFAKE_ACP_ANSWERS_AFTER_MS=4000");
+  await startConversationWithoutModel(page);
+  const composer = page.locator(".composer:visible textarea");
+
+  await composer.fill("/clear");
+  await composer.press("Enter");
+  await expect(page.locator(".notice-line", { hasText: "Context cleared" })).toHaveCount(1);
+  const release = join(host.root, "release-turn-after-clear");
+  await composer.fill(heldTurn(release));
+  await composer.press("Enter");
+  await expect(page.locator(".timeline:visible .message.user")).toHaveCount(1);
+  await composer.fill("queued behind the turn");
+  await composer.press("Enter");
+  await expect(page.locator(".queue:visible .queued-text")).toHaveText(["queued behind the turn"]);
+  await expect(status(page)).toHaveText("starting");
+  await expect(status(page)).toHaveText("running", { timeout: 30_000 });
+
+  await expect.poll(prompts, { timeout: 30_000 }).toContain(heldTurn(release));
+  writeFileSync(release, "");
+  await expect.poll(prompts, { timeout: 30_000 }).toContain("queued behind the turn");
+});

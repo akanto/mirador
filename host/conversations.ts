@@ -1377,10 +1377,11 @@ export class ConversationService {
     this.publish(this.get(conversationId));
   }
 
+  /** A turn that started meanwhile, e.g. while a /clear opened the fresh session, sends the queue on once it ends. */
   private sendNextQueuedMessage(conversationId: string) {
     const runtime = this.store.hasConversation(conversationId) ? this.runtime(conversationId) : undefined;
     const [next, ...rest] = runtime?.queuedMessages ?? [];
-    if (!runtime || !next || this.holdsQueue(runtime)) return;
+    if (!runtime || !next || runtime.running || this.holdsQueue(runtime)) return;
     this.setQueue(conversationId, runtime, rest);
     this.prompt(conversationId, next.text, { imageIds: next.imageIds, fromScript: next.fromScript, startsTurn: true }).catch(() => {});
   }
