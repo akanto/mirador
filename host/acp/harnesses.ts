@@ -77,13 +77,37 @@ export function harnessSpec(profile: Profile, claudeProgramSetting: string): Har
   };
 }
 
+export const CANVAS_SERVER_NAME = "canvas";
+
+const opencodeCanvasPlugin = { package: join(import.meta.dir, "opencode-canvas-plugin"), options: { server: CANVAS_SERVER_NAME } };
+
+/**
+ * opencode 2 loads the plugin that gives the agent the canvas tools themselves, after the profile's own plugins; opencode 1
+ * ignores `plugins`. A configuration that is not plain JSON, such as JSONC with comments, stays as it is, and the agent
+ * reaches the canvas tools through Code Mode.
+ */
+function withCanvasToolsPlugin(environment: Record<string, string>): Record<string, string> {
+  const config: unknown = (() => {
+    try {
+      return JSON.parse(environment.OPENCODE_CONFIG_CONTENT ?? "{}");
+    } catch {
+      return null;
+    }
+  })();
+  if (typeof config !== "object" || config === null || Array.isArray(config)) return environment;
+  const { plugins = [] } = config as { plugins?: unknown };
+  if (!Array.isArray(plugins)) return environment;
+  return { ...environment, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, plugins: [...plugins, opencodeCanvasPlugin] }) };
+}
+
 /**
  * The agent's environment, with the profile's on top. claude-agent-acp runs the Claude Code in CLAUDE_CODE_EXECUTABLE
  * rather than the copy its SDK bundles; a profile may name its own.
  */
 export function launchEnvironment(harness: HarnessId, profile: Profile | null, claudeProgramSetting: string): Record<string, string> {
   const environment = profileEnvironment(profile);
-  if (harness !== "claude" || environment.CLAUDE_CODE_EXECUTABLE) return environment;
+  if (harness === "opencode") return withCanvasToolsPlugin(environment);
+  if (environment.CLAUDE_CODE_EXECUTABLE) return environment;
   const program = findClaudeProgram(claudeProgramSetting, environment.PATH);
   if (!program) throw new Error(claudeProgramMissing(claudeProgramSetting));
   return { ...environment, CLAUDE_CODE_EXECUTABLE: program };
@@ -97,8 +121,6 @@ export function profileEnvironment(profile: Profile | null): Record<string, stri
   }
   return applyEnvironment(agentEnvironment(), environment);
 }
-
-export const CANVAS_SERVER_NAME = "canvas";
 
 /** None of them changes files or runs commands for the agent, so none is worth a permission prompt. */
 const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "when_done"];
