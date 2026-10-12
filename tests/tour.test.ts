@@ -202,7 +202,30 @@ describe("snapshotTour", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain(`since: Mirador could not read the files in ${realpathSync(join(directory, "app"))} as they are now to compare with HEAD`);
     expect(problems[0]).toContain("insufficient permission for adding an object");
-    expect(problems[0]).toContain("Try again once git can write to the checkout.");
+    expect(problems[0]).toContain("fatal: updating files failed. Fix what git reports, or leave since out to show the tour without what changed.");
+    expect(problems[0]).not.toContain("..");
+  });
+
+  test("with since, a tour is shown even when git cannot drop an older snapshot, and the next tour drops it", async () => {
+    const { directory, git } = checkoutWithUncommittedWork();
+    const folder = join(directory, "app");
+    await snapshotTour(request(folder, { since: "HEAD" }), 1);
+    git("pack-refs", "--all");
+    const packedRefsLock = join(directory, ".git/packed-refs.lock");
+    writeFileSync(packedRefsLock, "");
+    let tour: Awaited<ReturnType<typeof snapshotTour>>;
+    try {
+      tour = await snapshotTour(request(folder, { since: "HEAD" }), 1);
+    } finally {
+      rmSync(packedRefsLock, { force: true });
+    }
+
+    expect(tour.changes).toMatchObject({ since: "HEAD" });
+    expect(git("for-each-ref", "refs/mirador/tours/").split("\n").filter(Boolean)).toHaveLength(2);
+
+    await snapshotTour(request(folder, { since: "HEAD" }), 1);
+
+    expect(git("for-each-ref", "refs/mirador/tours/").split("\n").filter(Boolean)).toHaveLength(1);
   });
 
   test("with since, git failing to keep the files the tour was made from says the tour was not shown instead of failing with git's own error", async () => {
@@ -218,7 +241,8 @@ describe("snapshotTour", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("snapshot: Mirador could not keep the files the tour was made from in git");
     expect(problems[0]).toContain("unable to create directory for");
-    expect(problems[0]).toContain("Try again once git can write to the checkout.");
+    expect(problems[0]).toContain("Fix what git reports, or leave since out to show the tour without what changed.");
+    expect(problems[0]).not.toContain("..");
     expect(git("for-each-ref", "refs/mirador/tours/")).toBe("");
   });
 });

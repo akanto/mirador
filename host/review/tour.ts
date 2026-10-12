@@ -55,8 +55,17 @@ async function workingTree(folder: string) {
  */
 async function keepSnapshot(folder: string, commit: string, keep: number) {
   await git(folder, ["update-ref", tourRefOf(commit, Date.now()), commit]);
+  await dropSnapshotsPast(folder, keep).catch(() => undefined);
+}
+
+/** Left to the next tour when git cannot drop one now, for example while another git process holds packed-refs.lock. */
+async function dropSnapshotsPast(folder: string, keep: number) {
   const refs = await git(folder, ["for-each-ref", "--sort=-refname", "--format=%(refname)", TOUR_REFS]);
   for (const dropped of refs.split("\n").filter(Boolean).slice(keep)) await git(folder, ["update-ref", "-d", dropped]);
+}
+
+function fixGitOrLeaveSince(problem: string, gitMessage: string) {
+  return `${problem}: ${gitMessage.trim().replace(/\.$/, "")}. Fix what git reports, or leave since out to show the tour without what changed.`;
 }
 
 async function changesSince(folder: string, since: string, problems: string[]): Promise<{ changes: TourChanges; files: ReviewFile[]; snapshotCommit: string } | null> {
@@ -66,13 +75,13 @@ async function changesSince(folder: string, since: string, problems: string[]): 
   const sinceCommit = (await gitOrProblem(folder, ["rev-parse", "--verify", `${since}^{commit}`], problems, () => `since: ${since} is not a commit in ${folder}.`))?.trim();
   if (!sinceCommit) return null;
   const current = await workingTree(folder).catch((error: unknown) => {
-    problems.push(`since: Mirador could not read the files in ${folder} as they are now to compare with ${since}: ${error instanceof Error ? error.message : String(error)}. Try again once git can write to the checkout.`);
+    problems.push(fixGitOrLeaveSince(`since: Mirador could not read the files in ${folder} as they are now to compare with ${since}`, error instanceof Error ? error.message : String(error)));
     return null;
   });
   if (!current) return null;
   const snapshot = (await gitOrProblem(folder, ["rev-parse", `${current.tree}:${prefix.trim()}`], problems, () => `since: git ignores everything in ${folder}, so the tour cannot show what changed; leave since out.`))?.trim();
   if (!snapshot) return null;
-  const diff = await gitOrProblem(folder, ["diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", "--relative", sinceCommit, current.tree], problems, (error) => `since: Mirador could not compare ${since} with the files in ${folder}: ${error}. Try again once git can read the checkout.`);
+  const diff = await gitOrProblem(folder, ["diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", "--relative", sinceCommit, current.tree], problems, (error) => fixGitOrLeaveSince(`since: Mirador could not compare ${since} with the files in ${folder}`, error));
   if (diff === null) return null;
   return { changes: { since, sinceCommit, snapshot }, files: hideUnreadableDiffs(parseGitDiff(diff)), snapshotCommit: current.commit };
 }
@@ -106,7 +115,7 @@ export async function snapshotTour(request: TourRequest, keep = TOURS_KEPT): Pro
     try {
       await keepSnapshot(folder, changed.snapshotCommit, keep);
     } catch (error) {
-      throw new ReviewProblems([`snapshot: Mirador could not keep the files the tour was made from in git: ${error instanceof Error ? error.message : String(error)}. Try again once git can write to the checkout.`], TOUR_NOT_SHOWN);
+      throw new ReviewProblems([fixGitOrLeaveSince("snapshot: Mirador could not keep the files the tour was made from in git", error instanceof Error ? error.message : String(error))], TOUR_NOT_SHOWN);
     }
   }
   return {
