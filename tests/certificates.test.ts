@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { X509Certificate } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { generateKeyPairSync, X509Certificate } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { authorityFingerprint, namesIn, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
+import { authorityFingerprint, namesIn, opensslConfigValue, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
 
 let dataDir: string;
 beforeEach(() => {
@@ -60,9 +60,42 @@ test("a client pinned to another authority refuses the server", async () => {
   }
 });
 
+test("a renewal whose re-signing fails leaves the key on disk matching the certificate on disk", async () => {
+  const first = ownServingCertificate(dataDir, ["localhost"]);
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  writeFileSync(join(dataDir, "tls", "authority-key.pem"), privateKey.export({ type: "pkcs8", format: "pem" }).toString());
+
+  expect(() => ownServingCertificate(dataDir, ["localhost", "10.9.8.7"])).toThrow(/openssl x509 failed/);
+
+  expect(readFileSync(join(dataDir, "tls", "server-key.pem"), "utf8")).toBe(first.key);
+  const onDisk = {
+    chain: `${readFileSync(join(dataDir, "tls", "server.pem"), "utf8").trimEnd()}\n${first.authority}`,
+    key: readFileSync(join(dataDir, "tls", "server-key.pem"), "utf8"),
+    authority: first.authority!,
+    names: [],
+  };
+  expect(await answersPinnedTo(onDisk, first.authority!, "localhost")).toBe("hello");
+});
+
 test("the server certificate lasts at most 825 days, as Apple's platforms require", () => {
   const { chain } = ownServingCertificate(dataDir, ["localhost"]);
   const server = new X509Certificate(chain);
   expect(Date.parse(server.validTo) - Date.parse(server.validFrom)).toBeLessThanOrEqual(825 * DAY);
   expect(readFileSync(join(dataDir, "tls", "authority.pem"), "utf8")).toBe(chain.slice(chain.indexOf("-----BEGIN", 1)));
+});
+
+test("host names go into the openssl config quoted, so its variable expansion cannot mangle them", () => {
+  ownServingCertificate(dataDir, ["localhost"]);
+  for (const config of ["server.cnf", "authority.cnf"]) {
+    expect(readFileSync(join(dataDir, "tls", config), "utf8")).toMatch(/^CN = "Mirador on .*"$/m);
+  }
+
+  const hostile = 'box$1 "odd" \\ end';
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  writeFileSync(join(dataDir, "t.key"), privateKey.export({ type: "pkcs8", format: "pem" }).toString());
+  writeFileSync(join(dataDir, "t.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = ${opensslConfigValue(`Mirador on ${hostile}`)}`, ""].join("\n"));
+  const request = Bun.spawnSync(["openssl", "req", "-new", "-config", "t.cnf", "-key", "t.key", "-out", "t.csr"], { cwd: dataDir, stdout: "pipe", stderr: "pipe" });
+  expect(request.exitCode).toBe(0);
+  const der = Buffer.from(readFileSync(join(dataDir, "t.csr"), "utf8").split("\n").filter((line) => !line.startsWith("-")).join(""), "base64");
+  expect(der.includes(Buffer.from(`Mirador on ${hostile}`))).toBe(true);
 });

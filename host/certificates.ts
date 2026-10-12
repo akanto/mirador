@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, randomBytes, X509Certificate } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { localNetworkName } from "./config.ts";
@@ -42,6 +42,9 @@ export function namesIn(certificate: string) {
 const isIpAddress = (name: string) => /^\d+\.\d+\.\d+\.\d+$/.test(name);
 const subjectAltName = (names: string[]) => names.map((name) => (isIpAddress(name) ? `IP:${name}` : `DNS:${name}`)).join(", ");
 
+/** Openssl's config parser expands $name inside values and reads " and \ as quoting; quoting with those escaped keeps any text verbatim. */
+export const opensslConfigValue = (value: string) => `"${value.replace(/["\\$]/g, "\\$&")}"`;
+
 function openssl(directory: string, args: string[]) {
   let result: ReturnType<typeof Bun.spawnSync>;
   try {
@@ -75,7 +78,7 @@ function authorityIn(directory: string) {
       "prompt = no",
       "x509_extensions = authority",
       "[subject]",
-      `CN = Mirador on ${hostname()} (certificate authority)`,
+      `CN = ${opensslConfigValue(`Mirador on ${hostname()} (certificate authority)`)}`,
       "[authority]",
       "basicConstraints = critical, CA:TRUE, pathlen:0",
       "keyUsage = critical, keyCertSign, cRLSign",
@@ -99,7 +102,7 @@ function serverCertificateStillFits(certificate: string, authority: string, name
 }
 
 function issueServerCertificate(directory: string, names: string[]) {
-  writePrivately(join(directory, "server.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = Mirador on ${hostname()}`, ""].join("\n"));
+  writePrivately(join(directory, "server.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = ${opensslConfigValue(`Mirador on ${hostname()}`)}`, ""].join("\n"));
   writePrivately(
     join(directory, "server.ext"),
     [
@@ -107,14 +110,20 @@ function issueServerCertificate(directory: string, names: string[]) {
       "keyUsage = critical, digitalSignature",
       "extendedKeyUsage = serverAuth",
       "authorityKeyIdentifier = keyid",
-      `subjectAltName = ${subjectAltName(names)}`,
+      `subjectAltName = ${opensslConfigValue(subjectAltName(names))}`,
       "",
     ].join("\n"),
   );
-  writeNewKey(join(directory, "server-key.pem"));
-  openssl(directory, ["req", "-new", "-config", "server.cnf", "-key", "server-key.pem", "-out", "server.csr"]);
+  const stagedKeyPath = join(directory, "server-key.pem.staged");
+  const stagedCertificatePath = join(directory, "server.pem.staged");
+  writeNewKey(stagedKeyPath);
+  openssl(directory, ["req", "-new", "-config", "server.cnf", "-key", "server-key.pem.staged", "-out", "server.csr"]);
   const serial = `0x${randomBytes(16).toString("hex")}`;
-  openssl(directory, ["x509", "-req", "-in", "server.csr", "-CA", "authority.pem", "-CAkey", "authority-key.pem", "-set_serial", serial, "-days", String(SERVER_CERTIFICATE_DAYS), "-extfile", "server.ext", "-out", "server.pem"]);
+  openssl(directory, ["x509", "-req", "-in", "server.csr", "-CA", "authority.pem", "-CAkey", "authority-key.pem", "-set_serial", serial, "-days", String(SERVER_CERTIFICATE_DAYS), "-extfile", "server.ext", "-out", "server.pem.staged"]);
+  // Only now does the serving pair give way: any openssl failure above left the matching key and certificate in place,
+  // and the certificate moves last so the key it was signed with is already serving beside it.
+  renameSync(stagedKeyPath, join(directory, "server-key.pem"));
+  renameSync(stagedCertificatePath, join(directory, "server.pem"));
 }
 
 /** Mirador's own: a server certificate from its own authority, issued again when it runs out or a name is missing. */
