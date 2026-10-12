@@ -182,7 +182,12 @@ export class HarnessProcess {
       exitedBecause(reason);
     };
     child.on("error", (error) => child.pid === undefined && goneBecause(`could not start: ${error.message}`));
-    child.stderr!.pipe(createWriteStream(this.logPath(), { flags: "a" }));
+    const log = createWriteStream(this.logPath(), { flags: "a" });
+    log.on("error", (error) => {
+      console.error(`${new Date().toISOString()} could not write the ${this.spec.label} agent's log:`, error.message);
+      child.stderr!.resume();
+    });
+    child.stderr!.pipe(log);
     child.once("exit", (code, signal) => goneBecause(this.stopReason ?? `exited with ${code ?? signal}`));
     const stream = acp.ndJsonStream(
       Writable.toWeb(child.stdin!),
