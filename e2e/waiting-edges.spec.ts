@@ -32,6 +32,7 @@ test("a chip at the sidebar's edge shows conversations waiting for you out of vi
   await addWorkspace(page, host.projectDir);
   for (let started = 0; started < 18; started++) await startConversation(page);
   const sidebar = page.locator("nav.sidebar");
+  const list = page.locator(".sidebar-scroll");
   const rows = workspaceCard(page, host.projectDir).locator("li");
   await expect(rows).toHaveCount(18);
   const firstId = (await rows.first().getAttribute("data-reorder-id"))!;
@@ -41,7 +42,7 @@ test("a chip at the sidebar's edge shows conversations waiting for you out of vi
   const chipBelow = sidebar.getByRole("button", { name: /waiting for you below$/ });
 
   await test.step("a conversation waiting below the view shows a chip at the bottom", async () => {
-    await sidebar.evaluate((element) => (element.scrollTop = 0));
+    await list.evaluate((element) => (element.scrollTop = 0));
     await expect(rows.last()).not.toBeInViewport();
     askInBackground(lastId, "Below?");
     await expect(chipBelow).toHaveText("↓ 1 waiting");
@@ -58,7 +59,7 @@ test("a chip at the sidebar's edge shows conversations waiting for you out of vi
 
   await test.step("a conversation waiting above the view shows a chip at the top that brings it into view", async () => {
     askInBackground(firstId, "Above?");
-    await sidebar.evaluate((element) => (element.scrollTop = element.scrollHeight));
+    await list.evaluate((element) => (element.scrollTop = element.scrollHeight));
     await expect(rows.first()).not.toBeInViewport();
     await expect(rows.last()).toBeInViewport();
     await expect(chipAbove).toHaveText("↑ 1 waiting");
@@ -69,7 +70,7 @@ test("a chip at the sidebar's edge shows conversations waiting for you out of vi
   });
 
   await test.step("a folded group's heading out of view counts both conversations waiting in it, beside the first conversation still waiting", async () => {
-    await sidebar.evaluate((element) => (element.scrollTop = 0));
+    await list.evaluate((element) => (element.scrollTop = 0));
     await addWorkspaceFromSidebar(page, sideProjectDir);
     await page.getByRole("button", { name: "New group" }).click();
     await page.getByLabel("New group name").fill("Side");
@@ -86,10 +87,18 @@ test("a chip at the sidebar's edge shows conversations waiting for you out of vi
     await expect(group.locator("section.workspace")).toHaveCount(0);
     waitingInGroup.forEach((conversationId) => askInBackground(conversationId, "In the group?"));
     await expect(groupHeading.locator(".waiting-count")).toHaveText("2");
-    await sidebar.evaluate((element) => (element.scrollTop = element.scrollHeight));
+    await list.evaluate((element) => (element.scrollTop = element.scrollHeight));
     await expect(groupHeading).not.toBeInViewport();
     await expect(rows.first()).not.toBeInViewport();
     await expect(rows.last()).toBeInViewport();
     await expect(chipAbove).toHaveText("↑ 3 waiting");
+  });
+
+  await test.step("the footer's Settings… button stays in the viewport at both scroll ends", async () => {
+    const settings = sidebar.getByRole("button", { name: "Settings…" });
+    await list.evaluate((element) => (element.scrollTop = 0));
+    await expect(settings).toBeInViewport();
+    await list.evaluate((element) => (element.scrollTop = element.scrollHeight));
+    await expect(settings).toBeInViewport();
   });
 });

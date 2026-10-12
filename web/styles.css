@@ -555,13 +555,21 @@ body.resizing iframe {
   background: var(--rail);
   border-right: 1px solid var(--border);
   color: var(--text);
-  overflow-y: auto;
-  padding: 14px 10px 12px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.sidebar > header,
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 10px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-scroll > header,
 .workspace > header {
   display: flex;
   align-items: center;
@@ -569,7 +577,7 @@ body.resizing iframe {
   gap: 8px;
 }
 
-.sidebar > header {
+.sidebar-scroll > header {
   padding: 0 4px 0 8px;
 }
 
@@ -947,7 +955,7 @@ button.icon.group-fold {
   font-size: calc(12px * var(--font-scale));
 }
 
-.sidebar > .group-name-field {
+.sidebar-scroll > .group-name-field {
   flex: none;
   margin: 14px 4px 0;
 }
@@ -978,8 +986,7 @@ button.icon.group-fold {
 }
 
 .sidebar > footer {
-  margin-top: auto;
-  padding-top: 12px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;

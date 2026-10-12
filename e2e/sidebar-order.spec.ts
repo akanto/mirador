@@ -18,7 +18,7 @@ test.afterAll(async () => {
 });
 
 const idsOf = (items: Locator) => items.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).dataset.reorderId));
-const workspaceIds = (page: Page) => idsOf(page.locator(".sidebar > section.workspace"));
+const workspaceIds = (page: Page) => idsOf(page.locator(".sidebar-scroll > section.workspace"));
 const conversationIds = (page: Page, directory: string) => idsOf(workspaceCard(page, directory).locator("li[data-reorder-id]"));
 
 test("workspaces, and conversations within theirs, are dragged into an order every window keeps", async ({ page }) => {

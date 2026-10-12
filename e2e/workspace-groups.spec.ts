@@ -28,7 +28,7 @@ const groupNames = (page: Page) => page.locator(".workspace-group .group-name").
 /** The sidebar's rows that are in no group, from top to bottom: a workspace by its name, a group as [its name]. */
 const topLevel = (page: Page) =>
   page
-    .locator(".sidebar > section.workspace, .sidebar > section.workspace-group")
+    .locator(".sidebar-scroll > section.workspace, .sidebar-scroll > section.workspace-group")
     .evaluateAll((sections) =>
       sections.map((section) =>
         section.classList.contains("workspace-group") ? `[${section.querySelector(".group-name")!.textContent}]` : section.querySelector(".workspace-name")!.textContent,

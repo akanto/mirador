@@ -517,7 +517,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const setAdding = (open: boolean) => dispatch(open ? { type: "open-overlay", overlay: { kind: "add-workspace" } } : { type: "close-overlay" });
   const openOverlay = (overlay: Overlay) => dispatch({ type: "open-overlay", overlay });
   const addingGroup = state.overlay?.kind === "add-workspace-group";
-  const sidebar = useRef<HTMLElement>(null);
+  const sidebar = useRef<HTMLDivElement>(null);
   const outOfView = useWaitingOutOfView(sidebar);
   const scrollToWaiting = (side: "above" | "below") => sidebar.current && scrollToNearestWaiting(sidebar.current, side);
   const folded = useFoldedGroups();
@@ -576,28 +576,31 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
     dispatch({ type: "close-overlay" });
   };
   return (
-    <nav className="sidebar" ref={sidebar}>
-      <WaitingEdge side="above" hidden={outOfView.above} onClick={() => scrollToWaiting("above")} />
-      <WaitingList state={state} dispatch={dispatch} />
-      <header>
-        <h1>Workspaces</h1>
-        <span className="sidebar-header-buttons">
-          <button className="icon" aria-label="New group" data-hint={hints.addWorkspaceGroup} onClick={() => openOverlay({ kind: "add-workspace-group" })}>
-            ⊞
+    <nav className="sidebar">
+      <div className="sidebar-scroll" ref={sidebar}>
+        <WaitingEdge side="above" hidden={outOfView.above} onClick={() => scrollToWaiting("above")} />
+        <WaitingList state={state} dispatch={dispatch} />
+        <header>
+          <h1>Workspaces</h1>
+          <span className="sidebar-header-buttons">
+            <button className="icon" aria-label="New group" data-hint={hints.addWorkspaceGroup} onClick={() => openOverlay({ kind: "add-workspace-group" })}>
+              ⊞
+            </button>
+            <button className="icon" aria-label="Add workspace" data-hint={hints.addWorkspace} data-shortcut={shortcutKeys().newWorkspace} onClick={() => setAdding(true)}>
+              +
+            </button>
+          </span>
+        </header>
+        {adding && <AddWorkspace onDone={() => setAdding(false)} />}
+        {state.workspaces.length === 0 && !adding && (
+          <button className="link" onClick={() => setAdding(true)}>
+            + Add a project directory
           </button>
-          <button className="icon" aria-label="Add workspace" data-hint={hints.addWorkspace} data-shortcut={shortcutKeys().newWorkspace} onClick={() => setAdding(true)}>
-            +
-          </button>
-        </span>
-      </header>
-      {adding && <AddWorkspace onDone={() => setAdding(false)} />}
-      {state.workspaces.length === 0 && !adding && (
-        <button className="link" onClick={() => setAdding(true)}>
-          + Add a project directory
-        </button>
-      )}
-      {addingGroup && <GroupNameField initial="" label="New group name" onSave={createGroup} onCancel={() => dispatch({ type: "close-overlay" })} />}
-      {items.map(sidebarItem)}
+        )}
+        {addingGroup && <GroupNameField initial="" label="New group name" onSave={createGroup} onCancel={() => dispatch({ type: "close-overlay" })} />}
+        {items.map(sidebarItem)}
+        <WaitingEdge side="below" hidden={outOfView.below} onClick={() => scrollToWaiting("below")} />
+      </div>
       <footer>
         <ConnectedDevices listed={state.devices} onOpen={() => openOverlay({ kind: "settings", page: "devices" })} />
         <DesktopMenu />
@@ -622,7 +625,6 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
           </button>
         </div>
       </footer>
-      <WaitingEdge side="below" hidden={outOfView.below} onClick={() => scrollToWaiting("below")} />
     </nav>
   );
 }
