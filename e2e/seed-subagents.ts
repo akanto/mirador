@@ -70,6 +70,7 @@ const turn: [seconds: number, event: Record<string, unknown>][] = [
   [58, update({ sessionUpdate: "tool_call", toolCallId: "srvtoolu_advice", title: "advisor", kind: "other", status: "pending", _meta: madeBy("toolu_watch", "advisor") })],
   [60, update({ sessionUpdate: "tool_call", toolCallId: "toolu_build", title: "bun run build", kind: "execute", status: "pending", _meta: madeBy("toolu_watch", "Bash") })],
   [61, update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Both subagents are on it." } })],
+  [62, update({ sessionUpdate: "tool_call", toolCallId: "toolu_lint", title: "bun run lint", kind: "execute", status: "pending", rawInput: { command: "bun run lint" }, _meta: { claudeCode: { toolName: "Bash" } } })],
 ];
 
 const insert = db.query("INSERT INTO events (conversation_id, seq, at, event) VALUES (?, ?, ?, ?)");

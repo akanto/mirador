@@ -40,6 +40,8 @@ export interface ToolBlock extends Origin {
   rawOutput?: unknown;
   toolName?: string;
   endedAt?: number;
+  /** The turn it belongs to ended with the call still unfinished. */
+  leftUnfinished?: true;
   /** Set on the Agent (or Task) tool call that started a subagent. */
   subagent?: Subagent;
   /** Claude Code answered the call at once and left its subagent working on, as it does for subagents by default. */
@@ -100,6 +102,19 @@ export function stepsAtWork(work: TimelineBlock[]): Set<string> {
     block.kind === "tool" && block.endedAt === undefined && !(isServerToolCall(block) && index < work.length - 1) ? [block.toolCallId] : [],
   );
   return new Set(unfinished);
+}
+
+export const toolCallsAwaitingPermission = (timeline: TimelineBlock[]) =>
+  new Set(timeline.flatMap((block) => (block.kind === "permission" && !block.resolved ? [block.toolCall.toolCallId] : [])));
+
+/**
+ * The calls at work in the conversation's own timeline: those of the turn still open, not waiting for the user's
+ * permission. A background subagent works on after its turn ends, so its card keeps to stepsAtWork.
+ */
+export function stepsRunning(timeline: TimelineBlock[]): Set<string> {
+  const waiting = toolCallsAwaitingPermission(timeline);
+  const leftUnfinished = new Set(timeline.flatMap((block) => (block.kind === "tool" && block.leftUnfinished ? [block.toolCallId] : [])));
+  return new Set([...stepsAtWork(timeline)].filter((toolCallId) => !waiting.has(toolCallId) && !leftUnfinished.has(toolCallId)));
 }
 
 /** Every subagent in the timeline in the order they started, each followed by the ones it started. */
@@ -283,6 +298,7 @@ class TimelineBuilder {
   private readonly permissionBlocks = new Map<string, PermissionBlock>();
   private currentPlan: PlanBlock | null = null;
   private readonly subagentsOfThisTurn: Subagent[] = [];
+  private readonly toolsOfThisTurn: ToolBlock[] = [];
   private readonly subagentByOpencodeSession = new Map<string, Subagent>();
   private readonly takenSubagents = new Set<Subagent>();
   private readonly callsNamingASession: Set<string>;
@@ -461,6 +477,7 @@ class TimelineBuilder {
   private endTurn(stopReason: StopReason) {
     this.currentPlan = null;
     this.subagentsOfThisTurn.splice(0).forEach((subagent) => (subagent.turnEnded = stopReason));
+    this.toolsOfThisTurn.splice(0).filter((block) => block.endedAt === undefined).forEach((block) => (block.leftUnfinished = true));
   }
 
   /** Claude Code says an API error as the agent's message, and the failed prompt reports it again as an error. */
@@ -524,6 +541,7 @@ class TimelineBuilder {
     };
     if (name) this.name(block, name, origin.at);
     this.toolBlocks.set(update.toolCallId, block);
+    this.toolsOfThisTurn.push(block);
     this.push(block, into);
   }
 

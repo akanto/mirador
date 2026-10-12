@@ -44,6 +44,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
   const chip = page.locator(".chat-header .subagents-running");
   const dock = page.getByRole("status", { name: "Subagents at work" });
   const watchLatest = watch.locator(".subagent-work > *").last();
+  const lint = page.locator(".timeline > .timeline-entry .shell", { hasText: "bun run lint" });
 
   await test.step("each subagent is one card with what it is, and what it did is inside it", async () => {
     await expect(cards).toHaveCount(2);
@@ -66,9 +67,12 @@ test("a subagent's work folds into its card, and the header counts the subagents
   await test.step("while the turn is open the background subagent counts as running", async () => {
     await expect(watch).toHaveClass(/subagent-stopped/);
     await expect(chip).toHaveCount(0);
+    await expect(lint, "nothing runs while the conversation is idle").toHaveClass(/tool-pending/);
     api.hold();
     await sendMessage(page, "Keep an eye on the build");
     await expect(chip).toHaveText("◐ 1 subagent running", { timeout: 60_000 });
+    await expect(lint, "the call the agent runs shows as running, though claude-agent-acp reports it pending").toHaveClass(/tool-in_progress/);
+    await expect(lint.locator(".shell-quiet")).toHaveText("running…");
     await expect(watch).toHaveClass(/subagent-running/);
     await expect(watch.locator(".subagent-now")).toHaveText("now: bun run build");
     await expect(watch.locator(":scope > summary > .tool-status"), "the running subagent's own icon blinks").toHaveCSS("animation-name", "pulse");
@@ -107,5 +111,6 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(dock).toHaveCount(0);
     await expect(watch).toHaveClass(/subagent-done/);
     await expect(watchLatest, "a call left unfinished is no longer shown running").toHaveClass(/tool-pending/);
+    await expect(lint).toHaveClass(/tool-pending/);
   });
 });

@@ -3,7 +3,7 @@ import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
-import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
+import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -12,6 +12,8 @@ function stored(events: ConversationEvent[]): StoredEvent[] {
 const acp = (update: SessionUpdate): ConversationEvent => ({ type: "acp", update });
 const agentText = (text: string, meta?: Record<string, unknown>) =>
   acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text }, _meta: meta });
+
+const bashCall = (toolCallId: string) => acp({ sessionUpdate: "tool_call", toolCallId, title: "Bash", status: "pending" });
 
 describe("buildTimeline", () => {
   test("merges consecutive agent chunks into one message", () => {
@@ -65,6 +67,20 @@ describe("buildTimeline", () => {
   test("shows abnormal turn endings only", () => {
     const timeline = buildTimeline(stored([{ type: "turn-end", stopReason: "end_turn" }, { type: "turn-end", stopReason: "cancelled" }]));
     expect(timeline).toEqual([{ kind: "notice", key: "2", at: 2000, text: "Turn ended: cancelled" }]);
+  });
+
+  test("the calls at work in the conversation are those of the turn still open", () => {
+    const atWork = (events: ConversationEvent[]) => [...stepsRunning(buildTimeline(stored(events)))];
+    expect(atWork([{ type: "user-message", text: "a" }, bashCall("t1"), { type: "turn-end", stopReason: "cancelled" }, { type: "user-message", text: "b" }, bashCall("t2")])).toEqual(["t2"]);
+    expect(atWork([bashCall("t1"), { type: "error", message: "boom" }])).toEqual([]);
+    expect(atWork([bashCall("t1"), finish("t1"), bashCall("t2"), { type: "turn-end", stopReason: "end_turn" }])).toEqual([]);
+  });
+
+  test("a call waiting for the user's permission is not running", () => {
+    const ask = (toolCallId: string): ConversationEvent => ({ type: "permission", permissionId: `p-${toolCallId}`, toolCall: { toolCallId }, options: [] });
+    const running = (events: ConversationEvent[]) => [...stepsRunning(buildTimeline(stored(events)))];
+    expect(running([bashCall("t1"), bashCall("t2"), ask("t2")])).toEqual(["t1"]);
+    expect(running([bashCall("t1"), ask("t1"), { type: "permission-resolved", permissionId: "p-t1", optionId: "allow" }])).toEqual(["t1"]);
   });
 
   test("a message made of many chunks has the time of its first chunk", () => {
@@ -183,6 +199,7 @@ describe("subagents", () => {
     expect(atWork([advisor("srvtoolu_1"), advisor("srvtoolu_2")])).toEqual(["srvtoolu_2"]);
     expect(atWork([advisor("srvtoolu_1"), read("r1", "a1")])).toEqual(["r1"]);
     expect(atWork([advisor("srvtoolu_1"), finish("srvtoolu_1")])).toEqual([]);
+    expect(atWork([read("r1", "a1"), { type: "turn-end", stopReason: "end_turn" }]), "a background subagent works on after its turn ends").toEqual(["r1"]);
   });
 
   test("ends when its call completes, or at its last activity when it ran in the background", () => {
