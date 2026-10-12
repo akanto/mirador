@@ -2,7 +2,7 @@
 
 **See what your coding agent means.**
 
-Mirador runs your coding agents (Claude Code and opencode) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings, and you can follow it from your phone.
+Mirador runs your coding agents (Claude Code and opencode) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings.
 
 ![A conversation about a checkout flow, with the agent's sequence diagram on the canvas beside it](docs/screenshots/canvas.png)
 
@@ -54,7 +54,7 @@ Keep or drop each finding, reword it, ask the agent about any lines, and open th
 
 ## Get it
 
-Mirador runs on **macOS** (Apple Silicon) and **Linux** (x64 and arm64), and in any browser on your network. The **Android** app follows it from your phone. Windows is planned.
+Mirador runs on **macOS** (Apple Silicon) and **Linux** (x64 and arm64), and in any browser on your network. Windows is planned.
 
 ### The desktop app
 
@@ -79,10 +79,6 @@ mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup &&
 Then start *Mirador* from your applications menu.
 
 **Signing in**: Mirador runs the `claude` on your PATH (or in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`), or the program set in *Settings › Agents*, so it uses the sign-in and version you already have. Without a sign-in, a conversation offers *Log in*, which opens that Claude Code's own sign-in in a terminal tab. For opencode, install [opencode](https://opencode.ai) and Mirador finds it.
-
-### The phone app
-
-The Android app is in [sodre90/mirador-mobile](https://github.com/sodre90/mirador-mobile/releases). In Mirador, open *Settings → Devices*, switch on *Reachable on the network* (or use a Tailscale address), then *Invite a device*. Scan the QR code with the app.
 
 ### From source
 
@@ -113,7 +109,6 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - [Settings](#settings)
 - [Keyboard](#keyboard)
 - [The desktop app](#the-desktop-app-1)
-- [The phone app](#the-phone-app-1)
 - [Working on Mirador in Mirador](#working-on-mirador-in-mirador)
 - [Security](#security)
 - [Command line and environment](#command-line-and-environment)
@@ -235,7 +230,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 - **Workspaces** are project folders (*Add workspace*, Tab completes paths), each a card with its conversations oldest first and *+ New* at the bottom. The chip beside *+ New* chooses the profile for new conversations, and each workspace remembers it. Removing a workspace never touches its files.
 - **Drag to reorder** workspaces (by their heading), groups (by theirs) and conversations (within their workspace). Workspaces outside a group and the groups share one order, so a workspace can sit between two groups or below them. New workspaces and groups go first. Every window and reload keeps the order.
-- **Groups**: ⊞ next to + adds a group, e.g. per project or client, named in place. Drag a workspace by its heading into a group, out of it or within it: dropped on the top edge of a group's heading it lands above the group, and lower on the heading last in it, folded or not. A group's workspaces are indented a little. Hover a group's heading to rename or delete the group; its workspaces stay where it was. A group folds to its heading, which then counts what waits in it; opening a conversation in a folded group unfolds it. The palette has *New group…*, and moves a workspace into a group or out of its own, to just below it. Every window keeps the groups; folding is per browser. The phone app shows the workspaces in the same order, without their groups.
+- **Groups**: ⊞ next to + adds a group, e.g. per project or client, named in place. Drag a workspace by its heading into a group, out of it or within it: dropped on the top edge of a group's heading it lands above the group, and lower on the heading last in it, folded or not. A group's workspaces are indented a little. Hover a group's heading to rename or delete the group; its workspaces stay where it was. A group folds to its heading, which then counts what waits in it; opening a conversation in a folded group unfolds it. The palette has *New group…*, and moves a workspace into a group or out of its own, to just below it. Every window keeps the groups; folding is per browser.
 - **Colours**: eight pastels, picked from the workspace's initials badge or the palette, drawn as a tinted card, a heading or an edge stripe.
 - **Waiting marks**: *Needs you*, *Done* and *Failed* (see [Notifications](#notifications-and-waiting-for-you)).
 - **Devices connected**: a line at the bottom says how many devices are connected; it can be switched off.
@@ -285,10 +280,9 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### Devices, other machines and the network
 
-- **Devices** (*Settings → Devices*): other browsers and the phone app join with an invite (*Invite a device*: a one-time code valid for 15 minutes, a link and a QR code), or ask to join and are let in by typing the number they show, on any open page or with `mirador approve`. With no page or app of the machine open, its host shows the request through `notify-send` where libnotify is installed, and the notification's *Open Mirador* signs in a browser there. The list shows which devices are connected, with how many pages each has open (or *in the background*, while only its app listens for notifications), and where they connect from, including the Tailscale login. Revoke any of them at once.
+- **Devices** (*Settings → Devices*): other browsers join with an invite (*Invite a device*: a one-time code valid for 15 minutes, a link and a QR code), or ask to join and are let in by typing the number they show, on any open page or with `mirador approve`. With no page or app of the machine open, its host shows the request through `notify-send` where libnotify is installed, and the notification's *Open Mirador* signs in a browser there. The list shows which devices are connected, with how many pages each has open (or *in the background*, while only its app listens for notifications), and where they connect from, including the Tailscale login. Revoke any of them at once.
 - **How other devices reach it** (*Settings → Devices*): one way at a time, and the host uses the chosen one from its next start. **At an address a proxy gives it** — *Find the address* asks each candidate whether it answers as this Mirador, on its own port and on the canvas port, and offers the ones that do: this machine's name on its tailnet, and the addresses devices have already reached it at. Where Tailscale is installed but nothing answers yet, *Expose Mirador on Tailscale* runs `tailscale serve` for both ports itself. **Over the network, with no address** — Mirador serves HTTPS itself on its own port, with a certificate authority of its own (download `mirador-ca.pem`) or your certificate (`MIRADOR_TLS_CERTIFICATE`, `MIRADOR_TLS_KEY`). Or **only on this machine**.
 - **Other machines, side by side**: *Machines…* adds another Mirador computer by address or invite link. Its view opens in this window from the rail on the left, with a badge counting its waiting conversations, its notifications arriving here, and a colour of its own. A joining machine pins the certificate authority named in the invite, so a different one is refused.
-- **Light on mobile data**: phones get the latest turns first, only what they missed after a reconnect, long outputs on request, and compressed messages.
 
 ### Settings
 
@@ -335,28 +329,10 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 - **Native notifications**, also while the window is closed (on Linux through `notify-send`).
 - **One window, one app**: a second launch hands over to the running app. Links to other sites open in your browser.
 
-### The phone app
-
-[Mirador for Android](https://github.com/sodre90/mirador-mobile) is a phone-sized Mirador:
-
-- **Join** by scanning the QR code from *Invite a device*, with an invite link, or with an address and code. The device token is kept in the Android Keystore. Switch between several machines.
-- **Four tabs**: *Waiting for you* (most urgent first), *Chats*, *Terminals* and *Search*.
-- **The whole conversation, live**: Markdown, images, thinking, shell commands, edit diffs, plans, subagents, permission requests and questions. The last view stays readable while the machine is unreachable, and the app reconnects by itself.
-- **Send** text and photos (camera or library), stop the agent, answer permission requests and questions. The message box has `!` commands, `/` commands, `@` paths, earlier messages and prompt templates.
-- **Voice dictation**: hold the send button, speak, tap ■. Recognition runs on the phone, in the language you choose.
-- **The queue**, usage limits and jobs left running, as on the computer.
-- **The canvas**: pages appear above the message box, and questions show their previews. Swipe left (or tap the canvas count) for the canvas screen, which pages through its history.
-- **Code reviews**: verdict, summary, the flow tour with its findings, keep, drop and edit, changed files, and posting to the pull request.
-- **Terminals**: each conversation's own shells, from the *Terminals* tab, from *Search*, or from the `>_` button in the conversation's header, with a key row (Esc, Tab, Ctrl, Alt, arrows, Paste) and pinch to zoom.
-- **Workspaces**: add one, choose its agent, colour it, continue or fork a session, and hold-and-drag to reorder.
-- **Notifications** per kind and per machine, with a turn-progress notification that can stop the agent from the lock screen. Let devices join from the phone too.
-- **App lock**: fingerprint, face or screen lock, asked again before risky actions (approving, `!` commands, typing in a terminal, YOLO, inviting a device, posting a review).
-- **Android extras**: share text into Mirador from other apps, long-press shortcuts on the launcher icon, and home-screen widgets for *Waiting for you* and your machines.
-
 ### Working on Mirador in Mirador
 
 - **The host watches its own source.** `⌘R` reloads the page with the UI code as it is now (the bundle rebuilds when `web/` or `shared/` changes), also in the desktop window.
-- **Restart in place**: when `host/` or `shared/` changed, a banner offers a restart (also `⌘⇧R`, or *Restart the host* in the palette). The host stops working agents' turns the way Stop does, re-executes itself in the same process (so the desktop app, launchd or your terminal keeps seeing the same host), and then asks those agents to continue. Terminal shells start again, under the output they had. Queued messages and waiting marks survive any restart, open pages reload by themselves, and the phone app shows the restart offer too.
+- **Restart in place**: when `host/` or `shared/` changed, a banner offers a restart (also `⌘⇧R`, or *Restart the host* in the palette). The host stops working agents' turns the way Stop does, re-executes itself in the same process (so the desktop app, launchd or your terminal keeps seeing the same host), and then asks those agents to continue. Terminal shells start again, under the output they had. Queued messages and waiting marks survive any restart, and open pages reload by themselves.
 - **A desktop app older than its checkout** shows a banner until it quits, so you know to rebuild it.
 - **`bun run dev`** hot-reloads the UI, for working on `web/`.
 
