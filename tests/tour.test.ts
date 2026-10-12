@@ -22,6 +22,12 @@ function folderWith(files: Record<string, string>) {
 
 const lines = (...each: string[]) => each.join("\n") + "\n";
 
+/** git still reads this repo but fails to write to it, like a read-only .git or a gc lock would. Call the result to let it write again. */
+function withoutWritesIn(directory: string) {
+  execFileSync("chmod", ["-R", "a-w", directory]);
+  return () => execFileSync("chmod", ["-R", "u+w", directory]);
+}
+
 /** A checkout with an app/ folder, where the task changed a line of service.ts and wrote new.ts and a gitignored file, none of it committed. */
 function checkoutWithUncommittedWork() {
   const directory = folderWith({
@@ -181,5 +187,38 @@ describe("snapshotTour", () => {
     ]);
     expect(await problemsOf(snapshotTour(request(join(directory, "app"), { since: "no-such-branch" })))).toEqual([`since: no-such-branch is not a commit in ${realpathSync(join(directory, "app"))}.`]);
     expect(await problemsOf(snapshotTour(request("app")))).toEqual(["folder: app is not an absolute path of a folder."]);
+  });
+
+  test("with since, git failing to write while taking the snapshot of the current files says what to fix instead of failing with git's own error", async () => {
+    const { directory } = checkoutWithUncommittedWork();
+    const allowWrites = withoutWritesIn(join(directory, ".git"));
+    let problems: string[];
+    try {
+      problems = await problemsOf(snapshotTour(request(join(directory, "app"), { since: "HEAD" })));
+    } finally {
+      allowWrites();
+    }
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain(`since: Mirador could not read the files in ${realpathSync(join(directory, "app"))} as they are now to compare with HEAD`);
+    expect(problems[0]).toContain("insufficient permission for adding an object");
+    expect(problems[0]).toContain("Try again once git can write to the checkout.");
+  });
+
+  test("with since, git failing to keep the files the tour was made from says the tour was not shown instead of failing with git's own error", async () => {
+    const { directory, git } = checkoutWithUncommittedWork();
+    const allowWrites = withoutWritesIn(join(directory, ".git/refs"));
+    let problems: string[];
+    try {
+      problems = await problemsOf(snapshotTour(request(join(directory, "app"), { since: "HEAD" })));
+    } finally {
+      allowWrites();
+    }
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("snapshot: Mirador could not keep the files the tour was made from in git");
+    expect(problems[0]).toContain("unable to create directory for");
+    expect(problems[0]).toContain("Try again once git can write to the checkout.");
+    expect(git("for-each-ref", "refs/mirador/tours/")).toBe("");
   });
 });
