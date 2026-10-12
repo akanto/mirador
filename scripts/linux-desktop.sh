@@ -99,12 +99,14 @@ run_in_container --volume "$results:/results" --env "RELEASE=$release" "mirador-
 
       echo "== build the release after this one"
       cd /tmp/mirador
-      sed -i "s/^export const MIRADOR_VERSION = .*/export const MIRADOR_VERSION = \"0.4.1\";/" shared/version.ts
+      next_version=$(bun -e "const [major, minor, patch] = require(\"./shared/version.ts\").MIRADOR_VERSION.split(\".\"); console.log([major, minor, Number(patch) + 1].join(\".\"))")
+      sed -i "s/^export const MIRADOR_VERSION = .*/export const MIRADOR_VERSION = \"$next_version\";/" shared/version.ts
       cd desktop && bun run build:release > /results/build-next.log 2>&1 || { echo "the next release failed to build"; tail -20 /results/build-next.log; exit 1; }
 
       serve=/tmp/serve && rm -rf $serve && mkdir -p $serve
       cp artifacts/stable-linux-$a-update.json artifacts/stable-linux-$a-Mirador.tar.zst $serve/
       next=$(hash_of "$serve/stable-linux-$a-update.json")
+      check "the next release ($next_version) is another build" test "$next" != "$current"
       # The app keeps the archive its release published, and only a patch made from those exact bytes applies to it.
       tools=$(dirname "$(find ~/.hutch/releases/electrobun -name bsdiff -type f | head -1)")
       "$tools/zig-zstd" decompress -i "$serve/stable-linux-$a-Mirador.tar.zst" -o /tmp/next.tar --no-timing > /dev/null
