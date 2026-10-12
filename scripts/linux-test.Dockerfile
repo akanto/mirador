@@ -4,7 +4,7 @@ FROM ubuntu:24.04
 
 ARG BUN_VERSION=1.4.0
 ARG NODE_VERSION=22.13.1
-ARG OPENCODE_VERSION=1.18.18
+ARG OPENCODE_VERSION=2.0.27
 ARG CLAUDE_CODE_VERSION=2.1.289
 ARG PLAYWRIGHT_VERSION=1.63.0
 
@@ -16,7 +16,7 @@ USER ubuntu
 WORKDIR /home/ubuntu
 ENV PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.opencode/bin:/home/ubuntu/.local/bin:$PATH
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
- && curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path \
+ && curl -fsSL https://opencode.ai/v2/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path \
  && curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" \
  && mkdir -p .bun/install/cache
 
