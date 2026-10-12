@@ -168,16 +168,20 @@ export class HarnessProcess {
     this.child = child;
     let exitedBecause = (_reason: string) => {};
     this.exited = new Promise((resolve) => (exitedBecause = resolve));
-    child.stderr!.pipe(createWriteStream(this.logPath(), { flags: "a" }));
-    child.once("exit", (code, signal) => {
-      const reason = this.stopReason ?? `exited with ${code ?? signal}`;
+    let gone = false;
+    const goneBecause = (reason: string) => {
+      if (gone) return;
+      gone = true;
       this.connection = undefined;
       this.initialized = undefined;
       this.child = undefined;
       this.stopReason = undefined;
       this.listener.onExit(this, reason);
       exitedBecause(reason);
-    });
+    };
+    child.on("error", (error) => child.pid === undefined && goneBecause(`could not start: ${error.message}`));
+    child.stderr!.pipe(createWriteStream(this.logPath(), { flags: "a" }));
+    child.once("exit", (code, signal) => goneBecause(this.stopReason ?? `exited with ${code ?? signal}`));
     const stream = acp.ndJsonStream(
       Writable.toWeb(child.stdin!),
       Readable.toWeb(child.stdout!) as unknown as ReadableStream<Uint8Array>,
@@ -189,11 +193,13 @@ export class HarnessProcess {
         this.listener.onPermissionRequest(ctx.params, ctx.signal),
       )
       .connect(stream);
-    return this.connection.agent.request(acp.methods.agent.initialize, {
-      protocolVersion: acp.PROTOCOL_VERSION,
-      clientCapabilities: {},
-      clientInfo: { name: "mirador", version: MIRADOR_VERSION },
-    });
+    return this.failingWithExitReason((agent) =>
+      agent.request(acp.methods.agent.initialize, {
+        protocolVersion: acp.PROTOCOL_VERSION,
+        clientCapabilities: {},
+        clientInfo: { name: "mirador", version: MIRADOR_VERSION },
+      }),
+    );
   }
 
   /**
