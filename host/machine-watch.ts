@@ -35,7 +35,7 @@ class MachineSocket {
       this.failures = 0;
       this.events.opened?.();
     };
-    socket.onmessage = ({ data }) => this.events.message(JSON.parse(String(data)) as ServerMessage);
+    socket.onmessage = ({ data }) => this.receive(data);
     socket.onclose = () => {
       this.socket = null;
       this.events.closed?.();
@@ -43,6 +43,15 @@ class MachineSocket {
       if (this.stopped) return;
       this.retry = setTimeout(() => this.start(), RECONNECT_DELAYS_MS[Math.min(this.failures++, RECONNECT_DELAYS_MS.length - 1)]);
     };
+  }
+
+  /** A message this host cannot read or follow, e.g. from a machine on another version, is skipped rather than taking the host down. */
+  private receive(data: unknown) {
+    try {
+      this.events.message(JSON.parse(String(data)) as ServerMessage);
+    } catch (error) {
+      console.error(`${new Date().toISOString()} skipped a message from ${this.url} it could not follow:`, error);
+    }
   }
 
   stop() {

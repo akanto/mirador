@@ -93,6 +93,17 @@ describe("MachineWatch", () => {
     await eventually(() => expect(watch.statuses()[0]!.waiting).toEqual(["finished"]));
   });
 
+  test("skips a message from the machine it cannot read, rather than falling over, and follows the ones after it", async () => {
+    const machine = fakeMachine();
+    cleanUp.push(() => machine.server.stop(true));
+    const { watch } = watching(machine.origin);
+    await eventually(() => expect(machine.sockets).toHaveLength(2));
+    machine.sockets.filter(({ data }) => data.path === "/ws").forEach((socket) => socket.send("not json"));
+    machine.send("/ws", { type: "snapshot" });
+    machine.send("/ws", { type: "snapshot", conversations: [conversation("a", "question")] });
+    await eventually(() => expect(watch.statuses()[0]!.waiting).toEqual(["question"]));
+  });
+
   test("passes the machine's notifications on as this host's, saying which machine they come from", async () => {
     const machine = fakeMachine();
     cleanUp.push(() => machine.server.stop(true));
