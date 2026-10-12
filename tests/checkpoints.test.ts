@@ -81,6 +81,85 @@ test("what the user's repository shows is untouched: same branch, same log, same
   expect((await git(projectDir, ["status", "--porcelain"])).stdout).toBe(before.stdout);
 });
 
+const status = async () => (await git(projectDir, ["status", "--porcelain"])).stdout;
+const stagedPaths = async () => (await git(projectDir, ["diff", "--cached", "--name-only"])).stdout.split("\n").filter(Boolean);
+const stagedVersionOf = async (relative: string) => (await git(projectDir, ["show", `:${relative}`])).stdout;
+
+test("what the agent staged during the turn is unstaged by a restore, and what the user staged before it is staged again", async () => {
+  await write("kept.txt", "staged by the user\n");
+  await git(projectDir, ["add", "kept.txt"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("kept.txt", "staged by the agent\n");
+  await write("doomed.txt", "staged by the agent too\n");
+  await write("added.txt", "new, staged by the agent\n");
+  await git(projectDir, ["add", "-A"]);
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("kept.txt")).toBe("staged by the user\n");
+  expect(await stagedPaths()).toEqual(["kept.txt"]);
+  expect(await stagedVersionOf("kept.txt")).toBe("staged by the user");
+});
+
+test("after a commit since the snapshot, a restore unstages what differs rather than stage a revert of the commit", async () => {
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("kept.txt", "committed by the agent\n");
+  await git(projectDir, ["commit", "-qam", "the agent's commit"]);
+
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("kept.txt")).toBe("one\n");
+  expect(await stagedPaths()).toEqual([]);
+});
+
+test("a restore that writes no file leaves the staging as it is", async () => {
+  await write("kept.txt", "the user's change\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await git(projectDir, ["add", "kept.txt"]);
+
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 0, removed: 0 });
+  expect(await stagedPaths()).toEqual(["kept.txt"]);
+});
+
+test("a snapshot taken during a merge conflict still works, and its restore unstages what the agent staged", async () => {
+  await git(projectDir, ["checkout", "-qb", "theirs"]);
+  await write("doomed.txt", "theirs\n");
+  await git(projectDir, ["commit", "-qam", "theirs"]);
+  await git(projectDir, ["checkout", "-q", "main"]);
+  await write("doomed.txt", "ours\n");
+  await git(projectDir, ["commit", "-qam", "ours"]);
+  await git(projectDir, ["merge", "-q", "theirs"]);
+  const conflictStatus = await status();
+  const snapshot = await checkpoints.snapshot(workspace);
+  expect(snapshot).toMatch(/^[0-9a-f]{40}$/);
+
+  await write("kept.txt", "staged by the agent\n");
+  await git(projectDir, ["add", "kept.txt"]);
+  await checkpoints.restore(workspace, snapshot!);
+
+  expect(await status()).toBe(conflictStatus);
+});
+
+test("a snapshot from before staging was kept, even one chained to an older one, unstages the files a restore puts back whose staged version differs", async () => {
+  const snapshotOfTheFiles = async (parents: string[] = []) => {
+    await git(projectDir, ["add", "-A"]);
+    const tree = (await git(projectDir, ["write-tree"])).stdout;
+    return (await git(projectDir, ["commit-tree", tree, ...parents.flatMap((parent) => ["-p", parent]), "-m", "mirador: the files at the start of a turn"])).stdout;
+  };
+  await write("kept.txt", "an older turn\n");
+  const older = await snapshotOfTheFiles();
+  await write("kept.txt", "staged by the user\n");
+  const snapshot = await snapshotOfTheFiles([older]);
+
+  await write("kept.txt", "staged by the agent\n");
+  await git(projectDir, ["add", "kept.txt"]);
+  await write("doomed.txt", "changed by the agent, not staged\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("kept.txt")).toBe("staged by the user\n");
+  expect(await stagedPaths()).toEqual([]);
+});
+
 test("in a folder below the repository's top, a restore puts back and deletes the folder's own files and leaves the rest of the repository as it is", async () => {
   await mkdir(join(projectDir, "sub"));
   await write("sub/inner.txt", "inner\n");
@@ -94,6 +173,7 @@ test("in a folder below the repository's top, a restore puts back and deletes th
   await write("sub/added.txt", "new\n");
   await write("notes.md", "notes at the top\n");
   await write("kept.txt", "the user's own change\n");
+  await git(projectDir, ["add", "-A"]);
 
   expect(await checkpoints.preview(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
   expect(await checkpoints.restore(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
@@ -102,6 +182,7 @@ test("in a folder below the repository's top, a restore puts back and deletes th
   expect(await read("sub/notes.md")).toBe("the folder's notes\n");
   expect(await read("notes.md")).toBe("notes at the top\n");
   expect(await read("kept.txt")).toBe("the user's own change\n");
+  expect(await stagedPaths()).toEqual(["kept.txt", "notes.md"]);
 });
 
 test("ignored files are neither stored nor deleted by a restore", async () => {
@@ -123,7 +204,7 @@ test("each snapshot stands on its own, and only the newest are kept", async () =
   await write("kept.txt", "third\n");
   const third = (await keepingTwo.snapshot(workspace))!;
 
-  expect((await git(projectDir, ["rev-parse", "--verify", "--quiet", `${second}^`])).exitCode).not.toBe(0);
+  expect((await git(projectDir, ["rev-list", second])).stdout).not.toContain(first);
   expect((await snapshotRefs()).sort()).toEqual([second, third].sort());
   await git(projectDir, ["gc", "--quiet", "--prune=now"]);
   expect(await keepingTwo.keeps(workspace, first)).toBe(false);

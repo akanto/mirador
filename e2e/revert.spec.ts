@@ -75,10 +75,11 @@ test("a turn's files go back to how they were, the agent hears about it, and you
     await expect(undoFiles(page)).toHaveText("Undo files");
   });
 
-  await test.step("the dialog says what the undo would change, and putting the files back does it", async () => {
+  await test.step("the dialog says what the undo would change, and putting the files back does it, unstaging what the turn staged", async () => {
     writeFileSync(readme, "changed by the turn\n");
     writeFileSync(made, "made by the turn\n");
     writeFileSync(accented, "made by the turn, with a name git would quote\n");
+    await git("add", "README.md", "made.txt");
     await userMessage(page).hover();
     await undoFiles(page).click();
     const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
@@ -115,7 +116,7 @@ test("a turn's files go back to how they were, the agent hears about it, and you
     expect(() => readFileSync(made, "utf8")).toThrow();
   });
 
-  await test.step("the user's own history and index are untouched", async () => {
+  await test.step("the user's own history is untouched, and nothing the turns changed is left staged", async () => {
     expect(await git("rev-parse", "HEAD")).toBe(headAtStart);
     expect(await git("log", "--format=%s")).toBe("the project as it was");
     expect(await git("status", "--porcelain")).toBe("");

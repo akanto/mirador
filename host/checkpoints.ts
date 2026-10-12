@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, rmdir } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, rmdir } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { RestorePlan, Workspace } from "../shared/model.ts";
 import { treeChangesIn, type TreeChange } from "./working-tree.ts";
@@ -32,6 +32,8 @@ function withinWorkspace(workspace: Workspace, path: string) {
   return resolve(root, path).startsWith(root + sep);
 }
 const SNAPSHOT_MESSAGE = "mirador: the files at the start of a turn";
+/** Names the HEAD the staging was taken on: staging put back onto another HEAD would stage a revert of what was committed since. */
+const stagingMessageOn = (head: string) => `mirador: the staged files at the start of a turn\n\nHEAD ${head || "unborn"}`;
 /** Mirador's own commits need no identity or signing setup from the user's git config. */
 export const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost", "-c", "commit.gpgsign=false"];
 
@@ -39,14 +41,16 @@ export const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@lo
  * The files of a workspace, kept per turn so a turn can be undone.
  *
  * The workspace's own repository does the storing, through an index of our own (`GIT_INDEX_FILE`), so nothing of the
- * user's staging area, branch, HEAD or reflog is touched: a snapshot writes the file contents it does not already
- * have as objects, plus one commit with a ref of its own under `refs/mirador/turns/<workspace>/`. Only the newest
- * `keep` refs stay; git's own gc drops what the others alone held. Restoring writes the working tree only, which is why
- * its effect is ordinary uncommitted changes to the user. A submodule's own files are its repository's, so a restore
- * leaves a submodule as it is and says so.
+ * user's branch, HEAD or reflog is touched: a snapshot writes the file contents it does not already have as objects,
+ * plus one commit with a ref of its own under `refs/mirador/turns/<workspace>/`, whose parent holds what the user had
+ * staged. Only the newest `keep` refs stay; git's own gc drops what the others alone held. Restoring writes the working
+ * tree and puts back the staging of the files it writes, so a file the agent staged is not left queued for the user's
+ * next commit. A submodule's own files are its repository's, so a restore leaves a submodule as it is and says so.
  *
  * A workspace that is not a git repository has no snapshots, and so no undo.
  */
+type GitOptions = { input?: string; index?: string };
+
 export class Checkpoints {
   private readonly queues = new Map<string, Promise<unknown>>();
 
@@ -60,7 +64,8 @@ export class Checkpoints {
     return this.inOrder(workspace.id, async () => {
       if (!(await this.isRepository(workspace))) return null;
       const tree = await this.stageEverything(workspace);
-      const commit = (await this.mustGit(workspace, ["commit-tree", tree, "-m", SNAPSHOT_MESSAGE])).stdout;
+      const staging = await this.commitOfStaging(workspace);
+      const commit = (await this.mustGit(workspace, ["commit-tree", tree, ...(staging ? ["-p", staging] : []), "-m", SNAPSHOT_MESSAGE])).stdout;
       await this.mustGit(workspace, ["update-ref", snapshotRefOf(workspace.id, commit, Date.now()), commit]);
       await this.moveChainToItsOwnRef(workspace);
       await this.dropAllButNewest(workspace);
@@ -98,10 +103,11 @@ export class Checkpoints {
   /** Puts the workspace's files back as they were when `commit` was taken, deleting what came after it. */
   restore(workspace: Workspace, commit: string): Promise<RestorePlan> {
     return this.inOrder(workspace.id, async () => {
-      const { restored, removed, added, submodulesLeft } = await this.diffToNow(workspace, commit);
+      const { restored, removed, added, written, submodulesLeft } = await this.diffToNow(workspace, commit);
       await this.deleteFiles(workspace, added);
       await this.mustGit(workspace, ["read-tree", commit]);
       await this.mustGit(workspace, ["checkout-index", "-a", "-f"]);
+      await this.restoreStaging(workspace, commit, written);
       return { restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }) };
     });
   }
@@ -117,7 +123,7 @@ export class Checkpoints {
   private async dropAllButNewest(workspace: Workspace) {
     const refs = await this.mustGit(workspace, ["for-each-ref", "--sort=-refname", "--format=%(refname)", snapshotRefsOf(workspace.id)]);
     const dropped = refs.stdout.split("\n").filter(Boolean).slice(this.keep);
-    if (dropped.length > 0) await this.mustGit(workspace, ["update-ref", "--stdin"], dropped.map((ref) => `delete ${ref}\n`).join(""));
+    if (dropped.length > 0) await this.mustGit(workspace, ["update-ref", "--stdin"], { input: dropped.map((ref) => `delete ${ref}\n`).join("") });
   }
 
   /** A snapshot of one workspace at a time: git's own index lock is per file, and the file is ours. */
@@ -130,7 +136,10 @@ export class Checkpoints {
     return next;
   }
 
-  /** What a restore would change: what to put back or rewrite, what to delete, the paths to delete, and the submodules it leaves. */
+  /**
+   * What a restore would change: what to put back or rewrite, what to delete, the paths to delete, every path it writes or
+   * deletes, and the submodules it leaves.
+   */
   private async diffToNow(workspace: Workspace, commit: string) {
     const now = await this.stageEverything(workspace);
     const diff = await this.git(workspace, ["diff-tree", "-r", "-z", "--raw", "--relative", "--no-renames", commit, now]);
@@ -138,7 +147,57 @@ export class Checkpoints {
     const files = changes.filter(({ submodule }) => !submodule);
     const withStatus = (letters: string[]) => files.filter(({ status }) => letters.includes(status)).length;
     const added = files.filter(({ status }) => status === "A").map(({ path }) => path);
-    return { restored: withStatus(["M", "D"]), removed: added.length, added, submodulesLeft: changes.length - files.length };
+    const written = files.map(({ path }) => path);
+    return { restored: withStatus(["M", "D"]), removed: added.length, added, written, submodulesLeft: changes.length - files.length };
+  }
+
+  /**
+   * What the user has staged, as a commit of its own, written from a copy of their index so theirs is never locked; null
+   * when git cannot write it, as during a merge conflict.
+   */
+  private async commitOfStaging(workspace: Workspace) {
+    const copy = join(this.dataDir, "checkpoints", `${workspace.id}.staging.index`);
+    try {
+      if (!(await copyFile(await this.usersIndexOf(workspace), copy).then(() => true, () => false))) return null;
+      const tree = await this.git(workspace, ["write-tree"], { index: copy });
+      if (tree.exitCode !== 0) return null;
+      return (await this.mustGit(workspace, ["commit-tree", tree.stdout, "-m", stagingMessageOn(await this.headOf(workspace))])).stdout;
+    } finally {
+      await rm(copy, { force: true });
+    }
+  }
+
+  /**
+   * Puts the user's staging of the files a restore wrote back as the snapshot kept it. A snapshot that kept none, being
+   * older or taken during a merge conflict, or one taken on a HEAD that has since moved, unstages those whose staged
+   * version is not the restored file instead.
+   */
+  private async restoreStaging(workspace: Workspace, commit: string, written: string[]) {
+    const index = await this.usersIndexOf(workspace);
+    const keptStaging = await this.keepsStagingOnHead(workspace, commit);
+    const unstaged = keptStaging ? written : await this.stagedOtherwise(workspace, index, written);
+    if (unstaged.length === 0) return;
+    const resetTo = keptStaging ? [`${commit}^`] : [];
+    await this.mustGit(workspace, ["reset", "-q", "--pathspec-from-file=-", "--pathspec-file-nul", ...resetTo], { input: unstaged.map((path) => `${path}\0`).join(""), index });
+  }
+
+  /** An older snapshot's parent, if it has one, is the snapshot before it rather than any staging. */
+  private async keepsStagingOnHead(workspace: Workspace, commit: string) {
+    const parent = await this.git(workspace, ["show", "-s", "--format=%B", `${commit}^`]);
+    return parent.exitCode === 0 && parent.stdout === stagingMessageOn(await this.headOf(workspace));
+  }
+
+  private async headOf(workspace: Workspace) {
+    return (await this.git(workspace, ["rev-parse", "--verify", "--quiet", "HEAD"])).stdout;
+  }
+
+  private async stagedOtherwise(workspace: Workspace, index: string, paths: string[]) {
+    const differing = new Set((await this.mustGit(workspace, ["diff", "--name-only", "-z", "--relative"], { index })).stdout.split("\0"));
+    return paths.filter((path) => differing.has(path));
+  }
+
+  private async usersIndexOf(workspace: Workspace) {
+    return resolve(workspace.path, (await this.mustGit(workspace, ["rev-parse", "--git-dir"])).stdout, "index");
   }
 
   private async isRepository(workspace: Workspace) {
@@ -170,17 +229,17 @@ export class Checkpoints {
   }
 
   /** git for the calls whose failure the user has to hear about, rather than one that only answers a question. */
-  private async mustGit(workspace: Workspace, args: string[], input?: string) {
-    const result = await this.git(workspace, args, input);
+  private async mustGit(workspace: Workspace, args: string[], options: GitOptions = {}) {
+    const result = await this.git(workspace, args, options);
     if (result.exitCode !== 0) throw new Error(`git ${args[0]} failed in ${workspace.path}: ${result.stderr || result.stdout}`);
     return result;
   }
 
-  private async git(workspace: Workspace, args: string[], input?: string) {
-    const index = join(this.dataDir, "checkpoints", `${workspace.id}.index`);
-    await mkdir(dirname(index), { recursive: true });
+  /** On our own index unless told another; paths given to git are taken as they are, never as patterns. */
+  private async git(workspace: Workspace, args: string[], { input, index = join(this.dataDir, "checkpoints", `${workspace.id}.index`) }: GitOptions = {}) {
+    await mkdir(join(this.dataDir, "checkpoints"), { recursive: true });
     const child = Bun.spawn(["git", "-C", workspace.path, ...IDENTITY, ...args], {
-      env: { ...process.env, GIT_INDEX_FILE: index },
+      env: { ...process.env, GIT_INDEX_FILE: index, GIT_LITERAL_PATHSPECS: "1" },
       stdin: input === undefined ? "ignore" : new Blob([input]),
       stdout: "pipe",
       stderr: "pipe",
