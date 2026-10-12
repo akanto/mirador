@@ -41,6 +41,16 @@ async function eventually<T>(read: () => T, isDone: (value: T) => boolean, timeo
 const outputContaining = (received: ServerMessage[], text: string) =>
   eventually(() => outputOf(received), (output) => output.includes(text));
 
+/** A negative pid asks after a whole process group. */
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const beside = (terminalId: string) => ({ terminalId, axis: "columns" as const });
 const below = (terminalId: string) => ({ terminalId, axis: "rows" as const });
 
@@ -284,14 +294,6 @@ test("shutting down waits for every shell to exit, so a host that re-executes it
 
   await terminals.shutdown();
 
-  const isRunning = (pid: number) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
   expect(pids.filter(isRunning)).toEqual([]);
 });
 
@@ -405,3 +407,25 @@ test("clearing a terminal clears its saved output at once, and deleting the conv
 test("opening a terminal for a conversation that no longer exists fails", () => {
   expect(() => terminals.open("gone", 80, 24)).toThrow("This conversation no longer exists.");
 });
+
+test("closing a program's terminal ends what the program started too", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const program = terminals.openProgram("c1", 80, 24, { tabName: "login", command: ["/bin/sh", "-c", 'sh -c "echo started-\\$\\$; exec sleep 1000"; echo after'] });
+  const started = await eventually(() => outputOf(browser.received).match(/started-(\d+)/)?.[1], (pid) => pid !== undefined);
+  terminals.close(program.terminalId);
+  await program.exited;
+  expect(await eventually(() => isRunning(Number(started)), (running) => !running)).toBe(false);
+});
+
+test("a program that ignores the hangup is killed after a grace period, with what it started, so its terminal still closes", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const command = ["/bin/sh", "-c", "trap '' HUP; echo ignoring-$$; while :; do sleep 1000; done"];
+  const program = terminals.openProgram("c1", 80, 24, { tabName: "stubborn", command });
+  const group = Number((await eventually(() => outputOf(browser.received).match(/ignoring-(\d+)/)?.[1], (pid) => pid !== undefined))!);
+  terminals.close(program.terminalId);
+  const ended = await Promise.race([program.exited.then(() => "ended"), Bun.sleep(8_000).then(() => "still running")]);
+  expect(ended).toBe("ended");
+  expect(await eventually(() => isRunning(-group), (running) => !running)).toBe(false);
+}, 15_000);

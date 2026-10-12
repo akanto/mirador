@@ -14,6 +14,7 @@ const SCROLLBACK_SAVE_DELAY_MS = 15_000;
 const RESTARTED_SIZE = { columns: 80, rows: 24 };
 /** Every listing of a conversation's terminals carries the titles, so a runaway one is cut short. */
 const TITLE_CHARACTERS = 200;
+const HANGUP_GRACE_MS = 3000;
 const MAX_DIMENSION = 1_000;
 
 const titleSequence = /\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
@@ -84,6 +85,15 @@ const terminalIdsOf = (tab: Tab) => (tab.layout ? terminalsIn(tab.layout) : []);
 const dimension = (value: number) => Math.min(Math.max(1, Math.floor(value) || 1), MAX_DIMENSION);
 
 const lastTitleIn = (text: string) => [...text.matchAll(titleSequence)].at(-1)?.[1];
+
+const isRunning = (child: Subprocess) => child.exitCode === null && child.signalCode === null;
+
+/** The shell leads its terminal's session, so its process group is the one it started in; it may have exited just now. */
+function killGroupOf(child: Subprocess) {
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {}
+}
 
 /**
  * What runs in the foreground of the shell's terminal, or null while the shell itself waits at its prompt: the
@@ -176,8 +186,15 @@ export class TerminalService {
     this.publish(shell.conversationId, { type: "terminal.cleared", terminalId });
   }
 
+  /**
+   * A shell that ignores the hangup is killed after a grace period, with its process group: what runs in it most likely
+   * ignores the hangup the kernel sends it once the shell is gone, too.
+   */
   close(terminalId: string) {
-    this.shells.get(terminalId)?.child.kill("SIGHUP");
+    const child = this.shells.get(terminalId)?.child;
+    if (!child) return;
+    child.kill("SIGHUP");
+    setTimeout(() => isRunning(child) && killGroupOf(child), HANGUP_GRACE_MS).unref();
   }
 
   /** Like iTerm2's ⌘W: a terminal at its shell's prompt closes, one running a command stays and the command is named. */
