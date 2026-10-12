@@ -79,7 +79,7 @@ bunx playwright test       # e2e, one worker; never two runs at once
 scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu via Docker
 ```
 
-- **E2E ports:** each e2e spec starts its own host with `new TestHost(<port>)`, which also takes port+1 for canvas assets (and port+2 and +3 if the spec turns the network on). Pick N in 4720–5499 where N-1, N and N+1 are all free; `tests/e2e-ports.test.ts` checks this. mirador-mobile's e2e uses 5800 and up.
+- **E2E ports:** each e2e spec starts its own host with `new TestHost(<port>)`, which also takes port+1 for canvas assets, and port+2 and +3 when it serves the network. Pick N in 4720–5499 so that none of these is another host's. `tests/e2e-ports.test.ts` checks it, counting the network ports of hosts started with `MIRADOR_NETWORK`; a host switched onto the network in Settings and restarted (`network.spec.ts`, 5196) needs its +2 and +3 kept free by hand. mirador-mobile's e2e uses 5800 and up.
 - **Serial specs:** run the whole file, not `-g`.
 - **Don't edit `web/` or `host/` while e2e runs:** the test hosts rebuild from the working tree.
 

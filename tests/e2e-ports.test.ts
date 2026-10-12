@@ -13,6 +13,8 @@ const MIRADOR_E2E_PORTS = { lowest: 4720, highest: 5499 };
 interface HostPort {
   file: string;
   port: number;
+  /** Started with MIRADOR_NETWORK, so it also serves on port+2 and port+3. */
+  servesTheNetwork: boolean;
 }
 
 const e2eSources = () =>
@@ -20,12 +22,20 @@ const e2eSources = () =>
     .filter((name) => name.endsWith(".ts"))
     .map((file) => ({ file, text: readFileSync(join(e2eDir, file), "utf8") }));
 
-/** The ports given to `new TestHost(…)`, or to a spec's `useHost(…)`, which passes its port on to TestHost. */
+/** The ports given to `new TestHost(…)`, or to a spec's `useHost(…)`, which passes its port on to TestHost, each with the rest of its statement. */
 const hostPorts = (): HostPort[] =>
-  e2eSources().flatMap(({ file, text }) => [...text.matchAll(/(?:new TestHost|useHost)[(]\s*(\d+)/g)].map(([, port]) => ({ file, port: Number(port) })));
+  e2eSources().flatMap(({ file, text }) =>
+    [...text.matchAll(/(?:new TestHost|useHost)[(]\s*(\d+)(?=([^;]*))/g)].map(([, port, statement]) => ({
+      file,
+      port: Number(port),
+      servesTheNetwork: statement!.includes("MIRADOR_NETWORK"),
+    })),
+  );
 
-test("every e2e host's port, and the canvas port after it, belong to that host alone", () => {
-  const takenPorts = hostPorts().flatMap(({ file, port }) => [port, port + 1].map((taken) => ({ taken, host: `${file} (${port})` })));
+const portsOf = ({ port, servesTheNetwork }: HostPort) => (servesTheNetwork ? [port, port + 1, port + 2, port + 3] : [port, port + 1]);
+
+test("every e2e host's ports belong to that host alone: its port, the canvas port after it, and the two after those when it serves the network", () => {
+  const takenPorts = hostPorts().flatMap((host) => portsOf(host).map((taken) => ({ taken, host: `${host.file} (${host.port})` })));
   const shared = [...Map.groupBy(takenPorts, ({ taken }) => taken)]
     .filter(([, hosts]) => hosts.length > 1)
     .map(([taken, hosts]) => `${taken}: ${hosts.map(({ host }) => host).join(", ")}`);
@@ -33,7 +43,7 @@ test("every e2e host's port, and the canvas port after it, belong to that host a
 });
 
 test("every e2e host stays in Mirador's own port range", () => {
-  const outside = hostPorts().filter(({ port }) => port < MIRADOR_E2E_PORTS.lowest || port + 1 > MIRADOR_E2E_PORTS.highest);
+  const outside = hostPorts().filter((host) => host.port < MIRADOR_E2E_PORTS.lowest || Math.max(...portsOf(host)) > MIRADOR_E2E_PORTS.highest);
   expect(outside).toEqual([]);
 });
 
@@ -46,4 +56,5 @@ test("the scan sees every e2e host: each gets its port as a number, or through a
   );
   expect(unseen).toEqual([]);
   expect(hostPorts().length).toBeGreaterThan(50);
+  expect(hostPorts().filter(({ servesTheNetwork }) => servesTheNetwork).length).toBeGreaterThan(0);
 });
