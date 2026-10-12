@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MIRADOR_VERSION } from "../shared/version.ts";
-import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../desktop/src/core/window-menu.ts";
+import { closeWhatHasFocusScript, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
 const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null, update: null } as const;
 
@@ -47,6 +47,15 @@ describe("menu in the window", () => {
     expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "rm -rf" }, "n-1")).toBeNull();
     expect(pageRequest("quit", "n-1")).toBeNull();
     expect(pageRequest(null, "n-1")).toBeNull();
+  });
+
+  test("runs any tray action the page asks for where the window shows the menu, and elsewhere only the restart into an update", () => {
+    expect(pageMayRun("quit", true)).toBe(true);
+    expect(pageMayRun("install-update", true)).toBe(true);
+    expect(pageMayRun("install-update", false)).toBe(true);
+    for (const action of ["quit", "restart-host", "toggle-background", "toggle-open-at-login", "open", "download-newer-version"] as const) {
+      expect(pageMayRun(action, false)).toBe(false);
+    }
   });
 
   test("anyone may ask for the nonce, which the app gives only to its window's own page", () => {

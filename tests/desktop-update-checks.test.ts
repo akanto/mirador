@@ -12,6 +12,7 @@ import {
   takePendingUpdate,
   teamIdentifierIn,
   updateBlockedBy,
+  updateRestartStopsTheHost,
 } from "../desktop/src/core/update-checks.ts";
 
 let channel: string;
@@ -81,4 +82,13 @@ test("only a host running the copy inside the app, started in the background, is
   expect(hostRunsReplacedFiles(true, true, "owned")).toBe(false);
   expect(hostRunsReplacedFiles(false, true, "background")).toBe(false);
   expect(hostRunsReplacedFiles(true, true, "external")).toBe(false);
+});
+
+test("the restart into an update stops the host the app started, and a background host running the app's copy, and no other", () => {
+  expect(updateRestartStopsTheHost(true, "owned")).toBe(true);
+  expect(updateRestartStopsTheHost(false, "owned")).toBe(true);
+  expect(updateRestartStopsTheHost(true, "background")).toBe(true);
+  expect(updateRestartStopsTheHost(false, "background")).toBe(false);
+  expect(updateRestartStopsTheHost(true, "external")).toBe(false);
+  expect(updateRestartStopsTheHost(true, "stopped")).toBe(false);
 });

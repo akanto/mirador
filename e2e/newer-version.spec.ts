@@ -4,7 +4,9 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { giveNonceScript, showUpdateScript } from "../desktop/src/core/window-menu.ts";
+import type { DesktopMenuMessage, DesktopUpdate } from "../shared/desktop-menu.ts";
 import { openSettings, signIn, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -68,6 +70,24 @@ async function desktopAppOf(host: TestHost) {
   return { app, untilLine };
 }
 
+/** Stands in for the desktop app around its window: Electrobun's bridge, and the scripts the app runs in the page. */
+async function actAsDesktopApp(page: Page) {
+  await page.addInitScript(() => {
+    const sent: DesktopMenuMessage[] = [];
+    Object.assign(window, { sentToDesktopApp: sent });
+    window.__electrobunSendToHost = (message) => void sent.push(message);
+  });
+  const sent = () => page.evaluate(() => (window as unknown as { sentToDesktopApp: DesktopMenuMessage[] }).sentToDesktopApp);
+  /** As the app answers the page's nonce request: the nonce, then the update it has ready, if any. */
+  const answerNonceRequest = async (readyUpdate: DesktopUpdate | null) => {
+    await expect.poll(sent).toContainEqual({ type: "desktop-nonce-request" });
+    await page.evaluate(giveNonceScript("nonce-1"));
+    await page.evaluate(showUpdateScript(readyUpdate));
+  };
+  const withdrawUpdate = () => page.evaluate(showUpdateScript(null));
+  return { sent, answerNonceRequest, withdrawUpdate };
+}
+
 test("a release shows a newer published release in a banner, in Settings › About and in the desktop app's menu, until the banner is dismissed", async ({ page }) => {
   await signIn(page, releaseHost);
   const banner = page.locator(".banner.newer-version");
@@ -90,6 +110,49 @@ test("a release shows a newer published release in a banner, in Settings › Abo
   await expect(banner).toHaveCount(0);
 });
 
+test("in a browser tab, an update the desktop app has ready never shows; the release's sign stays", async ({ page }) => {
+  await signIn(page, releaseHost);
+  const banner = page.locator(".banner.newer-version");
+  await expect(banner).toContainText("Mirador 99.0.0 is out.");
+  await page.evaluate(showUpdateScript({ version: "99.0.0" }));
+  await page.waitForTimeout(500);
+  await expect(banner).toHaveCount(1);
+  await expect(banner).toContainText("Mirador 99.0.0 is out.");
+});
+
+test("in the desktop app, an update it has ready takes the release's place, restarts the app into it, and gives the release's sign back once withdrawn", async ({ page }) => {
+  const desktopApp = await actAsDesktopApp(page);
+  await signIn(page, releaseHost);
+  await desktopApp.answerNonceRequest({ version: "99.0.0" });
+  const banner = page.locator(".banner.newer-version");
+  await expect(banner).toHaveCount(1);
+  await expect(banner).toContainText("Mirador 99.0.0 is ready.");
+  await expect(banner.getByRole("link", { name: "Download" })).toHaveCount(0);
+
+  await banner.getByRole("button", { name: "Restart to update" }).click();
+  expect(await desktopApp.sent()).toContainEqual({ type: "desktop-action", nonce: "nonce-1", action: "install-update" });
+
+  await banner.getByRole("button", { name: "Dismiss" }).click();
+  await expect(banner).toHaveCount(0);
+  const about = await openSettings(page, "About");
+  await expect(about.locator(".newer-version")).toHaveText("Mirador 99.0.0 is ready. Restart to update");
+  await page.keyboard.press("Escape");
+
+  await desktopApp.withdrawUpdate();
+  await expect(banner).toHaveCount(1);
+  await expect(banner).toContainText("Mirador 99.0.0 is out.");
+});
+
+test("in the desktop app, an update it has ready shows next to the new commits on the host's checkout", async ({ page }) => {
+  const desktopApp = await actAsDesktopApp(page);
+  await signIn(page, checkoutHost);
+  await desktopApp.answerNonceRequest({ version: "99.0.0" });
+  const banner = page.locator(".banner.newer-version");
+  await expect(banner).toHaveCount(2);
+  await expect(banner.first()).toContainText("Mirador 99.0.0 is ready.");
+  await expect(banner.last()).toContainText("2 new commits on origin/main.");
+});
+
 test("a checkout shows the commits on its upstream that it lacks, until they are pulled", async ({ page }) => {
   await signIn(page, checkoutHost);
   const banner = page.locator(".banner.newer-version");
@@ -98,32 +161,4 @@ test("a checkout shows the commits on its upstream that it lacks, until they are
 
   git(checkoutHost.sourceDir, "merge", "--quiet", "--ff-only", "origin/main");
   await expect(banner).toHaveCount(0);
-});
-
-test("the desktop window shows when an update is ready and offers to restart into it, until dismissed", async ({ page }) => {
-  await signIn(page, releaseHost);
-  const banner = page.locator(".banner.newer-version");
-  await page.evaluate(() => {
-    window.dispatchEvent(new CustomEvent("mirador:desktop-update", { detail: { version: "99.0.0" } }));
-  });
-  await expect(banner).toContainText("Mirador 99.0.0 is ready.");
-  const restartButton = banner.getByRole("button", { name: "Restart to update" });
-  await expect(restartButton).toBeVisible();
-
-  await page.evaluate(() => {
-    window.__electrobunSendToHost = (message) => {
-      (window as unknown as { lastSent: unknown }).lastSent = message;
-    };
-    window.dispatchEvent(new CustomEvent("mirador:desktop-nonce", { detail: "test-nonce" }));
-  });
-  await restartButton.click();
-  const sent = await page.evaluate(() => (window as unknown as { lastSent: { type: string; nonce: string; action: string } }).lastSent);
-  expect(sent).toEqual({ type: "desktop-action", nonce: "test-nonce", action: "install-update" });
-
-  await banner.getByRole("button", { name: "Dismiss" }).click();
-  await expect(banner).toHaveCount(0);
-  const about = await openSettings(page, "About");
-  await expect(about.locator(".newer-version")).toContainText("Mirador 99.0.0 is ready.");
-  await expect(about.locator(".newer-version").getByRole("button", { name: "Restart to update" })).toBeVisible();
-  await page.keyboard.press("Escape");
 });

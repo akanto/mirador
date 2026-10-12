@@ -12,8 +12,8 @@ import { PidFileOnDisk, systemProcesses } from "../core/processes.ts";
 import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from "../core/runtime.ts";
 import type { SettingsStore } from "../core/settings.ts";
 import { restartDetail, type TrayAction, type TrayState } from "../core/tray-menu.ts";
-import { hostRunsReplacedFiles, markUpdatePending, takePendingUpdate } from "../core/update-checks.ts";
-import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../core/window-menu.ts";
+import { hostRunsReplacedFiles, markUpdatePending, takePendingUpdate, updateRestartStopsTheHost } from "../core/update-checks.ts";
+import { closeWhatHasFocusScript, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../core/window-menu.ts";
 import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
 import { selfUpdateFromReleases } from "./app-updates.ts";
@@ -175,14 +175,13 @@ export class DesktopApp {
     await this.supervisor.restart();
   }
 
-  /** The restart stops the host this app started, and the agent turns running on it. */
   private async installUpdate() {
     if (!this.update || this.update.blockedBy) return;
     const { response } = await Utils.showMessageBox({
       type: "question",
       title: this.environment.appName,
       message: `Restart ${this.environment.appName} to update to ${this.update.version}?`,
-      detail: restartDetail(this.environment.appName, this.runningTurns),
+      detail: restartDetail(this.environment.appName, await this.turnsTheRestartStops()),
       buttons: ["Restart", "Later"],
       defaultId: 0,
       cancelId: 1,
@@ -190,6 +189,11 @@ export class DesktopApp {
     if (response !== 0) return;
     markUpdatePending(this.environment.paths.pendingUpdate);
     await this.selfUpdate?.install().catch((error) => this.report(error));
+  }
+
+  private async turnsTheRestartStops() {
+    const status = await this.supervisor.status().catch(() => "stopped" as const);
+    return updateRestartStopsTheHost(this.environment.settings.runsTheMiradorItCarries(), status) ? this.runningTurns : 0;
   }
 
   private toggleBackground() {
@@ -270,8 +274,7 @@ export class DesktopApp {
     if (request?.type === "open-link") this.window.openInBrowser(request.url);
     if (request?.type === "close-window") void this.window.closeAfterAsking();
     if (request?.type === "appearance") giveAppAppearance(request.appearance);
-    if (request?.type === "action") void this.handle(request.action);
-    if (!showsMenuInWindow) return;
+    if (request?.type === "action" && pageMayRun(request.action, showsMenuInWindow)) void this.handle(request.action);
     if (request?.type === "menu") this.showMenuInWindow();
   }
 

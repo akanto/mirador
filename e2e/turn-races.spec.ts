@@ -50,33 +50,37 @@ async function startConversationWithoutModel(page: Page) {
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
 
-/** Listens the way the desktop app does and returns the waiting counts the host has announced so far. */
-async function listenForWaitingCounts() {
+/** Listens the way the desktop app does and returns the counts of waiting conversations and running turns the host has announced so far. */
+async function listenLikeTheDesktopApp() {
   const signedIn = await fetch(host.authUrl, { redirect: "manual" });
   const token = signedIn.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
   const desktopApp = startDesktopNotifier(host.origin, token);
-  const counts: number[] = [];
+  const waiting: number[] = [];
+  const runningTurns: number[] = [];
   createInterface({ input: desktopApp.stdout! }).on("line", (line) => {
-    const count = line.match(/^waiting (\d+)$/)?.[1];
-    if (count !== undefined) counts.push(Number(count));
+    const [, kind, count] = line.match(/^(waiting|running-turns) (\d+)$/) ?? [];
+    if (kind === "waiting") waiting.push(Number(count));
+    if (kind === "running-turns") runningTurns.push(Number(count));
   });
-  return { counts, stop: () => desktopApp.kill() };
+  return { waiting, runningTurns, stop: () => desktopApp.kill() };
 }
 
-test("a conversation deleted while its turn runs leaves nothing waiting for you once the turn ends", async ({ page }) => {
+test("a conversation deleted while its turn runs stops counting as a running turn at once, and leaves nothing waiting for you once the turn ends", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   await useProfile(page, "fake", "");
-  const waiting = await listenForWaitingCounts();
+  const desktopApp = await listenLikeTheDesktopApp();
   try {
     await startConversationWithoutModel(page);
     const release = join(host.root, "release-deleted-turn");
     const ended = join(host.root, "deleted-turn-ended");
     await sendMessage(page, heldTurn(release, ended));
     await expect(status(page)).toHaveText("running", { timeout: 30_000 });
+    await expect.poll(() => desktopApp.runningTurns.at(-1)).toBe(1);
     const deleteButton = page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" });
     await deleteButton.click();
     await deleteButton.click();
+    await expect.poll(() => desktopApp.runningTurns.at(-1)).toBe(0);
 
     const other = await startConversationWithoutModel(page);
     writeFileSync(release, "");
@@ -84,11 +88,12 @@ test("a conversation deleted while its turn runs leaves nothing waiting for you 
     await page.waitForTimeout(500);
     void callCanvasTool(host, other, "ask", { question: "Still one?", options: [{ label: "Yes" }, { label: "No" }] }).catch(() => {});
     await expect(page.getByRole("heading", { name: "Still one?" })).toBeVisible({ timeout: 30_000 });
-    await expect.poll(() => waiting.counts.at(-1)).toBe(1);
+    await expect.poll(() => desktopApp.waiting.at(-1)).toBe(1);
     await page.waitForTimeout(500);
-    expect(Math.max(...waiting.counts)).toBe(1);
+    expect(Math.max(...desktopApp.waiting)).toBe(1);
+    expect(desktopApp.runningTurns).toEqual([0, 1, 0]);
   } finally {
-    waiting.stop();
+    desktopApp.stop();
   }
 });
 

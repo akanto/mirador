@@ -93,6 +93,9 @@ export function takePendingUpdate(file: string) {
  */
 export const hostRunsReplacedFiles = (pendingUpdate: boolean, runsTheAppSCopy: boolean, status: HostStatus) => pendingUpdate && runsTheAppSCopy && status === "background";
 
+/** The app stops the host it started when it quits, and reloads a background host running its own copy after the update. */
+export const updateRestartStopsTheHost = (runsTheAppSCopy: boolean, status: HostStatus) => status === "owned" || hostRunsReplacedFiles(true, runsTheAppSCopy, status);
+
 /** A valid signature, from the same team as the running app; an app with no team on either side fails. */
 export async function signedBySameTeam(archive: string, runningApp: string) {
   const runningTeam = await teamIdentifierOf(runningApp);

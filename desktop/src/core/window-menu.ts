@@ -26,6 +26,9 @@ export const giveNonceScript = (nonce: string) => `window.dispatchEvent(new Cust
 
 export const closeWhatHasFocusScript = `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_CLOSE_EVENT)}))`;
 
+/** Where the window shows the tray's menu (Linux) the page runs any of its actions; elsewhere only the restart into an update. */
+export const pageMayRun = (action: TrayAction, menuInWindow: boolean) => menuInWindow || action === "install-update";
+
 export type PageRequest =
   | { type: "menu" }
   | { type: "nonce" }
