@@ -98,10 +98,11 @@ input=""
 if [[ " $* " == *" --input - "* ]]; then input=$(cat); fi
 printf '%s\\t%s\\n' "$*" "$input" >> "${ghLog}"
 case "$*" in
-  *"pulls/7/reviews"*) echo '[]' ;;
   *"pulls/7"*) echo '{"node_id":"PR_7","head":{"sha":"${head}"}}' ;;
   *graphql*)
-    if [[ "$input" == *"reviewThreads("* ]]; then
+    if [[ "$input" == *"states: PENDING"* ]]; then
+      echo '{"data":{"repository":{"pullRequest":{"reviews":{"nodes":[]}}}}}'
+    elif [[ "$input" == *"reviewThreads("* ]]; then
       echo '${JSON.stringify(conversations)}'
     elif [[ "$input" == *"addPullRequestReviewThreadReply("* ]]; then
       echo '{"data":{"addPullRequestReviewThreadReply":{"comment":{"url":"${PULL_REQUEST}#discussion_r90"}}}}'
@@ -304,7 +305,8 @@ test("a review opens full screen; the user tours the flow, moves through changes
     const calls = logLines(ghLog);
     expect(calls.every((line) => line.startsWith("api --hostname ghe.example.com "))).toBe(true);
     const bodies = calls.flatMap((line) => (line.split("\t")[1] ? [JSON.parse(line.split("\t")[1]!)] : []));
-    expect(bodies.map(({ variables }) => variables.input)).toEqual([
+    expect(bodies.map(({ variables }) => variables.input ?? variables)).toEqual([
+      { owner: "team", repo: "shop", number: 7 },
       { pullRequestId: "PR_7", commitOID: git("rev-parse", "HEAD") },
       { pullRequestReviewId: "PRR_1", path: "service.ts", line: 2, side: "RIGHT", body: "Is an anonymous user allowed here?" },
       { pullRequestReviewId: "PRR_1", path: "items.ts", line: 2, side: "RIGHT", body: "Should this call the items API?" },
@@ -398,7 +400,8 @@ test("a re-review answers the pull request's conversations; the user resolves on
     const bodies = logLines(ghLog)
       .slice(callsBefore)
       .flatMap((line) => (line.split("\t")[1] ? [JSON.parse(line.split("\t")[1]!)] : []));
-    expect(bodies.map(({ variables }) => variables.input)).toEqual([
+    expect(bodies.map(({ variables }) => variables.input ?? variables)).toEqual([
+      { owner: "team", repo: "shop", number: 7 },
       { pullRequestId: "PR_7", commitOID: git("rev-parse", "HEAD") },
       { pullRequestReviewId: "PRR_1", pullRequestReviewThreadId: "PRRT_1", body: "Thanks, the guard below covers it." },
       { threadId: "PRRT_1" },

@@ -32,6 +32,9 @@ const ADD_REVIEW = `mutation($input: AddPullRequestReviewInput!) { addPullReques
 const ADD_THREAD = `mutation($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { thread { id } } }`;
 const ADD_REPLY = `mutation($input: AddPullRequestReviewThreadReplyInput!) { addPullRequestReviewThreadReply(input: $input) { comment { url } } }`;
 const RESOLVE_THREAD = `mutation($input: ResolveReviewThreadInput!) { resolveReviewThread(input: $input) { thread { isResolved } } }`;
+const PENDING_REVIEW = `query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviews(states: PENDING, first: 1) { nodes { id url } } } }
+}`;
 const REVIEW_THREADS = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $after) {
     pageInfo { hasNextPage endCursor }
@@ -45,10 +48,8 @@ interface PullRequestResponse {
   head: { sha: string };
 }
 
-interface ReviewResponse {
-  state: string;
-  node_id: string;
-  html_url: string;
+interface PendingReviewResponse {
+  repository: { pullRequest: { reviews: { nodes: { id: string; url: string }[] } } | null } | null;
 }
 
 interface GraphQlResponse {
@@ -163,11 +164,10 @@ export async function postPendingReview(review: Review, gh: GitHubCli): Promise<
       `The pull request has changed since the review: its head is ${pullRequest.head.sha.slice(0, 10)}, the review is of ${review.headCommit.slice(0, 10)}. Ask the agent to review it again, so the comments land on the right lines.`,
     );
   }
-  const reviews = (await rest("/reviews?per_page=100")) as ReviewResponse[];
-  const pending = reviews.find(({ state }) => state === "PENDING");
-  const pendingReview = pending
-    ? { id: pending.node_id, url: pending.html_url }
-    : ((await graphql(ADD_REVIEW, { pullRequestId: pullRequest.node_id, commitOID: review.headCommit })) as { addPullRequestReview: { pullRequestReview: { id: string; url: string } } })
+  const pending = (await graphQl(PENDING_REVIEW, { owner: pr.owner, repo: pr.repo, number: pr.number })) as unknown as PendingReviewResponse;
+  const pendingReview =
+    pending.repository?.pullRequest?.reviews.nodes[0] ??
+    ((await graphql(ADD_REVIEW, { pullRequestId: pullRequest.node_id, commitOID: review.headCommit })) as { addPullRequestReview: { pullRequestReview: { id: string; url: string } } })
         .addPullRequestReview.pullRequestReview;
 
   const outcome: PostOutcome = { pendingReviewUrl: pendingReview.url, threadIds: new Map(), answerUrls: new Map(), resolvedAnswerIds: new Set(), errors: new Map() };

@@ -181,13 +181,18 @@ describe("posting to the pull request", () => {
     };
   };
 
+  /** Only the user's own pending review is ever pending for them. */
   function fakeGitHub(responses: { head: string; reviews: object[]; refuse?: string }) {
     const calls: { args: string[]; body?: any }[] = [];
     const gh: GitHubCli = async (args, body: any) => {
       calls.push({ args, body });
       const endpoint = args[3]!;
       if (endpoint === "repos/team/repo/pulls/5") return { node_id: "PR_node", head: { sha: responses.head } };
-      if (endpoint === "repos/team/repo/pulls/5/reviews?per_page=100") return responses.reviews;
+      if (body.query.includes("states: PENDING")) {
+        expect(body.variables).toEqual({ owner: "team", repo: "repo", number: 5 });
+        const pending = responses.reviews.filter((review: any) => review.state === "PENDING");
+        return { data: { repository: { pullRequest: { reviews: { nodes: pending.map((review: any) => ({ id: review.node_id, url: review.html_url })) } } } } };
+      }
       if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_new", url: "https://ghe.example.com/review/new" } } } };
       if (body.variables.input.path === responses.refuse) return { errors: [{ message: "Line could not be resolved" }] };
       return { data: { addPullRequestReviewThread: { thread: { id: `thread-${body.variables.input.line}` } } } };
@@ -218,6 +223,14 @@ describe("posting to the pull request", () => {
     expect(outcome.pendingReviewUrl).toBe("https://ghe.example.com/review/mine");
     expect([...outcome.errors.keys()]).toEqual(["finding-1", "finding-3"]);
     expect(outcome.errors.get("finding-1")).toBe("Line could not be resolved");
+  });
+
+  test("finds the user's pending review on a pull request with more than a hundred reviews", async () => {
+    const older = Array.from({ length: 120 }, (_, index) => ({ state: "COMMENTED", node_id: `old-${index}`, html_url: "x" }));
+    const { gh, calls } = fakeGitHub({ head: "abc", reviews: [...older, { state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine" }] });
+    const outcome = await postPendingReview(reviewOf("abc"), gh);
+    expect(calls.some(({ body }) => body?.query.includes("addPullRequestReview("))).toBe(false);
+    expect(outcome.pendingReviewUrl).toBe("https://ghe.example.com/review/mine");
   });
 
   test("refuses when the pull request moved on since the review", async () => {

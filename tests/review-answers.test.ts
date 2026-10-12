@@ -146,7 +146,7 @@ describe("posting answers", () => {
     const gh: GitHubCli = async (args, body: any) => {
       const endpoint = args[3]!;
       if (endpoint === "repos/team/repo/pulls/5") return { node_id: "PR_node", head: { sha: "abc" } };
-      if (endpoint.startsWith("repos/team/repo/pulls/5/reviews")) return [{ state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine" }];
+      if (body.query.includes("states: PENDING")) return { data: { repository: { pullRequest: { reviews: { nodes: [{ id: "PRR_mine", url: "https://ghe.example.com/review/mine" }] } } } } };
       const name = /\{ (\w+)\(input/.exec(body.query)![1]!;
       const input = body.variables.input;
       mutations.push({ name, input });
