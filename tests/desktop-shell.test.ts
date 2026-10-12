@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { navigationRules, webUrl } from "../desktop/src/core/navigation.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
-import { trayMenu, type TrayItem, type TrayState } from "../desktop/src/core/tray-menu.ts";
+import { restartDetail, trayMenu, type TrayItem, type TrayState } from "../desktop/src/core/tray-menu.ts";
 
 const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true, newerVersion: null, update: null };
 const item = (items: TrayItem[], label: string) => items.find((candidate) => candidate.type === "normal" && candidate.label.startsWith(label));
@@ -72,6 +72,12 @@ describe("tray menu", () => {
 
   test("shows the background checkbox ticked when the setting is on", () => {
     expect(item(trayMenu({ ...state, hostRunsInBackground: true }), "Run host in the background")).toMatchObject({ checked: true });
+  });
+
+  test("explains the restart and names running turns that will stop", () => {
+    expect(restartDetail("Mirador", 0)).toBe("Mirador closes and opens again.");
+    expect(restartDetail("Mirador", 1)).toBe("Mirador closes and opens again. 1 running turn will stop.");
+    expect(restartDetail("Mirador", 2)).toBe("Mirador closes and opens again. 2 running turns will stop.");
   });
 });
 

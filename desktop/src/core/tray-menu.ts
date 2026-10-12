@@ -59,3 +59,9 @@ export function trayMenu(state: TrayState): TrayItem[] {
 }
 
 export const trayTitle = (waitingCount: number) => (waitingCount > 0 ? String(waitingCount) : "");
+
+export function restartDetail(appName: string, runningTurns: number): string {
+  if (runningTurns === 0) return `${appName} closes and opens again.`;
+  const turns = runningTurns === 1 ? "turn" : "turns";
+  return `${appName} closes and opens again. ${runningTurns} running ${turns} will stop.`;
+}

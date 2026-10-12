@@ -2,10 +2,12 @@ import {
   DESKTOP_CLOSE_EVENT,
   DESKTOP_MENU_EVENT,
   DESKTOP_NONCE_EVENT,
+  DESKTOP_UPDATE_EVENT,
   isDesktopAppearance,
   type DesktopAppearance,
   type DesktopMenu,
   type DesktopMenuItem,
+  type DesktopUpdate,
 } from "../../../shared/desktop-menu.ts";
 import { webUrl } from "./navigation.ts";
 import { isTrayAction, trayMenu, type TrayAction, type TrayState } from "./tray-menu.ts";
@@ -16,6 +18,9 @@ export const windowMenu = (state: TrayState): DesktopMenuItem[] =>
 
 export const showMenuScript = (menu: DesktopMenu) =>
   `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_MENU_EVENT)}, { detail: ${JSON.stringify(menu)} }))`;
+
+export const showUpdateScript = (update: DesktopUpdate | null) =>
+  `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_UPDATE_EVENT)}, { detail: ${JSON.stringify(update)} }))`;
 
 export const giveNonceScript = (nonce: string) => `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_NONCE_EVENT)}, { detail: ${JSON.stringify(nonce)} }))`;
 

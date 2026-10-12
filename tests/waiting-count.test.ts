@@ -40,3 +40,17 @@ test("the desktop app hears the count only when it changed", () => {
   [0, 2, 2, 2, 1, 1, 0].forEach((count) => hub.announceWaitingCount(count));
   expect(notifier.map((message) => message.type === "waiting.counted" && message.count)).toEqual([0, 2, 1, 0]);
 });
+
+test("only the desktop app hears the running turns count, and only when it changed", () => {
+  const hub = new Hub();
+  const page = connect(hub, "page");
+  const notifier = connect(hub, "notifier");
+  hub.announceRunningTurnsCount(2);
+  hub.announceRunningTurnsCount(2);
+  hub.announceRunningTurnsCount(0);
+  expect(notifier).toEqual([
+    { type: "running-turns.counted", count: 2 },
+    { type: "running-turns.counted", count: 0 },
+  ]);
+  expect(page).toEqual([]);
+});

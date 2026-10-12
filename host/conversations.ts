@@ -186,6 +186,10 @@ export class ConversationService {
     return [...this.conversationsThatMayWait()].filter((conversationId) => this.waitingFor(conversationId) !== null).length;
   }
 
+  runningTurnsCount(): number {
+    return [...this.runtimes.values()].filter((runtime) => runtime.running).length;
+  }
+
   get(conversationId: string): Conversation {
     const conversation = this.store.findConversation(conversationId);
     if (!conversation) throw new Error(`Unknown conversation ${conversationId}`);
@@ -313,6 +317,7 @@ export class ConversationService {
     }
     this.subagentSessions.forget(conversationId);
     const runtime = this.runtimes.get(conversationId);
+    const wasRunning = runtime?.running ?? false;
     if (runtime) this.endUsageLimitWait(runtime);
     this.jobWaits.forget(conversationId);
     this.runtimes.delete(conversationId);
@@ -325,6 +330,7 @@ export class ConversationService {
     this.images.deleteConversation(conversationId);
     this.hub.broadcast({ type: "conversation.deleted", conversationId });
     this.announceWaitingCount();
+    if (wasRunning) this.announceRunningTurnsCount();
   }
 
   deleteAllInWorkspace(workspaceId: string) {
@@ -452,6 +458,7 @@ export class ConversationService {
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
     if (isClearCommand(text)) return this.clearContext(conversationId);
     runtime.running = true;
+    this.announceRunningTurnsCount();
     this.endUsageLimitWait(runtime);
     let endTurn = () => {};
     runtime.turnEnded = new Promise((resolve) => (endTurn = resolve));
@@ -482,6 +489,7 @@ export class ConversationService {
       }
     } finally {
       runtime.running = false;
+      this.announceRunningTurnsCount();
       runtime.killedOnPurpose = false;
       this.store.turnEnded(conversationId);
       this.setStatus(conversationId, "idle");
@@ -1516,6 +1524,10 @@ export class ConversationService {
 
   private announceWaitingCount() {
     this.hub.announceWaitingCount(this.waitingCount());
+  }
+
+  private announceRunningTurnsCount() {
+    this.hub.announceRunningTurnsCount(this.runningTurnsCount());
   }
 }
 

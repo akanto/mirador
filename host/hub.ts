@@ -77,6 +77,7 @@ export class Hub {
   private readonly sockets = new Set<BrowserSocket>();
   private readonly notifiers = new Set<BrowserSocket>();
   private announcedWaitingCount: number | null = null;
+  private announcedRunningTurnsCount: number | null = null;
 
   add(socket: BrowserSocket) {
     (socket.data.role === "notifier" ? this.notifiers : this.sockets).add(socket);
@@ -118,6 +119,14 @@ export class Hub {
     if (count === this.announcedWaitingCount) return;
     this.announcedWaitingCount = count;
     const payload = JSON.stringify({ type: "waiting.counted", count } satisfies ServerMessage);
+    this.notifiers.forEach((socket) => deliver(socket, payload));
+  }
+
+  /** Only the desktop app's notification sockets hear it, and only when it changed. */
+  announceRunningTurnsCount(count: number) {
+    if (count === this.announcedRunningTurnsCount) return;
+    this.announcedRunningTurnsCount = count;
+    const payload = JSON.stringify({ type: "running-turns.counted", count } satisfies ServerMessage);
     this.notifiers.forEach((socket) => deliver(socket, payload));
   }
 

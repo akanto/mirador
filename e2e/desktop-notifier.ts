@@ -13,6 +13,7 @@ new HostNotifications({
   token: () => token,
   show: (notification) => console.log(JSON.stringify(notification)),
   showWaitingCount: (count) => console.log(`waiting ${count}`),
+  showRunningTurnsCount: (count) => console.log(`running-turns ${count}`),
   showNewerVersion: (newerVersion) => newerVersion && console.log(`newer: ${newerVersionLabel(newerVersion)}`),
   builtFromCode,
   open: (url, headers) => {

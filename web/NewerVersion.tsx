@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { newerVersionKey, newerVersionLabel, type NewerVersion } from "../shared/newer-version.ts";
+import { restartToUpdate, useDesktopUpdate } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
 
 const DISMISSED_KEY = "mirador-newer-version-dismissed";
@@ -34,8 +35,26 @@ function NextStep({ newerVersion }: { newerVersion: NewerVersion }) {
   return <span>Pull them to update.</span>;
 }
 
+const desktopDismissKey = (version: string) => `ready:${version}`;
+
 export function NewerVersionBanner({ newerVersion }: { newerVersion: NewerVersion | null }) {
   const [dismissed, dismiss] = useDismissal();
+  const desktopUpdate = useDesktopUpdate();
+  if (desktopUpdate) {
+    const key = desktopDismissKey(desktopUpdate.version);
+    if (dismissed === key) return null;
+    return (
+      <div className="banner newer-version">
+        <span>Mirador {desktopUpdate.version} is ready.</span>
+        <button type="button" onClick={restartToUpdate}>
+          Restart to update
+        </button>
+        <button type="button" data-hint={hints.dismissNewerVersion} onClick={() => dismiss(key)}>
+          Dismiss
+        </button>
+      </div>
+    );
+  }
   if (!newerVersion || dismissed === newerVersionKey(newerVersion)) return null;
   return (
     <div className="banner newer-version">
@@ -49,6 +68,16 @@ export function NewerVersionBanner({ newerVersion }: { newerVersion: NewerVersio
 }
 
 export function NewerVersionNote({ newerVersion }: { newerVersion: NewerVersion | null }) {
+  const desktopUpdate = useDesktopUpdate();
+  if (desktopUpdate)
+    return (
+      <p className="hint newer-version">
+        Mirador {desktopUpdate.version} is ready.{" "}
+        <button type="button" onClick={restartToUpdate}>
+          Restart to update
+        </button>
+      </p>
+    );
   if (!newerVersion) return null;
   return (
     <p className="hint newer-version">

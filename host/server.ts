@@ -989,6 +989,7 @@ export function startServer(services: HostServices) {
       else {
         desktopApp.connected(socket, socket.data.desktopAppCode);
         hub.send(socket, { type: "waiting.counted", count: conversations.waitingCount() });
+        hub.send(socket, { type: "running-turns.counted", count: conversations.runningTurnsCount() });
         if (newerVersion.current && socket.data.deviceId === null) hub.send(socket, { type: "newer-version.found", newerVersion: newerVersion.current });
       }
       if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);

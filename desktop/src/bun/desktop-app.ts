@@ -11,9 +11,9 @@ import { platformServices } from "../core/platform-services.ts";
 import { PidFileOnDisk, systemProcesses } from "../core/processes.ts";
 import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from "../core/runtime.ts";
 import type { SettingsStore } from "../core/settings.ts";
-import type { TrayAction, TrayState } from "../core/tray-menu.ts";
+import { restartDetail, type TrayAction, type TrayState } from "../core/tray-menu.ts";
 import { hostRunsReplacedFiles, markUpdatePending, takePendingUpdate } from "../core/update-checks.ts";
-import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
+import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../core/window-menu.ts";
 import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
 import { selfUpdateFromReleases } from "./app-updates.ts";
@@ -48,6 +48,7 @@ export class DesktopApp {
   private newerVersion: NewerVersion | null = null;
   private selfUpdate: SelfUpdate | null = null;
   private update: UpdateOffer | null = null;
+  private runningTurns = 0;
   private busy = false;
   /** Only the window's own page gets it, never a frame in it, so only that page makes the app act. */
   private readonly pageNonce = crypto.randomUUID();
@@ -86,6 +87,9 @@ export class DesktopApp {
       token: () => this.browserTokenOnceWritten(),
       show: (notification) => Utils.showNotification(nativeNotification(notification, process.platform)),
       showWaitingCount: (count) => this.tray.showWaitingCount(count),
+      showRunningTurnsCount: (count) => {
+        this.runningTurns = count;
+      },
       showNewerVersion: (newerVersion) => {
         this.newerVersion = newerVersion;
         this.renderTray();
@@ -109,6 +113,7 @@ export class DesktopApp {
       offered: (update) => {
         this.update = update;
         this.renderTray();
+        this.showUpdateInWindow();
       },
       failedToInstall: (message) => Utils.showNotification({ title: `${this.environment.appName} could not update itself`, body: message }),
     });
@@ -177,7 +182,7 @@ export class DesktopApp {
       type: "question",
       title: this.environment.appName,
       message: `Restart ${this.environment.appName} to update to ${this.update.version}?`,
-      detail: `${this.environment.appName} closes and opens again. Agent turns that are running stop.`,
+      detail: restartDetail(this.environment.appName, this.runningTurns),
       buttons: ["Restart", "Later"],
       defaultId: 0,
       cancelId: 1,
@@ -250,15 +255,24 @@ export class DesktopApp {
     this.window.runInPage(showMenuScript({ nonce: this.pageNonce, items: windowMenu(this.trayState()) }));
   }
 
+  private showUpdateInWindow() {
+    if (!this.window.isOpen) return;
+    const readyUpdate = this.update && !this.update.blockedBy ? { version: this.update.version } : null;
+    this.window.runInPage(showUpdateScript(readyUpdate));
+  }
+
   private answerPage(detail: unknown) {
     const request = pageRequest(detail, this.pageNonce);
-    if (request?.type === "nonce") this.window.runInPage(giveNonceScript(this.pageNonce));
+    if (request?.type === "nonce") {
+      this.window.runInPage(giveNonceScript(this.pageNonce));
+      this.showUpdateInWindow();
+    }
     if (request?.type === "open-link") this.window.openInBrowser(request.url);
     if (request?.type === "close-window") void this.window.closeAfterAsking();
     if (request?.type === "appearance") giveAppAppearance(request.appearance);
+    if (request?.type === "action") void this.handle(request.action);
     if (!showsMenuInWindow) return;
     if (request?.type === "menu") this.showMenuInWindow();
-    if (request?.type === "action") void this.handle(request.action);
   }
 
   private async report(error: unknown) {

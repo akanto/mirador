@@ -8,11 +8,18 @@ export interface DesktopMenu {
   items: DesktopMenuItem[];
 }
 
+export interface DesktopUpdate {
+  version: string;
+}
+
 /** The app dispatches this on the page's window, which canvas frames from another origin cannot listen to. */
 export const DESKTOP_MENU_EVENT = "mirador:desktop-menu";
 
 /** The app hands its window's own page the nonce with this event; only that page then makes the app act or open links. */
 export const DESKTOP_NONCE_EVENT = "mirador:desktop-nonce";
+
+/** An update prepared and ready to install in the desktop app. */
+export const DESKTOP_UPDATE_EVENT = "mirador:desktop-update";
 
 /** The macOS app's ⌘W asks its page with this event to close what has focus; with nothing to close, the page asks back to close the window. */
 export const DESKTOP_CLOSE_EVENT = "mirador:desktop-close";

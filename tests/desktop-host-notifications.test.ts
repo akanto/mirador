@@ -33,12 +33,14 @@ function listen(token: () => string | null = () => "secret") {
   const sockets: FakeSocket[] = [];
   const shown: SystemNotification[] = [];
   const counts: number[] = [];
+  const runningTurnsCounts: number[] = [];
   const newerVersions: (NewerVersion | null)[] = [];
   const notifications = new HostNotifications({
     origin: "http://127.0.0.1:4600",
     token,
     show: (shownNotification) => void shown.push(shownNotification),
     showWaitingCount: (count) => void counts.push(count),
+    showRunningTurnsCount: (count) => void runningTurnsCounts.push(count),
     showNewerVersion: (newerVersion) => void newerVersions.push(newerVersion),
     open: (url, headers) => {
       const socket = new FakeSocket(url, headers);
@@ -47,7 +49,7 @@ function listen(token: () => string | null = () => "secret") {
     },
     retryDelayMilliseconds: 1,
   });
-  return { notifications, sockets, shown, counts, newerVersions };
+  return { notifications, sockets, shown, counts, runningTurnsCounts, newerVersions };
 }
 
 describe("host notifications in the desktop app", () => {
@@ -72,6 +74,18 @@ describe("host notifications in the desktop app", () => {
     notifications.start();
     sockets[0]!.receive({ type: "waiting.counted", count: 2 });
     expect(counts).toEqual([2]);
+    notifications.stop();
+  });
+
+  test("shows the number of running turns that the host sends, and forgets it when the host goes away", async () => {
+    const { notifications, sockets, runningTurnsCounts } = listen();
+    notifications.start();
+    sockets[0]!.receive({ type: "running-turns.counted", count: 3 });
+    sockets[0]!.hostGoesAway();
+    expect(runningTurnsCounts).toEqual([3, 0]);
+    await Bun.sleep(20);
+    sockets[1]!.receive({ type: "running-turns.counted", count: 1 });
+    expect(runningTurnsCounts).toEqual([3, 0, 1]);
     notifications.stop();
   });
 

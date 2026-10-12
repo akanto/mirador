@@ -42,6 +42,8 @@ export interface HostNotificationsOptions {
   show: (notification: SystemNotification) => void;
   /** The number of conversations waiting for you, which the host sends on connecting and whenever it may have changed. */
   showWaitingCount?: (count: number) => void;
+  /** The number of running turns, which the host sends on connecting and whenever it changes. */
+  showRunningTurnsCount?: (count: number) => void;
   /** A newer Mirador than the host, which the host sends on connecting while there is one, and whenever it finds another; null once the host goes away. */
   showNewerVersion?: (newerVersion: NewerVersion | null) => void;
   /** What the app was built from, for the host to tell when its checkout has moved on; a release build has none. */
@@ -70,7 +72,7 @@ export class HostNotifications {
   }
 
   private connect() {
-    const { origin, token, show, showWaitingCount = () => {}, showNewerVersion = () => {}, builtFromCode = null, open = openWebSocket } = this.options;
+    const { origin, token, show, showWaitingCount = () => {}, showRunningTurnsCount = () => {}, showNewerVersion = () => {}, builtFromCode = null, open = openWebSocket } = this.options;
     const currentToken = token();
     if (!currentToken) return this.connectLater();
     const socket = open(notificationSocketUrl(origin, builtFromCode), { Origin: origin, Cookie: `${TOKEN_COOKIE}=${currentToken}` });
@@ -79,10 +81,12 @@ export class HostNotifications {
       const message = JSON.parse(String(data)) as ServerMessage;
       if (message.type === "system-notification") show(message.notification);
       if (message.type === "waiting.counted") showWaitingCount(message.count);
+      if (message.type === "running-turns.counted") showRunningTurnsCount(message.count);
       if (message.type === "newer-version.found") showNewerVersion(message.newerVersion);
     };
     socket.onclose = () => {
       showWaitingCount(0);
+      showRunningTurnsCount(0);
       showNewerVersion(null);
       this.connectLater();
     };

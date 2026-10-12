@@ -99,3 +99,31 @@ test("a checkout shows the commits on its upstream that it lacks, until they are
   git(checkoutHost.sourceDir, "merge", "--quiet", "--ff-only", "origin/main");
   await expect(banner).toHaveCount(0);
 });
+
+test("the desktop window shows when an update is ready and offers to restart into it, until dismissed", async ({ page }) => {
+  await signIn(page, releaseHost);
+  const banner = page.locator(".banner.newer-version");
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("mirador:desktop-update", { detail: { version: "99.0.0" } }));
+  });
+  await expect(banner).toContainText("Mirador 99.0.0 is ready.");
+  const restartButton = banner.getByRole("button", { name: "Restart to update" });
+  await expect(restartButton).toBeVisible();
+
+  await page.evaluate(() => {
+    window.__electrobunSendToHost = (message) => {
+      (window as unknown as { lastSent: unknown }).lastSent = message;
+    };
+    window.dispatchEvent(new CustomEvent("mirador:desktop-nonce", { detail: "test-nonce" }));
+  });
+  await restartButton.click();
+  const sent = await page.evaluate(() => (window as unknown as { lastSent: { type: string; nonce: string; action: string } }).lastSent);
+  expect(sent).toEqual({ type: "desktop-action", nonce: "test-nonce", action: "install-update" });
+
+  await banner.getByRole("button", { name: "Dismiss" }).click();
+  await expect(banner).toHaveCount(0);
+  const about = await openSettings(page, "About");
+  await expect(about.locator(".newer-version")).toContainText("Mirador 99.0.0 is ready.");
+  await expect(about.locator(".newer-version").getByRole("button", { name: "Restart to update" })).toBeVisible();
+  await page.keyboard.press("Escape");
+});

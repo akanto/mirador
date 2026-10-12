@@ -302,6 +302,8 @@ export type ServerMessage =
   | { type: "system-notification"; notification: SystemNotification }
   /** Sent to the desktop app's notification socket, on connecting and whenever the number of conversations waiting for you may have changed. */
   | { type: "waiting.counted"; count: number }
+  /** Sent to the desktop app's notification socket, on connecting and whenever the number of running turns changes. */
+  | { type: "running-turns.counted"; count: number }
   | { type: "host.code-changed" }
   | { type: "desktop-app.outdated"; outdated: boolean }
   /** To pages, and to this machine's desktop app: also on connecting, while there is a newer version. */
