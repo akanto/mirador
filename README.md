@@ -6,6 +6,12 @@ Mirador runs your coding agents (Claude Code and opencode) and gives them a **ca
 
 ![A conversation about a checkout flow, with the agent's sequence diagram on the canvas beside it](docs/screenshots/canvas.png)
 
+```bash
+curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
+```
+
+That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. It runs the Claude Code or opencode you already have. [More ways to get it](#get-it).
+
 *A mirador is a lookout: the place you climb to see the whole landscape at once.*
 
 ## Why Mirador exists
@@ -58,7 +64,18 @@ Mirador runs on **macOS** (Apple Silicon) and **Linux** (x64 and arm64), and in 
 
 ### The desktop app
 
-Download from the [releases](https://github.com/sodre90/mirador/releases). The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`) and opencode.
+```bash
+curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
+```
+
+The script downloads the latest release for your computer, installs it and starts it. Run it again to update.
+
+- **macOS** (Apple Silicon): the app goes where it already is, else in `/Applications`, or in `~/Applications` when that isn't writable. Quit a Mirador running from there first.
+- **Linux** (x64 or arm64): the libraries the app needs (GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg) are installed first, with `sudo apt-get` or `sudo dnf`; on other distributions the script names them. The app goes in `~/.local/share/com.sodre90.mirador`, with an entry in your applications menu.
+
+The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`) and opencode. The script tells you when neither is there.
+
+**By hand**, from the [releases](https://github.com/sodre90/mirador/releases):
 
 **macOS**: `Mirador-macos-arm64.zip`. The app is signed ad hoc, not by an identified developer, so clear the download's quarantine once:
 
@@ -76,7 +93,7 @@ sudo dnf install gtk3 webkit2gtk4.1 libayatana-appindicator-gtk3 librsvg2       
 mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup && mirador-setup/installer
 ```
 
-Then start *Mirador* from your applications menu.
+The installer starts Mirador, and puts it in your applications menu.
 
 **Signing in**: Mirador runs the `claude` on your PATH (or in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`), or the program set in *Settings › Agents*, so it uses the sign-in and version you already have. Without a sign-in, a conversation offers *Log in*, which opens that Claude Code's own sign-in in a terminal tab. For opencode, install [opencode](https://opencode.ai) and Mirador finds it.
 
@@ -377,7 +394,7 @@ The release assets go to `dist/` (`make help` lists the goals):
 make macos                               # the macOS app carrying Mirador, zipped (on a Mac)
 make linux                               # both Linux release installers, built and checked as above (on an x64 Linux machine)
 make linux-remote LINUX_HOST=user@host   # from a Mac: make linux on that machine, with the installers copied back
-make checksums                           # their SHA-256, for the release notes
+make checksums                           # install.sh copied in with them, and the SHA-256 of all of it, for the release notes
 ```
 
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).

@@ -34,8 +34,11 @@ linux-remote: ## From a Mac: make linux on LINUX_HOST=user@host, with the instal
 	mkdir -p $(DIST)
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/Mirador-linux-*-Setup.tar.gz' $(DIST)/
 
-checksums: ## The SHA-256 of what dist/ holds, for the release notes
-	@cd $(DIST) && $(SHA256) Mirador-*
+checksums: $(DIST)/install.sh ## install.sh copied into dist/, and the SHA-256 of what dist/ holds, for the release notes
+	@cd $(DIST) && $(SHA256) Mirador-* install.sh
+
+$(DIST)/install.sh: install.sh
+	@mkdir -p $(DIST) && cp install.sh $@
 
 clean: ## Empty dist/
 	rm -rf $(DIST)
