@@ -199,7 +199,9 @@ function removedBeforeLine(file: ReviewFile) {
   const removedBefore = new Map<number, DiffRow[]>();
   file.hunks.forEach((hunk) => {
     let removed: DiffRow[] = [];
-    let lastNewLine = hunk.newStart - 1;
+    /** With no new-side rows, git's newStart is the line the deletion sits after, not the one before it. */
+    const hasNewSide = hunk.rows.some((row) => row.newLine !== null);
+    let lastNewLine = hasNewSide ? hunk.newStart - 1 : hunk.newStart;
     hunk.rows.forEach((row) => {
       if (row.kind === "removed") return removed.push(row);
       lastNewLine = row.newLine!;

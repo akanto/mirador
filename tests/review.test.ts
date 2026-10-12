@@ -95,6 +95,20 @@ describe("anchors and excerpts", () => {
     ]);
   });
 
+  test("a trailing deletion in a hunk with no new-side rows sits after the line git counted from", () => {
+    const deletionOnly: ReviewFile = {
+      path: "tail.ts",
+      oldPath: null,
+      change: "modified",
+      added: 0,
+      removed: 1,
+      hunks: [{ header: "@@ -5 +4,0 @@", newStart: 4, rows: [{ kind: "removed", oldLine: 5, newLine: null, text: "gone" }] }],
+      hiddenBecause: null,
+    };
+    const rows = excerptRows(deletionOnly, { startLine: 3, lines: ["three", "four", "five"] });
+    expect(rows.map(({ kind, text }) => `${kind} ${text}`)).toEqual(["context three", "context four", "removed gone", "context five"]);
+  });
+
   test("GitHub takes comments on lines in its diff's hunks, and a range only within one hunk", () => {
     expect(isCommentable(app, { path: "src/app.ts", line: 2, endLine: 3 })).toBe(true);
     expect(isCommentable(app, { path: "src/app.ts", line: 5, endLine: 6 })).toBe(false);
