@@ -14,10 +14,9 @@ if (!url) throw new Error("Usage: bun scripts/check-review-posting.ts <pull requ
 const pr = parsePullRequestUrl(url);
 const api = (path: string, method = "GET") => ghCli(["api", "--hostname", pr.host, "--method", method, `repos/${pr.owner}/${pr.repo}/pulls/${pr.number}${path}`]);
 
-interface RestReview {
-  id: number;
-  node_id: string;
-  state: string;
+interface PendingReview {
+  id: string;
+  databaseId: number;
 }
 interface PostedComment {
   path: string;
@@ -26,8 +25,15 @@ interface PostedComment {
   body: string;
 }
 const COMMENTS = `query($id: ID!) { node(id: $id) { ... on PullRequestReview { comments(first: 20) { nodes { path line startLine body } } } } }`;
+/** Only the viewer's own pending review comes back, however many reviews the pull request has. */
+const PENDING_REVIEWS = `query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviews(states: PENDING, first: 10) { nodes { id databaseId } } } } }`;
 
-const pendingReviews = async () => ((await api("/reviews?per_page=100")) as RestReview[]).filter(({ state }) => state === "PENDING");
+const graphQl = (query: string, variables: Record<string, unknown>) => ghCli(["api", "--hostname", pr.host, "graphql"], { query, variables });
+const pendingReviews = async () => {
+  const answer = (await graphQl(PENDING_REVIEWS, { owner: pr.owner, repo: pr.repo, number: pr.number })) as { data: { repository: { pullRequest: { reviews: { nodes: PendingReview[] } } } } };
+  return answer.data.repository.pullRequest.reviews.nodes;
+};
 if ((await pendingReviews()).length > 0) throw new Error("You already have a pending review on this pull request; not touching it.");
 
 const diff = Bun.spawnSync(["gh", "pr", "diff", pr.url]);
@@ -72,7 +78,7 @@ const review: Review = {
 };
 
 const report = (label: string, value: unknown) => console.log(`${label}: ${JSON.stringify(value)}`);
-let created: RestReview | undefined;
+let created: PendingReview | undefined;
 try {
   const firstPost = await postPendingReview(review, ghCli);
   report("first post: threads", [...firstPost.threadIds.keys()]);
@@ -85,17 +91,17 @@ try {
   const secondPost = await postPendingReview(again, ghCli);
   report("second post: threads", [...secondPost.threadIds.keys()]);
   report("second post: errors", Object.fromEntries(secondPost.errors));
-  report("pending reviews now", (await pendingReviews()).map(({ id }) => id));
+  report("pending reviews now", (await pendingReviews()).map(({ databaseId }) => databaseId));
   report("same review reused", secondPost.pendingReviewUrl === firstPost.pendingReviewUrl);
 
-  const answer = (await ghCli(["api", "--hostname", pr.host, "graphql"], { query: COMMENTS, variables: { id: created.node_id } })) as { data: { node: { comments: { nodes: PostedComment[] } } } };
+  const answer = (await graphQl(COMMENTS, { id: created.id })) as { data: { node: { comments: { nodes: PostedComment[] } } } };
   report("expected", { path: file.path, single: first, range: [second, third] });
   answer.data.node.comments.nodes.forEach(({ path, line, startLine, body }) => report("on GitHub", { path, startLine, line, body: body.slice(0, 40) }));
 } finally {
   const leftOver = created ? [created] : await pendingReviews();
   for (const pending of leftOver) {
-    await api(`/reviews/${pending.id}`, "DELETE");
-    report("deleted pending review", pending.id);
+    await api(`/reviews/${pending.databaseId}`, "DELETE");
+    report("deleted pending review", pending.databaseId);
   }
   report("pending reviews left", (await pendingReviews()).length);
 }
