@@ -134,4 +134,5 @@ test("the ask tool advertises one question or several, tells the agent to ask se
   const oneQuestion = { question: "Q", options: [{ label: "A" }, { label: "B" }] };
   const both = { ...oneQuestion, questions: [oneQuestion, oneQuestion] };
   expect(await callCanvasTool(host, conversationId, "ask", both)).toContain("not both");
+  expect(await callCanvasTool(host, conversationId, "ask", { html: "<p>context</p>", questions: [oneQuestion, oneQuestion] })).toContain("on each question");
 });

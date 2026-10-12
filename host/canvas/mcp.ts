@@ -262,6 +262,8 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
     async ({ questions, question, options, ...rest }, ctx) => {
       if (questions && (question || options)) return toolError("Give either question and options, or questions, not both.");
       if (!questions && (!question || !options)) return toolError("Give question and options, or questions.");
+      if (questions && Object.values(rest).some((value) => value !== undefined))
+        return toolError("With questions, give html, allowOther and optionWidth on each question, not next to questions.");
       const caller = await callingConversation(ctx);
       const item = canvas.openAsk(caller, questions ? { questions } : { question: question!, options: options!, ...rest });
       if (conversations.get(caller).askMode === "next-message") {
