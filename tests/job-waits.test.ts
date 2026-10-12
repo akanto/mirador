@@ -162,6 +162,16 @@ describe("JobWaits", () => {
     expect(await after.ended).toEqual({ conversationId: "c1", wait, end: "ended" });
   });
 
+  test("a host that stopped its waits keeps watching them when the same instance starts again", async () => {
+    const { waits, store, ended } = waitsAnswering(["running", "ended"]);
+    const wait = await waits.add("c1", sleepProcess);
+    waits.stopAll();
+    waits.startAll();
+    expect(waits.in("c1")).toEqual([wait]);
+    expect(await ended).toEqual({ conversationId: "c1", wait, end: "ended" });
+    expect(store.listJobWaits()).toEqual([]);
+  });
+
   test("forgets the waits of a deleted conversation without reporting them", async () => {
     const { waits, store, changed, checks } = waitsAnswering(["running"]);
     await waits.add("c1", sleepProcess);

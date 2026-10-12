@@ -43,7 +43,11 @@ export class JobWaits {
     private readonly interval: (wait: JobWait) => number = checkInterval,
   ) {}
 
+  /** Picks the stored waits back up, also after this instance stopped them: their old checks are dead, so they are watched anew. */
   startAll() {
+    this.watched.forEach((watched) => clearTimeout(watched.timer));
+    this.watched.clear();
+    this.stopped = false;
     this.store.listJobWaits().forEach(({ conversationId, wait }) => this.watch(conversationId, wait));
   }
 

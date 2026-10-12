@@ -17,9 +17,12 @@ export function findClaudeProgram(configured: string, path = process.env.PATH): 
   return Bun.which("claude", { PATH: path }) ?? Bun.which("claude", { PATH: claudeInstallDirectories().join(":") });
 }
 
-async function versionOf(program: string): Promise<string | null> {
+/** A broken install can hang on --version, e.g. one stuck on a terminal; its version stays unknown rather than holding up Settings. */
+const VERSION_TIMEOUT_MS = 10_000;
+
+export async function versionOf(program: string, timeout = VERSION_TIMEOUT_MS): Promise<string | null> {
   try {
-    const run = Bun.spawn([program, "--version"], { stdout: "pipe", stderr: "ignore", stdin: "ignore" });
+    const run = Bun.spawn([program, "--version"], { stdout: "pipe", stderr: "ignore", stdin: "ignore", timeout });
     const [output, exitCode] = await Promise.all([new Response(run.stdout).text(), run.exited]);
     return exitCode === 0 ? output.trim().split("\n")[0]! : null;
   } catch {

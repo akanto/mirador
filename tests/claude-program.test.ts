@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describeClaudeProgram, findClaudeProgram } from "../host/acp/claude-program.ts";
+import { describeClaudeProgram, findClaudeProgram, versionOf } from "../host/acp/claude-program.ts";
 import { launchEnvironment } from "../host/acp/harnesses.ts";
 import type { Profile } from "../shared/model.ts";
 
@@ -30,6 +30,15 @@ test("Settings shows the program found and the version it reports", async () => 
   expect(await describeClaudeProgram(program)).toEqual({ configured: program, found: program, version: "9.9.9 (Claude Code)" });
   const missing = join(scratch(), "missing");
   expect(await describeClaudeProgram(missing)).toEqual({ configured: missing, found: null, version: null });
+});
+
+test("a claude that hangs on --version is given up on, killed and left as found with no version", async () => {
+  const directory = scratch();
+  const pidFile = join(directory, "pid");
+  const hanging = programIn(directory, "hanging", `#!/bin/sh\necho $$ > ${pidFile}\nexec sleep 30\n`);
+  expect(await versionOf(hanging, 1000)).toBeNull();
+  expect(existsSync(pidFile)).toBe(true);
+  expect(() => process.kill(Number(readFileSync(pidFile, "utf8")), 0)).toThrow();
 });
 
 test("Claude Code's agent is told which program to run, a profile may name its own, and a missing one says how to install it", () => {
