@@ -116,3 +116,28 @@ test("a message queued behind a turn sent while /clear opens the fresh session g
   writeFileSync(release, "");
   await expect.poll(prompts, { timeout: 30_000 }).toContain("queued behind the turn");
 });
+
+test("a message sent while a queued /clear opens the fresh session goes out after the messages queued behind the /clear", async ({ page }) => {
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "slow close · opencode" });
+  await startConversationWithoutModel(page);
+  const composer = page.locator(".composer:visible textarea");
+  const send = async (text: string) => {
+    await composer.fill(text);
+    await composer.press("Enter");
+  };
+
+  const release = join(host.root, "release-turn-before-clear");
+  await send(heldTurn(release));
+  await expect(status(page)).toHaveText("running", { timeout: 30_000 });
+  for (const text of ["/clear", "first behind the clear", "second behind the clear"]) await send(text);
+  await expect(page.locator(".queue:visible .queued-text")).toHaveText(["/clear", "first behind the clear", "second behind the clear"]);
+
+  writeFileSync(release, "");
+  await expect(page.locator(".notice-line", { hasText: "Context cleared" })).toHaveCount(1);
+  await send("sent while the context clears");
+
+  const inOrderSent = ["first behind the clear", "second behind the clear", "sent while the context clears"];
+  await expect.poll(() => prompts().filter((prompt) => inOrderSent.includes(prompt)), { timeout: 30_000 }).toEqual(inOrderSent);
+});

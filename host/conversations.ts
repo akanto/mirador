@@ -491,17 +491,20 @@ export class ConversationService {
   }
 
   /**
-   * Sends `text` as the next user message. While a turn is running it joins the turn: at once, cutting off what the agent
-   * is writing, or, while the agent waits on tools, once they have finished. Sent `afterTurn`, it waits in the queue for
-   * the turn to end.
+   * Sends `text` as the next user message, after those already waiting in the queue, such as the ones behind a /clear
+   * that is opening the fresh session. While a turn is running it joins the turn: at once, cutting off what the agent is
+   * writing, or, while the agent waits on tools, once they have finished. Sent `afterTurn`, it waits in the queue for the
+   * turn to end.
    */
   async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, afterTurn = false } = {}) {
     const runtime = this.runtime(conversationId);
-    if (!runtime.running && !this.stopping && !runtime.usageLimit) return this.prompt(conversationId, text, { imageIds, fromScript, startsTurn: true });
+    const sendsAtOnce = !runtime.running && !this.stopping && !runtime.usageLimit && runtime.queuedMessages.length === 0;
+    if (sendsAtOnce) return this.prompt(conversationId, text, { imageIds, fromScript, startsTurn: true });
     const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(afterTurn && { afterTurn }) };
     this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
     this.publish(this.get(conversationId));
-    if (!afterTurn) this.steerQueuedMessages(conversationId);
+    if (!runtime.running) this.sendNextQueuedMessage(conversationId);
+    else if (!afterTurn) this.steerQueuedMessages(conversationId);
   }
 
   /** What undoing the turn that began with this message would do to the files, or why it cannot be undone. */
