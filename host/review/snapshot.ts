@@ -189,7 +189,7 @@ export async function snapshotReview(request: ReviewRequest): Promise<Review> {
     : null;
   if (!headCommit || !baseCommit) throw new ReviewProblems(problems);
 
-  const diff = await git(root, ["diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", baseCommit, headCommit]);
+  const diff = await git(root, ["diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--find-renames", "-U3", baseCommit, headCommit]);
   const anchors = new AnchorReader(root, commitLines(root, headCommit), problems);
   const flow = await mapInOrder(request.flow, async (step, index) => {
     const anchored = await anchors.read(step.at, `flow step ${index + 1} ("${step.title}")`);

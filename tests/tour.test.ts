@@ -117,6 +117,23 @@ describe("snapshotTour", () => {
     await expect(touredFileLines(older, "service.ts")).rejects.toThrow("Git no longer has service.ts as it was when the tour was published: Mirador keeps the files of a repository's newest 100 tours.");
   });
 
+  test("with since, the paths of new files with spaces in their names are right even when the checkout's config sets diff.noprefix", async () => {
+    const { directory, git } = checkoutWithUncommittedWork();
+    git("config", "diff.noprefix", "true");
+    writeFileSync(join(directory, "app/added space.txt"), "");
+    mkdirSync(join(directory, "app/nested dir"));
+    writeFileSync(join(directory, "app/nested dir/new file.ts"), "");
+
+    const tour = await snapshotTour(request(join(directory, "app"), { since: "HEAD" }));
+
+    expect(tour.files.map(({ path, change }) => [path, change])).toEqual([
+      ["added space.txt", "added"],
+      ["nested dir/new file.ts", "added"],
+      ["new.ts", "added"],
+      ["service.ts", "modified"],
+    ]);
+  });
+
   test("with since, a step in a file git ignores still shows its code, read from disk", async () => {
     const { directory } = checkoutWithUncommittedWork();
 

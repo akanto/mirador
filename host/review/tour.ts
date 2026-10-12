@@ -81,7 +81,7 @@ async function changesSince(folder: string, since: string, problems: string[]): 
   if (!current) return null;
   const snapshot = (await gitOrProblem(folder, ["rev-parse", `${current.tree}:${prefix.trim()}`], problems, () => `since: git ignores everything in ${folder}, so the tour cannot show what changed; leave since out.`))?.trim();
   if (!snapshot) return null;
-  const diff = await gitOrProblem(folder, ["diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", "--relative", sinceCommit, current.tree], problems, (error) => fixGitOrLeaveSince(`since: Mirador could not compare ${since} with the files in ${folder}`, error));
+  const diff = await gitOrProblem(folder, ["diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--find-renames", "-U3", "--relative", sinceCommit, current.tree], problems, (error) => fixGitOrLeaveSince(`since: Mirador could not compare ${since} with the files in ${folder}`, error));
   if (diff === null) return null;
   return { changes: { since, sinceCommit, snapshot }, files: hideUnreadableDiffs(parseGitDiff(diff)), snapshotCommit: current.commit };
 }

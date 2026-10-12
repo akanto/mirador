@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { excerptRows, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
@@ -243,6 +243,24 @@ describe("snapshotReview", () => {
     expect(review.files.map(({ path, added, removed }) => [path, added, removed])).toEqual([["service.ts", 1, 1]]);
     expect(review.flow[0]!.excerpt).toEqual({ startLine: 1, lines: ["export function serve() {", "  return load() + 1;", "}", "", "function load() {", "  return 1;", "}"] });
     expect(review.findings[0]).toMatchObject({ id: "finding-1", decision: "keep", at: { path: "service.ts", line: 2, endLine: 2 } });
+  });
+
+  test("reads the paths of added files whose names have spaces, even when the checkout's config sets diff.noprefix", async () => {
+    const { directory } = gitRepository();
+    await git(directory, ["config", "diff.noprefix", "true"]);
+    writeFileSync(join(directory, "added space.txt"), "");
+    mkdirSync(join(directory, "docs folder"));
+    writeFileSync(join(directory, "docs folder", "notes file.md"), "");
+    await git(directory, ["add", "."]);
+    await git(directory, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "add files"]);
+
+    const review = await snapshotReview(request(directory));
+
+    expect(review.files.map(({ path, change }) => [path, change])).toEqual([
+      ["added space.txt", "added"],
+      ["docs folder/notes file.md", "added"],
+      ["service.ts", "modified"],
+    ]);
   });
 
   test("accepts absolute paths inside the checkout, and lists every wrong anchor at once", async () => {
