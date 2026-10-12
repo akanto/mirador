@@ -141,7 +141,7 @@ export function jobCheckCommand(job: WaitedJob) {
   return [
     "engine=$(command -v docker || command -v podman) || { echo unknown; exit; }",
     `state=$("$engine" inspect --type container -f '{{.State.Running}}' ${job.name} 2>&1)`,
-    'case "$state" in true) echo running ;; false | *[Nn]"o such"*) echo ended ;; *) echo unknown ;; esac',
+    'case "$state" in *[Nn]"o such"* | *false) echo ended ;; *true) echo running ;; *) echo unknown ;; esac',
   ].join("; ");
 }
 

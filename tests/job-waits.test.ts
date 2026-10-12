@@ -207,9 +207,19 @@ case "$*" in
   "inspect --type container -f {{.State.Running}} up") echo true ;;
   "inspect --type container -f {{.State.Running}} exited") echo false ;;
   "inspect --type container -f {{.State.Running}} removed") echo "Error: No such object: removed" >&2; exit 1 ;;
+  "inspect --type container -f {{.State.Running}} build-true") echo "Error: No such object: build-true" >&2; exit 1 ;;
   *) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock" >&2; exit 1 ;;
 esac
 `;
+
+  const podmanWrapperDocker = fakeDocker.replace("\n", '\necho "Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg." >&2\n');
+
+  const dockerBin = (script: string) => {
+    const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
+    writeFileSync(join(bin, "docker"), script);
+    chmodSync(join(bin, "docker"), 0o755);
+    return bin;
+  };
 
   const checkContainer = async (name: string, path: string) => {
     const checking = Bun.spawn(["/bin/sh", "-c", jobCheckCommand({ kind: "container", name })], { env: { PATH: path }, stdout: "pipe" });
@@ -217,13 +227,19 @@ esac
   };
 
   test("a container has ended once it stopped or is gone; a Docker that does not answer leaves it unknown", async () => {
-    const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
-    writeFileSync(join(bin, "docker"), fakeDocker);
-    chmodSync(join(bin, "docker"), 0o755);
+    const bin = dockerBin(fakeDocker);
     expect(await checkContainer("up", bin)).toBe("running");
     expect(await checkContainer("exited", bin)).toBe("ended");
     expect(await checkContainer("removed", bin)).toBe("ended");
     expect(await checkContainer("stuck", bin)).toBe("unknown");
+  });
+
+  test("the Podman wrapper's stderr banner does not hide a running, stopped or gone container", async () => {
+    const bin = dockerBin(podmanWrapperDocker);
+    expect(await checkContainer("up", bin)).toBe("running");
+    expect(await checkContainer("exited", bin)).toBe("ended");
+    expect(await checkContainer("removed", bin)).toBe("ended");
+    expect(await checkContainer("build-true", bin)).toBe("ended");
   });
 
   test("without Docker or Podman a container cannot be checked", async () => {
