@@ -20,7 +20,7 @@ import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { CANVAS_ASSETS_ORIGIN_HEADER, DESKTOP_APP_CODE_PARAMETER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
-import { describeClaudeProgram } from "./acp/claude-program.ts";
+import { claudeProgramLookUps } from "./acp/claude-program.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
@@ -582,17 +582,17 @@ export function startServer(services: HostServices) {
   }
 
   let claudeProgram: ClaudeProgram = { configured: store.claudeProgramSetting(), found: null, version: null };
-  const lookUpClaudeProgram = async () => {
-    claudeProgram = await describeClaudeProgram(store.claudeProgramSetting());
+  const lookUpClaudeProgram = claudeProgramLookUps((program) => {
+    claudeProgram = program;
     hub.broadcast({ type: "settings.claude-program", claudeProgram });
-  };
-  void lookUpClaudeProgram();
+  });
+  void lookUpClaudeProgram(store.claudeProgramSetting());
 
   /** Claude Code agents start again with the new program; turns they were running stop, as when a profile changes. */
   function setClaudeProgram(path: string) {
     store.setClaudeProgramSetting(path.trim());
     conversations.restartClaudeAgents();
-    return lookUpClaudeProgram();
+    return lookUpClaudeProgram(store.claudeProgramSetting());
   }
 
   /** Conversations pick it up when their session next starts or resumes. */

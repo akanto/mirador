@@ -22,15 +22,22 @@ const VERSION_TIMEOUT_MS = 10_000;
 
 export async function versionOf(program: string, timeout = VERSION_TIMEOUT_MS): Promise<string | null> {
   try {
-    const run = Bun.spawn([program, "--version"], { stdout: "pipe", stderr: "ignore", stdin: "ignore", timeout });
-    const [output, exitCode] = await Promise.all([new Response(run.stdout).text(), run.exited]);
-    return exitCode === 0 ? output.trim().split("\n")[0]! : null;
+    const run = Bun.spawn([program, "--version"], { stdout: "pipe", stderr: "ignore", stdin: "ignore", timeout, killSignal: "SIGKILL" });
+    if ((await run.exited) !== 0) return null;
+    return (await new Response(run.stdout).text()).trim().split("\n")[0]!;
   } catch {
     return null;
   }
 }
 
-export async function describeClaudeProgram(configured: string): Promise<ClaudeProgram> {
-  const found = findClaudeProgram(configured);
-  return { configured, found, version: found && (await versionOf(found)) };
+export function claudeProgramLookUps(report: (program: ClaudeProgram) => void, versionTimeout = VERSION_TIMEOUT_MS) {
+  let latest = 0;
+  return async (configured: string) => {
+    const lookUp = ++latest;
+    const found = findClaudeProgram(configured);
+    report({ configured, found, version: null });
+    if (!found) return;
+    const version = await versionOf(found, versionTimeout);
+    if (lookUp === latest) report({ configured, found, version });
+  };
 }

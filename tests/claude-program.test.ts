@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describeClaudeProgram, findClaudeProgram, versionOf } from "../host/acp/claude-program.ts";
+import { claudeProgramLookUps, findClaudeProgram, versionOf } from "../host/acp/claude-program.ts";
 import { launchEnvironment } from "../host/acp/harnesses.ts";
-import type { Profile } from "../shared/model.ts";
+import type { ClaudeProgram, Profile } from "../shared/model.ts";
 
 function programIn(directory: string, name: string, script = "#!/bin/sh\necho '9.9.9 (Claude Code)'\n") {
   const path = join(directory, name);
@@ -27,18 +27,60 @@ test("without a program set, claude is found on PATH; a program set in Settings 
 
 test("Settings shows the program found and the version it reports", async () => {
   const program = programIn(scratch(), "claude");
-  expect(await describeClaudeProgram(program)).toEqual({ configured: program, found: program, version: "9.9.9 (Claude Code)" });
+  const reports: ClaudeProgram[] = [];
+  await claudeProgramLookUps((reported) => reports.push(reported))(program);
+  expect(reports).toEqual([
+    { configured: program, found: program, version: null },
+    { configured: program, found: program, version: "9.9.9 (Claude Code)" },
+  ]);
+
   const missing = join(scratch(), "missing");
-  expect(await describeClaudeProgram(missing)).toEqual({ configured: missing, found: null, version: null });
+  const missingReports: ClaudeProgram[] = [];
+  await claudeProgramLookUps((reported) => missingReports.push(reported))(missing);
+  expect(missingReports).toEqual([{ configured: missing, found: null, version: null }]);
+});
+
+test("Settings shows the program found while its version is still unknown", async () => {
+  const program = programIn(scratch(), "claude", "#!/bin/sh\nexec sleep 30\n");
+  const reports: ClaudeProgram[] = [];
+  const lookUp = claudeProgramLookUps((reported) => reports.push(reported), 1000)(program);
+  expect(reports).toEqual([{ configured: program, found: program, version: null }]);
+  await lookUp;
+});
+
+test("a lookup overtaken by a newer one does not report over it", async () => {
+  const directory = scratch();
+  const hanging = programIn(directory, "hanging", "#!/bin/sh\nexec sleep 30\n");
+  const working = programIn(directory, "working");
+  const reports: ClaudeProgram[] = [];
+  const lookUp = claudeProgramLookUps((reported) => reports.push(reported), 2000);
+  const staleLookUp = lookUp(hanging);
+  await lookUp(working);
+  await staleLookUp;
+  expect(reports.at(-1)).toEqual({ configured: working, found: working, version: "9.9.9 (Claude Code)" });
 });
 
 test("a claude that hangs on --version is given up on, killed and left as found with no version", async () => {
   const directory = scratch();
   const pidFile = join(directory, "pid");
   const hanging = programIn(directory, "hanging", `#!/bin/sh\necho $$ > ${pidFile}\nexec sleep 30\n`);
-  expect(await versionOf(hanging, 1000)).toBeNull();
+  expect(await versionOf(hanging, 2000)).toBeNull();
   expect(existsSync(pidFile)).toBe(true);
   expect(() => process.kill(Number(readFileSync(pidFile, "utf8")), 0)).toThrow();
+});
+
+test("a version check is given up on within its timeout when a wrapper's child holds stdout open", async () => {
+  const wrapper = programIn(scratch(), "wrapper", "#!/bin/sh\nsleep 6\n");
+  const started = Date.now();
+  expect(await versionOf(wrapper, 2000)).toBeNull();
+  expect(Date.now() - started).toBeLessThan(4000);
+});
+
+test("a version check is given up on within its timeout when the program ignores SIGTERM", async () => {
+  const ignoresTerm = programIn(scratch(), "ignores-term", "#!/bin/sh\ntrap '' TERM\nexec sleep 5\n");
+  const started = Date.now();
+  expect(await versionOf(ignoresTerm, 2000)).toBeNull();
+  expect(Date.now() - started).toBeLessThan(4000);
 });
 
 test("Claude Code's agent is told which program to run, a profile may name its own, and a missing one says how to install it", () => {
