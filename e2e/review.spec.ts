@@ -500,3 +500,44 @@ test("the agent rewords one comment in place: the user stays on the finding they
     await waitForTurnToEnd(page);
   });
 });
+
+test("coming back to a review's conversation shows the review as the user left it: the tab, the selected finding and how far they scrolled", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const view = page.locator(".review");
+  const findingsTab = view.getByRole("tab", { name: /Findings/ });
+  const manyFindings = Array.from({ length: 12 }, (_, index) => ({
+    severity: "nit",
+    checked: "plausible",
+    at: "items.ts:2",
+    title: `Finding ${index + 1}`,
+    body: "A comment long enough to take a few lines of the findings list.\n\n".repeat(4),
+  }));
+  await callCanvasTool(host, conversationId, "review", review({ title: "Many findings", findings: manyFindings }));
+  await expect(findingsTab).toBeVisible();
+  const besideTheChat = view.getByRole("button", { name: "Beside the chat" });
+  if (await besideTheChat.isVisible()) await besideTheChat.click();
+
+  await findingsTab.click();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await expect(view.locator(".finding.selected .finding-title")).toHaveText("Finding 4");
+  const findingsList = view.locator(".findings-view");
+  const scrolledTo = await findingsList.evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+    return list.scrollTop;
+  });
+  expect(scrolledTo, "the findings are long enough to scroll").toBeGreaterThan(0);
+
+  await startConversation(page);
+  await expect(view).toHaveCount(0);
+  await page.locator(`li[data-reorder-id="${conversationId}"]`).click();
+
+  await expect(findingsTab).toHaveAttribute("aria-selected", "true");
+  await expect(view.locator(".finding.selected .finding-title")).toHaveText("Finding 4");
+  await expect.poll(() => findingsList.evaluate((list) => list.scrollTop)).toBe(scrolledTo);
+});

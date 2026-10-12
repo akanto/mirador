@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import type { CanvasItem } from "../shared/model.ts";
 import {
   anchorLabel,
@@ -1003,11 +1003,27 @@ function AskAboutLines({
 
 const isTextField = (target: EventTarget) => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 
-function useScrollIntoView(root: RefObject<HTMLElement | null>, selector: string | null, when: unknown = selector) {
+function useScrollIntoView(root: RefObject<HTMLElement | null>, selector: string | null, when: unknown = selector, { exceptOnOpening = false } = {}) {
+  const opened = useRef(false);
   useEffect(() => {
-    if (selector) root.current?.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const opening = !opened.current;
+    opened.current = true;
+    if (selector && !(opening && exceptOnOpening)) root.current?.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [when]);
 }
+
+/** Where the user was in a review or tour: its conversation shows it as they left it when they come back, while the page stays open. */
+type PlaceInWalkthrough = {
+  tab: Tab;
+  stepIndex: number;
+  path: string | null;
+  hunkIndex: number;
+  findingId: string | null;
+  answerId: string | null;
+  /** How far each scrolling part of a tab was scrolled, by its class. */
+  scrolled: Partial<Record<Tab, Record<string, number>>>;
+};
+const placesInWalkthroughs = new Map<string, PlaceInWalkthrough>();
 
 /**
  * A review or a tour as a guided read: the agent's summary, a tour of the code flow and the diff; a review adds the
@@ -1023,14 +1039,16 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   const root = useRef<HTMLDivElement>(null);
   const filterField = useRef<HTMLInputElement>(null);
   const files = useMemo(() => filesInReadingOrder(walk), [walk.files, walk.flow]);
-  const [tab, setTab] = useState<Tab>("overview");
-  const [chosenStep, setStepIndex] = useState(0);
+  const [placeLeft] = useState(() => placesInWalkthroughs.get(item.id));
+  const [scrolled] = useState(() => placeLeft?.scrolled ?? {});
+  const [tab, setTab] = useState<Tab>(placeLeft?.tab ?? "overview");
+  const [chosenStep, setStepIndex] = useState(placeLeft?.stepIndex ?? 0);
   const stepIndex = Math.min(chosenStep, Math.max(walk.flow.length - 1, 0));
-  const [path, setPath] = useState<string | null>(files[0]?.path ?? null);
-  const [hunkIndex, setHunkIndex] = useState(0);
-  const [findingId, setFindingId] = useState<string | null>(findings[0]?.id ?? null);
+  const [path, setPath] = useState<string | null>(placeLeft?.path ?? files[0]?.path ?? null);
+  const [hunkIndex, setHunkIndex] = useState(placeLeft?.hunkIndex ?? 0);
+  const [findingId, setFindingId] = useState<string | null>(placeLeft?.findingId ?? findings[0]?.id ?? null);
   const answers = review ? answersOf(review) : [];
-  const [answerId, setAnswerId] = useState<string | null>(null);
+  const [answerId, setAnswerId] = useState<string | null>(placeLeft?.answerId ?? null);
   const tabShown: Record<Tab, boolean> = { overview: true, flow: true, files: showsChanges, findings: review !== null, conversations: answers.length > 0 };
   const shownTabs = tabs.filter(({ id }) => tabShown[id]);
   const [selection, setSelection] = useState<LineSelection | null>(null);
@@ -1050,9 +1068,27 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     const typingElsewhere = isTextField(document.activeElement ?? document.body) && !document.activeElement?.closest("[inert]");
     if (!typingElsewhere) root.current?.focus({ preventScroll: true });
   }, []);
-  useScrollIntoView(root, tab === "files" ? `[data-hunk="${hunkIndex}"]` : null, `${tab} ${file?.path} ${hunkIndex}`);
-  useScrollIntoView(root, findingId && (tab === "files" || tab === "findings") ? `[data-finding-id="${findingId}"]` : null);
-  useScrollIntoView(root, answerId && tab === "conversations" ? `[data-answer-id="${answerId}"]` : null);
+  useEffect(() => {
+    placesInWalkthroughs.set(item.id, { tab, stepIndex: chosenStep, path, hunkIndex, findingId, answerId, scrolled });
+  }, [tab, chosenStep, path, hunkIndex, findingId, answerId]);
+  useEffect(() => {
+    const view = root.current;
+    const rememberScroll = ({ target }: Event) => {
+      if (target instanceof HTMLElement && target !== view) (scrolled[tab] ??= {})[target.className] = target.scrollTop;
+    };
+    view?.addEventListener("scroll", rememberScroll, { capture: true, passive: true });
+    return () => view?.removeEventListener("scroll", rememberScroll, { capture: true });
+  }, [tab]);
+  useLayoutEffect(() => {
+    Object.entries(scrolled[tab] ?? {}).forEach(([className, top]) => {
+      const part = root.current?.querySelector(`[class="${className}"]`);
+      if (part) part.scrollTop = top;
+    });
+  }, []);
+  const keepsPlaceLeft = { exceptOnOpening: placeLeft !== undefined };
+  useScrollIntoView(root, tab === "files" ? `[data-hunk="${hunkIndex}"]` : null, `${tab} ${file?.path} ${hunkIndex}`, keepsPlaceLeft);
+  useScrollIntoView(root, findingId && (tab === "files" || tab === "findings") ? `[data-finding-id="${findingId}"]` : null, undefined, keepsPlaceLeft);
+  useScrollIntoView(root, answerId && tab === "conversations" ? `[data-answer-id="${answerId}"]` : null, undefined, keepsPlaceLeft);
 
   const showFile = (nextPath: string, nextHunk = 0) => {
     setTab("files");
