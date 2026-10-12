@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { authorityFingerprint, ownServingCertificate } from "../host/certificates.ts";
 import { DeviceService } from "../host/devices.ts";
 import { JoinRequestService } from "../host/join-requests.ts";
-import { forwardedHeaders, MachineRelays, relayedHeaders } from "../host/machine-relays.ts";
+import { forwardedHeaders, machineClosedSocket, MachineRelays, pageSocketOpened, relayedHeaders } from "../host/machine-relays.ts";
+import type { RelayedSocket } from "../host/machine-relays.ts";
 import { Store } from "../host/store.ts";
 
 const machine = "https://home-server.example.ts.net";
@@ -68,6 +69,75 @@ describe("relay ports", () => {
       ]);
     } finally {
       relays.stopAll();
+    }
+  });
+});
+
+describe("a machine's close reaching the page", () => {
+  const fakeUpstream = { send: () => {}, close: () => {} } as unknown as WebSocket;
+
+  const fakePageSocket = (data: RelayedSocket, log: string[]) =>
+    ({
+      data,
+      send: (message: string | ArrayBuffer) => log.push(`sent ${String(message)}`),
+      close: (code?: number, reason?: string) => log.push(`closed ${code} ${reason}`),
+    }) as unknown as Bun.ServerWebSocket<RelayedSocket>;
+
+  test("one that arrives before the page's end opens is replayed once it does, after what the machine sent first", () => {
+    const log: string[] = [];
+    const data: RelayedSocket = { upstream: fakeUpstream, page: null, waiting: ["first"], close: null };
+    machineClosedSocket(data, 1006, "the machine went away");
+    expect(data.close).toEqual({ code: 1000, reason: "the machine went away" });
+    expect(log).toEqual([]);
+    pageSocketOpened(fakePageSocket(data, log));
+    expect(log).toEqual(["sent first", "closed 1000 the machine went away"]);
+  });
+
+  test("once the page's end is open, the machine's close goes straight to it", () => {
+    const log: string[] = [];
+    const data: RelayedSocket = { upstream: fakeUpstream, page: null, waiting: [], close: null };
+    pageSocketOpened(fakePageSocket(data, log));
+    expect(log).toEqual([]);
+    machineClosedSocket(data, 4001, "signed out");
+    expect(log).toEqual(["closed 4001 signed out"]);
+  });
+
+  test("a real page gets the machine's message and then its close through the relay", async () => {
+    const machineServer = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request, server) => (server.upgrade(request) ? undefined : new Response("not a socket")),
+      websocket: {
+        open: (socket) => {
+          socket.send("hello from the machine");
+          socket.close(1000, "the machine hung up");
+        },
+        message: () => {},
+      },
+    });
+    const portFinder = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    const relayPort = portFinder.port!;
+    portFinder.stop(true);
+    const store = new Store(":memory:");
+    store.insertMachine({ id: "box", name: "Box", origin: `http://127.0.0.1:${machineServer.port}`, createdAt: 1 });
+    const relays = new MachineRelays(store, [relayPort], "http://127.0.0.1:4601", () => true, () => {}, () => {});
+    relays.startAll();
+    try {
+      const events: string[] = [];
+      await new Promise<void>((resolve, reject) => {
+        const page = new WebSocket(`ws://127.0.0.1:${relayPort}/ws`);
+        page.onmessage = (event) => events.push(`message ${event.data}`);
+        page.onclose = (event) => {
+          events.push(`close ${event.code} ${event.reason}`);
+          resolve();
+        };
+        page.onerror = () => reject(new Error("the page's socket failed"));
+        setTimeout(() => reject(new Error(`the page's socket never closed, it only saw: ${events.join(", ")}`)), 5000).unref();
+      });
+      expect(events).toEqual(["message hello from the machine", "close 1000 the machine hung up"]);
+    } finally {
+      relays.stopAll();
+      machineServer.stop(true);
     }
   });
 });

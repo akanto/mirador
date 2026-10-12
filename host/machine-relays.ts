@@ -18,15 +18,31 @@ const UNRELAYED_RESPONSE_HEADERS = new Set(["set-cookie", "content-encoding", "c
 
 export const thisHostAsDevice = () => `Mirador on ${hostname().replace(/\.local$/, "")}`;
 
-interface RelayedSocket {
+export interface RelayedSocket {
   upstream: WebSocket;
   page: Bun.ServerWebSocket<RelayedSocket> | null;
   /** What the machine sent before the page's end of the socket opened. */
   waiting: (string | ArrayBuffer)[];
+  /** A close from the machine that arrived before the page's end of the socket opened. */
+  close: { code: number; reason: string } | null;
 }
 
 /** Only 1000 and 3000–4999 may be sent when closing; others describe how a socket broke. */
 const sendableCloseCode = (code: number) => (code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000);
+
+/** The machine closed the socket: pass the close to the page now, or hold it until the page's end opens. */
+export function machineClosedSocket(data: RelayedSocket, code: number, reason: string) {
+  const close = { code: sendableCloseCode(code), reason };
+  if (data.page) data.page.close(close.code, close.reason);
+  else data.close = close;
+}
+
+/** The page's end just opened: hand over what the machine sent first, then a close that came before it opened. */
+export function pageSocketOpened(socket: Bun.ServerWebSocket<RelayedSocket>) {
+  socket.data.page = socket;
+  socket.data.waiting.splice(0).forEach((message) => socket.send(message));
+  if (socket.data.close) socket.close(socket.data.close.code, socket.data.close.reason);
+}
 
 export function forwardedHeaders(incoming: Headers, machineOrigin: string, token: string | null, canvasAssetsOrigin: string) {
   const headers = new Headers([...incoming].filter(([name]) => !UNFORWARDED_REQUEST_HEADERS.has(name) && !name.startsWith("sec-websocket-")));
@@ -186,10 +202,7 @@ export class MachineRelays {
         idleTimeout: 0,
         fetch: (request, server) => this.relay(machineId, port, request, server),
         websocket: {
-          open(socket) {
-            socket.data.page = socket;
-            socket.data.waiting.splice(0).forEach((message) => socket.send(message));
-          },
+          open: pageSocketOpened,
           message(socket, message) {
             socket.data.upstream.send(message);
           },
@@ -240,9 +253,9 @@ export class MachineRelays {
   private async relaySocket(machine: Machine, url: URL, headers: Headers, request: Request, server: Bun.Server<RelayedSocket>) {
     const upstream = await openUpstream(`${machine.origin.replace(/^http/, "ws")}${url.pathname}${url.search}`, headers, this.store.machineAuthority(machine.id));
     if (!upstream) return new Response(`${machine.name} did not open the socket.`, { status: 502 });
-    const data: RelayedSocket = { upstream, page: null, waiting: [] };
+    const data: RelayedSocket = { upstream, page: null, waiting: [], close: null };
     upstream.onmessage = (event) => (data.page ? data.page.send(event.data) : data.waiting.push(event.data));
-    upstream.onclose = (event) => data.page?.close(sendableCloseCode(event.code), event.reason);
+    upstream.onclose = (event) => machineClosedSocket(data, event.code, event.reason);
     if (server.upgrade(request, { data })) return undefined;
     upstream.close();
     return new Response("upgrade failed", { status: 400 });
