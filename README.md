@@ -2,9 +2,9 @@
 
 **See what your coding agent means.**
 
-Mirador runs your coding agents (Claude Code and opencode) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings.
+Mirador runs your coding agents (Claude Code and opencode) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, walk you through code, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings.
 
-![A conversation about a checkout flow, with the agent's sequence diagram on the canvas beside it](docs/screenshots/canvas.png)
+https://github.com/user-attachments/assets/27998b54-dba9-4b69-b73b-82ac2bb54ab8
 
 ```bash
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
@@ -31,9 +31,11 @@ Understanding gets faster. Reviewing gets far, far faster. And you stay the one 
 
 **Mirador is a tool for developers, built by a developer**, to make our lives easier in the AI era: the agents are fast, and this is how we keep up with them.
 
-## The three ideas
+## The four ideas
 
 ### Show: the agent draws what it means
+
+![A conversation about a checkout flow, with the agent's sequence diagram on the canvas beside it](docs/screenshots/canvas.png)
 
 The agent renders a page on the canvas: a diagram, a mockup, a chart, a comparison, a 3D scene. Pages are self-contained HTML in a sandbox, with Mermaid, D3 and three.js built in and working offline. If a page throws a script error, the agent is told and fixes it. Every page stays in the conversation's canvas history.
 
@@ -42,6 +44,12 @@ The agent renders a page on the canvas: a diagram, a mockup, a chart, a comparis
 ![The agent asks which settings layout to build, with a phone mockup preview for each option](docs/screenshots/ask.png)
 
 Instead of a numbered list of options in text, the agent asks on the canvas: a question, an optional page explaining it, and up to eight options with a preview each. You click one, or type your own answer, and add a note if you like. Several questions come at once, a page each, with a review before you send. The answer goes back to the agent, either as the tool's result or as your next message.
+
+### Tour: the agent walks you through code
+
+![The agent's tour of its fix: the steps on the left, the changed line of src/checkout.ts marked on the right](docs/screenshots/tour.png)
+
+Instead of a long summary in text, the agent walks you through the code on the canvas: how something works, or what it just changed. A tour is a short summary and steps in the order the code runs, each with its lines. When it shows a change, the changed lines are marked and a *Files* tab holds the diff. Ask the agent about any lines, or open them in your IDE.
 
 ### Review: a guided tour of the change
 
@@ -150,7 +158,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **`ask`**: a question with 2 to 8 options, each with a description and an optional HTML preview, plus an optional page explaining the question.
 - **Several questions at once**: up to ten in one call, each with its own options. You answer them page by page, can change any answer on a review page, and send them together. Agents are told to ask this way rather than fold several questions into one.
 - **Previews are shown whole**: option columns widen to the widest preview, and a page wider than the canvas is scaled down to fit.
-- **Your own answer**: *Something else…* takes a typed answer, and every answer can carry a note.
+- **Your own answer**: *Something else…* takes a typed answer, over several lines with Shift+Enter, and every answer can carry a note.
 - **Context stays**: a page the agent showed just before asking stays above the question.
 - **Two ways to answer**, chosen per conversation: *Agent waits for my answer* returns your choice as the tool's result. *My answer is sent as the next message* lets the agent end its turn, and your choice arrives later as your message.
 - **Answered or withdrawn** questions leave a short note in place of the question.
@@ -238,7 +246,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Permission requests** show the tool and its command, with the agent's own allow and reject options, and the outcome afterwards. Edits show on the canvas (see [Edit approvals](#edit-approvals)).
 - **Tool calls** with diffs for edits, raw input and output a click away, and readable MCP tool names.
 - **Shell commands** look like a terminal. *Settings → Appearance → Shell commands* picks how much shows: output a click away, output only on failure, one line, or everything.
-- **Subagents** nest under their Agent card. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time); a click opens its latest work.
+- **Subagents** nest under their Agent card, which shows the prompt each got. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time), with its model and tokens; a click opens its latest work.
 - **Images** show inline, also in replayed sessions and the agent's replies; click for full size.
 - **Long conversations** load the newest 200 entries and the earlier ones as you scroll up. Switching between recent conversations is instant and keeps your scroll position, and resizing panes keeps your place.
 - **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage and when each starts over (weekly turns amber past 75%), cost and profile. Or, in a Claude Code conversation, run your own Claude Code `statusLine` command, exactly as Claude Code would; opencode conversations keep the built-in one.
@@ -249,7 +257,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Drag to reorder** workspaces (by their heading), groups (by theirs) and conversations (within their workspace). Workspaces outside a group and the groups share one order, so a workspace can sit between two groups or below them. New workspaces and groups go first. Every window and reload keeps the order.
 - **Groups**: ⊞ next to + adds a group, e.g. per project or client, named in place. Drag a workspace by its heading into a group, out of it or within it: dropped on the top edge of a group's heading it lands above the group, and lower on the heading last in it, folded or not. A group's workspaces are indented a little. Hover a group's heading to rename or delete the group; its workspaces stay where it was. A group folds to its heading, which then counts what waits in it; opening a conversation in a folded group unfolds it. The palette has *New group…*, and moves a workspace into a group or out of its own, to just below it. Every window keeps the groups; folding is per browser.
 - **Colours**: eight pastels, picked from the workspace's initials badge or the palette, drawn as a tinted card, a heading or an edge stripe.
-- **Waiting marks**: *Needs you*, *Done* and *Failed* (see [Notifications](#notifications-and-waiting-for-you)).
+- **Waiting marks**: *Needs you*, *Done* and *Failed* (see [Notifications](#notifications-and-waiting-for-you)). When waiting conversations are scrolled out of view, a chip at the sidebar's top or bottom edge says so; a click shows the nearest.
 - **Devices connected**: a line at the bottom says how many devices are connected; it can be switched off.
 - **Resizable**, remembering its width; double-click restores it.
 
@@ -293,7 +301,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 ### Notifications and waiting for you
 
 - **System notifications** for a question, a permission request, a finished turn or an error, unless that conversation is on screen in a focused window. In a browser, switch them on in *Settings → Notifications*; clicking one opens the conversation. The desktop app shows them natively instead, and browser tabs on that computer then stay quiet so nothing arrives twice. Every joined device gets its own.
-- **Waiting for you**: the sidebar marks each conversation whose agent waits for you. *Needs you* means a permission request or a question is unanswered. *Done* (or *Failed*) means a turn ended while you looked elsewhere, until you open it. *Settings → Appearance → Waiting for you* picks the look: a pill and a count per workspace, only a dot and a bold title, or the pills plus a list of everything waiting above the workspaces. Every window shows the same marks, and they survive host restarts.
+- **Waiting for you**: the sidebar marks each conversation whose agent waits for you. *Needs you* means a permission request or a question is unanswered. *Done* (or *Failed*) means a turn ended while you looked elsewhere, until you open it. *Settings → Appearance → Waiting for you* picks the look: a pill and a count per workspace, only a dot and a bold title, or the pills plus a list of everything waiting above the workspaces. Every window shows the same marks, and they survive host restarts. The browser tab's title counts the conversations waiting for you, and on macOS so does the desktop app's menu bar icon.
 
 ### Devices, other machines and the network
 

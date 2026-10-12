@@ -78,11 +78,26 @@ const retry = `export async function withRetries<T>(run: () => Promise<T>, { att
 }
 `;
 
+const paymentsClient = `import type { Card } from "../types";
+
+const BANK_URL = process.env.BANK_URL;
+
+export async function capture(card: Card, amount: number, { idempotencyKey }: { idempotencyKey?: string } = {}) {
+  const response = await fetch(\`\${BANK_URL}/captures\`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(idempotencyKey && { "Idempotency-Key": idempotencyKey }) },
+    body: JSON.stringify({ card, amount }),
+  });
+  if (!response.ok) throw new Error(\`The bank refused the capture: \${response.status}\`);
+  return response.json();
+}
+`;
+
 const checkoutFixed = checkoutAfter.replace("payments.capture(card, cart.total)", "payments.capture(card, cart.total, { idempotencyKey: cart.id })");
 
 /** shop-api on a branch that retries card payments, the change the demo review is about. */
 function createProjects() {
-  writeFiles(shopApi, { "README.md": "# shop-api\n", "src/checkout.ts": checkoutBefore });
+  writeFiles(shopApi, { "README.md": "# shop-api\n", "src/checkout.ts": checkoutBefore, "src/services/payments.ts": paymentsClient });
   git(shopApi, "init", "-q", "-b", "main");
   git(shopApi, "add", ".");
   git(shopApi, "commit", "-q", "-m", "Checkout reserves stock, captures the payment and creates the order");
@@ -164,7 +179,8 @@ const stopDoubleCharge = [
     locations: [{ path: join(shopApi, "src/checkout.ts") }],
     content: [{ type: "diff", path: join(shopApi, "src/checkout.ts"), oldText: captureLine, newText: captureLine.replace("cart.total)", "cart.total, { idempotencyKey: cart.id })") }],
   }),
-  agentSays("The capture now sends the cart's id as its idempotency key, so retrying a capture the bank already took doesn't charge the card again. The change is under *Changes* on the canvas."),
+  toolCall("toolu_tour", "mcp__canvas__tour", "other", { title: "What the fix changed" }, "Shown to the user as a tour."),
+  agentSays("The capture now sends the cart's id as its idempotency key, so retrying a capture the bank already took doesn't charge the card again. I walked through the change on the canvas, and the files are under *Changes*."),
   turnEnd,
 ];
 
@@ -310,6 +326,17 @@ const review = {
   ],
 };
 
+const fixTour = {
+  title: "What the fix changed",
+  folder: shopApi,
+  since: "HEAD",
+  summary: "A retried capture now carries the cart's id as its **idempotency key**, so the bank charges a card once however often checkout retries.",
+  flow: [
+    { title: "The capture carries the cart's id", at: "src/checkout.ts:7-9", say: "Checkout still retries a failed capture up to three times, and every attempt now sends the cart's id as the idempotency key." },
+    { title: "The key reaches the bank", at: "src/services/payments.ts:5-9", say: "The payments client sends it as the `Idempotency-Key` header. For 24 hours the bank answers a repeated key with the first capture, instead of charging again." },
+  ],
+};
+
 async function typeInTerminal(page: Page, index: number, command: string) {
   await page.locator(".terminal-pane .xterm").nth(index).click();
   await page.keyboard.type(command);
@@ -406,5 +433,13 @@ test("the README's screenshots", async ({ page }) => {
     await changes.getByRole("button", { name: /src\/checkout\.ts/ }).click();
     await expect(changes.locator(".changes-diff")).toContainText("idempotencyKey");
     await save(page, "changes");
+  });
+
+  await test.step("a tour of what the agent changed", async () => {
+    await callCanvasTool(host, ids.stopDoubleCharge, "tour", fixTour);
+    const view = page.locator(".review");
+    await view.getByRole("tab", { name: /Flow/ }).click();
+    await expect(view.locator(".code-row.added")).toContainText(["idempotencyKey: cart.id"]);
+    await save(page, "tour");
   });
 });
