@@ -224,7 +224,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Subagents** nest under their Agent card. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time); a click opens its latest work.
 - **Images** show inline, also in replayed sessions and the agent's replies; click for full size.
 - **Long conversations** load the newest 200 entries and the earlier ones as you scroll up. Switching between recent conversations is instant and keeps your scroll position, and resizing panes keeps your place.
-- **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage (weekly turns amber past 75%), cost and profile. Or run your own Claude Code `statusLine` command, exactly as Claude Code would.
+- **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage (weekly turns amber past 75%), cost and profile. Or, in a Claude Code conversation, run your own Claude Code `statusLine` command, exactly as Claude Code would; opencode conversations keep the built-in one.
 
 ### Sidebar and workspaces
 

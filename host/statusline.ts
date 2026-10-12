@@ -152,13 +152,13 @@ export class StatuslineService {
     const quotas = this.conversations.planQuotasOf(conversationId, now);
     const environment = this.environmentOf(conversation);
     const configDir = environment && claudeConfigDir(environment);
+    const runsClaudeCode = conversation.harness === "claude";
     const [gitBranch, command] = await Promise.all([
       currentGitBranch(directory),
-      configDir && this.runsUserCommands ? statusLineCommandIn(configDir) : null,
+      configDir && this.runsUserCommands && runsClaudeCode ? statusLineCommandIn(configDir) : null,
     ]);
     if (!command || !configDir || !environment || !runCommand) return { gitBranch, command, output: null, error: null, quotas };
-    const transcriptPath =
-      conversation.harness === "claude" && conversation.acpSessionId ? claudeTranscriptPath(configDir, directory, conversation.acpSessionId) : null;
+    const transcriptPath = conversation.acpSessionId ? claudeTranscriptPath(configDir, directory, conversation.acpSessionId) : null;
     const result = await runStatusLineCommand(command, {
       input: statuslineInput(conversation, directory, transcriptPath, quotas, now),
       directory,
