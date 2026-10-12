@@ -8,6 +8,16 @@ type ToolCall = { name: string; arguments: Record<string, unknown> };
 const textOf = (message: ChatMessage | undefined) =>
   typeof message?.content === "string" ? message.content : (message?.content ?? []).map(({ text }) => text ?? "").join("");
 
+/** opencode 2 hands the model a failed tool's result as JSON with the error in it, opencode 1 as the bare message. */
+const toolResultOf = (message: ChatMessage) => {
+  const text = textOf(message);
+  try {
+    return (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? text;
+  } catch {
+    return text;
+  }
+};
+
 const chunk = (delta: object, finishReason: string | null = null) => ({
   id: "scripted",
   object: "chat.completion.chunk",
@@ -25,7 +35,7 @@ const finish = (finishReason: string) => ({
 
 /**
  * An OpenAI-compatible model for opencode that follows a script instead of thinking: the last
- * user message decides the reply. `RUN <command>` calls bash, `SHOW <title>` and `ASK <question>`
+ * user message decides the reply. `RUN <command>` calls the shell tool, `SHOW <title>` and `ASK <question>`
  * call the canvas tools, `CALL <tool> <JSON arguments>` any of them, a tool result is echoed back,
  * anything else is echoed as text.
  */
@@ -69,12 +79,13 @@ export class ScriptedModel {
     const tools = (request.tools ?? []).map(({ function: { name } }) => name);
     const last = request.messages.at(-1);
     if (tools.length === 0) return this.stream(response, [chunk({ role: "assistant", content: "Scripted title" }), finish("stop")]);
-    if (last?.role === "tool") return this.say(response, `Tool result: ${textOf(last)}`);
+    if (last?.role === "tool") return this.say(response, `Tool result: ${toolResultOf(last)}`);
     const text = textOf(last).trim();
     const canvasTool = (action: string) => tools.find((name) => name.includes("canvas") && name.endsWith(action))!;
+    const shellTool = tools.includes("shell") ? "shell" : "bash";
     const [directive, ...rest] = text.split(" ");
     const argument = rest.join(" ");
-    if (directive === "RUN") return this.call(response, { name: "bash", arguments: { command: argument, description: "Run the scripted command" } });
+    if (directive === "RUN") return this.call(response, { name: shellTool, arguments: { command: argument, description: "Run the scripted command" } });
     if (directive === "CALL") {
       const [tool, ...json] = rest;
       return this.call(response, { name: canvasTool(tool!), arguments: JSON.parse(json.join(" ")) });
@@ -138,7 +149,7 @@ export function scriptedOpencodeEnvironment(model: ScriptedModel, root: string) 
         models: spareModels,
       },
     },
-    permission: { bash: "ask" },
+    permission: { bash: "ask", shell: "ask" },
   };
   return [
     `XDG_CONFIG_HOME=${root}/opencode-config`,
