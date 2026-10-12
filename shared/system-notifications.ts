@@ -1,4 +1,5 @@
 import type { Conversation, JoinRequest } from "./model.ts";
+import { cutWithEllipsis } from "./text-cut.ts";
 
 /** Why a conversation needs you: everything that makes it your move. */
 export type NotificationReason =
@@ -42,7 +43,7 @@ function reasonText(reason: NotificationReason) {
 }
 
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
-const shortened = (text: string) => (text.length > BODY_LENGTH ? `${text.slice(0, BODY_LENGTH - 1)}…` : text);
+const shortened = (text: string) => cutWithEllipsis(text, BODY_LENGTH - 1, BODY_LENGTH);
 
 export const systemNotification = (conversation: Pick<Conversation, "id" | "title">, workspace: string, reason: NotificationReason): SystemNotification => ({
   kind: reason.kind,

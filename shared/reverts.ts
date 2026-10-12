@@ -1,4 +1,5 @@
 import type { ConversationEvent, StoredEvent } from "./model.ts";
+import { cutWithEllipsis } from "./text-cut.ts";
 
 /** A turn whose files the user put back, and what the restore did. */
 export interface Revert {
@@ -59,13 +60,10 @@ export function rewindPointBefore(events: StoredEvent[], seq: number): string | 
 /** The agent's latest message in the conversation, where turns taken elsewhere since pick up. */
 export const lastAgentMessageId = (events: StoredEvent[]) => rewindPointBefore(events, Infinity);
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
 /** The start of a turn's message, short enough to name that turn in a label or a note. */
 export function turnTitle(text: string) {
   const first = text.trim().split("\n")[0];
-  const characters = [...graphemes.segment(first)].map(({ segment }) => segment);
-  return characters.length > 60 ? `${characters.slice(0, 60).join("")}…` : first || "an earlier turn";
+  return cutWithEllipsis(first, 60) || "an earlier turn";
 }
 
 export const whatChanged = ({ restored, removed }: Pick<Revert, "restored" | "removed">) => {

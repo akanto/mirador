@@ -32,6 +32,7 @@ import { panelCommandRun } from "../shared/panel-commands.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
+import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
 import { pendingAsk, pendingPermission } from "./pending-requests.ts";
@@ -343,7 +344,7 @@ export class ConversationService {
   }
 
   rename(conversationId: string, title: string) {
-    const name = title.trim().slice(0, MAX_TITLE_LENGTH);
+    const name = firstGraphemes(title.trim(), MAX_TITLE_LENGTH);
     if (!name) throw new Error("A conversation needs a name.");
     this.save({ ...this.get(conversationId), title: name, titleSetByUser: true });
   }
@@ -1426,7 +1427,7 @@ export class ConversationService {
     const conversation = this.get(conversationId);
     if (conversation.title !== UNTITLED || conversation.titleSetByUser) return;
     const firstLine = text.trim().split("\n")[0] ?? "";
-    const title = firstLine.length > TITLE_LENGTH ? `${firstLine.slice(0, TITLE_LENGTH - 1)}…` : firstLine;
+    const title = cutWithEllipsis(firstLine, TITLE_LENGTH - 1, TITLE_LENGTH);
     if (title) this.save({ ...conversation, title });
   }
 

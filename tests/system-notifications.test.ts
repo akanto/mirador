@@ -26,6 +26,16 @@ describe("system notification text", () => {
     expect(body).toHaveLength(200);
     expect(body.endsWith("…")).toBe(true);
   });
+
+  test("a body cut short keeps an emoji at the cut whole", () => {
+    const question = `${"a".repeat(192)}😀bc`;
+    expect(systemNotification(conversation, "mirador", { kind: "question", question }).body).toBe(`Asks: ${"a".repeat(192)}😀…`);
+  });
+
+  test("a body of exactly 200 graphemes is not cut, even though it has more UTF-16 units", () => {
+    const question = `${"a".repeat(193)}😀`;
+    expect(systemNotification(conversation, "mirador", { kind: "question", question }).body).toBe(`Asks: ${"a".repeat(193)}😀`);
+  });
 });
 
 describe("a turn that ends makes it your move", () => {

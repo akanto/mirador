@@ -1,5 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import type { CanvasItem } from "../shared/model.ts";
+import { cutWithEllipsis } from "../shared/text-cut.ts";
 import {
   anchorLabel,
   answersOf,
@@ -56,7 +57,7 @@ const MAX_TOPIC_LENGTH = 90;
 /** The conversation's first comment, cut to a line, to name it in lists. */
 function conversationTopic({ comments }: ReviewAnswer) {
   const firstLine = comments[0]?.body.split("\n").find((line) => line.trim())?.trim() ?? "";
-  return firstLine.length > MAX_TOPIC_LENGTH ? `${firstLine.slice(0, MAX_TOPIC_LENGTH - 1)}…` : firstLine;
+  return cutWithEllipsis(firstLine, MAX_TOPIC_LENGTH - 1, MAX_TOPIC_LENGTH);
 }
 
 /** Lines picked in one block of code: rows `from` to `to` (in either order) of the block's rows. */

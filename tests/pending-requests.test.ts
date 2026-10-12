@@ -29,6 +29,11 @@ describe("a pending permission request", () => {
     expect(pendingPermission("p1", { toolCall, options }).command).toHaveLength(501);
   });
 
+  test("a command cut short keeps an emoji at the cut whole", () => {
+    const toolCall = { toolCallId: "t1", title: "Bash", kind: "execute" as const, rawInput: { command: `${"a".repeat(499)}😀b` } };
+    expect(pendingPermission("p1", { toolCall, options }).command).toBe(`${"a".repeat(499)}😀…`);
+  });
+
   test("of another tool carries no command, since its input, diffs or plan show only in the conversation", () => {
     const plan: acp.ToolCallContent = { type: "content", content: { type: "text", text: "Implement the following plan: …" } };
     expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", title: "Edit a.ts", kind: "edit", rawInput: { command: "not a shell" } }, options }).command).toBeNull();

@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { questionsOf } from "../shared/ask.ts";
 import type { CanvasItem, PendingAsk, PendingPermissionRequest } from "../shared/model.ts";
+import { cutWithEllipsis } from "../shared/text-cut.ts";
 
 /** As much of a command as a list of waiting conversations shows; the conversation has all of it. */
 const COMMAND_SHOWN = 500;
@@ -10,7 +11,7 @@ function stringField(value: unknown, key: string) {
   return typeof field === "string" ? field : null;
 }
 
-const shortened = (text: string) => (text.length > COMMAND_SHOWN ? `${text.slice(0, COMMAND_SHOWN)}…` : text);
+const shortened = (text: string) => cutWithEllipsis(text, COMMAND_SHOWN);
 
 export function pendingPermission(permissionId: string, { toolCall, options }: Pick<acp.RequestPermissionRequest, "toolCall" | "options">): PendingPermissionRequest {
   const title = toolCall.title ?? "a tool";
