@@ -1,7 +1,7 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test } from "@playwright/test";
-import { signIn } from "./helpers.ts";
+import { signIn, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4865);
@@ -21,7 +21,7 @@ const checkoutCode = () => execFileSync("bun", ["shared/desktop-app-code.ts", "d
 
 /** Listens for notifications as a desktop app built from `builtFromCode` does, until killed. */
 async function desktopAppBuiltFrom(builtFromCode: string) {
-  const app = spawn("bun", ["e2e/desktop-notifier.ts", host.origin, await browserToken(), builtFromCode], { stdio: ["ignore", "pipe", "inherit"] });
+  const app = startDesktopNotifier(host.origin, await browserToken(), builtFromCode);
   const lines = createInterface({ input: app.stdout! })[Symbol.asyncIterator]();
   expect(String((await lines.next()).value)).toBe("connected");
   return app;

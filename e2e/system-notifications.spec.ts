@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test } from "@playwright/test";
 import type { SystemNotification } from "../shared/system-notifications.ts";
@@ -12,6 +11,7 @@ import {
   sendMessage,
   signIn,
   startConversation,
+  startDesktopNotifier,
 } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -57,7 +57,7 @@ test("questions elsewhere notify, in the browser or else through the desktop app
   });
 
   await test.step("while the desktop app listens, it alone is told", async () => {
-    const desktopApp = spawn("bun", ["e2e/desktop-notifier.ts", host.origin, await browserToken()], { stdio: ["ignore", "pipe", "inherit"] });
+    const desktopApp = startDesktopNotifier(host.origin, await browserToken());
     const lines = createInterface({ input: desktopApp.stdout! })[Symbol.asyncIterator]();
     const isWaitingCount = (line: string) => /^waiting \d+$/.test(line);
     const nextLine = async (): Promise<string> => {

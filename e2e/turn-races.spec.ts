@@ -1,9 +1,8 @@
-import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5410, { fakePrograms: true });
@@ -55,7 +54,7 @@ async function startConversationWithoutModel(page: Page) {
 async function listenForWaitingCounts() {
   const signedIn = await fetch(host.authUrl, { redirect: "manual" });
   const token = signedIn.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
-  const desktopApp = spawn("bun", ["e2e/desktop-notifier.ts", host.origin, token], { stdio: ["ignore", "pipe", "inherit"] });
+  const desktopApp = startDesktopNotifier(host.origin, token);
   const counts: number[] = [];
   createInterface({ input: desktopApp.stdout! }).on("line", (line) => {
     const count = line.match(/^waiting (\d+)$/)?.[1];

@@ -1,11 +1,11 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { expect, test } from "@playwright/test";
-import { openSettings, signIn } from "./helpers.ts";
+import { openSettings, signIn, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 /** The fake GitHub's port is known only once it listens, which is before the host starts and reads this. */
@@ -58,7 +58,7 @@ test.afterAll(async () => {
 async function desktopAppOf(host: TestHost) {
   const signedIn = await fetch(host.authUrl, { redirect: "manual" });
   const token = signedIn.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
-  const app = spawn("bun", ["e2e/desktop-notifier.ts", host.origin, token], { stdio: ["ignore", "pipe", "inherit"] });
+  const app = startDesktopNotifier(host.origin, token);
   const lines = createInterface({ input: app.stdout! })[Symbol.asyncIterator]();
   const untilLine = async (text: string) => {
     for (;;) {

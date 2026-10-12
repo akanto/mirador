@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { expect, type Frame, type FrameLocator, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
@@ -9,6 +10,10 @@ export async function dragOnto(page: Page, item: Locator, target: Locator, edge:
   await page.mouse.down();
   await page.mouse.move(to.x + to.width / 2, edge === "top" ? to.y + 3 : to.y + to.height - 3, { steps: 10 });
 }
+
+/** Listens to the host the way the desktop app does, printing a line per event; it ends with this process, as its stdin closes. */
+export const startDesktopNotifier = (origin: string, token: string, builtFromCode?: string) =>
+  spawn("bun", ["e2e/desktop-notifier.ts", origin, token, ...(builtFromCode === undefined ? [] : [builtFromCode])], { stdio: ["pipe", "pipe", "inherit"] });
 
 export async function callCanvasTool(host: TestHost, conversationId: string, name: string, args: Record<string, unknown>) {
   const response = await fetch(`${host.origin}/mcp/${conversationId}`, {

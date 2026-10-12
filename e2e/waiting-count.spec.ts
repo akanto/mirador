@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, answerCanvasQuestion, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, answerCanvasQuestion, callCanvasTool, signIn, startConversation, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5400);
@@ -28,7 +27,7 @@ test("the waiting count shows in the browser tab title and travels to the deskto
   const second = await startConversation(page);
   await expect(page).toHaveTitle("Mirador");
 
-  const notifier = spawn("bun", ["e2e/desktop-notifier.ts", host.origin, await browserToken()], { stdio: ["ignore", "pipe", "inherit"] });
+  const notifier = startDesktopNotifier(host.origin, await browserToken());
   const lines = createInterface({ input: notifier.stdout! })[Symbol.asyncIterator]();
   const nextLine = async () => String((await lines.next()).value);
   const untilLine = async (text: string) => {
