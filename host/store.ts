@@ -404,9 +404,10 @@ export class Store {
   updateConversation(conversation: Conversation) {
     this.db
       .query(
-        `UPDATE conversations SET profile_id = ?, title = ?, title_set_by_user = ?, acp_session_id = ?, ask_mode = ?, bypass_permissions = ?, config_options = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE conversations SET harness = ?, profile_id = ?, title = ?, title_set_by_user = ?, acp_session_id = ?, ask_mode = ?, bypass_permissions = ?, config_options = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
+        conversation.harness,
         conversation.profileId,
         conversation.title,
         Number(conversation.titleSetByUser),

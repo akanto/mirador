@@ -37,4 +37,11 @@ describe("slash commands", () => {
       { name: "model", description: "", hint: "<model>" },
     ]);
   });
+
+  test("forget the list of the agent a conversation moved away from, and keep the one from before a profile change on the same agent", () => {
+    const listing: StoredEvent = { seq: 1, at: 1, event: { type: "acp", update: { sessionUpdate: "available_commands_update", availableCommands: [{ name: "init", description: "", input: null }] } } };
+    const changed = (agent?: "opencode"): StoredEvent => ({ seq: 2, at: 2, event: { type: "profile-changed", profileName: "Other", ...(agent && { agent }) } });
+    expect(latestSlashCommands([listing, changed()])).toEqual([{ name: "init", description: "", hint: null }]);
+    expect(latestSlashCommands([listing, changed("opencode")])).toBeNull();
+  });
 });

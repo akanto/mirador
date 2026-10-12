@@ -12,10 +12,15 @@ import type {
   ToolKind,
 } from "@agentclientprotocol/sdk";
 import { jobWaitEndedNotice } from "./job-waits.ts";
-import type { StoredEvent } from "./model.ts";
+import { harnessLabels, type HarnessId, type StoredEvent } from "./model.ts";
 import type { EditDiff } from "./review.ts";
 import { turnTitle, whatWasLeft } from "./reverts.ts";
 import { UserCommandLog, type UserCommand } from "./user-commands.ts";
+
+function profileChangedNotice(profileName: string | null, agent: HarnessId | undefined) {
+  if (!profileName) return "Now using the agent's own setup, without a profile";
+  return agent ? `Now using ${harnessLabels[agent]}, with the profile “${profileName}”` : `Now using the profile “${profileName}”`;
+}
 
 /** The stored event a block starts with: its sequence number keys the block, and its time is the block's time. */
 export interface Origin {
@@ -254,7 +259,7 @@ class TimelineBuilder {
       case "context-cleared":
         return this.push({ kind: "notice", ...origin, text: "Context cleared: the agent starts afresh" });
       case "profile-changed":
-        return this.push({ kind: "notice", ...origin, text: event.profileName ? `Now using the profile “${event.profileName}”` : "Now using the agent's own setup, without a profile" });
+        return this.push({ kind: "notice", ...origin, text: profileChangedNotice(event.profileName, event.agent) });
       case "permission": {
         const block: PermissionBlock = {
           kind: "permission",

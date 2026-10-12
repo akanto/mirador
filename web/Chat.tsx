@@ -2,6 +2,7 @@ import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { modelLabel } from "../shared/claude-models.ts";
 import { flatSelectOptions } from "../shared/config-options.ts";
+import { hasBegun } from "../shared/conversation-begun.ts";
 import { describeJob } from "../shared/job-waits.ts";
 import { formatTokens, tokensSpent, type SubagentUsage } from "../shared/subagent-usage.ts";
 import {
@@ -127,9 +128,13 @@ const isBusy = (conversation: Conversation) => conversation.status === "running"
 /** How long a graceful stop is given before the button offers to kill the wedged agent process. */
 const STOP_FORCE_GRACE_MS = 3000;
 
-/** Only profiles of the conversation's own agent: another agent cannot continue its session. One that has none to run on asks for one. */
-function ProfilePicker({ conversation, profiles }: { conversation: Conversation; profiles: Profile[] }) {
+/**
+ * Profiles of the conversation's own agent, then the other agents', which can be picked only until the conversation has
+ * begun: another agent cannot continue its session. One that has no profile to run on asks for one.
+ */
+function ProfilePicker({ conversation, profiles, begun }: { conversation: Conversation; profiles: Profile[]; begun: boolean }) {
   const choices = profiles.filter(({ harness }) => harness === conversation.harness);
+  const otherAgents = profiles.filter(({ harness }) => harness !== conversation.harness);
   const hasItsProfile = choices.some(({ id }) => id === conversation.profileId);
   return (
     <label className="config" data-hint={hints.profile}>
@@ -149,6 +154,15 @@ function ProfilePicker({ conversation, profiles }: { conversation: Conversation;
             {name}
           </option>
         ))}
+        {otherAgents.length > 0 && (
+          <optgroup label={begun ? "Other agents: start a new conversation" : "Other agents"}>
+            {otherAgents.map(({ id, name, harness }) => (
+              <option key={id} value={id} disabled={begun}>
+                {name} · {harnessLabels[harness]}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
     </label>
   );
@@ -183,6 +197,7 @@ function ChatHeader({
   runningSubagents,
   onShowRunningSubagent,
   onFind,
+  begun,
 }: {
   conversation: Conversation;
   profiles: Profile[];
@@ -193,6 +208,7 @@ function ChatHeader({
   runningSubagents: number;
   onShowRunningSubagent: () => void;
   onFind: () => void;
+  begun: boolean;
 }) {
   return (
     <header className="chat-header" data-pane-bar>
@@ -228,7 +244,7 @@ function ChatHeader({
       </div>
       {conversation.statusDetail && <div className="status-detail">{conversation.statusDetail}</div>}
       <div className="controls">
-        <ProfilePicker conversation={conversation} profiles={profiles} />
+        <ProfilePicker conversation={conversation} profiles={profiles} begun={begun} />
         {conversation.configOptions.map((option) => (
           <ConfigControl key={option.id} conversationId={conversation.id} option={option} />
         ))}
@@ -1498,6 +1514,7 @@ export function ChatPanel({
   onToggleTerminal: () => void;
 }) {
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
+  const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
   const { ref, onScroll, holdPlace, isPinned } = useScrollAnchor(open.events.length);
@@ -1545,6 +1562,7 @@ export function ChatPanel({
             runningSubagents={runningSubagents.length}
             onShowRunningSubagent={showRunningSubagent}
             onFind={find.open}
+            begun={begun}
           />
           {find.query !== null && <FindBar find={find} />}
           <MatchesFind.Provider value={find.matches}>

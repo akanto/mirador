@@ -56,6 +56,11 @@ describe("buildTimeline", () => {
     expect(timeline[0]).toMatchObject({ kind: "plan", entries: [{ status: "completed" }] });
   });
 
+  test("says which agent a conversation moved to, along with the profile", () => {
+    const notices = buildTimeline(stored([{ type: "profile-changed", profileName: "Work" }, { type: "profile-changed", profileName: "Radiance", agent: "opencode" }]));
+    expect(notices.map((block) => block.kind === "notice" && block.text)).toEqual(["Now using the profile “Work”", "Now using opencode, with the profile “Radiance”"]);
+  });
+
   test("shows abnormal turn endings only", () => {
     const timeline = buildTimeline(stored([{ type: "turn-end", stopReason: "end_turn" }, { type: "turn-end", stopReason: "cancelled" }]));
     expect(timeline).toEqual([{ kind: "notice", key: "2", at: 2000, text: "Turn ended: cancelled" }]);

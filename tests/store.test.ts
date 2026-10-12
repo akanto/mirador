@@ -296,6 +296,12 @@ describe("Store", () => {
     expect(store.listJobWaits()).toEqual([]);
   });
 
+  test("keeps the agent a conversation moved to", () => {
+    const { store, conversation } = seededStore();
+    store.updateConversation({ ...conversation, harness: "opencode", profileId: null });
+    expect(store.findConversation("c1")?.harness).toBe("opencode");
+  });
+
   test("remembers that the user named a conversation", () => {
     const { store, conversation } = seededStore();
     store.updateConversation({ ...conversation, title: "Login bug", titleSetByUser: true });

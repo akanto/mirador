@@ -26,9 +26,10 @@ export function matchingCommands(commands: SlashCommand[], query: string): Slash
   return [...closestFirst, ...named.filter((command) => !startsWithQuery(command))];
 }
 
-/** The commands the agent last said it has in this conversation, or null if it has not said yet. */
+/** The commands the agent last said it has in this conversation, or null if it has not said yet; another agent's from before a move to this one don't count. */
 export function latestSlashCommands(events: StoredEvent[]): SlashCommand[] | null {
-  const latest = events.findLast(({ event }) => event.type === "acp" && event.update.sessionUpdate === "available_commands_update");
+  const sinceAgentChanged = events.slice(events.findLastIndex(({ event }) => event.type === "profile-changed" && event.agent !== undefined) + 1);
+  const latest = sinceAgentChanged.findLast(({ event }) => event.type === "acp" && event.update.sessionUpdate === "available_commands_update");
   if (latest?.event.type !== "acp" || latest.event.update.sessionUpdate !== "available_commands_update") return null;
   return latest.event.update.availableCommands.map(toSlashCommand);
 }

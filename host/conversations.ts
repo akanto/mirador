@@ -12,6 +12,7 @@ import {
   type ConversationEvent,
   type ConversationStatus,
   type ExternalSession,
+  type HarnessId,
   type JobWait,
   type JobWaitEnd,
   type Launch,
@@ -38,6 +39,7 @@ import { launchIdea } from "./review/editor.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
+import { hasBegun, updatesTheAgentRecords } from "../shared/conversation-begun.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
@@ -336,6 +338,7 @@ export class ConversationService {
   /**
    * Moves the conversation's session to the agent process of another profile of its agent. A turn in progress
    * is stopped first and, once the session is back, continued under the new profile; queued messages follow.
+   * A conversation that has not begun may move to another agent's profile, in a fresh session of that agent.
    */
   setProfile(conversationId: string, profileId: string) {
     const runtime = this.runtime(conversationId);
@@ -348,21 +351,25 @@ export class ConversationService {
     const runtime = this.runtime(conversationId);
     await runtime.sessionId?.catch(() => {});
     if (this.get(conversationId).profileId === profileId) return;
-    const profile = profileToLaunch(this.store, { harness: this.get(conversationId).harness, profileId });
+    const harness = this.agentToSwitchTo(conversationId, profileId);
+    const changesAgent = harness !== this.get(conversationId).harness;
+    const profile = profileToLaunch(this.store, { harness, profileId });
     const interrupted = runtime.running;
     runtime.holdingQueue = interrupted;
     if (interrupted) await this.stopTurnEvenIfIgnored(conversationId);
     const conversation = this.get(conversationId);
     const released = this.releaseSession(runtime, conversation.acpSessionId);
+    if (changesAgent) this.contextUsage.delete(conversationId);
     this.save({
       ...conversation,
+      harness,
       profileId,
       askMode: profile.askMode,
       bypassPermissions: profile.bypassPermissions,
-      acpSessionId: this.agentHasRecorded(conversationId) ? conversation.acpSessionId : null,
-      configOptions: conversation.configOptions.filter(({ id }) => id !== "model"),
+      acpSessionId: !changesAgent && this.agentHasRecorded(conversationId) ? conversation.acpSessionId : null,
+      configOptions: changesAgent ? [] : conversation.configOptions.filter(({ id }) => id !== "model"),
     });
-    this.append(conversationId, { type: "profile-changed", profileName: profile.name });
+    this.append(conversationId, { type: "profile-changed", profileName: profile.name, ...(changesAgent && { agent: harness }) });
     this.ensureSession(conversationId, async () => {
       this.setStatus(conversationId, "starting", "Switching profile…");
       await released;
@@ -378,6 +385,14 @@ export class ConversationService {
         this.sendNextQueuedMessage(conversationId);
       })
       .catch(() => {});
+  }
+
+  /** The profile's own agent, which only a conversation that has not begun may move to. */
+  private agentToSwitchTo(conversationId: string, profileId: string): HarnessId {
+    const { harness } = this.get(conversationId);
+    const target = this.store.findProfile(profileId);
+    if (!target || target.harness === harness || !hasBegun(this.store.listEvents(conversationId))) return target?.harness ?? harness;
+    throw new Error(`This conversation already runs on ${harnessLabels[harness]}. Start a new conversation to use “${target.name}” on ${harnessLabels[target.harness]}.`);
   }
 
   /** Like /clear in Claude Code: the agent goes on in a fresh session, while the conversation so far stays on screen. */
@@ -1481,8 +1496,6 @@ export class ConversationService {
   }
 }
 
-
-const updatesTheAgentRecords = new Set<string>(["user_message_chunk", "agent_message_chunk", "agent_thought_chunk", "tool_call"]);
 
 /**
  * Claude Code keeps no record of a session until the agent works on a message in it, so a session without a finished

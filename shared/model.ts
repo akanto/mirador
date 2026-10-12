@@ -420,7 +420,8 @@ export type ConversationEvent =
   | { type: "permission"; permissionId: string; toolCall: ToolCallUpdate; options: PermissionOption[]; edits?: EditDiff[] }
   | { type: "permission-resolved"; permissionId: string; optionId: string | null }
   | { type: "turn-end"; stopReason: StopReason }
-  | { type: "profile-changed"; profileName: string | null }
+  /** `agent`: the conversation moved to another agent, which it may do before it has begun. */
+  | { type: "profile-changed"; profileName: string | null; agent?: HarnessId }
   /** From here on the agent works in a fresh session, with nothing of the conversation before in its context. */
   | { type: "context-cleared" }
   /**
