@@ -47,4 +47,15 @@ test("a mouse wheel over a full-screen program sends it arrow keys, also after t
   await expect(shown).toContainText("^[[A");
   await expect(shown).not.toContainText("^[[B");
   await page.keyboard.press("Control+C");
+
+  await test.step("a full-screen program that follows the mouse gets the wheel with the keys held down", async () => {
+    await page.keyboard.type("printf '\\033[?1000h\\033[?1006h'; echo follows-the-mouse; cat -v\n");
+    await expect(row("follows-the-mouse")).toHaveCount(1);
+    await page.keyboard.down("Alt");
+    await wheelUpOverTheTerminal();
+    await page.keyboard.up("Alt");
+    await expect(shown).toContainText("^[[<72;");
+    await expect(shown).not.toContainText("^[[<64;");
+    await page.keyboard.press("Control+C");
+  });
 });

@@ -12,8 +12,8 @@ export function wheelPastTheScrollAreaInFullScreenPrograms(view: Terminal) {
     if (!event.isTrusted || view.buffer.active.type !== "alternate") return;
     event.preventDefault();
     event.stopPropagation();
-    const { deltaX, deltaY, deltaMode, clientX, clientY } = event;
-    root.dispatchEvent(new WheelEvent("wheel", { deltaX, deltaY, deltaMode, clientX, clientY, cancelable: true }));
+    const { deltaX, deltaY, deltaMode, clientX, clientY, ctrlKey, shiftKey, altKey, metaKey } = event;
+    root.dispatchEvent(new WheelEvent("wheel", { deltaX, deltaY, deltaMode, clientX, clientY, ctrlKey, shiftKey, altKey, metaKey, cancelable: true }));
   };
   root.addEventListener("wheel", sendToRoot, { capture: true, passive: false });
   return () => root.removeEventListener("wheel", sendToRoot, { capture: true });
