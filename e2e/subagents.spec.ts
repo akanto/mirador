@@ -1,31 +1,34 @@
 import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
-import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5100);
-const model = new ScriptedModel();
-const PROFILE = "scripted opencode";
+const api = new FakeClaudeApi();
+const PROFILE = "fake claude";
 const claudeConfigDir = join(host.root, "claude-config");
 
 test.beforeAll(async () => {
-  await model.start();
+  api.limited = false;
+  await api.start();
+  mkdirSync(claudeConfigDir, { recursive: true });
   await host.start();
 });
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
-  model.stop();
+  api.stop();
 });
 
 test("a subagent's work folds into its card, and the header counts the subagents still at work", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const dialog = await createProfile(page, PROFILE, `${scriptedOpencodeEnvironment(model, host.root)}\nCLAUDE_CONFIG_DIR=${claudeConfigDir}`, "", "opencode");
+  const dialog = await createProfile(page, PROFILE, `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${claudeConfigDir}`);
   await dialog.getByRole("button", { name: "Close" }).click();
-  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · opencode` });
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · Claude Code` });
   const conversationId = await startConversation(page);
   await sendMessage(page, "hello");
   await waitForTurnToEnd(page);
@@ -63,9 +66,9 @@ test("a subagent's work folds into its card, and the header counts the subagents
   await test.step("while the turn is open the background subagent counts as running", async () => {
     await expect(watch).toHaveClass(/subagent-stopped/);
     await expect(chip).toHaveCount(0);
-    await sendMessage(page, "RUN echo still-going");
-    await expect(page.locator(".permission.pending")).toBeVisible({ timeout: 60_000 });
-    await expect(chip).toHaveText("◐ 1 subagent running");
+    api.hold();
+    await sendMessage(page, "Keep an eye on the build");
+    await expect(chip).toHaveText("◐ 1 subagent running", { timeout: 60_000 });
     await expect(watch).toHaveClass(/subagent-running/);
     await expect(watch.locator(".subagent-now")).toHaveText("now: bun run build");
     await expect(watch.locator(":scope > summary > .tool-status"), "the running subagent's own icon blinks").toHaveCSS("animation-name", "pulse");
@@ -98,7 +101,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
   });
 
   await test.step("the subagent is done when the turn ends", async () => {
-    await page.locator(".permission.pending button.option-allow_once").click();
+    api.answerHeld();
     await waitForTurnToEnd(page);
     await expect(chip).toHaveCount(0);
     await expect(dock).toHaveCount(0);
