@@ -34,6 +34,9 @@ run_in_container --volume "$results:/results" --env "RELEASE=$release" "mirador-
     if [ "$RELEASE" = 1 ]; then build=(bun run build:release); else build=(bunx electrobun build --env=stable); fi
     "${build[@]}" > /results/build.log 2>&1 || { echo "build failed"; tail -30 /results/build.log; exit 1; }
     cp artifacts/*-Setup.tar.gz /results/
+    if [ "$RELEASE" = 1 ]; then
+      cp artifacts/stable-linux-*-update.json artifacts/stable-linux-*.tar.zst /results/ || { echo "the update files are missing"; exit 1; }
+    fi
     ls /results/*-Setup.tar.gz
 
     echo "== install"

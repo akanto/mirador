@@ -191,6 +191,22 @@ Stable builds are signed ad hoc by Electrobun's own signing step (`ELECTROBUN_DE
 
 `make macos-signed` (repository root) signs the release build with your Developer ID instead and has Apple notarize it, so a download opens without clearing its quarantine. It needs the *Developer ID Application* certificate in the login keychain, and the notary key stored with `xcrun notarytool store-credentials mirador-notary`. `desktop/scripts/sign-macos-app.ts` signs every program and library in the app, the deepest first, with the hardened runtime and `desktop/entitlements.plist` (the JIT exceptions Bun's own release is signed with), checks that the signed Bun still runs JavaScript, submits the app and staples Apple's ticket to it. Apple can take more than an hour, most of all with a new team's first submissions: when the two-hour wait runs out, `make macos-staple` finishes once `xcrun notarytool info <id> --keychain-profile mirador-notary` says Accepted.
 
+### Update files
+
+A release build updates itself from the latest release: Electrobun's updater fetches `<channel>-<platform>-<arch>-update.json` from `releases/latest/download`, then a patch from the build it runs, or the whole archive when the release has none. `make update-files` (repository root, on a Mac, after `make macos-signed` and `make linux-remote`) writes these files into `dist/` with `desktop/scripts/update-files.ts`:
+
+- For macOS it packs the signed, stapled app in `dist/signing` again, as Electrobun packs its own archive before the app is signed. It refuses an app Apple has not accepted yet. Like Electrobun's archive it is POSIX ustar, without extended attributes.
+- The Linux archives are Electrobun's own, which `make linux` brings back with the installers.
+- For each platform, it makes a patch from each of the last 5 releases that carry update files, with Electrobun's `bsdiff`, against the archive that release published: an installed app keeps that archive, and only a patch made from those exact bytes applies to it. Each patch is checked by rebuilding this build's archive from it.
+
+Upload every file it writes with the release, under the same names, in this order: `releases/latest/download` follows the newest published release, so installed apps see a release the moment it is published.
+
+1. Run `make update-files` before the new release exists. A release already published would take one of the five places.
+2. Create the release as a draft, with the installers, `install.sh` and every update file.
+3. Publish it.
+
+The release build's `baseUrl` is set at build time, so an app from before it cannot update itself.
+
 ### Linux builds in containers
 
 `scripts/linux-desktop.sh` (repository root, needs Docker) builds the installer in an Ubuntu 24.04 container, installs it there and checks the app on a virtual display: the host answers, it opens at login and stays single-instance. `MIRADOR_LINUX_ARCH=x64` or `arm64` picks the architecture. Its installer has the container's paths baked in, so it is a test artifact, not one to hand out.

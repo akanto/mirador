@@ -1,6 +1,7 @@
 import type { ElectrobunConfig } from "electrobun";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const hostDirectory = resolve(import.meta.dir, "..");
@@ -34,6 +35,8 @@ export default {
     mac: { createDmg: false, icons: "icon.iconset", codesign: true },
     linux: { icon: "icon.iconset/icon_512x512.png" },
   },
+  /** Only a release build updates itself; its patches come from `make update-files`, as Electrobun's would diff the unsigned macOS app. */
+  ...(carriesMirador && { release: { baseUrl: `https://github.com/${RELEASES_REPOSITORY}/releases/latest/download`, generatePatch: false } }),
   scripts: { postBuild: "scripts/add-local-network-usage.ts" },
   runtime: { exitOnLastWindowClosed: false },
 } satisfies ElectrobunConfig;
