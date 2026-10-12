@@ -40,7 +40,6 @@ import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
-import { countWaiting } from "../shared/waiting.ts";
 import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
@@ -178,7 +177,7 @@ export class ConversationService {
   }
 
   waitingCount(): number {
-    return countWaiting(this.list());
+    return [...this.conversationsThatMayWait()].filter((conversationId) => this.waitingFor(conversationId) !== null).length;
   }
 
   get(conversationId: string): Conversation {
@@ -1425,6 +1424,11 @@ export class ConversationService {
     return currentActivity(runtime.openToolCalls, [...runtime.pendingPermissions.values()].map(({ request }) => request.title));
   }
 
+  /** Every conversation `waitingFor` could find waiting, from the three things it reads, so counting reads no database. */
+  private conversationsThatMayWait() {
+    return new Set([...this.runtimes.keys(), ...this.asksWaitedOn.keys(), ...this.unseenTurnEnds.keys()]);
+  }
+
   private waitingFor(conversationId: string): WaitingFor | null {
     if ((this.runtimes.get(conversationId)?.pendingPermissions.size ?? 0) > 0) return "permission";
     if (this.asksWaitedOn.has(conversationId)) return "question";
@@ -1473,7 +1477,7 @@ export class ConversationService {
   }
 
   private announceWaitingCount() {
-    if (this.hub.hasNotifier()) this.hub.announceWaitingCount(this.waitingCount());
+    this.hub.announceWaitingCount(this.waitingCount());
   }
 }
 

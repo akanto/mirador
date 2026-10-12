@@ -18,20 +18,25 @@ test("the tab title carries the count only while something waits", () => {
   expect(tabTitle(2)).toBe("(2) Mirador");
 });
 
+function connect(hub: Hub, role: SocketData["role"]) {
+  const received: ServerMessage[] = [];
+  const socket = { data: socketData(role, null), send: (payload: string) => received.push(JSON.parse(payload)) } as unknown as BrowserSocket;
+  hub.add(socket);
+  return received;
+}
+
 test("only the desktop app hears the count", () => {
-  function connect(hub: Hub, role: SocketData["role"]) {
-    const received: ServerMessage[] = [];
-    const socket = { data: socketData(role, null), send: (payload: string) => received.push(JSON.parse(payload)) } as unknown as BrowserSocket;
-    hub.add(socket);
-    return { socket, received };
-  }
   const hub = new Hub();
   const page = connect(hub, "page");
   const notifier = connect(hub, "notifier");
   hub.announceWaitingCount(3);
-  expect(notifier.received).toEqual([{ type: "waiting.counted", count: 3 }]);
-  expect(page.received).toEqual([]);
-  expect(hub.hasNotifier()).toBe(true);
-  hub.remove(notifier.socket);
-  expect(hub.hasNotifier()).toBe(false);
+  expect(notifier).toEqual([{ type: "waiting.counted", count: 3 }]);
+  expect(page).toEqual([]);
+});
+
+test("the desktop app hears the count only when it changed", () => {
+  const hub = new Hub();
+  const notifier = connect(hub, "notifier");
+  [0, 2, 2, 2, 1, 1, 0].forEach((count) => hub.announceWaitingCount(count));
+  expect(notifier.map((message) => message.type === "waiting.counted" && message.count)).toEqual([0, 2, 1, 0]);
 });

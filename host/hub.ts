@@ -75,6 +75,7 @@ const once = (make: () => string) => {
 export class Hub {
   private readonly sockets = new Set<BrowserSocket>();
   private readonly notifiers = new Set<BrowserSocket>();
+  private announcedWaitingCount: number | null = null;
 
   add(socket: BrowserSocket) {
     (socket.data.role === "notifier" ? this.notifiers : this.sockets).add(socket);
@@ -111,12 +112,10 @@ export class Hub {
     this.notifyEachDevice([...this.sockets, ...this.notifiers], notification);
   }
 
-  hasNotifier() {
-    return this.notifiers.size > 0;
-  }
-
-  /** Only the desktop app's notification sockets hear it; pages work the count out from the conversations they already hold. */
+  /** Only the desktop app's notification sockets hear it, and only when it changed; pages work the count out from the conversations they already hold. */
   announceWaitingCount(count: number) {
+    if (count === this.announcedWaitingCount) return;
+    this.announcedWaitingCount = count;
     const payload = JSON.stringify({ type: "waiting.counted", count } satisfies ServerMessage);
     this.notifiers.forEach((socket) => deliver(socket, payload));
   }
