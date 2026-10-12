@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { excerptRows, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "../host/review/diff.ts";
 import { parsePullRequestUrl, postPendingReview, type GitHubCli } from "../host/review/github.ts";
-import { ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
+import { AnchorReader, ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
 import { gitRepository, reviewRequest as request } from "./review-repository.ts";
 
 const diff = `diff --git a/src/app.ts b/src/app.ts
@@ -140,6 +140,46 @@ describe("anchors and excerpts", () => {
     expect(isCommentable(app, { path: "src/app.ts", line: 2, endLine: 3 })).toBe(true);
     expect(isCommentable(app, { path: "src/app.ts", line: 5, endLine: 6 })).toBe(false);
     expect(isCommentable(undefined, { path: "elsewhere.ts", line: 1, endLine: 1 })).toBe(false);
+  });
+});
+
+describe("excerpt budget", () => {
+  const fileLines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`);
+  const excerptOf = async (lines: string[], range: string) => {
+    const reader = new AnchorReader("/repo", { lines: async () => lines, where: "in the test file" }, []);
+    return (await reader.read(`big.ts:${range}`, "finding 1"))!.excerpt;
+  };
+
+  test("a short anchor keeps six lines of context on each side", async () => {
+    expect(await excerptOf(fileLines(40), "10-12")).toEqual({ startLine: 4, lines: fileLines(40).slice(3, 18) });
+  });
+
+  test("an anchor that fits only when the context is dropped keeps every anchored line", async () => {
+    expect(await excerptOf(fileLines(200), "1-160")).toEqual({ startLine: 1, lines: fileLines(160) });
+  });
+
+  test("an anchor longer than the cap keeps its first and its last line", async () => {
+    const excerpt = await excerptOf(fileLines(300), "1-300");
+    expect(excerpt.lines[0]).toBe("line 1");
+    expect(excerpt.lines.at(-1)).toBe("line 300");
+  });
+
+  test("an anchor longer than the cap says how many of its lines are left out", async () => {
+    const excerpt = await excerptOf(fileLines(300), "1-300");
+    expect(excerpt.elision).toEqual({ after: 78, lineCount: 141 });
+    expect(excerpt.lines.length).toBe(159);
+    expect(excerpt.lines[79]).toBe("line 221");
+  });
+
+  test("the excerpt's line numbers jump over the elision", () => {
+    const rows = excerptRows(undefined, { startLine: 500, lines: ["a", "b", "c", "d"], elision: { after: 1, lineCount: 40 } });
+    expect(rows.map(({ kind, newLine }) => (kind === "elided" ? "elided" : newLine))).toEqual([500, 501, "elided", 542, 543]);
+    expect(rows[2]!.text).toBe("… 40 lines not shown …");
+  });
+
+  test("a gap of one line says so in the singular", () => {
+    const rows = excerptRows(undefined, { startLine: 10, lines: ["a", "b"], elision: { after: 0, lineCount: 1 } });
+    expect(rows[1]!.text).toBe("… 1 line not shown …");
   });
 });
 

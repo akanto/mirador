@@ -17,6 +17,8 @@ export interface CodeAnchor {
 export interface CodeExcerpt {
   startLine: number;
   lines: string[];
+  /** A gap inside the excerpt, shown instead of lines too long to include: `after` is the index in `lines` of the last line before it. */
+  elision?: { after: number; lineCount: number };
 }
 
 export interface ReviewFlowStep {
@@ -77,7 +79,7 @@ export interface ReviewAnswer {
   postError?: string;
 }
 
-export type DiffRowKind = "context" | "added" | "removed";
+export type DiffRowKind = "context" | "added" | "removed" | "elided";
 
 export interface DiffRow {
   kind: DiffRowKind;
@@ -217,9 +219,20 @@ function removedBeforeLine(file: ReviewFile) {
 export function excerptRows(file: ReviewFile | undefined, excerpt: CodeExcerpt): DiffRow[] {
   const added = new Set((file?.hunks ?? []).flatMap((hunk) => hunk.rows.filter((row) => row.kind === "added").map((row) => row.newLine!)));
   const removedBefore = file ? removedBeforeLine(file) : new Map<number, DiffRow[]>();
-  const lineNumbers = excerpt.lines.map((_, index) => excerpt.startLine + index);
-  return lineNumbers.flatMap((newLine, index): DiffRow[] => [
-    ...(removedBefore.get(newLine) ?? []),
-    { kind: added.has(newLine) ? "added" : "context", oldLine: null, newLine, text: excerpt.lines[index]! },
-  ]);
+  const lineAt = (index: number) => excerpt.startLine + index + (excerpt.elision && index > excerpt.elision.after ? excerpt.elision.lineCount : 0);
+  return excerpt.lines.flatMap((text, index): DiffRow[] => {
+    const newLine = lineAt(index);
+    return [
+      ...(removedBefore.get(newLine) ?? []),
+      { kind: added.has(newLine) ? "added" : "context", oldLine: null, newLine, text },
+      ...(excerpt.elision?.after === index ? [elisionRow(excerpt.elision.lineCount)] : []),
+    ];
+  });
 }
+
+const elisionRow = (lineCount: number): DiffRow => ({
+  kind: "elided",
+  oldLine: null,
+  newLine: null,
+  text: `… ${lineCount} ${lineCount === 1 ? "line" : "lines"} not shown …`,
+});

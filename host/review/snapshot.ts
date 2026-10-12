@@ -111,10 +111,22 @@ export async function reviewedFileLines(review: Review, path: string) {
   return linesAt(review.repository, review.headCommit, path);
 }
 
+/** The anchor and its context when they fit; the anchor alone when only it fits; else its middle, so both of its ends stay. */
 function excerptAround({ line, endLine }: CodeAnchor, fileLines: string[]): CodeExcerpt {
-  const startLine = Math.max(1, line - EXCERPT_CONTEXT_LINES);
-  const lastLine = Math.min(fileLines.length, endLine + EXCERPT_CONTEXT_LINES, startLine + MAX_EXCERPT_LINES - 1);
-  return { startLine, lines: fileLines.slice(startLine - 1, lastLine) };
+  const anchorLength = endLine - line + 1;
+  if (anchorLength + 2 * EXCERPT_CONTEXT_LINES <= MAX_EXCERPT_LINES) {
+    const startLine = Math.max(1, line - EXCERPT_CONTEXT_LINES);
+    return { startLine, lines: fileLines.slice(startLine - 1, Math.min(fileLines.length, endLine + EXCERPT_CONTEXT_LINES)) };
+  }
+  if (anchorLength <= MAX_EXCERPT_LINES) return { startLine: line, lines: fileLines.slice(line - 1, endLine) };
+  const shown = MAX_EXCERPT_LINES - 1;
+  const head = Math.floor(shown / 2);
+  const tail = shown - head;
+  return {
+    startLine: line,
+    lines: [...fileLines.slice(line - 1, line - 1 + head), ...fileLines.slice(endLine - tail, endLine)],
+    elision: { after: head - 1, lineCount: anchorLength - shown },
+  };
 }
 
 /** Reads anchors against the reviewed version, collecting what is wrong with them instead of stopping at the first. */

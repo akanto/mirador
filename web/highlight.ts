@@ -130,7 +130,7 @@ export function highlightRows(path: string, rows: DiffRow[]): CodeSpan[][] | nul
       if (colored(row)) highlighted[index] = lines[lineIndex] ?? [];
     });
   };
-  highlightSide((row) => row.kind !== "removed", () => true);
-  highlightSide((row) => row.kind !== "added", (row) => row.kind === "removed");
+  highlightSide((row) => row.kind === "context" || row.kind === "added", () => true);
+  highlightSide((row) => row.kind === "context" || row.kind === "removed", (row) => row.kind === "removed");
   return highlighted;
 }

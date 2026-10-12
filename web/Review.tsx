@@ -183,23 +183,29 @@ function CodeBlock({
     <div className="code-block">
       {rows.map((row, index) => (
         <Fragment key={index}>
-          <div
-            className={["code-row", row.kind, anchored && isWithin(row.newLine, anchored) && "anchored", index >= first && index <= last && "selected"]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <button
-              type="button"
-              className="line-number"
-              data-hint={hints.reviewLineNumber}
-              aria-label={`Line ${row.newLine ?? row.oldLine}`}
-              onClick={(event) => pick(index, event.shiftKey)}
+          {row.kind === "elided" ? (
+            <div className="code-row elided">
+              <span className="elision">{row.text}</span>
+            </div>
+          ) : (
+            <div
+              className={["code-row", row.kind, anchored && isWithin(row.newLine, anchored) && "anchored", index >= first && index <= last && "selected"]
+                .filter(Boolean)
+                .join(" ")}
             >
-              {row.newLine ?? row.oldLine}
-            </button>
-            <span className="diff-marker">{marker(row)}</span>
-            <CodeText text={row.text} spans={highlighted?.[index]} />
-          </div>
+              <button
+                type="button"
+                className="line-number"
+                data-hint={hints.reviewLineNumber}
+                aria-label={`Line ${row.newLine ?? row.oldLine}`}
+                onClick={(event) => pick(index, event.shiftKey)}
+              >
+                {row.newLine ?? row.oldLine}
+              </button>
+              <span className="diff-marker">{marker(row)}</span>
+              <CodeText text={row.text} spans={highlighted?.[index]} />
+            </div>
+          )}
           {after?.(row)}
         </Fragment>
       ))}
@@ -1132,7 +1138,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     if (selection) return selection;
     if (tab === "flow" && walk.flow[stepIndex]) {
       const step = walk.flow[stepIndex]!;
-      return { path: step.at.path, rows: excerptRows(fileOf(walk, step.at.path), step.excerpt).filter((row) => isWithin(row.newLine, step.at)) };
+      return { path: step.at.path, rows: excerptRows(fileOf(walk, step.at.path), step.excerpt).filter((row) => row.kind === "elided" || isWithin(row.newLine, step.at)) };
     }
     if (tab === "files" && file?.hunks[hunkIndex]) return { path: file.path, rows: file.hunks[hunkIndex]!.rows };
     if (tab === "findings" && finding) return placeOfFinding(finding);
@@ -1141,7 +1147,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   const placeOfFinding = (target: ReviewFinding): AskingAbout => ({
     findingId: target.id,
     path: target.at.path,
-    rows: excerptRows(fileOf(walk, target.at.path), target.excerpt).filter((row) => isWithin(row.newLine, target.at)),
+    rows: excerptRows(fileOf(walk, target.at.path), target.excerpt).filter((row) => row.kind === "elided" || isWithin(row.newLine, target.at)),
   });
   const askingLabel = (place: AskingAbout) => {
     const askedFinding = findings.find(({ id }) => id === place.findingId);

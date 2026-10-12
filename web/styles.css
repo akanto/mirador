@@ -4939,6 +4939,17 @@ button.picture-option.chosen {
   user-select: none;
 }
 
+.code-row.elided {
+  grid-template-columns: 1fr;
+}
+
+.elision {
+  padding: 0 8px;
+  text-align: center;
+  color: var(--faint);
+  user-select: none;
+}
+
 .code-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
