@@ -51,6 +51,7 @@ describe("runtime", () => {
       ownedHostPid: "/data/desktop-host.pid",
       hostLog: "/data/logs/host.log",
       browserToken: "/data/browser-token",
+      pendingUpdate: "/data/desktop-update-pending",
     });
   });
 

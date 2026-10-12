@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import type { HostStatus } from "./host-supervisor.ts";
 
 /** Electrobun 2.0.2 keeps each build's archive, and the note of the one prepared to install, here in the channel's folder. */
 const EXTRACTION_FOLDER = "self-extraction";
@@ -75,6 +76,22 @@ export function skippedBuilds(channelFolder: string) {
     add: (hash: string) => writeFileSync(file, JSON.stringify([...new Set([...read(), hash])])),
   };
 }
+
+/** An update is about to replace the app's files, which the app swaps itself; the helper it hands over to then relaunches it. */
+export const markUpdatePending = (file: string) => writeFileSync(file, "");
+
+/** True once, on the start that follows an update, as Electrobun's helper relaunches the app rather than telling this one. */
+export function takePendingUpdate(file: string) {
+  if (!existsSync(file)) return false;
+  rmSync(file, { force: true });
+  return true;
+}
+
+/**
+ * Whether the host must be reloaded after an update: a host started from the app's own copy is the old files, while one
+ * from a folder the user pointed the app at was never replaced. A host the app started itself is restarted with it.
+ */
+export const hostRunsReplacedFiles = (pendingUpdate: boolean, runsTheAppSCopy: boolean, status: HostStatus) => pendingUpdate && runsTheAppSCopy && status === "background";
 
 /** A valid signature, from the same team as the running app; an app with no team on either side fails. */
 export async function signedBySameTeam(archive: string, runningApp: string) {

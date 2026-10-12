@@ -2,7 +2,17 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discardDownload, replacedFolder, signedBySameTeam, skippedBuilds, teamIdentifierIn, updateBlockedBy } from "../desktop/src/core/update-checks.ts";
+import {
+  discardDownload,
+  hostRunsReplacedFiles,
+  markUpdatePending,
+  replacedFolder,
+  signedBySameTeam,
+  skippedBuilds,
+  takePendingUpdate,
+  teamIdentifierIn,
+  updateBlockedBy,
+} from "../desktop/src/core/update-checks.ts";
 
 let channel: string;
 beforeEach(() => {
@@ -54,4 +64,21 @@ test("skipped builds are remembered across starts, and an unreadable list skips 
   expect(["bad1", "bad2", "good"].map(skippedBuilds(channel).has)).toEqual([true, true, false]);
   writeFileSync(join(channel, "mirador-skipped-updates.json"), "{not json");
   expect(skippedBuilds(channel).has("bad1")).toBe(false);
+});
+
+test("an update is remembered until the start that follows it, and only that start is told", () => {
+  const file = join(channel, "desktop-update-pending");
+
+  expect(takePendingUpdate(file)).toBe(false);
+  markUpdatePending(file);
+  expect(takePendingUpdate(file)).toBe(true);
+  expect(takePendingUpdate(file)).toBe(false);
+});
+
+test("only a host running the copy inside the app, started in the background, is reloaded after an update", () => {
+  expect(hostRunsReplacedFiles(true, true, "background")).toBe(true);
+  expect(hostRunsReplacedFiles(true, false, "background")).toBe(false);
+  expect(hostRunsReplacedFiles(true, true, "owned")).toBe(false);
+  expect(hostRunsReplacedFiles(false, true, "background")).toBe(false);
+  expect(hostRunsReplacedFiles(true, true, "external")).toBe(false);
 });

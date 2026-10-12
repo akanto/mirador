@@ -12,6 +12,7 @@ import { PidFileOnDisk, systemProcesses } from "../core/processes.ts";
 import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from "../core/runtime.ts";
 import type { SettingsStore } from "../core/settings.ts";
 import type { TrayAction, TrayState } from "../core/tray-menu.ts";
+import { hostRunsReplacedFiles, markUpdatePending, takePendingUpdate } from "../core/update-checks.ts";
 import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
 import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
@@ -118,6 +119,7 @@ export class DesktopApp {
     if (this.window.isOpen) return this.window.bringToFront();
     await this.busyWith("starting", async () => {
       await this.supervisor.start();
+      await this.reloadHostAfterUpdate();
       this.window.open(authUrl(this.environment.runtime, this.browserToken()));
     });
     if (!this.window.isOpen) setDockIconVisible(false);
@@ -157,6 +159,17 @@ export class DesktopApp {
     if (this.newerVersion?.kind === "release") this.window.openInBrowser(this.newerVersion.url);
   }
 
+  /**
+   * The app updates itself by swapping its own files and handing over to Electrobun's helper, so this start may be the
+   * first after an update: a host started from the copy inside the app is still running the old files and only a reload
+   * makes it run the new ones.
+   */
+  private async reloadHostAfterUpdate() {
+    const pendingUpdate = takePendingUpdate(this.environment.paths.pendingUpdate);
+    if (!hostRunsReplacedFiles(pendingUpdate, this.environment.settings.runsTheMiradorItCarries(), await this.supervisor.status())) return;
+    await this.supervisor.restart();
+  }
+
   /** The restart stops the host this app started, and the agent turns running on it. */
   private async installUpdate() {
     if (!this.update || this.update.blockedBy) return;
@@ -170,6 +183,7 @@ export class DesktopApp {
       cancelId: 1,
     });
     if (response !== 0) return;
+    markUpdatePending(this.environment.paths.pendingUpdate);
     await this.selfUpdate?.install().catch((error) => this.report(error));
   }
 

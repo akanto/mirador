@@ -18,6 +18,15 @@ function scratchFile() {
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 describe("desktop settings", () => {
+  test("tells whether the host runs the copy of Mirador the app carries", () => {
+    const release = new SettingsStore(scratchFile(), releaseBuild, insideApp);
+    expect(release.runsTheMiradorItCarries()).toBe(true);
+    expect(release.current().hostDirectory).toBe(insideApp.hostDirectory);
+
+    const fromTheRepo = new SettingsStore(scratchFile(), build, insideApp);
+    expect(fromTheRepo.runsTheMiradorItCarries()).toBe(false);
+  });
+
   test("default to hosting from the repo with the build's bun, in the foreground, opening at login", () => {
     expect(defaultSettings(build)).toEqual({ hostDirectory: "/repo", bun: "/bin/bun", hostRunsInBackground: false, openAtLogin: true });
   });

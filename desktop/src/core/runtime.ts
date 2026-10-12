@@ -49,6 +49,8 @@ export interface DataPaths {
   ownedHostPid: string;
   hostLog: string;
   browserToken: string;
+  /** Written before the app hands over to the updater, and cleared by the next start: that start is running new files. */
+  pendingUpdate: string;
 }
 
 export const dataPaths = (dataDir: string): DataPaths => ({
@@ -56,6 +58,7 @@ export const dataPaths = (dataDir: string): DataPaths => ({
   ownedHostPid: join(dataDir, "desktop-host.pid"),
   hostLog: join(dataDir, "logs", "host.log"),
   browserToken: join(dataDir, "browser-token"),
+  pendingUpdate: join(dataDir, "desktop-update-pending"),
 });
 
 export const authUrl = (runtime: Runtime, token: string) => `${runtime.origin}/auth?token=${token}`;

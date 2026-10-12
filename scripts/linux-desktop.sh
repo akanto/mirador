@@ -5,7 +5,9 @@
 # Usage: [MIRADOR_LINUX_ARCH=x64|arm64] [MIRADOR_LINUX_RELEASE=1] scripts/linux-desktop.sh
 # MIRADOR_LINUX_RELEASE=1 builds the release installer instead, the one to hand out: from the committed files only (run
 # it from the main checkout or a clone, as the container clones it), carrying Mirador and Linux production dependencies,
-# with no path from the container baked in; the checks then also see the host run the copy inside the app.
+# with no path from the container baked in; the checks then also see the host run the copy inside the app, and go on to
+# build the release after it and check the installed app finds it, downloads the patch rather than the whole archive,
+# and leaves the version it runs until the user restarts it.
 # The installer, screenshots and logs are saved to $results.
 set -euo pipefail
 
@@ -87,6 +89,51 @@ run_in_container --volume "$results:/results" --env "RELEASE=$release" "mirador-
     import -window root /results/window-reopened.png
 
     kill "$app" 2>/dev/null
+
+    if [ "$RELEASE" = 1 ]; then
+      a=$(uname -m | sed "s/x86_64/x64/; s/aarch64/arm64/")
+      installed=~/.local/share/com.sodre90.mirador/stable
+      hash_of() { bun -e "console.log(require(process.argv[1]).hash)" "$1"; }
+      current=$(hash_of "$installed/app/Resources/version.json")
+      echo "== update itself, from build $current"
+
+      echo "== build the release after this one"
+      cd /tmp/mirador
+      sed -i "s/^export const MIRADOR_VERSION = .*/export const MIRADOR_VERSION = \"0.4.1\";/" shared/version.ts
+      cd desktop && bun run build:release > /results/build-next.log 2>&1 || { echo "the next release failed to build"; tail -20 /results/build-next.log; exit 1; }
+
+      serve=/tmp/serve && rm -rf $serve && mkdir -p $serve
+      cp artifacts/stable-linux-$a-update.json artifacts/stable-linux-$a-Mirador.tar.zst $serve/
+      next=$(hash_of "$serve/stable-linux-$a-update.json")
+      # The app keeps the archive its release published, and only a patch made from those exact bytes applies to it.
+      tools=$(dirname "$(find ~/.hutch/releases/electrobun -name bsdiff -type f | head -1)")
+      "$tools/zig-zstd" decompress -i "$serve/stable-linux-$a-Mirador.tar.zst" -o /tmp/next.tar --no-timing > /dev/null
+      "$tools/bsdiff" "$installed/self-extraction/$current.tar" /tmp/next.tar "$serve/stable-linux-$a-$current.patch"
+      ls -l $serve
+
+      bun /src/scripts/update-test-server.ts $serve 4699 /results/update-server.log > /dev/null 2>&1 &
+      server=$!
+      sleep 1
+      # The app reads where its updates come from in its own version.json, so the test needs no address built in.
+      bun -e "const fs = require(\"fs\"), file = process.argv[1], version = require(file); fs.writeFileSync(file, JSON.stringify({ ...version, baseUrl: \"http://127.0.0.1:4699\" }))" "$installed/app/Resources/version.json"
+
+      echo "== start again, now that a newer release is out"
+      : > /results/update-server.log
+      "$launcher" > /results/app-update.log 2>&1 &
+      app=$!
+      served() { grep -q "^200 $1" /results/update-server.log 2>/dev/null; }
+      untouched_archive() { ! grep -q "^200 .*tar.zst" /results/update-server.log 2>/dev/null; }
+      prepared() { test -f "$installed/self-extraction/$next.tar"; }
+      check "it finds the newer release" until_true served "stable-linux-$a-update.json"
+      check "it downloads the patch, not the whole app" until_true served "stable-linux-$a-$current.patch"
+      check "and never fetches the whole archive" until_true untouched_archive
+      check "the patched archive is prepared to install" until_true prepared
+      check "it goes on running the version it has until told to restart" test "$(hash_of "$installed/app/Resources/version.json")" = "$current"
+      check "with its host still answering" until_true host_answers
+      kill $server 2>/dev/null
+      kill "$app" 2>/dev/null
+    fi
+
     if (( ${#failed[@]} )); then echo "FAILED: ${failed[*]}"; exit 1; fi
     echo "ALL PASSED"
   '

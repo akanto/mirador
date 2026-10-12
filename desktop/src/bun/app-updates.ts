@@ -31,6 +31,7 @@ export async function selfUpdateFromReleases(appPath: string | null, events: Upd
         const { updateReady, error } = Updater.updateInfo();
         if (!updateReady) throw new Error(error || "The update did not download.");
       },
+      /** Only macOS signs apps, so only there is there a signature to hold the download to; on Linux it rests on HTTPS from the release address. */
       trusted: async ({ hash }) => process.platform !== "darwin" || signedBySameTeam(downloadedArchive(channelFolder, hash), appPath),
       discard: (hash) => discardDownload(channelFolder, hash),
       skipped: skippedBuilds(channelFolder),

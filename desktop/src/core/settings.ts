@@ -91,6 +91,11 @@ export class SettingsStore {
     return withHostLocation(this.stored, this.insideApp);
   }
 
+  /** Whether the host runs the copy of Mirador the app carries, rather than one the user pointed it at. */
+  runsTheMiradorItCarries() {
+    return this.stored.hostDirectory === null;
+  }
+
   update(patch: Partial<Omit<DesktopSettings, keyof HostLocation>>) {
     this.stored = { ...this.stored, ...patch };
     saveSettings(this.file, this.stored);
