@@ -59,11 +59,13 @@ export function rewindPointBefore(events: StoredEvent[], seq: number): string | 
 /** The agent's latest message in the conversation, where turns taken elsewhere since pick up. */
 export const lastAgentMessageId = (events: StoredEvent[]) => rewindPointBefore(events, Infinity);
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 /** The start of a turn's message, short enough to name that turn in a label or a note. */
 export function turnTitle(text: string) {
   const first = text.trim().split("\n")[0];
-  const codePoints = [...first];
-  return codePoints.length > 60 ? `${codePoints.slice(0, 60).join("")}…` : first || "an earlier turn";
+  const characters = [...graphemes.segment(first)].map(({ segment }) => segment);
+  return characters.length > 60 ? `${characters.slice(0, 60).join("")}…` : first || "an earlier turn";
 }
 
 export const whatChanged = ({ restored, removed }: Pick<Revert, "restored" | "removed">) => {

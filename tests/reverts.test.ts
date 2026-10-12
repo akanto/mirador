@@ -58,6 +58,12 @@ test("a shortened turn title keeps an emoji whole", () => {
   expect(title).toBe(`${"a".repeat(59)}😀…`);
 });
 
+test("a shortened turn title keeps a character made of several code points whole", () => {
+  for (const cluster of ["🇭🇺", "👨‍👩‍👧", "1️⃣", "👍🏽", "é"]) {
+    expect(turnTitle(`${"a".repeat(59)}${cluster} and more text`)).toBe(`${"a".repeat(59)}${cluster}…`);
+  }
+});
+
 test("a rewind to a turn leaves the turns from there on, and none before it", () => {
   const events = stored(userMessage("first"), userMessage("second"), userMessage("third"));
   expect(turnsFrom(events, 2)).toEqual([
