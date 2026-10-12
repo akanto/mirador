@@ -47,16 +47,17 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
 function QuotaMeter({ name, window }: { name: QuotaName; window: QuotaWindow }) {
   const share = quotaShare(window);
   const percent = quotaPercentLabel(window);
+  const resetsIn = timeUntil(window.resetsAt, Date.now());
   return (
     <span
       className={`usage-meter quota-meter level-${contextLevel(share)}`}
-      data-hint={hints.quota(quotaLimitNames[name], percent, timeUntil(window.resetsAt, Date.now()))}
-      aria-label={`${quotaLimitNames[name]} limit ${percent} used`}
+      data-hint={hints.quota(quotaLimitNames[name], percent, resetsIn)}
+      aria-label={`${quotaLimitNames[name]} limit ${percent} used, starts over in ${resetsIn}`}
     >
       <span className="usage-bar" aria-hidden="true">
         <span style={{ width: `${share * 100}%` }} />
       </span>
-      {quotaLabels[name]} {percent}
+      {quotaLabels[name]} {percent} · {resetsIn}
     </span>
   );
 }

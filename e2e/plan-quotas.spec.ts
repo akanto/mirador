@@ -39,7 +39,7 @@ test.afterAll(async () => {
   api.stop();
 });
 
-test("the plan's five-hour and weekly usage show after the context meter once the agent reports them, and reach the statusline command", async ({ page }) => {
+test("the plan's five-hour and weekly usage show after the context meter once the agent reports them, with when each starts over, and reach the statusline command", async ({ page }) => {
   test.setTimeout(240_000);
   const now = Math.floor(Date.now() / 1000);
   api.limited = false;
@@ -69,12 +69,12 @@ test("the plan's five-hour and weekly usage show after the context meter once th
     expect(word.x + word.width).toBeLessThanOrEqual(box.x + box.width);
   });
 
-  await test.step("the built-in statusline shows them right after the context meter, the weekly one amber past 75%", async () => {
+  await test.step("the built-in statusline shows them right after the context meter, each with when it starts over, the weekly one amber past 75%", async () => {
     await statusline.getByRole("button", { name: "Built-in" }).click();
     const meters = statusline.locator(".usage-meter");
     await expect(meters).toHaveCount(3);
     await expect(meters.nth(0)).toHaveClass(/context-meter/);
-    await expect(statusline.locator(".quota-meter")).toHaveText(["5h 37%", "7d 88%"]);
+    await expect(statusline.locator(".quota-meter")).toHaveText([/^5h 37% · 2h 2[89]m$/, /^7d 88% · 2d 1[45]h$/]);
     await expect(statusline.locator(".quota-meter").nth(0)).toHaveClass(/level-ok/);
     await expect(statusline.locator(".quota-meter").nth(1)).toHaveClass(/level-high/);
     await expect(statusline.getByLabel("Five-hour limit 37% used")).toHaveAttribute("data-hint", /37% used, starts over in 2h 2[89]m/);
@@ -83,6 +83,6 @@ test("the plan's five-hour and weekly usage show after the context meter once th
 
   await test.step("another conversation of the same profile shows them before its first answer", async () => {
     await startConversation(page);
-    await expect(statusline.locator(".quota-meter")).toHaveText(["5h 37%", "7d 88%"]);
+    await expect(statusline.locator(".quota-meter")).toHaveText([/^5h 37% · 2h 2[89]m$/, /^7d 88% · 2d 1[45]h$/]);
   });
 });
