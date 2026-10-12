@@ -143,6 +143,8 @@ The data directory, port and canvas port follow the host's own environment varia
 
 Replace `4600` with your port if you changed it. Your conversations and canvases in `~/.mirador` stay.
 
+**Installed with Homebrew**: `brew uninstall --cask mirador` quits the app and removes it with its open at login entry, and on macOS the background host too. On Linux, turn off *Run host in the background* in the tray menu first. `brew uninstall --zap --cask mirador` also removes the app's window data.
+
 **macOS**: turn off the background host and open at login, quit the app from the menu bar, and delete it:
 
 ```bash

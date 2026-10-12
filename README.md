@@ -83,6 +83,14 @@ The script downloads the latest release for your computer, installs it and start
 
 The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`) and opencode. The script tells you when neither is there.
 
+**With Homebrew**, on macOS or Linux:
+
+```bash
+brew install --cask sodre90/tap/mirador
+```
+
+The app updates itself, so `brew upgrade` leaves it alone. On Linux, Homebrew doesn't install the libraries the app needs; it prints the `apt` and `dnf` commands for them. `brew uninstall --cask mirador` quits the app and removes it (on Linux, turn off *Run host in the background* first), and `--zap` also removes its window's data. Your conversations in `~/.mirador` stay.
+
 **By hand**, from the [releases](https://github.com/sodre90/mirador/releases):
 
 **macOS**: `Mirador-macos-arm64.zip`. The app is signed ad hoc, not by an identified developer, so clear the download's quarantine once:
@@ -429,6 +437,7 @@ make linux                               # both Linux release installers, built 
 make linux-remote LINUX_HOST=user@host   # from a Mac: make linux on that machine, with the installers and update files copied back
 make update-files                        # what the apps fetch to update themselves, with patches from the last 5 releases (on a Mac, after macos-signed and linux-remote)
 make checksums                           # install.sh copied in with them, and the SHA-256 of all of it, for the release notes
+make cask                                # the Homebrew cask for the sodre90/homebrew-tap tap, with the SHA-256 of the macOS zip and the Linux installers
 ```
 
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).

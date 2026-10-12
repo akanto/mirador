@@ -8,7 +8,7 @@ LINUX_HOST ?=
 REMOTE_DIR ?= mirador-release
 REMOTE_TMPDIR ?= $$HOME/mirador-release-tmp
 
-.PHONY: help macos macos-signed macos-staple linux linux-x64 linux-arm64 linux-remote update-files checksums clean
+.PHONY: help macos macos-signed macos-staple linux linux-x64 linux-arm64 linux-remote update-files checksums cask clean
 
 help: ## List the goals (builds take the committed files only)
 	@grep -E '^[a-z0-9 -]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -53,6 +53,9 @@ update-files: ## What the apps fetch to update themselves, with patches from the
 
 checksums: $(DIST)/install.sh ## install.sh copied into dist/, and the SHA-256 of what dist/ holds, for the release notes
 	@cd $(DIST) && shopt -s nullglob && $(SHA256) Mirador-* stable-* install.sh
+
+cask: ## The Homebrew cask for the sodre90/homebrew-tap tap, with the SHA-256 of the release's macOS zip and Linux installers, into dist/mirador.rb
+	bun desktop/scripts/homebrew-cask.ts $(DIST)
 
 $(DIST)/install.sh: install.sh
 	@mkdir -p $(DIST) && cp install.sh $@
