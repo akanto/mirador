@@ -6,7 +6,7 @@ import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
 import type { SystemNotifications } from "../system-notifications.ts";
 import { answersToConversations } from "../review/answers.ts";
-import { carryOverAnswerChoices, carryOverChoices, isSameChange } from "../review/carry-over.ts";
+import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
 import { openInIdea } from "../review/editor.ts";
 import { ghCli, postPendingReview, type GitHubCli } from "../review/github.ts";
@@ -132,7 +132,7 @@ export class CanvasService {
     const [snapshot, answers] = await allOrEveryProblem(snapshotReview(request), answersToConversations(request, this.gh));
     const earlier = this.latestReviewOf(conversationId, snapshot);
     const review = earlier
-      ? { ...snapshot, findings: carryOverChoices(earlier.findings, snapshot.findings), answers: carryOverAnswerChoices(answersOf(earlier), answers) }
+      ? { ...snapshot, findings: carryOverChoices(earlier.findings, snapshot.findings, ofSamePullRequest(earlier, snapshot)), answers: carryOverAnswerChoices(answersOf(earlier), answers) }
       : { ...snapshot, answers };
     return this.save({
       id: crypto.randomUUID(),
@@ -288,9 +288,8 @@ export class CanvasService {
   }
 
   private latestReviewOf(conversationId: string, change: Review) {
-    return this.store
-      .listCanvasItems(conversationId)
-      .findLast((item) => item.review && isSameChange(item.review, change))?.review;
+    const reviews = this.store.listCanvasItems(conversationId).flatMap((item) => (item.review ? [item.review] : []));
+    return reviewToCarryOverFrom(reviews, change);
   }
 
   private saveReview(item: ReviewItem, change: Partial<Review>) {

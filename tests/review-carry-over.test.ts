@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Review, ReviewFinding } from "../shared/review.ts";
-import { carryOverChoices, isSameChange } from "../host/review/carry-over.ts";
+import { carryOverChoices, isSameChange, reviewToCarryOverFrom } from "../host/review/carry-over.ts";
 
 const finding = (id: number, path: string, line: number, title: string, change: Partial<ReviewFinding> = {}): ReviewFinding => ({
   id: `finding-${id}`,
@@ -39,6 +39,12 @@ describe("carrying the user's choices over to a review published again", () => {
     expect(summary(carried!)).toEqual({ id: "finding-1", decision: "keep", body: "As posted.", agentBody: undefined, postedAs: { threadId: "T1" } });
   });
 
+  test("a finding posted to a pull request this review is not of carries the user's choice, but is not posted here", () => {
+    const earlier = [finding(1, "a.ts", 3, "Leak", { decision: "drop", body: "As posted.", postedAs: { threadId: "T1" } })];
+    const [carried] = carryOverChoices(earlier, [finding(1, "a.ts", 3, "Leak", { body: "About Leak." })], false);
+    expect(summary(carried!)).toEqual({ id: "finding-1", decision: "drop", body: "About Leak.", agentBody: undefined, postedAs: undefined });
+  });
+
   test("the user's wording stays while the agent writes what it wrote before, and gives way when the agent rewrites it", () => {
     const earlier = [finding(1, "a.ts", 3, "Leak", { body: "The user's words.", agentBody: "The agent's words." })];
     const [unchanged] = carryOverChoices(earlier, [finding(1, "a.ts", 3, "Leak", { body: "The agent's words." })]);
@@ -55,5 +61,17 @@ describe("carrying the user's choices over to a review published again", () => {
     expect(isSameChange(review("/w1", "main", pull), review("/w1", "main", "https://github.com/o/r/pull/2"))).toBe(false);
     expect(isSameChange(review("/w1", "main"), review("/w1", "main", pull))).toBe(true);
     expect(isSameChange(review("/w1", "main"), review("/w1", "develop"))).toBe(false);
+  });
+
+  test("a review of a pull request takes over from the latest review of that pull request, else from the latest of the same checkout and base", () => {
+    const review = (title: string, url?: string) =>
+      ({ title, repository: "/w1", base: "main", pullRequest: url ? { url, host: "github.com", owner: "o", repo: "r", number: 1 } : null }) as unknown as Review;
+    const first = "https://github.com/o/r/pull/1";
+    const second = "https://github.com/o/r/pull/2";
+    const reviews = [review("pull 1", first), review("branch")];
+    expect(reviewToCarryOverFrom(reviews, review("pull 1 again", first))).toBe(reviews[0]);
+    expect(reviewToCarryOverFrom(reviews, review("pull 2", second))).toBe(reviews[1]);
+    expect(reviewToCarryOverFrom(reviews, review("branch again"))).toBe(reviews[1]);
+    expect(reviewToCarryOverFrom([], review("first review"))).toBeUndefined();
   });
 });
