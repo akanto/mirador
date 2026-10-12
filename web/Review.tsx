@@ -76,6 +76,8 @@ const isWithin = (newLine: number | null, { line, endLine }: CodeAnchor) => newL
 
 const marker = (row: DiffRow) => (row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " ");
 
+const diffLine = (row: DiffRow) => (row.kind === "elided" ? row.text.replaceAll("…", "@@") : `${marker(row)}${row.text}`);
+
 /** The files the tour walks through first, in its order, then the rest as git lists them. */
 function filesInReadingOrder(walk: Walkthrough) {
   const tourPaths = [...new Set(walk.flow.map((step) => step.at.path))];
@@ -109,7 +111,7 @@ const quoted = (text: string) => text.split("\n").map((line) => `> ${line}`).joi
 
 /** A question from a finding names it and carries its comment as the user sees it, their own rewording included. */
 function questionAbout(item: WalkthroughItem, place: AskingAbout, finding: ReviewFinding | undefined, question: string, updatesReview: boolean) {
-  const code = place.rows.map((row) => `${marker(row)}${row.text}`).join("\n");
+  const code = place.rows.map(diffLine).join("\n");
   const subject = finding ? `${finding.id} ("${finding.title}") at ${selectionLabel(place)}` : selectionLabel(place);
   const comment = finding ? `\n\nIts comment now reads:\n\n${quoted(finding.body)}` : "";
   const asked = `About ${subject} in the ${item.kind} "${item.title}":${comment}\n\n${fenced(code)}\n\n${question.trim()}`;
@@ -184,7 +186,7 @@ function CodeBlock({
       {rows.map((row, index) => (
         <Fragment key={index}>
           {row.kind === "elided" ? (
-            <div className="code-row elided">
+            <div className={["code-row", "elided", anchored && isWithin(rows[index - 1]?.newLine ?? null, anchored) && "anchored"].filter(Boolean).join(" ")}>
               <span className="elision">{row.text}</span>
             </div>
           ) : (

@@ -22,6 +22,14 @@ describe("highlightRows", () => {
     expect(typesOf(highlighted[2]!)).toEqual(["return:keyword", "42:number"]);
   });
 
+  test("a comment opened before a gap does not color the lines after it", () => {
+    const rows = [row("context", "/**"), row("context", " * Loads the user."), row("elided", "… 40 lines not shown …"), row("context", "const user = 1;"), row("context", "/* closed */")];
+    const highlighted = highlightRows("src/service.ts", rows)!;
+    expect(typesOf(highlighted[1]!)).toEqual(["* Loads the user.:comment"]);
+    expect(typesOf(highlighted[3]!)).toContain("const:keyword");
+    expect(typesOf(highlighted[4]!)).toEqual(["/* closed */:comment"]);
+  });
+
   test("files of a language it does not know are left plain", () => {
     expect(highlightRows("notes.unknown", [row("context", "anything")])).toBeNull();
     expect(highlightRows("Dockerfile", [row("added", "FROM fedora:42")])).not.toBeNull();

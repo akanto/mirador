@@ -114,22 +114,37 @@ function splitIntoLines(spans: CodeSpan[]): CodeSpan[][] {
   return lines;
 }
 
+/** The rows between gaps, each with its place in `rows`. */
+function runsBetweenGaps(rows: DiffRow[]) {
+  return rows.reduce<{ row: DiffRow; index: number }[][]>(
+    (runs, row, index) => {
+      if (row.kind === "elided") runs.push([]);
+      else runs.at(-1)!.push({ row, index });
+      return runs;
+    },
+    [[]],
+  );
+}
+
 /**
  * Colors the rows of a diff for the language of `path`, or returns null when it is not a language this knows. Each
  * side is highlighted as one run of code (the old side's rows with the context, the new side's likewise), so a block
- * comment or string spanning lines is colored as one.
+ * comment or string spanning lines is colored as one. A gap of lines not shown ends the run: what opened before it is
+ * not known to still be open after it.
  */
 export function highlightRows(path: string, rows: DiffRow[]): CodeSpan[][] | null {
   const grammar = grammarFor(path);
   if (!grammar) return null;
   const highlighted: CodeSpan[][] = rows.map((row) => [{ text: row.text, type: null }]);
-  const highlightSide = (onSide: (row: DiffRow) => boolean, colored: (row: DiffRow) => boolean) => {
-    const sideRows = rows.flatMap((row, index) => (onSide(row) ? [{ row, index }] : []));
-    const lines = splitIntoLines(flatten(Prism.tokenize(sideRows.map(({ row }) => row.text).join("\n"), grammar), null));
-    sideRows.forEach(({ row, index }, lineIndex) => {
-      if (colored(row)) highlighted[index] = lines[lineIndex] ?? [];
+  const runs = runsBetweenGaps(rows);
+  const highlightSide = (onSide: (row: DiffRow) => boolean, colored: (row: DiffRow) => boolean) =>
+    runs.forEach((run) => {
+      const sideRows = run.filter(({ row }) => onSide(row));
+      const lines = splitIntoLines(flatten(Prism.tokenize(sideRows.map(({ row }) => row.text).join("\n"), grammar), null));
+      sideRows.forEach(({ row, index }, lineIndex) => {
+        if (colored(row)) highlighted[index] = lines[lineIndex] ?? [];
+      });
     });
-  };
   highlightSide((row) => row.kind === "context" || row.kind === "added", () => true);
   highlightSide((row) => row.kind === "context" || row.kind === "removed", (row) => row.kind === "removed");
   return highlighted;

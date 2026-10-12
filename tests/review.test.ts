@@ -193,6 +193,23 @@ describe("excerpt budget", () => {
     expect(await excerptOf(fileLines(200), "1-160")).toEqual({ startLine: 1, lines: fileLines(160) });
   });
 
+  test.each([
+    ["100-248", 94, 253],
+    ["100-253", 94, 253],
+    ["1-150", 1, 156],
+    ["151-300", 145, 300],
+  ])("an anchor of %s that nearly fills the cap keeps the context that fits", async (range, from, to) => {
+    const excerpt = await excerptOf(fileLines(300), range);
+    expect(excerpt.startLine).toBe(from);
+    expect(excerpt.lines).toEqual(fileLines(300).slice(from - 1, to));
+    expect(excerpt.lines.length).toBeLessThanOrEqual(160);
+  });
+
+  test("context stops at the edges of the file", async () => {
+    expect(await excerptOf(fileLines(20), "1-20")).toEqual({ startLine: 1, lines: fileLines(20) });
+    expect(await excerptOf(fileLines(20), "19-20")).toEqual({ startLine: 13, lines: fileLines(20).slice(12) });
+  });
+
   test("an anchor longer than the cap keeps its first and its last line", async () => {
     const excerpt = await excerptOf(fileLines(300), "1-300");
     expect(excerpt.lines[0]).toBe("line 1");

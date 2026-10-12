@@ -111,14 +111,15 @@ export async function reviewedFileLines(review: Review, path: string) {
   return linesAt(review.repository, review.headCommit, path);
 }
 
-/** The anchor and its context when they fit; the anchor alone when only it fits; else its middle, so both of its ends stay. */
+/** The anchor with as much context as the cap leaves room for, before the anchor first; an anchor over the cap keeps its two ends. */
 function excerptAround({ line, endLine }: CodeAnchor, fileLines: string[]): CodeExcerpt {
   const anchorLength = endLine - line + 1;
-  if (anchorLength + 2 * EXCERPT_CONTEXT_LINES <= MAX_EXCERPT_LINES) {
-    const startLine = Math.max(1, line - EXCERPT_CONTEXT_LINES);
-    return { startLine, lines: fileLines.slice(startLine - 1, Math.min(fileLines.length, endLine + EXCERPT_CONTEXT_LINES)) };
+  const spare = MAX_EXCERPT_LINES - anchorLength;
+  if (spare >= 0) {
+    const contextBefore = Math.min(EXCERPT_CONTEXT_LINES, line - 1, spare);
+    const contextAfter = Math.min(EXCERPT_CONTEXT_LINES, fileLines.length - endLine, spare - contextBefore);
+    return { startLine: line - contextBefore, lines: fileLines.slice(line - 1 - contextBefore, endLine + contextAfter) };
   }
-  if (anchorLength <= MAX_EXCERPT_LINES) return { startLine: line, lines: fileLines.slice(line - 1, endLine) };
   const shown = MAX_EXCERPT_LINES - 1;
   const head = Math.floor(shown / 2);
   const tail = shown - head;
