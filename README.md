@@ -233,7 +233,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 ### The transcript
 
 - **Grouped by author**, with avatars and times. Point at a line for its time, or switch on *Show timestamps* for every line.
-- **Markdown** with tables, links that open in a new tab, and code blocks.
+- **Markdown** with tables, links that open in a new tab, and code blocks with a *Copy* button.
 - **Thinking** (folded), the agent's **plan** as a checklist, mode changes, turn ends and errors.
 - **Permission requests** show the tool and its command, with the agent's own allow and reject options, and the outcome afterwards. Edits show on the canvas (see [Edit approvals](#edit-approvals)).
 - **Tool calls** with diffs for edits, raw input and output a click away, and readable MCP tool names.

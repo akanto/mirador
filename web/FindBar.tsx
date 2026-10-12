@@ -61,7 +61,7 @@ const MAX_HIGHLIGHTED = 1_000;
 
 function textNodesOf(entry: Element) {
   const walker = document.createTreeWalker(entry.querySelector(".entry-body") ?? entry, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => (node.parentElement?.closest(".author") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (node) => (node.parentElement?.closest(".author, .code-copy") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
