@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync, randomBytes, X509Certificate } from "node:crypto";
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, X509Certificate } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
@@ -29,7 +29,14 @@ export function namesToCover(addressHost: string | null) {
     .flat()
     .filter((network) => network?.family === "IPv4" && !network.internal)
     .map((network) => network!.address);
-  return [...new Set(["localhost", "127.0.0.1", hostname(), localNetworkName(), ...networkAddresses, ...(addressHost ? [addressHost] : [])])];
+  const candidates = [...new Set(["localhost", "127.0.0.1", hostname(), localNetworkName(), ...networkAddresses, ...(addressHost ? [addressHost] : [])])];
+  return candidates.filter(isCertifiableName);
+}
+
+function isCertifiableName(name: string) {
+  const certifiable = /^[A-Za-z0-9.-]+$/.test(name);
+  if (!certifiable) console.log(`not certifying "${name}": a host name has only letters, digits, - and .`);
+  return certifiable;
 }
 
 export function namesIn(certificate: string) {
@@ -101,6 +108,20 @@ function serverCertificateStillFits(certificate: string, authority: string, name
   );
 }
 
+function servingPairStillFits(certificate: string, key: string, authority: string, names: string[], now: number) {
+  try {
+    return new X509Certificate(certificate).checkPrivateKey(createPrivateKey(key)) && serverCertificateStillFits(certificate, authority, names, now);
+  } catch {
+    return false;
+  }
+}
+
+function swapInStagedPair(directory: string) {
+  // A kill between the renames leaves a mismatch; key first, because the old certificate then usually no longer fits and is reissued.
+  renameSync(join(directory, "server-key.pem.staged"), join(directory, "server-key.pem"));
+  renameSync(join(directory, "server.pem.staged"), join(directory, "server.pem"));
+}
+
 function issueServerCertificate(directory: string, names: string[]) {
   writePrivately(join(directory, "server.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = ${opensslConfigValue(`Mirador on ${hostname()}`)}`, ""].join("\n"));
   writePrivately(
@@ -114,16 +135,11 @@ function issueServerCertificate(directory: string, names: string[]) {
       "",
     ].join("\n"),
   );
-  const stagedKeyPath = join(directory, "server-key.pem.staged");
-  const stagedCertificatePath = join(directory, "server.pem.staged");
-  writeNewKey(stagedKeyPath);
+  writeNewKey(join(directory, "server-key.pem.staged"));
   openssl(directory, ["req", "-new", "-config", "server.cnf", "-key", "server-key.pem.staged", "-out", "server.csr"]);
   const serial = `0x${randomBytes(16).toString("hex")}`;
   openssl(directory, ["x509", "-req", "-in", "server.csr", "-CA", "authority.pem", "-CAkey", "authority-key.pem", "-set_serial", serial, "-days", String(SERVER_CERTIFICATE_DAYS), "-extfile", "server.ext", "-out", "server.pem.staged"]);
-  // Only now does the serving pair give way: any openssl failure above left the matching key and certificate in place,
-  // and the certificate moves last so the key it was signed with is already serving beside it.
-  renameSync(stagedKeyPath, join(directory, "server-key.pem"));
-  renameSync(stagedCertificatePath, join(directory, "server.pem"));
+  swapInStagedPair(directory);
 }
 
 /** Mirador's own: a server certificate from its own authority, issued again when it runs out or a name is missing. */
@@ -133,10 +149,11 @@ export function ownServingCertificate(dataDir: string, names: string[], now = Da
   chmodSync(directory, 0o700);
   const authority = authorityIn(directory);
   const serverPath = join(directory, "server.pem");
-  const fits = existsSync(serverPath) && serverCertificateStillFits(readFileSync(serverPath, "utf8"), authority, names, now);
+  const keyPath = join(directory, "server-key.pem");
+  const fits = existsSync(serverPath) && existsSync(keyPath) && servingPairStillFits(readFileSync(serverPath, "utf8"), readFileSync(keyPath, "utf8"), authority, names, now);
   if (!fits) issueServerCertificate(directory, names);
   const server = readFileSync(serverPath, "utf8");
-  return { chain: `${server.trimEnd()}\n${authority}`, key: readFileSync(join(directory, "server-key.pem"), "utf8"), authority, names: namesIn(server) };
+  return { chain: `${server.trimEnd()}\n${authority}`, key: readFileSync(keyPath, "utf8"), authority, names: namesIn(server) };
 }
 
 export function servingCertificate(dataDir: string, names: string[], ownCertificate: { certificatePath: string; keyPath: string } | null): ServingCertificate {

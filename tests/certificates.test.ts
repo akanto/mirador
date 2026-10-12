@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { generateKeyPairSync, X509Certificate } from "node:crypto";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { createPrivateKey, generateKeyPairSync, X509Certificate } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { authorityFingerprint, namesIn, opensslConfigValue, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
+import { authorityFingerprint, namesIn, namesToCover, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
 
 let dataDir: string;
 beforeEach(() => {
@@ -89,13 +89,43 @@ test("host names go into the openssl config quoted, so its variable expansion ca
   for (const config of ["server.cnf", "authority.cnf"]) {
     expect(readFileSync(join(dataDir, "tls", config), "utf8")).toMatch(/^CN = "Mirador on .*"$/m);
   }
+});
 
-  const hostile = 'box$1 "odd" \\ end';
+test("a host name with a dollar sign is certified as written", () => {
+  expect(ownServingCertificate(dataDir, ["localhost", "box$1.example"]).names).toContain("box$1.example");
+});
+
+const keyMatchesCertificate = ({ chain, key }: ServingCertificate) => new X509Certificate(chain).checkPrivateKey(createPrivateKey(key));
+
+test("a key that does not match the certificate on disk is replaced with a matching pair", () => {
+  const first = ownServingCertificate(dataDir, ["localhost"]);
   const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  writeFileSync(join(dataDir, "t.key"), privateKey.export({ type: "pkcs8", format: "pem" }).toString());
-  writeFileSync(join(dataDir, "t.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = ${opensslConfigValue(`Mirador on ${hostile}`)}`, ""].join("\n"));
-  const request = Bun.spawnSync(["openssl", "req", "-new", "-config", "t.cnf", "-key", "t.key", "-out", "t.csr"], { cwd: dataDir, stdout: "pipe", stderr: "pipe" });
-  expect(request.exitCode).toBe(0);
-  const der = Buffer.from(readFileSync(join(dataDir, "t.csr"), "utf8").split("\n").filter((line) => !line.startsWith("-")).join(""), "base64");
-  expect(der.includes(Buffer.from(`Mirador on ${hostile}`))).toBe(true);
+  writeFileSync(join(dataDir, "tls", "server-key.pem"), privateKey.export({ type: "pkcs8", format: "pem" }).toString());
+
+  const healed = ownServingCertificate(dataDir, ["localhost"]);
+
+  expect(healed.chain).not.toBe(first.chain);
+  expect(keyMatchesCertificate(healed)).toBe(true);
+});
+
+test("an empty server.pem left by an old failed renewal is replaced with a matching pair", () => {
+  ownServingCertificate(dataDir, ["localhost"]);
+  writeFileSync(join(dataDir, "tls", "server.pem"), "");
+
+  expect(keyMatchesCertificate(ownServingCertificate(dataDir, ["localhost"]))).toBe(true);
+});
+
+test("names that are not host names are left out of the names to cover, so the host still gets a certificate", () => {
+  const logged = spyOn(console, "log").mockImplementation(() => {});
+  try {
+    const names = namesToCover("box.example,ts.net");
+    expect(names).not.toContain("box.example,ts.net");
+    expect(namesToCover("it's.example")).not.toContain("it's.example");
+    expect(namesToCover("box.example")).toContain("box.example");
+    expect(namesToCover("192.168.1.5")).toContain("192.168.1.5");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("box.example,ts.net"));
+    expect(ownServingCertificate(dataDir, names).names).toEqual(names);
+  } finally {
+    logged.mockRestore();
+  }
 });
