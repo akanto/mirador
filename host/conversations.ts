@@ -61,6 +61,7 @@ import { claudeConfigDir } from "./terminal-sessions.ts";
 import { TerminalWork, updatesAfter } from "./terminal-catch-up.ts";
 import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "./claude-transcript.ts";
 import { UserCommandRunner } from "./user-commands.ts";
+import { SubagentSessions } from "./subagent-sessions.ts";
 import { SubagentUsageReader } from "./subagent-usage.ts";
 
 const UNTITLED = "New conversation";
@@ -132,6 +133,7 @@ export class ConversationService {
   /** One agent process per profile, by its id. */
   private readonly harnessesByProfile = new Map<string, HarnessProcess>();
   private readonly conversationBySession = new Map<string, string>();
+  private readonly subagentSessions = new SubagentSessions();
   /** Sessions whose agent left an option change unanswered for too long, so their next changes don't wait. */
   private readonly sessionsSlowToAnswer = new Set<string>();
   private readonly updatesForUnknownSessions = new Map<string, acp.SessionNotification[]>();
@@ -307,6 +309,7 @@ export class ConversationService {
       this.notifier.unmute(conversation.acpSessionId);
       this.conversationBySession.delete(conversation.acpSessionId);
     }
+    this.subagentSessions.forget(conversationId);
     const runtime = this.runtimes.get(conversationId);
     if (runtime) this.endUsageLimitWait(runtime);
     this.jobWaits.forget(conversationId);
@@ -1093,6 +1096,11 @@ export class ConversationService {
     });
   }
 
+  /** The conversation whose agent runs a session, or one of its subagents. */
+  async conversationOfSession(sessionId: string): Promise<string | undefined> {
+    return this.conversationBySession.get(sessionId) ?? this.subagentSessions.conversationOf(sessionId);
+  }
+
   private isOnSession(conversationId: string, sessionId: string) {
     return this.store.hasConversation(conversationId) && this.get(conversationId).acpSessionId === sessionId;
   }
@@ -1157,6 +1165,8 @@ export class ConversationService {
       return;
     }
     const update = notification.update;
+    const subagentSession = opencodeSubagentSessionOf(update);
+    if (subagentSession) this.subagentSessions.record(subagentSession, conversationId);
     if (update.sessionUpdate === "usage_update") {
       this.contextUsage.set(conversationId, { used: update.used, size: update.size, cost: update.cost ? { amount: update.cost.amount, currency: update.cost.currency } : null });
       const quotas = reportedQuotas(update._meta);
@@ -1514,6 +1524,12 @@ interface TurnRequest {
 }
 
 const endsTurn = ({ event }: Pick<StoredEvent, "event">) => event.type === "turn-end" || event.type === "error";
+
+/** opencode 2 marks what a subagent does, reported through its conversation's session, with the subagent's own session. */
+export function opencodeSubagentSessionOf(update: acp.SessionUpdate): string | null {
+  const { id } = (update._meta?.["opencode/child-session"] ?? {}) as { id?: unknown };
+  return typeof id === "string" ? id : null;
+}
 
 /**
  * A turn left open: it began, the agent worked on it, and nothing ended it. A turn the agent never worked on is not one,

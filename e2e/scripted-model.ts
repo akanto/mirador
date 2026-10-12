@@ -36,8 +36,8 @@ const finish = (finishReason: string) => ({
 /**
  * An OpenAI-compatible model for opencode that follows a script instead of thinking: the last
  * user message decides the reply. `RUN <command>` calls the shell tool, `SHOW <title>` and `ASK <question>`
- * call the canvas tools, `CALL <tool> <JSON arguments>` any of them, a tool result is echoed back,
- * anything else is echoed as text.
+ * call the canvas tools, `CALL <tool> <JSON arguments>` any of them, `DELEGATE <prompt>` starts an opencode 2
+ * subagent whose own script is the prompt, a tool result is echoed back, anything else is echoed as text.
  */
 export class ScriptedModel {
   readonly requests: ChatRequest[] = [];
@@ -83,9 +83,11 @@ export class ScriptedModel {
     const text = textOf(last).trim();
     const canvasTool = (action: string) => tools.find((name) => name.includes("canvas") && name.endsWith(action))!;
     const shellTool = tools.includes("shell") ? "shell" : "bash";
-    const [directive, ...rest] = text.split(" ");
+    const script = text.split("\n").at(-1)!.trim(); // opencode 2 puts its own lines before a subagent's prompt
+    const [directive, ...rest] = script.split(" ");
     const argument = rest.join(" ");
     if (directive === "RUN") return this.call(response, { name: shellTool, arguments: { command: argument, description: "Run the scripted command" } });
+    if (directive === "DELEGATE") return this.call(response, { name: "subagent", arguments: { agent: "general", description: "Scripted subagent", prompt: argument } });
     if (directive === "CALL") {
       const [tool, ...json] = rest;
       return this.call(response, { name: canvasTool(tool!), arguments: JSON.parse(json.join(" ")) });

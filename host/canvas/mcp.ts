@@ -1,4 +1,4 @@
-import { createMcpHandler, McpServer, type McpHttpHandler } from "@modelcontextprotocol/server";
+import { createMcpHandler, McpServer, type McpHttpHandler, type ServerContext } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import type { ConversationService } from "../conversations.ts";
 import { CANVAS_SERVER_NAME } from "../acp/harnesses.ts";
@@ -206,11 +206,23 @@ const loadedUpFront = { "anthropic/alwaysLoad": true };
 
 const toolError = (text: string) => ({ isError: true, content: [{ type: "text" as const, text }] });
 
+/** opencode 2 names the session that calls a tool, its subagents' included. */
+const OPENCODE_SESSION_META = "ai.opencode/sessionID";
+
 function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string) {
   const server = new McpServer(
     { name: CANVAS_SERVER_NAME, version: MIRADOR_VERSION },
     { instructions: canvasInstructions(assetsOrigin) },
   );
+
+  /**
+   * The conversations on one opencode agent process each add their canvas server under the same name, and opencode keeps
+   * only the last one added: every call reaches that conversation's address, whichever conversation made it.
+   */
+  const callingConversation = async ({ mcpReq }: ServerContext) => {
+    const sessionId = mcpReq._meta?.[OPENCODE_SESSION_META];
+    return (typeof sessionId === "string" && (await conversations.conversationOfSession(sessionId))) || conversationId;
+  };
 
   server.registerTool(
     "show",
@@ -223,8 +235,8 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
       }),
       _meta: loadedUpFront,
     },
-    async ({ title, html }) => {
-      const { item, render } = await canvas.show(conversationId, { title, html });
+    async ({ title, html }, ctx) => {
+      const { item, render } = await canvas.show(await callingConversation(ctx), { title, html });
       return { content: [{ type: "text", text: describeRender(item.id, render) }] };
     },
   );
@@ -250,8 +262,9 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
     async ({ questions, question, options, ...rest }, ctx) => {
       if (questions && (question || options)) return toolError("Give either question and options, or questions, not both.");
       if (!questions && (!question || !options)) return toolError("Give question and options, or questions.");
-      const item = canvas.openAsk(conversationId, questions ? { questions } : { question: question!, options: options!, ...rest });
-      if (conversations.get(conversationId).askMode === "next-message") {
+      const caller = await callingConversation(ctx);
+      const item = canvas.openAsk(caller, questions ? { questions } : { question: question!, options: options!, ...rest });
+      if (conversations.get(caller).askMode === "next-message") {
         return {
           content: [
             {
@@ -292,9 +305,9 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
       inputSchema: tourSchema,
       _meta: loadedUpFront,
     },
-    async (request) => {
+    async (request, ctx) => {
       try {
-        const { id, tour } = await canvas.tour(conversationId, request);
+        const { id, tour } = await canvas.tour(await callingConversation(ctx), request);
         const changes = tour.changes ? `, ${tour.files.length} files changed since ${tour.changes.since}` : "";
         return { content: [{ type: "text", text: `Shown to the user as tour ${id}: ${tour.flow.length} flow steps${changes}.` }] };
       } catch (error) {
@@ -312,9 +325,9 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
       inputSchema: reviewSchema,
       _meta: loadedUpFront,
     },
-    async (request) => {
+    async (request, ctx) => {
       try {
-        const item = await canvas.review(conversationId, request);
+        const item = await canvas.review(await callingConversation(ctx), request);
         return { content: [{ type: "text", text: describeReview(item.id, item.review) }] };
       } catch (error) {
         if (error instanceof ReviewProblems) return { isError: true, content: [{ type: "text", text: error.message }] };
@@ -331,9 +344,9 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
       inputSchema: reviewEditSchema,
       _meta: loadedUpFront,
     },
-    async (request) => {
+    async (request, ctx) => {
       try {
-        const { item, changed, removed } = await canvas.editReview(conversationId, request);
+        const { item, changed, removed } = await canvas.editReview(await callingConversation(ctx), request);
         return { content: [{ type: "text", text: describeEdit(item.id, item.review, changed, removed) }] };
       } catch (error) {
         if (error instanceof ReviewProblems) return toolError(error.message);
@@ -358,13 +371,13 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
       }),
       _meta: loadedUpFront,
     },
-    async ({ pid, container, host, message, resume }) => {
+    async ({ pid, container, host, message, resume }, ctx) => {
       if ((pid === undefined) === (container === undefined)) return toolError("Name the job: either its pid or its container.");
       const job = pid === undefined ? { kind: "container", name: container } : { kind: "process", pid };
       const request = readJobWaitRequest({ job, sshHost: host ?? null, message: message ?? null, resume: resume ?? true });
       if (typeof request === "string") return toolError(request);
       try {
-        return { content: [{ type: "text", text: waitSetUpReply(await conversations.waitForJob(conversationId, request)) }] };
+        return { content: [{ type: "text", text: waitSetUpReply(await conversations.waitForJob(await callingConversation(ctx), request)) }] };
       } catch (error) {
         if (error instanceof JobWaitRefused) return toolError(error.message);
         throw error;
