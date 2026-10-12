@@ -1,13 +1,14 @@
 .DEFAULT_GOAL := help
 SHELL := bash
 DIST := $(CURDIR)/dist
+SIGNING := $(DIST)/signing
 MAC_ARCH := $(shell uname -m | sed 's/x86_64/x64/')
 SHA256 := $(shell command -v sha256sum || echo shasum -a 256)
 LINUX_HOST ?=
 REMOTE_DIR ?= mirador-release
 REMOTE_TMPDIR ?= $$HOME/mirador-release-tmp
 
-.PHONY: help macos linux linux-x64 linux-arm64 linux-remote checksums clean
+.PHONY: help macos macos-signed macos-staple linux linux-x64 linux-arm64 linux-remote checksums clean
 
 help: ## List the goals (builds take the committed files only)
 	@grep -E '^[a-z0-9 -]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  make %-14s %s\n", $$1, $$2}'
@@ -17,6 +18,17 @@ macos: ## The macOS app with Mirador inside, zipped into dist/ (on a Mac)
 	cd desktop && bun install --frozen-lockfile && bun run build:release
 	mkdir -p $(DIST) && rm -f $(DIST)/Mirador-macos-$(MAC_ARCH).zip
 	ditto -c -k --keepParent desktop/build/stable-macos-$(MAC_ARCH)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+
+macos-signed: macos ## The macOS app signed with your Developer ID and notarized by Apple, zipped into dist/ (on a Mac whose keychain holds both)
+	rm -rf $(SIGNING) && ditto -x -k $(DIST)/Mirador-macos-$(MAC_ARCH).zip $(SIGNING)
+	bun desktop/scripts/sign-macos-app.ts $(SIGNING)/Mirador.app
+	rm -f $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+	ditto -c -k --keepParent $(SIGNING)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+
+macos-staple: ## Finish make macos-signed once Apple accepted the submission it stopped waiting for
+	bun desktop/scripts/sign-macos-app.ts --staple $(SIGNING)/Mirador.app
+	rm -f $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+	ditto -c -k --keepParent $(SIGNING)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
 
 linux: linux-x64 linux-arm64 ## Both Linux installers (or one: linux-x64, linux-arm64), built, installed and checked in containers, into dist/ (on an x64 Linux machine)
 

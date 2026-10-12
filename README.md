@@ -392,6 +392,7 @@ The release assets go to `dist/` (`make help` lists the goals):
 
 ```bash
 make macos                               # the macOS app carrying Mirador, zipped (on a Mac)
+make macos-signed                        # the same, signed with your Developer ID and notarized by Apple (see desktop/README.md)
 make linux                               # both Linux release installers, built and checked as above (on an x64 Linux machine)
 make linux-remote LINUX_HOST=user@host   # from a Mac: make linux on that machine, with the installers copied back
 make checksums                           # install.sh copied in with them, and the SHA-256 of all of it, for the release notes

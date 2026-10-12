@@ -189,6 +189,8 @@ On macOS, Electrobun builds the stable app as a self-extracting stub, and `scrip
 
 Stable builds are signed ad hoc by Electrobun's own signing step (`ELECTROBUN_DEVELOPER_ID=-`, unless you set a real identity), which macOS needs before it asks to allow notifications. They are not notarized.
 
+`make macos-signed` (repository root) signs the release build with your Developer ID instead and has Apple notarize it, so a download opens without clearing its quarantine. It needs the *Developer ID Application* certificate in the login keychain, and the notary key stored with `xcrun notarytool store-credentials mirador-notary`. `desktop/scripts/sign-macos-app.ts` signs every program and library in the app, the deepest first, with the hardened runtime and `desktop/entitlements.plist` (the JIT exceptions Bun's own release is signed with), checks that the signed Bun still runs JavaScript, submits the app and staples Apple's ticket to it. Apple can take more than an hour, most of all with a new team's first submissions: when the two-hour wait runs out, `make macos-staple` finishes once `xcrun notarytool info <id> --keychain-profile mirador-notary` says Accepted.
+
 ### Linux builds in containers
 
 `scripts/linux-desktop.sh` (repository root, needs Docker) builds the installer in an Ubuntu 24.04 container, installs it there and checks the app on a virtual display: the host answers, it opens at login and stays single-instance. `MIRADOR_LINUX_ARCH=x64` or `arm64` picks the architecture. Its installer has the container's paths baked in, so it is a test artifact, not one to hand out.
