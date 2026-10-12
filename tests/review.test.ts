@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { excerptRows, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
@@ -41,7 +43,32 @@ deleted file mode 100644
 -two
 `;
 
+/** A fresh repo holding just the named file, committed, then given the change; its `git diff HEAD`. */
+function diffOf(file: string, change: "deleted" | "mode" | "modified") {
+  const directory = mkdtempSync(join(tmpdir(), "mirador-quoted-paths-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", directory, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" });
+  git("init", "-q", "-b", "main");
+  writeFileSync(join(directory, file), "x\n");
+  git("add", ".");
+  git("commit", "-q", "-m", "base");
+  if (change === "deleted") git("rm", "-q", "--", file);
+  else if (change === "mode") chmodSync(join(directory, file), 0o755);
+  else writeFileSync(join(directory, file), "y\n");
+  return git("diff", "HEAD");
+}
+
 describe("parseGitDiff", () => {
+  test("keeps C-quoted paths whole when only the diff header carries them, deleted or mode-only", () => {
+    expect(parseGitDiff(diffOf('we"ird\\name.txt', "deleted")).map(({ path, change }) => [path, change])).toEqual([['we"ird\\name.txt', "deleted"]]);
+    expect(parseGitDiff(diffOf('we"ird\\name.txt', "mode")).map(({ path, hunks }) => [path, hunks.length])).toEqual([['we"ird\\name.txt', 0]]);
+  });
+
+  test("turns git's octal escapes back into the characters they spell", () => {
+    expect(parseGitDiff(diffOf("café.txt", "deleted")).map(({ path, change }) => [path, change])).toEqual([["café.txt", "deleted"]]);
+    expect(parseGitDiff(diffOf("café.txt", "modified")).map(({ path, change }) => [path, change])).toEqual([["café.txt", "modified"]]);
+  });
+
   test("reads files, their kind of change, and hunks with both sides' line numbers", () => {
     const files = parseGitDiff(diff);
     expect(files.map(({ path, change, added, removed }) => [path, change, added, removed])).toEqual([

@@ -10,21 +10,53 @@ const GENERATED_FILES = [
 export const MAX_ROWS_PER_FILE = 3_000;
 const MAX_ROWS_PER_REVIEW = 40_000;
 
-/** Git quotes paths with unusual characters, C style. */
+const C_ESCAPE_BYTES: Record<string, number> = { '"': 0x22, "\\": 0x5c, a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11 };
+
+/** Git quotes paths with unusual characters, C style, spelling non-ASCII bytes as octal escapes, so the unescaped bytes are UTF-8 decoded. */
 function unquoted(path: string) {
   if (!path.startsWith('"')) return path;
-  try {
-    return JSON.parse(path) as string;
-  } catch {
-    return path.slice(1, -1);
+  const body = path.slice(1, -1);
+  const bytes: number[] = [];
+  for (let i = 0; i < body.length; i++) {
+    const char = body[i]!;
+    if (char !== "\\") {
+      bytes.push(char.charCodeAt(0));
+      continue;
+    }
+    const escaped = body.slice(++i);
+    const octal = /^[0-7]{1,3}/.exec(escaped)?.[0];
+    const hex = octal ? undefined : /^x[0-9a-f]{1,2}/i.exec(escaped)?.[0];
+    if (octal) {
+      bytes.push(parseInt(octal, 8));
+      i += octal.length - 1;
+    } else if (hex) {
+      bytes.push(parseInt(hex.slice(1), 16));
+      i += hex.length - 1;
+    } else {
+      bytes.push(C_ESCAPE_BYTES[escaped[0]!] ?? 0x5c);
+    }
   }
+  return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
 const withoutPrefix = (path: string) => unquoted(path).replace(/^[ab]\//, "");
 
+/** The new side's `"..."` token. When both sides are C-quoted the separator is `" "` rather than ` b/`, so indexOf cannot find it. */
+function secondQuotedToken(sides: string) {
+  let i = 1;
+  while (i < sides.length) {
+    const char = sides[i]!;
+    if (char === "\\") i += 2;
+    else if (char === '"') return sides.slice(i + 2);
+    else i += 1;
+  }
+  return sides;
+}
+
 /** `diff --git a/P b/P`: P itself may contain " b/", so the two halves are matched rather than split. */
 function pathFromDiffHeader(line: string) {
   const sides = line.slice("diff --git ".length);
+  if (sides.startsWith('"')) return withoutPrefix(unquoted(secondQuotedToken(sides)));
   const length = (sides.length - " b/".length - "a/".length) / 2;
   const path = sides.slice(2, 2 + length);
   if (sides === `a/${path} b/${path}`) return path;
