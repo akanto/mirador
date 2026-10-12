@@ -3,7 +3,7 @@ import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
-import { authorOf, buildTimeline, startsAuthorGroup, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
+import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -173,6 +173,16 @@ describe("subagents", () => {
     const background = [launch("b1", { description: "Watch the build" }), answeredAtOnce("b1"), finish("b1")];
     expect(states([...background, { type: "error", message: "ACP connection closed" }])).toEqual(["stopped"]);
     expect(states([...background, { type: "error", message: "ACP connection closed" }], false)).toEqual(["stopped"]);
+  });
+
+  test("its calls at work are the ones not ended, but not a server call that anything followed", () => {
+    const advisor = (toolCallId: string) =>
+      acp({ sessionUpdate: "tool_call", toolCallId, title: "advisor", status: "pending", _meta: { claudeCode: { parentToolUseId: "a1", toolName: "advisor" } } });
+    const atWork = (events: ConversationEvent[]) => [...stepsAtWork(subagentsIn(buildTimeline(stored([launch("a1", {}), ...events])))[0]!.subagent.blocks)];
+    expect(atWork([read("r1", "a1"), finish("r1"), read("r2", "a1"), read("r3", "a1")])).toEqual(["r2", "r3"]);
+    expect(atWork([advisor("srvtoolu_1"), advisor("srvtoolu_2")])).toEqual(["srvtoolu_2"]);
+    expect(atWork([advisor("srvtoolu_1"), read("r1", "a1")])).toEqual(["r1"]);
+    expect(atWork([advisor("srvtoolu_1"), finish("srvtoolu_1")])).toEqual([]);
   });
 
   test("ends when its call completes, or at its last activity when it ran in the background", () => {

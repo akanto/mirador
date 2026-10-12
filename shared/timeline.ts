@@ -88,6 +88,20 @@ export function subagentState(block: SubagentBlock, conversationBusy: boolean): 
 export const subagentEndedAt = (block: SubagentBlock) =>
   runsInBackground(block) ? block.subagent.lastActivityAt : (block.endedAt ?? block.subagent.lastActivityAt);
 
+const isServerToolCall = (block: ToolBlock) => block.toolCallId.startsWith("srvtoolu_");
+
+/**
+ * The calls of a running subagent's work still at work: claude-agent-acp reports them pending until they end. The API
+ * runs a server tool, such as the advisor, within its reply, so once anything follows one it has ended, even when
+ * Claude Code never said so.
+ */
+export function stepsAtWork(work: TimelineBlock[]): Set<string> {
+  const unfinished = work.flatMap((block, index) =>
+    block.kind === "tool" && block.endedAt === undefined && !(isServerToolCall(block) && index < work.length - 1) ? [block.toolCallId] : [],
+  );
+  return new Set(unfinished);
+}
+
 /** Every subagent in the timeline in the order they started, each followed by the ones it started. */
 export function subagentsIn(blocks: TimelineBlock[]): SubagentBlock[] {
   return blocks.flatMap((block) => (block.kind === "tool" && block.subagent ? [block as SubagentBlock, ...subagentsIn(block.subagent.blocks)] : []));

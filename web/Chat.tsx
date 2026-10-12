@@ -64,6 +64,7 @@ import {
   contentText,
   runsInBackground,
   startsAuthorGroup,
+  stepsAtWork,
   subagentEndedAt,
   subagentInput,
   subagentsIn,
@@ -345,6 +346,13 @@ function readableToolTitle(title: string) {
 
 const statusIcons: Record<string, string> = { pending: "○", in_progress: "◐", completed: "●", failed: "✕" };
 
+const StepsAtWork = createContext<ReadonlySet<string>>(new Set());
+
+function useShownStatus(block: ToolBlock) {
+  const atWork = useContext(StepsAtWork).has(block.toolCallId);
+  return atWork ? "in_progress" : (block.status ?? "pending");
+}
+
 const PREVIEW_LINES = 8;
 
 const ToolCallsAwaitingPermission = createContext<ReadonlySet<string>>(new Set());
@@ -397,7 +405,7 @@ function TerminalOutput({ output, finished, awaitingPermission }: { output: stri
 function ShellCard({ block }: { block: ToolBlock }) {
   const { command, description, output, exitCode, directory } = shellCommandOf(block);
   const style = useShellOutputStyle();
-  const status = block.status ?? "pending";
+  const status = useShownStatus(block);
   const failed = status === "failed" || (exitCode !== null && exitCode !== 0);
   const finished = status === "completed" || status === "failed";
   const awaitingPermission = useContext(ToolCallsAwaitingPermission).has(block.toolCallId);
@@ -454,11 +462,12 @@ function CommandCard({ command, conversationId }: { command: UserCommand; conver
 }
 
 function ToolCard({ block, conversationId }: { block: ToolBlock; conversationId: string }) {
+  const status = useShownStatus(block);
   if (isShellCommand(block)) return <ShellCard block={block} />;
   return (
-    <details className={`tool tool-${block.status ?? "pending"}`}>
+    <details className={`tool tool-${status}`}>
       <summary>
-        <span className="tool-status">{statusIcons[block.status ?? "pending"]}</span>
+        <span className="tool-status">{statusIcons[status]}</span>
         <span className="tool-title">{readableToolTitle(block.title)}</span>
         {block.toolKind && <span className="tool-kind">{block.toolKind}</span>}
       </summary>
@@ -497,6 +506,7 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
   const { subagent_type, model, prompt } = subagentInput(block);
   const calls = block.subagent.blocks.filter((child) => child.kind === "tool");
   const latestCall = calls.at(-1);
+  const atWork = useMemo(() => (state === "running" ? stepsAtWork(block.subagent.blocks) : new Set<string>()), [state, block.subagent.blocks]);
   const facts = [
     typeof subagent_type === "string" && subagent_type,
     typeof model === "string" && model,
@@ -521,11 +531,13 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
           <pre>{prompt}</pre>
         </details>
       )}
-      <div className="subagent-work">
-        {block.subagent.blocks.map((child) => (
-          <TimelineEntry key={child.key} block={child} conversationId={conversationId} harness={harness} canRewind={false} />
-        ))}
-      </div>
+      <StepsAtWork.Provider value={atWork}>
+        <div className="subagent-work">
+          {block.subagent.blocks.map((child) => (
+            <TimelineEntry key={child.key} block={child} conversationId={conversationId} harness={harness} canRewind={false} />
+          ))}
+        </div>
+      </StepsAtWork.Provider>
       {block.content.map((content, index) => (
         <ToolContent key={index} content={content} />
       ))}

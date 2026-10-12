@@ -47,7 +47,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(explore.locator(".subagent-task")).toHaveText("Explore the cache");
     await expect(explore.locator(".subagent-facts")).toHaveText("Explore · haiku · 2 calls · 39 s");
     await expect(explore).toHaveClass(/subagent-done/);
-    await expect(watch.locator(".subagent-facts")).toContainText("sonnet · 2 calls · ");
+    await expect(watch.locator(".subagent-facts")).toContainText("sonnet · 3 calls · ");
     await expect(watch.locator(".subagent-facts")).toContainText("in the background");
     await expect(page.locator(".timeline .tool:not(.subagent)", { hasText: "Read host/cache.ts" })).toHaveCount(1);
     await expect(explore.locator(".subagent-work .tool", { hasText: "Read host/cache.ts" })).toBeAttached();
@@ -70,6 +70,9 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(watch.locator(".subagent-now")).toHaveText("now: bun run build");
     await expect(watch.locator(":scope > summary > .tool-status"), "the running subagent's own icon blinks").toHaveCSS("animation-name", "pulse");
     await expect(watch.locator(".subagent-work .tool-completed .tool-status"), "a call it finished does not").toHaveCSS("animation-name", "none");
+    await expect(watchLatest, "the call it runs shows as running, though claude-agent-acp reports it pending").toHaveClass(/tool-in_progress/);
+    await expect(watchLatest.locator(".shell-quiet")).toHaveText("running…");
+    await expect(watch.locator(".subagent-work .tool", { hasText: "advisor" }), "a server call that work followed has ended").toHaveClass(/tool-pending/);
     await page.locator(".timeline").evaluate((timeline) => timeline.scrollTo(0, 0));
     await chip.click();
     await expect(watchLatest).toContainText("bun run build");
@@ -100,5 +103,6 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(chip).toHaveCount(0);
     await expect(dock).toHaveCount(0);
     await expect(watch).toHaveClass(/subagent-done/);
+    await expect(watchLatest, "a call left unfinished is no longer shown running").toHaveClass(/tool-pending/);
   });
 });
