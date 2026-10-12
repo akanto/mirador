@@ -87,11 +87,22 @@ test("a message sent while Claude Code writes, with no tool running, joins the t
   const story = (keeper: string) => `Write a 1500-word story about a lighthouse keeper called ${keeper}, as plain text in your reply. Use no tools.`;
   const stopWith = (word: string) => `Stop the story there and reply with only the word ${word}.`;
   const agentMessages = page.locator(".timeline .message.agent");
-  const tellStory = async (keeper: string) => {
-    const before = await agentMessages.count();
+  const turnsEnded = () => eventsInOrder.filter((event) => event === "turn-end").length;
+  const keepersOfSilentStories: string[] = [];
+  const startStory = async (keeper: string) => {
+    const [messagesBefore, turnsEndedBefore] = [await agentMessages.count(), turnsEnded()];
     await sendMessage(page, story(keeper));
-    await expect(agentMessages, "the agent is writing").toHaveCount(before + 1, { timeout: 120_000 });
+    await expect.poll(async () => (await agentMessages.count()) > messagesBefore || turnsEnded() > turnsEndedBefore, { timeout: 120_000 }).toBe(true);
+    return (await agentMessages.count()) > messagesBefore;
   };
+  /** The model now and then writes the whole story in its thinking, which Claude Code hides, and ends the turn with nothing to show; that story is asked for once more. */
+  const tellStory = async (keeper: string) => {
+    if (await startStory(keeper)) return;
+    keepersOfSilentStories.push(keeper);
+    await waitForTurnToEnd(page);
+    expect(await startStory(keeper), "the agent is writing").toBe(true);
+  };
+  const silentStoryOf = (keeper: string) => (keepersOfSilentStories.includes(keeper) ? [story(keeper), "turn-end"] : []);
 
   await test.step("sent with Enter", async () => {
     await tellStory("Ada");
@@ -112,5 +123,5 @@ test("a message sent while Claude Code writes, with no tool running, joins the t
     await expect(lastAgentMessage(page)).toContainText("MANGO");
   });
 
-  expect(eventsInOrder).toEqual([story("Ada"), stopWith("PINEAPPLE"), "turn-end", story("Bo"), stopWith("MANGO"), "turn-end"]);
+  expect(eventsInOrder).toEqual([...silentStoryOf("Ada"), story("Ada"), stopWith("PINEAPPLE"), "turn-end", ...silentStoryOf("Bo"), story("Bo"), stopWith("MANGO"), "turn-end"]);
 });
