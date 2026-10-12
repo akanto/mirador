@@ -1,29 +1,35 @@
 import { expect, test } from "bun:test";
-import { forgetSessionsOf } from "../host/conversations.ts";
+import { ConversationSessions } from "../host/conversation-sessions.ts";
 
-const bound = () => new Map([
-  ["ses_old", "c1"],
-  ["ses_new", "c1"],
-  ["ses_other", "c2"],
-]);
-
-test("a conversation that moved to a newer session leaves no mapping of the old one behind", () => {
-  const bySession = bound();
-  forgetSessionsOf(bySession, "c1", "ses_new");
-  expect([...bySession]).toEqual([
-    ["ses_new", "c1"],
-    ["ses_other", "c2"],
-  ]);
+test("a conversation that moved to a newer session is reached by the newer one alone", () => {
+  const sessions = new ConversationSessions();
+  sessions.bind("c1", "ses_old");
+  sessions.bind("c2", "ses_other");
+  sessions.bind("c1", "ses_new");
+  expect(sessions.conversationOf("ses_old")).toBeUndefined();
+  expect(sessions.conversationOf("ses_new")).toBe("c1");
+  expect(sessions.conversationOf("ses_other")).toBe("c2");
 });
 
-test("a deleted conversation leaves no mapping of any session behind, newest included", () => {
-  const bySession = bound();
-  forgetSessionsOf(bySession, "c1");
-  expect([...bySession]).toEqual([["ses_other", "c2"]]);
+test("binding the session a conversation already has keeps it", () => {
+  const sessions = new ConversationSessions();
+  sessions.bind("c1", "ses_a");
+  sessions.bind("c1", "ses_a");
+  expect(sessions.conversationOf("ses_a")).toBe("c1");
+});
+
+test("a deleted conversation is reached by no session, and the others stay", () => {
+  const sessions = new ConversationSessions();
+  sessions.bind("c1", "ses_a");
+  sessions.bind("c2", "ses_b");
+  sessions.forget("c1");
+  expect(sessions.conversationOf("ses_a")).toBeUndefined();
+  expect(sessions.conversationOf("ses_b")).toBe("c2");
 });
 
 test("forgetting a conversation that never had a session changes nothing", () => {
-  const bySession = bound();
-  forgetSessionsOf(bySession, "c3");
-  expect(bySession.size).toBe(3);
+  const sessions = new ConversationSessions();
+  sessions.bind("c1", "ses_a");
+  sessions.forget("c3");
+  expect(sessions.conversationOf("ses_a")).toBe("c1");
 });

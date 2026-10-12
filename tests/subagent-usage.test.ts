@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelLabel } from "../shared/claude-models.ts";
@@ -100,6 +100,46 @@ test("polling with a tool call whose transcript never comes does not search the 
     expect(searches).toBe(1);
   } finally {
     rmSync(pollDir, { recursive: true, force: true });
+  }
+});
+
+test("polling a session with no subagents folder searches the projects once per poll, however many tool calls ask, and finds a folder that appears", async () => {
+  const pollDir = mkdtempSync(join(tmpdir(), "subagent-usage-nofolder-"));
+  let searches = 0;
+  const reader = new SubagentUsageReader(async (config, session) => {
+    searches += 1;
+    return findSubagentsDirectory(config, session);
+  });
+  try {
+    const toolCalls = ["toolu_1", "toolu_2", "toolu_3"];
+    for (let poll = 0; poll < 3; poll++) expect(await reader.usageOf(pollDir, "session-1", toolCalls)).toEqual({});
+    expect(searches).toBe(3);
+
+    writeSubagentIn(pollDir, "session-1", "a1", "toolu_2");
+    expect(Object.keys(await reader.usageOf(pollDir, "session-1", toolCalls))).toEqual(["toolu_2"]);
+  } finally {
+    rmSync(pollDir, { recursive: true, force: true });
+  }
+});
+
+test("the subagents folder is read again only once its timestamp changes", async () => {
+  const stampDir = mkdtempSync(join(tmpdir(), "subagent-usage-stamp-"));
+  const reader = new SubagentUsageReader();
+  const directory = join(stampDir, "projects", "-work-project", "session-1", "subagents");
+  const setFolderTimestamp = (seconds: number) => utimesSync(directory, seconds, seconds);
+  try {
+    writeSubagentIn(stampDir, "session-1", "a1", "toolu_first");
+    setFolderTimestamp(1_000);
+    expect(Object.keys(await reader.usageOf(stampDir, "session-1", ["toolu_first", "toolu_renamed"]))).toEqual(["toolu_first"]);
+
+    writeFileSync(join(directory, "agent-a1.meta.json"), JSON.stringify({ agentType: "Explore", toolUseId: "toolu_renamed" }));
+    setFolderTimestamp(1_000);
+    expect(Object.keys(await reader.usageOf(stampDir, "session-1", ["toolu_renamed"]))).toEqual([]);
+
+    setFolderTimestamp(2_000);
+    expect(Object.keys(await reader.usageOf(stampDir, "session-1", ["toolu_renamed"]))).toEqual(["toolu_renamed"]);
+  } finally {
+    rmSync(stampDir, { recursive: true, force: true });
   }
 });
 

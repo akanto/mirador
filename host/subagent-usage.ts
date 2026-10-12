@@ -50,12 +50,16 @@ export class SubagentUsageReader {
   }
 
   async usageOf(configDir: string, sessionId: string, toolCallIds: string[]): Promise<Record<string, SubagentUsage>> {
-    const usages = await Promise.all(toolCallIds.map(async (toolCallId) => [toolCallId, await this.usageOfOne(configDir, sessionId, toolCallId)] as const));
+    const transcriptKeyOf = (toolCallId: string) => [configDir, sessionId, toolCallId].join("\n");
+    const someTranscriptUnknown = toolCallIds.some((toolCallId) => !this.transcripts.has(transcriptKeyOf(toolCallId)));
+    const subagents = someTranscriptUnknown ? await this.subagentsOf([configDir, sessionId].join("\n"), configDir, sessionId) : null;
+    const usages = await Promise.all(
+      toolCallIds.map(async (toolCallId) => [toolCallId, await this.usageOfOne(this.transcriptOf(transcriptKeyOf(toolCallId), subagents, toolCallId))] as const),
+    );
     return Object.fromEntries(usages.filter((entry): entry is readonly [string, SubagentUsage] => entry[1] !== null));
   }
 
-  private async usageOfOne(configDir: string, sessionId: string, toolCallId: string) {
-    const transcript = await this.transcriptOf(configDir, sessionId, toolCallId);
+  private async usageOfOne(transcript: string | null) {
     if (!transcript) return null;
     try {
       const { mtimeMs: modifiedAt, size } = await stat(transcript);
@@ -69,11 +73,9 @@ export class SubagentUsageReader {
     }
   }
 
-  private async transcriptOf(configDir: string, sessionId: string, toolCallId: string) {
-    const key = [configDir, sessionId, toolCallId].join("\n");
+  private transcriptOf(key: string, subagents: SessionSubagents | null, toolCallId: string) {
     const known = this.transcripts.get(key);
     if (known) return known;
-    const subagents = await this.subagentsOf([configDir, sessionId].join("\n"), configDir, sessionId);
     const found = subagents?.transcripts.get(toolCallId) ?? null;
     if (found) rememberNewest(this.transcripts, key, found, this.capacities.transcripts);
     return found;
