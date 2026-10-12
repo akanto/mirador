@@ -1331,7 +1331,7 @@ export class ConversationService {
 
   /** Returns the failure's message. A turn Claude's usage limit stopped holds the queue until the limit resets. */
   private recordTurnFailure(conversationId: string, error: unknown) {
-    if (!isUsageLimitError(error)) {
+    if (!isUsageLimitError(error) || !this.store.hasConversation(conversationId)) {
       this.append(conversationId, { type: "error", message: errorMessage(error), ...(isAuthRequiredError(error) && { authRequired: true as const }) });
       return errorMessage(error);
     }
@@ -1429,6 +1429,7 @@ export class ConversationService {
   }
 
   private notifyTurnEnded(conversationId: string, outcome: TurnOutcome) {
+    if (!this.store.hasConversation(conversationId)) return;
     const reason = turnEndReason(outcome, this.runtime(conversationId).queuedMessages.length > 0);
     if (!reason || this.stopping) return;
     this.notifications.notify(conversationId, reason);
