@@ -115,7 +115,7 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   await expect.poll(() => focusedTag(page)).toBe("TEXTAREA");
 });
 
-test("keys pressed inside a focused canvas page navigate, but cannot create conversations", async ({ page }) => {
+test("keys pressed inside a focused canvas page navigate, but cannot create conversations or reload the page", async ({ page }) => {
   await signIn(page, host);
   const primary = await primaryModifier(page);
   await page.locator(".workspace").nth(1).locator("li").first().click();
@@ -129,6 +129,13 @@ test("keys pressed inside a focused canvas page navigate, but cannot create conv
   await expect(page.getByRole("dialog", { name: "Palette" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Palette" })).toHaveCount(0);
+
+  await page.evaluate(() => ((window as unknown as { stillThisPage: boolean }).stillThisPage = true));
+  await canvasPage.focus();
+  await expect.poll(() => focusedTag(page)).toBe("IFRAME");
+  await page.keyboard.press(`${primary}+KeyR`);
+  await page.waitForTimeout(1_000);
+  expect(await page.evaluate(() => (window as unknown as { stillThisPage?: boolean }).stillThisPage)).toBe(true);
 
   await canvasPage.focus();
   await expect.poll(() => focusedTag(page)).toBe("IFRAME");

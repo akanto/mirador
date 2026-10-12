@@ -242,11 +242,11 @@ function paletteEntries(
 const isModal = (state: AppState) => state.overlay !== null && state.overlay.kind !== "add-workspace" && state.overlay.kind !== "add-workspace-group";
 
 /**
- * Keys forwarded from a canvas page may navigate but never create or restart anything, nor reach a shell: the page is
+ * Keys forwarded from a canvas page may navigate but never create, restart or reload anything, nor reach a shell: the page is
  * agent-written. Showing the terminal pane starts a shell where none runs.
  */
 const outOfCanvasPagesReach = (command: ShortcutCommand) =>
-  ["new-conversation", "new-workspace", "restart-host", "toggle-terminal"].includes(command.type) || (command.type === "focus" && command.pane === "terminals");
+  ["new-conversation", "new-workspace", "restart-host", "reload-page", "toggle-terminal"].includes(command.type) || (command.type === "focus" && command.pane === "terminals");
 
 function useShowCanvasForNewReview(items: CanvasItem[] | undefined, canvasVisible: boolean, showCanvas: () => void) {
   const newestReview = items?.filter((item) => item.kind === "review").at(-1);
