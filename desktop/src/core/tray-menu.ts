@@ -1,9 +1,10 @@
+import { newerVersionLabel, type NewerVersion } from "../../../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../../../shared/version.ts";
 import type { HostStatus } from "./host-supervisor.ts";
 
-export type TrayAction = "open" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
+export type TrayAction = "open" | "download-newer-version" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
 
-const trayActions: readonly string[] = ["open", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
+const trayActions: readonly string[] = ["open", "download-newer-version", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
 export const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
 
 export type TrayItem =
@@ -14,6 +15,7 @@ export interface TrayState {
   status: HostStatus | "starting";
   hostRunsInBackground: boolean;
   openAtLogin: boolean;
+  newerVersion: NewerVersion | null;
 }
 
 const statusLabels: Record<TrayState["status"], string> = {
@@ -24,11 +26,19 @@ const statusLabels: Record<TrayState["status"], string> = {
   background: "Host: running in the background",
 };
 
+/** A release links to its download page; new commits on a checkout's upstream are only told. */
+function newerVersionItems(newerVersion: NewerVersion | null): TrayItem[] {
+  if (!newerVersion) return [];
+  if (newerVersion.kind === "release") return [{ type: "normal", label: `${newerVersionLabel(newerVersion)}: download`, action: "download-newer-version" }];
+  return [{ type: "normal", label: newerVersionLabel(newerVersion), enabled: false }];
+}
+
 export function trayMenu(state: TrayState): TrayItem[] {
   const restartable = state.status !== "external" && state.status !== "starting";
   return [
     { type: "normal", label: statusLabels[state.status], enabled: false },
     { type: "normal", label: `Mirador ${MIRADOR_VERSION}`, enabled: false },
+    ...newerVersionItems(state.newerVersion),
     { type: "normal", label: "Open", action: "open" },
     { type: "separator" },
     { type: "normal", label: restartable ? "Restart host" : "Restart host (not started by this app)", action: "restart-host", enabled: restartable },

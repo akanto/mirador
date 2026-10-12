@@ -1,4 +1,5 @@
 import { HostNotifications, openWebSocket } from "../desktop/src/core/host-notifications.ts";
+import { newerVersionLabel } from "../shared/newer-version.ts";
 
 /** Listens to a test host the way the desktop app does, printing a line when connected and one per notification it would show. */
 const [origin, token, builtFromCode = null] = process.argv.slice(2) as [string, string, string?];
@@ -8,6 +9,7 @@ new HostNotifications({
   token: () => token,
   show: (notification) => console.log(JSON.stringify(notification)),
   showWaitingCount: (count) => console.log(`waiting ${count}`),
+  showNewerVersion: (newerVersion) => newerVersion && console.log(`newer: ${newerVersionLabel(newerVersion)}`),
   builtFromCode,
   open: (url, headers) => {
     const socket = openWebSocket(url, headers) as WebSocket;

@@ -19,6 +19,7 @@ import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
 import { HostRestart, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "./restart.ts";
 import { DesktopAppCheck } from "./desktop-app-check.ts";
+import { NewerVersionWatcher, newerVersionLookup } from "./newer-version.ts";
 import { desktopAppCode } from "../shared/desktop-app-code.ts";
 import { startServer } from "./server.ts";
 import { SourceWatcher } from "./source-watcher.ts";
@@ -56,6 +57,7 @@ const desktopApp = new DesktopAppCheck(
   () => desktopAppCode(join(sourceDir, "desktop")),
   (outdated) => hub.broadcast({ type: "desktop-app.outdated", outdated }),
 );
+const newerVersion = new NewerVersionWatcher(newerVersionLookup(sourceDir, config.latestReleaseUrl), (found) => hub.announceNewerVersion(found));
 const devices = new DeviceService(store);
 const joinRequests = new JoinRequestService(store, devices, ownAuthorityFingerprint);
 const signInCodes = new SignInCodes(store);
@@ -80,9 +82,19 @@ const relays = new MachineRelays(
 );
 relays.startAll();
 watch.startAll();
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, desktopApp, devices, joinRequests, signInCodes, search, relays, watch, certificate });
-const sourceWatcher = new SourceWatcher(sourceDir, { uiEdited: server.rebuildUi, hostEdited: () => restart.hostCodeEdited() });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const sourceWatcher = new SourceWatcher(sourceDir, {
+  uiEdited: () => {
+    server.rebuildUi();
+    newerVersion.recount();
+  },
+  hostEdited: () => {
+    restart.hostCodeEdited();
+    newerVersion.recount();
+  },
+});
 sourceWatcher.start();
+if (config.checksForNewerVersion) newerVersion.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
 const terminalSessions = new TerminalSessionWatcher(
   () => conversations.claudeConfigDirs(),
@@ -104,6 +116,7 @@ function machineSignedOut(machineId: string) {
 async function stopServices() {
   terminalSessions.stop();
   sourceWatcher.stop();
+  newerVersion.stop();
   const childrenExited = Promise.all([terminals.shutdown(), conversations.shutdown()]);
   server.stop();
   assetsServer.stop(true);

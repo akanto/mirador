@@ -302,6 +302,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Layout**: the default arrangement for new conversations, and whether the canvas and terminals start hidden.
 - **Devices** and **Notifications**, as above.
 - **About**: the Mirador version, and the Claude Code it runs.
+- **Newer versions**: the downloaded app checks GitHub's latest published release when the host starts and every 6 hours; a host running from a checkout fetches the branch it follows and counts the commits it lacks. A banner says so until you dismiss it, and *Settings › About* and the tray menu show it too, the tray with a link to the download.
 
 Hovering almost any control explains what it does behind the scenes, together with its keyboard shortcut.
 
@@ -327,7 +328,7 @@ Off macOS, Ctrl stands in for ⌘ and Alt for ⌥. The ⌥ bindings go by physic
 
 A native window around Mirador, for macOS and Linux ([full details](desktop/README.md)).
 
-- **Menu bar or tray app**: closing the window leaves it running, and on macOS the Dock icon hides until the window comes back. On macOS `⌘W` closes the open dialog, else the focused terminal's shell, and asks before it closes the window. The menu has the Mirador version and the host's status, *Open*, *Restart host*, *Run host in the background*, *Open at login* and *Quit*. On a Linux desktop without a tray, *Desktop app…* in the sidebar has the same menu.
+- **Menu bar or tray app**: closing the window leaves it running, and on macOS the Dock icon hides until the window comes back. On macOS `⌘W` closes the open dialog, else the focused terminal's shell, and asks before it closes the window. The menu has the Mirador version and the host's status, a newer version when there is one, *Open*, *Restart host*, *Run host in the background*, *Open at login* and *Quit*. On a Linux desktop without a tray, *Desktop app…* in the sidebar has the same menu.
 - **Uses a host that is already running** and never stops one it didn't start. Otherwise it starts one through your login shell, so agents see the same environment as in your terminal.
 - **Run the host in the background**: a LaunchAgent on macOS, or a systemd user service on Linux, so the host keeps running without the app and starts at login.
 - **Open at login** (on by default).

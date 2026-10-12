@@ -3,7 +3,7 @@ import { navigationRules, webUrl } from "../desktop/src/core/navigation.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { trayMenu, type TrayItem, type TrayState } from "../desktop/src/core/tray-menu.ts";
 
-const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true };
+const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true, newerVersion: null };
 const item = (items: TrayItem[], label: string) => items.find((candidate) => candidate.type === "normal" && candidate.label.startsWith(label));
 
 describe("tray menu", () => {
@@ -38,6 +38,14 @@ describe("tray menu", () => {
     for (const status of ["owned", "background", "stopped"] as const) {
       expect(item(trayMenu({ ...state, status }), "Restart host")).toMatchObject({ label: "Restart host", enabled: true });
     }
+  });
+
+  test("offers a newer release's download page under the version, and tells new commits on a checkout's upstream", () => {
+    const withRelease = trayMenu({ ...state, newerVersion: { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } });
+    expect(withRelease[2]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: download", action: "download-newer-version" });
+    const withCommits = trayMenu({ ...state, newerVersion: { kind: "checkout", commits: 1, upstream: "origin/main", upstreamCommit: "abc" } });
+    expect(withCommits[2]).toEqual({ type: "normal", label: "1 new commit on origin/main", enabled: false });
+    expect(trayMenu(state)[2]).toMatchObject({ label: "Open" });
   });
 
   test("shows the background checkbox ticked when the setting is on", () => {

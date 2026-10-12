@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HostNotifications, nativeNotification, notificationSocketUrl, type NotificationSocket } from "../desktop/src/core/host-notifications.ts";
+import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 
@@ -32,11 +33,13 @@ function listen(token: () => string | null = () => "secret") {
   const sockets: FakeSocket[] = [];
   const shown: SystemNotification[] = [];
   const counts: number[] = [];
+  const newerVersions: (NewerVersion | null)[] = [];
   const notifications = new HostNotifications({
     origin: "http://127.0.0.1:4600",
     token,
     show: (shownNotification) => void shown.push(shownNotification),
     showWaitingCount: (count) => void counts.push(count),
+    showNewerVersion: (newerVersion) => void newerVersions.push(newerVersion),
     open: (url, headers) => {
       const socket = new FakeSocket(url, headers);
       sockets.push(socket);
@@ -44,7 +47,7 @@ function listen(token: () => string | null = () => "secret") {
     },
     retryDelayMilliseconds: 1,
   });
-  return { notifications, sockets, shown, counts };
+  return { notifications, sockets, shown, counts, newerVersions };
 }
 
 describe("host notifications in the desktop app", () => {
@@ -82,6 +85,16 @@ describe("host notifications in the desktop app", () => {
     expect(sockets).toHaveLength(2);
     sockets[1]!.receive({ type: "waiting.counted", count: 1 });
     expect(counts).toEqual([2, 0, 1]);
+    notifications.stop();
+  });
+
+  test("shows the newer version the host found, and forgets it when the host goes away, which may have been updated", () => {
+    const { notifications, sockets, newerVersions } = listen();
+    const newerVersion = { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } as const;
+    notifications.start();
+    sockets[0]!.receive({ type: "newer-version.found", newerVersion });
+    sockets[0]!.hostGoesAway();
+    expect(newerVersions).toEqual([newerVersion, null]);
     notifications.stop();
   });
 

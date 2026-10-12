@@ -15,6 +15,7 @@ import { JoinMachine } from "./Devices.tsx";
 import { JoinRequestPrompts } from "./JoinRequests.tsx";
 import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
 import { MachinesDialog, openMachine } from "./Machines.tsx";
+import { NewerVersionBanner } from "./NewerVersion.tsx";
 import { HintLayer } from "./Hint.tsx";
 import { SearchDialog } from "./Search.tsx";
 import { hints } from "./hints.ts";
@@ -442,6 +443,7 @@ export function App() {
     <main className="chat-column">
       <HostBanner status={status} state={state} />
       <DesktopAppBanner state={state} />
+      <NewerVersionBanner newerVersion={state.newerVersion} />
       {inFixedOrder(state.kept).map((kept) => {
         const keptConversation = state.conversations.find(({ id }) => id === kept.conversationId);
         return (
@@ -582,6 +584,7 @@ export function App() {
           canvasUse={state.canvasUse}
           claudeProgram={state.claudeProgram}
           version={state.version}
+          newerVersion={state.newerVersion}
           layoutDefault={conversationLayouts.layoutDefault}
           onChange={conversationLayouts.setLayoutDefault}
           onClose={closeOverlay}

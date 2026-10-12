@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "n
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import type { PublicAddress } from "../shared/model.ts";
+import { RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 import { relayPorts } from "../shared/relay-ports.ts";
 
 /** Other devices reach the host over HTTPS on these ports of every network it is on. */
@@ -45,6 +46,10 @@ export interface HostConfig {
   developmentMode: boolean;
   /** Runs the statusline command from the user's Claude Code settings; test hosts turn it off with MIRADOR_STATUSLINE=off. */
   runsUserStatusLine: boolean;
+  /** Test hosts turn it off with MIRADOR_NEWER_VERSION_CHECK=off, so they neither fetch the checkout they run from nor ask GitHub. */
+  checksForNewerVersion: boolean;
+  /** Where a release finds the latest published release; e2e points it at a fake. */
+  latestReleaseUrl: string;
 }
 
 function loadOrCreateToken(dataDir: string, fileName: string) {
@@ -185,5 +190,7 @@ export function loadConfig(env = process.env): HostConfig {
     testSkipsUserSettings: env.MIRADOR_TEST_SKIP_USER_SETTINGS === "1",
     developmentMode: env.MIRADOR_DEV === "1",
     runsUserStatusLine: env.MIRADOR_STATUSLINE !== "off",
+    checksForNewerVersion: env.MIRADOR_NEWER_VERSION_CHECK !== "off",
+    latestReleaseUrl: env.MIRADOR_LATEST_RELEASE_URL ?? `https://api.github.com/repos/${RELEASES_REPOSITORY}/releases/latest`,
   };
 }

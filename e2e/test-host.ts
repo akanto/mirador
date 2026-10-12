@@ -74,7 +74,8 @@ export class TestHost {
     return this.process?.pid;
   }
 
-  private copySource() {
+  /** start() does it too; a spec calls it first to prepare the copy, making it a git checkout for one. */
+  copySource() {
     if (existsSync(this.sourceDir)) return;
     ["host", "shared", "web"].forEach((directory) => cpSync(join(repoRoot, directory), join(this.sourceDir, directory), { recursive: true }));
     ["package.json", "tsconfig.json", "bun.lock"].forEach((file) => cpSync(join(repoRoot, file), join(this.sourceDir, file)));
@@ -141,6 +142,7 @@ export class TestHost {
         MIRADOR_TEST_SKIP_USER_SETTINGS: "1",
         MIRADOR_TAILSCALE: join(this.root, "no-tailscale-on-this-machine"),
         MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
+        MIRADOR_NEWER_VERSION_CHECK: "off",
         SHELL: this.options.shell ?? defaultShell,
         ...(this.options.fakePrograms && { PATH: `${this.fakeProgramsDir}:${this.baseEnvironment().PATH}` }),
         ...this.options.environment,

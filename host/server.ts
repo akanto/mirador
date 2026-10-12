@@ -48,6 +48,7 @@ import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.t
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import { defaultLaunchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
 import type { DesktopAppCheck } from "./desktop-app-check.ts";
+import type { NewerVersionWatcher } from "./newer-version.ts";
 import type { HostRestart } from "./restart.ts";
 import { signInLink, type SignInCodes } from "./sign-in-codes.ts";
 import { showWithNotifySend } from "./notify-send.ts";
@@ -68,6 +69,7 @@ export interface HostServices {
   images: ImageStore;
   restart: HostRestart;
   desktopApp: DesktopAppCheck;
+  newerVersion: NewerVersionWatcher;
   devices: DeviceService;
   joinRequests: JoinRequestService;
   signInCodes: SignInCodes;
@@ -114,6 +116,7 @@ export function startServer(services: HostServices) {
     images,
     restart,
     desktopApp,
+    newerVersion,
     devices,
     joinRequests,
     signInCodes,
@@ -952,6 +955,7 @@ export function startServer(services: HostServices) {
       hostCodeChanged: restart.codeChanged,
       desktopAppOutdated: desktopApp.outdated,
       version: MIRADOR_VERSION,
+      newerVersion: newerVersion.current,
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
   }
@@ -985,6 +989,7 @@ export function startServer(services: HostServices) {
       else {
         desktopApp.connected(socket, socket.data.desktopAppCode);
         hub.send(socket, { type: "waiting.counted", count: conversations.waitingCount() });
+        if (newerVersion.current && socket.data.deviceId === null) hub.send(socket, { type: "newer-version.found", newerVersion: newerVersion.current });
       }
       if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
       else if (socket.data.role === "page") hub.send(socket, devicesListed(socket));

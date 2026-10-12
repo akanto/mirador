@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
-const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false } as const;
+const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null } as const;
 
 describe("menu in the window", () => {
   test("is the tray's menu without Open", () => {
@@ -18,6 +18,12 @@ describe("menu in the window", () => {
       "Quit",
     ]);
     expect(windowMenu(state).find((item) => item.type === "normal" && item.action === "toggle-background")).toMatchObject({ checked: true });
+  });
+
+  test("has the tray's newer release, which the Linux sidebar's menu then offers too", () => {
+    const newerVersion = { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } as const;
+    expect(windowMenu({ ...state, newerVersion })[2]).toMatchObject({ label: "Mirador 9.9.9 is out: download", action: "download-newer-version" });
+    expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "download-newer-version" }, "n-1")).toEqual({ type: "action", action: "download-newer-version" });
   });
 
   test("reaches the page as an event carrying the nonce and the items", () => {

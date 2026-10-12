@@ -318,7 +318,8 @@ body.resizing iframe {
   font-size: calc(12px * var(--font-scale));
 }
 
-.banner.host-code-changed {
+.banner.host-code-changed,
+.banner.newer-version {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -326,7 +327,8 @@ body.resizing iframe {
 }
 
 /* The banner is the same orange with black text in both themes, so its button is too. */
-.banner.host-code-changed button {
+.banner.host-code-changed button,
+.banner.newer-version button {
   font-size: calc(12px * var(--font-scale));
   padding: 1px 8px;
   color: #000;
@@ -334,8 +336,14 @@ body.resizing iframe {
   border: 1px solid rgb(0 0 0 / 0.25);
 }
 
-.banner.host-code-changed button:hover {
+.banner.host-code-changed button:hover,
+.banner.newer-version button:hover {
   background: #fff;
+}
+
+.banner.newer-version a {
+  color: #000;
+  text-decoration: underline;
 }
 
 .banner.host-code-changed kbd {

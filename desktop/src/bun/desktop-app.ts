@@ -1,5 +1,6 @@
 import { Utils } from "electrobun/main";
 import { readFileSync } from "node:fs";
+import type { NewerVersion } from "../../../shared/newer-version.ts";
 import { hostArgv } from "../core/host-command.ts";
 import { HostNotifications, nativeNotification } from "../core/host-notifications.ts";
 import { hostAnswers, spawnDetachedHost } from "../core/host-process.ts";
@@ -41,6 +42,7 @@ export class DesktopApp {
   private readonly tray: AppTray;
   private readonly notifications: HostNotifications;
   private status: TrayState["status"] = "starting";
+  private newerVersion: NewerVersion | null = null;
   private busy = false;
   /** Only the window's own page gets it, never a frame in it, so only that page makes the app act. */
   private readonly pageNonce = crypto.randomUUID();
@@ -79,6 +81,10 @@ export class DesktopApp {
       token: () => this.browserTokenOnceWritten(),
       show: (notification) => Utils.showNotification(nativeNotification(notification, process.platform)),
       showWaitingCount: (count) => this.tray.showWaitingCount(count),
+      showNewerVersion: (newerVersion) => {
+        this.newerVersion = newerVersion;
+        this.renderTray();
+      },
       builtFromCode: environment.builtFromCode,
     });
     this.renderTray();
@@ -122,10 +128,15 @@ export class DesktopApp {
 
   private async handle(action: TrayAction) {
     if (action === "open") return this.openWindow();
+    if (action === "download-newer-version") return this.openNewerVersionDownload();
     if (action === "quit") return void Utils.quit();
     if (action === "restart-host") return this.busyWith("starting", () => this.supervisor.restart());
     if (action === "toggle-background") return this.busyWith("starting", () => this.toggleBackground());
     return this.toggleOpenAtLogin();
+  }
+
+  private openNewerVersionDownload() {
+    if (this.newerVersion?.kind === "release") this.window.openInBrowser(this.newerVersion.url);
   }
 
   private toggleBackground() {
@@ -183,7 +194,7 @@ export class DesktopApp {
 
   private trayState(): TrayState {
     const { hostRunsInBackground, openAtLogin } = this.environment.settings.current();
-    return { status: this.status, hostRunsInBackground, openAtLogin };
+    return { status: this.status, hostRunsInBackground, openAtLogin, newerVersion: this.newerVersion };
   }
 
   private showMenuInWindow() {

@@ -9,6 +9,7 @@ export const hints = {
     "What happens when the agent asks you something on the canvas.\n\nAgent waits: the agent's ask call stays open until you press Submit, and your answer comes back as its result, mid-turn.\n\nNext message: the ask call returns at once, the agent ends its turn, and your answer is sent later as your next message. Good for questions you want to think about.",
   configOption:
     "The agent offers this setting for the session. Changing it sends the new value to the agent (ACP session/set_config_option), which applies it to this conversation.",
+  dismissNewerVersion: "Hides this until there is something newer still. Settings › About keeps showing it.",
   restartHost:
     "Starts the host again in place, so it runs its code as it is now. Agents that are working stop, then continue where they left off; queued messages are kept. Terminals come back as new shells under the output they had. Open pages reload by themselves.",
   stop: "Asks the agent to stop its turn, as Esc does. When it has not stopped within a few seconds, this becomes Force stop, which ends the agent process instead; other conversations on the same profile continue where they left off.",

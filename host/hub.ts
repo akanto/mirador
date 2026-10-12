@@ -2,6 +2,7 @@ import type { ServerWebSocket } from "bun";
 import { deflateRawSync } from "node:zlib";
 import type { ClientAddress, DeviceConnection, StoredEvent } from "../shared/model.ts";
 import { DEFLATED_MESSAGE_MIN_LENGTH } from "../shared/low-data.ts";
+import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 import { lowDataEvent, pageEvent } from "./low-data.ts";
@@ -118,6 +119,12 @@ export class Hub {
     this.announcedWaitingCount = count;
     const payload = JSON.stringify({ type: "waiting.counted", count } satisfies ServerMessage);
     this.notifiers.forEach((socket) => deliver(socket, payload));
+  }
+
+  /** Pages show it whichever device they are on, as it is about this host; another machine's desktop app runs an install of its own. */
+  announceNewerVersion(newerVersion: NewerVersion | null) {
+    const payload = JSON.stringify({ type: "newer-version.found", newerVersion } satisfies ServerMessage);
+    [...this.sockets, ...[...this.notifiers].filter(({ data }) => data.deviceId === null)].forEach((socket) => deliver(socket, payload));
   }
 
   /** What this host passes on from its other machines; a device that wants those joins the machine itself. Whether a page or app here got it. */

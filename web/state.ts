@@ -1,4 +1,5 @@
 import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
+import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
@@ -65,6 +66,7 @@ export interface AppState {
   hostCodeChanged: boolean;
   hostRestarting: boolean;
   desktopAppOutdated: boolean;
+  newerVersion: NewerVersion | null;
 }
 
 export type AppAction =
@@ -100,6 +102,7 @@ export const initialState: AppState = {
   hostCodeChanged: false,
   hostRestarting: false,
   desktopAppOutdated: false,
+  newerVersion: null,
   notices: [],
   noticesEverShown: 0,
 };
@@ -170,6 +173,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         hostRunId: message.hostRunId,
         hostCodeChanged: message.hostCodeChanged,
         desktopAppOutdated: message.desktopAppOutdated,
+        newerVersion: message.newerVersion,
         kept: state.kept.filter(({ conversationId }) => exists(conversationId)),
       };
       return exists(state.selectedConversationId) ? next : select(next, null);
@@ -288,6 +292,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, hostRestarting: true };
     case "desktop-app.outdated":
       return { ...state, desktopAppOutdated: message.outdated };
+    case "newer-version.found":
+      return { ...state, newerVersion: message.newerVersion };
   }
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type PromptTemplate } from "../shared/model.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
+import type { NewerVersion } from "../shared/newer-version.ts";
 import { FontSizePreview, MachineColorPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
@@ -10,6 +11,7 @@ import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
+import { NewerVersionNote } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
@@ -70,6 +72,7 @@ export function SettingsDialog({
   canvasUse,
   claudeProgram,
   version,
+  newerVersion,
   layoutDefault,
   onChange,
   onClose,
@@ -80,6 +83,7 @@ export function SettingsDialog({
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
   version: string;
+  newerVersion: NewerVersion | null;
   layoutDefault: LayoutDefault;
   onChange: (layoutDefault: LayoutDefault) => void;
   onClose: () => void;
@@ -112,7 +116,7 @@ export function SettingsDialog({
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
     devices: () => <DeviceSettings listed={devices} />,
     notifications: () => <NotificationSettings />,
-    about: () => <AboutSettings version={version} claudeProgram={claudeProgram} />,
+    about: () => <AboutSettings version={version} newerVersion={newerVersion} claudeProgram={claudeProgram} />,
   };
 
   return (
@@ -364,11 +368,12 @@ function TerminalSettings() {
   );
 }
 
-function AboutSettings({ version, claudeProgram }: { version: string; claudeProgram: ClaudeProgram }) {
+function AboutSettings({ version, newerVersion, claudeProgram }: { version: string; newerVersion: NewerVersion | null; claudeProgram: ClaudeProgram }) {
   return (
     <>
       <h3>About</h3>
       <p className="hint">Mirador {version}</p>
+      <NewerVersionNote newerVersion={newerVersion} />
       <p className="hint">Claude Code: {foundClaudeProgram(claudeProgram)}</p>
     </>
   );

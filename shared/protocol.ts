@@ -33,6 +33,7 @@ import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { FindingDecision } from "./review.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
+import type { NewerVersion } from "./newer-version.ts";
 import type { PromptHistoryEntry } from "./prompt-history.ts";
 import type { SlashCommand } from "./slash-commands.ts";
 import type { SplitAxis } from "./terminal-layout.ts";
@@ -228,6 +229,7 @@ export type ServerMessage =
       desktopAppOutdated: boolean;
       /** The version of Mirador this host is. */
       version: string;
+      newerVersion: NewerVersion | null;
     }
   | { type: "profile.upserted"; profile: Profile }
   | { type: "profile.deleted"; profileId: string }
@@ -302,6 +304,8 @@ export type ServerMessage =
   | { type: "waiting.counted"; count: number }
   | { type: "host.code-changed" }
   | { type: "desktop-app.outdated"; outdated: boolean }
+  /** To pages, and to this machine's desktop app: also on connecting, while there is a newer version. */
+  | { type: "newer-version.found"; newerVersion: NewerVersion | null }
   /** The host is stopping to start again in place; pages reload once they reconnect. */
   | { type: "host.restarting" }
   | { type: "error"; message: string }
