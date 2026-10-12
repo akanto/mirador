@@ -1,5 +1,5 @@
 import { open } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ToolCallContent, ToolCallUpdate } from "@agentclientprotocol/sdk";
 import { structuredPatch } from "diff";
 import type { DiffHunk, DiffRow, EditDiff } from "../shared/review.ts";
@@ -179,7 +179,8 @@ export async function textFileAt(path: string): Promise<FileBefore> {
 }
 
 export function shownPath(path: string, workspaceDirectories: string[]) {
-  const inside = workspaceDirectories.map((directory) => relative(directory, path)).find((within) => within !== "" && !within.startsWith("..") && !isAbsolute(within));
+  const isOutside = (within: string) => within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within);
+  const inside = workspaceDirectories.map((directory) => relative(directory, path)).find((within) => within !== "" && !isOutside(within));
   return inside ?? path;
 }
 

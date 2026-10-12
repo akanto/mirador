@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, test } from "bun:test";
 import type { ToolCallUpdate } from "@agentclientprotocol/sdk";
-import { editDiff, editDiffsOf, fileChangeDiff, snippetDiff, type FileBefore } from "../host/edit-diff.ts";
+import { editDiff, editDiffsOf, fileChangeDiff, shownPath, snippetDiff, type FileBefore } from "../host/edit-diff.ts";
 import type { DiffRow, EditDiff } from "../shared/review.ts";
 
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
@@ -124,5 +124,13 @@ describe("a file's line changes, asked for again after every tool call", () => {
     const first = snippetDiff("/work/a.ts", "old line", "new line");
     expect(snippetDiff("/work/a.ts", "old line", "new line")).toBe(first);
     expect(snippetDiff("/work/a.ts", "old line", "newer line")).not.toBe(first);
+  });
+});
+
+describe("a path shown to the user", () => {
+  test("is relative to its workspace, even when the file's name starts with two dots", () => {
+    expect(shownPath("/ws/..hidden/x.ts", ["/ws"])).toBe("..hidden/x.ts");
+    expect(shownPath("/ws/src/a.ts", ["/ws"])).toBe("src/a.ts");
+    expect(shownPath("/other/x.ts", ["/ws"])).toBe("/other/x.ts");
   });
 });
