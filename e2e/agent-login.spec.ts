@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, signIn, startConversation } from "./helpers.ts";
-import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
+import { ScriptedModel, opencodeProgram, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4835, { fakePrograms: true });
@@ -13,7 +13,7 @@ const refuseSignIn = join(host.root, "refuse-sign-in");
 
 /** Stands in for opencode's own sign-in, which would open a browser, and is the real opencode for everything else. */
 function fakeOpencodeSignIn() {
-  const realOpencode = execFileSync("which", ["opencode"], { encoding: "utf8" }).trim();
+  const realOpencode = opencodeProgram();
   mkdirSync(host.fakeProgramsDir, { recursive: true });
   const script = `#!/bin/sh
 if [ "$1" = auth ] && [ "$2" = login ]; then

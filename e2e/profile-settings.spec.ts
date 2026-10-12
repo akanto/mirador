@@ -36,7 +36,7 @@ test("a profile sets the mode, YOLO and Questions of the conversations that star
   await test.step("the profile offers the modes the agent listed, and keeps one with YOLO and Questions", async () => {
     const editor = await openProfiles(page);
     await editor.locator(".profile-list li", { hasText: PROFILE }).click();
-    await expect(editor.getByLabel("Profile mode").locator("option")).toContainText(["Agent's default", "build", "plan"]);
+    await expect(editor.getByLabel("Profile mode").locator("option")).toContainText(["Agent's default", "Build", "Plan"]);
     await editor.getByLabel("Profile mode").selectOption("plan");
     await editor.getByLabel("Profile YOLO").check();
     await editor.getByLabel("Profile questions").selectOption("next-message");

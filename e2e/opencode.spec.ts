@@ -16,7 +16,7 @@ import {
   startConversation,
   waitForTurnToEnd,
 } from "./helpers.ts";
-import { SPARE_MODELS, ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
+import { SPARE_MODELS, ScriptedModel, opencodeProgram, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4840);
@@ -31,7 +31,7 @@ const MARKER = "opencode-terminal-marker-17";
 async function runOpencodeInTerminal(prompt: string) {
   const isolated = applyEnvironment(agentEnvironment(), parseEnvironment(scriptedOpencodeEnvironment(model, host.root)));
   const env = { ...isolated, PWD: host.projectDir };
-  const opencode = spawn("opencode", ["run", "--model", "e2e/scripted", prompt], { cwd: host.projectDir, env, stdio: "ignore" });
+  const opencode = spawn(opencodeProgram(), ["run", "--standalone", "--model", "e2e/scripted", prompt], { cwd: host.projectDir, env, stdio: "ignore" });
   const exitCode = await new Promise((resolve) => opencode.once("exit", resolve));
   expect(exitCode).toBe(0);
 }
@@ -65,7 +65,7 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await expect(page.locator(".chat-header:visible .harness")).toHaveText("opencode");
   await expect(page.getByLabel("Profile", { exact: true }).locator("option:checked")).toHaveText(PROFILE);
   const modelPicker = page.getByRole("button", { name: "Model", exact: true });
-  await expect(modelPicker).toHaveText("E2E/Scripted");
+  await expect(modelPicker).toHaveText("e2e/Scripted");
   await modelPicker.click();
   const search = page.getByRole("combobox", { name: "Search model choices" });
   await expect(search).toBeFocused();
@@ -75,11 +75,11 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await expect(choices.getByRole("option")).toHaveCount(2);
   await expect(choices.getByRole("group", { name: "Spare" }).getByRole("option", { name: "Spare model 17" })).toBeVisible();
   await search.fill("scripted");
-  await expect(choices.getByRole("group", { name: "E2E" }).getByRole("option", { name: "Scripted", selected: true })).toBeVisible();
+  await expect(choices.getByRole("group", { name: "e2e" }).getByRole("option", { name: "Scripted", selected: true })).toBeVisible();
   await search.press("Enter");
   await expect(search).toHaveCount(0);
   await expect(modelPicker).toBeFocused();
-  await expect(modelPicker).toHaveText("E2E/Scripted");
+  await expect(modelPicker).toHaveText("e2e/Scripted");
 
   await sendMessage(page, "RUN echo e2e-bash-output");
   const permission = page.locator(".permission.pending");
@@ -95,9 +95,9 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await expect(shell.locator(".shell-output")).toHaveText("e2e-bash-output");
   await expect(shell.locator(".shell-exit")).toHaveCount(0);
   const meter = page.locator(".context-meter");
-  await expect(meter).toHaveText("42% · 42k / 100k");
+  await expect(meter).toHaveText("43% · 42.5k / 100k");
   await meter.hover();
-  await expect(page.getByRole("tooltip")).toContainText("Context window: 42,000 of 100,000 tokens in use (42%).");
+  await expect(page.getByRole("tooltip")).toContainText("Context window: 42,500 of 100,000 tokens in use (43%).");
 
   await sendMessage(page, "SHOW Scripted page");
   await expect(page.frameLocator(".canvas-frame.show iframe").locator("h1")).toHaveText("Scripted page", { timeout: 60_000 });
