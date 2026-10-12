@@ -76,3 +76,19 @@ test("at Claude's usage limit, queued messages wait for the reset instead of fai
     expect(api.answered.filter((text) => text.endsWith(CONTINUE))).toHaveLength(1);
   });
 });
+
+test("a reset further off than a timer can wait leaves continuing to you, rather than continuing at once", async ({ page }) => {
+  test.setTimeout(300_000);
+  api.limited = true;
+  api.resetsAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+  await signIn(page, host);
+  await page.getByRole("navigation").getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · Claude Code` });
+  await startConversation(page);
+
+  await sendMessage(page, "far-off reset");
+  await expect(page.locator(".timeline:visible .usage-limit-line")).toContainText("You've hit your session limit · resets", { timeout: 120_000 });
+  await waitForTurnToEnd(page);
+  await expect(notice(page).filter({ visible: true })).toContainText("it resets at");
+  await page.waitForTimeout(3_000);
+  await expect(page.locator(".timeline:visible .message.user")).toHaveText(["far-off reset"]);
+});

@@ -83,6 +83,8 @@ const OPTION_ANSWER_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
 const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
 const AUTOMATIC_CONTINUES_IN_A_ROW = 2;
+/** setTimeout fires at once when asked to wait longer than this, about 24.8 days. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1;
 
 type PermissionResolver = (optionId: string | null) => void;
 
@@ -1344,13 +1346,19 @@ export class ConversationService {
 
   private waitForUsageLimitReset(conversationId: string, resetsAt: number | null) {
     const runtime = this.runtime(conversationId);
-    const continuesAt =
-      resetsAt !== null && runtime.automaticContinues < AUTOMATIC_CONTINUES_IN_A_ROW ? resetsAt + USAGE_LIMIT_RESET_MARGIN_MS : null;
+    const continuesAt = this.automaticContinueAt(runtime, resetsAt);
     const timer =
       continuesAt === null
         ? undefined
         : setTimeout(() => this.continueAfterUsageLimit(conversationId, { automatically: true }), Math.max(0, continuesAt - Date.now()));
     runtime.usageLimit = { wait: { resetsAt, continuesAt }, timer };
+  }
+
+  /** A reset further off than a timer can wait is surely misread, so then the user continues by hand. */
+  private automaticContinueAt(runtime: Runtime, resetsAt: number | null) {
+    if (resetsAt === null || runtime.automaticContinues >= AUTOMATIC_CONTINUES_IN_A_ROW) return null;
+    const continuesAt = resetsAt + USAGE_LIMIT_RESET_MARGIN_MS;
+    return continuesAt - Date.now() <= LONGEST_TIMER_MS ? continuesAt : null;
   }
 
   /** Returns whether it was waiting. */
