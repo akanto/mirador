@@ -9,6 +9,7 @@ import { MIRADOR_VERSION } from "../../shared/version.ts";
 export type ConfigValue = string | boolean;
 
 const PRELAUNCH_TIMEOUT_MS = 60_000;
+const INITIALIZE_TIMEOUT_MS = 60_000;
 const PRELAUNCH_OUTPUT_IN_ERRORS = 600;
 const FORCE_KILL_GRACE_MS = 3000;
 /** A connection closes just before its process exits; a stop that has to SIGKILL the agent takes the grace period. */
@@ -49,6 +50,7 @@ export class HarnessProcess {
     readonly spec: HarnessSpec,
     private readonly listener: HarnessListener,
     private readonly logDir: string,
+    private readonly initializeTimeoutMs = INITIALIZE_TIMEOUT_MS,
   ) {}
 
   start(): Promise<acp.InitializeResponse> {
@@ -193,13 +195,29 @@ export class HarnessProcess {
         this.listener.onPermissionRequest(ctx.params, ctx.signal),
       )
       .connect(stream);
-    return this.failingWithExitReason((agent) =>
-      agent.request(acp.methods.agent.initialize, {
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: {},
-        clientInfo: { name: "mirador", version: MIRADOR_VERSION },
-      }),
+    return this.initialize();
+  }
+
+  /** An agent that never answers would hold up every later start of its kind, when they start one at a time. */
+  private async initialize() {
+    const givingUp = setTimeout(
+      () => void this.stop(`did not answer within ${this.initializeTimeoutMs / 1000} s of starting`),
+      this.initializeTimeoutMs,
     );
+    try {
+      return await this.failingWithExitReason((agent) =>
+        agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+          clientInfo: { name: "mirador", version: MIRADOR_VERSION },
+        }),
+      );
+    } catch (error) {
+      if (this.stopReason === undefined) void this.stop();
+      throw error;
+    } finally {
+      clearTimeout(givingUp);
+    }
   }
 
   /**
