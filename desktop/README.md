@@ -1,33 +1,28 @@
 # Mirador desktop app
 
-A native shell around the localhost host, built with [Electrobun](https://electrobun.dev) 2.0.2 (pinned), for macOS and Linux.
-On macOS it is a menu bar app that opens the UI in its own window. Closing the window leaves the app in the menu bar; the Dock icon is hidden while no window is open and comes back when you reopen it (menu bar item, or a Dock/app reopen).
+Mirador in a window of its own, with a menu bar item on macOS and a tray icon on Linux. It starts the Mirador host for you, keeps it running while the window is closed, opens at login and shows Mirador's notifications natively.
 
-The app adds no server of its own. The UI and the host are the existing `bun host/main.ts`: your checkout's, or, in a release build, the copy of Mirador the app carries, run on the app's own Bun.
+The app adds no server of its own: the UI and the host are Mirador's `bun host/main.ts`. A release build carries its own copy of Mirador and the Bun it runs on, so it needs neither Bun nor a checkout. A build of your own runs your checkout instead.
 
-## Build
+- [Install on macOS](#install-on-macos)
+- [Install on Linux](#install-on-linux)
+- [Install a build of your own](#install-a-build-of-your-own)
+- [Using it](#using-it)
+- [Uninstall](#uninstall)
+- [Build and release](#build-and-release)
+- [Known limits](#known-limits)
 
-Requires Bun on your `PATH` at build time (its absolute path is baked in as the default, see settings).
+## Install on macOS
+
+For Macs with Apple Silicon.
 
 ```bash
-cd desktop
-bun install
-bun run typecheck
-bun run build:dev      # build/dev-macos-arm64/Mirador-dev.app
-bun run build          # build/stable-macos-arm64/Mirador.app
-bun run build:release  # the same app carrying Mirador (about 390 MB), for people without a checkout
-bun run dev            # run from source with Electrobun's dev runner
+curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
 ```
 
-`build:release` stages the committed host, web, shared, bin and `scripts/mirador-message` files with their production dependencies in `release/mirador` (`scripts/stage-mirador.sh`), and the app carries them in `Contents/Resources/app/mirador`. Such an app needs neither Bun nor a checkout: it runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, so build it on the platform it is for. On Linux it is carried in `Resources/app/mirador` of the installed app, and the payload is written as POSIX ustar (`TAR_OPTIONS=--format=ustar`): GNU tar's default writes `node_modules`' long paths as long-name entries, which Electrobun's Linux installer refuses with `TarUnsupportedFileType`.
+The script puts `Mirador.app` where it already is, else in `/Applications` (or `~/Applications` when that isn't writable), and opens it. Run it again to update; quit Mirador first.
 
-Icons: `assets/app-icon.svg` (app icon) and `assets/tray-icon.svg` (menu bar, drawn black and shown by macOS as a template image) are the sources. `scripts/render-icons.sh` renders `icon.iconset/` and `assets/tray-icon.png` from them; rerun it after editing either SVG. The page's favicon is `web/favicon.svg`.
-
-Electrobun's stable app is built as a self-extracting stub; `scripts/unwrap-macos-app.sh` unwraps it right after the build, so `build/stable-macos-arm64/Mirador.app` is the expanded app and the release zip carries it. This matters because macOS runs a quarantined download translocated on a read-only mount, where the stub's own first-launch expansion fails and the app sits hung with no window. The expanded app needs nothing from its bundle at launch; Electrobun's uninstall manifest is written on the user's machine (`~/Library/Application Support/com.sodre90.mirador/stable/`) when the app first runs there.
-
-## Install
-
-A release build from GitHub (signed ad hoc rather than by an identified developer, so macOS quarantines the download; clearing that once lets it open):
+**By hand**: download `Mirador-macos-arm64.zip` from the [releases](https://github.com/sodre90/mirador/releases). The app is signed ad hoc, not by an identified developer, so macOS quarantines the download; clear that once:
 
 ```bash
 unzip Mirador-macos-arm64.zip -d /Applications
@@ -35,26 +30,99 @@ xattr -dr com.apple.quarantine /Applications/Mirador.app
 open /Applications/Mirador.app
 ```
 
-On Linux, a release's `Mirador-linux-x64-Setup.tar.gz` or `Mirador-linux-arm64-Setup.tar.gz` (`uname -m` says which: `x86_64` or `aarch64`) installs for your user, after the libraries listed under [Linux](#linux):
+On first launch macOS asks whether Mirador may send notifications, and the first time the terminal or an agent reaches a machine on your local network, whether it may do that.
+
+## Install on Linux
+
+For x64 and arm64, on X11 or Wayland desktops (only X11 is tested so far).
+
+```bash
+curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
+```
+
+The script installs the libraries the app needs with `sudo apt-get` or `sudo dnf`, then the app for your user, and starts it. Run it again to update; quit Mirador first.
+
+**By hand**: the app needs GTK 3, WebKitGTK 4.1 and the Ayatana AppIndicator library. Electrobun links the last one directly, so the app doesn't start without it, even on a desktop with no tray.
+
+```bash
+sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2   # Debian, Ubuntu
+sudo dnf install gtk3 webkit2gtk4.1 libayatana-appindicator-gtk3 librsvg2              # Fedora
+```
+
+Then download `Mirador-linux-x64-Setup.tar.gz` or `Mirador-linux-arm64-Setup.tar.gz` from the [releases](https://github.com/sodre90/mirador/releases) (`uname -m` says which: `x86_64` or `aarch64`) and run its installer:
 
 ```bash
 mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup && mirador-setup/installer
 ```
 
-Then start *Mirador* from your applications menu.
+The app goes in `~/.local/share/com.sodre90.mirador/stable/app/`, and *Mirador* in your applications menu (`~/.local/share/applications/Mirador.desktop`). The installer starts it; later, start it from there.
 
-A build of your own:
+Notifications go through `notify-send`: install `libnotify-bin` (Debian, Ubuntu) or `libnotify` (Fedora) to get them. Stock GNOME shows no tray icons until you add the AppIndicator extension (`gnome-shell-extension-appindicator` on Fedora); the app's menu is also under *Desktop app…* at the bottom of Mirador's sidebar.
+
+## Install a build of your own
+
+A build of your own runs the host from your checkout, with the Bun you built it with (see [Settings](#settings)). See [Build and release](#build-and-release) for building it.
+
+**macOS**:
 
 ```bash
 ditto "<repo>/desktop/build/stable-macos-arm64/Mirador.app" "/Applications/Mirador.app"
 open "/Applications/Mirador.app"
 ```
 
-Launch it once from its installed location. "Open at login" (on by default) registers the path it was launched from, so launch it from where it will stay. Launch it by explicit path, not `open -a "Mirador"`: several bundles share this identifier (the dev and stable build folders), and launching the wrong one would register the wrong path for login. Stable builds are signed ad hoc (Electrobun's own signing step, with `ELECTROBUN_DEVELOPER_ID=-` unless you set a real identity), which macOS needs before it asks to allow notifications; they are not notarised. Built locally and copied with `ditto`, the app carries no quarantine flag, so no Gatekeeper prompt is expected. The first time the terminal or an agent reaches a machine on the local network, macOS asks to allow it.
+Copied with `ditto`, the app carries no quarantine flag. Launch it by its path, not `open -a "Mirador"`: the dev and stable build folders hold apps with the same identifier, and *Open at login* registers the path the app was launched from.
 
-## Settings
+**Linux**, after the libraries above:
 
-`<data dir>/desktop.json` (default `~/.mirador/desktop.json`), written with defaults on first launch:
+```bash
+tar -xzf desktop/artifacts/linux-*-Mirador-Setup.tar.gz -C /tmp && /tmp/installer
+```
+
+Then start *Mirador* from your applications menu once, so *Open at login* registers the installed copy.
+
+## Using it
+
+### On macOS and on Linux
+
+| | macOS | Linux |
+| --- | --- | --- |
+| The app's menu | A menu bar item, with the number of conversations waiting for you next to it | A tray icon, and *Desktop app…* in Mirador's sidebar |
+| Closing the window | The app stays in the menu bar; its Dock icon hides until the window comes back | The app keeps running; *Open* in the tray, or launching it again, brings the window back |
+| Launching it again | Brings the window back | Hands over to the running app (through `<data dir>/desktop-<port>.sock`) and quits |
+| Quit | The menu, or ⌘Q while the window is focused | The tray menu or *Desktop app…* |
+| Open at login (on by default) | A LaunchAgent, `com.sodre90.mirador.open-at-login.<port>` | An XDG autostart entry, `~/.config/autostart/mirador-<port>.desktop` |
+| Run host in the background | A LaunchAgent, `com.sodre90.mirador.host.<port>` (RunAtLoad, KeepAlive), driven with `launchctl` | A systemd user service, `~/.config/systemd/user/mirador-host-<port>.service` (`Restart=always`, enabled so it starts at login), driven with `systemctl --user`; without a systemd user session it refuses and says why |
+| Notifications | Native; macOS asks once, and System Settings › Notifications changes it later | Through `notify-send`; without it there are none, and the app's output says `notify-send failed` |
+| Theme | The whole app takes Mirador's theme: title bar, dialogs and canvas pages | Left as GTK draws it |
+
+The menu has the Mirador version and the host's status, a newer version when there is one, *Open*, *Restart host*, *Run host in the background*, *Open at login* and *Quit*.
+
+### How the host is handled
+
+On launch the app checks whether something already answers on the port.
+
+| Situation | What the app does |
+| --- | --- |
+| A host answers that the app did not start | Uses it, and never stops it. *Restart host* is disabled, with the reason. |
+| A host the app started earlier still runs (its pid in `<data dir>/desktop-host.pid`, command line checked) | Takes it over as its own. |
+| Nothing answers | Starts `bun host/main.ts` detached, through your login shell (`$SHELL -ilc`), so the host sees the same environment as a terminal. Its output goes to `<data dir>/logs/host.log`, its pid to `desktop-host.pid`. |
+| *Run host in the background* is on | The host runs as the LaunchAgent or systemd service above, and the app only talks to it through `launchctl` or `systemctl --user`. |
+
+The LaunchAgents and services carry no environment values, as the login shell supplies the environment. A non-default port or data directory is passed as plain `MIRADOR_*=value` arguments, so a default install has none.
+
+### Closing and quitting
+
+- **Closing the window** stops nothing. ⌘W closes what has focus inside Mirador first (the open dialog, else the focused terminal's shell), and asks before it closes the window; the window's close button doesn't ask.
+- **Quit** stops the host only if the app started it. A host started by `bun host/main.ts` in a terminal, or one running in the background, keeps running.
+- **Run host in the background** refuses to turn on, with the reason, while a host the app does not own answers. Turning it on stops a host the app started, so the background one can take the port.
+
+### Notifications
+
+The app listens to the host for the notifications a browser tab would show (a question, a permission request, a finished turn or an error, in a conversation not on screen in a focused window) and shows them natively, also while its window is closed. It reconnects whenever the host restarts. While it listens, browser tabs on this computer show none, so nothing arrives twice.
+
+### Settings
+
+`<data dir>/desktop.json` (by default `~/.mirador/desktop.json`), written with defaults on first launch:
 
 ```json
 {
@@ -65,101 +133,27 @@ Launch it once from its installed location. "Open at login" (on by default) regi
 }
 ```
 
-- `hostDirectory`: the checkout the host runs from (`bun host/main.ts`, working directory); null for the copy of Mirador the app carries, wherever the app is.
-- `bun`: absolute path of the Bun that runs the host; null for the app's own Bun.
-- `hostRunsInBackground` and `openAtLogin` are toggled from the menu bar item; edit the file only while the app is quit.
+- `hostDirectory`: the checkout the host runs from; null for the copy of Mirador the app carries.
+- `bun`: the Bun that runs the host; null for the app's own.
+- `hostRunsInBackground` and `openAtLogin` are switched from the app's menu; edit the file only while the app is quit.
 
-The data directory, port and canvas port follow the host's own environment variables (`MIRADOR_DATA_DIR`, `MIRADOR_PORT`, `MIRADOR_CANVAS_PORT`; defaults `~/.mirador`, 4600, port + 1).
-
-## How the host is handled
-
-On launch the app checks whether something already answers on the port.
-
-| Situation | What the app does |
-| --- | --- |
-| A host answers that the app did not start | Uses it. Never stops it. "Restart host" is disabled with an explanation. |
-| A host it started earlier is still running (pid in `<data dir>/desktop-host.pid`, command line verified) | Adopts it as owned. |
-| Nothing answers | Starts `bun host/main.ts` detached through your login shell (`$SHELL -ilc`), so the host sees the same environment as a Terminal session. Output is appended to `<data dir>/logs/host.log`. The pid goes into `desktop-host.pid`. |
-| "Run host in the background" is on | The host runs from a LaunchAgent (`com.sodre90.mirador.host.<port>`, RunAtLoad and KeepAlive). The app only talks to it through `launchctl`. |
-
-The LaunchAgent plists carry no environment values (the login shell supplies the environment). A non-default port or data directory is passed as plain `MIRADOR_*=value` arguments, so a default install has none of them.
-
-## What Quit does
-
-- Closing the window: nothing is stopped. The host and the menu bar item stay. Cmd+W closes what has focus inside Mirador first (the open dialog, else the focused terminal's shell), and asks before it closes the window; the window's close button doesn't ask.
-- Quit (menu bar, or Cmd+Q while the window is focused): sends SIGTERM to the host only if this app started it. A host started by `bun host/main.ts` in a terminal, or a background-mode LaunchAgent host, keeps running.
-
-"Run host in the background" refuses to turn on, with a reason, while a host the app does not own is answering. When you turn it on, an app-owned host is stopped first so the LaunchAgent can take the port.
-
-## Notifications
-
-The app listens to the host for the notifications a browser tab would show (a question, a permission request, a finished turn or an error, in a conversation not on screen in a focused window) and shows them natively, also while its window is closed; it reconnects whenever the host restarts. While it listens, browser tabs show none, so nothing arrives twice. macOS asks once whether Mirador may send notifications; change it later in System Settings → Notifications. Clicking one does not open the conversation: Electrobun 2.0.2 does not report clicks.
-
-## Notes and known limits
-
-- macOS attributes file access to the app, not to Terminal. Because the host is started through your interactive login shell, anything your `~/.zshrc` touches under `~/Downloads`, `~/Documents` or `~/Desktop` triggers a one-time permission prompt for Mirador. Until it is answered, host startup waits on it. Approve it once.
-- `host.log` holds no sign-in link: the host prints one only to a terminal.
-- The window loads `/auth?token=…` from `<data dir>/browser-token`; the token is never logged by the app. The window is sandboxed, and links to other origins open in your default browser.
-- On macOS the whole app takes Mirador's theme (Light or Dark), not the Mac's appearance: the title bar, the dialogs and the canvas pages, which WebKit renders in the app's appearance rather than the page's. *Match system* follows the Mac. Electrobun 2.0.2 has no call for this, so the app sets it through the Objective-C runtime (`src/bun/app-appearance.ts`). The Linux app is left as it was: whether WebKitGTK does the same to canvas pages is untested.
-- There is no app icon yet; Electrobun warns about it during the build.
-- No Dock badge (Electrobun 2.0.2 has no API for it).
-
-## Linux
-
-The same app, built and installed on the Linux machine itself (x64 or arm64; Electrobun does not cross-compile, and as on macOS the checkout's path and Bun's are baked in as defaults). It needs GTK 3, WebKitGTK 4.1 and the Ayatana AppIndicator library at run time; Electrobun links the last one directly, so the app does not start without it, even on a desktop with no tray:
-
-```bash
-sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2   # Debian, Ubuntu
-sudo dnf install gtk3 webkit2gtk4.1 libayatana-appindicator-gtk3 librsvg2              # Fedora
-cd desktop && bun install && bun run build
-tar -xzf artifacts/linux-*-Mirador-Setup.tar.gz -C /tmp && /tmp/installer
-```
-
-The installer puts the app in `~/.local/share/com.sodre90.mirador/stable/app/` and adds *Mirador* to your applications menu (`~/.local/share/applications/Mirador.desktop`). Launch it from there once, so "Open at login" registers the installed copy.
-
-Where it differs from macOS:
-
-- **Tray**: an AppIndicator status icon with the same menu as the macOS menu bar item. Desktops without a tray (stock GNOME, until you add the AppIndicator extension: `gnome-shell-extension-appindicator` on Fedora) show no icon, so the window has the menu too: *Desktop app…* at the bottom of the sidebar.
-- **Window**: there is no Dock and no app menu bar. Closing the window leaves the app running; *Open* in the tray, or launching the app again, brings the window back. A second launch hands over to the running app through `<data dir>/desktop-<port>.sock` and quits.
-- **Run host in the background**: a systemd user service, `~/.config/systemd/user/mirador-host-<port>.service` (`Restart=always`, enabled so it also starts at login), driven with `systemctl --user`. Without a systemd user session it refuses to turn on and says why.
-- **Open at login**: an XDG autostart entry, `~/.config/autostart/mirador-<port>.desktop`.
-- **Quit**: from the tray menu or *Desktop app…*; there is no keyboard shortcut.
-- **Notifications**: shown through `notify-send` (`libnotify-bin` on Debian and Ubuntu, `libnotify` on Fedora); without it there are none, and the app's output says `notify-send failed`.
-
-`scripts/linux-desktop.sh` (repository root, needs Docker) builds the installer in an Ubuntu 24.04 container, installs it there and checks the above on a virtual display; `MIRADOR_LINUX_ARCH=x64` or `arm64` picks the architecture. Its installer has the container's paths baked in, so it is a test artifact rather than one to hand out. `MIRADOR_LINUX_RELEASE=1` builds the one to hand out instead (the release's `*-Setup.tar.gz`): from the committed files only, so run it from the main checkout or a clone, as the container clones it; it carries Mirador with Linux dependencies, and the checks also see its host run that copy. Docker Desktop on a Mac runs only arm64 here, and not its release build: Electrobun 2.0.2's toolchain (cottontail 0.7.1) dies with SIGILL in Apple Silicon's Linux VM. So build both release installers on an x64 Linux machine (Podman works too), arm64 emulated through qemu with `MIRADOR_LINUX_ARCH=arm64`. Checked so far only under X11 (Xvfb with openbox); the tray icon and Wayland sessions are untested.
-
-## Tests
-
-The logic lives in `src/core` with no Electrobun imports and is covered from the repository root:
-
-```bash
-bun run typecheck
-bun run test            # includes tests/desktop-*.test.ts
-```
+The data directory, port and canvas port follow the host's own environment variables: `MIRADOR_DATA_DIR`, `MIRADOR_PORT` and `MIRADOR_CANVAS_PORT` (by default `~/.mirador`, 4600, and the port after it).
 
 ## Uninstall
 
-On macOS:
+Replace `4600` with your port if you changed it. Your conversations and canvases in `~/.mirador` stay.
+
+**macOS**: turn off the background host and open at login, quit the app from the menu bar, and delete it:
 
 ```bash
-UID_=$(id -u)
-launchctl bootout gui/$UID_/com.sodre90.mirador.host.4600 2>/dev/null
-launchctl bootout gui/$UID_/com.sodre90.mirador.open-at-login.4600 2>/dev/null
-rm -f ~/Library/LaunchAgents/com.sodre90.mirador.host.4600.plist \
-      ~/Library/LaunchAgents/com.sodre90.mirador.open-at-login.4600.plist
-```
-
-Replace `4600` with your port if you changed it. Then quit the app from the menu bar and delete it:
-
-```bash
-rm -rf "/Applications/Mirador.app"
-rm -rf ~/Library/Application\ Support/com.sodre90.mirador
+launchctl bootout gui/$(id -u)/com.sodre90.mirador.host.4600 2>/dev/null
+launchctl bootout gui/$(id -u)/com.sodre90.mirador.open-at-login.4600 2>/dev/null
+rm -f ~/Library/LaunchAgents/com.sodre90.mirador.host.4600.plist ~/Library/LaunchAgents/com.sodre90.mirador.open-at-login.4600.plist
+rm -rf /Applications/Mirador.app ~/Library/Application\ Support/com.sodre90.mirador   # or ~/Applications/Mirador.app
 rm -f ~/.mirador/desktop.json ~/.mirador/desktop-host.pid ~/.mirador/logs/host.log
 ```
 
-Your sessions and canvases in `~/.mirador` are not touched by the app beyond those files.
-
-On Linux, quit the app first, then:
+**Linux**: quit the app, then:
 
 ```bash
 systemctl --user disable --now mirador-host-4600.service 2>/dev/null
@@ -168,3 +162,59 @@ systemctl --user daemon-reload
 ~/.local/share/com.sodre90.mirador/stable/uninstall --quiet   # Electrobun's uninstaller: the app and its menu entry
 rm -f ~/.mirador/desktop.json ~/.mirador/desktop-host.pid ~/.mirador/desktop-4600.sock ~/.mirador/logs/host.log
 ```
+
+## Build and release
+
+Built with [Electrobun](https://electrobun.dev) 2.0.2 (pinned). Electrobun doesn't cross-compile, so build on the system the app is for. Bun must be on your `PATH` at build time, and a build of your own bakes its absolute path and the checkout's in as defaults (see [Settings](#settings)).
+
+```bash
+cd desktop
+bun install
+bun run typecheck
+bun run build:dev      # build/dev-macos-arm64/Mirador-dev.app
+bun run build          # build/stable-macos-arm64/Mirador.app, or artifacts/linux-*-Mirador-Setup.tar.gz
+bun run build:release  # the same, carrying Mirador (about 390 MB), for people without a checkout
+bun run dev            # run from source with Electrobun's dev runner
+```
+
+The release assets are built from the repository root with `make` (`make help` lists the goals, and the main README's *Develop* section has the steps).
+
+### What a release build carries
+
+`build:release` stages the committed `host`, `web`, `shared` and `bin` files and `scripts/mirador-message`, with their production dependencies, in `release/mirador` (`scripts/stage-mirador.sh`). The app carries them in `Contents/Resources/app/mirador` on macOS and `Resources/app/mirador` on Linux, runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, which is one more reason to build on the platform the app is for.
+
+On Linux the payload is written as POSIX ustar (`TAR_OPTIONS=--format=ustar`): GNU tar's default writes `node_modules`' long paths as long-name entries, which Electrobun's Linux installer refuses with `TarUnsupportedFileType`.
+
+On macOS, Electrobun builds the stable app as a self-extracting stub, and `scripts/unwrap-macos-app.sh` unwraps it right after the build, so `build/stable-macos-arm64/Mirador.app` is the expanded app and the release zip carries that. macOS runs a quarantined download translocated, on a read-only mount, where the stub's own first-launch expansion fails and the app hangs with no window. The expanded app needs nothing from its bundle at launch; Electrobun's uninstall manifest is written on the user's machine (`~/Library/Application Support/com.sodre90.mirador/stable/`) when the app first runs there.
+
+Stable builds are signed ad hoc by Electrobun's own signing step (`ELECTROBUN_DEVELOPER_ID=-`, unless you set a real identity), which macOS needs before it asks to allow notifications. They are not notarized.
+
+### Linux builds in containers
+
+`scripts/linux-desktop.sh` (repository root, needs Docker) builds the installer in an Ubuntu 24.04 container, installs it there and checks the app on a virtual display: the host answers, it opens at login and stays single-instance. `MIRADOR_LINUX_ARCH=x64` or `arm64` picks the architecture. Its installer has the container's paths baked in, so it is a test artifact, not one to hand out.
+
+`MIRADOR_LINUX_RELEASE=1` builds the one to hand out instead, the release's `*-Setup.tar.gz`. It takes the committed files only, so run it from the main checkout or a clone, as the container clones it. It carries Mirador with Linux dependencies, and the checks also see its host run that copy.
+
+Docker Desktop on a Mac runs only arm64 here, and not the release build: Electrobun 2.0.2's toolchain (cottontail 0.7.1) dies with SIGILL in Apple Silicon's Linux VM. So build both release installers on an x64 Linux machine (Podman works too), arm64 emulated through qemu with `MIRADOR_LINUX_ARCH=arm64`.
+
+### Icons
+
+`assets/app-icon.svg` (the app icon) and `assets/tray-icon.svg` (the menu bar icon, drawn black and shown by macOS as a template image) are the sources. `scripts/render-icons.sh` renders `icon.iconset/` and `assets/tray-icon.png` from them; run it again after editing either. The page's favicon is `web/favicon.svg`.
+
+### Tests
+
+The logic lives in `src/core`, with no Electrobun imports, and is tested from the repository root:
+
+```bash
+bun run typecheck
+bun run test            # includes tests/desktop-*.test.ts
+```
+
+## Known limits
+
+- **macOS file access prompts**: macOS attributes file access to the app, not to Terminal. As the host starts through your interactive login shell, anything your `~/.zshrc` touches under `~/Downloads`, `~/Documents` or `~/Desktop` brings a one-time permission prompt for Mirador, and the host waits on it until you answer. Approve it once.
+- **Clicking a notification** doesn't open its conversation: Electrobun 2.0.2 does not report clicks.
+- **No Dock badge**: Electrobun 2.0.2 has no call for it; the count shows next to the menu bar item instead.
+- **The macOS theme** is set through the Objective-C runtime (`src/bun/app-appearance.ts`), as Electrobun 2.0.2 has no call for it. Whether WebKitGTK renders canvas pages in the app's appearance on Linux is untested, so the Linux app is left as it is.
+- **Linux** is checked only under X11 (Xvfb with openbox); the tray icon and Wayland sessions are untested.
+- **Sign-in**: `host.log` holds no sign-in link, as the host prints one only to a terminal. The window signs in with `<data dir>/browser-token`, which the app never logs. The window is sandboxed, and links to other sites open in your default browser.
