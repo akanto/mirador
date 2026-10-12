@@ -51,6 +51,13 @@ test("a turn is named by its message's first line, shortened when long", () => {
   expect(turnTitle("   ")).toBe("an earlier turn");
 });
 
+test("a shortened turn title keeps an emoji whole", () => {
+  const title = turnTitle(`${"a".repeat(59)}😀b`);
+  expect(title).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  expect(title).not.toMatch(/^[\uDC00-\uDFFF]/);
+  expect(title).toBe(`${"a".repeat(59)}😀…`);
+});
+
 test("a rewind to a turn leaves the turns from there on, and none before it", () => {
   const events = stored(userMessage("first"), userMessage("second"), userMessage("third"));
   expect(turnsFrom(events, 2)).toEqual([

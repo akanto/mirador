@@ -62,7 +62,8 @@ export const lastAgentMessageId = (events: StoredEvent[]) => rewindPointBefore(e
 /** The start of a turn's message, short enough to name that turn in a label or a note. */
 export function turnTitle(text: string) {
   const first = text.trim().split("\n")[0];
-  return first.length > 60 ? `${first.slice(0, 60)}…` : first || "an earlier turn";
+  const codePoints = [...first];
+  return codePoints.length > 60 ? `${codePoints.slice(0, 60).join("")}…` : first || "an earlier turn";
 }
 
 export const whatChanged = ({ restored, removed }: Pick<Revert, "restored" | "removed">) => {
