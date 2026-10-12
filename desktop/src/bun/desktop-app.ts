@@ -6,6 +6,7 @@ import { HostNotifications, nativeNotification } from "../core/host-notification
 import { hostAnswers, spawnDetachedHost } from "../core/host-process.ts";
 import { HostSupervisor, type HostStatus } from "../core/host-supervisor.ts";
 import type { LoginItem } from "../core/open-at-login.ts";
+import type { SelfUpdate, UpdateOffer } from "../core/self-update.ts";
 import { platformServices } from "../core/platform-services.ts";
 import { PidFileOnDisk, systemProcesses } from "../core/processes.ts";
 import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from "../core/runtime.ts";
@@ -14,6 +15,7 @@ import type { TrayAction, TrayState } from "../core/tray-menu.ts";
 import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../core/window-menu.ts";
 import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
+import { selfUpdateFromReleases } from "./app-updates.ts";
 import { setDockIconVisible } from "./dock.ts";
 import { MainWindow } from "./main-window.ts";
 
@@ -43,6 +45,8 @@ export class DesktopApp {
   private readonly notifications: HostNotifications;
   private status: TrayState["status"] = "starting";
   private newerVersion: NewerVersion | null = null;
+  private selfUpdate: SelfUpdate | null = null;
+  private update: UpdateOffer | null = null;
   private busy = false;
   /** Only the window's own page gets it, never a frame in it, so only that page makes the app act. */
   private readonly pageNonce = crypto.randomUUID();
@@ -95,6 +99,19 @@ export class DesktopApp {
     this.notifications.start();
     await this.openWindow();
     setInterval(() => void this.refreshStatus(), STATUS_POLL_MILLISECONDS);
+    await this.startSelfUpdate();
+  }
+
+  private async startSelfUpdate() {
+    if (!this.environment.isPackaged) return;
+    this.selfUpdate = await selfUpdateFromReleases(this.environment.appPath, {
+      offered: (update) => {
+        this.update = update;
+        this.renderTray();
+      },
+      failedToInstall: (message) => Utils.showNotification({ title: `${this.environment.appName} could not update itself`, body: message }),
+    });
+    this.selfUpdate?.start();
   }
 
   async openWindow() {
@@ -129,6 +146,7 @@ export class DesktopApp {
   private async handle(action: TrayAction) {
     if (action === "open") return this.openWindow();
     if (action === "download-newer-version") return this.openNewerVersionDownload();
+    if (action === "install-update") return this.installUpdate();
     if (action === "quit") return void Utils.quit();
     if (action === "restart-host") return this.busyWith("starting", () => this.supervisor.restart());
     if (action === "toggle-background") return this.busyWith("starting", () => this.toggleBackground());
@@ -137,6 +155,22 @@ export class DesktopApp {
 
   private openNewerVersionDownload() {
     if (this.newerVersion?.kind === "release") this.window.openInBrowser(this.newerVersion.url);
+  }
+
+  /** The restart stops the host this app started, and the agent turns running on it. */
+  private async installUpdate() {
+    if (!this.update || this.update.blockedBy) return;
+    const { response } = await Utils.showMessageBox({
+      type: "question",
+      title: this.environment.appName,
+      message: `Restart ${this.environment.appName} to update to ${this.update.version}?`,
+      detail: `${this.environment.appName} closes and opens again. Agent turns that are running stop.`,
+      buttons: ["Restart", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+    await this.selfUpdate?.install().catch((error) => this.report(error));
   }
 
   private toggleBackground() {
@@ -194,7 +228,7 @@ export class DesktopApp {
 
   private trayState(): TrayState {
     const { hostRunsInBackground, openAtLogin } = this.environment.settings.current();
-    return { status: this.status, hostRunsInBackground, openAtLogin, newerVersion: this.newerVersion };
+    return { status: this.status, hostRunsInBackground, openAtLogin, newerVersion: this.newerVersion, update: this.update };
   }
 
   private showMenuInWindow() {

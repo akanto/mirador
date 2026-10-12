@@ -1,10 +1,11 @@
 import { newerVersionLabel, type NewerVersion } from "../../../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../../../shared/version.ts";
 import type { HostStatus } from "./host-supervisor.ts";
+import type { UpdateOffer } from "./self-update.ts";
 
-export type TrayAction = "open" | "download-newer-version" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
+export type TrayAction = "open" | "download-newer-version" | "install-update" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
 
-const trayActions: readonly string[] = ["open", "download-newer-version", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
+const trayActions: readonly string[] = ["open", "download-newer-version", "install-update", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
 export const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
 
 export type TrayItem =
@@ -16,6 +17,7 @@ export interface TrayState {
   hostRunsInBackground: boolean;
   openAtLogin: boolean;
   newerVersion: NewerVersion | null;
+  update: UpdateOffer | null;
 }
 
 const statusLabels: Record<TrayState["status"], string> = {
@@ -26,9 +28,15 @@ const statusLabels: Record<TrayState["status"], string> = {
   background: "Host: running in the background",
 };
 
-/** A release links to its download page; new commits on a checkout's upstream are only told. */
-function newerVersionItems(newerVersion: NewerVersion | null): TrayItem[] {
-  if (!newerVersion) return [];
+function updateItems(update: UpdateOffer | null): TrayItem[] {
+  if (!update) return [];
+  if (update.blockedBy) return [{ type: "normal", label: `Mirador ${update.version} is out: ${update.blockedBy}`, enabled: false }];
+  return [{ type: "normal", label: `Restart to update to Mirador ${update.version}`, action: "install-update" }];
+}
+
+/** A release links to its download page, unless the app updates itself to it; new commits on a checkout's upstream are only told. */
+function newerVersionItems(newerVersion: NewerVersion | null, update: UpdateOffer | null): TrayItem[] {
+  if (!newerVersion || (update && newerVersion.kind === "release")) return [];
   if (newerVersion.kind === "release") return [{ type: "normal", label: `${newerVersionLabel(newerVersion)}: download`, action: "download-newer-version" }];
   return [{ type: "normal", label: newerVersionLabel(newerVersion), enabled: false }];
 }
@@ -38,7 +46,8 @@ export function trayMenu(state: TrayState): TrayItem[] {
   return [
     { type: "normal", label: statusLabels[state.status], enabled: false },
     { type: "normal", label: `Mirador ${MIRADOR_VERSION}`, enabled: false },
-    ...newerVersionItems(state.newerVersion),
+    ...updateItems(state.update),
+    ...newerVersionItems(state.newerVersion, state.update),
     { type: "normal", label: "Open", action: "open" },
     { type: "separator" },
     { type: "normal", label: restartable ? "Restart host" : "Restart host (not started by this app)", action: "restart-host", enabled: restartable },

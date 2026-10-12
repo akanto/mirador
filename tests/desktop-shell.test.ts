@@ -3,7 +3,7 @@ import { navigationRules, webUrl } from "../desktop/src/core/navigation.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { trayMenu, type TrayItem, type TrayState } from "../desktop/src/core/tray-menu.ts";
 
-const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true, newerVersion: null };
+const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true, newerVersion: null, update: null };
 const item = (items: TrayItem[], label: string) => items.find((candidate) => candidate.type === "normal" && candidate.label.startsWith(label));
 
 describe("tray menu", () => {
@@ -46,6 +46,28 @@ describe("tray menu", () => {
     const withCommits = trayMenu({ ...state, newerVersion: { kind: "checkout", commits: 1, upstream: "origin/main", upstreamCommit: "abc" } });
     expect(withCommits[2]).toEqual({ type: "normal", label: "1 new commit on origin/main", enabled: false });
     expect(trayMenu(state)[2]).toMatchObject({ label: "Open" });
+  });
+
+  test("an update the app downloaded offers a restart into it, in place of the release's download page", () => {
+    const release = { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } as const;
+    const update = { version: "9.9.9", hash: "abc", blockedBy: null };
+    expect(trayMenu({ ...state, newerVersion: release, update }).slice(2, 4)).toEqual([
+      { type: "normal", label: "Restart to update to Mirador 9.9.9", action: "install-update" },
+      { type: "normal", label: "Open", action: "open" },
+    ]);
+  });
+
+  test("an update the app cannot install where it is says what to do instead", () => {
+    const update = { version: "9.9.9", hash: "abc", blockedBy: "move Mirador to Applications to update it" };
+    expect(trayMenu({ ...state, update })[2]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: move Mirador to Applications to update it", enabled: false });
+  });
+
+  test("an app update and new commits on the host's checkout are both told", () => {
+    const update = { version: "9.9.9", hash: "abc", blockedBy: null };
+    const labels = trayMenu({ ...state, update, newerVersion: { kind: "checkout", commits: 2, upstream: "origin/main", upstreamCommit: "abc" } }).map((entry) =>
+      entry.type === "normal" ? entry.label : "-",
+    );
+    expect(labels.slice(2, 4)).toEqual(["Restart to update to Mirador 9.9.9", "2 new commits on origin/main"]);
   });
 
   test("shows the background checkbox ticked when the setting is on", () => {

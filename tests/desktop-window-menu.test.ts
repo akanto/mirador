@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { closeWhatHasFocusScript, giveNonceScript, pageRequest, showMenuScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
-const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null } as const;
+const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null, update: null } as const;
 
 describe("menu in the window", () => {
   test("is the tray's menu without Open", () => {
