@@ -52,4 +52,10 @@ test("each opencode conversation on one agent gets its own canvas calls, and its
   await sendMessage(page, "DELEGATE SHOW Page from a subagent");
   await expect(shownTitle(page)).toHaveText("Page from a subagent", { timeout: 60_000 });
   await waitForTurnToEnd(page);
+
+  const subagent = page.locator(".timeline .tool.subagent");
+  await expect(subagent).toHaveCount(1);
+  await expect(subagent.locator(".subagent-task")).toHaveText("Scripted subagent");
+  await expect(subagent).toHaveClass(/subagent-done/);
+  await expect(subagent.locator(".subagent-work .tool")).toHaveCount(1);
 });

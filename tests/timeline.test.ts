@@ -181,6 +181,61 @@ describe("subagents", () => {
     expect(subagentEndedAt(sync!)).toBe(6000);
     expect(subagentEndedAt(background!)).toBe(7000);
   });
+
+  test("opencode 2: what a subagent does goes under its subagent card, keeping thoughts and text out of the main timeline", () => {
+    const childMeta = (id: string, title?: string) => ({ "opencode/child-session": { id, depth: 1, ...(title && { title }) } });
+    const timeline = buildTimeline(
+      stored([
+        acp({ sessionUpdate: "tool_call", toolCallId: "call_sub1", title: "subagent", name: "subagent", kind: "think", status: "pending", rawInput: { description: "Fix bug", agent: "general", prompt: "Fix it" } }),
+        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Investigating..." }, _meta: childMeta("ses_sub1", "Fix bug") }),
+        acp({ sessionUpdate: "tool_call", toolCallId: "ses_sub1:call_read", title: "Fix bug: shell", name: "shell", kind: "execute", status: "pending", _meta: childMeta("ses_sub1", "Fix bug") }),
+        acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Fixed the bug." }, _meta: childMeta("ses_sub1", "Fix bug") }),
+        agentText("Parent continues."),
+        acp({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call_sub1",
+          status: "completed",
+          content: [{ type: "content", content: { type: "text", text: '<subagent sessionID="ses_sub1" state="completed">Done</subagent>' } }],
+          rawOutput: { metadata: { sessionID: "ses_sub1", status: "completed" } },
+        }),
+      ]),
+    );
+
+    expect(timeline.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["subagent", "agent"]);
+    const [subagent] = subagentsIn(timeline);
+    expect(subagent).toBeDefined();
+    expect(subagent!.subagent.blocks.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["thought", "shell", "agent"]);
+    expect(subagent!.subagent.blocks.find((b) => b.kind === "thought")).toMatchObject({ text: "Investigating..." });
+    expect(subagent!.subagent.blocks.find((b) => b.kind === "agent")).toMatchObject({ text: "Fixed the bug." });
+    expect(subagentState(subagent!, false)).toBe("done");
+  });
+
+  test("opencode 2: multiple concurrent subagents gather their own work without interleaving", () => {
+    const childMeta = (id: string, title?: string) => ({ "opencode/child-session": { id, depth: 1, ...(title && { title }) } });
+    const timeline = buildTimeline(
+      stored([
+        acp({ sessionUpdate: "tool_call", toolCallId: "call_1", title: "subagent", name: "subagent", kind: "think", status: "pending", rawInput: { description: "Task A", agent: "general" } }),
+        acp({ sessionUpdate: "tool_call", toolCallId: "call_2", title: "subagent", name: "subagent", kind: "think", status: "pending", rawInput: { description: "Task B", agent: "general" } }),
+        // Interleaved thought chunks from subagent A and B
+        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought A1. " }, _meta: childMeta("ses_a", "Task A") }),
+        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought B1. " }, _meta: childMeta("ses_b", "Task B") }),
+        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought A2." }, _meta: childMeta("ses_a", "Task A") }),
+        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought B2." }, _meta: childMeta("ses_b", "Task B") }),
+        // Subagent B finishes while A is still running
+        acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Message B" }, _meta: childMeta("ses_b", "Task B") }),
+        acp({ sessionUpdate: "tool_call_update", toolCallId: "call_2", status: "completed", rawOutput: { metadata: { sessionID: "ses_b" } } }),
+      ]),
+    );
+
+    const [first, second] = subagentsIn(timeline);
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(first!.subagent.blocks.find((b) => b.kind === "thought")).toMatchObject({ text: "Thought A1. Thought A2." });
+    expect(second!.subagent.blocks.find((b) => b.kind === "thought")).toMatchObject({ text: "Thought B1. Thought B2." });
+    expect(second!.subagent.blocks.find((b) => b.kind === "agent")).toMatchObject({ text: "Message B" });
+    // Main timeline has only the two tool cards
+    expect(timeline.map((b) => b.kind)).toEqual(["tool", "tool"]);
+  });
 });
 
 describe("startsAuthorGroup", () => {

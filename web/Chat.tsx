@@ -289,8 +289,11 @@ function DiffView({ path, oldText, newText }: { path: string; oldText?: string |
 
 function ToolContent({ content }: { content: ToolCallContent }) {
   switch (content.type) {
-    case "content":
-      return <pre className="tool-output">{contentText(content.content)}</pre>;
+    case "content": {
+      const text = contentText(content.content);
+      const unwrapped = text.match(/^<subagent[^>]*>\n?([\s\S]*?)\n?<\/subagent>$/)?.[1] ?? text;
+      return <pre className="tool-output">{unwrapped}</pre>;
+    }
     case "diff":
       return <DiffView path={content.path} oldText={content.oldText} newText={content.newText} />;
     case "terminal":
@@ -536,8 +539,10 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
 const latestWorkIn = (card: HTMLDetailsElement) => card.querySelector(":scope > .subagent-work > :last-child") ?? card;
 
 const subagentTask = (block: SubagentBlock) => {
-  const { description } = subagentInput(block);
-  return typeof description === "string" ? description : readableToolTitle(block.title);
+  const { description, prompt } = subagentInput(block);
+  if (typeof description === "string" && description) return description;
+  if (typeof prompt === "string" && prompt) return prompt.split("\n")[0]!.slice(0, 80);
+  return readableToolTitle(block.title);
 };
 
 const tokensHint = ({ cacheReadTokens, cacheWriteTokens, inputTokens }: SubagentUsage) =>

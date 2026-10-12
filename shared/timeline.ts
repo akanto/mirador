@@ -58,10 +58,17 @@ export type SubagentBlock = ToolBlock & { subagent: Subagent };
 
 export type SubagentState = "running" | "done" | "failed" | "stopped";
 
-const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
+const SUBAGENT_TOOLS = new Set(["Agent", "Task", "subagent"]);
 
-export const subagentInput = (block: ToolBlock) =>
-  (block.rawInput ?? {}) as { description?: unknown; prompt?: unknown; subagent_type?: unknown; model?: unknown };
+export const subagentInput = (block: ToolBlock) => {
+  const input = (block.rawInput ?? {}) as { description?: unknown; prompt?: unknown; subagent_type?: unknown; agent?: unknown; model?: unknown };
+  return {
+    description: input.description,
+    prompt: input.prompt,
+    subagent_type: input.subagent_type ?? input.agent,
+    model: input.model,
+  };
+};
 
 export const runsInBackground = (block: ToolBlock) => block.launchedInBackground === true;
 
@@ -189,6 +196,42 @@ function claudeCodeMeta(update: { _meta?: { [key: string]: unknown } | null }) {
   };
 }
 
+function opencodeChildMeta(update: { _meta?: { [key: string]: unknown } | null } | SessionUpdate) {
+  const meta = "_meta" in update ? update._meta : undefined;
+  const child = meta?.["opencode/child-session"] as { id?: unknown; parentID?: unknown; depth?: unknown; title?: unknown } | undefined;
+  if (child && typeof child.id === "string") {
+    return {
+      id: child.id,
+      title: typeof child.title === "string" ? child.title : undefined,
+    };
+  }
+  if ("toolCallId" in update && typeof update.toolCallId === "string") {
+    const colon = update.toolCallId.indexOf(":");
+    if (colon > 0) {
+      const prefix = update.toolCallId.slice(0, colon);
+      if (prefix.startsWith("ses_")) return { id: prefix };
+    }
+  }
+  return null;
+}
+
+function opencodeSessionIdOf(block: ToolBlock): string | null {
+  const rawOutput = block.rawOutput as { metadata?: { sessionID?: unknown }; sessionID?: unknown; error?: unknown } | undefined;
+  if (typeof rawOutput?.metadata?.sessionID === "string") return rawOutput.metadata.sessionID;
+  if (typeof rawOutput?.sessionID === "string") return rawOutput.sessionID;
+  if (typeof rawOutput?.error === "string") {
+    const match = rawOutput.error.match(/sessionID:\s*([a-zA-Z0-9_-]+)/);
+    if (match) return match[1]!;
+  }
+  for (const item of block.content) {
+    if ("content" in item && typeof item.content === "object" && item.content && "text" in item.content && typeof item.content.text === "string") {
+      const match = item.content.text.match(/<subagent\s+sessionID="([^"]+)"/);
+      if (match) return match[1]!;
+    }
+  }
+  return null;
+}
+
 /** A reply as short as "Done." can turn up inside an unrelated error message by chance. */
 const SHORTEST_ERROR_ECHO = 16;
 
@@ -198,6 +241,8 @@ class TimelineBuilder {
   private readonly permissionBlocks = new Map<string, PermissionBlock>();
   private currentPlan: PlanBlock | null = null;
   private readonly subagentsOfThisTurn: Subagent[] = [];
+  private readonly subagentByOpencodeSession = new Map<string, Subagent>();
+  private readonly opencodeChildTitles = new Map<string, string>();
   private readonly commands = new UserCommandLog();
   private readonly errorsAwaitingSignIn: ErrorBlock[] = [];
   private readonly streamedMessages = new StreamedMessages();
@@ -323,9 +368,51 @@ class TimelineBuilder {
   }
 
   /** The subagent that made the update, when its tool call is known. */
-  private subagentOf(update: { _meta?: { [key: string]: unknown } | null }) {
+  private subagentOf(update: SessionUpdate) {
     const { parentToolUseId } = claudeCodeMeta(update);
-    return parentToolUseId ? this.toolBlocks.get(parentToolUseId)?.subagent : undefined;
+    if (parentToolUseId) return this.toolBlocks.get(parentToolUseId)?.subagent;
+
+    const child = opencodeChildMeta(update);
+    if (!child) return undefined;
+    if (child.title) this.opencodeChildTitles.set(child.id, child.title);
+    return this.opencodeSubagent(child);
+  }
+
+  private opencodeSubagent(child: { id: string; title?: string }): Subagent | undefined {
+    const existing = this.subagentByOpencodeSession.get(child.id);
+    if (existing) return existing;
+
+    const title = child.title ?? this.opencodeChildTitles.get(child.id);
+    const subagentBlocks = [...this.toolBlocks.values()].filter((b) => b.subagent && (b.toolName === "subagent" || b.title === "subagent"));
+    const byOutput = subagentBlocks.find((b) => opencodeSessionIdOf(b) === child.id);
+    if (byOutput?.subagent) {
+      this.subagentByOpencodeSession.set(child.id, byOutput.subagent);
+      return byOutput.subagent;
+    }
+
+    if (title) {
+      const byTitle = subagentBlocks.find(
+        (b) => !this.isMappedToAnotherSession(b.subagent!, child.id) && subagentInput(b).description === title,
+      );
+      if (byTitle?.subagent) {
+        this.subagentByOpencodeSession.set(child.id, byTitle.subagent);
+        return byTitle.subagent;
+      }
+    }
+
+    const unmapped = subagentBlocks.find((b) => !this.isMappedToAnotherSession(b.subagent!, child.id));
+    if (unmapped?.subagent) {
+      this.subagentByOpencodeSession.set(child.id, unmapped.subagent);
+      return unmapped.subagent;
+    }
+    return undefined;
+  }
+
+  private isMappedToAnotherSession(subagent: Subagent, sessionId: string) {
+    for (const [id, mapped] of this.subagentByOpencodeSession) {
+      if (mapped === subagent && id !== sessionId) return true;
+    }
+    return false;
   }
 
   /** Whether the turn ended of its own accord, was stopped, or was cut short by an error: its subagents end with it. */
@@ -359,28 +446,38 @@ class TimelineBuilder {
     this.push({ kind, ...origin, text: "", images: [image] }, into);
   }
 
-  private upsertTool(origin: Origin, update: ToolCallUpdate & { title?: string | null }, into: TimelineBlock[]) {
+  private upsertTool(origin: Origin, update: ToolCallUpdate & { title?: string | null; name?: string | null }, into: TimelineBlock[]) {
+    const child = opencodeChildMeta(update);
+    if (child?.title) this.opencodeChildTitles.set(child.id, child.title);
     const existing = this.toolBlocks.get(update.toolCallId);
     const ends = update.status === "completed" || update.status === "failed";
     const { toolName, launchedInBackground } = claudeCodeMeta(update);
+    const name = toolName ?? (typeof update.name === "string" ? update.name : undefined) ?? (update.title && SUBAGENT_TOOLS.has(update.title) ? update.title : undefined);
+    const background = launchedInBackground || (update.rawInput as { background?: unknown } | undefined)?.background === true;
+    const childTitle = child?.title ?? (child ? this.opencodeChildTitles.get(child.id) : undefined);
+    const title = childTitle && update.title?.startsWith(`${childTitle}: `) ? update.title.slice(childTitle.length + 2) : update.title;
     if (existing) {
-      if (toolName) this.name(existing, toolName, origin.at);
-      if (launchedInBackground) existing.launchedInBackground = true;
-      if (update.title) existing.title = update.title;
+      if (name) this.name(existing, name, origin.at);
+      if (background) existing.launchedInBackground = true;
+      if (title) existing.title = title;
       if (update.kind) existing.toolKind = update.kind;
       if (update.status) existing.status = update.status;
       if (ends) existing.endedAt = origin.at;
       if (update.content) existing.content = update.content;
       if (update.locations) existing.locations = update.locations;
       if (update.rawInput !== undefined) existing.rawInput = update.rawInput;
-      if (update.rawOutput !== undefined) existing.rawOutput = update.rawOutput;
+      if (update.rawOutput !== undefined) {
+        existing.rawOutput = update.rawOutput;
+        const sessionId = opencodeSessionIdOf(existing);
+        if (sessionId && existing.subagent) this.subagentByOpencodeSession.set(sessionId, existing.subagent);
+      }
       return;
     }
     const block: ToolBlock = {
       kind: "tool",
       ...origin,
       toolCallId: update.toolCallId,
-      title: update.title ?? "Tool call",
+      title: title ?? "Tool call",
       toolKind: update.kind,
       status: update.status,
       content: update.content ?? [],
@@ -388,9 +485,13 @@ class TimelineBuilder {
       rawInput: update.rawInput,
       rawOutput: update.rawOutput,
       ...(ends && { endedAt: origin.at }),
-      ...(launchedInBackground && { launchedInBackground }),
+      ...(background && { launchedInBackground: true }),
     };
-    if (toolName) this.name(block, toolName, origin.at);
+    if (name) this.name(block, name, origin.at);
+    if (block.rawOutput !== undefined) {
+      const sessionId = opencodeSessionIdOf(block);
+      if (sessionId && block.subagent) this.subagentByOpencodeSession.set(sessionId, block.subagent);
+    }
     this.toolBlocks.set(update.toolCallId, block);
     this.push(block, into);
   }
