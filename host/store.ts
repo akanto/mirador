@@ -745,8 +745,9 @@ export class Store {
     this.db.query("UPDATE join_requests SET requester_nonce = ? WHERE id = ?").run(nonce, id);
   }
 
+  /** Answers the request, only while it is still unanswered; whether this answer was the one that took. */
   answerJoinRequest(id: string, answer: "approved" | "denied") {
-    this.db.query("UPDATE join_requests SET answer = ? WHERE id = ?").run(answer, id);
+    return this.db.query("UPDATE join_requests SET answer = ? WHERE id = ? AND answer IS NULL").run(answer, id).changes > 0;
   }
 
   deleteJoinRequest(id: string) {

@@ -52,6 +52,24 @@ test("a wrong number denies the request", async () => {
   await expect(requests.approve(asked.id, asked.number)).rejects.toThrow("That request to join is no longer waiting.");
 });
 
+test("a request denied while its approval is being checked stays denied, and the approval fails", async () => {
+  const { requests } = machine();
+  const asked = await askToJoin(requests);
+  const approving = requests.approve(asked.id, spacedNumber(asked.number));
+  requests.deny(asked.id);
+  await expect(approving).rejects.toThrow("That request to join is no longer waiting.");
+  expect(requests.poll(asked.id, asked.secret)).toEqual({ answer: "denied" });
+});
+
+test("an approval whose request was answered and collected meanwhile fails instead of reporting success", async () => {
+  const { requests } = machine();
+  const asked = await askToJoin(requests);
+  const approving = requests.approve(asked.id, spacedNumber(asked.number));
+  requests.deny(asked.id);
+  expect(requests.poll(asked.id, asked.secret)).toEqual({ answer: "denied" });
+  await expect(approving).rejects.toThrow("That request to join is no longer waiting.");
+});
+
 test("a machine in between, which says the device checked this machine's own authority, gets a number this machine does not", async () => {
   const { requests } = machine();
   const asked = await askToJoin(requests, authorityInBetween, machineAuthority);

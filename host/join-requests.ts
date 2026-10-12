@@ -101,7 +101,7 @@ export class JoinRequestService {
   async approve(id: string, typed: string) {
     const request = this.waitingRequest(id);
     const approved = typedNumber(typed) === (await matchingNumber(request.authorityFingerprint, request.requesterNonce!, request.machineNonce));
-    this.store.answerJoinRequest(id, approved ? "approved" : "denied");
+    if (!this.store.answerJoinRequest(id, approved ? "approved" : "denied")) throw new Error("That request to join is no longer waiting.");
     return approved;
   }
 
