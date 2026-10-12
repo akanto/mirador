@@ -37,7 +37,7 @@ export const defaultPromptTemplates: Omit<PromptTemplate, "createdAt">[] = [
     id: "default-deep-pr-review",
     name: "Deep PR review",
     text: [
-      "Review {{Pull request}} in depth. Use the cb reviewer skill as well, and check out the code in a worktree to confirm each concern before you raise it.",
+      "Review {{Pull request}} in depth, and check out the code in a worktree to confirm each concern before you raise it.",
       "Then give me a summary that helps me understand the change fast: walk me through how the code flows, in the order it runs, in plain words.",
       "Keep review comments short. Write prose only where it's needed.",
     ].join("\n\n"),

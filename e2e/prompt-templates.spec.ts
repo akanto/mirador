@@ -45,10 +45,10 @@ test("a prompt template asks for its parameters, then goes out or into the messa
     const send = picker(page).getByRole("button", { name: "Send" });
     await expect(send).toBeDisabled();
     await picker(page).getByLabel("Pull request").fill(PULL_REQUEST);
-    await expect(picker(page).getByLabel("Message to send")).toContainText(`Review ${PULL_REQUEST} in depth.`);
+    await expect(picker(page).getByLabel("Message to send")).toContainText(`Review ${PULL_REQUEST} in depth,`);
     await picker(page).getByLabel("Pull request").press("Enter");
     await expect(picker(page)).toHaveCount(0);
-    await expect(page.locator(".message.user").last()).toContainText(`Review ${PULL_REQUEST} in depth. Use the cb reviewer skill as well`);
+    await expect(page.locator(".message.user").last()).toContainText(`Review ${PULL_REQUEST} in depth, and check out the code in a worktree`);
     await expect(composer).toHaveValue("a draft to keep");
     await expect(composer).toBeFocused();
     await waitForTurnToEnd(page);
@@ -58,7 +58,7 @@ test("a prompt template asks for its parameters, then goes out or into the messa
     await chooseTemplate(page, "Deep PR review");
     await picker(page).getByLabel("Pull request").fill(PULL_REQUEST);
     await picker(page).getByRole("button", { name: "Put in the message box" }).click();
-    await expect(composer).toHaveValue(new RegExp(`^a draft to keep\\n\\nReview ${PULL_REQUEST.replaceAll(".", "\\.")} in depth\\.`));
+    await expect(composer).toHaveValue(new RegExp(`^a draft to keep\\n\\nReview ${PULL_REQUEST.replaceAll(".", "\\.")} in depth,`));
     await templatesButton(page).click();
     await page.keyboard.press("Escape");
     await expect(picker(page)).toHaveCount(0);
