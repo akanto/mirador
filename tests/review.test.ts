@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { excerptRows, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "../host/review/diff.ts";
 import { parsePullRequestUrl, postPendingReview, type GitHubCli } from "../host/review/github.ts";
-import { AnchorReader, ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
+import { AnchorReader, git, ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
 import { gitRepository, reviewRequest as request } from "./review-repository.ts";
 
 const diff = `diff --git a/src/app.ts b/src/app.ts
@@ -43,30 +42,66 @@ deleted file mode 100644
 -two
 `;
 
-/** A fresh repo holding just the named file, committed, then given the change; its `git diff HEAD`. */
-function diffOf(file: string, change: "deleted" | "mode" | "modified") {
+const isolatedFromUserGitConfig = {
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_AUTHOR_NAME: "Test",
+  GIT_AUTHOR_EMAIL: "test@example.com",
+  GIT_COMMITTER_NAME: "Test",
+  GIT_COMMITTER_EMAIL: "test@example.com",
+};
+
+/** A fresh repo holding just the named file, committed, then given the change and committed again; the diff between the two commits, read the way Mirador reads it. */
+async function diffOf(file: string, change: "deleted" | "mode" | "modified" | { renamedTo: string }) {
   const directory = mkdtempSync(join(tmpdir(), "mirador-quoted-paths-"));
-  const git = (...args: string[]) =>
-    execFileSync("git", ["-C", directory, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" });
-  git("init", "-q", "-b", "main");
-  writeFileSync(join(directory, file), "x\n");
-  git("add", ".");
-  git("commit", "-q", "-m", "base");
-  if (change === "deleted") git("rm", "-q", "--", file);
-  else if (change === "mode") chmodSync(join(directory, file), 0o755);
-  else writeFileSync(join(directory, file), "y\n");
-  return git("diff", "HEAD");
+  try {
+    const run = (...args: string[]) => git(directory, args, isolatedFromUserGitConfig);
+    await run("init", "-q", "-b", "main");
+    writeFileSync(join(directory, file), "x\n");
+    await run("add", ".");
+    await run("commit", "-q", "-m", "base", "--no-gpg-sign");
+    if (change === "deleted") await run("rm", "-q", "--", file);
+    else if (change === "mode") chmodSync(join(directory, file), 0o755);
+    else if (change === "modified") writeFileSync(join(directory, file), "y\n");
+    else await run("mv", "--", file, change.renamedTo);
+    await run("add", "-A");
+    await run("commit", "-q", "-m", "change", "--no-gpg-sign");
+    return await run("diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3", "HEAD~1", "HEAD");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
+const pathsOf = async (file: string, change: "deleted" | "mode" | "modified") =>
+  parseGitDiff(await diffOf(file, change)).map(({ path, change }) => [path, change]);
+
 describe("parseGitDiff", () => {
-  test("keeps C-quoted paths whole when only the diff header carries them, deleted or mode-only", () => {
-    expect(parseGitDiff(diffOf('we"ird\\name.txt', "deleted")).map(({ path, change }) => [path, change])).toEqual([['we"ird\\name.txt', "deleted"]]);
-    expect(parseGitDiff(diffOf('we"ird\\name.txt', "mode")).map(({ path, hunks }) => [path, hunks.length])).toEqual([['we"ird\\name.txt', 0]]);
+  test("keeps C-quoted paths whole when only the diff header carries them, deleted or mode-only", async () => {
+    expect(await pathsOf('we"ird\\name.txt', "deleted")).toEqual([['we"ird\\name.txt', "deleted"]]);
+    expect(parseGitDiff(await diffOf('we"ird\\name.txt', "mode")).map(({ path, hunks }) => [path, hunks.length])).toEqual([['we"ird\\name.txt', 0]]);
   });
 
-  test("turns git's octal escapes back into the characters they spell", () => {
-    expect(parseGitDiff(diffOf("café.txt", "deleted")).map(({ path, change }) => [path, change])).toEqual([["café.txt", "deleted"]]);
-    expect(parseGitDiff(diffOf("café.txt", "modified")).map(({ path, change }) => [path, change])).toEqual([["café.txt", "modified"]]);
+  test("turns git's octal escapes for control characters back into the characters they spell", async () => {
+    const name = "ctl\u0001.txt";
+    expect(await diffOf(name, "deleted")).toContain('"a/ctl\\001.txt"');
+    expect(await pathsOf(name, "deleted")).toEqual([[name, "deleted"]]);
+  });
+
+  test("decodes the non-ASCII characters git keeps raw inside a quoted name", async () => {
+    expect(await pathsOf('café"q.txt', "modified")).toEqual([['café"q.txt', "modified"]]);
+    expect(await pathsOf('café"q-del.txt', "deleted")).toEqual([['café"q-del.txt', "deleted"]]);
+    expect(await pathsOf('中"文.txt', "deleted")).toEqual([['中"文.txt', "deleted"]]);
+    expect(await pathsOf('😀"x.txt', "deleted")).toEqual([['😀"x.txt', "deleted"]]);
+  });
+
+  test("leaves out the tab git ends the new side's line with when the name has a space", async () => {
+    expect(await pathsOf("space mod.txt", "modified")).toEqual([["space mod.txt", "modified"]]);
+    expect(await pathsOf('dq"space mod.txt', "modified")).toEqual([['dq"space mod.txt', "modified"]]);
+  });
+
+  test("reads both names of a rename between quoted names", async () => {
+    const files = parseGitDiff(await diffOf('ren"src.txt', { renamedTo: 'ren é"b.txt' }));
+    expect(files.map(({ path, oldPath, change }) => [path, oldPath, change])).toEqual([['ren é"b.txt', 'ren"src.txt', "renamed"]]);
   });
 
   test("reads files, their kind of change, and hunks with both sides' line numbers", () => {

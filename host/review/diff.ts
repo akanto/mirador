@@ -10,32 +10,16 @@ const GENERATED_FILES = [
 export const MAX_ROWS_PER_FILE = 3_000;
 const MAX_ROWS_PER_REVIEW = 40_000;
 
-const C_ESCAPE_BYTES: Record<string, number> = { '"': 0x22, "\\": 0x5c, a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11 };
+const C_ESCAPE_BYTES: Record<string, number> = { a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11 };
+const utf8 = new TextEncoder();
 
-/** Git quotes paths with unusual characters, C style, spelling non-ASCII bytes as octal escapes, so the unescaped bytes are UTF-8 decoded. */
+/** Git quotes a name with `"`, `\` or a control character, C style: plain characters stay raw UTF-8, escapes are single bytes. */
 function unquoted(path: string) {
   if (!path.startsWith('"')) return path;
-  const body = path.slice(1, -1);
-  const bytes: number[] = [];
-  for (let i = 0; i < body.length; i++) {
-    const char = body[i]!;
-    if (char !== "\\") {
-      bytes.push(char.charCodeAt(0));
-      continue;
-    }
-    const escaped = body.slice(++i);
-    const octal = /^[0-7]{1,3}/.exec(escaped)?.[0];
-    const hex = octal ? undefined : /^x[0-9a-f]{1,2}/i.exec(escaped)?.[0];
-    if (octal) {
-      bytes.push(parseInt(octal, 8));
-      i += octal.length - 1;
-    } else if (hex) {
-      bytes.push(parseInt(hex.slice(1), 16));
-      i += hex.length - 1;
-    } else {
-      bytes.push(C_ESCAPE_BYTES[escaped[0]!] ?? 0x5c);
-    }
-  }
+  const tokens = path.slice(1, -1).matchAll(/\\([0-7]{3}|.)|[^\\]+/gs);
+  const bytes = [...tokens].flatMap(([text, escape]) =>
+    escape === undefined ? [...utf8.encode(text)] : [escape.length === 3 ? parseInt(escape, 8) : (C_ESCAPE_BYTES[escape] ?? escape.charCodeAt(0))],
+  );
   return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
@@ -56,7 +40,7 @@ function secondQuotedToken(sides: string) {
 /** `diff --git a/P b/P`: P itself may contain " b/", so the two halves are matched rather than split. */
 function pathFromDiffHeader(line: string) {
   const sides = line.slice("diff --git ".length);
-  if (sides.startsWith('"')) return withoutPrefix(unquoted(secondQuotedToken(sides)));
+  if (sides.startsWith('"')) return withoutPrefix(secondQuotedToken(sides));
   const length = (sides.length - " b/".length - "a/".length) / 2;
   const path = sides.slice(2, 2 + length);
   if (sides === `a/${path} b/${path}`) return path;
@@ -114,7 +98,7 @@ export function parseGitDiff(text: string): ReviewFile[] {
       file.change = "renamed";
     } else if (line.startsWith("rename to ")) file.path = unquoted(line.slice("rename to ".length));
     else if (line.startsWith("Binary files ")) file.hiddenBecause = "binary file";
-    else if (line.startsWith("+++ ") && !line.endsWith("/dev/null")) file.path = withoutPrefix(line.slice(4));
+    else if (line.startsWith("+++ ") && !line.endsWith("/dev/null")) file.path = withoutPrefix(line.slice(4).replace(/\t$/, ""));
   }
   return files;
 }
