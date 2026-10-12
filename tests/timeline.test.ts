@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
-import { authorOf, buildTimeline, startsAuthorGroup, subagentEndedAt, subagentsIn, subagentState, type TimelineBlock } from "../shared/timeline.ts";
+import { pageEvent } from "../host/low-data.ts";
+import { authorOf, buildTimeline, startsAuthorGroup, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -181,61 +182,6 @@ describe("subagents", () => {
     expect(subagentEndedAt(sync!)).toBe(6000);
     expect(subagentEndedAt(background!)).toBe(7000);
   });
-
-  test("opencode 2: what a subagent does goes under its subagent card, keeping thoughts and text out of the main timeline", () => {
-    const childMeta = (id: string, title?: string) => ({ "opencode/child-session": { id, depth: 1, ...(title && { title }) } });
-    const timeline = buildTimeline(
-      stored([
-        acp({ sessionUpdate: "tool_call", toolCallId: "call_sub1", title: "subagent", name: "subagent", kind: "think", status: "pending", rawInput: { description: "Fix bug", agent: "general", prompt: "Fix it" } }),
-        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Investigating..." }, _meta: childMeta("ses_sub1", "Fix bug") }),
-        acp({ sessionUpdate: "tool_call", toolCallId: "ses_sub1:call_read", title: "Fix bug: shell", name: "shell", kind: "execute", status: "pending", _meta: childMeta("ses_sub1", "Fix bug") }),
-        acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Fixed the bug." }, _meta: childMeta("ses_sub1", "Fix bug") }),
-        agentText("Parent continues."),
-        acp({
-          sessionUpdate: "tool_call_update",
-          toolCallId: "call_sub1",
-          status: "completed",
-          content: [{ type: "content", content: { type: "text", text: '<subagent sessionID="ses_sub1" state="completed">Done</subagent>' } }],
-          rawOutput: { metadata: { sessionID: "ses_sub1", status: "completed" } },
-        }),
-      ]),
-    );
-
-    expect(timeline.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["subagent", "agent"]);
-    const [subagent] = subagentsIn(timeline);
-    expect(subagent).toBeDefined();
-    expect(subagent!.subagent.blocks.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["thought", "shell", "agent"]);
-    expect(subagent!.subagent.blocks.find((b) => b.kind === "thought")).toMatchObject({ text: "Investigating..." });
-    expect(subagent!.subagent.blocks.find((b) => b.kind === "agent")).toMatchObject({ text: "Fixed the bug." });
-    expect(subagentState(subagent!, false)).toBe("done");
-  });
-
-  test("opencode 2: multiple concurrent subagents gather their own work without interleaving", () => {
-    const childMeta = (id: string, title?: string) => ({ "opencode/child-session": { id, depth: 1, ...(title && { title }) } });
-    const timeline = buildTimeline(
-      stored([
-        acp({ sessionUpdate: "tool_call", toolCallId: "call_1", title: "subagent", name: "subagent", kind: "think", status: "pending", rawInput: { description: "Task A", agent: "general" } }),
-        acp({ sessionUpdate: "tool_call", toolCallId: "call_2", title: "subagent", name: "subagent", kind: "think", status: "pending", rawInput: { description: "Task B", agent: "general" } }),
-        // Interleaved thought chunks from subagent A and B
-        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought A1. " }, _meta: childMeta("ses_a", "Task A") }),
-        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought B1. " }, _meta: childMeta("ses_b", "Task B") }),
-        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought A2." }, _meta: childMeta("ses_a", "Task A") }),
-        acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "Thought B2." }, _meta: childMeta("ses_b", "Task B") }),
-        // Subagent B finishes while A is still running
-        acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Message B" }, _meta: childMeta("ses_b", "Task B") }),
-        acp({ sessionUpdate: "tool_call_update", toolCallId: "call_2", status: "completed", rawOutput: { metadata: { sessionID: "ses_b" } } }),
-      ]),
-    );
-
-    const [first, second] = subagentsIn(timeline);
-    expect(first).toBeDefined();
-    expect(second).toBeDefined();
-    expect(first!.subagent.blocks.find((b) => b.kind === "thought")).toMatchObject({ text: "Thought A1. Thought A2." });
-    expect(second!.subagent.blocks.find((b) => b.kind === "thought")).toMatchObject({ text: "Thought B1. Thought B2." });
-    expect(second!.subagent.blocks.find((b) => b.kind === "agent")).toMatchObject({ text: "Message B" });
-    // Main timeline has only the two tool cards
-    expect(timeline.map((b) => b.kind)).toEqual(["tool", "tool"]);
-  });
 });
 
 describe("startsAuthorGroup", () => {
@@ -297,5 +243,155 @@ describe("images in the agent's updates", () => {
   test("an image that starts a message makes a message of its own", () => {
     const timeline = buildTimeline(stored([{ type: "user-message", text: "draw" }, acp({ sessionUpdate: "agent_message_chunk", content: png })]));
     expect(timeline.at(-1)).toMatchObject({ kind: "agent", text: "", images: [png] });
+  });
+});
+
+describe("opencode 2 subagents", () => {
+  const child = (id: string, title?: string, { parentID = "ses_root", depth = 1 } = {}) => ({
+    "opencode/child-session": { id, parentID, depth, ...(title && { title }) },
+  });
+  const startSubagent = (toolCallId: string, description: string, meta?: ReturnType<typeof child>) =>
+    acp({
+      sessionUpdate: "tool_call",
+      toolCallId,
+      title: meta ? `${meta["opencode/child-session"].title}: subagent` : "subagent",
+      kind: "think",
+      status: "pending",
+      rawInput: { description, agent: "general", prompt: `Do ${description}` },
+      ...(meta && { _meta: meta }),
+    });
+  const endSubagent = (toolCallId: string, status: "completed" | "failed", text: string, sessionID: string) =>
+    acp({ sessionUpdate: "tool_call_update", toolCallId, status, content: [{ type: "content", content: { type: "text", text } }], rawOutput: { metadata: { sessionID } } });
+  const finished = (toolCallId: string, sessionID: string) => endSubagent(toolCallId, "completed", `<subagent sessionID="${sessionID}" state="completed">\nDone\n</subagent>`, sessionID);
+  const childSays = (text: string, meta: ReturnType<typeof child>) => acp({ sessionUpdate: "agent_message_chunk", content: { type: "text", text }, _meta: meta });
+  const childThinks = (text: string, meta: ReturnType<typeof child>) => acp({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text }, _meta: meta });
+  /** As a page gets them, without the raw output. */
+  const timelineOf = (events: ConversationEvent[]) => buildTimeline(stored(events).map(pageEvent));
+  const workOf = (block: SubagentBlock | undefined) => block?.subagent.blocks.map((entry) => (entry.kind === "tool" ? `tool ${entry.title}` : `${entry.kind} ${"text" in entry ? entry.text : ""}`));
+  const card = (timeline: TimelineBlock[], toolCallId: string) => subagentsIn(timeline).find((block) => block.toolCallId === toolCallId);
+
+  test("what a subagent does goes under its card, keeping its thoughts and text out of the main timeline", () => {
+    const fixBug = child("ses_sub1", "Fix bug");
+    const timeline = timelineOf([
+      startSubagent("call_sub1", "Fix bug"),
+      childThinks("Investigating...", fixBug),
+      acp({ sessionUpdate: "tool_call", toolCallId: "ses_sub1:call_read", title: "Fix bug: shell", kind: "execute", status: "pending", _meta: fixBug }),
+      childSays("Fixed the bug.", fixBug),
+      agentText("Parent continues."),
+      finished("call_sub1", "ses_sub1"),
+    ]);
+
+    expect(timeline.map((block) => (block.kind === "tool" ? block.title : block.kind))).toEqual(["subagent", "agent"]);
+    expect(workOf(card(timeline, "call_sub1"))).toEqual(["thought Investigating...", "tool shell", "agent Fixed the bug."]);
+    expect(subagentState(card(timeline, "call_sub1")!, false)).toBe("done");
+  });
+
+  test("subagents running at once each gather their own work, by the child's title, whichever speaks first", () => {
+    const [a, b] = [child("ses_a", "Task A"), child("ses_b", "Task B")];
+    const timeline = timelineOf([
+      startSubagent("call_1", "Task A"),
+      startSubagent("call_2", "Task B"),
+      childThinks("Thought B1. ", b),
+      childThinks("Thought A1. ", a),
+      childThinks("Thought B2.", b),
+      childThinks("Thought A2.", a),
+      childSays("Message B", b),
+    ]);
+
+    expect(workOf(card(timeline, "call_1"))).toEqual(["thought Thought A1. Thought A2."]);
+    expect(workOf(card(timeline, "call_2"))).toEqual(["thought Thought B1. Thought B2.", "agent Message B"]);
+    expect(timeline.map((block) => block.kind)).toEqual(["tool", "tool"]);
+  });
+
+  test("subagents with the same description each get the call whose result names their session", () => {
+    const [a, b] = [child("ses_a", "Same task"), child("ses_b", "Same task")];
+    const timeline = timelineOf([
+      startSubagent("call_1", "Same task"),
+      startSubagent("call_2", "Same task"),
+      childSays("B starts. ", b),
+      childSays("A starts. ", a),
+      childSays("B ends.", b),
+      finished("call_1", "ses_a"),
+      childSays("A ends.", a),
+      finished("call_2", "ses_b"),
+    ]);
+
+    expect(workOf(card(timeline, "call_1"))).toEqual(["agent A starts. A ends."]);
+    expect(workOf(card(timeline, "call_2"))).toEqual(["agent B starts. B ends."]);
+  });
+
+  test("a subagent still running leaves alone the call whose result names another session", () => {
+    const [a, b] = [child("ses_a", "Same task"), child("ses_b", "Same task")];
+    const timeline = timelineOf([
+      startSubagent("call_1", "Same task"),
+      startSubagent("call_2", "Same task"),
+      childSays("B works.", b),
+      childSays("A works.", a),
+      finished("call_1", "ses_a"),
+    ]);
+
+    expect(workOf(card(timeline, "call_1"))).toEqual(["agent A works."]);
+    expect(workOf(card(timeline, "call_2"))).toEqual(["agent B works."]);
+  });
+
+  test.each([
+    ["failed", "failed", "Subagent failed (sessionID: ses_x): boom"],
+    ["was cancelled", "failed", "Subagent cancelled (sessionID: ses_x)"],
+    ["went on in the background", "completed", "The subagent is working in the background (sessionID: ses_x). You will be notified automatically when it finishes."],
+  ] as const)("the result of a subagent's call that %s names its session too", (_, status, result) => {
+    const x = child("ses_x", "Same task");
+    const timeline = timelineOf([startSubagent("call_1", "Same task"), startSubagent("call_2", "Same task"), endSubagent("call_2", status, result, "ses_x"), childSays("Working.", x)]);
+
+    expect(workOf(card(timeline, "call_1"))).toEqual([]);
+    expect(workOf(card(timeline, "call_2"))).toEqual(["agent Working."]);
+  });
+
+  test("a subagent's own subagent goes under the call that its parent made", () => {
+    const outer = child("ses_outer", "Outer");
+    const inner = child("ses_inner", "Inner", { parentID: "ses_outer", depth: 2 });
+    const timeline = timelineOf([
+      startSubagent("call_outer", "Outer"),
+      startSubagent("call_other", "Inner"),
+      childSays("Delegating.", outer),
+      startSubagent("ses_outer:call_inner", "Inner", outer),
+      childSays("Inner work.", inner),
+    ]);
+
+    expect(workOf(card(timeline, "call_outer"))).toEqual(["agent Delegating.", "tool subagent"]);
+    expect(workOf(card(timeline, "ses_outer:call_inner"))).toEqual(["agent Inner work."]);
+    expect(workOf(card(timeline, "call_other"))).toEqual([]);
+  });
+
+  test("a child without a title goes to the first running call that no other child took", () => {
+    const timeline = timelineOf([startSubagent("call_1", "Task A"), startSubagent("call_2", "Task B"), childSays("A.", child("ses_a", "Task A")), childSays("Untitled.", child("ses_b"))]);
+
+    expect(workOf(card(timeline, "call_1"))).toEqual(["agent A."]);
+    expect(workOf(card(timeline, "call_2"))).toEqual(["agent Untitled."]);
+  });
+
+  test("a child never goes under a call that already ended, as one of an earlier turn that failed", () => {
+    const timeline = timelineOf([
+      startSubagent("call_old", "Old task"),
+      endSubagent("call_old", "failed", "Invalid input", "ses_none"),
+      { type: "turn-end", stopReason: "end_turn" },
+      startSubagent("call_new", "New task"),
+      childSays("New work.", child("ses_new", "Unrelated title")),
+    ]);
+
+    expect(workOf(card(timeline, "call_old"))).toEqual([]);
+    expect(workOf(card(timeline, "call_new"))).toEqual(["agent New work."]);
+  });
+
+  test("a child that no call can be taken to have started is held aside, out of the main message and plan", () => {
+    const stray = child("ses_stray", "Stray");
+    const timeline = timelineOf([
+      acp({ sessionUpdate: "plan", entries: [{ content: "Main step", priority: "medium", status: "pending" }] }),
+      agentText("Main says "),
+      childSays("stray words ", stray),
+      acp({ sessionUpdate: "plan", entries: [{ content: "Stray step", priority: "medium", status: "pending" }], _meta: stray }),
+      agentText("more."),
+    ]);
+
+    expect(timeline).toMatchObject([{ kind: "plan", entries: [{ content: "Main step" }] }, { kind: "agent", text: "Main says more." }]);
   });
 });

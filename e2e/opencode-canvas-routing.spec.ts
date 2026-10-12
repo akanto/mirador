@@ -58,4 +58,7 @@ test("each opencode conversation on one agent gets its own canvas calls, and its
   await expect(subagent.locator(".subagent-task")).toHaveText("Scripted subagent");
   await expect(subagent).toHaveClass(/subagent-done/);
   await expect(subagent.locator(".subagent-work .tool")).toHaveCount(1);
+  await expect(subagent.locator(".subagent-work .message.agent")).toHaveCount(1);
+  const subagentReply = ((await subagent.locator(".subagent-work .message.agent").textContent()) ?? "").trim();
+  await expect(page.locator(".timeline:visible .message.agent:not(.subagent-work .message)").filter({ hasText: subagentReply })).toHaveText(/^Tool result: <subagent /);
 });
