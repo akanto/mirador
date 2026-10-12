@@ -23,6 +23,12 @@ test("an invite link from a machine with its own certificate authority carries t
   expect(inviteLink("https://box.example.ts.net", "ABCD-EFGH-JKLM")).toBe("https://box.example.ts.net/#/join/ABCD-EFGH-JKLM");
 });
 
+test("an invite link carries a fingerprint of any length, so a truncated one still gives the code and not the whole link", () => {
+  expect(inviteIn(inviteLink("https://box.example", "ABCD-EFGH-JKLM", "short-fp"))).toEqual({ code: "ABCD-EFGH-JKLM", authorityFingerprint: "short-fp" });
+  const truncated = fingerprint.slice(0, 42);
+  expect(inviteIn(`https://box.example/#/join/ABCD-EFGH-JKLM/${truncated}`)).toEqual({ code: "ABCD-EFGH-JKLM", authorityFingerprint: truncated });
+});
+
 test("what is not a web address is not a machine", () => {
   expect(machineAddress("")).toBeNull();
   expect(machineAddress("ftp://files.example")).toBeNull();

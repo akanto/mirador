@@ -1,5 +1,5 @@
 /** An invite link's #part: the code, then the fingerprint of the machine's own certificate authority when it has one. */
-const joinPath = /^#\/join\/([\w-]+?)(?:\/([\w-]{43}))?$/;
+const joinPath = /^#\/join\/([\w-]+?)(?:\/([\w-]+))?$/;
 
 /** The invite code in an invite link's #part, e.g. #/join/ABCD-EFGH-JKLM. */
 export const joinCodeIn = (hash: string) => joinPath.exec(hash)?.[1] ?? null;
