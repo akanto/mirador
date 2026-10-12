@@ -332,13 +332,38 @@ describe("Store", () => {
   test("starts with the default prompt templates once: one the user deletes stays deleted after reopening", () => {
     const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const store = new Store(path);
-    expect(store.listPromptTemplates().map(({ id }) => id)).toEqual(defaultPromptTemplates.map(({ id }) => id));
+    expect(store.listPromptTemplates().map(({ id }) => id)).toEqual(defaultPromptTemplates.map(({ id }) => id).toSorted());
     store.savePromptTemplate({ id: "t1", name: "a mine", text: "Review {{Pull request}}", createdAt: 5 });
     store.savePromptTemplate({ id: "t1", name: "Mine", text: "Explain {{Path}}", createdAt: 9 });
-    store.deletePromptTemplate(defaultPromptTemplates[0]!.id);
+    defaultPromptTemplates.forEach(({ id }) => store.deletePromptTemplate(id));
     store.close();
     const reopened = new Store(path);
     expect(reopened.listPromptTemplates()).toEqual([{ id: "t1", name: "Mine", text: "Explain {{Path}}", createdAt: 5 }]);
+    reopened.close();
+  });
+
+  test("a host made before defaults were tracked gets only the ones added since, keeping the user's edits and deletions", () => {
+    const pathWith = (templates: string) => {
+      const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+      const old = new Database(path);
+      old.run("CREATE TABLE prompt_templates (id TEXT PRIMARY KEY, name TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL)");
+      if (templates) old.run(`INSERT INTO prompt_templates VALUES ${templates}`);
+      old.close();
+      return path;
+    };
+    const names = (store: Store) => store.listPromptTemplates().map(({ name, text }) => (name === "Deep PR review" ? `${name}: ${text}` : name));
+
+    const edited = new Store(pathWith("('default-deep-pr-review', 'Deep PR review', 'my own words', 1)"));
+    expect(names(edited)).toEqual(["Code tour", "Deep PR review: my own words", "Start on a ticket"]);
+    edited.close();
+
+    const deletedPath = pathWith("");
+    const deleted = new Store(deletedPath);
+    expect(names(deleted)).toEqual(["Code tour", "Start on a ticket"]);
+    deleted.deletePromptTemplate("default-code-tour");
+    deleted.close();
+    const reopened = new Store(deletedPath);
+    expect(names(reopened)).toEqual(["Start on a ticket"]);
     reopened.close();
   });
 

@@ -31,14 +31,39 @@ export function matchingTemplates<Template extends Pick<PromptTemplate, "name" |
   return [...found.filter(({ name }) => holdsEvery(name)), ...found.filter(({ name }) => !holdsEvery(name))];
 }
 
-/** Added once, to a host that has never had templates; deleted ones stay deleted. */
+/** Each is added once to every host, so one the user deleted stays deleted and one they edited keeps their text. */
 export const defaultPromptTemplates: Omit<PromptTemplate, "createdAt">[] = [
   {
     id: "default-deep-pr-review",
     name: "Deep PR review",
-    text:
-      "{{Pull request}}, make a very deep review, use cb reviewer skill too, you can use worktree for code checking and validating your concerns. " +
-      "Make a summary for me to make me understand it faster, focus on how the code flow happens, please focus on make your response easy to understand by a human, me :)",
+    text: [
+      "Review {{Pull request}} in depth. Use the cb reviewer skill as well, and check out the code in a worktree to confirm each concern before you raise it.",
+      "Then give me a summary that helps me understand the change fast: walk me through how the code flows, in the order it runs, in plain words.",
+      "Keep review comments short. Write prose only where it's needed.",
+    ].join("\n\n"),
+  },
+  {
+    id: "default-start-on-a-ticket",
+    name: "Start on a ticket",
+    text: [
+      "Let's start on {{Ticket}}. Read the ticket, its comments and everything it links to, then find the code it touches.",
+      [
+        "Before you change anything, tell me:",
+        "- what the ticket asks for, in a few lines;",
+        "- how the code involved works today, in the order it runs;",
+        "- what is unclear or missing, as questions for me;",
+        "- the approach you suggest, and the others you considered.",
+      ].join("\n"),
+      "Don't write code until I've answered.",
+    ].join("\n\n"),
+  },
+  {
+    id: "default-code-tour",
+    name: "Code tour",
+    text: [
+      "Give me a guided tour of {{What to explain}} as a tour on the canvas. Start where it begins, then follow the code in the order it runs, one step for each place where something important happens.",
+      "Keep each step to a few sentences in plain words: what happens there and why it matters. End with where to read next if I want to go deeper.",
+    ].join("\n\n"),
   },
 ];
 

@@ -25,6 +25,9 @@ import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
 import type { TerminalLayout } from "../shared/terminal-layout.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
+
+/** A host made before hosts kept track was offered these when it was created, so one the user deleted since stays deleted. */
+const TEMPLATES_OFFERED_BEFORE_TRACKING = ["default-deep-pr-review"];
 const deviceColumns = "id, name, joined_at AS joinedAt, last_seen_at AS lastSeenAt";
 const joinRequestColumns = `id, secret_hash AS secretHash, name, from_address AS fromAddress, tailscale_user AS tailscaleUser,
   authority_fingerprint AS authorityFingerprint, commitment, machine_nonce AS machineNonce, requester_nonce AS requesterNonce, answer, expires_at AS expiresAt`;
@@ -59,6 +62,7 @@ const schema = `
     id TEXT PRIMARY KEY, name TEXT NOT NULL, environment TEXT NOT NULL, prelaunch TEXT NOT NULL, created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS prompt_templates (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS offered_prompt_templates (id TEXT PRIMARY KEY);
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, joined_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
@@ -233,10 +237,26 @@ export class Store {
     // mirador invite writes here while the host runs.
     this.db.run("PRAGMA busy_timeout = 5000");
     const hadPromptTemplates = this.hasTable("prompt_templates");
+    const keptTrackOfOfferedTemplates = this.hasTable("offered_prompt_templates");
     this.db.run(schema);
     this.addMissingColumns();
     this.shareSidebarOrder();
-    if (!hadPromptTemplates) defaultPromptTemplates.forEach((template) => this.savePromptTemplate({ ...template, createdAt: Date.now() }));
+    if (hadPromptTemplates && !keptTrackOfOfferedTemplates) this.markTemplatesOffered(TEMPLATES_OFFERED_BEFORE_TRACKING);
+    this.offerNewDefaultTemplates();
+  }
+
+  private offerNewDefaultTemplates() {
+    const offered = new Set(this.db.query("SELECT id FROM offered_prompt_templates").all().map((row) => (row as { id: string }).id));
+    defaultPromptTemplates
+      .filter(({ id }) => !offered.has(id))
+      .forEach(({ id, name, text }) => {
+        this.db.query("INSERT INTO prompt_templates (id, name, text, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING").run(id, name, text, Date.now());
+        this.markTemplatesOffered([id]);
+      });
+  }
+
+  private markTemplatesOffered(ids: string[]) {
+    ids.forEach((id) => this.db.query("INSERT OR IGNORE INTO offered_prompt_templates (id) VALUES (?)").run(id));
   }
 
   private hasTable(name: string) {

@@ -23,8 +23,12 @@ describe("prompt templates", () => {
     expect(promptTemplateProblem({ id: "t", name: "Review", text: "x".repeat(20_001) })).toMatch(/at most 20000 characters/);
   });
 
-  test("the default deep review asks for the pull request", () => {
-    expect(defaultPromptTemplates.map(({ name, text }) => [name, parametersOf(text)])).toEqual([["Deep PR review", ["Pull request"]]]);
+  test("each default asks for what it works on: a pull request, a ticket, or what to explain", () => {
+    expect(defaultPromptTemplates.map(({ name, text }) => [name, parametersOf(text)])).toEqual([
+      ["Deep PR review", ["Pull request"]],
+      ["Start on a ticket", ["Ticket"]],
+      ["Code tour", ["What to explain"]],
+    ]);
   });
 });
 
