@@ -4,6 +4,9 @@ DIST := $(CURDIR)/dist
 SIGNING := $(DIST)/signing
 MAC_ARCH := $(shell uname -m | sed 's/x86_64/x64/')
 SHA256 := $(shell command -v sha256sum || echo shasum -a 256)
+# Without --norsrc, ditto stores each file's extended attributes as a ._ entry, which plain unzip writes into the
+# signed app as extra files, breaking its seal.
+ZIP_APP := ditto -c -k --norsrc --keepParent
 LINUX_HOST ?=
 REMOTE_DIR ?= mirador-release
 REMOTE_TMPDIR ?= $$HOME/mirador-release-tmp
@@ -17,18 +20,18 @@ macos: ## The macOS app with Mirador inside, zipped into dist/ (on a Mac)
 	@[ "$$(uname -s)" = Darwin ] || { echo "make macos needs a Mac" >&2; exit 2; }
 	cd desktop && bun install --frozen-lockfile && bun run build:release
 	mkdir -p $(DIST) && rm -f $(DIST)/Mirador-macos-$(MAC_ARCH).zip
-	ditto -c -k --keepParent desktop/build/stable-macos-$(MAC_ARCH)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+	$(ZIP_APP) desktop/build/stable-macos-$(MAC_ARCH)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
 
 macos-signed: macos ## The macOS app signed with your Developer ID and notarized by Apple, zipped into dist/ (on a Mac whose keychain holds both)
 	rm -rf $(SIGNING) && ditto -x -k $(DIST)/Mirador-macos-$(MAC_ARCH).zip $(SIGNING)
 	bun desktop/scripts/sign-macos-app.ts $(SIGNING)/Mirador.app
 	rm -f $(DIST)/Mirador-macos-$(MAC_ARCH).zip
-	ditto -c -k --keepParent $(SIGNING)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+	$(ZIP_APP) $(SIGNING)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
 
 macos-staple: ## Finish make macos-signed once Apple accepted the submission it stopped waiting for
 	bun desktop/scripts/sign-macos-app.ts --staple $(SIGNING)/Mirador.app
 	rm -f $(DIST)/Mirador-macos-$(MAC_ARCH).zip
-	ditto -c -k --keepParent $(SIGNING)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
+	$(ZIP_APP) $(SIGNING)/Mirador.app $(DIST)/Mirador-macos-$(MAC_ARCH).zip
 
 linux: linux-x64 linux-arm64 ## Both Linux installers (or one: linux-x64, linux-arm64), built, installed and checked in containers, into dist/ (on an x64 Linux machine)
 
