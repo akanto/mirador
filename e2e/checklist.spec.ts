@@ -73,6 +73,9 @@ test("the agent publishes a checklist and ticks it as it goes, your ticks reach 
     await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(canvasTitle(page)).toHaveText("Release 0.4.2");
     await expect(page.locator(".checklist:visible .checklist-section h4")).toHaveText(["Build 0/2", "Ship 0/2"]);
+    const lastBuildItem = await checklistItem(page, "Build the app").boundingBox();
+    const shipHeading = await page.locator(".checklist:visible .checklist-section h4", { hasText: "Ship" }).boundingBox();
+    expect(shipHeading!.y - (lastBuildItem!.y + lastBuildItem!.height), "a section stands apart from the one before it").toBeGreaterThanOrEqual(12);
     await expect(checklistItem(page, "Build the app").locator(".checklist-detail strong")).toHaveText("notarized");
     await expect(checklistItem(page, "Post the announcement").locator(".checklist-owner")).toHaveText("you");
     await expect(checklistItem(page, "Run the tests").locator(".checklist-owner")).toHaveCount(0);

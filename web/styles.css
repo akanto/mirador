@@ -2807,11 +2807,15 @@ button.edits-waiting {
   text-align: left;
 }
 
-.checklist {
-  padding: 14px 16px;
+.checklist,
+.checklist-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.checklist {
+  padding: 14px 16px;
 }
 
 .checklist-section h4 {
