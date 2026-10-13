@@ -101,6 +101,59 @@ test("your own answer to one question can run over several lines with Shift+Ente
   expect(await ask.locator(".ask-answer strong").innerText()).toBe("First line\nSecond line");
 });
 
+test("Enter in the note sends the answer with it, and with nothing picked it neither sends nor starts a line", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(host.origin);
+  const conversationId = await startConversation(page);
+  const ask = page.locator(".ask");
+  const toolResult = callCanvasTool(host, conversationId, "ask", { question: "Ship it?", options: [{ label: "Yes" }, { label: "No" }] });
+  const note = ask.getByRole("textbox", { name: /note/i });
+
+  await test.step("with no option picked, Enter does nothing to the note and sends nothing", async () => {
+    await note.pressSequentially("after the weekend");
+    await note.press("Enter");
+    await expect(note).toHaveValue("after the weekend");
+    await expect(ask.locator(".ask-answer")).toHaveCount(0);
+    await expect(page.locator(".ask-submit")).toBeVisible();
+  });
+
+  await test.step("Shift+Enter adds a line of the note, and Enter sends the answer with it", async () => {
+    await ask.getByRole("radio", { name: "Yes" }).check();
+    await note.press("Shift+Enter");
+    await note.pressSequentially("with the docs");
+    await expect(note).toHaveValue("after the weekend\nwith the docs");
+    await note.press("Enter");
+  });
+
+  expect(await toolResult).toBe("The user chose: Yes\nTheir note: after the weekend\nwith the docs");
+});
+
+test("Enter in the note of one of several questions goes on to the next question", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(host.origin);
+  const conversationId = await startConversation(page);
+  const ask = page.locator(".ask");
+  const toolResult = callCanvasTool(host, conversationId, "ask", {
+    questions: [
+      { question: "Which color?", options: [{ label: "Red" }, { label: "Blue" }] },
+      { question: "Which size?", options: [{ label: "Small" }, { label: "Large" }] },
+    ],
+  });
+  const note = ask.getByRole("textbox", { name: /note/i });
+
+  await ask.getByRole("radio", { name: "Red", exact: true }).check();
+  await note.pressSequentially("matches the sofa");
+  await note.press("Enter");
+  await expect(ask.getByRole("heading", { name: "Which size?" })).toBeVisible();
+
+  await ask.getByRole("radio", { name: "Large" }).check();
+  await ask.getByRole("button", { name: "Next" }).click();
+  await ask.getByRole("button", { name: "Submit" }).click();
+  expect(await toolResult).toBe(
+    ["The user answered 2 questions:", "1. Which color?", "   The user chose: Red", "   Their note: matches the sofa", "2. Which size?", "   The user chose: Large"].join("\n"),
+  );
+});
+
 test("a long answer in the canvas bar gives way to the title and the bar's buttons", async ({ page }) => {
   await signIn(page, host);
   await page.goto(host.origin);

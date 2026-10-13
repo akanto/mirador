@@ -267,6 +267,7 @@ function AskQuestionFields({
             value={draft.note}
             placeholder="Optional note for the agent (sent with your answer)"
             onChange={(event) => onChange({ note: event.target.value })}
+            onKeyDown={answerOnEnter}
           />
         </div>
       )}
