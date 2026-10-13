@@ -6,7 +6,7 @@ Mirador runs your coding agents (Claude Code and opencode) and gives them a **ca
 
 [![The trailer: no more walls of text, your agent draws now. A chat transcript crossed out beside a checkout sequence diagram on the canvas](docs/screenshots/trailer.jpg)](https://youtu.be/VmlHwR-yV4I)
 
-▶ [Watch the trailer](https://youtu.be/VmlHwR-yV4I) (1:37)
+▶ [Watch the trailer](https://youtu.be/VmlHwR-yV4I) (1:37) · [Website](https://sodre90.github.io/mirador/)
 
 ```bash
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
