@@ -1,6 +1,15 @@
 name: Website
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - docs/screenshots/**
+      - desktop/assets/app-icon.svg
+      - web/favicon.svg
+      - scripts/build-site.ts
+      - .github/workflows/site.yml
   workflow_dispatch:
 
 permissions:
