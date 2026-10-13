@@ -59,8 +59,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Commits
 
-- **You may commit at any time without asking**: whenever a change is finished and its checks pass. For commits, this overrides the conservative git policy in the beads block above.
-- **Pushing** still waits until the owner asks.
+- **You may commit and push at any time without asking**: whenever a change is finished and its checks pass. This overrides the conservative git policy in the beads block above.
 - **Author and committer:** the owner only, `perdos <erdos.peter.bme@gmail.com>`, as set in the local git config.
 - **No AI attribution:** no `Co-Authored-By` or "Generated with" trailers, and no agent name anywhere in the message.
 - **Beads hook:** the beads `prepare-commit-msg` hook, which adds agent trailers, was removed on purpose. Never reinstall it.
