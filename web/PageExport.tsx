@@ -3,6 +3,7 @@ import { suggestedPagePath } from "../shared/canvas-export.ts";
 import type { CanvasItem } from "../shared/model.ts";
 import { placedBelow, useClosing, type BarMenuEntry } from "./BarMenu.tsx";
 import { AlreadyThere, copyPageHtml, copyPageImage, downloadPage, savePageToProject } from "./canvas-export.ts";
+import { inDesktopApp } from "./desktop-bridge.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
 const DONE_NOTE_MS = 4000;
@@ -50,18 +51,22 @@ export function usePageExport(page: CanvasItem | undefined, frame: RefObject<HTM
     }
   };
   const copyImage = () => (frame.current ? copyPageImage(frame.current) : Promise.reject(new Error("The page is not shown.")));
+  const download: BarMenuEntry = { label: "Download", onChoose: (opener) => run(opener, "Preparing the file…", () => downloadPage(page), "Downloaded") };
+  const saveToProject: BarMenuEntry = {
+    label: "Save to project…",
+    onChoose: (opener) => {
+      setPlacement(placedBelow(opener));
+      setStatus(null);
+      setSaveFormOpen(true);
+    },
+  };
+  // The desktop app's webview puts downloads in ~/Downloads without a word, so there the file is only saved to the project.
+  const [firstSaving, ...otherSaving] = inDesktopApp() ? [saveToProject] : [download, saveToProject];
   const entries: BarMenuEntry[] = [
     { label: "Copy as image", onChoose: (opener) => run(opener, "Drawing the page…", copyImage, "Copied as an image") },
     { label: "Copy HTML", onChoose: (opener) => run(opener, "Copying…", () => copyPageHtml(page.id), "Copied the HTML") },
-    { label: "Download", separatorBefore: true, onChoose: (opener) => run(opener, "Preparing the file…", () => downloadPage(page), "Downloaded") },
-    {
-      label: "Save to project…",
-      onChoose: (opener) => {
-        setPlacement(placedBelow(opener));
-        setStatus(null);
-        setSaveFormOpen(true);
-      },
-    },
+    { ...firstSaving!, separatorBefore: true },
+    ...otherSaving,
   ];
   const opened = saveFormOpen ? (
     <SaveToProject

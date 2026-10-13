@@ -121,6 +121,16 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
     expect(saved).not.toMatch(/<script[^>]*src=[^>]*d3\.min\.js/);
   });
 
+  await test.step("inside the desktop app, whose downloads land unannounced in ~/Downloads, Export offers no Download", async () => {
+    await page.addInitScript(() => {
+      window.__electrobunSendToHost = () => {};
+    });
+    await page.reload();
+    await exportToggle(page).click();
+    await expect(page.getByRole("menu", { name: "Export the page" }).getByRole("menuitem")).toHaveText(["Copy as image", "Copy HTML", "Save to project…"]);
+    await page.keyboard.press("Escape");
+  });
+
   await test.step("only a shown page offers Export: not the Changes tab over it", async () => {
     await page.locator(".canvas-header:visible .changes-toggle").click();
     await expect(exportToggle(page)).toHaveCount(0);
