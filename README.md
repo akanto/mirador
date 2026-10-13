@@ -43,13 +43,13 @@ The agent renders a page on the canvas: a diagram, a mockup, a chart, a comparis
 
 ![The agent asks which settings layout to build, with a phone mockup preview for each option](docs/screenshots/ask.png)
 
-Instead of a numbered list of options in text, the agent asks on the canvas: a question, an optional page explaining it, and up to eight options with a preview each. You click one, or type your own answer, and add a note if you like. Several questions come at once, a page each, with a review before you send. The answer goes back to the agent, either as the tool's result or as your next message.
+Instead of a numbered list of options in text, the agent asks on the canvas: a question, an optional page explaining it, and up to eight options with a preview each. You click one, or type your own answer when the agent allows it, and add a note if you like. Several questions come at once, a page each, with a review before you send. The answer goes back to the agent, either as the tool's result or as your next message.
 
 ### Tour: the agent walks you through code
 
 ![The agent's tour of its fix: the steps on the left, the changed line of src/checkout.ts marked on the right](docs/screenshots/tour.png)
 
-Instead of a long summary in text, the agent walks you through the code on the canvas: how something works, or what it just changed. A tour is a short summary and steps in the order the code runs, each with its lines. When it shows a change, the changed lines are marked and a *Files* tab holds the diff. Ask the agent about any lines, or open them in your IDE.
+Instead of a long summary in text, the agent walks you through the code on the canvas: how something works, or what it just changed. A tour is a short summary and steps in the order the code runs, each with its lines. When it shows a change, the changed lines are marked and a *Files* tab holds the diff. Ask the agent about any lines, or open them in IntelliJ IDEA.
 
 ### Review: a guided tour of the change
 
@@ -62,7 +62,7 @@ The agent publishes its code review as a page you work through, not a wall of co
 - **Files**: every diff, with syntax colours.
 - **Findings**: pinned to their lines. Each shows its severity and whether the agent confirmed it or only suspects it.
 
-Keep or drop each finding, reword it, ask the agent about any lines, and open them in your IDE. Then post the findings you kept to the GitHub pull request as your pending review.
+Keep or drop each finding, reword it, ask the agent about any lines, and open them in IntelliJ IDEA. Then post the findings you kept to the GitHub pull request as your pending review.
 
 ![The review's findings tab: a blocker, an issue and a nit, each with its lines](docs/screenshots/review-findings.png)
 
@@ -93,15 +93,14 @@ The app updates itself, so `brew upgrade` leaves it alone. On Linux, Homebrew do
 
 **By hand**, from the [releases](https://github.com/sodre90/mirador/releases):
 
-**macOS**: `Mirador-macos-arm64.zip`. The app is signed ad hoc, not by an identified developer, so clear the download's quarantine once:
+**macOS**: `Mirador-macos-arm64.zip`. The app is signed with a Developer ID and notarized by Apple:
 
 ```bash
-unzip Mirador-macos-arm64.zip -d /Applications
-xattr -dr com.apple.quarantine /Applications/Mirador.app
+ditto -x -k Mirador-macos-arm64.zip /Applications
 open /Applications/Mirador.app
 ```
 
-**Linux**: `Mirador-linux-x64-Setup.tar.gz` or `Mirador-linux-arm64-Setup.tar.gz` (`uname -m` says which). It needs GTK 3, WebKitGTK 4.1 and the Ayatana AppIndicator library ([details](desktop/README.md#linux)):
+**Linux**: `Mirador-linux-x64-Setup.tar.gz` or `Mirador-linux-arm64-Setup.tar.gz` (`uname -m` says which). It needs GTK 3, WebKitGTK 4.1 and the Ayatana AppIndicator library ([details](desktop/README.md#install-on-linux)):
 
 ```bash
 sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2   # Debian, Ubuntu
@@ -115,7 +114,7 @@ The installer starts Mirador, and puts it in your applications menu.
 
 ### The phone app
 
-The Android app is in [sodre90/mirador-mobile](https://github.com/sodre90/mirador-mobile/releases). In Mirador, open *Settings → Devices*, switch on *Reachable on the network* (or use a Tailscale address), then *Invite a device*. Scan the QR code with the app.
+The Android app is in [sodre90/mirador-mobile](https://github.com/sodre90/mirador-mobile/releases). In Mirador, open *Settings → Devices* and choose how other devices reach it: *Over the network, with no address*, or *At an address a proxy gives it*, such as a Tailscale address. The host uses the choice from its next start, so restart it, then *Invite a device* and scan the QR code with the app.
 
 ### From source
 
@@ -164,14 +163,14 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **As you left it**: coming back to a conversation brings its canvas back as it was, with *Changes* still open or the page still shown.
 - **History**: everything shown or asked is kept per conversation, across reloads and restarts. *Older* and *Newer* step through it, and *History* lists it newest first, with each question's outcome. *Clear* empties the canvas without deleting anything.
 - **Hide, show and full screen**: the canvas keeps receiving pages while hidden.
-- **How often Claude Code uses it** (*Settings → Canvas*): *As needed*, or *Often*, which adds guidance to Claude Code's system prompt, such as ending a larger coding task with a tour of what changed. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode gets the same instructions.
+- **Claude Code uses the canvas** (*Settings → Canvas*): *As needed*, or *Often* (the default), which adds guidance to Claude Code's system prompt, such as ending a larger coding task with a tour of what changed. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode follows the canvas's own instructions, without this guidance.
 
 ### Questions
 
 - **`ask`**: a question with 2 to 8 options, each with a description and an optional HTML preview, plus an optional page explaining the question.
 - **Several questions at once**: up to ten in one call, each with its own options. You answer them page by page, can change any answer on a review page, and send them together. Agents are told to ask this way rather than fold several questions into one.
 - **Previews are shown whole**: option columns widen to the widest preview, and a page wider than the canvas is scaled down to fit.
-- **Your own answer**: *Something else…* takes a typed answer, over several lines with Shift+Enter, and every answer can carry a note.
+- **Your own answer**: when the agent allows it, *Something else…* takes a typed answer, over several lines with Shift+Enter, and every answer can carry a note.
 - **Context stays**: a page the agent showed just before asking stays above the question.
 - **Two ways to answer**, chosen per conversation: *Agent waits for my answer* returns your choice as the tool's result. *My answer is sent as the next message* lets the agent end its turn, and your choice arrives later as your message.
 - **Answered or withdrawn** questions leave a short note in place of the question.
@@ -200,7 +199,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Full screen or beside the chat**: *Settings → Canvas → Open reviews* sets the default, and a button switches it. A new review brings a hidden canvas back.
 - **Overview**: verdict, `+`/`−` counts, commit range, the summary (Markdown, tables included), the flow as a list and the findings by severity.
 - **Flow**: the tour in the order the code runs, one step at a time, with the step's lines marked. ←/→ move between steps.
-- **Files**: a filter box, the tour's files first, every diff with syntax colours, and *show the lines between changes* in steps or all at once.
+- **Files**: a filter box, the tour's files first, every diff with syntax colours, and the lines between changes shown 20 at a time or all at once.
 - **Findings**: severity (blocker, issue, question, nit) and *✓ confirmed* or *? plausible*. *How it was checked* holds the agent's evidence, which is for you and is never posted.
 - **Curate**: keep or drop each finding, reword it, ask the agent about it, or open it in IDEA.
 - **Ask about any lines**: click line numbers (Shift+click extends), then `a` asks the agent with the code attached and `o` opens IDEA at that line. *Ask and update the review* (⌘Enter) has the agent republish when its answer changes anything.
@@ -218,9 +217,9 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
   - The last profile stays until you create another; the workspaces of a deleted profile move to another one.
   - Environment lines are `KEY=value`, `-u KEY` and `# comment`, so the lines of a `claude_env=( … )` alias paste as they are.
   - An optional pre-launch command can start a proxy first; if it fails, you see its output.
-  - Each profile has defaults for mode, YOLO and questions, its own agent process and its own log (`logs/<agent>-<name>-<id>.log`). Saving a changed profile restarts its agent.
+  - Each profile has defaults for mode, YOLO and questions, its own agent process and its own log (`logs/<agent>-<name>-<id>.log`). Saving a profile with a changed environment or pre-launch command restarts its agent.
   - Profiles, including their tokens, are stored in the SQLite database with owner-only permissions. Secrets are masked on screen.
-- **Switch profile mid-conversation** (*Profile* in the conversation's header, even after the profile was deleted): the new profile's agent resumes the same session with its model. Switching while the agent works stops the turn, and once the session is back the agent continues where it left off. A profile that keeps sessions elsewhere (another `CLAUDE_CONFIG_DIR`, or opencode's `XDG_DATA_HOME`) starts a fresh session instead. Until the first message, the menu also offers the other agents' profiles, and picking one moves the conversation to that agent; after that they show greyed out, for a new conversation.
+- **Switch profile mid-conversation** (*Profile* in the conversation's header, even after the profile was deleted): the new profile's agent resumes the same session, on that profile's default model. Switching while the agent works stops the turn, and once the session is back the agent continues where it left off. A profile that keeps sessions elsewhere (another `CLAUDE_CONFIG_DIR`, or opencode's `XDG_DATA_HOME`) starts a fresh session instead. Until the first message, the menu also offers the other agents' profiles, and picking one moves the conversation to that agent; after that they show greyed out, for a new conversation.
 - **Every agent option** in the header: model, mode, effort and whatever else the agent offers. Lists of more than 20 choices get a search box (opencode has 500+ models).
 - **YOLO** (off by default): Mirador approves every permission request of that conversation without asking, including requests already waiting. Claude Code's own *Bypass permissions* mode is separate.
 - **Continue…** (in each workspace's card) lists the sessions the agent recorded for that folder, including ones started in a terminal, and replays the chosen one into a new conversation. *Continue* keeps the same session; *Fork* copies it.
@@ -258,11 +257,11 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Thinking** (folded), the agent's **plan** as a checklist, mode changes, turn ends and errors.
 - **Permission requests** show the tool and its command, with the agent's own allow and reject options, and the outcome afterwards. Edits show on the canvas (see [Edit approvals](#edit-approvals)).
 - **Tool calls** with diffs for edits, raw input and output a click away, and readable MCP tool names.
-- **Shell commands** look like a terminal. *Settings → Appearance → Shell commands* picks how much shows: output a click away, output only on failure, one line, or everything.
+- **Shell commands** look like a terminal. *Settings → Appearance → Shell commands* picks how much shows: the command with its output a click away, the command with its output open when it failed, one line, or the command and its output.
 - **Subagents** nest under their Agent card, which shows the prompt each got. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time), with its model and tokens; a click opens its latest work.
 - **Images** show inline, also in replayed sessions and the agent's replies; click for full size.
 - **Long conversations** load the newest 200 entries and the earlier ones as you scroll up. Switching between recent conversations is instant and keeps your scroll position, and resizing panes keeps your place.
-- **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage and when each starts over (weekly turns amber past 75%), cost and profile. Or, in a Claude Code conversation, run your own Claude Code `statusLine` command, exactly as Claude Code would; opencode conversations keep the built-in one.
+- **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage and when each starts over (each meter turns amber past 75% and red past 90%), cost and profile. Or, in a Claude Code conversation, run your own Claude Code `statusLine` command, exactly as Claude Code would; opencode conversations keep the built-in one.
 
 ### Sidebar and workspaces
 
@@ -309,7 +308,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
   - Waits are kept in the database, so they go on after a host restart, and a job that ended meanwhile is noticed then.
   - While it waits, the conversation shows the job above the message box, with *Stop waiting*.
   - **Click the job to follow it** in a terminal tab, locally or over ssh: its command line and how long it has run, then its output file (`tail -f`) or the container's logs, until it ends. Clicking again shows the same tab. Ctrl+C closes the tab and leaves the job running.
-- **`scripts/mirador-message "<text>"`** (or text on stdin) sends text to the agent's conversation as your next message: at once if the agent is idle, else queued. It shows as *From a script*. It finds the conversation by the session id every command the agent runs inherits (Claude Code's `CLAUDE_CODE_SESSION_ID`, or the `MIRADOR_SESSION_ID` Mirador's plugin gives opencode's commands), with the `MIRADOR_URL` and `MIRADOR_SCRIPT_TOKEN` Mirador gives its agents. Anything else needs `--session <agent session id>`. The script token survives restarts, and unknown sessions or empty messages are refused with the reason.
+- **`scripts/mirador-message "<text>"`** (or text on stdin) sends text to the agent's conversation as your next message: at once if the agent is idle, else queued. It shows as *From a script*. It finds the conversation by the `CLAUDE_CODE_SESSION_ID` every command Claude Code runs inherits, with the `MIRADOR_URL` and `MIRADOR_SCRIPT_TOKEN` Mirador gives its agents. opencode's commands carry no session id, so they, and anything else, need `--session <agent session id>`. The script token survives restarts, and unknown sessions or empty messages are refused with the reason.
 
 ### Notifications and waiting for you
 
@@ -373,18 +372,18 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 [Mirador for Android](https://github.com/sodre90/mirador-mobile) is a phone-sized Mirador:
 
 - **Join** by scanning the QR code from *Invite a device*, with an invite link, or with an address and code. The device token is kept in the Android Keystore. Switch between several machines.
-- **Four tabs**: *Waiting for you* (most urgent first), *Chats*, *Terminals* and *Search*.
-- **The whole conversation, live**: Markdown, images, thinking, shell commands, edit diffs, plans, subagents, permission requests and questions. The last view stays readable while the machine is unreachable, and the app reconnects by itself.
+- **Four tabs**: *Waiting* (titled *Waiting for you*, most urgent first), *Chats*, *Terminals* and *Search*.
+- **The whole conversation, live**: Markdown, images, thinking, shell commands, edit diffs, plans, subagents, permission requests and questions. Workspaces and conversations stay listed while the machine is unreachable, a conversation you have open stays readable until you leave it, and the app reconnects by itself.
 - **Send** text and photos (camera or library), stop the agent, answer permission requests and questions. The message box has `!` commands, `/` commands, `@` paths, earlier messages and prompt templates.
-- **Voice dictation**: hold the send button, speak, tap ■. Recognition runs on the phone, in the language you choose.
+- **Voice dictation**: hold the send button, speak, tap ■. Recognition runs on the phone (Android 13 and later), in the language you choose; on a phone without it, dictation asks before using the phone's voice typing service.
 - **The queue**, usage limits and jobs left running, as on the computer.
 - **The canvas**: pages appear above the message box, and questions show their previews. Swipe left (or tap the canvas count) for the canvas screen, which pages through its history.
 - **Code reviews**: verdict, summary, the flow tour with its findings, keep, drop and edit, changed files, and posting to the pull request.
 - **Terminals**: each conversation's own shells, from the *Terminals* tab, from *Search*, or from the `>_` button in the conversation's header, with a key row (Esc, Tab, Ctrl, Alt, arrows, Paste) and pinch to zoom.
 - **Workspaces**: add one, choose its agent, colour it, continue or fork a session, and hold-and-drag to reorder.
-- **Notifications** per kind and per machine, with a turn-progress notification that can stop the agent from the lock screen. Let devices join from the phone too.
+- **Notifications** per kind and per machine, and a *Working* notification (off until you switch it on) that follows a turn you started on the phone, with a Stop button that works from the lock screen. Let devices join from the phone too.
 - **App lock**: fingerprint, face or screen lock, asked again before risky actions (approving, `!` commands, typing in a terminal, YOLO, inviting a device, posting a review).
-- **Android extras**: share text into Mirador from other apps, long-press shortcuts on the launcher icon, and home-screen widgets for *Waiting for you* and your machines.
+- **Android extras**: share text, links or images into Mirador from other apps (they land in the message box of the conversation you open next), long-press shortcuts on the launcher icon, and home-screen widgets for *Waiting for you* and your machines.
 
 ### Working on Mirador in Mirador
 

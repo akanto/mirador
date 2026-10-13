@@ -1,6 +1,6 @@
 # The Mirador trailer
 
-A 90-second trailer at 4K and 60 fps, made from footage of a real Mirador: a throwaway host on a fake home folder,
+A 97-second trailer at 4K and 60 fps, made from footage of a real Mirador: a throwaway host on a fake home folder,
 running the real Claude Code against a scripted stand-in for the model. Nothing in it is mocked up by hand, and no
 account, conversation or setting of yours is used.
 

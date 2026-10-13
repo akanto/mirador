@@ -22,11 +22,10 @@ curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.s
 
 The script puts `Mirador.app` where it already is, else in `/Applications` (or `~/Applications` when that isn't writable), and opens it. Run it again to update; quit Mirador first.
 
-**By hand**: download `Mirador-macos-arm64.zip` from the [releases](https://github.com/sodre90/mirador/releases). The app is signed ad hoc, not by an identified developer, so macOS quarantines the download; clear that once:
+**By hand**: download `Mirador-macos-arm64.zip` from the [releases](https://github.com/sodre90/mirador/releases). The app is signed with a Developer ID and notarized by Apple:
 
 ```bash
-unzip Mirador-macos-arm64.zip -d /Applications
-xattr -dr com.apple.quarantine /Applications/Mirador.app
+ditto -x -k Mirador-macos-arm64.zip /Applications
 open /Applications/Mirador.app
 ```
 
@@ -175,7 +174,7 @@ bun install
 bun run typecheck
 bun run build:dev      # build/dev-macos-arm64/Mirador-dev.app
 bun run build          # build/stable-macos-arm64/Mirador.app, or artifacts/linux-*-Mirador-Setup.tar.gz
-bun run build:release  # the same, carrying Mirador (about 390 MB), for people without a checkout
+bun run build:release  # the same, carrying Mirador (about 160 MB), for people without a checkout
 bun run dev            # run from source with Electrobun's dev runner
 ```
 
@@ -189,13 +188,13 @@ On Linux the payload is written as POSIX ustar (`TAR_OPTIONS=--format=ustar`): G
 
 On macOS, Electrobun builds the stable app as a self-extracting stub, and `scripts/unwrap-macos-app.sh` unwraps it right after the build, so `build/stable-macos-arm64/Mirador.app` is the expanded app and the release zip carries that. macOS runs a quarantined download translocated, on a read-only mount, where the stub's own first-launch expansion fails and the app hangs with no window. The expanded app needs nothing from its bundle at launch; Electrobun's uninstall manifest is written on the user's machine (`~/Library/Application Support/com.sodre90.mirador/stable/`) when the app first runs there.
 
-Stable builds are signed ad hoc by Electrobun's own signing step (`ELECTROBUN_DEVELOPER_ID=-`, unless you set a real identity), which macOS needs before it asks to allow notifications. They are not notarized.
+Stable builds are signed ad hoc by Electrobun's own signing step (`ELECTROBUN_DEVELOPER_ID=-`, unless you set a real identity), which macOS needs before it asks to allow notifications. They are not notarized; the release's app is, through `make macos-signed`.
 
 `make macos-signed` (repository root) signs the release build with your Developer ID instead and has Apple notarize it, so a download opens without clearing its quarantine. It needs the *Developer ID Application* certificate in the login keychain, and the notary key stored with `xcrun notarytool store-credentials mirador-notary`. `desktop/scripts/sign-macos-app.ts` signs every program and library in the app, the deepest first, with the hardened runtime and `desktop/entitlements.plist` (the JIT exceptions Bun's own release is signed with), checks that the signed Bun still runs JavaScript, submits the app and staples Apple's ticket to it. Apple can take more than an hour, most of all with a new team's first submissions: when the two-hour wait runs out, `make macos-staple` finishes once `xcrun notarytool info <id> --keychain-profile mirador-notary` says Accepted.
 
 ### Update files
 
-A release build updates itself from the latest release: Electrobun's updater fetches `<channel>-<platform>-<arch>-update.json` from `releases/latest/download`, then a patch from the build it runs, or the whole archive when the release has none. `make update-files` (repository root, on a Mac, after `make macos-signed` and `make linux-remote`) writes these files into `dist/` with `desktop/scripts/update-files.ts`:
+A release build updates itself from the latest release, on macOS only when it is signed with a Developer ID: Electrobun's updater fetches `<channel>-<platform>-<arch>-update.json` from `releases/latest/download`, then a patch from the build it runs, or the whole archive when the release has none. `make update-files` (repository root, on a Mac, after `make macos-signed` and `make linux-remote`) writes these files into `dist/` with `desktop/scripts/update-files.ts`:
 
 - For macOS it packs the signed, stapled app in `dist/signing` again, as Electrobun packs its own archive before the app is signed. It refuses an app Apple has not accepted yet. Like Electrobun's archive it is POSIX ustar, without extended attributes.
 - The Linux archives are Electrobun's own, which `make linux` brings back with the installers.
