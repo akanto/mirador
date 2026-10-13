@@ -2226,6 +2226,16 @@ button.edits-waiting {
   font-size: calc(12px * var(--font-scale));
 }
 
+.hook-message summary {
+  cursor: pointer;
+}
+
+.hook-lines {
+  margin: 4px 0 0 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .error-line {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 7%, transparent);
