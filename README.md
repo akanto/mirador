@@ -417,7 +417,7 @@ make checksums                           # install.sh copied in with them, and t
 make cask                                # the Homebrew cask for the sodre90/homebrew-tap tap, with the SHA-256 of the macOS zip and the Linux installers
 ```
 
-Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).
+Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `site/` (the website, assembled with the README's screenshots by `bun scripts/build-site.ts` and published to GitHub Pages by `.github/workflows/site.yml`), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).
 
 ## License
 

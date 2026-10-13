@@ -96,6 +96,7 @@ Mirador is a localhost web app that drives coding agents (Claude Code through `c
 - **`web/`** is the React UI, bundled by Bun. It talks to the host over one WebSocket. Messages are typed in `shared/protocol.ts`.
 - **`shared/`** holds the types and logic both sides use.
 - **`desktop/`** is the Electrobun tray app that wraps it.
+- **`site/`** is the website, sodre90.github.io/mirador. `bun scripts/build-site.ts` assembles it with the README's screenshots, and `.github/workflows/site.yml` publishes it; `e2e/site.spec.ts` checks it.
 - **`e2e/`** holds the Playwright specs. Their helper hosts are in `e2e/test-host.ts`. **`tests/`** holds the unit tests.
 
 ## Conventions & Patterns

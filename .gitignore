@@ -16,3 +16,4 @@ desktop/.hutch/
 desktop/.cottontail-tmp/
 /dist/
 /.idea/
+/site-build/
