@@ -1012,12 +1012,17 @@ function AskAboutLines({
 
 const isTextField = (target: EventTarget) => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 
-function useScrollIntoView(root: RefObject<HTMLElement | null>, selector: string | null, when: unknown = selector, { exceptOnOpening = false } = {}) {
+function useScrollIntoView(
+  root: RefObject<HTMLElement | null>,
+  selector: string | null,
+  when: unknown = selector,
+  { exceptOnOpening = false, justRestored }: { exceptOnOpening?: boolean; justRestored?: RefObject<boolean> } = {},
+) {
   const opened = useRef(false);
   useEffect(() => {
     const opening = !opened.current;
     opened.current = true;
-    if (selector && !(opening && exceptOnOpening)) root.current?.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (selector && !(opening && exceptOnOpening) && !justRestored?.current) root.current?.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [when]);
 }
 
@@ -1088,16 +1093,22 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     view?.addEventListener("scroll", rememberScroll, { capture: true, passive: true });
     return () => view?.removeEventListener("scroll", rememberScroll, { capture: true });
   }, [tab]);
+  const justRestored = useRef(false);
   useLayoutEffect(() => {
-    Object.entries(scrolled[tab] ?? {}).forEach(([className, top]) => {
+    const saved = scrolled[tab];
+    justRestored.current = saved !== undefined && Object.keys(saved).length > 0;
+    Object.entries(saved ?? {}).forEach(([className, top]) => {
       const part = root.current?.querySelector(`[class="${className}"]`);
       if (part) part.scrollTop = top;
     });
-  }, []);
-  const keepsPlaceLeft = { exceptOnOpening: placeLeft !== undefined };
+  }, [tab]);
+  const keepsPlaceLeft = { exceptOnOpening: placeLeft !== undefined, justRestored };
   useScrollIntoView(root, tab === "files" ? `[data-hunk="${hunkIndex}"]` : null, `${tab} ${file?.path} ${hunkIndex}`, keepsPlaceLeft);
   useScrollIntoView(root, findingId && (tab === "files" || tab === "findings") ? `[data-finding-id="${findingId}"]` : null, undefined, keepsPlaceLeft);
   useScrollIntoView(root, answerId && tab === "conversations" ? `[data-answer-id="${answerId}"]` : null, undefined, keepsPlaceLeft);
+  useEffect(() => {
+    justRestored.current = false;
+  }, [tab]);
 
   const showFile = (nextPath: string, nextHunk = 0) => {
     setTab("files");

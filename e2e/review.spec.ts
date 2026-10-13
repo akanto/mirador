@@ -533,6 +533,12 @@ test("coming back to a review's conversation shows the review as the user left i
   });
   expect(scrolledTo, "the findings are long enough to scroll").toBeGreaterThan(0);
 
+  await test.step("switching to another tab and back keeps the findings where they were scrolled", async () => {
+    await view.getByRole("tab", { name: /Files/ }).click();
+    await findingsTab.click();
+    await expect.poll(() => findingsList.evaluate((list) => list.scrollTop)).toBe(scrolledTo);
+  });
+
   await startConversation(page);
   await expect(view).toHaveCount(0);
   await page.locator(`li[data-reorder-id="${conversationId}"]`).click();
