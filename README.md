@@ -418,3 +418,7 @@ make cask                                # the Homebrew cask for the sodre90/hom
 ```
 
 Layout: `host/` (Bun server, ACP client, canvas MCP server, SQLite store), `web/` (React UI bundled by Bun), `shared/` (types and logic both sides use), `desktop/` (the Electrobun app), `e2e/` (Playwright specs), `tests/` (unit tests), `spike/` (throwaway feasibility spike, see `spike/FINDINGS.md`). Work is tracked in beads (`bd ready`).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
