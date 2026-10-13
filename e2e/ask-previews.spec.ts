@@ -4,6 +4,8 @@ import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(4850);
 
+// Later tests use the workspace the first one adds; after a failure, a new worker would start an empty host for them.
+test.describe.configure({ mode: "serial" });
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
   await host.stop();
@@ -19,8 +21,11 @@ const askInBackground = (conversationId: string, ask: Record<string, unknown>) =
 
 const preview = (option: Locator) => option.locator("iframe");
 
+/** A preview scaled down to fit lands a subpixel short of whole; a cut-off one loses far more of its END. */
+const WHOLLY_SHOWN_RATIO = 0.99;
+
 async function expectWhollyShown(frame: Locator) {
-  await expect(frame.contentFrame().getByText("END")).toBeInViewport({ ratio: 1 });
+  await expect(frame.contentFrame().getByText("END")).toBeInViewport({ ratio: WHOLLY_SHOWN_RATIO });
 }
 
 test("previews show whole: option columns widen to fit them, and what is wider than the canvas is scaled down", async ({ page }) => {
