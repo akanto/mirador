@@ -3,6 +3,7 @@ import { assetPackageVersion, resolveAsset } from "../host/canvas/assets.ts";
 import { inlineScript, standalonePage } from "../host/canvas/export.ts";
 
 const ORIGIN = "http://127.0.0.1:4601";
+const PUBLIC_ORIGIN = "https://mirador.example.com:4601";
 const CDN = "https://cdn.jsdelivr.net/npm";
 
 const page = (html: string, title = "Page") => ({ title, html });
@@ -13,7 +14,7 @@ const headLines = (output: string) => output.split("\n").slice(0, 6);
 
 describe("standalonePage", () => {
   test("starts with one doctype, the charset, the colour scheme, the escaped title, the import map on the CDN and the page's style", async () => {
-    const output = await standalonePage(page("<p>hi</p>", 'Tom & Jerry <3 > "x"'), ORIGIN, "cdn");
+    const output = await standalonePage(page("<p>hi</p>", 'Tom & Jerry <3 > "x"'), [ORIGIN], "cdn");
     const threeCdn = `${CDN}/three@${assetPackageVersion("three")}`;
     const importMap = {
       imports: {
@@ -35,7 +36,7 @@ describe("standalonePage", () => {
   });
 
   test("drops the page's own leading doctype, whatever its case", async () => {
-    const output = await standalonePage(page("  <!DOCTYPE html>\n<p>hi</p>"), ORIGIN, "cdn");
+    const output = await standalonePage(page("  <!DOCTYPE html>\n<p>hi</p>"), [ORIGIN], "cdn");
     expect(output.match(/<!doctype/gi)).toHaveLength(1);
     expect(output.endsWith("\n<p>hi</p>")).toBe(true);
   });
@@ -47,7 +48,7 @@ describe("standalonePage", () => {
       `<script type="module" src="${ORIGIN}/three/build/three.module.js"></script>`,
       `<script type="module">import { OrbitControls } from "${ORIGIN}/three/addons/controls/OrbitControls.js";</script>`,
     ].join("\n");
-    const output = await standalonePage(page(html), ORIGIN, "cdn");
+    const output = await standalonePage(page(html), [ORIGIN], "cdn");
     expect(output).toContain(`${CDN}/d3@${assetPackageVersion("d3")}/dist/d3.min.js"></script>`);
     expect(output).toContain(`${CDN}/mermaid@${assetPackageVersion("mermaid")}/dist/mermaid.min.js"></script>`);
     expect(output).toContain(`${CDN}/three@${assetPackageVersion("three")}/build/three.module.js"></script>`);
@@ -58,7 +59,7 @@ describe("standalonePage", () => {
 
   test("inline, puts d3's file into a script tag with no src, byte for byte", async () => {
     const d3 = await readLibrary("/d3.min.js");
-    const output = await standalonePage(page(`<script src="${ORIGIN}/d3.min.js"></script>`), ORIGIN, "inline");
+    const output = await standalonePage(page(`<script src="${ORIGIN}/d3.min.js"></script>`), [ORIGIN], "inline");
     expect(output).toContain(`<script>${d3}</script>`);
     expect(output).not.toContain("<script src");
     expect(output).not.toContain(`${ORIGIN}/d3.min.js`);
@@ -67,22 +68,40 @@ describe("standalonePage", () => {
   test("inline, takes mermaid's tag with single quotes, another attribute and spaces before the close", async () => {
     const mermaid = await readLibrary("/mermaid.min.js");
     const html = `<script async src='${ORIGIN}/mermaid.min.js' crossorigin="anonymous" ></script >`;
-    const output = await standalonePage(page(html), ORIGIN, "inline");
+    const output = await standalonePage(page(html), [ORIGIN], "inline");
     expect(output).toContain(`<script>${mermaid}</script>`);
     expect(output).not.toContain("<script src");
   });
 
   test("inline, keeps three on the CDN, as its modules import each other", async () => {
     const html = `<script type="module" src="${ORIGIN}/three/build/three.module.js"></script>`;
-    const output = await standalonePage(page(html), ORIGIN, "inline");
+    const output = await standalonePage(page(html), [ORIGIN], "inline");
     expect(output).toContain(`${CDN}/three@${assetPackageVersion("three")}/build/three.module.js"></script>`);
     expect(output).not.toContain(ORIGIN);
+  });
+
+  test("on the CDN, rewrites the libraries at every address they are served from", async () => {
+    const html = [`<script src="${ORIGIN}/d3.min.js"></script>`, `<script src="${PUBLIC_ORIGIN}/mermaid.min.js"></script>`].join("\n");
+    const output = await standalonePage(page(html), [PUBLIC_ORIGIN, ORIGIN], "cdn");
+    expect(output).toContain(`${CDN}/d3@${assetPackageVersion("d3")}/dist/d3.min.js"></script>`);
+    expect(output).toContain(`${CDN}/mermaid@${assetPackageVersion("mermaid")}/dist/mermaid.min.js"></script>`);
+    expect(output).not.toContain(ORIGIN);
+    expect(output).not.toContain(PUBLIC_ORIGIN);
+  });
+
+  test("inline, puts in the libraries named at any address they are served from", async () => {
+    const [d3, mermaid] = await Promise.all([readLibrary("/d3.min.js"), readLibrary("/mermaid.min.js")]);
+    const html = [`<script src="${ORIGIN}/d3.min.js"></script>`, `<script src="${PUBLIC_ORIGIN}/mermaid.min.js"></script>`].join("\n");
+    const output = await standalonePage(page(html), [PUBLIC_ORIGIN, ORIGIN], "inline");
+    expect(output).toContain(`<script>${d3}</script>`);
+    expect(output).toContain(`<script>${mermaid}</script>`);
+    expect(output).not.toContain("<script src");
   });
 
   test("matches the origin literally, even with characters that mean something in a regular expression", async () => {
     const ipv6Origin = "http://[::1]:4601";
     const d3 = await readLibrary("/d3.min.js");
-    const output = await standalonePage(page(`<script src="${ipv6Origin}/d3.min.js"></script>`), ipv6Origin, "inline");
+    const output = await standalonePage(page(`<script src="${ipv6Origin}/d3.min.js"></script>`), [ipv6Origin], "inline");
     expect(output).toContain(`<script>${d3}</script>`);
     expect(output).not.toContain(ipv6Origin);
   });

@@ -9,14 +9,15 @@ const PAGE_STYLE = "<style>html{background:light-dark(#fff,#111);color:light-dar
 
 type Rewrite = [from: string, to: string];
 
-function cdnRewrites(assetsOrigin: string): Rewrite[] {
+function cdnRewrites(assetsOrigins: string[]): Rewrite[] {
   const threeVersion = assetPackageVersion("three");
-  return [
-    [`${assetsOrigin}/d3.min.js`, `${CDN_NPM}/d3@${assetPackageVersion("d3")}/dist/d3.min.js`],
-    [`${assetsOrigin}/mermaid.min.js`, `${CDN_NPM}/mermaid@${assetPackageVersion("mermaid")}/dist/mermaid.min.js`],
-    [`${assetsOrigin}/three/build/`, `${CDN_NPM}/three@${threeVersion}/build/`],
-    [`${assetsOrigin}/three/addons/`, `${CDN_NPM}/three@${threeVersion}/examples/jsm/`],
+  const libraryPaths: Rewrite[] = [
+    ["/d3.min.js", `${CDN_NPM}/d3@${assetPackageVersion("d3")}/dist/d3.min.js`],
+    ["/mermaid.min.js", `${CDN_NPM}/mermaid@${assetPackageVersion("mermaid")}/dist/mermaid.min.js`],
+    ["/three/build/", `${CDN_NPM}/three@${threeVersion}/build/`],
+    ["/three/addons/", `${CDN_NPM}/three@${threeVersion}/examples/jsm/`],
   ];
+  return assetsOrigins.flatMap((origin) => libraryPaths.map(([path, cdn]): Rewrite => [`${origin}${path}`, cdn]));
 }
 
 const rewriteToCdn = (text: string, rewrites: Rewrite[]) => rewrites.reduce((result, [from, to]) => result.replaceAll(from, to), text);
@@ -37,27 +38,28 @@ export function inlineScript(text: string) {
   return `<script>${text.replace(/<\/(script)/gi, "<\\/$1")}</script>`;
 }
 
-function libraryScriptTagPattern(assetsOrigin: string) {
+function libraryScriptTagPattern(assetsOrigins: string[]) {
+  const origins = assetsOrigins.map(escapeRegExp).join("|");
   const files = INLINED_LIBRARY_FILES.map(escapeRegExp).join("|");
-  return new RegExp(`<script\\b[^>]*?\\ssrc\\s*=\\s*(["'])${escapeRegExp(assetsOrigin)}/(${files})\\1[^>]*>\\s*</script\\s*>`, "g");
+  return new RegExp(`<script\\b[^>]*?\\ssrc\\s*=\\s*(["'])(?:${origins})/(${files})\\1[^>]*>\\s*</script\\s*>`, "g");
 }
 
-async function inlineLibraries(html: string, assetsOrigin: string) {
-  const usedFiles = INLINED_LIBRARY_FILES.filter((file) => html.includes(`${assetsOrigin}/${file}`));
+async function inlineLibraries(html: string, assetsOrigins: string[]) {
+  const usedFiles = INLINED_LIBRARY_FILES.filter((file) => assetsOrigins.some((origin) => html.includes(`${origin}/${file}`)));
   const scripts = new Map(await Promise.all(usedFiles.map(async (file) => [file, inlineScript(await readLibrary(`/${file}`))] as const)));
-  return html.replace(libraryScriptTagPattern(assetsOrigin), (tag, _quote, file: string) => scripts.get(file) ?? tag);
+  return html.replace(libraryScriptTagPattern(assetsOrigins), (tag, _quote, file: string) => scripts.get(file) ?? tag);
 }
 
-export async function standalonePage(page: { title: string; html: string }, assetsOrigin: string, libraries: PageLibraries): Promise<string> {
-  const rewrites = cdnRewrites(assetsOrigin);
+export async function standalonePage(page: { title: string; html: string }, assetsOrigins: string[], libraries: PageLibraries): Promise<string> {
+  const rewrites = cdnRewrites(assetsOrigins);
   const body = page.html.replace(LEADING_DOCTYPE, "");
-  const inlined = libraries === "inline" ? await inlineLibraries(body, assetsOrigin) : body;
+  const inlined = libraries === "inline" ? await inlineLibraries(body, assetsOrigins) : body;
   return [
     "<!doctype html>",
     '<meta charset="utf-8">',
     '<meta name="color-scheme" content="light dark">',
     `<title>${escapeText(page.title)}</title>`,
-    `<script type="importmap">${JSON.stringify(cdnImportMap(assetsOrigin, rewrites))}</script>`,
+    `<script type="importmap">${JSON.stringify(cdnImportMap(assetsOrigins[0]!, rewrites))}</script>`,
     PAGE_STYLE,
     rewriteToCdn(inlined, rewrites),
   ].join("\n");

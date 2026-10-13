@@ -75,8 +75,8 @@ export class CanvasService {
     private readonly hub: Hub,
     private readonly conversations: ConversationService,
     private readonly notifications: SystemNotifications,
-    /** The address agents were given for the canvas libraries, which their pages name. */
-    private readonly assetsOrigin: string,
+    /** Every address the canvas libraries are served at, as a page may name any of them; the first is the one agents were given. */
+    private readonly assetsOrigins: string[],
     private readonly gh: GitHubCli = ghCli,
   ) {}
 
@@ -291,7 +291,7 @@ export class CanvasService {
   async exportPage(itemId: string, libraries: PageLibraries) {
     const page = this.store.findCanvasItem(itemId);
     if (page?.kind !== "show" || page.html === undefined) throw new Error("Only a page the agent showed can be copied or saved.");
-    return { page, html: await standalonePage({ title: page.title, html: page.html }, this.assetsOrigin, libraries) };
+    return { page, html: await standalonePage({ title: page.title, html: page.html }, this.assetsOrigins, libraries) };
   }
 
   /** Writes the page into the conversation's workspace, at a path inside it; the path it was saved at comes back. */

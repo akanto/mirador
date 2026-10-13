@@ -49,7 +49,7 @@ function setUp() {
   } as unknown as ConversationService;
   const notified: [string, NotificationReason][] = [];
   const notifications = { notify: (conversationId: string, reason: NotificationReason) => void notified.push([conversationId, reason]) } as SystemNotifications;
-  const canvas = new CanvasService(store, new Hub(), conversations, notifications, "http://127.0.0.1:4601");
+  const canvas = new CanvasService(store, new Hub(), conversations, notifications, ["http://127.0.0.1:4601"]);
   const ask = () => canvas.openAsk("c1", { question: "Color?", options: [{ label: "Red" }, { label: "Blue" }] });
   const askSeveral = () =>
     canvas.openAsk("c1", {

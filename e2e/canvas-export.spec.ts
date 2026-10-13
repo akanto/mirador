@@ -4,8 +4,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5440);
-const assetsOrigin = `http://127.0.0.1:${host.port + 1}`;
+/** Agents are told the public canvas address, but this browser reaches the host locally and draws pages from the local one. */
+const host = new TestHost(5440, {
+  environment: { MIRADOR_PUBLIC_ORIGIN: "https://mirador.example.com", MIRADOR_PUBLIC_CANVAS_ORIGIN: "https://mirador.example.com:8443" },
+});
+const localAssetsOrigin = `http://127.0.0.1:${host.port + 1}`;
 const cdnD3 = /https:\/\/cdn\.jsdelivr\.net\/npm\/d3@\d+\.\d+\.\d+\/dist\/d3\.min\.js/;
 
 test.beforeAll(() => host.start());
@@ -16,7 +19,7 @@ test.afterAll(async () => {
 
 const chart = {
   title: "Sales by région",
-  html: `<style>h1 { color: rgb(200, 0, 0); }</style><script src="${assetsOrigin}/d3.min.js"></script><h1 id="drawn">waiting</h1>
+  html: `<style>h1 { color: rgb(200, 0, 0); }</style><script src="${localAssetsOrigin}/d3.min.js"></script><h1 id="drawn">waiting</h1>
 <script>document.getElementById("drawn").textContent = "Drawn with d3 " + d3.version;</script>`,
 };
 
@@ -57,7 +60,7 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
     expect(copied).toMatch(/^<!doctype html>/);
     expect(copied).toContain("<title>Sales by région</title>");
     expect(copied).toMatch(cdnD3);
-    expect(copied).not.toContain(assetsOrigin);
+    expect(copied).not.toContain(localAssetsOrigin);
   });
 
   await test.step("Copy as image puts a PNG of the page, in its own colours, on the clipboard", async () => {
