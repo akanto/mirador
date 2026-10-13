@@ -9,6 +9,8 @@ import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
 import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
+import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export.ts";
+import { setPageLibraries, usePageLibraries } from "./page-libraries.ts";
 import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
 import { NewerVersionNote } from "./NewerVersion.tsx";
@@ -111,6 +113,7 @@ export function SettingsDialog({
         <CanvasSettings canvasUse={canvasUse} />
         <ReviewSettings />
         <EditApprovalSettings />
+        <SavedPageSettings />
       </>
     ),
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
@@ -454,6 +457,28 @@ function ReviewSettings() {
           Open reviews
           <select value={placement} onChange={(event) => setReviewPlacement(event.target.value as ReviewPlacement)}>
             {Object.entries(reviewPlacementLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </>
+  );
+}
+
+function SavedPageSettings() {
+  const libraries = usePageLibraries();
+  return (
+    <>
+      <h3>Copied and saved pages</h3>
+      <p className="hint">For a page you copy, download or save to the project from the canvas. Remembered in this browser.</p>
+      <div className="sending-settings">
+        <label data-hint={hints.pageLibrariesSetting}>
+          Libraries
+          <select value={libraries} onChange={(event) => setPageLibraries(event.target.value as PageLibraries)}>
+            {Object.entries(pageLibrariesLabels).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>

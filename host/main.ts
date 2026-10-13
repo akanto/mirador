@@ -44,7 +44,7 @@ const notifications = new SystemNotifications(store, hub);
 const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, "notifier-muted.json"));
 notifierMute.unmuteSessionsOfEarlierRuns();
 const conversations = new ConversationService(store, hub, config, notifierMute, images, notifications);
-const canvas = new CanvasService(store, hub, conversations, notifications);
+const canvas = new CanvasService(store, hub, conversations, notifications, config.canvasAssetsOrigin);
 conversations.hearChecklistTicksFrom((conversationId) => canvas.checklistNote(conversationId));
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort);

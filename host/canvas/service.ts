@@ -6,6 +6,9 @@ import type { ConversationService } from "../conversations.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
 import type { SystemNotifications } from "../system-notifications.ts";
+import type { PageLibraries } from "../../shared/canvas-export.ts";
+import { standalonePage } from "./export.ts";
+import { saveIntoWorkspace } from "./save-to-project.ts";
 import {
   applyChecklistEdit,
   CHECKLIST_NOT_CHANGED,
@@ -72,6 +75,8 @@ export class CanvasService {
     private readonly hub: Hub,
     private readonly conversations: ConversationService,
     private readonly notifications: SystemNotifications,
+    /** The address agents were given for the canvas libraries, which their pages name. */
+    private readonly assetsOrigin: string,
     private readonly gh: GitHubCli = ghCli,
   ) {}
 
@@ -280,6 +285,21 @@ export class CanvasService {
       this.reviewsBeingPosted.delete(itemId);
       this.saveReview(this.reviewItem(itemId), { posting: false });
     }
+  }
+
+  /** A page the agent showed, as a file of its own that draws outside Mirador. */
+  async exportPage(itemId: string, libraries: PageLibraries) {
+    const page = this.store.findCanvasItem(itemId);
+    if (page?.kind !== "show" || page.html === undefined) throw new Error("Only a page the agent showed can be copied or saved.");
+    return { page, html: await standalonePage({ title: page.title, html: page.html }, this.assetsOrigin, libraries) };
+  }
+
+  /** Writes the page into the conversation's workspace, at a path inside it; the path it was saved at comes back. */
+  async savePageToProject(itemId: string, path: string, libraries: PageLibraries, replace: boolean) {
+    const { page, html } = await this.exportPage(itemId, libraries);
+    const workspace = this.store.findWorkspace(this.conversations.get(page.conversationId).workspaceId);
+    if (!workspace) throw new Error("The workspace no longer exists.");
+    return saveIntoWorkspace(workspace.path, path, html, { replace });
   }
 
   openInEditor(itemId: string, path: string, line: number) {

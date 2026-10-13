@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { HERE_PATH } from "../addresses.ts";
+import { CAPTURE_LIBRARY_PATH } from "../../shared/canvas-document.ts";
 
 const packageDir = (name: string) => dirname(Bun.resolveSync(`${name}/package.json`, import.meta.dir));
+
+export function assetPackageVersion(name: "d3" | "mermaid" | "three"): string {
+  return JSON.parse(readFileSync(join(packageDir(name), "package.json"), "utf8")).version;
+}
 
 const mounts: Record<string, string> = {
   "/three/build/": join(packageDir("three"), "build"),
@@ -11,6 +17,7 @@ const mounts: Record<string, string> = {
 const singleFiles: Record<string, string> = {
   "/d3.min.js": join(packageDir("d3"), "dist", "d3.min.js"),
   "/mermaid.min.js": join(packageDir("mermaid"), "dist", "mermaid.min.js"),
+  [CAPTURE_LIBRARY_PATH]: join(packageDir("modern-screenshot"), "dist", "index.mjs"),
 };
 
 /** Canvas pages run in opaque-origin iframes, so module imports from here need CORS. */

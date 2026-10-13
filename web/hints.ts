@@ -58,6 +58,8 @@ export const hints = {
   reviewPlacement: "Show the review over the whole workspace, or in the canvas pane next to the chat. Settings picks where reviews open.",
   tourPlacement: "Show the tour over the whole workspace, or in the canvas pane next to the chat.",
   reviewPlacementSetting: "Where a code review from the agent opens. Either way, the button in the review's bar switches between the two.",
+  pageLibrariesSetting:
+    "Where a page you copy or save out of the canvas loads D3, Mermaid and three.js from. The canvas serves them itself, which a page outside Mirador cannot reach. three.js always comes from the CDN.",
   editsInCanvasSetting:
     "On, an edit the agent waits for you to allow takes the canvas, with a Unified / Split toggle and the file's line numbers, and the chat keeps a small card. Off, the chat card shows the diff and the canvas stays as it is.",
   askPageBefore: "The agent showed this page just before asking, in the same turn. It stays above the question so you can read both; it is also in History on its own.",
@@ -179,6 +181,7 @@ export const hints = {
   canvasNewer: "Show the next canvas item.",
   canvasHistory: "Everything the agent drew or asked in this conversation, newest first.",
   canvasClear: "Empty the canvas. Nothing is deleted: the item stays in History.",
+  canvasPageExport: "Copy this page as an image or as HTML, download it, or save it into the project as a file of its own.",
   canvasEditsWaiting: "Show the edit the agent waits for you to allow or reject.",
   canvasChanges: "The files this turn changed, or all uncommitted changes, with their line changes.",
   canvasChecklist:

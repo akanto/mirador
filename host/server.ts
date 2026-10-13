@@ -24,6 +24,7 @@ import { claudeProgramLookUps } from "./acp/claude-program.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
+import { FileAlreadyThere } from "./canvas/save-to-project.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
 import { canvasChangedSince, DEFLATED_MESSAGES_HEADER, type LowDataSubscription } from "../shared/low-data.ts";
 import { sidebarIdsAfterMove } from "../shared/sidebar-order.ts";
@@ -789,6 +790,20 @@ export function startServer(services: HostServices) {
         return canvas.reportRender(message.itemId, { errors: message.errors });
       case "checklist.tick":
         return canvas.tickChecklistItem(message.itemId, message.checklistItemId, message.done);
+      case "canvas.export":
+        canvas
+          .exportPage(message.itemId, message.libraries)
+          .then(({ html }) => reply({ type: "canvas.exported", requestId: message.requestId, html }))
+          .catch((error) => reply({ type: "canvas.export-failed", requestId: message.requestId, message: errorMessage(error), alreadyThere: false }));
+        return;
+      case "canvas.save-to-project":
+        canvas
+          .savePageToProject(message.itemId, message.path, message.libraries, message.replace)
+          .then((path) => reply({ type: "canvas.saved-to-project", requestId: message.requestId, path }))
+          .catch((error) =>
+            reply({ type: "canvas.export-failed", requestId: message.requestId, message: errorMessage(error), alreadyThere: error instanceof FileAlreadyThere }),
+          );
+        return;
       case "review.update-finding":
         return canvas.updateFinding(message.itemId, message.findingId, { decision: message.decision, body: message.body });
       case "review.update-answer":

@@ -18,7 +18,10 @@ export type CanvasFrameMessage =
       altKey: boolean;
       shiftKey: boolean;
       typing: boolean;
-    };
+    }
+  /** The page drawn as a PNG, as the panel asked for it to copy. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
 
 export function isCanvasFrameMessage(data: unknown): data is CanvasFrameMessage {
   return typeof data === "object" && data !== null && (data as { source?: unknown }).source === CANVAS_MESSAGE_SOURCE;
@@ -26,6 +29,14 @@ export function isCanvasFrameMessage(data: unknown): data is CanvasFrameMessage 
 
 /** Light or dark, as the panel shows: canvas pages resolve their light-dark() colours against it. */
 export type CanvasTheme = "light" | "dark";
+
+/** Asks a canvas page to draw itself as a PNG; it answers with a "captured" or "capture-failed" message. */
+export function canvasCaptureMessage(requestId: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "capture", requestId };
+}
+
+/** Where a canvas page loads the library that draws it as an image, from the canvas assets. */
+export const CAPTURE_LIBRARY_PATH = "/modern-screenshot.mjs";
 
 /** Tells a canvas page the panel's theme changed, since a sandboxed frame does not inherit the panel's color-scheme. */
 export function canvasThemeMessage(theme: CanvasTheme) {
@@ -58,7 +69,7 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
   ].join("; ");
 }
 
-function frameReporter(itemId: string, theme: CanvasTheme) {
+function frameReporter(itemId: string, theme: CanvasTheme, assetsOrigin: string) {
   return `(() => {
   const itemId = ${JSON.stringify(itemId)};
   const errors = [];
@@ -68,9 +79,31 @@ function frameReporter(itemId: string, theme: CanvasTheme) {
   const showIn = (theme) => { colorScheme.textContent = ":root{color-scheme:" + (theme === "dark" ? "dark" : "light") + " !important}"; };
   showIn(${JSON.stringify(theme)});
   document.head.append(colorScheme);
+  // The whole page, not only what the frame shows, in the colours it is shown in.
+  const capture = async (requestId) => {
+    try {
+      const { domToBlob } = await import(${JSON.stringify(assetsOrigin + CAPTURE_LIBRARY_PATH)});
+      const root = document.documentElement;
+      const image = await domToBlob(root, {
+        width: root.scrollWidth,
+        height: root.scrollHeight,
+        scale: devicePixelRatio,
+        backgroundColor: getComputedStyle(root).backgroundColor,
+        font: false,
+        // The library works out the browser's default styles in a frame of its own, which a sandboxed page cannot reach;
+        // with a stand-in that has no window, it writes out every style of each element instead.
+        sandbox: { remove() {} },
+      });
+      post({ kind: "captured", requestId, image });
+    } catch (error) {
+      post({ kind: "capture-failed", requestId, message: String((error && error.message) || error) });
+    }
+  };
   addEventListener("message", (event) => {
     const data = event.data;
-    if (event.source === parent && data && data.source === ${JSON.stringify(CANVAS_MESSAGE_SOURCE)} && data.kind === "theme") showIn(data.theme);
+    if (event.source !== parent || !data || data.source !== ${JSON.stringify(CANVAS_MESSAGE_SOURCE)}) return;
+    if (data.kind === "theme") showIn(data.theme);
+    if (data.kind === "capture") capture(data.requestId);
   });
   const record = (message) => {
     if (errors.length >= 20 || /ResizeObserver loop/.test(message)) return;
@@ -196,7 +229,7 @@ export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: 
     `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy(assetsOrigin))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
-    `<script>${frameReporter(itemId, theme)}</script>`,
+    `<script>${frameReporter(itemId, theme, assetsOrigin)}</script>`,
     "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif;overflow-wrap:break-word}</style>",
     ...(padded ? [PADDED_PAGE_STYLE] : []),
     withoutDoctype,

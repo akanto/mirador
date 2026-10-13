@@ -2650,6 +2650,7 @@ button.edits-waiting {
 .changes-toggle,
 .checklist-toggle,
 .history-toggle,
+.page-export-toggle,
 .canvas-clear {
   flex-shrink: 0;
   font-size: calc(12px * var(--font-scale));
@@ -2660,10 +2661,103 @@ button.edits-waiting {
 
 .changes-toggle.on,
 .checklist-toggle.on,
-.history-toggle.on {
+.history-toggle.on,
+.page-export-toggle.on {
   color: var(--text);
   background: var(--panel-2);
   border-color: var(--accent);
+}
+
+.page-export {
+  flex-shrink: 0;
+}
+
+.page-export-toggle {
+  white-space: nowrap;
+}
+
+.page-export-menu,
+.page-save,
+.page-export-status {
+  position: fixed;
+  z-index: 40;
+  margin: 0;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  color: var(--text);
+}
+
+.page-export-menu {
+  min-width: 180px;
+  list-style: none;
+}
+
+.page-export-menu button {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.page-export-menu button:hover,
+.page-export-menu button:focus-visible {
+  background: var(--rail-hover);
+}
+
+.page-export-menu [role="separator"] {
+  margin: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.page-save {
+  width: min(360px, calc(100vw - 32px));
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-save label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.page-save input {
+  font-family: var(--mono);
+}
+
+.page-save-problem {
+  margin: 0;
+  color: var(--warn);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.page-save-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.page-export-status {
+  padding: 5px 10px;
+  max-width: min(360px, calc(100vw - 32px));
+  font-size: calc(12px * var(--font-scale));
+  pointer-events: none;
+}
+
+.page-export-status.failed {
+  color: var(--danger);
 }
 
 .canvas-body .empty-state:has(+ .changes) {

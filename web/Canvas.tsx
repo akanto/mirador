@@ -9,6 +9,7 @@ import { ChangesView } from "./Changes.tsx";
 import { checklistCount, ChecklistView, currentChecklist, useFlashOnAgentEdit } from "./Checklist.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
+import { PageExport } from "./PageExport.tsx";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
@@ -78,6 +79,7 @@ function CanvasFrame({
   fitsContent = false,
   onRendered,
   onContentWidth,
+  frameRef,
 }: {
   frameId: string;
   html: string;
@@ -86,8 +88,11 @@ function CanvasFrame({
   fitsContent?: boolean;
   onRendered?: (errors: string[]) => void;
   onContentWidth?: (width: number) => void;
+  /** For the panel to reach the page's frame, as copying it as an image does. */
+  frameRef?: RefObject<HTMLIFrameElement | null>;
 }) {
-  const frame = useRef<HTMLIFrameElement>(null);
+  const ownFrame = useRef<HTMLIFrameElement>(null);
+  const frame = frameRef ?? ownFrame;
   const box = useRef<HTMLDivElement>(null);
   const roomWidth = useElementWidth(box);
   const [errors, setErrors] = useState<string[]>([]);
@@ -580,6 +585,7 @@ export function CanvasPanel({
   }, [edit.shown?.permissionId]);
   const selectedIndex = edit.shown ? -1 : newestFirst.findIndex(({ id }) => id === selectedId);
   const selected = newestFirst[selectedIndex];
+  const shownPageFrame = useRef<HTMLIFrameElement>(null);
   const somethingElseShown = Boolean(selected || edit.shown);
   const changesShown = changesOpen || (!tab && !somethingElseShown);
   const outcome = selected && outcomeOf(selected);
@@ -644,6 +650,7 @@ export function CanvasPanel({
           </button>
         )}
         <span className="spacer" />
+        {!tab && selected?.kind === "show" && <PageExport key={selected.id} page={selected} frame={shownPageFrame} />}
         <button type="button" className="icon canvas-nav" aria-label="Older" data-hint={hints.canvasOlder} disabled={!older} onClick={() => older && pick(older.id)}>
           ‹
         </button>
@@ -726,6 +733,7 @@ export function CanvasPanel({
             html={selected.html ?? ""}
             assetsOrigin={assetsOrigin}
             className="show"
+            frameRef={shownPageFrame}
             onRendered={reportRender(selected.id)}
           />
         )}

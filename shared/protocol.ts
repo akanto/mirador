@@ -31,6 +31,7 @@ import type {
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { FindingDecision } from "./review.ts";
+import type { PageLibraries } from "./canvas-export.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -153,6 +154,9 @@ export type ClientMessage =
   | { type: "canvas.report"; itemId: string; errors: string[] }
   /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
   | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
+  /** A page the agent showed, as a file of its own, for the user to copy or download. */
+  | { type: "canvas.export"; requestId: string; itemId: string; libraries: PageLibraries }
+  | { type: "canvas.save-to-project"; requestId: string; itemId: string; path: string; libraries: PageLibraries; replace: boolean }
   | { type: "review.update-finding"; itemId: string; findingId: string; decision?: FindingDecision; body?: string }
   | { type: "review.update-answer"; itemId: string; answerId: string; decision?: FindingDecision; body?: string; resolve?: boolean }
   /** Adds the kept findings to the user's pending review on the pull request; the user submits it on GitHub. */
@@ -280,6 +284,10 @@ export type ServerMessage =
   | { type: "conversation.rewound"; conversationId: string; fromSeq: number }
   | { type: "conversation.rewind-failed"; requestId: string; message: string }
   | { type: "canvas.upserted"; item: CanvasItem }
+  | { type: "canvas.exported"; requestId: string; html: string }
+  | { type: "canvas.saved-to-project"; requestId: string; path: string }
+  /** `alreadyThere` when the path names a file that is there already, which the user may choose to replace. */
+  | { type: "canvas.export-failed"; requestId: string; message: string; alreadyThere: boolean }
   | { type: "fs.completions"; requestId: string; directories: string[] }
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }
   | { type: "subagent-usage.got"; requestId: string; usage: Record<string, SubagentUsage> }
