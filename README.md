@@ -281,9 +281,9 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **⌘F** finds in the open conversation, including entries not loaded yet and folded cards, which it unfolds. It shows the match count; Enter goes to the older match and Shift+Enter to the newer. *Aa* matches case.
 - **⌘⇧F** searches every conversation in every workspace, newest first, with snippets. Opening a result jumps to it with the find bar on it.
 
-![Two terminals side by side under the conversation: git log on the left, git diff --stat on the right](docs/screenshots/terminals.png)
-
 ### Terminals
+
+![Two terminals side by side under the conversation: git log on the left, git diff --stat on the right](docs/screenshots/terminals.png)
 
 - **Each conversation's own shells**, in the workspace's folder, in tabs, each with up to four splits side by side (*Split right*) or stacked (*Split down*); drag a divider to resize. They keep running while another conversation is shown, while hidden and across reloads, every window shows the same ones, and they close when the conversation is deleted. Each tab keeps where it was scrolled to.
 - **Back after a restart**: a conversation's tabs and splits come back with what their shells printed, and a new shell under that output.
