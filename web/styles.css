@@ -2657,6 +2657,10 @@ button.edits-waiting {
   padding: 2px 6px;
 }
 
+.canvas-header button.checklist-close {
+  flex-shrink: 0;
+}
+
 .changes-toggle,
 .checklist-toggle,
 .history-toggle,

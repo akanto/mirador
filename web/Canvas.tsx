@@ -692,6 +692,9 @@ export function CanvasPanel({
           <>
             <span className="canvas-kind">{kindIcons.checklist}</span>
             <span className="canvas-title">{checklist?.title ?? "Agent's plan"}</span>
+            <button type="button" className="icon checklist-close" aria-label="Close the checklist" data-hint={hints.checklistClose} onClick={() => setTab(null)}>
+              ×
+            </button>
           </>
         ) : edit.shown ? (
           <>

@@ -107,6 +107,15 @@ test("the agent publishes a checklist and ticks it as it goes, your ticks reach 
     expect(await checklistItem(page, "Run the tests").getAttribute("class")).not.toContain("agent-edited");
   });
 
+  await test.step("the close button by the checklist's title goes back to the page under it, and the tab opens again", async () => {
+    await page.locator(".canvas-header:visible").getByRole("button", { name: "Close the checklist" }).click();
+    await expect(canvasTitle(page)).toHaveText("Diagram");
+    await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".checklist:visible")).toHaveCount(0);
+    await toggle(page).click();
+    await expect(canvasTitle(page)).toHaveText("Release 0.4.2");
+  });
+
   await test.step("your tick reaches the agent with your next message, which the chat shows without the note", async () => {
     await checkbox(page, "Publish the release").click();
     await expect(checkbox(page, "Publish the release")).toBeChecked();

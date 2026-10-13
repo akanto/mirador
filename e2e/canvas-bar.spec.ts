@@ -103,6 +103,8 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
     await more(page).click();
     await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Checklist 0/1" })).toHaveAttribute("aria-checked", "true");
     await page.keyboard.press("Escape");
+    await expect(bar(page).getByRole("button", { name: "Close the checklist" }), "the checklist's own close button never folds").toBeVisible();
+    expect(await barState(page)).toMatchObject({ fold: 3, fits: true });
   });
 
   await test.step("with the checklist folded, the agent's tick flashes More", async () => {
