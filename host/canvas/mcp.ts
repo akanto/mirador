@@ -4,9 +4,11 @@ import type { ConversationService } from "../conversations.ts";
 import { CANVAS_SERVER_NAME } from "../acp/harnesses.ts";
 import { JobWaitRefused, jobWaitToolDescription } from "../job-waits.ts";
 import { readJobWaitRequest, waitSetUpReply } from "../../shared/job-waits.ts";
-import { answerAsToolResult, type CanvasService, type RenderOutcome } from "./service.ts";
+import { answerAsToolResult, type CanvasService, type ChecklistCanvasItem, type RenderOutcome } from "./service.ts";
 import { anchorLabel, answersOf, findingSeverities, isCommentable, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 import { ReviewProblems } from "../review/snapshot.ts";
+import { checklistItems, checklistOwners, checklistProgress, type ChecklistItem } from "../../shared/checklist.ts";
+import { carriedOverDone, describeTicks, itemNamed, type UserTick } from "./checklist.ts";
 import { MIRADOR_VERSION } from "../../shared/version.ts";
 
 const PROGRESS_HEARTBEAT_MS = 15_000;
@@ -19,6 +21,7 @@ export function canvasInstructions(assetsOrigin: string) {
 - tour: when you explain how code works, or walk the user through code you changed, publish a guided tour of its flow with this tool rather than show: steps anchored to lines, which the page shows with the code. Pass since to mark what you changed and show its diff.
 - review: when you review code changes (a pull request or a branch), publish the review with this tool rather than show. The user reads it as a guided tour of the code flow, the diff with your findings on it, and posts the findings they keep to the pull request.
 - update_review: to change parts of a review already shown (reword a finding, add or take one out, a new verdict), change just those parts with this tool; the user keeps their place in the review. Publish the whole review again only when the code under review changed.
+- checklist: when you work through several steps, publish them as a checklist the user sees beside the canvas, and tick each item with update_checklist as you finish it. An item is yours, the user's or both of yours to do; the user can tick any of them, and you hear of their ticks with their next message or in update_checklist's result.
 
 Rendering environment: every page renders in a sandboxed iframe with NO network access (no fetch, no external CDNs, fonts or images), shown light or dark as the panel's theme is. Write self-contained HTML with inline CSS and JS, and pick every colour (background, text, cards, borders, lines) with light-dark() so the page follows that theme, e.g. <style>html { background: light-dark(#ffffff, #111214); color: light-dark(#1c1c1e, #ececee); }</style>. Don't use @media (prefers-color-scheme): it follows the system, not the panel. A script that draws in colour reads the theme as getComputedStyle(document.documentElement).colorScheme, "light" or "dark". Available libraries:
 - three.js (ES modules): <script type="module">import * as THREE from "three"; import { OrbitControls } from "three/addons/controls/OrbitControls.js";</script>
@@ -176,6 +179,67 @@ function describeEdit(itemId: string, review: Review, changed: string[], removed
   const outsideDiff = review.pullRequest ? notOnTheDiff(review, review.findings.filter(({ id }) => changed.includes(id))) : [];
   const posting = outsideDiff.length > 0 ? cannotBePosted(outsideDiff) : "";
   return `In review ${itemId}, ${done} in place; the user sees the change where they are in the review.${posting}`;
+}
+
+const checklistItemShape = {
+  id: z.string().min(1).describe('A short id you name the item by in update_checklist, e.g. "tests".'),
+  text: z.string().min(1).describe("The step, in a few words."),
+  detail: z.string().optional().describe("Markdown shown under the text: what the step involves, or what came of it."),
+  owner: z.enum(checklistOwners).optional().describe("Who is expected to do it: agent (the default), user, or both. Anyone may tick it."),
+  done: z.boolean().optional().describe("Whether it is done; not done by default."),
+};
+
+const checklistSchema = z.object({
+  title: z.string().min(1).describe('What the work is, e.g. "Release 0.4.2".'),
+  sections: z
+    .array(
+      z.object({
+        title: z.string().optional().describe("A heading for the section; leave it out for a list of one section."),
+        items: z.array(z.object(checklistItemShape)).min(1),
+      }),
+    )
+    .min(1)
+    .describe("The steps, in the order they are done, in one or more sections. Ids are unique across the checklist."),
+});
+
+const checklistEditSchema = z.object({
+  items: z
+    .array(z.object(checklistItemShape).partial().extend({ id: z.string().min(1).describe("The item to change.") }))
+    .optional()
+    .describe("Items to tick, untick, reword or hand over: only the fields you pass change."),
+  addItems: z
+    .array(
+      z.object({
+        ...checklistItemShape,
+        after: z.string().optional().describe("The item to add it after."),
+        section: z.string().optional().describe("Without after: the section to add it at the end of, by title; a title no section has adds a new section at the end."),
+      }),
+    )
+    .optional()
+    .describe("New items; without after or section, at the end of the last section."),
+  removeItems: z.array(z.string().min(1)).optional().describe("Items to take out, by id."),
+});
+
+const doneCount = (items: { done: boolean }[]) => {
+  const { done, total } = checklistProgress(items);
+  return `${done} of ${total} done`;
+};
+
+const heardTicks = (ticks: UserTick[], when: string) => (ticks.length === 0 ? "" : ` ${when}, the user ${describeTicks(ticks)}.`);
+
+function describeChecklist(item: ChecklistCanvasItem, carried: ChecklistItem[], replaced: { title: string; ticks: UserTick[] } | undefined) {
+  const items = checklistItems(item.checklist);
+  const carriedNote = carried.length > 0 ? ` Done as on the checklist it replaces: ${carried.map(itemNamed).join(", ")}.` : "";
+  const replacedNote = replaced ? heardTicks(replaced.ticks, `On the checklist it replaces ("${replaced.title}")`) : "";
+  return `Shown to the user in the canvas's Checklist tab: ${items.length} items, ${doneCount(items)}.${carriedNote}${replacedNote} Tick items with update_checklist as you finish them, naming them by id: ${items.map(({ id }) => id).join(", ")}.`;
+}
+
+function describeChecklistEdit(item: ChecklistCanvasItem, { changed, added, removed, ticks }: { changed: string[]; added: string[]; removed: string[]; ticks: UserTick[] }) {
+  const quoted = (ids: string[]) => ids.map((id) => `"${id}"`).join(", ");
+  const done = [changed.length > 0 && `updated ${quoted(changed)}`, added.length > 0 && `added ${quoted(added)}`, removed.length > 0 && `took out ${quoted(removed)}`]
+    .filter(Boolean)
+    .join(", ");
+  return `On the checklist, ${done}; ${doneCount(checklistItems(item.checklist))}.${heardTicks(ticks, "Since you last heard")}`;
 }
 
 const optionSchema = z.object({
@@ -350,6 +414,44 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
       try {
         const { item, changed, removed } = await canvas.editReview(await callingConversation(ctx), request);
         return { content: [{ type: "text", text: describeEdit(item.id, item.review, changed, removed) }] };
+      } catch (error) {
+        if (error instanceof ReviewProblems) return toolError(error.message);
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    "checklist",
+    {
+      description:
+        "Publish a checklist of the steps of your work in a tab beside the user's canvas, and tick its items with update_checklist as you finish them. The user sees how far along you are, and can tick items too: you hear of their ticks with their next message or in update_checklist's result. Each item is yours, the user's or both of yours to do. A conversation has one checklist: publishing again replaces it, and items with the same ids keep their ticks unless you pass done.",
+      inputSchema: checklistSchema,
+      _meta: loadedUpFront,
+    },
+    async (request, ctx) => {
+      try {
+        const { item, replaced } = canvas.publishChecklist(await callingConversation(ctx), request);
+        return { content: [{ type: "text", text: describeChecklist(item, carriedOverDone(request, item.checklist), replaced) }] };
+      } catch (error) {
+        if (error instanceof ReviewProblems) return toolError(error.message);
+        throw error;
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_checklist",
+    {
+      description:
+        "Change the checklist already beside the canvas, in place: tick or untick items, reword them, hand them over, add or take them out, by the ids you gave them. The items you change flash once for the user. The result tells you what the user ticked or unticked since you last heard. Unknown ids change nothing; the result lists them.",
+      inputSchema: checklistEditSchema,
+      _meta: loadedUpFront,
+    },
+    async (edit, ctx) => {
+      try {
+        const { item, ...outcome } = canvas.editChecklist(await callingConversation(ctx), edit);
+        return { content: [{ type: "text", text: describeChecklistEdit(item, outcome) }] };
       } catch (error) {
         if (error instanceof ReviewProblems) return toolError(error.message);
         throw error;

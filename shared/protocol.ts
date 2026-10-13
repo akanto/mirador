@@ -151,6 +151,8 @@ export type ClientMessage =
   | { type: "permission.respond"; conversationId: string; permissionId: string; optionId: string | null }
   | { type: "ask.answer"; itemId: string; label: string; note?: string; answers?: AskAnswerEntry[] }
   | { type: "canvas.report"; itemId: string; errors: string[] }
+  /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
+  | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
   | { type: "review.update-finding"; itemId: string; findingId: string; decision?: FindingDecision; body?: string }
   | { type: "review.update-answer"; itemId: string; answerId: string; decision?: FindingDecision; body?: string; resolve?: boolean }
   /** Adds the kept findings to the user's pending review on the pull request; the user submits it on GitHub. */

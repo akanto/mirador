@@ -787,6 +787,8 @@ export function startServer(services: HostServices) {
         return canvas.answer(message.itemId, message.label, message.note, message.answers);
       case "canvas.report":
         return canvas.reportRender(message.itemId, { errors: message.errors });
+      case "checklist.tick":
+        return canvas.tickChecklistItem(message.itemId, message.checklistItemId, message.done);
       case "review.update-finding":
         return canvas.updateFinding(message.itemId, message.findingId, { decision: message.decision, body: message.body });
       case "review.update-answer":

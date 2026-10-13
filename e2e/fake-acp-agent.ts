@@ -111,6 +111,18 @@ async function writeFiles(client: acp.AgentContext, sessionId: string, steps: Wr
   return { stopReason: "end_turn" as const };
 }
 
+/** The agent's own plan, as Claude Code sends its to-do list: each entry "done" or not, the first one not done in progress. */
+async function makePlan(client: acp.AgentContext, sessionId: string, steps: { content: string; done: boolean }[]) {
+  const firstOpen = steps.findIndex(({ done }) => !done);
+  const entries = steps.map(({ content, done }, index): acp.PlanEntry => ({
+    content,
+    priority: "medium",
+    status: done ? "completed" : index === firstOpen ? "in_progress" : "pending",
+  }));
+  await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "plan", entries } });
+  return { stopReason: "end_turn" as const };
+}
+
 if (ignoresSigterm) {
   process.on("SIGTERM", () => {});
   setInterval(() => {}, 60_000);
@@ -146,6 +158,7 @@ acp
     appendFileSync(promptsFile!, `${text}\n`);
     if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
+    if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
   })

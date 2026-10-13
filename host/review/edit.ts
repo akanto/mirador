@@ -65,7 +65,7 @@ export async function readEditAnchors(review: Review, edit: ReviewEdit): Promise
   };
 }
 
-const definedOnly = <T extends object>(fields: T) => Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as Partial<T>;
+export const definedOnly = <T extends object>(fields: T) => Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as Partial<T>;
 
 /** The review tool's result writes "finding 2" in sentences and finding-2 as an id; either names the same finding. */
 const idNamed = (name: string) => name.trim().replace(/\s+/, "-");

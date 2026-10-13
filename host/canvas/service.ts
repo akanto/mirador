@@ -1,10 +1,23 @@
 import { answersSummary, questionsOf } from "../../shared/ask.ts";
+import { checklistItems, type Checklist } from "../../shared/checklist.ts";
 import type { AskAnswerEntry, AskQuestion, CanvasAnswer, CanvasItem } from "../../shared/model.ts";
 import { answersOf, type FindingDecision, type Review, type Tour } from "../../shared/review.ts";
 import type { ConversationService } from "../conversations.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
 import type { SystemNotifications } from "../system-notifications.ts";
+import {
+  applyChecklistEdit,
+  CHECKLIST_NOT_CHANGED,
+  heardOf,
+  newChecklist,
+  noteOfTicks,
+  tickedByUser,
+  unheardTicks,
+  type ChecklistEdit,
+  type ChecklistNote,
+  type ChecklistRequest,
+} from "./checklist.ts";
 import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
@@ -31,6 +44,7 @@ export type RenderOutcome = RenderReport | "no-viewer";
 
 type ReviewItem = CanvasItem & { review: Review };
 type TourItem = CanvasItem & { tour: Tour };
+export type ChecklistCanvasItem = CanvasItem & { checklist: Checklist };
 
 const UNKNOWN_WALKTHROUGH = "Unknown review or tour.";
 
@@ -156,6 +170,52 @@ export class CanvasService {
       status: "shown",
       createdAt: Date.now(),
     }) as TourItem;
+  }
+
+  /** Publishing again replaces the conversation's checklist; the result names what the user had ticked on the one it replaces. */
+  publishChecklist(conversationId: string, request: ChecklistRequest) {
+    const replaced = this.currentChecklist(conversationId);
+    const item = this.save({
+      id: crypto.randomUUID(),
+      conversationId,
+      kind: "checklist",
+      title: request.title,
+      checklist: newChecklist(request, replaced?.checklist),
+      status: "shown",
+      createdAt: Date.now(),
+    }) as ChecklistCanvasItem;
+    return { item, replaced: replaced && { title: replaced.title, ticks: unheardTicks(replaced.checklist) } };
+  }
+
+  /** The agent's change to its checklist, in place; the agent hears what the user ticked since it last did. */
+  editChecklist(conversationId: string, edit: ChecklistEdit) {
+    const current = this.currentChecklist(conversationId);
+    if (!current) throw new ReviewProblems(["This conversation has no checklist; publish one with the checklist tool."], CHECKLIST_NOT_CHANGED);
+    const { checklist, changed, added, removed } = applyChecklistEdit(current.checklist, edit);
+    const ticks = unheardTicks(checklist);
+    const agentEdit = { at: Date.now(), items: [...changed, ...added] };
+    const item = this.save({ ...current, checklist: { ...heardOf(checklist, ticks), agentEdit } }) as ChecklistCanvasItem;
+    return { item, changed, added, removed, ticks };
+  }
+
+  tickChecklistItem(itemId: string, checklistItemId: string, done: boolean) {
+    const item = this.store.findCanvasItem(itemId);
+    if (!item?.checklist) throw new Error("Unknown checklist.");
+    if (!checklistItems(item.checklist).some(({ id }) => id === checklistItemId)) throw new Error("Unknown checklist item.");
+    this.save({ ...item, checklist: tickedByUser(item.checklist, checklistItemId, done) });
+  }
+
+  checklistNote(conversationId: string): ChecklistNote | null {
+    const current = this.currentChecklist(conversationId);
+    const ticks = current ? unheardTicks(current.checklist) : [];
+    if (!current || ticks.length === 0) return null;
+    return {
+      text: noteOfTicks(current.title, ticks),
+      heard: () => {
+        const latest = this.store.findCanvasItem(current.id);
+        if (latest?.checklist) this.save({ ...latest, checklist: heardOf(latest.checklist, ticks) });
+      },
+    };
   }
 
   /**
@@ -285,6 +345,10 @@ export class CanvasService {
     if (item) return item as ReviewItem;
     const problem = itemId === undefined ? "This conversation has no review to change; publish one with the review tool." : `review: ${itemId} is not a review in this conversation.`;
     throw new ReviewProblems([problem], REVIEW_NOT_CHANGED);
+  }
+
+  private currentChecklist(conversationId: string) {
+    return this.store.listCanvasItems(conversationId).findLast((item) => item.checklist) as ChecklistCanvasItem | undefined;
   }
 
   private latestReviewOf(conversationId: string, change: Review) {

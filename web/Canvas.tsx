@@ -1,3 +1,4 @@
+import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
@@ -5,6 +6,7 @@ import type { AskQuestion, CanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
 import { ChangesView } from "./Changes.tsx";
+import { checklistCount, ChecklistView, currentChecklist, useFlashOnAgentEdit } from "./Checklist.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
@@ -398,7 +400,7 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
   );
 }
 
-const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄", tour: "↯" };
+const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄", tour: "↯", checklist: "☑" };
 
 function outcomeOf(item: CanvasItem) {
   if (item.review) return item.review.verdict;
@@ -504,12 +506,22 @@ function useReviewPlacement() {
   };
 }
 
+/** A tab that covers the canvas until it is closed. */
+type CoveringTab = "changes" | "checklist" | null;
+
 /** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */
-const leftViews = new Map<string, { newestId: string | undefined; selectedId: string | null; changesOpen: boolean }>();
+const leftViews = new Map<string, { latestId: string | undefined; selectedId: string | null; tab: CoveringTab; seenEdit: SeenEdit }>();
+
+/** The agent's change to the checklist the user last saw, by checklist: its changes since flash once the tab opens. */
+interface SeenEdit {
+  checklistId: string | undefined;
+  at: number | undefined;
+}
 
 export function CanvasPanel({
   conversationId,
   items,
+  plan,
   edits,
   assetsOrigin,
   homeDir,
@@ -518,6 +530,8 @@ export function CanvasPanel({
 }: {
   conversationId: string;
   items: CanvasItem[];
+  /** The plan the agent keeps for itself, pinned under its checklist. */
+  plan: PlanEntry[] | null;
   /** The edits the agent asked permission for; none when Settings keep them in the chat. */
   edits: EditRequest[];
   assetsOrigin: string;
@@ -525,35 +539,49 @@ export function CanvasPanel({
   changesRefreshPoint: number;
   onHide: () => void;
 }) {
-  const newestFirst = useMemo(() => [...items].sort((a, b) => b.createdAt - a.createdAt), [items]);
+  const pages = useMemo(() => items.filter((item) => item.kind !== "checklist"), [items]);
+  const checklist = currentChecklist(items);
+  const newestFirst = useMemo(() => [...pages].sort((a, b) => b.createdAt - a.createdAt), [pages]);
   const newest = newestFirst[0];
   const onCanvasByDefault = newest && !isSettledQuestion(newest) ? newest.id : null;
+  const checklistIsLatest = checklist !== undefined && checklist.createdAt > (newest?.createdAt ?? 0);
+  const latestId = checklistIsLatest ? checklist.id : newest?.id;
+  const tabByDefault: CoveringTab = checklistIsLatest ? "checklist" : null;
   const left = leftViews.get(conversationId);
-  const nothingNewSinceLeft = left?.newestId === newest?.id;
+  const nothingNewSinceLeft = left?.latestId === latestId;
   const [selectedId, setSelectedId] = useState<string | null>(left && nothingNewSinceLeft ? left.selectedId : onCanvasByDefault);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [changesOpen, setChangesOpen] = useState(Boolean(left?.changesOpen && nothingNewSinceLeft));
+  const [tab, setTab] = useState<CoveringTab>(left && nothingNewSinceLeft ? left.tab : tabByDefault);
+  const changesOpen = tab === "changes";
+  const checklistOpen = tab === "checklist";
+  const toggleTab = (toggled: Exclude<CoveringTab, null>) => setTab((open) => (open === toggled ? null : toggled));
+  const editAt = checklist?.checklist.agentEdit?.at;
+  const seenEdit = useRef<SeenEdit>(left ? left.seenEdit : { checklistId: checklist?.id, at: editAt });
+  const checklistFlashing = useFlashOnAgentEdit(checklist?.id, editAt, !checklistOpen);
   const placeForReview = useReviewPlacement();
   const keptSinceLeft = useRef(nothingNewSinceLeft);
   useEffect(() => {
     if (!keptSinceLeft.current) {
       setSelectedId(onCanvasByDefault);
-      setChangesOpen(false);
+      setTab(tabByDefault);
     }
     keptSinceLeft.current = false;
     if (takeArrivedReview(newest)) placeForReview(newest);
-  }, [newest?.id]);
+  }, [latestId]);
   useEffect(() => {
-    leftViews.set(conversationId, { newestId: newest?.id, selectedId, changesOpen });
-  }, [conversationId, newest?.id, selectedId, changesOpen]);
+    if (checklistOpen || seenEdit.current.checklistId !== checklist?.id) seenEdit.current = { checklistId: checklist?.id, at: editAt };
+  }, [checklistOpen, checklist?.id, editAt]);
+  useEffect(() => {
+    leftViews.set(conversationId, { latestId, selectedId, tab, seenEdit: seenEdit.current });
+  }, [conversationId, latestId, selectedId, tab, checklist?.id, editAt]);
   const edit = useEditsOnCanvas(edits, () => setSelectedId(null));
   useEffect(() => {
-    if (edit.shown) setChangesOpen(false);
+    if (edit.shown) setTab(null);
   }, [edit.shown?.permissionId]);
   const selectedIndex = edit.shown ? -1 : newestFirst.findIndex(({ id }) => id === selectedId);
   const selected = newestFirst[selectedIndex];
   const somethingElseShown = Boolean(selected || edit.shown);
-  const changesShown = changesOpen || !somethingElseShown;
+  const changesShown = changesOpen || (!tab && !somethingElseShown);
   const outcome = selected && outcomeOf(selected);
   const questionNote = useClearWhenSettled(selected, () => setSelectedId(null));
   const settledNote = edit.note ?? questionNote;
@@ -562,9 +590,9 @@ export function CanvasPanel({
   const pick = (id: string) => {
     setSelectedId(id);
     setHistoryOpen(false);
-    setChangesOpen(false);
+    setTab(null);
     edit.setAside();
-    placeForReview(items.find((item) => item.id === id));
+    placeForReview(pages.find((item) => item.id === id));
   };
   const closeHistoryOnEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || !historyOpen) return;
@@ -578,6 +606,11 @@ export function CanvasPanel({
         <PaneGrip pane="canvas" />
         {changesOpen ? (
           <span className="canvas-title">Changes</span>
+        ) : checklistOpen ? (
+          <>
+            <span className="canvas-kind">{kindIcons.checklist}</span>
+            <span className="canvas-title">{checklist?.title ?? "Agent's plan"}</span>
+          </>
         ) : edit.shown ? (
           <>
             <span className="canvas-kind">✎</span>
@@ -597,13 +630,13 @@ export function CanvasPanel({
         ) : (
           <span className="canvas-title empty-title">Canvas</span>
         )}
-        {(changesOpen || !edit.shown) && edit.waiting > 0 && (
+        {(tab || !edit.shown) && edit.waiting > 0 && (
           <button
             type="button"
             className="canvas-outcome status-waiting edits-waiting"
             data-hint={hints.canvasEditsWaiting}
             onClick={() => {
-              setChangesOpen(false);
+              setTab(null);
               edit.bringBack();
             }}
           >
@@ -622,29 +655,40 @@ export function CanvasPanel({
           className={`changes-toggle ${changesShown ? "on" : ""}`}
           aria-pressed={changesShown}
           data-hint={hints.canvasChanges}
-          disabled={!somethingElseShown}
-          onClick={() => setChangesOpen((open) => !open)}
+          disabled={!somethingElseShown && !checklistOpen}
+          onClick={() => toggleTab("changes")}
         >
           Changes
         </button>
+        {(checklist || plan) && (
+          <button
+            type="button"
+            className={["checklist-toggle", checklistOpen && "on", checklistFlashing && "agent-edited"].filter(Boolean).join(" ")}
+            aria-pressed={checklistOpen}
+            data-hint={hints.canvasChecklist}
+            onClick={() => toggleTab("checklist")}
+          >
+            Checklist {checklistCount(checklist, plan)}
+          </button>
+        )}
         <button
           type="button"
           className={`history-toggle ${historyOpen ? "on" : ""}`}
           aria-expanded={historyOpen}
           data-hint={hints.canvasHistory}
-          disabled={items.length === 0}
+          disabled={pages.length === 0}
           onClick={() => setHistoryOpen((open) => !open)}
         >
-          History ({items.length})
+          History ({pages.length})
         </button>
         <button
           type="button"
           className="canvas-clear"
           data-hint={hints.canvasClear}
-          disabled={!somethingElseShown}
+          disabled={!somethingElseShown && !checklistOpen}
           onClick={() => {
             setSelectedId(null);
-            setChangesOpen(false);
+            setTab(null);
             edit.setAside();
             placeForReview(undefined);
           }}
@@ -663,7 +707,7 @@ export function CanvasPanel({
             {!somethingElseShown && (
               <div className="empty-state">
                 <SettledNoteLine note={settledNote} />
-                {items.length === 0
+                {pages.length === 0
                   ? "When the agent shows something or asks you to choose, it appears here."
                   : "Nothing on the canvas right now. Earlier drawings and questions are in History."}
               </div>
@@ -671,10 +715,11 @@ export function CanvasPanel({
             <ChangesView conversationId={conversationId} refreshPoint={changesRefreshPoint} homeDir={homeDir} />
           </>
         )}
-        {!changesOpen && edit.shown && (
+        {checklistOpen && <ChecklistView checklist={checklist} plan={plan} seenEditAt={seenEdit.current.at} />}
+        {!tab && edit.shown && (
           <EditApproval key={edit.shown.permissionId} request={edit.shown} moreWaiting={edit.waiting - 1} note={settledNote} conversationId={conversationId} />
         )}
-        {!changesOpen && selected?.kind === "show" && (
+        {!tab && selected?.kind === "show" && (
           <CanvasFrame
             key={selected.id}
             frameId={selected.id}
@@ -684,17 +729,17 @@ export function CanvasPanel({
             onRendered={reportRender(selected.id)}
           />
         )}
-        {!changesOpen && selected?.kind === "review" && selected.review && (
+        {!tab && selected?.kind === "review" && selected.review && (
           <WalkthroughView key={selected.id} item={selected as ReviewItem} conversationId={selected.conversationId} />
         )}
-        {!changesOpen && selected?.kind === "tour" && selected.tour && (
+        {!tab && selected?.kind === "tour" && selected.tour && (
           <WalkthroughView key={selected.id} item={selected as TourItem} conversationId={selected.conversationId} />
         )}
-        {!changesOpen && selected?.kind === "ask" && (
+        {!tab && selected?.kind === "ask" && (
           <AskView
             key={selected.id}
             item={selected}
-            pagesBefore={items.filter(({ id }) => selected.shownBefore?.includes(id))}
+            pagesBefore={pages.filter(({ id }) => selected.shownBefore?.includes(id))}
             assetsOrigin={assetsOrigin}
           />
         )}

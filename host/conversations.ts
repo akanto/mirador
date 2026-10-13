@@ -43,6 +43,7 @@ import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.
 import { hasBegun, updatesTheAgentRecords } from "../shared/conversation-begun.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
+import { withChecklistNote, type ChecklistNote } from "./canvas/checklist.ts";
 import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
@@ -90,6 +91,17 @@ const AUTOMATIC_CONTINUES_IN_A_ROW = 2;
 const LONGEST_TIMER_MS = 2 ** 31 - 1;
 
 type PermissionResolver = (optionId: string | null) => void;
+
+interface NotesForAgent {
+  commands: UserCommand[];
+  reverts: Revert[];
+  checklist: ChecklistNote | null;
+}
+
+const NO_NOTES: NotesForAgent = { commands: [], reverts: [], checklist: null };
+
+const withNotes = ({ commands, reverts, checklist }: NotesForAgent, text: string) =>
+  withChecklistNote(checklist, withCommandOutputs(commands, withRevertNotes(reverts, text)));
 
 interface PendingPermission {
   settle: PermissionResolver;
@@ -159,6 +171,7 @@ export class ConversationService {
   readonly changes: Changes;
   /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
   private stopping = false;
+  private checklistNoteOf: (conversationId: string) => ChecklistNote | null = () => null;
 
   constructor(
     private readonly store: Store,
@@ -468,17 +481,15 @@ export class ConversationService {
     runtime.openToolCalls.clear();
     this.forgetUnseenTurnEnd(conversationId);
     this.retitleFromFirstMessage(conversationId, text);
-    const events = this.store.listEvents(conversationId);
-    const commands = awaitingDelivery(userCommandsIn(events));
-    const reverts = pendingReverts(events);
+    const notes = this.notesForAgent(conversationId);
     this.setStatus(conversationId, "starting");
     const checkpoint = startsTurn ? await this.snapshotFiles(conversationId) : null;
     this.store.turnStarted(conversationId);
-    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, { commands, reverts });
+    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, notes);
     try {
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
-      const prompt = await this.promptContent(conversationId, withCommandOutputs(commands, withRevertNotes(reverts, text)), imageIds);
+      const prompt = await this.promptContent(conversationId, withNotes(notes, text), imageIds);
       const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, prompt);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
@@ -1226,12 +1237,10 @@ export class ConversationService {
     if (!first) return;
     this.setQueue(conversationId, runtime, runtime.queuedMessages.filter((message) => !messages.includes(message)));
     this.publish(this.get(conversationId));
-    const events = this.store.listEvents(conversationId);
-    const commands = awaitingDelivery(userCommandsIn(events));
-    const reverts = pendingReverts(events);
+    const notes = this.notesForAgent(conversationId);
     const text = messages.map((message) => message.text).join("\n\n");
     const imageIds = messages.flatMap((message) => message.imageIds);
-    const injected = await this.promptContent(conversationId, withCommandOutputs(commands, withRevertNotes(reverts, text)), imageIds)
+    const injected = await this.promptContent(conversationId, withNotes(notes, text), imageIds)
       .then((prompt) => harness.steer(sessionId, prompt))
       .catch(() => false);
     if (!injected) {
@@ -1240,8 +1249,19 @@ export class ConversationService {
       if (!runtime.running) this.sendNextQueuedMessage(conversationId);
       return;
     }
-    this.appendUserMessage(conversationId, first, { commands, reverts });
-    rest.forEach((message) => this.appendUserMessage(conversationId, message, { commands: [], reverts: [] }));
+    this.appendUserMessage(conversationId, first, notes);
+    rest.forEach((message) => this.appendUserMessage(conversationId, message, NO_NOTES));
+  }
+
+  /** What the user did since their last message that the agent should hear of with this one. */
+  private notesForAgent(conversationId: string): NotesForAgent {
+    const events = this.store.listEvents(conversationId);
+    return { commands: awaitingDelivery(userCommandsIn(events)), reverts: pendingReverts(events), checklist: this.checklistNoteOf(conversationId) };
+  }
+
+  /** The canvas keeps the checklist, and with it what the user ticked that the agent has not heard of. */
+  hearChecklistTicksFrom(checklistNoteOf: (conversationId: string) => ChecklistNote | null) {
+    this.checklistNoteOf = checklistNoteOf;
   }
 
   private async promptContent(conversationId: string, text: string, imageIds: string[]): Promise<acp.ContentBlock[]> {
@@ -1408,8 +1428,9 @@ export class ConversationService {
   private appendUserMessage(
     conversationId: string,
     { text, imageIds, fromScript, checkpoint }: Omit<QueuedMessage, "id"> & { checkpoint?: string | null },
-    { commands, reverts }: { commands: UserCommand[]; reverts: Revert[] },
+    { commands, reverts, checklist }: NotesForAgent,
   ) {
+    checklist?.heard();
     const attachedCommandIds = commands.map(({ commandId }) => commandId);
     const attachedRevertIds = reverts.map(({ revertId }) => revertId);
     this.append(conversationId, {

@@ -181,6 +181,10 @@ export const hints = {
   canvasClear: "Empty the canvas. Nothing is deleted: the item stays in History.",
   canvasEditsWaiting: "Show the edit the agent waits for you to allow or reject.",
   canvasChanges: "The files this turn changed, or all uncommitted changes, with their line changes.",
+  canvasChecklist:
+    "The steps of the agent's work, ticked as it finishes them. You can tick any of them too: the agent hears of your ticks with your next message.",
+  checklistOwner: { user: "Yours to do.", both: "For you and the agent to do together." },
+  checklistPlan: "The agent's own to-do list, as it last updated it. Only the agent ticks these.",
   changesScope: {
     turn: "The files that differ from how they were when this turn began, as the agent or anything else left them.",
     uncommitted: "git status: the files that differ from the last commit, and the files outside the project the agent edited in this conversation.",

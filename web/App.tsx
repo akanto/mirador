@@ -2,6 +2,7 @@ import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, us
 import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { sidebarItems } from "../shared/sidebar-order.ts";
+import { latestPlan } from "../shared/timeline.ts";
 import { countWaiting } from "../shared/waiting.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
@@ -331,6 +332,7 @@ export function App() {
   const editsInCanvas = useEditsInCanvas();
   const editRequests = useMemo(() => (open && editsInCanvas ? editRequestsIn(open.events) : []), [open?.events, editsInCanvas]);
   const changesRefresh = useMemo(() => (open ? changesRefreshPoint(open.events) : 0), [open?.events]);
+  const agentPlan = useMemo(() => (open ? latestPlan(open.events) : null), [open?.events]);
 
   const closeOverlay = useCallback(() => {
     dispatch({ type: "close-overlay" });
@@ -514,6 +516,7 @@ export function App() {
                 key={conversation!.id}
                 conversationId={conversation!.id}
                 items={open!.canvas}
+                plan={agentPlan}
                 edits={editRequests}
                 assetsOrigin={state.canvasAssetsOrigin}
                 homeDir={state.homeDir}

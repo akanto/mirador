@@ -123,7 +123,7 @@ export function profileEnvironment(profile: Profile | null): Record<string, stri
 }
 
 /** None of them changes files or runs commands for the agent, so none is worth a permission prompt. */
-const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "when_done"];
+const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "checklist", "update_checklist", "when_done"];
 
 /**
  * Session options Claude Code reads from `_meta.claudeCode.options` (claude-agent-acp).

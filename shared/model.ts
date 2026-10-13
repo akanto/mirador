@@ -5,6 +5,7 @@ import type {
   StopReason,
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
+import type { Checklist } from "./checklist.ts";
 import type { EditDiff, Review, Tour } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
 
@@ -489,7 +490,7 @@ export interface CanvasAnswer {
 export interface CanvasItem {
   id: string;
   conversationId: string;
-  kind: "show" | "ask" | "review" | "tour";
+  kind: "show" | "ask" | "review" | "tour" | "checklist";
   title: string;
   html?: string;
   question?: string;
@@ -505,6 +506,8 @@ export interface CanvasItem {
   shownBefore?: string[];
   review?: Review;
   tour?: Tour;
+  /** The conversation's checklist is its newest one; it shows in its own tab, not among the pages. */
+  checklist?: Checklist;
   createdAt: number;
   /** When the item last changed, so a client catching up after a reconnect gets only the items that changed since. */
   updatedAt?: number;

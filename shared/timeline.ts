@@ -563,6 +563,15 @@ const coalescedOrigin = (update: SessionUpdate): Origin | null => {
   return coalesced && { key: String(coalesced.firstSeq), at: coalesced.firstAt };
 };
 
+/** The newest plan the agent itself made, not one of its subagents'; a plan it emptied leaves the one before it standing. */
+export function latestPlan(events: StoredEvent[]): PlanEntry[] | null {
+  const update = events.findLast(({ event }) => {
+    if (event.type !== "acp" || event.update.sessionUpdate !== "plan") return false;
+    return event.update.entries.length > 0 && !claudeCodeMeta(event.update).parentToolUseId && !opencodeChildMeta(event.update);
+  });
+  return update?.event.type === "acp" && update.event.update.sessionUpdate === "plan" ? update.event.update.entries : null;
+}
+
 export function buildTimeline(events: StoredEvent[]): TimelineBlock[] {
   const builder = new TimelineBuilder(opencodeCallBySession(events));
   events.forEach((event) => builder.add(event));
