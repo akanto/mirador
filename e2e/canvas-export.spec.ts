@@ -21,7 +21,7 @@ const chart = {
 };
 
 const canvasPage = (page: Page) => page.locator(".canvas-frame.show iframe").contentFrame();
-const exportToggle = (page: Page) => page.locator(".canvas-header:visible .page-export-toggle");
+const exportToggle = (page: Page) => page.locator(".canvas-header:visible .page-export .bar-menu-toggle");
 const exportStatus = (page: Page) => page.locator(".page-export-status");
 const saveForm = (page: Page) => page.locator(".page-save");
 const savedFile = join(host.projectDir, "docs", "sales-by-region.html");

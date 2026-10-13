@@ -41,7 +41,7 @@ export function useFlashOnAgentEdit(checklistId: string | undefined, at: number 
       clearTimeout(timer);
       setFlashing(false);
     };
-  }, [at]);
+  }, [checklistId, at]);
   return flashing;
 }
 

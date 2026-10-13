@@ -1,15 +1,16 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
 import type { AskQuestion, CanvasItem } from "../shared/model.ts";
+import { BarMenu, type BarMenuEntry } from "./BarMenu.tsx";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
 import { ChangesView } from "./Changes.tsx";
 import { checklistCount, ChecklistView, currentChecklist, useFlashOnAgentEdit } from "./Checklist.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
-import { PageExport } from "./PageExport.tsx";
+import { usePageExport } from "./PageExport.tsx";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
@@ -511,6 +512,52 @@ function useReviewPlacement() {
   };
 }
 
+/** How many of the bar's buttons fold into its More menu, the least used first; each level folds the ones before it too. */
+const FOLDS = { none: 0, leastUsed: 1, navigation: 2, checklist: 3 };
+const FOLD_LEVELS = Object.values(FOLDS);
+const SMALLEST_TITLE_REM = 4;
+
+/** Too full: the buttons run past the bar's end, or leave the title less room than it needs, down to a few letters. */
+function crowded(bar: HTMLElement) {
+  const title = bar.querySelector<HTMLElement>(".canvas-title");
+  const smallestTitle = SMALLEST_TITLE_REM * parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return bar.scrollWidth > bar.clientWidth || (title !== null && title.clientWidth < Math.min(smallestTitle, title.scrollWidth));
+}
+
+/**
+ * Folds as few of the bar's buttons into its More menu as it takes for the rest to fit. Each level is tried on the bar
+ * itself, so whatever it holds and however large the font, the measure is of what shows.
+ */
+function useFoldLevel(bar: RefObject<HTMLElement | null>) {
+  const [level, setLevel] = useState(FOLDS.none);
+  const measuredFor = useRef("");
+  const fit = () => {
+    const element = bar.current;
+    if (!element) return;
+    const fitting = FOLD_LEVELS.find((candidate) => {
+      element.dataset.fold = String(candidate);
+      return !crowded(element);
+    });
+    const chosen = fitting ?? FOLDS.checklist;
+    element.dataset.fold = String(chosen);
+    setLevel(chosen);
+  };
+  // Only on a change of what the bar says: measuring makes the browser lay the page out, and the pane re-renders often.
+  // The bar's own resizing is the observer's to follow.
+  useLayoutEffect(() => {
+    const contents = bar.current?.textContent ?? "";
+    if (contents === measuredFor.current) return;
+    measuredFor.current = contents;
+    fit();
+  });
+  useEffect(() => {
+    const observer = new ResizeObserver(fit);
+    observer.observe(bar.current!);
+    return () => observer.disconnect();
+  }, []);
+  return level;
+}
+
 /** A tab that covers the canvas until it is closed. */
 type CoveringTab = "changes" | "checklist" | null;
 
@@ -600,6 +647,35 @@ export function CanvasPanel({
     edit.setAside();
     placeForReview(pages.find((item) => item.id === id));
   };
+  const clear = () => {
+    setSelectedId(null);
+    setTab(null);
+    edit.setAside();
+    placeForReview(undefined);
+  };
+  const toggleHistory = () => setHistoryOpen((open) => !open);
+  const shownPage = !tab && selected?.kind === "show" ? selected : undefined;
+  const pageExport = usePageExport(shownPage, shownPageFrame);
+  const bar = useRef<HTMLDivElement>(null);
+  const foldLevel = useFoldLevel(bar);
+  const checklistCountText = (checklist || plan) && `Checklist ${checklistCount(checklist, plan)}`;
+  const foldedEntries: BarMenuEntry[] = [
+    ...(foldLevel >= FOLDS.navigation
+      ? [
+          { label: "Older", disabled: !older, onChoose: () => older && pick(older.id) },
+          { label: "Newer", disabled: !newer, onChoose: () => newer && pick(newer.id) },
+          { label: "Changes", checked: changesShown, disabled: !somethingElseShown && !checklistOpen, onChoose: () => toggleTab("changes") },
+        ]
+      : []),
+    ...(foldLevel >= FOLDS.checklist && checklistCountText ? [{ label: checklistCountText, checked: checklistOpen, onChoose: () => toggleTab("checklist") }] : []),
+    ...(foldLevel >= FOLDS.leastUsed
+      ? [
+          { label: `History (${pages.length})`, checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
+          { label: "Clear", disabled: !somethingElseShown && !checklistOpen, onChoose: clear },
+          ...pageExport.entries.map((entry, index) => (index === 0 ? { ...entry, separatorBefore: true } : entry)),
+        ]
+      : []),
+  ];
   const closeHistoryOnEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || !historyOpen) return;
     event.preventDefault();
@@ -608,7 +684,7 @@ export function CanvasPanel({
 
   return (
     <aside className="canvas-panel" onKeyDown={closeHistoryOnEscape}>
-      <div className="canvas-header" data-pane-bar>
+      <div className="canvas-header" data-pane-bar ref={bar} data-fold={foldLevel}>
         <PaneGrip pane="canvas" />
         {changesOpen ? (
           <span className="canvas-title">Changes</span>
@@ -650,7 +726,7 @@ export function CanvasPanel({
           </button>
         )}
         <span className="spacer" />
-        {!tab && selected?.kind === "show" && <PageExport key={selected.id} page={selected} frame={shownPageFrame} />}
+        {shownPage && <BarMenu className="page-export" label="Export ▾" menuName="Export the page" hint={hints.canvasPageExport} entries={pageExport.entries} />}
         <button type="button" className="icon canvas-nav" aria-label="Older" data-hint={hints.canvasOlder} disabled={!older} onClick={() => older && pick(older.id)}>
           ‹
         </button>
@@ -675,7 +751,7 @@ export function CanvasPanel({
             data-hint={hints.canvasChecklist}
             onClick={() => toggleTab("checklist")}
           >
-            Checklist {checklistCount(checklist, plan)}
+            {checklistCountText}
           </button>
         )}
         <button
@@ -684,7 +760,7 @@ export function CanvasPanel({
           aria-expanded={historyOpen}
           data-hint={hints.canvasHistory}
           disabled={pages.length === 0}
-          onClick={() => setHistoryOpen((open) => !open)}
+          onClick={toggleHistory}
         >
           History ({pages.length})
         </button>
@@ -693,20 +769,25 @@ export function CanvasPanel({
           className="canvas-clear"
           data-hint={hints.canvasClear}
           disabled={!somethingElseShown && !checklistOpen}
-          onClick={() => {
-            setSelectedId(null);
-            setTab(null);
-            edit.setAside();
-            placeForReview(undefined);
-          }}
+          onClick={clear}
         >
           Clear
         </button>
+        <BarMenu
+          className="canvas-more"
+          label="⋯"
+          buttonName="More"
+          menuName="More of the canvas bar"
+          hint={hints.canvasMore}
+          entries={foldedEntries}
+          flashing={foldLevel >= FOLDS.checklist && checklistFlashing}
+        />
         <FullscreenToggle pane="canvas" />
         <button type="button" className="link canvas-hide" data-hint={hints.canvasHide} data-shortcut={shortcutKeys().toggleCanvas} onClick={onHide}>
           Hide
         </button>
       </div>
+      {pageExport.opened}
       {historyOpen && <CanvasHistory items={newestFirst} selectedId={selected?.id ?? null} onPick={pick} />}
       <div className="canvas-body">
         {changesShown && (

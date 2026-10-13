@@ -181,6 +181,7 @@ export const hints = {
   canvasNewer: "Show the next canvas item.",
   canvasHistory: "Everything the agent drew or asked in this conversation, newest first.",
   canvasClear: "Empty the canvas. Nothing is deleted: the item stays in History.",
+  canvasMore: "The bar's other buttons, which a narrow pane has no room for.",
   canvasPageExport: "Copy this page as an image or as HTML, download it, or save it into the project as a file of its own.",
   canvasEditsWaiting: "Show the edit the agent waits for you to allow or reject.",
   canvasChanges: "The files this turn changed, or all uncommitted changes, with their line changes.",
