@@ -30,11 +30,6 @@ export function EndScene({ frames, url }: { frames: number; url: string }) {
         <Reveal at={175} style={{ marginTop: 34 }}>
           <div style={{ fontSize: 84, fontWeight: 620, letterSpacing: "-0.02em", color: "#cfcde8" }}>Understand it at a glance.</div>
         </Reveal>
-        <Reveal at={225} style={{ marginTop: 90, display: "flex", gap: 70, fontSize: 60, fontWeight: 550, color: BRAND.muted }}>
-          <span>Claude Code · opencode</span>
-          <span style={{ opacity: 0.45 }}>|</span>
-          <span>macOS · Linux · Android</span>
-        </Reveal>
         <Reveal at={245} style={{ marginTop: 80 }}>
           <div style={{ padding: "26px 60px", borderRadius: 999, border: `3px solid ${BRAND.violet}`, background: "rgba(118, 118, 242, 0.12)", font: `500 64px ${MONO}`, color: BRAND.ink }}>{url}</div>
         </Reveal>
