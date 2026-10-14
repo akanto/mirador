@@ -15,7 +15,7 @@ import { shortcutKeys, terminalShortcutKeys } from "./shortcuts.ts";
 import { Splitter } from "./Splitter.tsx";
 import { HIGHLIGHT_LIMIT } from "./terminal-find.ts";
 import { TerminalFind } from "./TerminalFind.tsx";
-import { terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
+import { terminalCopyKey, terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
 import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
 import { useClosesWhileFocused } from "./desktop-close.ts";
@@ -115,16 +115,32 @@ function useConversationTerminals(conversationId: string, status: ConnectionStat
   return { tabs, opened, open, busy, opening: () => requests.current.size > 0 };
 }
 
-function copySelection(view: Terminal) {
-  if (view.hasSelection()) void navigator.clipboard.writeText(view.getSelection());
-}
+/** Resolves false when the browser won't let the page write to the clipboard. */
+const copySelection = (view: Terminal) =>
+  view.hasSelection() ? navigator.clipboard.writeText(view.getSelection()).then(() => true, () => false) : Promise.resolve(true);
 
 /**
  * Copy on select copies when the mouse is released after selecting, by dragging or double- or triple-clicking. The
  * browser lets a page write to the clipboard only while handling such an input, so not later, when the selection changes.
+ * Even then WebKit has been seen to refuse it (issue 9), so the user is told to copy by hand.
  */
-function copySelectionWhenReleased(view: Terminal) {
-  document.addEventListener("mouseup", () => copiesOnSelect() && copySelection(view), { once: true });
+function copySelectionWhenReleased(view: Terminal, onRefused: () => void) {
+  const copyIfSwitchedOn = async () => {
+    if (copiesOnSelect() && !(await copySelection(view))) onRefused();
+  };
+  document.addEventListener("mouseup", copyIfSwitchedOn, { once: true });
+}
+
+const COPY_NOTE_MS = 4_000;
+
+function useTransientNote() {
+  const [note, setNote] = useState<{ text: string } | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const timer = setTimeout(() => setNote(null), COPY_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [note]);
+  return [note?.text ?? null, (text: string) => setNote({ text })] as const;
 }
 
 /**
@@ -160,6 +176,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
   const [search, setSearch] = useState<SearchAddon | null>(null);
   const [finding, setFinding] = useState(false);
   const findInput = useRef<HTMLInputElement>(null);
+  const [copyNote, showCopyNote] = useTransientNote();
   useClosesWhileFocused(() => {
     const focusedFind = document.activeElement?.closest(".terminal-find");
     if (focusedFind && viewElement.current?.contains(focusedFind)) {
@@ -198,7 +215,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       if (event.type === "keydown") {
         event.preventDefault();
         if (action.type === "clear") connection.send({ type: "terminal.clear", terminalId });
-        else if (action.type === "copy") copySelection(view);
+        else if (action.type === "copy") void copySelection(view).then((copied) => copied || showCopyNote("Couldn't copy the selection."));
         else if (action.type === "find") openFind();
         else if (action.type === "pane") events.current.command(action.command, terminalId);
         else view.input(action.data);
@@ -206,7 +223,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       return false;
     });
     view.open(screenElement);
-    const startSelecting = () => copySelectionWhenReleased(view);
+    const startSelecting = () => copySelectionWhenReleased(view, () => showCopyNote(`Couldn't copy the selection. Press ${terminalCopyKey()} to copy it.`));
     screenElement.addEventListener("mousedown", startSelecting);
     const stopTouchScrolling = scrollWithAFinger(view, screenElement);
     const stopWheelingPastTheScrollArea = wheelPastTheScrollAreaInFullScreenPrograms(view);
@@ -267,6 +284,11 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
   return (
     <div className="terminal-view" ref={viewElement}>
       {finding && search && <TerminalFind search={search} inputRef={findInput} onClose={closeFind} />}
+      {copyNote && (
+        <div className="terminal-copy-note" role="status">
+          {copyNote}
+        </div>
+      )}
       <div className="terminal-screen" ref={screen} />
     </div>
   );

@@ -62,6 +62,9 @@ const withControlShift: Record<string, TerminalKeyAction> = {
   KeyF: { type: "find" },
 };
 
+/** The keys that copy a terminal's selection: on macOS the browser's own copy, which xterm.js takes, elsewhere the one below. */
+export const terminalCopyKey = (mac = isMac) => (mac ? "⌘C" : "Ctrl+Shift+C");
+
 /**
  * Elsewhere, Ctrl+Shift+C copies the selection, Ctrl+Shift+V pastes and Ctrl+Shift+F finds, as in GNOME Terminal and
  * Konsole, while Ctrl+C, Ctrl+V and Ctrl+F stay ^C, ^V and ^F for the shell. The paste is the browser's own, which

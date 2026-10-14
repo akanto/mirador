@@ -61,6 +61,20 @@ test("with copy on select switched on in Settings → Terminal, selecting text i
     expect(await copied(page)).toHaveLength(copiesBefore);
   });
 
+  await test.step("when the browser refuses the copy, the terminal says how to copy instead, and no error goes unhandled", async () => {
+    await page.evaluate(() => {
+      const unhandled: string[] = [];
+      Object.assign(window, { unhandled });
+      window.addEventListener("unhandledrejection", (event) => unhandled.push(String(event.reason)));
+      navigator.clipboard.writeText = () => Promise.reject(new DOMException("The request is not allowed by the user agent", "NotAllowedError"));
+    });
+    const note = page.locator(".terminal-copy-note");
+    await page.mouse.dblclick(onTheWord.x, onTheWord.y);
+    await expect(note).toHaveText(/^Couldn't copy the selection\. Press (⌘C|Ctrl\+Shift\+C) to copy it\.$/);
+    expect(await page.evaluate(() => (window as unknown as { unhandled: string[] }).unhandled)).toEqual([]);
+    await expect(note, "the note goes away by itself").toHaveCount(0, { timeout: 10_000 });
+  });
+
   await test.step("the setting is remembered in this browser", async () => {
     await page.reload();
     await expect((await openSettings(page, "Terminal")).getByLabel("Copy on select")).toBeChecked();

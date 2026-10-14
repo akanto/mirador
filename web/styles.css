@@ -4365,6 +4365,22 @@ button.shell-more:hover {
   background: #1b1c22;
 }
 
+.terminal-copy-note {
+  position: absolute;
+  right: 18px;
+  bottom: 8px;
+  z-index: 5;
+  max-width: calc(100% - 28px);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+  color: var(--text);
+  font-size: calc(12px * var(--font-scale));
+  pointer-events: none;
+}
+
 .terminal-find {
   position: absolute;
   top: 6px;
