@@ -70,11 +70,19 @@ export function WaitingPreview({ style }: { style: WaitingStyle }) {
   );
 }
 
-/** Chat text written at the size this step really draws it. */
+/** "Mirador" is under 4 em wide in the app's fonts, so room for 4.5 keeps the largest sample whole. */
+const SAMPLE_WIDTH_EM = 4.5;
+const SAMPLE_PADDING_PX = 12;
+const LARGEST_SCALE = Math.max(...Object.values(FONT_SCALES));
+
+/** In a card too narrow for the largest sample at its true size, every sample shrinks alike, so they stay in proportion. */
+const sampleBaseSize = `min(${BASE_TEXT_PX}px, (100cqi - ${SAMPLE_PADDING_PX}px) / ${LARGEST_SCALE * SAMPLE_WIDTH_EM})`;
+
+/** Chat text at the size this step draws it, or shrunk alike with the other steps in a narrow card. */
 export function FontSizePreview({ scale }: { scale: FontScale }) {
   return (
-    <span className="preview-window">
-      <span className="preview-text-sample" style={{ fontSize: `${BASE_TEXT_PX * FONT_SCALES[scale]}px` }}>
+    <span className="preview-window text-size-preview">
+      <span className="preview-text-sample" style={{ fontSize: `calc(${FONT_SCALES[scale]} * ${sampleBaseSize})` }}>
         Mirador
       </span>
     </span>

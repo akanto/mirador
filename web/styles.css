@@ -4721,6 +4721,10 @@ button.picture-option.chosen {
   background: var(--accent-soft);
 }
 
+.text-size-preview {
+  container-type: inline-size;
+}
+
 .preview-text-sample {
   margin: auto;
   padding: 0 6px;

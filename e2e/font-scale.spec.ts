@@ -19,6 +19,21 @@ const storedTerminalFontSize = (page: Page) => page.evaluate(() => localStorage.
 const headingFontSize = (page: Page) =>
   page.locator(".modal.settings h3").first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
 
+test("each Text size preview shows the whole word, in proportion to the others", async ({ page }) => {
+  await signIn(page, host);
+  const settings = await openSettings(page, "Appearance");
+  const samples = settings.getByRole("radiogroup", { name: "Text size" }).locator(".preview-text-sample");
+  const measured = await samples.evaluateAll((elements) =>
+    elements.map((sample) => ({ fits: sample.getBoundingClientRect().width <= sample.parentElement!.clientWidth, size: parseFloat(getComputedStyle(sample).fontSize) })),
+  );
+  expect(measured.map(({ fits }) => fits)).toEqual([true, true, true, true, true]);
+  const [half, smaller, normal, larger, double] = measured.map(({ size }) => size);
+  expect(half / normal).toBeCloseTo(0.5, 2);
+  expect(smaller / normal).toBeCloseTo(0.7, 2);
+  expect(larger / normal).toBeCloseTo(1.4, 2);
+  expect(double / normal).toBeCloseTo(2, 2);
+});
+
 test("font size can be scaled from 50% to 200% in Settings and with keyboard shortcuts", async ({ page }) => {
   await signIn(page, host);
   const primary = await primaryModifier(page);
