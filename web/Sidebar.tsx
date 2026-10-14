@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { connectedDevicesLabel, otherConnectedDevices } from "../shared/devices.ts";
+import { waitingOnJobsHint } from "../shared/job-waits.ts";
 import {
   launchLabel,
   terminalActivityLabels,
@@ -106,6 +107,9 @@ function AddWorkspace({ onDone }: { onDone: () => void }) {
 function statusDot(conversation: Conversation) {
   const { waitingFor } = conversation;
   if (waitingFor) return <span className={`dot waiting tone-${waitingTones[waitingFor]}`} data-hint={waitingHints[waitingFor]} />;
+  if (conversation.status === "idle" && conversation.jobWaits.length > 0) {
+    return <span className="dot waiting-on-job" data-hint={waitingOnJobsHint(conversation.jobWaits)} />;
+  }
   const inTerminal = conversation.openInTerminal;
   if (inTerminal && conversation.status === "idle") {
     return <span className={`dot terminal-${inTerminal}`} data-hint={`Open in a terminal: ${terminalActivityLabels[inTerminal]}`} />;

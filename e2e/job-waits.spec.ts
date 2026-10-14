@@ -47,7 +47,8 @@ test("the agent has the host wait for a job it left running, then resume the age
   const dialog = await createProfile(page, PROFILE, scriptedOpencodeEnvironment(model, host.root), "", "opencode");
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · opencode` });
-  await startConversation(page);
+  const conversationId = await startConversation(page);
+  const sidebarDot = page.locator(`li[data-reorder-id="${conversationId}"] .dot`).first();
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
@@ -74,6 +75,8 @@ test("the agent has the host wait for a job it left running, then resume the age
     await expect(waits).toContainText(`Waiting for process ${job.pid} to end`);
     await expect(waits).toContainText("Then the agent gets: build-finished check the output");
     await expect(waits.locator(".job-wait-message"), "a message shown whole opens no further").not.toHaveAttribute("role", "button");
+    await expect(sidebarDot, "the sidebar shows the conversation still has work in flight").toHaveClass(/waiting-on-job/);
+    await expect(sidebarDot).toHaveAttribute("data-hint", `Waiting for process ${job.pid}: the agent carries on when it ends.`);
 
     await test.step("when the job ends, the agent gets the message as your next one and carries on", async () => {
       job.kill();
@@ -82,6 +85,7 @@ test("the agent has the host wait for a job it left running, then resume the age
       await expect(waits).toHaveCount(0);
       await waitForTurnToEnd(page);
       await expect.poll(() => model.userMessagesInContext().join("\n")).toContain("build-finished check the output");
+      await expect(sidebarDot).toHaveClass(/status-idle/);
     });
   });
 
@@ -89,10 +93,12 @@ test("the agent has the host wait for a job it left running, then resume the age
     const job = startJob();
     await whenDone(job, "look-at-the-results", { resume: false });
     await expect(waits).toContainText("Then you are told: look-at-the-results");
+    await expect(sidebarDot).toHaveAttribute("data-hint", `Waiting for process ${job.pid}: you are told when it ends.`);
     const messagesBefore = await page.locator(".timeline .message.user").count();
     job.kill();
     await expect(notices.filter({ hasText: `Process ${job.pid} ended: look-at-the-results` })).toHaveCount(1);
     await expect(waits).toHaveCount(0);
+    await expect(sidebarDot).toHaveClass(/status-idle/);
     await expect(page.locator(".timeline .message.user")).toHaveCount(messagesBefore);
   });
 

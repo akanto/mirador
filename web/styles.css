@@ -374,6 +374,11 @@ body.resizing iframe {
   border-color: var(--danger);
 }
 
+.dot.waiting-on-job {
+  border-color: var(--accent);
+  animation: pulse 2.8s infinite;
+}
+
 .dot.terminal-working {
   background: var(--ok);
   border-color: var(--ok);

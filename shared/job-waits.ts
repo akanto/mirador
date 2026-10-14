@@ -52,6 +52,10 @@ export function messageAtEnd(wait: JobWait, end: Exclude<JobWaitEnd, "stopped">)
   return `${wait.message}\n\n(Mirador stopped waiting for ${describeJob(wait)}: ${gaveUpReason(wait)}.)`;
 }
 
+/** What the sidebar says of a conversation that waits on jobs, a line for each. */
+export const waitingOnJobsHint = (waits: Pick<JobWait, "job" | "sshHost" | "resume">[]) =>
+  waits.map((wait) => `Waiting for ${describeJob(wait)}: ${wait.resume ? "the agent carries on when it ends" : "you are told when it ends"}.`).join("\n");
+
 /** What the agent is told once the host waits for its job. */
 export function waitSetUpReply(wait: JobWait) {
   const whoHears = wait.resume ? "you get this as the user's next message" : "Mirador tells the user";
