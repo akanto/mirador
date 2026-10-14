@@ -7,7 +7,8 @@ import * as acp from "@agentclientprotocol/sdk";
  * An agent that takes every prompt and never finishes it, ignoring `session/cancel`, the way a model request against a
  * llama.cpp still loading its model leaves a turn: the agent is wedged, so only killing its process ends the turn.
  * A prompt starting with CRASH makes the process die in the middle of the turn instead. One of `EDIT ` and a JSON
- * array of edits asks permission for each edit at once, and ends the turn with what the user answered to each.
+ * array of edits asks permission for each edit at once, and ends the turn with what the user answered to each; `TOOLS `
+ * and a JSON array of `{"kind": toolKind, "title": text}` does the same for tools of any kind.
  * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
  * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, and
  * `{"waitFor": path}` holds the turn until that file exists.
@@ -67,26 +68,34 @@ interface ProposedEdit {
   newText: string;
 }
 
-const editOptions: acp.PermissionOption[] = [
+const permissionOptions: acp.PermissionOption[] = [
   { optionId: "allow", name: "Allow", kind: "allow_once" },
   { optionId: "always", name: "Always allow", kind: "allow_always" },
   { optionId: "reject", name: "Reject", kind: "reject_once" },
 ];
 
-async function askToEdit(client: acp.AgentContext, sessionId: string, edits: ProposedEdit[]) {
+/** Asks permission for every tool call at once, and ends the turn with what the user answered to each. */
+async function askPermissions(client: acp.AgentContext, sessionId: string, toolCalls: (acp.ToolCallUpdate & { title: string })[]) {
   const answers = await Promise.all(
-    edits.map(async ({ title, path, oldText, newText }, index) => {
-      const response = await client.request(acp.methods.client.session.requestPermission, {
-        sessionId,
-        toolCall: { toolCallId: `edit-${index}`, title, kind: "edit", status: "pending", locations: [{ path }], content: [{ type: "diff", path, oldText, newText }] },
-        options: editOptions,
-      });
-      return `${title}: ${response.outcome.outcome === "selected" ? response.outcome.optionId : "cancelled"}`;
+    toolCalls.map(async (toolCall) => {
+      const response = await client.request(acp.methods.client.session.requestPermission, { sessionId, toolCall, options: permissionOptions });
+      return `${toolCall.title}: ${response.outcome.outcome === "selected" ? response.outcome.optionId : "cancelled"}`;
     }),
   );
   await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: answers.join("; ") } } });
   return { stopReason: "end_turn" as const };
 }
+
+const askToEdit = (client: acp.AgentContext, sessionId: string, edits: ProposedEdit[]) =>
+  askPermissions(
+    client,
+    sessionId,
+    edits.map(({ title, path, oldText, newText }, index) => ({ toolCallId: `edit-${index}`, title, kind: "edit", status: "pending", locations: [{ path }], content: [{ type: "diff", path, oldText, newText }] })),
+  );
+
+/** Tools of any other kind, named by their title alone, as Claude Code asks to read a file or fetch a page. */
+const askToUseTools = (client: acp.AgentContext, sessionId: string, tools: { kind: acp.ToolKind; title: string }[]) =>
+  askPermissions(client, sessionId, tools.map(({ kind, title }, index) => ({ toolCallId: `tool-${index}`, title, kind, status: "pending" })));
 
 type WriteStep = { edit: string; content: string } | { shell: string; content: string } | { waitFor: string };
 
@@ -157,6 +166,7 @@ acp
     const text = ctx.params.prompt.map((block) => (block.type === "text" ? block.text : "")).join("");
     appendFileSync(promptsFile!, `${text}\n`);
     if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
+    if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
