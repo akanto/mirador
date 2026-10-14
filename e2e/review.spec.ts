@@ -567,6 +567,14 @@ test("coming back to a review's conversation shows the review as the user left i
   await expect(findingsTab).toHaveAttribute("aria-selected", "true");
   await expect(view.locator(".finding.selected .finding-title")).toHaveText("Finding 4");
   await expect.poll(() => findingsList.evaluate((list) => list.scrollTop)).toBe(scrolledTo);
+
+  await test.step("a finding picked on the overview is shown, wherever the findings were left scrolled", async () => {
+    await view.getByRole("tab", { name: /Overview/ }).click();
+    await view.locator(".review-overview").getByRole("button", { name: "Finding 1", exact: true }).click();
+    await expect(findingsTab).toHaveAttribute("aria-selected", "true");
+    await expect(view.locator(".finding.selected .finding-title")).toHaveText("Finding 1");
+    await expect(view.locator(".finding.selected")).toBeInViewport();
+  });
 });
 
 const ghInstalledHere = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].some((directory) => existsSync(join(directory, "gh")));

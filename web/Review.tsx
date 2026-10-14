@@ -1161,9 +1161,12 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     view?.addEventListener("scroll", rememberScroll, { capture: true, passive: true });
     return () => view?.removeEventListener("scroll", rememberScroll, { capture: true });
   }, [tab]);
+  // A tab the user switches back to shows where they left it; a jump to a place in a tab shows that place.
+  const reopening = useRef(true);
   const justRestored = useRef(false);
   useLayoutEffect(() => {
-    const saved = scrolled[tab];
+    const saved = reopening.current ? scrolled[tab] : undefined;
+    reopening.current = false;
     justRestored.current = saved !== undefined && Object.keys(saved).length > 0;
     Object.entries(saved ?? {}).forEach(([className, top]) => {
       const part = root.current?.querySelector(`[class="${className}"]`);
@@ -1178,6 +1181,10 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     justRestored.current = false;
   }, [tab]);
 
+  const reopenTab = (id: Tab) => {
+    reopening.current = id !== tab;
+    setTab(id);
+  };
   const showFile = (nextPath: string, nextHunk = 0) => {
     setTab("files");
     setPath(nextPath);
@@ -1264,12 +1271,12 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     p: () => stepFinding(-1),
     f: () => {
       if (!showsChanges) return;
-      setTab("files");
+      reopenTab("files");
       requestAnimationFrame(() => filterField.current?.focus());
     },
     o: openCurrentPlace,
     a: askAboutCurrentPlace,
-    ...Object.fromEntries(shownTabs.map(({ id, key }) => [key, () => setTab(id)])),
+    ...Object.fromEntries(shownTabs.map(({ id, key }) => [key, () => reopenTab(id)])),
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.metaKey || event.ctrlKey || event.altKey || isTextField(event.target)) return;
@@ -1295,7 +1302,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
         <div className="review-bar">
           <div className="review-tabs" role="tablist" aria-label={reviewItem ? "Review" : "Tour"}>
             {shownTabs.map(({ id, label, key }) => (
-              <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "selected" : ""} data-shortcut={key} onClick={() => setTab(id)}>
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "selected" : ""} data-shortcut={key} onClick={() => reopenTab(id)}>
                 {label}
                 {id === "flow" && <span className="tab-count">{walk.flow.length}</span>}
                 {id === "files" && <span className="tab-count">{walk.files.length}</span>}
