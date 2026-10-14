@@ -5,7 +5,7 @@ import { hints } from "./hints.ts";
 import { findTally, isSearchable, noToggles, searchOptions, type FindToggles } from "./terminal-find.ts";
 import { terminalKeyAction } from "./terminal-keys.ts";
 
-const toggleButtons: { toggle: keyof FindToggles; label: string; name: string; hint: string }[] = [
+export const toggleButtons: { toggle: keyof FindToggles; label: string; name: string; hint: string }[] = [
   { toggle: "caseSensitive", label: "Aa", name: "Match case", hint: hints.findMatchCase },
   { toggle: "wholeWord", label: "ab", name: "Match whole word", hint: hints.terminalFindWholeWord },
   { toggle: "regex", label: ".*", name: "Use regular expression", hint: hints.terminalFindRegex },

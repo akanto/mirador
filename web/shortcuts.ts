@@ -136,6 +136,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.toggleTerminal, action: "Show / hide the terminal" },
     { keys: keys.search, action: "Search every conversation in every workspace" },
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included; Aa matches case (Enter: older match, Shift+Enter: newer)" },
+    { keys: keys.find, action: "In a review or tour: find in the code of its changed files, with match case, whole word and regular expression toggles (Enter: next match, Shift+Enter: previous)" },
     { keys: mac ? keys.find : "Ctrl+Shift+F", action: "In a terminal: find in its output, with match case, whole word and regular expression toggles (Enter: match further up, Shift+Enter: further down)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
     { keys: keys.templates, action: "In the message box: find a prompt template by typing and put it in; Tab / Shift+Tab then go through its {{values}}" },

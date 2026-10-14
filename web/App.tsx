@@ -4,7 +4,7 @@ import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/revert
 import { sidebarItems } from "../shared/sidebar-order.ts";
 import { latestPlan } from "../shared/timeline.ts";
 import { countWaiting } from "../shared/waiting.ts";
-import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
+import { findInFocusedReview, findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { CanvasPanel } from "./Canvas.tsx";
 import { changesRefreshPoint } from "./changes.ts";
 import { editRequestsIn } from "./edit-approval.ts";
@@ -382,7 +382,7 @@ export function App() {
       case "toggle-terminal":
         return toggleTerminal();
       case "find":
-        return findInOpenConversation();
+        return findInFocusedReview() || findInOpenConversation();
       case "focus": {
         const { pane } = command;
         if (pane === "terminals") return askTerminals({ type: "focus" });

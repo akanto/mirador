@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import type { CanvasItem } from "../shared/model.ts";
 import { cutWithEllipsis } from "../shared/text-cut.ts";
 import {
@@ -25,8 +25,9 @@ import { connection } from "./connection.ts";
 import { highlightRows, type CodeSpan } from "./highlight.ts";
 import { hints } from "./hints.ts";
 import { MarkdownText } from "./Markdown.tsx";
-import { CONTEXT_STEP, gapsOf, hiddenCount, nothingRevealed, revealedRows, type Gap, type Revealed } from "./review-context.ts";
-import { isMac, keyLabels } from "./shortcuts.ts";
+import { CONTEXT_STEP, gapsOf, hiddenCount, hunkRowsShown, nothingRevealed, type Gap, type Revealed, type ShownContext } from "./review-context.ts";
+import { ReviewFindBar, useReviewFind } from "./ReviewFind.tsx";
+import { isMac, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
@@ -758,6 +759,7 @@ function FileList({
   path,
   onPath,
   filterField,
+  matchCounts,
 }: {
   files: ReviewFile[];
   walk: Walkthrough;
@@ -765,6 +767,8 @@ function FileList({
   path: string | null;
   onPath: (path: string) => void;
   filterField: RefObject<HTMLInputElement | null>;
+  /** How often each file holds the text the find bar finds. */
+  matchCounts: Map<string, number>;
 }) {
   const [filter, setFilter] = useState("");
   const typingAidAttributes = useTypingAidAttributes();
@@ -805,6 +809,11 @@ function FileList({
                 {tourPaths.has(file.path) && (
                   <span className="in-tour" data-hint={hints.fileInTour}>
                     tour
+                  </span>
+                )}
+                {(matchCounts.get(file.path) ?? 0) > 0 && (
+                  <span className="match-count" data-hint={hints.reviewFileMatches}>
+                    {matchCounts.get(file.path)}
                   </span>
                 )}
                 {findingCount > 0 && <span className="finding-count">{findingCount}</span>}
@@ -896,11 +905,6 @@ function GapRow({
   );
 }
 
-interface ShownContext {
-  fileLines: string[];
-  revealed: Revealed[];
-}
-
 /** What was shown around each file's hunks, so it is still shown after a look at another tab or file. */
 export const shownContexts = new Map<string, ShownContext>();
 
@@ -914,7 +918,7 @@ export function evictStaleReviewCaches(currentItemId: string) {
   }
 }
 
-function useRevealedContext(itemId: string, file: ReviewFile) {
+function useRevealedContext(itemId: string, file: ReviewFile, onRevealed: () => void) {
   const key = `${itemId}:${file.path}`;
   const gaps = useMemo(() => gapsOf(file), [file]);
   const [shown, setShown] = useState<ShownContext | null>(() => shownContexts.get(key) ?? null);
@@ -932,21 +936,13 @@ function useRevealedContext(itemId: string, file: ReviewFile) {
       shownContexts.set(key, next);
       setShown(next);
       setError(null);
+      onRevealed();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     }
   };
 
-  const hunkRows = useMemo(
-    () =>
-      file.hunks.map((hunk, index) => {
-        if (!fileLines) return hunk.rows;
-        const over = revealedRows(gaps[index]!, revealed[index]!, fileLines).overNext;
-        const under = revealedRows(gaps[index + 1]!, revealed[index + 1]!, fileLines).underPrevious;
-        return over.length + under.length === 0 ? hunk.rows : [...over, ...hunk.rows, ...under];
-      }),
-    [file, shown],
-  );
+  const hunkRows = useMemo(() => hunkRowsShown(file, shown), [file, shown]);
 
   const gapRow = (gapIndex: number, header: string | null) => {
     const gap: Gap | undefined = gaps[gapIndex];
@@ -976,6 +972,7 @@ function FileDiff({
   hunkIndex,
   selection,
   onSelect,
+  onRevealed,
 }: {
   itemId: string;
   walk: Walkthrough;
@@ -985,8 +982,9 @@ function FileDiff({
   hunkIndex: number;
   selection: LineSelection | null;
   onSelect: (selection: LineSelection) => void;
+  onRevealed: () => void;
 }) {
-  const { hunkRows, gapRow, lastGap } = useRevealedContext(itemId, file);
+  const { hunkRows, gapRow, lastGap } = useRevealedContext(itemId, file, onRevealed);
   const findings = allFindings.filter((finding) => finding.at.path === file.path);
   const shownLines = new Set(hunkRows.flat().map((row) => row.newLine));
   const onDiff = findings.filter((finding) => shownLines.has(finding.at.endLine));
@@ -1097,12 +1095,20 @@ function useScrollIntoView(
   root: RefObject<HTMLElement | null>,
   selector: string | null,
   when: unknown = selector,
-  { exceptOnOpening = false, justRestored }: { exceptOnOpening?: boolean; justRestored?: RefObject<boolean> } = {},
+  {
+    exceptOnOpening = false,
+    justRestored,
+    scrolledByFind,
+  }: { exceptOnOpening?: boolean; justRestored?: RefObject<boolean>; scrolledByFind?: RefObject<boolean> } = {},
 ) {
   const opened = useRef(false);
   useEffect(() => {
     const opening = !opened.current;
     opened.current = true;
+    if (scrolledByFind?.current) {
+      scrolledByFind.current = false;
+      return;
+    }
     if (selector && !(opening && exceptOnOpening) && !justRestored?.current) root.current?.querySelector(selector)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [when]);
 }
@@ -1187,7 +1193,8 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     });
   }, [tab]);
   const keepsPlaceLeft = { exceptOnOpening: placeLeft !== undefined, justRestored };
-  useScrollIntoView(root, tab === "files" ? `[data-hunk="${hunkIndex}"]` : null, `${tab} ${file?.path} ${hunkIndex}`, keepsPlaceLeft);
+  const scrolledByFind = useRef(false);
+  useScrollIntoView(root, tab === "files" ? `[data-hunk="${hunkIndex}"]` : null, `${tab} ${file?.path} ${hunkIndex}`, { ...keepsPlaceLeft, scrolledByFind });
   useScrollIntoView(root, findingId && (tab === "files" || tab === "findings") ? `[data-finding-id="${findingId}"]` : null, undefined, keepsPlaceLeft);
   useScrollIntoView(root, answerId && tab === "conversations" ? `[data-answer-id="${answerId}"]` : null, undefined, keepsPlaceLeft);
   useEffect(() => {
@@ -1235,6 +1242,24 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     root.current?.focus({ preventScroll: true });
   };
   const stepTour = (step: 1 | -1) => setStepIndex((index) => Math.min(Math.max(index + step, 0), Math.max(walk.flow.length - 1, 0)));
+  const [linesRevealed, noteLinesRevealed] = useReducer((count: number) => count + 1, 0);
+  const find = useReviewFind({
+    files,
+    rowsShownOf: (shownFile) => hunkRowsShown(shownFile, shownContexts.get(`${item.id}:${shownFile.path}`) ?? null),
+    openPath: file?.path ?? null,
+    linesRevealed,
+    showing: tab === "files",
+    root,
+    onOpen: (nextPath, nextHunk) => {
+      if (tab === "files" && nextPath === file?.path && nextHunk === hunkIndex) return;
+      scrolledByFind.current = true;
+      showFile(nextPath, nextHunk);
+    },
+  });
+  const openFind = () => {
+    reopenTab("files");
+    find.open();
+  };
 
   const currentPlace = (): AskingAbout | null => {
     if (selection) return selection;
@@ -1336,6 +1361,11 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
               </button>
             </span>
           )}
+          {tabShown.files && (
+            <button type="button" className="review-find-trigger" data-hint={hints.reviewFind} data-shortcut={shortcutKeys().find} onClick={openFind}>
+              Find
+            </button>
+          )}
           {fullscreen && (
             <button
               type="button"
@@ -1347,6 +1377,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
             </button>
           )}
         </div>
+        {tab === "files" && find.query !== null && <ReviewFindBar find={find} />}
         <div className="review-body">
           {tab === "overview" && reviewItem && (
             <Overview
@@ -1374,7 +1405,15 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
           )}
           {tab === "files" && (
             <div className="review-split files-view">
-              <FileList files={files} walk={walk} findings={findings} path={file?.path ?? null} onPath={(next) => showFile(next)} filterField={filterField} />
+              <FileList
+                files={files}
+                walk={walk}
+                findings={findings}
+                path={file?.path ?? null}
+                onPath={(next) => showFile(next)}
+                filterField={filterField}
+                matchCounts={find.matchCounts}
+              />
               {file ? (
                 <FileDiff
                   key={file.path}
@@ -1399,6 +1438,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
                   hunkIndex={hunkIndex}
                   selection={selection}
                   onSelect={select}
+                  onRevealed={noteLinesRevealed}
                 />
               ) : (
                 <p className="review-empty">No files changed.</p>
@@ -1468,7 +1508,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
           )}
           {showsChanges && (
             <>
-              <kbd>f</kbd> files ·{" "}
+              <kbd>f</kbd> files · <kbd>{shortcutKeys().find}</kbd> find ·{" "}
             </>
           )}
           click line numbers (⇧ to extend), then <kbd>a</kbd> ask or <kbd>o</kbd> open in IDEA

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DiffRow, ReviewFile } from "../shared/review.ts";
-import { gapsOf, hiddenCount, nothingRevealed, revealedRows } from "../web/review-context.ts";
+import { gapsOf, hiddenCount, hunkRowsShown, nothingRevealed, revealedRows } from "../web/review-context.ts";
 
 const context = (newLine: number): DiffRow => ({ kind: "context", oldLine: newLine, newLine, text: `line ${newLine}` });
 const file = (change: ReviewFile["change"], hunks: { newStart: number; newLines: number[] }[]): ReviewFile => ({
@@ -44,5 +44,15 @@ describe("the lines around a diff's hunks", () => {
     const overlapping = revealedRows(gap, { top: 20, bottom: 20 }, fileLines);
     expect([...overlapping.underPrevious, ...overlapping.overNext].map((row) => row.newLine)).toEqual(Array.from({ length: 27 }, (_, index) => 13 + index));
     expect(hiddenCount(gap, { top: 20, bottom: 20 }, 100)).toBe(0);
+  });
+});
+
+describe("the rows a diff shows", () => {
+  test("are each hunk's own until lines are revealed, then those revealed over and under it too", () => {
+    const changed = file("modified", [{ newStart: 10, newLines: [10, 11] }]);
+    expect(hunkRowsShown(changed, null)).toEqual([changed.hunks[0]!.rows]);
+    const shown = hunkRowsShown(changed, { fileLines, revealed: [{ top: 0, bottom: 2 }, { top: 1, bottom: 0 }] });
+    expect(shown[0]!.map(({ newLine }) => newLine)).toEqual([8, 9, 10, 11, 12]);
+    expect(shown[0]![0]!.text).toBe("line 8");
   });
 });

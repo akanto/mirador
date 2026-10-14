@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { matchCount, matchOffsets, occurrencesIn, textsOf } from "../shared/find.ts";
+import { isValidQuery, matchCount, matchOffsets, occurrencesIn, textsOf } from "../shared/find.ts";
 import { snippetAround } from "../host/search.ts";
 import { buildTimeline } from "../shared/timeline.ts";
 
@@ -41,6 +41,39 @@ describe("matchCount", () => {
     expect(matchCount("anything", "")).toBe(0);
     expect(matchCount("e".repeat(1_000_000), "E")).toBe(1_000_000);
     expect(matchCount("Needle, needle, NEEDLE", "NEEDLE", { caseSensitive: true })).toBe(1);
+  });
+});
+
+describe("a review's find options", () => {
+  const code = "const needle = needles[needle_id] ?? Needle;";
+  const all = { caseSensitive: false, wholeWord: false, regex: false };
+
+  test("whole word leaves out a match inside a longer word, where letters, digits and _ make up words", () => {
+    expect(matchOffsets(code, "needle", { ...all, wholeWord: true })).toEqual([
+      [6, 12],
+      [37, 43],
+    ]);
+    expect(matchCount(code, "needle", { ...all, wholeWord: true, caseSensitive: true })).toBe(1);
+  });
+
+  test("a regular expression is taken as one, also with whole word", () => {
+    expect(matchOffsets(code, "needles?\\[", { ...all, regex: true })).toEqual([[15, 23]]);
+    expect(matchCount(code, "needles?", { ...all, regex: true, wholeWord: true })).toBe(3);
+    expect(matchCount("a.b axb", "a.b", { ...all, regex: true })).toBe(2);
+  });
+
+  test("a regular expression that does not compile finds nothing, and says so", () => {
+    expect(isValidQuery("needle(", { ...all, regex: true })).toBe(false);
+    expect(isValidQuery("needle(", all)).toBe(true);
+    expect(matchOffsets(code, "needle(", { ...all, regex: true })).toEqual([]);
+    expect(matchCount(code, "needle(", { ...all, regex: true })).toBe(0);
+  });
+
+  test("an empty match, as of ^ or x*, is none, and counting it does not go on for ever", () => {
+    expect(matchOffsets(code, "^", { ...all, regex: true })).toEqual([]);
+    expect(matchCount(code, "^", { ...all, regex: true })).toBe(0);
+    expect(matchCount(code, "x*", { ...all, regex: true })).toBe(0);
+    expect(matchCount(code, "e*", { ...all, regex: true })).toBe(matchOffsets(code, "e*", { ...all, regex: true }).length);
   });
 });
 

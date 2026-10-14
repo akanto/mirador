@@ -98,6 +98,10 @@ export const hints = {
   findOlder: "Previous match, further up (Enter)",
   findNewer: "Next match, further down (Shift+Enter)",
   findMatchCase: "Match case: capital and small letters count as different.",
+  reviewFind: "Find text in the code of every changed file, in the lines their diffs show.",
+  reviewFindPrevious: "Previous match, further up (Shift+Enter)",
+  reviewFindNext: "Next match, further down and on into the next file (Enter)",
+  reviewFileMatches: "How often this file holds the text you are finding",
   runningSubagent: "A subagent at work. Click to open its card in the conversation and see what it has done so far.",
   subagentTokens: (read: string, written: string, fresh: string) =>
     `Input tokens: ${read} read from the cache, ${written} written to it, ${fresh} new. Counted from Claude Code's transcript of the subagent.`,

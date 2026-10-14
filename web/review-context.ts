@@ -47,3 +47,20 @@ export function revealedRows(gap: Gap, { top, bottom }: Revealed, lines: string[
   const bottomStart = Math.max(topEnd + 1, end - bottom + 1);
   return { underPrevious: contextRows(gap.start, topEnd, lines), overNext: contextRows(bottomStart, end, lines) };
 }
+
+/** What a file's diff shows around its hunks: the reviewed version's lines, read once something was revealed, and how much of each gap. */
+export interface ShownContext {
+  fileLines: string[];
+  revealed: Revealed[];
+}
+
+/** Each hunk's rows as the diff shows them: with the lines revealed over and under it. */
+export function hunkRowsShown(file: Pick<ReviewFile, "hunks" | "change">, shown: ShownContext | null): DiffRow[][] {
+  if (!shown) return file.hunks.map((hunk) => hunk.rows);
+  const gaps = gapsOf(file);
+  return file.hunks.map((hunk, index) => {
+    const over = revealedRows(gaps[index]!, shown.revealed[index]!, shown.fileLines).overNext;
+    const under = revealedRows(gaps[index + 1]!, shown.revealed[index + 1]!, shown.fileLines).underPrevious;
+    return over.length + under.length === 0 ? hunk.rows : [...over, ...hunk.rows, ...under];
+  });
+}

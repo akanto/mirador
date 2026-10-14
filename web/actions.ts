@@ -17,6 +17,13 @@ export function findInOpenConversation() {
   onScreen<HTMLButtonElement>(".chat-header .find-trigger")?.click();
 }
 
+/** Finds in the code of the review or tour that has focus, if it changed files; false elsewhere. */
+export function findInFocusedReview() {
+  const trigger = document.activeElement?.closest(".review")?.querySelector<HTMLButtonElement>(".review-find-trigger");
+  trigger?.click();
+  return Boolean(trigger);
+}
+
 export function startRenamingOpenConversation() {
   onScreen<HTMLElement>('.chat-header [data-rename-trigger="click"]')?.click();
 }

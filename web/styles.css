@@ -2288,11 +2288,13 @@ button.edits-waiting {
   white-space: nowrap;
 }
 
-::highlight(find-match) {
+::highlight(find-match),
+::highlight(review-find-match) {
   background-color: var(--find-match);
 }
 
-::highlight(find-current) {
+::highlight(find-current),
+::highlight(review-find-current) {
   background-color: var(--find-current);
   color: #1a1b20;
 }
@@ -5159,6 +5161,7 @@ button.picture-option.chosen {
 }
 
 .in-tour,
+.match-count,
 .finding-count {
   padding: 0 5px;
   border-radius: 999px;
@@ -5173,6 +5176,10 @@ button.picture-option.chosen {
 .finding-count {
   background: var(--warn-soft);
   color: var(--warn);
+}
+
+.match-count {
+  background: var(--find-match);
 }
 
 .review-main {
