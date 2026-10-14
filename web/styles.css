@@ -4471,7 +4471,8 @@ button.shell-more:hover {
 
 .settings-page {
   overflow-y: auto;
-  padding-right: 6px;
+  /* Room for the rings drawn outside a chosen option or a focused field, which the scroll area would cut */
+  padding: 0 6px 2px 2px;
 }
 
 .settings-page > h3:first-child {

@@ -45,3 +45,15 @@ test("Settings shows one page at a time, chosen from the list on the left by cli
   await openSettings(page, "Layout");
   await expect(settings.getByRole("heading", { name: "Default layout" })).toBeVisible();
 });
+
+test("a chosen option in the left column keeps its whole ring, not cut by the edge of the page", async ({ page }) => {
+  await signIn(page, host);
+  const settings = await openSettings(page);
+  const light = settings.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { name: "Light" });
+  await light.click();
+  await expect(light).toHaveClass(/chosen/);
+  const ringWidth = await light.evaluate((option) => Number.parseFloat(getComputedStyle(option).boxShadow.match(/(\d+(?:\.\d+)?)px\s*$/)?.[1] ?? "0"));
+  const roomOnTheLeft = await light.evaluate((option) => option.getBoundingClientRect().left - option.closest(".settings-page")!.getBoundingClientRect().left);
+  expect(ringWidth).toBeGreaterThan(0);
+  expect(roomOnTheLeft).toBeGreaterThanOrEqual(ringWidth);
+});
