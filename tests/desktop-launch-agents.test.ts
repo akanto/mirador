@@ -76,6 +76,11 @@ describe("host launch agent plist", () => {
     expect(plist).toContain("<key>StandardOutPath</key>\n  <string>/data/logs/host.log</string>");
   });
 
+  test("starts the host in fish's own syntax when the login shell is fish", () => {
+    const fishPlist = hostAgentPlist({ label: "x.host.4600", argv: hostArgv("/opt/homebrew/bin/fish", "/bun/bin/bun", {}, "/repo"), workingDirectory: "/repo", logPath: "/data/logs/host.log" });
+    expect(fishPlist).toContain("<string>-ilc</string>\n    <string>cd -- $argv[1] &amp;&amp; exec $argv[2..-1]</string>\n    <string>/repo</string>");
+  });
+
   test("never carries environment values, and nothing at all for the real app's defaults", () => {
     expect(plist).not.toContain("EnvironmentVariables");
     expect(plist).not.toContain("MIRADOR_");

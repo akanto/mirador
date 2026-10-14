@@ -1,4 +1,8 @@
+import { basename } from "node:path";
+
 const HOST_ENTRY = "host/main.ts";
+/** Goes to the directory given first and hands its pid to the command after it, in the login shell's own syntax. */
+const BACK_TO_DIRECTORY_AND_EXEC = { posix: 'cd -- "$0" && exec "$@"', fish: "cd -- $argv[1] && exec $argv[2..-1]" };
 
 export function loginShell(env: Record<string, string | undefined>, accountShell: string | undefined) {
   return env.SHELL || accountShell || "/bin/sh";
@@ -8,7 +12,8 @@ export function loginShell(env: Record<string, string | undefined>, accountShell
 export function hostArgv(shell: string, bun: string, overrides: Record<string, string>, hostDirectory: string) {
   const assignments = Object.entries(overrides).map(([name, value]) => `${name}=${value}`);
   const command = assignments.length > 0 ? ["/usr/bin/env", ...assignments, bun, HOST_ENTRY] : [bun, HOST_ENTRY];
-  return [shell, "-ilc", 'cd -- "$0" && exec "$@"', hostDirectory, ...command];
+  const script = basename(shell) === "fish" ? BACK_TO_DIRECTORY_AND_EXEC.fish : BACK_TO_DIRECTORY_AND_EXEC.posix;
+  return [shell, "-ilc", script, hostDirectory, ...command];
 }
 
 /** `exec` keeps the pid, so a live host shows up in `ps` as just the bun invocation. */

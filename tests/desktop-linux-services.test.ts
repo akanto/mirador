@@ -69,6 +69,13 @@ describe("host user service unit", () => {
   });
 });
 
+describe("host service unit under fish", () => {
+  test("keeps fish's $argv from systemd's expansion", () => {
+    const unit = hostServiceUnit({ port: 4600, argv: hostArgv("/usr/bin/fish", "/bun/bin/bun", {}, "/repo"), workingDirectory: "/repo", logPath: "/home/me/.mirador/logs/host.log" });
+    expect(unit).toContain('ExecStart="/usr/bin/fish" "-ilc" "cd -- $$argv[1] && exec $$argv[2..-1]" "/repo" "/bun/bin/bun" "host/main.ts"');
+  });
+});
+
 describe("host user service", () => {
   const serviceIn = (directory: string, systemctl: FakeSystemctl) =>
     new HostUserService(4600, join(directory, "systemd", "user", "mirador-host-4600.service"), { shell: "/bin/bash", overrides: {}, logPath: join(directory, "logs", "host.log") }, systemctl.run);

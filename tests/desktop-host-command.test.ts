@@ -90,6 +90,30 @@ describe("host command", () => {
     }
   });
 
+  test("speaks fish's own syntax when the login shell is fish", () => {
+    expect(hostArgv("/opt/homebrew/bin/fish", "/bun/bin/bun", {}, "/Apps/mirador")).toEqual([
+      "/opt/homebrew/bin/fish", "-ilc", "cd -- $argv[1] && exec $argv[2..-1]", "/Apps/mirador", "/bun/bin/bun", "host/main.ts",
+    ]);
+  });
+
+  const fish = Bun.which("fish");
+  test.skipIf(!fish)("finds the host's entry under fish too, when its config changes directory", () => {
+    const home = mkdtempSync(join(tmpdir(), "mirador-home-"));
+    const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
+    mkdirSync(join(home, ".config", "fish"), { recursive: true });
+    writeFileSync(join(home, ".config", "fish", "config.fish"), "cd /\n");
+    mkdirSync(join(hostDirectory, "host"));
+    writeFileSync(join(hostDirectory, "host", "main.ts"), "");
+    try {
+      const run = Bun.spawnSync(hostArgv(fish!, "/bin/ls", {}, hostDirectory), { cwd: hostDirectory, env: { HOME: home, PATH: "/usr/bin:/bin" }, stdin: "ignore" });
+      expect(run.stdout.toString().trim()).toBe("host/main.ts");
+      expect(run.exitCode).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  });
+
   test("uses the environment's shell, then the account's, then sh", () => {
     expect(loginShell({ SHELL: "/bin/bash" }, "/bin/fish")).toBe("/bin/bash");
     expect(loginShell({}, "/bin/fish")).toBe("/bin/fish");
