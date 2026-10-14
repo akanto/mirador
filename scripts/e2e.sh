@@ -11,7 +11,8 @@ copy=$(mktemp -d "${TMPDIR:-/tmp}/mirador-e2e-run-XXXXXX")
 echo "running from $copy"
 
 existing() { while IFS= read -r -d '' file; do [[ -e $file ]] && printf '%s\0' "$file"; done; }
-(cd "$repo" && git ls-files -z --cached --others --exclude-standard | existing | tar --null -T - -cf -) | tar -xf - -C "$copy"
+# A node_modules that is a symlink isn't ignored as a folder would be; copied, it would take ln below into its target.
+(cd "$repo" && git ls-files -z --cached --others --exclude-standard -- ':(exclude)node_modules' | existing | tar --null -T - -cf -) | tar -xf - -C "$copy"
 ln -s "$repo/node_modules" "$copy/node_modules"
 
 cd "$copy"
