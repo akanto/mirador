@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
@@ -567,4 +567,34 @@ test("coming back to a review's conversation shows the review as the user left i
   await expect(findingsTab).toHaveAttribute("aria-selected", "true");
   await expect(view.locator(".finding.selected .finding-title")).toHaveText("Finding 4");
   await expect.poll(() => findingsList.evaluate((list) => list.scrollTop)).toBe(scrolledTo);
+});
+
+const ghInstalledHere = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].some((directory) => existsSync(join(directory, "gh")));
+
+test("with no gh on the machine, the Post panel says to install it, and Post waits until a check finds gh", async ({ page }) => {
+  test.skip(ghInstalledHere, "A real gh is installed here; the Linux test container has none.");
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const view = page.locator(".review");
+  const hint = view.locator(".github-cli-problem");
+  const post = view.getByRole("button", { name: "Post 2 findings to the pull request" });
+  const fakeGh = join(fakeProgramsDir, "gh");
+  const putAway = join(host.root, "gh-put-away");
+
+  renameSync(fakeGh, putAway);
+  try {
+    await callCanvasTool(host, conversationId, "review", review());
+    await expect(hint).toContainText("Posting needs the GitHub CLI, and no gh was found. Install it, then run gh auth login --hostname ghe.example.com.");
+    await expect(hint.getByRole("link", { name: "Install it" })).toHaveAttribute("href", "https://cli.github.com");
+    await expect(post).toBeDisabled();
+  } finally {
+    renameSync(putAway, fakeGh);
+  }
+
+  await hint.getByRole("button", { name: "Check again" }).click();
+  await expect(hint).toHaveCount(0);
+  await expect(post).toBeEnabled();
 });
