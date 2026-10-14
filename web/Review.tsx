@@ -25,7 +25,20 @@ import { connection } from "./connection.ts";
 import { highlightRows, type CodeSpan } from "./highlight.ts";
 import { hints } from "./hints.ts";
 import { MarkdownText } from "./Markdown.tsx";
-import { CONTEXT_STEP, gapsOf, hiddenCount, hunkRowsShown, nothingRevealed, type Gap, type Revealed, type ShownContext } from "./review-context.ts";
+import {
+  CONTEXT_STEP,
+  gapsOf,
+  hiddenCount,
+  hunkRowsShown,
+  nothingRevealed,
+  revealAll,
+  revealOverNext,
+  revealUnderPrevious,
+  type Gap,
+  type GapPlace,
+  type RevealChange,
+  type ShownContext,
+} from "./review-context.ts";
 import { ReviewFindBar, useReviewFind } from "./ReviewFind.tsx";
 import { isMac, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
@@ -848,12 +861,6 @@ export function reviewedFile(itemId: string, path: string) {
   return reviewedFiles.get(key)!;
 }
 
-type RevealChange = (current: Revealed, hidden: number) => Revealed;
-
-const revealUnderPrevious: RevealChange = ({ top, bottom }, hidden) => ({ top: top + Math.min(CONTEXT_STEP, hidden), bottom });
-const revealOverNext: RevealChange = ({ top, bottom }, hidden) => ({ top, bottom: bottom + Math.min(CONTEXT_STEP, hidden) });
-const revealAll: RevealChange = ({ top, bottom }, hidden) => ({ top: top + hidden, bottom });
-
 const linesLabel = (count: number) => (count === 1 ? "1 line" : `${count} lines`);
 
 /** The row between two hunks (or at the file's top or end) that shows more of the file around them; it carries the hunk's header. */
@@ -865,7 +872,7 @@ function GapRow({
   error,
   onReveal,
 }: {
-  place: "top" | "between" | "end";
+  place: GapPlace;
   hidden: number | null;
   wasRevealed: boolean;
   header: string | null;
@@ -894,7 +901,7 @@ function GapRow({
               ↑ {CONTEXT_STEP} lines
             </button>
           )}
-          <button type="button" className="link" data-hint={hints.revealAll} onClick={revealKeepingKeys(revealAll)}>
+          <button type="button" className="link" data-hint={hints.revealAll} onClick={revealKeepingKeys(revealAll(place))}>
             {hidden === null ? "Show the rest of the file" : fewLeft ? `Show ${linesLabel(hidden)}` : `All ${hidden} lines`}
           </button>
         </span>

@@ -19,6 +19,21 @@ export interface Revealed {
 
 export const nothingRevealed: Revealed = { top: 0, bottom: 0 };
 
+/** Where a gap is: above the first hunk, between two, or under the last. */
+export type GapPlace = "top" | "between" | "end";
+
+/** A gap's top lines show under the hunk before it, and its bottom lines over the hunk after it. */
+export type RevealChange = (current: Revealed, hidden: number) => Revealed;
+
+export const revealUnderPrevious: RevealChange = ({ top, bottom }, hidden) => ({ top: top + Math.min(CONTEXT_STEP, hidden), bottom });
+export const revealOverNext: RevealChange = ({ top, bottom }, hidden) => ({ top, bottom: bottom + Math.min(CONTEXT_STEP, hidden) });
+
+/** Every line still hidden, shown under the hunk before the gap; above the first hunk there is none, so over it. */
+export const revealAll =
+  (place: GapPlace): RevealChange =>
+  ({ top, bottom }, hidden) =>
+    place === "top" ? { top, bottom: bottom + hidden } : { top: top + hidden, bottom };
+
 const newLinesOf = (hunk: DiffHunk) => hunk.rows.flatMap((row) => (row.newLine === null ? [] : [row.newLine]));
 const firstNewLine = (hunk: DiffHunk) => newLinesOf(hunk)[0] ?? hunk.newStart + 1;
 const lastNewLine = (hunk: DiffHunk) => newLinesOf(hunk).at(-1) ?? hunk.newStart;

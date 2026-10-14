@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DiffRow, ReviewFile } from "../shared/review.ts";
-import { gapsOf, hiddenCount, hunkRowsShown, nothingRevealed, revealedRows } from "../web/review-context.ts";
+import { gapsOf, hiddenCount, hunkRowsShown, nothingRevealed, revealAll, revealedRows, type GapPlace, type Revealed } from "../web/review-context.ts";
 
 const context = (newLine: number): DiffRow => ({ kind: "context", oldLine: newLine, newLine, text: `line ${newLine}` });
 const file = (change: ReviewFile["change"], hunks: { newStart: number; newLines: number[] }[]): ReviewFile => ({
@@ -54,5 +54,23 @@ describe("the rows a diff shows", () => {
     const shown = hunkRowsShown(changed, { fileLines, revealed: [{ top: 0, bottom: 2 }, { top: 1, bottom: 0 }] });
     expect(shown[0]!.map(({ newLine }) => newLine)).toEqual([8, 9, 10, 11, 12]);
     expect(shown[0]![0]!.text).toBe("line 8");
+  });
+});
+
+describe("revealing all of a gap's hidden lines", () => {
+  const changed = file("modified", [{ newStart: 27, newLines: [27, 28, 29] }, { newStart: 60, newLines: [60] }]);
+  const gaps = gapsOf(changed);
+  const linesFrom = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, offset) => from + offset);
+  const allOf = (gapIndex: number, place: GapPlace) => revealAll(place)(nothingRevealed, hiddenCount(gaps[gapIndex]!, nothingRevealed, fileLines.length)!);
+  const firstHunkShows = (revealed: Revealed[]) => hunkRowsShown(changed, { fileLines, revealed })[0]!.map(({ newLine }) => newLine);
+
+  test("above the first hunk shows them over it, as there is no hunk above to show them under", () => {
+    const top = allOf(0, "top");
+    expect(hiddenCount(gaps[0]!, top, fileLines.length)).toBe(0);
+    expect(firstHunkShows([top, nothingRevealed, nothingRevealed])).toEqual(linesFrom(1, 29));
+  });
+
+  test("between two hunks shows them under the one above", () => {
+    expect(firstHunkShows([nothingRevealed, allOf(1, "between"), nothingRevealed])).toEqual(linesFrom(27, 59));
   });
 });
