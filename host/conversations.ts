@@ -1627,6 +1627,15 @@ const recordedDirectory = (workspace: Workspace) => realpath(workspace.path);
 export function errorMessage(error: unknown): string {
   if (typeof error !== "object" || error === null) return String(error);
   const { message, data } = error as { message?: unknown; data?: unknown };
-  const details = data === undefined || data === null ? "" : `: ${typeof data === "string" ? data : JSON.stringify(data)}`;
-  return `${String(message ?? error)}${details}`;
+  const details = detailsWorthShowing(data);
+  return details === null ? String(message ?? error) : `${String(message ?? error)}: ${details}`;
+}
+
+/** Claude Code tags an error with its kind, e.g. {"errorKind":"server_error"}, which is for the host to read, not for people. */
+function detailsWorthShowing(data: unknown) {
+  if (data === undefined || data === null) return null;
+  if (typeof data !== "object") return String(data);
+  if (Array.isArray(data)) return JSON.stringify(data);
+  const { errorKind: _forTheHost, ...details } = data as Record<string, unknown>;
+  return Object.keys(details).length > 0 ? JSON.stringify(details) : null;
 }

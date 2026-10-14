@@ -34,6 +34,7 @@ test("a turn an API error ended is tried again from the error, and the agent sti
   await test.step("the error that ended the turn offers Try again", async () => {
     await sendMessage(page, "first task");
     await expect(failedTurn).toContainText("502", { timeout: 120_000 });
+    await expect(failedTurn, "the kind Claude Code tags the error with is for the host, not shown").not.toContainText("errorKind");
     await waitForTurnToEnd(page);
     await expect(tryAgain).toBeVisible();
     await expect(tryAgain).toHaveAttribute("data-hint", /continue where it left off/);
