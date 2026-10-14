@@ -17,6 +17,7 @@ describe("a pending permission request", () => {
       kind: "permission",
       permissionId: "p1",
       title: "bash",
+      toolKind: "execute",
       command: "git push",
       description: "Push the branch",
       options,
@@ -39,6 +40,19 @@ describe("a pending permission request", () => {
     expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", title: "Edit a.ts", kind: "edit", rawInput: { command: "not a shell" } }, options }).command).toBeNull();
     expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", title: "ExitPlanMode", kind: "switch_mode", content: [plan] }, options })).toMatchObject({ command: null, description: null });
     expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", kind: "fetch" }, options }).title).toBe("a tool");
+  });
+});
+
+describe("the kind of tool a pending permission request is about", () => {
+  test("is the one the request says, or else the one the agent's updates gave its tool call", () => {
+    expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", title: "Fetch https://example.com", kind: "fetch" }, options }, "edit").toolKind).toBe("fetch");
+    expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", title: "Write notes.md" }, options }, "edit").toolKind).toBe("edit");
+    expect(pendingPermission("p1", { toolCall: { toolCallId: "t1", title: "something" }, options }).toolKind).toBeNull();
+  });
+
+  test("a shell command known only from the updates still carries its command", () => {
+    const toolCall = { toolCallId: "t1", title: "bash", rawInput: { command: "git push" } };
+    expect(pendingPermission("p1", { toolCall, options }, "execute")).toMatchObject({ toolKind: "execute", command: "git push" });
   });
 });
 

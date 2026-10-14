@@ -4,6 +4,7 @@ import type {
   SessionUpdate,
   StopReason,
   ToolCallUpdate,
+  ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { Checklist } from "./checklist.ts";
 import type { EditDiff, Review, Tour } from "./review.ts";
@@ -293,6 +294,11 @@ export interface PendingPermissionRequest {
   kind: "permission";
   permissionId: string;
   title: string;
+  /**
+   * The kind of tool, as the agent says (read, edit, fetch, switch_mode for a plan…), so a list can answer a tool its
+   * title says enough about and leave edits and plans to the conversation; null when the agent does not say.
+   */
+  toolKind: ToolKind | null;
   /**
    * The shell command it would run, cut short, and the agent's description of it; null for other tools, whose input,
    * diffs or plan only the conversation shows.

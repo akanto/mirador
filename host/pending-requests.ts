@@ -13,13 +13,20 @@ function stringField(value: unknown, key: string) {
 
 const shortened = (text: string) => cutWithEllipsis(text, COMMAND_SHOWN);
 
-export function pendingPermission(permissionId: string, { toolCall, options }: Pick<acp.RequestPermissionRequest, "toolCall" | "options">): PendingPermissionRequest {
+/** `kindSeenBefore`: the kind of the tool call the request is about, from the agent's updates, for an agent that leaves it off the request. */
+export function pendingPermission(
+  permissionId: string,
+  { toolCall, options }: Pick<acp.RequestPermissionRequest, "toolCall" | "options">,
+  kindSeenBefore: acp.ToolKind | null = null,
+): PendingPermissionRequest {
   const title = toolCall.title ?? "a tool";
-  const runsCommand = toolCall.kind === "execute";
+  const toolKind = toolCall.kind ?? kindSeenBefore;
+  const runsCommand = toolKind === "execute";
   return {
     kind: "permission",
     permissionId,
     title,
+    toolKind,
     command: runsCommand ? shortened(stringField(toolCall.rawInput, "command") ?? title) : null,
     description: runsCommand ? stringField(toolCall.rawInput, "description") : null,
     options,

@@ -3,9 +3,10 @@ import type { Activity } from "../shared/model.ts";
 
 const hasFinished = (status: acp.ToolCallStatus | null | undefined) => status === "completed" || status === "failed";
 
-/** The running turn's tool calls that have not finished yet, by id, with the title each was last given. */
+/** The running turn's tool calls that have not finished yet, by id, with the title each was last given and the kind of tool the agent said it is. */
 export class OpenToolCalls {
   private readonly titles = new Map<string, string>();
+  private readonly kinds = new Map<string, acp.ToolKind>();
 
   get size() {
     return this.titles.size;
@@ -13,21 +14,31 @@ export class OpenToolCalls {
 
   clear() {
     this.titles.clear();
+    this.kinds.clear();
   }
 
   /** Whether the update finished a tool call. */
   follow(update: acp.SessionUpdate) {
     if (update.sessionUpdate === "tool_call" && !hasFinished(update.status)) {
       this.titles.set(update.toolCallId, update.title);
+      if (update.kind) this.kinds.set(update.toolCallId, update.kind);
       return false;
     }
     if (update.sessionUpdate !== "tool_call_update") return false;
     if (hasFinished(update.status)) {
       this.titles.delete(update.toolCallId);
+      this.kinds.delete(update.toolCallId);
       return true;
     }
-    if (update.title && this.titles.has(update.toolCallId)) this.titles.set(update.toolCallId, update.title);
+    if (!this.titles.has(update.toolCallId)) return false;
+    if (update.title) this.titles.set(update.toolCallId, update.title);
+    if (update.kind) this.kinds.set(update.toolCallId, update.kind);
     return false;
+  }
+
+  /** The kind of tool an open tool call is, when the agent said. */
+  kindOf(toolCallId: string) {
+    return this.kinds.get(toolCallId) ?? null;
   }
 
   /** The one started last. */

@@ -1318,7 +1318,7 @@ export class ConversationService {
         if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));
         resolve(optionId ? { outcome: { outcome: "selected", optionId } } : { outcome: { outcome: "cancelled" } });
       };
-      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId, request: pendingPermission(permissionId, request) });
+      runtime.pendingPermissions.set(permissionId, { settle, allowOptionId, request: pendingPermission(permissionId, request, runtime.openToolCalls.kindOf(request.toolCall.toolCallId)) });
       this.publish(this.get(conversationId));
       signal.addEventListener("abort", () => settle(null), { once: true });
     });

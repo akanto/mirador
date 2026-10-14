@@ -6,6 +6,20 @@ const started = (toolCallId: string, title: string): acp.SessionUpdate => ({ ses
 const updated = (toolCallId: string, change: Partial<acp.ToolCallUpdate>): acp.SessionUpdate => ({ sessionUpdate: "tool_call_update", toolCallId, ...change });
 
 describe("OpenToolCalls", () => {
+  test("knows the kind of tool each open call is, from its start or a later update, until it finishes", () => {
+    const open = new OpenToolCalls();
+    open.follow({ sessionUpdate: "tool_call", toolCallId: "edit", title: "Edit a.ts", kind: "edit", status: "pending" });
+    open.follow(started("fetch", "Fetch"));
+    open.follow(updated("fetch", { kind: "fetch" }));
+    expect(open.kindOf("edit")).toBe("edit");
+    expect(open.kindOf("fetch")).toBe("fetch");
+    expect(open.kindOf("never-started")).toBeNull();
+    open.follow(updated("edit", { status: "completed" }));
+    expect(open.kindOf("edit")).toBeNull();
+    open.follow(updated("unknown", { kind: "read" }));
+    expect(open.kindOf("unknown")).toBeNull();
+  });
+
   test("keeps the tool calls that have not finished, and says when an update finishes a tool call", () => {
     const open = new OpenToolCalls();
     expect(open.follow(started("read", "Read src/checkout.ts"))).toBe(false);
