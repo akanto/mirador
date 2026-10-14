@@ -76,6 +76,7 @@ const conversationInWorkspace = (id: string): Omit<Conversation, "position"> => 
   jobWaits: [],
   waitingFor: null,
   pendingRequest: null,
+  lastWords: null,
   activity: null,
   configOptions: [],
   createdAt: 1,

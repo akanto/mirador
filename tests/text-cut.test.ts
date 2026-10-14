@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
+import { cutWithEllipsis, firstGraphemes, lastGraphemes } from "../shared/text-cut.ts";
 
 const FLAG_HU = "🇭🇺";
 const FAMILY = "👨‍👩‍👧";
@@ -36,4 +36,10 @@ test("taking the first graphemes adds no ellipsis and never splits a flag or an 
   expect(firstGraphemes(`${FLAG_HU}${FLAG_HU}`, 1)).toBe(FLAG_HU);
   expect(firstGraphemes(`${E_ACUTE}x`, 1)).toBe(E_ACUTE);
   expect(firstGraphemes("short", 10)).toBe("short");
+});
+
+test("taking the last graphemes never splits a flag or an accent", () => {
+  expect(lastGraphemes(`x${FLAG_HU}${FLAG_HU}`, 1)).toBe(FLAG_HU);
+  expect(lastGraphemes(`x${E_ACUTE}`, 1)).toBe(E_ACUTE);
+  expect(lastGraphemes("short", 10)).toBe("short");
 });

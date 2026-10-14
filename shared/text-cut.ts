@@ -8,3 +8,5 @@ export const cutWithEllipsis = (text: string, keep: number, cutWhenLongerThan = 
   const graphemes = graphemesOf(text);
   return graphemes.length > cutWhenLongerThan ? `${graphemes.slice(0, keep).join("")}…` : text;
 };
+
+export const lastGraphemes = (text: string, count: number) => graphemesOf(text).slice(-count).join("");

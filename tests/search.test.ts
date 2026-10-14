@@ -30,6 +30,7 @@ function storeWithTwoConversations() {
     jobWaits: [],
     waitingFor: null,
     pendingRequest: null,
+    lastWords: null,
     activity: null,
     configOptions: [],
     createdAt: 1,

@@ -219,6 +219,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   jobWaits: [],
   waitingFor: null,
   pendingRequest: null,
+  lastWords: null,
   activity: null,
   configOptions: JSON.parse(row.config_options),
   position: row.position,

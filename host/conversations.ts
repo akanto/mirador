@@ -32,6 +32,7 @@ import { panelCommandRun } from "../shared/panel-commands.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
+import { lastWordsOf } from "../shared/last-words.ts";
 import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
 import { canTryAgain } from "../shared/try-again.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
@@ -165,6 +166,7 @@ export class ConversationService {
   private readonly contextUsage = new Map<string, ContextUsage>();
   private readonly planQuotas = new PlanQuotasByProfile();
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
+  private readonly lastWords = new Map<string, string>();
   private readonly asksWaitedOn: Map<string, PendingAsk>;
   private readonly commands = new UserCommandRunner();
   private readonly subagentUsageReader = new SubagentUsageReader();
@@ -189,6 +191,7 @@ export class ConversationService {
     this.cancelPermissionsOrphanedByRestart();
     this.endTurnsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
+    this.unseenTurnEnds.forEach((_, conversationId) => this.keepLastWords(conversationId));
     const waitingAsksOldestLast = store.listCanvasItemsWithStatus("waiting").sort((a, b) => b.createdAt - a.createdAt);
     this.asksWaitedOn = new Map(waitingAsksOldestLast.map((item) => [item.conversationId, pendingAsk(item)]));
     this.jobWaits = new JobWaits(store, {
@@ -303,6 +306,7 @@ export class ConversationService {
       jobWaits: [],
       waitingFor: null,
       pendingRequest: null,
+      lastWords: null,
       activity: null,
       configOptions: [],
       createdAt: now,
@@ -344,6 +348,7 @@ export class ConversationService {
     this.terminalActivity.delete(conversationId);
     this.contextUsage.delete(conversationId);
     this.unseenTurnEnds.delete(conversationId);
+    this.lastWords.delete(conversationId);
     this.asksWaitedOn.delete(conversationId);
     this.store.deleteConversation(conversationId);
     this.images.deleteConversation(conversationId);
@@ -1493,12 +1498,22 @@ export class ConversationService {
     if (this.hub.isWatched(conversationId)) return;
     this.unseenTurnEnds.set(conversationId, reason.kind);
     this.store.setUnseenTurnEnd(conversationId, reason.kind);
+    this.keepLastWords(conversationId);
   }
 
   private forgetUnseenTurnEnd(conversationId: string) {
     if (!this.unseenTurnEnds.delete(conversationId)) return false;
+    this.lastWords.delete(conversationId);
     this.store.setUnseenTurnEnd(conversationId, null);
     return true;
+  }
+
+  /** Worked out once when a turn ends unseen, since publishing, which happens all the time, must not read the events. */
+  private keepLastWords(conversationId: string) {
+    const turnStart = this.store.latestTurnStart(conversationId)?.seq ?? 0;
+    const words = lastWordsOf(this.store.listEventsFrom(conversationId, turnStart));
+    if (words) this.lastWords.set(conversationId, words);
+    else this.lastWords.delete(conversationId);
   }
 
   private activity(conversationId: string): Activity | null {
@@ -1540,6 +1555,7 @@ export class ConversationService {
       jobWaits: this.jobWaits.in(conversation.id),
       waitingFor: this.waitingFor(conversation.id),
       pendingRequest: this.pendingRequest(conversation.id),
+      lastWords: this.lastWords.get(conversation.id) ?? null,
       activity: this.activity(conversation.id),
     };
   }

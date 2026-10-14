@@ -35,6 +35,7 @@ const conversation: Conversation = {
   jobWaits: [],
   waitingFor: null,
   pendingRequest: null,
+  lastWords: null,
   activity: null,
   configOptions: [modelOption],
   position: 0,

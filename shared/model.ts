@@ -379,6 +379,8 @@ export interface Conversation {
   waitingFor: WaitingFor | null;
   /** The permission request or question it waits for, the oldest first; worked out from those, never stored. */
   pendingRequest: PendingRequest | null;
+  /** The end of what the agent said last in a turn that ended unseen, for a phone's Waiting card; worked out from its events, never stored. */
+  lastWords: string | null;
   /** What the agent does now, while a turn runs; kept in memory only. */
   activity: Activity | null;
   configOptions: SessionConfigOption[];
