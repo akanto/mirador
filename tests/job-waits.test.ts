@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, type JobState } from "../host/job-waits.ts";
+import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, jobWaitGuidance, jobWaitToolDescription, type JobState } from "../host/job-waits.ts";
 import { Store } from "../host/store.ts";
 import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, waitSetUpReply, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd } from "../shared/model.ts";
@@ -304,5 +304,15 @@ esac
       "Image: nginx:1\nCommand: nginx -g daemon off;\nStarted: 2026-10-04T12:00:00Z\n\nGET / 200\n\nContainer web ended.\nPress Enter to close this tab.",
     );
     expect(await follow({ job: { kind: "container", name: "gone" }, sshHost: null }, bin)).toBe("Press Enter to close this tab.Error: No such container: gone\n");
+  });
+});
+
+describe("job wait guidance", () => {
+  test("steers the agent from run_in_background to a nohup job Mirador can show, in the system prompt and the tool alike", () => {
+    for (const text of [jobWaitGuidance, jobWaitToolDescription]) {
+      expect(text).toContain("nohup <command> > <log> 2>&1 &");
+      expect(text).toContain("not with the Bash tool's run_in_background");
+      expect(text).toContain("The user follows your work in Mirador, which shows the jobs it waits for");
+    }
   });
 });
