@@ -247,6 +247,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "canvas.export-failed":
     case "review.file-read":
     case "review.file-failed":
+    case "review.github-cli-checked":
     case "changes.listed":
     case "changes.diffed":
     case "changes.failed":

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
@@ -8,6 +8,8 @@ import { TestHost } from "./test-host.ts";
 const host = new TestHost(5030, { fakePrograms: true });
 const fakeProgramsDir = host.fakeProgramsDir;
 const ghLog = join(host.root, "gh.log");
+const ghAuthLog = join(host.root, "gh-auth.log");
+const ghLoggedOut = join(host.root, "gh-logged-out");
 const ideaLog = join(host.root, "idea.log");
 const PULL_REQUEST = "https://ghe.example.com/team/shop/pull/7";
 
@@ -94,6 +96,11 @@ const conversations = {
 function writeFakePrograms(head: string) {
   mkdirSync(fakeProgramsDir, { recursive: true });
   const gh = `#!/bin/bash
+if [[ "$1 $2" == "auth status" ]]; then
+  printf '%s\\n' "$*" >> "${ghAuthLog}"
+  [[ -e "${ghLoggedOut}" ]] && exit 1
+  exit 0
+fi
 input=""
 if [[ " $* " == *" --input - "* ]]; then input=$(cat); fi
 printf '%s\\t%s\\n' "$*" "$input" >> "${ghLog}"
@@ -174,12 +181,26 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await expect(page.locator(".review")).toHaveCount(0);
   });
 
+  writeFileSync(ghLoggedOut, "");
   const result = await callCanvasTool(host, conversationId, "review", review());
   expect(result).toContain("2 changed files, 2 flow steps and 3 findings");
   expect(result).toContain("cannot be posted as line comments: finding 2");
   const view = page.locator(".review");
   await expect(view.locator(".verdict")).toHaveText("Request changes: the anonymous fallback skips authentication.");
   await expect(canvasPane(page)).toHaveClass(/fullscreen/);
+
+  await test.step("while gh is not logged in to the pull request's host, Post says what to run and waits until gh is checked again", async () => {
+    const hint = view.locator(".github-cli-problem");
+    const post = view.getByRole("button", { name: "Post 2 findings to the pull request" });
+    await expect(hint).toContainText("Posting needs gh logged in to ghe.example.com");
+    await expect(hint).toContainText("Run gh auth login --hostname ghe.example.com");
+    await expect(post).toBeDisabled();
+    expect(logLines(ghAuthLog)).toEqual(["auth status --hostname ghe.example.com"]);
+    rmSync(ghLoggedOut);
+    await hint.getByRole("button", { name: "Check again" }).click();
+    await expect(hint).toHaveCount(0);
+    await expect(post).toBeEnabled();
+  });
 
   await test.step("a wide table in the summary stays in its column, its long code wrapped", async () => {
     const table = view.locator(".overview-story table");

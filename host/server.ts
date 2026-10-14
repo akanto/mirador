@@ -818,6 +818,12 @@ export function startServer(services: HostServices) {
           .then((lines) => reply({ type: "review.file-read", requestId: message.requestId, lines }))
           .catch((error) => reply({ type: "review.file-failed", requestId: message.requestId, message: errorMessage(error) }));
         return;
+      case "review.check-github-cli":
+        canvas
+          .gitHubCliProblem(message.itemId)
+          .catch(() => null)
+          .then((problem) => reply({ type: "review.github-cli-checked", requestId: message.requestId, problem }));
+        return;
       case "changes.list":
         conversations.changes
           .list(message.conversationId, message.scope)

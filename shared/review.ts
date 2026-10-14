@@ -123,6 +123,9 @@ export interface EditDiff {
   lineCount: number | null;
 }
 
+/** What keeps gh from posting to a pull request's host: it is not installed, or has no account it can use there. */
+export type GitHubCliProblem = "missing" | "logged-out";
+
 export interface PullRequestRef {
   url: string;
   host: string;

@@ -1,4 +1,4 @@
-import { answersOf, isCommentable, type ConversationComment, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
+import { answersOf, isCommentable, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 
 const PULL_REQUEST_URL = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#]\S*)?$/;
 
@@ -14,9 +14,12 @@ export type GitHubCli = (args: string[], body?: unknown) => Promise<unknown>;
 
 /** Where gh's installers put it, for hosts started without a login shell's PATH. */
 const GH_INSTALL_DIRECTORIES = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
+const GH_CHECK_TIMEOUT_MS = 10_000;
+
+const ghSearchPath = () => [process.env.PATH, ...GH_INSTALL_DIRECTORIES].filter(Boolean).join(":");
 
 export const ghCli: GitHubCli = async (args, body) => {
-  const executable = Bun.which("gh") ?? Bun.which("gh", { PATH: GH_INSTALL_DIRECTORIES.join(":") });
+  const executable = Bun.which("gh", { PATH: ghSearchPath() });
   if (!executable) throw new Error("The GitHub CLI (gh) is not installed: no gh on PATH or in its usual install directories.");
   const child = Bun.spawn([executable, ...args, ...(body === undefined ? [] : ["--input", "-"])], {
     stdin: body === undefined ? "ignore" : new Blob([JSON.stringify(body)]),
@@ -27,6 +30,17 @@ export const ghCli: GitHubCli = async (args, body) => {
   if (exitCode !== 0) throw new Error(errors.trim() || output.trim() || `gh exited with ${exitCode}`);
   return output.trim() ? JSON.parse(output) : null;
 };
+
+/** What keeps gh from posting to this host, if anything; null too when gh takes too long to say. */
+export async function gitHubCliProblemOn(host: string, searchPath = ghSearchPath()): Promise<GitHubCliProblem | null> {
+  const executable = Bun.which("gh", { PATH: searchPath });
+  if (!executable) return "missing";
+  // No --active: gh before 2.40 refuses the flag, which would lock Post for people whose posting works.
+  const check = Bun.spawn([executable, "auth", "status", "--hostname", host], { stdin: "ignore", stdout: "ignore", stderr: "ignore", timeout: GH_CHECK_TIMEOUT_MS });
+  const exitCode = await check.exited;
+  if (check.signalCode) return null;
+  return exitCode === 0 ? null : "logged-out";
+}
 
 const ADD_REVIEW = `mutation($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { pullRequestReview { id url } } }`;
 const ADD_THREAD = `mutation($input: AddPullRequestReviewThreadInput!) { addPullRequestReviewThread(input: $input) { thread { id } } }`;

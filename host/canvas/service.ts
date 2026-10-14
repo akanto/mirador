@@ -25,7 +25,7 @@ import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
 import { openInIdea } from "../review/editor.ts";
-import { ghCli, postPendingReview, type GitHubCli } from "../review/github.ts";
+import { ghCli, gitHubCliProblemOn, postPendingReview, type GitHubCli } from "../review/github.ts";
 import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
 import { snapshotTour, touredFileLines, type TourRequest } from "../review/tour.ts";
 
@@ -257,6 +257,12 @@ export class CanvasService {
     const reworded = body && body !== answer.body && { body, agentBody: answer.agentBody ?? answer.body };
     const changed = { ...answer, ...(change.decision && { decision: change.decision }), ...(change.resolve !== undefined && { resolve: change.resolve }), ...reworded };
     this.saveReview(item, { answers: answersOf(item.review).map((each) => (each.id === answerId ? changed : each)) });
+  }
+
+  /** What keeps gh from posting this review to its pull request, if anything. */
+  async gitHubCliProblem(itemId: string) {
+    const { pullRequest } = this.reviewItem(itemId).review;
+    return pullRequest ? gitHubCliProblemOn(pullRequest.host) : null;
   }
 
   /** Adds the kept findings and answers to the user's pending review on the pull request; each records how that went. */

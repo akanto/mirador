@@ -11,6 +11,7 @@ import {
   type CodeAnchor,
   type DiffRow,
   type FindingDecision,
+  type GitHubCliProblem,
   type Review,
   type ReviewAnswer,
   type ReviewFile,
@@ -428,8 +429,72 @@ function FindingStatus({ review, finding, file }: { review: Review; finding: Rev
   return null;
 }
 
+const gitHubCliChecks = new Map<string, Promise<GitHubCliProblem | null>>();
+
+/** Whether gh can post this review, asked of the host once per review until the user checks again. */
+function gitHubCliCheck(itemId: string) {
+  if (!gitHubCliChecks.has(itemId)) {
+    const check = connection.sendAndAwait(
+      (requestId) => ({ type: "review.check-github-cli", requestId, itemId }),
+      (message, requestId) => (message.type === "review.github-cli-checked" && message.requestId === requestId ? message.problem : undefined),
+    );
+    check.catch(() => gitHubCliChecks.delete(itemId));
+    gitHubCliChecks.set(itemId, check);
+  }
+  return gitHubCliChecks.get(itemId)!;
+}
+
+function useGitHubCliProblem(itemId: string, postsToGitHub: boolean) {
+  const [problem, setProblem] = useState<GitHubCliProblem | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (!postsToGitHub) return;
+    let current = true;
+    setChecking(true);
+    gitHubCliCheck(itemId)
+      .then((found) => current && setProblem(found))
+      .catch(() => {})
+      .finally(() => current && setChecking(false));
+    return () => {
+      current = false;
+    };
+  }, [itemId, postsToGitHub, round]);
+  const checkAgain = () => {
+    gitHubCliChecks.delete(itemId);
+    setRound((count) => count + 1);
+  };
+  return { problem, checking, checkAgain };
+}
+
+function GitHubCliHint({ problem, host, checking, onCheckAgain }: { problem: GitHubCliProblem; host: string; checking: boolean; onCheckAgain: () => void }) {
+  const login = <code>gh auth login --hostname {host}</code>;
+  return (
+    <p className="hint github-cli-problem">
+      {problem === "missing" ? (
+        <>
+          Posting needs the GitHub CLI, and no <code>gh</code> was found.{" "}
+          <a href="https://cli.github.com" target="_blank" rel="noreferrer">
+            Install it
+          </a>
+          , then run {login}.
+        </>
+      ) : (
+        <>
+          Posting needs <code>gh</code> logged in to {host}, and gh could not confirm that. Run {login}, or{" "}
+          <code>gh auth status --hostname {host}</code> to see why.
+        </>
+      )}{" "}
+      <button type="button" className="link" disabled={checking} onClick={onCheckAgain}>
+        {checking ? "Checking…" : "Check again"}
+      </button>
+    </p>
+  );
+}
+
 function PostPanel({ item }: { item: ReviewItem }) {
   const { review } = item;
+  const gitHubCli = useGitHubCliProblem(item.id, review.pullRequest !== null);
   if (!review.pullRequest) return null;
   const kept = review.findings.filter((finding) => finding.decision === "keep" && !finding.postedAs);
   const toPost = kept.filter((finding) => isCommentable(fileOf(review, finding.at.path), finding.at));
@@ -463,8 +528,11 @@ function PostPanel({ item }: { item: ReviewItem }) {
           review.
         </p>
       )}
+      {gitHubCli.problem && (
+        <GitHubCliHint problem={gitHubCli.problem} host={review.pullRequest.host} checking={gitHubCli.checking} onCheckAgain={gitHubCli.checkAgain} />
+      )}
       {toPost.length + answersToPost.length > 0 || review.posting ? (
-        <button type="button" className="primary" disabled={review.posting} onClick={() => connection.send({ type: "review.post", itemId: item.id })}>
+        <button type="button" className="primary" disabled={review.posting || gitHubCli.problem !== null} onClick={() => connection.send({ type: "review.post", itemId: item.id })}>
           {review.posting ? "Posting…" : `Post ${findingsAndAnswers(toPost.length, answersToPost.length)} to the pull request`}
         </button>
       ) : (

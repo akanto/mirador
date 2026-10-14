@@ -30,7 +30,7 @@ import type {
   Pastel,
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
-import type { FindingDecision } from "./review.ts";
+import type { FindingDecision, GitHubCliProblem } from "./review.ts";
 import type { PageLibraries } from "./canvas-export.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
@@ -164,6 +164,8 @@ export type ClientMessage =
   | { type: "review.open-in-editor"; itemId: string; path: string; line: number }
   /** The reviewed version of a changed file, for showing the lines around the diff's hunks. */
   | { type: "review.read-file"; requestId: string; itemId: string; path: string }
+  /** Whether gh can post this review to its pull request, asked before the user clicks Post. */
+  | { type: "review.check-github-cli"; requestId: string; itemId: string }
   | { type: "changes.list"; requestId: string; conversationId: string; scope: ChangeScope }
   | { type: "changes.diff"; requestId: string; conversationId: string; scope: ChangeScope; path: string }
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
@@ -298,6 +300,8 @@ export type ServerMessage =
   | { type: "prompt-history.listed"; requestId: string; prompts: string[]; ownEarlier?: PromptHistoryEntry[] }
   | { type: "mentions.suggested"; requestId: string; suggestions: MentionSuggestion[] }
   | { type: "review.file-failed"; requestId: string; message: string }
+  /** Null when gh can post, or when the check could not tell. */
+  | { type: "review.github-cli-checked"; requestId: string; problem: GitHubCliProblem | null }
   | { type: "changes.listed"; requestId: string; list: ChangeList }
   | { type: "changes.diffed"; requestId: string; changes: FileChanges }
   | { type: "changes.failed"; requestId: string; message: string }
