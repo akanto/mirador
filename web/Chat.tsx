@@ -1570,7 +1570,8 @@ export function ChatPanel({
   }, [subagentToShow]);
   const onTimelineScroll = () => {
     onScroll();
-    if (ref.current!.scrollTop < ref.current!.clientHeight) loadEarlier();
+    const scroller = ref.current;
+    if (scroller && scroller.scrollTop < scroller.clientHeight) loadEarlier();
   };
   const busy = isBusy(conversation);
   const subagents = useMemo(() => subagentsIn(timeline), [timeline]);

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page, type WebSocket } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost(5159);
@@ -70,4 +70,25 @@ test("a recently opened conversation shows again at once, where it was left, wit
     expect(received.historiesOf(long)).toBe(1);
     expect(received.historiesOf(other)).toBe(1);
   });
+});
+
+test("a scroll that reaches a conversation's timeline after another conversation is shown throws nothing", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  await startConversation(page);
+  const leftTimeline = await timeline(page).elementHandle();
+  await startConversation(page);
+  await expect.poll(() => leftTimeline!.evaluate((element) => element.isConnected && !element.checkVisibility())).toBe(true);
+
+  const thrown = await leftTimeline!.evaluate((element) => {
+    const errors: string[] = [];
+    const note = (event: ErrorEvent) => errors.push(event.message);
+    window.addEventListener("error", note);
+    element.dispatchEvent(new Event("scroll"));
+    window.removeEventListener("error", note);
+    return errors;
+  });
+  expect(thrown).toEqual([]);
 });
