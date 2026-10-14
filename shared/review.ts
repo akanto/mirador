@@ -177,6 +177,9 @@ export interface TourChanges {
 
 export const answersOf = (review: Review) => review.answers ?? [];
 
+/** The N of a finding's id, finding-N, by which the agent names it; 0 for an id of another shape. */
+export const findingNumber = (findingId: string) => Number(/^finding-(\d+)$/.exec(findingId)?.[1] ?? 0);
+
 const ANCHOR = /^(.+):(\d+)(?:-(\d+))?$/;
 
 export function parseAnchor(text: string): CodeAnchor | null {

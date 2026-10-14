@@ -5488,6 +5488,11 @@ button.picture-option.chosen {
   font-weight: 600;
 }
 
+.finding-number {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .finding .code-block {
   margin: 8px 0;
 }

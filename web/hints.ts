@@ -15,6 +15,7 @@ export const hints = {
   stop: "Asks the agent to stop its turn, as Esc does. When it has not stopped within a few seconds, this becomes Force stop, which ends the agent process instead; other conversations on the same profile continue where they left off.",
   reviewLineNumber: "Click to select this line, Shift+click to select up to it. Then a asks the agent about the lines, o opens them in IntelliJ IDEA.",
   findingChecked: "Confirmed: the agent verified it (ran, traced or tested the code). Plausible: suspected, not verified.",
+  findingNumber: "The number the agent knows this finding by: when it writes finding 5 or finding-5, it means #5.",
   findingDecision: "Kept findings go to the pull request when you post; dropped ones stay here. Click to switch.",
   promptTemplates: "Messages you send often, with the values you fill in each time. Settings adds, changes and deletes them.",
   deleteTemplateArmed: "Click again to delete this template. Defaults deleted here do not come back.",

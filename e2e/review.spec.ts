@@ -522,6 +522,38 @@ test("the agent rewords one comment in place: the user stays on the finding they
   });
 });
 
+test("each finding shows the number the agent knows it by, with a gap where one was taken out", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const view = page.locator(".review");
+  await callCanvasTool(host, conversationId, "review", review());
+  await callCanvasTool(host, conversationId, "update_review", {
+    removeFindings: ["finding-2"],
+    addFindings: [{ severity: "nit", checked: "plausible", at: "items.ts:1", title: "Return type", body: "Worth typing the items?" }],
+  });
+  const numbered = { "Anonymous fallback": "#1", "Empty items": "#3", "Return type": "#4" };
+
+  await test.step("in the Findings tab", async () => {
+    await view.getByRole("tab", { name: /Findings/ }).click();
+    await expect(view.locator(".finding")).toHaveCount(3);
+    for (const [title, number] of Object.entries(numbered)) await expect(view.locator(".finding", { hasText: title }).locator(".finding-number")).toHaveText(number);
+    await expect(view.locator(".finding-number").first()).toHaveAttribute("data-hint", /finding 5 or finding-5, it means #5/);
+  });
+
+  await test.step("in the Overview's list", async () => {
+    await view.getByRole("tab", { name: /Overview/ }).click();
+    for (const [title, number] of Object.entries(numbered)) await expect(view.locator(".overview-findings li", { hasText: title }).locator(".finding-number")).toHaveText(number);
+  });
+
+  await test.step("on the diff in the Files tab", async () => {
+    await view.getByRole("tab", { name: /Files/ }).click();
+    await expect(view.locator(".finding", { hasText: "Anonymous fallback" }).locator(".finding-number")).toHaveText("#1");
+  });
+});
+
 test("coming back to a review's conversation shows the review as the user left it: the tab, the selected finding and how far they scrolled", async ({ page }) => {
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });

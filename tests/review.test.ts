@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { excerptRows, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
+import { excerptRows, findingNumber, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "../host/review/diff.ts";
 import { parsePullRequestUrl, postPendingReview, type GitHubCli } from "../host/review/github.ts";
 import { AnchorReader, git, ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
@@ -387,5 +387,11 @@ describe("posting to the pull request", () => {
   test("refuses when the pull request moved on since the review", async () => {
     const { gh } = fakeGitHub({ head: "newer", reviews: [] });
     expect(postPendingReview(reviewOf("abc"), gh)).rejects.toThrow("The pull request has changed since the review");
+  });
+});
+
+describe("finding numbers", () => {
+  test("a finding's number is the N of its id finding-N, and 0 for an id of another shape", () => {
+    expect([findingNumber("finding-1"), findingNumber("finding-12"), findingNumber("finding 3"), findingNumber("note-2")]).toEqual([1, 12, 0, 0]);
   });
 });

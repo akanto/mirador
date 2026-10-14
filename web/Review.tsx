@@ -5,6 +5,7 @@ import {
   anchorLabel,
   answersOf,
   excerptRows,
+  findingNumber,
   findingSeverities,
   isCommentable,
   severityLabels,
@@ -217,6 +218,16 @@ function CodeBlock({
   );
 }
 
+/** The number the agent names the finding by, so "finding 5" in chat points at #5 here. */
+function FindingNumber({ findingId }: { findingId: string }) {
+  const number = findingNumber(findingId);
+  return number > 0 ? (
+    <span className="finding-number" data-hint={hints.findingNumber}>
+      #{number}
+    </span>
+  ) : null;
+}
+
 function FindingCard({
   item,
   finding,
@@ -259,6 +270,7 @@ function FindingCard({
         <span className={`checked ${finding.checked}`} data-hint={hints.findingChecked}>
           {finding.checked === "confirmed" ? "✓ confirmed" : "? plausible"}
         </span>
+        <FindingNumber findingId={finding.id} />
         <span className="finding-title">{finding.title}</span>
         {onGoToCode ? (
           <button type="button" className="link anchor" onClick={onGoToCode}>
@@ -634,6 +646,7 @@ function Overview({
               {findings.map((finding) => (
                 <li key={finding.id} className={finding.decision === "drop" ? "dropped" : ""}>
                   <span className="severity">{severityLabels[severity]}</span>
+                  <FindingNumber findingId={finding.id} />
                   <button type="button" className="link" onClick={() => onFinding(finding.id)}>
                     {finding.title}
                   </button>

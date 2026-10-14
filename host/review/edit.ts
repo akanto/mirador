@@ -1,5 +1,6 @@
 import {
   answersOf,
+  findingNumber,
   type CodeAnchor,
   type CodeExcerpt,
   type FindingCheck,
@@ -70,8 +71,6 @@ export const definedOnly = <T extends object>(fields: T) => Object.fromEntries(O
 /** The review tool's result writes "finding 2" in sentences and finding-2 as an id; either names the same finding. */
 const idNamed = (name: string) => name.trim().replace(/\s+/, "-");
 
-const numberOf = (findingId: string) => Number(/^finding-(\d+)$/.exec(findingId)?.[1] ?? 0);
-
 const touchesAnything = (edit: ReviewEdit) =>
   [edit.verdict, edit.summary, edit.flow, edit.findings?.length, edit.addFindings?.length, edit.removeFindings?.length, edit.answers?.length].some(Boolean);
 
@@ -106,7 +105,7 @@ export function applyReviewEdit(review: Review, edit: ReviewEdit, anchors: EditA
       return finding?.id ?? [];
     }),
   );
-  const lastNumber = Math.max(review.lastFindingNumber ?? 0, ...review.findings.map(({ id }) => numberOf(id)));
+  const lastNumber = Math.max(review.lastFindingNumber ?? 0, ...review.findings.map(({ id }) => findingNumber(id)));
   const added = (edit.addFindings ?? []).flatMap((finding, index): ReviewFinding[] => {
     const anchored = anchors.addFindings[index];
     return anchored ? [{ ...finding, ...anchored, id: `finding-${lastNumber + index + 1}`, decision: "keep" }] : [];
