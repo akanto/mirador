@@ -24,9 +24,12 @@ const lastTypedText = ({ messages }: MessagesRequest) =>
     .trim();
 
 const BACKGROUND = "BACKGROUND ";
+const SUBAGENT = "SUBAGENT ";
 const ADVISOR_AFTER_BASH = "ADVISOR AFTER BASH ";
 
 const offersBash = ({ tools }: MessagesRequest) => (tools ?? []).some(({ name }) => name === "Bash");
+
+const offersAgent = ({ tools }: MessagesRequest) => (tools ?? []).some(({ name }) => name === "Agent");
 
 /** A request Claude Code makes on its own once a command it ran in the background ends. */
 const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
@@ -42,7 +45,8 @@ const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
  * background; once it ends, the reply to Claude Code's notification of it waits until `answerEndedCommands`, then
  * runs `true` in Bash, so the turn Claude Code started on its own asks for one more reply after it. A message starting
  * with `ADVISOR AFTER BASH ` runs the rest in Bash and calls the advisor after it in the same reply, which the real
- * API never runs, so that call gets no result.
+ * API never runs, so that call gets no result. A message starting with `SUBAGENT ` has a subagent do the rest, on the
+ * model Claude Code picks for it.
  */
 export class FakeClaudeApi {
   limited = true;
@@ -56,6 +60,8 @@ export class FakeClaudeApi {
   readonly systemPrompts = new Map<string, string>();
   /** The user's newest message as Claude Code sent it, with the context it adds, by the text the user typed. */
   readonly userMessages = new Map<string, string>();
+  /** The model each request asked for, by the text the user typed last; a subagent's request goes by its prompt. */
+  readonly models = new Map<string, string>();
   /** Every request's messages, role by role: what the agent's own history held when it answered. */
   readonly history: string[][] = [];
   readonly refused: string[] = [];
@@ -111,6 +117,7 @@ export class FakeClaudeApi {
     this.systemPrompts.set(typed, systemTextOf(body));
     this.userMessages.set(typed, textOf(body.messages.findLast(({ role }) => role === "user")?.content ?? ""));
     this.history.push(body.messages.map(({ role, content }) => `${role}: ${textOf(content)}`));
+    this.models.set(typed, body.model);
     if (this.failing) {
       this.refused.push(typed);
       response.writeHead(502, { "content-type": "application/json" });
@@ -123,6 +130,7 @@ export class FakeClaudeApi {
     }
     if (offersBash(body) && answersEndedBackgroundCommand(body)) return void this.heldNotificationReplies.push(() => this.send(body, response, [this.bashCall("true", false)]));
     this.answered.push(typed);
+    if (offersAgent(body) && typed.startsWith(SUBAGENT)) return this.send(body, response, [this.agentCall(typed.slice(SUBAGENT.length))]);
     this.send(body, response, this.answerTo(typed, offersBash(body)));
   }
 
@@ -134,6 +142,10 @@ export class FakeClaudeApi {
 
   private bashCall(command: string, inBackground: boolean): Answer {
     return { type: "tool_use", id: `toolu_fake_${this.replies + 1}`, name: "Bash", input: { command, description: `Run ${command}`, run_in_background: inBackground } };
+  }
+
+  private agentCall(prompt: string): Answer {
+    return { type: "tool_use", id: `toolu_fake_${this.replies + 1}`, name: "Agent", input: { description: "Scripted subagent", prompt, subagent_type: "general-purpose" } };
   }
 
   private advisorCall(): Answer {
