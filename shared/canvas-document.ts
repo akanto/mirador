@@ -69,6 +69,46 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
   ].join("; ");
 }
 
+/**
+ * Whether text reads on what is behind it, as plain JS for the frame. `readableTextColor(color, backgrounds, scheme)`
+ * takes computed colours, the backgrounds from the text's element outwards, and gives the theme text colour to show
+ * the text in instead, or null when it reads as it is or cannot be judged.
+ */
+export const TEXT_CONTRAST_SCRIPT = `
+  const MINIMUM_TEXT_CONTRAST = 2.5;
+  const THEME_TEXT = [[23, 23, 23], [236, 236, 236]];
+  const THEME_PAGE = { light: [255, 255, 255], dark: [17, 17, 17] };
+  const parseColor = (value) => {
+    const match = /^rgba?\\(([^)]*)\\)$/.exec(value);
+    if (!match) return null;
+    const parts = match[1].split(/[\\s,\\/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.some((part) => Number.isNaN(part))) return null;
+    return { rgb: parts.slice(0, 3), alpha: parts.length > 3 ? parts[3] : 1 };
+  };
+  const over = (layer, ground) => layer.rgb.map((channel, index) => channel * layer.alpha + ground[index] * (1 - layer.alpha));
+  const luminance = (rgb) => {
+    const [red, green, blue] = rgb.map((channel) => {
+      const share = channel / 255;
+      return share <= 0.03928 ? share / 12.92 : ((share + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const contrastRatio = (one, other) => {
+    const [lighter, darker] = [luminance(one), luminance(other)].sort((a, b) => b - a);
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  const readableTextColor = (color, backgrounds, scheme) => {
+    const text = parseColor(color);
+    if (!text || text.alpha < 0.5) return null;
+    const layers = backgrounds.map(parseColor);
+    if (layers.includes(null)) return null;
+    const ground = layers.reduceRight((below, layer) => over(layer, below), THEME_PAGE[scheme]);
+    if (contrastRatio(over(text, ground), ground) >= MINIMUM_TEXT_CONTRAST) return null;
+    const best = THEME_TEXT.reduce((most, each) => (contrastRatio(each, ground) > contrastRatio(most, ground) ? each : most));
+    return "rgb(" + best.join(", ") + ")";
+  };
+`;
+
 function frameReporter(itemId: string, theme: CanvasTheme, assetsOrigin: string) {
   return `(() => {
   const itemId = ${JSON.stringify(itemId)};
@@ -79,6 +119,66 @@ function frameReporter(itemId: string, theme: CanvasTheme, assetsOrigin: string)
   const showIn = (theme) => { colorScheme.textContent = ":root{color-scheme:" + (theme === "dark" ? "dark" : "light") + " !important}"; };
   showIn(${JSON.stringify(theme)});
   document.head.append(colorScheme);
+${TEXT_CONTRAST_SCRIPT}
+  // Pages often pick colours for one theme only. Text that all but vanishes on its own background takes the theme
+  // text colour that reads there; each check gives the text its own colour back first, so a theme change starts afresh.
+  const fixedText = new Map();
+  const keepTextReadable = () => {
+    if (!document.body) return;
+    const scheme = getComputedStyle(document.documentElement).colorScheme === "dark" ? "dark" : "light";
+    const backgrounds = new Map();
+    const layersBehind = (element) => {
+      const style = getComputedStyle(element);
+      if (style.backgroundImage !== "none") return null;
+      const own = style.backgroundColor;
+      const parsed = parseColor(own);
+      if ((parsed && parsed.alpha === 1) || !element.parentElement) return [own];
+      // Out of the flow, it may sit over anything, not just over its ancestors.
+      if (style.position === "absolute" || style.position === "fixed") return null;
+      const outer = backgroundsOf(element.parentElement);
+      return outer && [own, ...outer];
+    };
+    const backgroundsOf = (element) => {
+      if (!backgrounds.has(element)) backgrounds.set(element, layersBehind(element));
+      return backgrounds.get(element);
+    };
+    const hasOwnText = (element) => [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.data.trim());
+    const keepReadable = (element) => {
+      if (!hasOwnText(element)) return;
+      const layers = backgroundsOf(element);
+      const color = layers && readableTextColor(getComputedStyle(element).color, layers, scheme);
+      if (!color) return;
+      fixedText.set(element, { value: element.style.getPropertyValue("color"), priority: element.style.getPropertyPriority("color"), ours: color });
+      element.style.setProperty("color", color, "important");
+    };
+    // Parents before their children, so a child is judged in the colour it inherits once its parent's is fixed.
+    keepReadable(document.body);
+    const notText = (element) => (element.matches("svg, script, style, noscript, textarea") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT);
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, { acceptNode: notText });
+    for (let element = walker.nextNode(); element; element = walker.nextNode()) keepReadable(element);
+  };
+  const restoreTextColours = () => {
+    fixedText.forEach(({ value, priority, ours }, element) => {
+      if (element.style.getPropertyValue("color") !== ours) return;
+      if (value) element.style.setProperty("color", value, priority);
+      else element.style.removeProperty("color");
+    });
+    fixedText.clear();
+  };
+  let textCheck = 0;
+  const textWatcher = new MutationObserver(() => {
+    clearTimeout(textCheck);
+    textCheck = setTimeout(checkText, 100);
+  });
+  const checkText = () => {
+    if (document.readyState === "loading") return;
+    textWatcher.disconnect();
+    restoreTextColours();
+    keepTextReadable();
+    textWatcher.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style"] });
+  };
+  addEventListener("DOMContentLoaded", checkText);
+  addEventListener("load", checkText);
   // The whole page, not only what the frame shows, in the colours it is shown in.
   const capture = async (requestId) => {
     try {
@@ -102,7 +202,10 @@ function frameReporter(itemId: string, theme: CanvasTheme, assetsOrigin: string)
   addEventListener("message", (event) => {
     const data = event.data;
     if (event.source !== parent || !data || data.source !== ${JSON.stringify(CANVAS_MESSAGE_SOURCE)}) return;
-    if (data.kind === "theme") showIn(data.theme);
+    if (data.kind === "theme") {
+      showIn(data.theme);
+      checkText();
+    }
     if (data.kind === "capture") capture(data.requestId);
   });
   const record = (message) => {
