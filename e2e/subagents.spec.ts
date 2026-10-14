@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -85,6 +85,19 @@ test("a subagent's work folds into its card, and the header counts the subagents
     await expect(watchLatest).toContainText("bun run build");
     await expect(watchLatest, "the subagent's latest work, at the end of its long card").toBeInViewport();
     await expect(watch).toHaveAttribute("open");
+  });
+
+  await test.step("a shell block in a subagent's card looks as it does in the timeline, its command not framed apart from its output", async () => {
+    const commandPlacement = (shell: Locator) =>
+      shell.evaluate((element) => {
+        const summary = element.querySelector(":scope > summary")!;
+        const command = summary.querySelector(":scope > .shell-body")!.getBoundingClientRect();
+        const block = element.getBoundingClientRect();
+        return { left: command.left - block.left, right: block.right - command.right, background: getComputedStyle(summary).backgroundColor };
+      });
+    await expect(watch).toHaveAttribute("open");
+    const nested = watch.locator(".subagent-work .shell", { hasText: "bun run build" });
+    expect(await commandPlacement(nested)).toEqual(await commandPlacement(lint));
   });
 
   await test.step("above the message box, the subagents at work stay in sight wherever the conversation is scrolled, and open at their latest work", async () => {

@@ -1760,7 +1760,9 @@ input.picker-search {
   overflow: hidden;
 }
 
-.tool summary {
+/* The card's own bar and its input and output toggles, not the summaries of the entries in a subagent's card. */
+.tool > summary,
+.tool > .raw > summary {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -1768,7 +1770,8 @@ input.picker-search {
   background: var(--panel-2);
 }
 
-.tool[open] summary {
+.tool[open] > summary,
+.tool[open] > .raw > summary {
   border-bottom: 1px solid var(--border);
 }
 
