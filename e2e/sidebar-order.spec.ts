@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, dragOnto, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5110);
+const host = new TestHost();
 const secondDir = join(host.root, "second");
 
 test.beforeAll(async () => {

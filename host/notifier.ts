@@ -41,11 +41,16 @@ export class NotifierMute {
   }
 
   private markerPath(sessionId: string) {
-    return join(this.notifierDir!, `mute-${sessionId.replace(/[^A-Za-z0-9_-]/g, "-")}`);
+    return join(this.notifierDir!, muteMarkerName(sessionId));
   }
 }
 
-function mutedListAt(path: string): string[] {
+export const muteMarkerName = (sessionId: string) => `mute-${sessionId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+
+/** Where in its data directory a host lists the sessions it muted. */
+export const MUTED_LIST_FILE = "notifier-muted.json";
+
+export function mutedListAt(path: string): string[] {
   try {
     const list: unknown = JSON.parse(readFileSync(path, "utf8"));
     return Array.isArray(list) ? list.filter((sessionId) => typeof sessionId === "string") : [];

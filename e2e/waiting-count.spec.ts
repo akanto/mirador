@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, answerCanvasQuestion, callCanvasTool, signIn, startConversation, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5400);
+const host = new TestHost();
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

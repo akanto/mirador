@@ -7,9 +7,9 @@ import { agentEnvironment } from "../host/acp/environment.ts";
 import { applyEnvironment, parseEnvironment } from "../shared/profile-environment.ts";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
-import { notifierDir, TestHost } from "./test-host.ts";
+import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4875);
+const host = new TestHost();
 const api = new FakeClaudeApi();
 const claudeConfigDir = join(host.root, "claude-config");
 const environment = () => `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${claudeConfigDir}`;
@@ -43,7 +43,7 @@ function openInTerminal(sessionId: string, status: string) {
 
 /** A turn the user takes in the session from a terminal: `claude -p --resume` in the project directory. */
 async function takeTurnInTerminal(sessionId: string, prompt: string) {
-  if (existsSync(notifierDir)) writeFileSync(join(notifierDir, `mute-${sessionId}`), "e2e terminal session (mirador)");
+  host.muteNotifier(sessionId);
   const env = applyEnvironment(agentEnvironment(), parseEnvironment(environment()));
   const claude = spawn(bundledClaude, ["-p", prompt, "--resume", sessionId], { cwd: host.projectDir, env, stdio: "ignore" });
   await new Promise((resolve) => claude.once("exit", resolve));

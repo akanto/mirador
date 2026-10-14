@@ -5,7 +5,7 @@ import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5476);
+const host = new TestHost();
 const api = new FakeClaudeApi();
 const claudeConfigDir = join(host.root, "claude-config");
 const SUBAGENT_MODEL = "claude-haiku-4-5";

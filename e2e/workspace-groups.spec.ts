@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, addWorkspaceFromSidebar, callCanvasTool, dragOnto, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4885);
+const host = new TestHost();
 const alphaDir = join(host.root, "alpha");
 const betaDir = join(host.root, "beta");
 const gammaDir = join(host.root, "gamma");

@@ -3,7 +3,7 @@ import type { DesktopMenu, DesktopMenuMessage } from "../shared/desktop-menu.ts"
 import { addWorkspace, chooseInSettings, signIn, startConversation } from "./helpers.ts";
 import { jobControlShell, TestHost } from "./test-host.ts";
 
-const host = new TestHost(4810, { shell: jobControlShell });
+const host = new TestHost({ shell: jobControlShell });
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

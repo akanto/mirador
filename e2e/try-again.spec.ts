@@ -3,7 +3,7 @@ import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5490);
+const host = new TestHost();
 const api = new FakeClaudeApi();
 const PROFILE = "flaky gateway";
 const CONTINUE = "Continue where you left off.";

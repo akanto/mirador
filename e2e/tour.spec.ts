@@ -5,7 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5375, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const ideaLog = join(host.root, "idea.log");
 
 const serviceBefore = `export function serve(request) {

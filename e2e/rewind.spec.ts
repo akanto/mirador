@@ -6,7 +6,7 @@ import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, lastAgentMessage, primaryModifier, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5274);
+const host = new TestHost();
 const api = new FakeClaudeApi();
 const PROFILE = "rewindable";
 const readme = join(host.projectDir, "README.md");

@@ -3,7 +3,7 @@ import { addWorkspace, createProfile, openProfiles, sendMessage, signIn, startCo
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5120);
+const host = new TestHost();
 const model = new ScriptedModel();
 const PROFILE = "planner";
 

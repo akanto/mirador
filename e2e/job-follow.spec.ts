@@ -6,7 +6,7 @@ import { addWorkspace, createProfile, signIn, startConversation } from "./helper
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5234);
+const host = new TestHost();
 const model = new ScriptedModel();
 const PROFILE = "scripted opencode";
 const jobs: ChildProcess[] = [];

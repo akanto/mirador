@@ -3,7 +3,7 @@ import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4880);
+const host = new TestHost();
 const gateway = new FakeGateway();
 
 test.describe.configure({ mode: "serial" });

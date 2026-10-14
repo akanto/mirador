@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
@@ -8,9 +8,9 @@ import { applyEnvironment, parseEnvironment } from "../shared/profile-environmen
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
 import { addWorkspace, createProfile, sendMessage, signIn } from "./helpers.ts";
-import { notifierDir, TestHost } from "./test-host.ts";
+import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4800);
+const host = new TestHost();
 const gateway = new FakeGateway();
 const bundledClaude = join(dirname(createRequire(import.meta.url).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/package.json`)), "claude");
 const MARKER = "external-marker-42";
@@ -19,7 +19,7 @@ let terminalSessionId = "";
 /** What a user does in a terminal: `claude -p` in the project directory, against the fake gateway unless told otherwise. */
 async function runClaudeInTerminal(cwd: string, prompt: string, environment = gatewayEnvironment(gateway)) {
   const sessionId = crypto.randomUUID();
-  if (existsSync(notifierDir)) writeFileSync(join(notifierDir, `mute-${sessionId}`), "e2e terminal session (mirador)");
+  host.muteNotifier(sessionId);
   const env = applyEnvironment(agentEnvironment(), parseEnvironment(environment));
   const claude = spawn(bundledClaude, ["-p", prompt, "--session-id", sessionId, "--model", "haiku"], { cwd, env, stdio: "ignore" });
   await new Promise((resolve) => claude.once("exit", resolve));

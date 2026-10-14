@@ -7,7 +7,7 @@ import { addWorkspace, chooseInSettings, createProfile, sendMessage, signIn, sta
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4940, { runsUserStatusLine: true });
+const host = new TestHost({ runsUserStatusLine: true });
 const api = new FakeClaudeApi();
 const model = new ScriptedModel();
 

@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, addWorkspaceFromSidebar, createProfile, primaryModifier, sendMessage, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5272, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
 const profileName = "rewindable";
 const readme = join(host.projectDir, "README.md");

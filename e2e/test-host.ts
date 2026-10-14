@@ -2,10 +2,12 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { muteMarkerName, MUTED_LIST_FILE, mutedListAt } from "../host/notifier.ts";
+import { freePorts } from "./free-ports.ts";
 import { processTreeOf, waitForProcessesToEnd } from "./process-tree.ts";
 
 const repoRoot = join(import.meta.dirname, "..");
-export const notifierDir = join(homedir(), ".config", "claude-notifier");
+const notifierDir = join(homedir(), ".config", "claude-notifier");
 const claudeProjectsDir = join(homedir(), ".claude", "projects");
 const TRANSCRIPT_WRITERS_GRACE_MS = 2_000;
 /** As long as a host restart waits for its services to stop (SERVICES_STOP_TIMEOUT_MS in host/restart.ts). */
@@ -18,22 +20,28 @@ export const jobControlShell = process.platform === "darwin" ? "/bin/sh" : "/bin
 export const defaultShell = "/bin/sh";
 
 /**
- * Test sessions must be muted in the user's real claude-notifier directory; otherwise its
- * hooks (auto-approve in yolo mode, phone mirroring) act on them. These are the markers
- * this app wrote, so cleanup can remove them again.
- */
-function appMuteMarkers() {
-  if (!existsSync(notifierDir)) return [];
-  return readdirSync(notifierDir)
-    .filter((name) => name.startsWith("mute-"))
-    .filter((name) => readFileSync(join(notifierDir, name), "utf8").includes("(mirador)"));
-}
-
-/**
  * A path for a spec's own folder, to make in its hooks: Playwright also imports spec files in a process that never runs
  * their hooks, so a folder made on import is never removed.
  */
 export const scratchPath = (name: string) => join(tmpdir(), `mirador-e2e-${name}-${crypto.randomUUID().slice(0, 8)}`);
+
+interface TestHostOptions {
+  /** Test hosts share the user's home directory, so only a host that opts in runs statusline commands from Claude settings; its spec points a profile at settings of its own. */
+  runsUserStatusLine?: boolean;
+  shell?: string;
+  copiesSource?: boolean;
+  fakePrograms?: boolean;
+  /** Given the host's port when it depends on it, such as an address that leads to the host. */
+  environment?: Record<string, string> | ((port: number) => Record<string, string>);
+  /** Starts with no profile, as a first run does; otherwise the host has the profile a user sets up first. */
+  withoutProfiles?: boolean;
+}
+
+/** The host's own port, the canvas assets port after it, and the two after those, on which it serves the network. */
+const PORTS_PER_HOST = 4;
+/** Another host, of this run or another, may take a port between the look for free ones and this host's start. */
+const PORT_ATTEMPTS = 3;
+const PORT_TAKEN = /EADDRINUSE|Is port \d+ in use/;
 
 /** Runs the real host (and through it a real Claude Code on a cheap model) in throwaway directories. */
 export class TestHost {
@@ -47,27 +55,27 @@ export class TestHost {
   readonly sourceDir: string;
   private starts = 0;
   private logFile?: import("node:fs").WriteStream;
-  private readonly markersBefore = new Set(appMuteMarkers());
-  readonly origin: string;
+  private readonly mutedBySpec = new Set<string>();
+  private firstPort?: number;
+  private readonly options: TestHostOptions;
   authUrl = "";
   private process?: ChildProcess;
   private output = "";
 
-  /** Test hosts share the user's home directory, so only a host that opts in runs statusline commands from Claude settings; its spec points a profile at settings of its own. */
-  constructor(
-    readonly port: number,
-    private readonly options: {
-      runsUserStatusLine?: boolean;
-      shell?: string;
-      copiesSource?: boolean;
-      fakePrograms?: boolean;
-      environment?: Record<string, string>;
-      /** Starts with no profile, as a first run does; otherwise the host has the profile a user sets up first. */
-      withoutProfiles?: boolean;
-    } = {},
-  ) {
-    this.origin = `http://127.0.0.1:${port}`;
-    this.sourceDir = options.copiesSource ? join(this.root, "source") : repoRoot;
+  /** A port number first is what specs gave before hosts took free ports themselves; it is not used. */
+  constructor(optionsOrUnusedPort: TestHostOptions | number = {}, options: TestHostOptions = {}) {
+    this.options = typeof optionsOrUnusedPort === "number" ? options : optionsOrUnusedPort;
+    this.sourceDir = this.options.copiesSource ? join(this.root, "source") : repoRoot;
+  }
+
+  /** The host's own port, which it has from its first start on: start() takes ports nothing else listens on. */
+  get port() {
+    if (this.firstPort === undefined) throw new Error("A test host has no port until it starts: read it in a hook or a test, not as the spec loads.");
+    return this.firstPort;
+  }
+
+  get origin() {
+    return `http://127.0.0.1:${this.port}`;
   }
 
   get pid() {
@@ -128,13 +136,27 @@ export class TestHost {
       mkdirSync(this.dataDir, { recursive: true });
       execFileSync(this.bun, [join(repoRoot, "e2e", "seed-profile.ts"), this.sourceDir, join(this.dataDir, "state.sqlite")]);
     }
+    if (this.firstPort !== undefined) return this.launch(this.firstPort);
+    for (let attempt = 1; ; attempt++) {
+      const port = await freePorts(PORTS_PER_HOST);
+      try {
+        await this.launch(port);
+        this.firstPort = port;
+        return;
+      } catch (error) {
+        if (attempt === PORT_ATTEMPTS || !PORT_TAKEN.test(this.output)) throw error;
+      }
+    }
+  }
+
+  private async launch(port: number) {
     this.starts += 1;
     this.output = "";
     const child = spawn(this.bun, ["host/main.ts"], {
       cwd: this.sourceDir,
       env: {
         ...this.baseEnvironment(),
-        MIRADOR_PORT: String(this.port),
+        MIRADOR_PORT: String(port),
         MIRADOR_DATA_DIR: this.dataDir,
         MIRADOR_MCP_TOKEN: this.mcpToken,
         MIRADOR_TEST_MODEL: process.env.MIRADOR_TEST_MODEL ?? "haiku",
@@ -145,7 +167,7 @@ export class TestHost {
         MIRADOR_NEWER_VERSION_CHECK: "off",
         SHELL: this.options.shell ?? defaultShell,
         ...(this.options.fakePrograms && { PATH: `${this.fakeProgramsDir}:${this.baseEnvironment().PATH}` }),
-        ...this.options.environment,
+        ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -164,7 +186,7 @@ export class TestHost {
       if (Date.now() > deadline || child.exitCode !== null) throw new Error(`host did not start:\n${this.output}`);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    this.authUrl = `${this.origin}/auth?token=${readFileSync(join(this.dataDir, "browser-token"), "utf8").trim()}`;
+    this.authUrl = `http://127.0.0.1:${port}/auth?token=${readFileSync(join(this.dataDir, "browser-token"), "utf8").trim()}`;
   }
 
   /**
@@ -200,10 +222,24 @@ export class TestHost {
     return this.output;
   }
 
+  /**
+   * Test sessions must be muted in the user's real claude-notifier directory; otherwise its hooks (auto-approve in yolo
+   * mode, phone mirroring) act on them. This mutes a session the spec runs itself, as the host mutes its own.
+   */
+  muteNotifier(sessionId: string) {
+    if (!existsSync(notifierDir)) return;
+    writeFileSync(join(notifierDir, muteMarkerName(sessionId)), "e2e terminal session (mirador)");
+    this.mutedBySpec.add(sessionId);
+  }
+
+  /** Only this host's markers: hosts beside it, of this run or another, still need theirs. */
+  private unmuteOwnSessions() {
+    const mutedByHost = mutedListAt(join(this.dataDir, MUTED_LIST_FILE));
+    [...mutedByHost, ...this.mutedBySpec].forEach((sessionId) => rmSync(join(notifierDir, muteMarkerName(sessionId)), { force: true }));
+  }
+
   async cleanUp() {
-    appMuteMarkers()
-      .filter((name) => !this.markersBefore.has(name))
-      .forEach((name) => rmSync(join(notifierDir, name), { force: true }));
+    this.unmuteOwnSessions();
     if (process.env.MIRADOR_E2E_KEEP) return;
     rmSync(this.root, { recursive: true, force: true });
     this.removeClaudeTranscripts();

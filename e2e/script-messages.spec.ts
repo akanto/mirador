@@ -5,7 +5,7 @@ import type { Conversation } from "../shared/model.ts";
 import { addWorkspace, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4890);
+const host = new TestHost();
 const miradorMessage = resolve("scripts/mirador-message");
 
 test.beforeAll(() => host.start());

@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4895);
+const host = new TestHost();
 const LATE_WRITER_SECONDS = 2;
 
 test.beforeAll(() => host.start());

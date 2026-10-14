@@ -15,7 +15,7 @@ test.skip(!process.env.MIRADOR_SCREENSHOTS, "set MIRADOR_SCREENSHOTS=1 to retake
 
 /** A plain zsh prompt in the terminals, instead of whatever the person taking the screenshots has. */
 const zdotdir = join(tmpdir(), "mirador-readme-zdotdir");
-const host = new TestHost(5240, {
+const host = new TestHost({
   shell: "/bin/zsh",
   environment: { ZDOTDIR: zdotdir, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default" },
 });
@@ -23,7 +23,7 @@ const screenshots = join(import.meta.dirname, "..", "docs", "screenshots");
 const shopApi = join(host.root, "shop-api");
 const mobileApp = join(host.root, "mobile-app");
 const infra = join(host.root, "infra");
-const assetsOrigin = `http://127.0.0.1:${host.port + 1}`;
+const assetsOrigin = () => `http://127.0.0.1:${host.port + 1}`;
 
 function writeFiles(directory: string, files: Record<string, string>) {
   Object.entries(files).forEach(([path, text]) => {
@@ -206,7 +206,7 @@ const openConversation = (page: Page, conversationId: string) =>
 
 const save = (page: Page, name: string) => page.screenshot({ path: join(screenshots, `${name}.png`) });
 
-const checkoutDiagram = `<style>
+const checkoutDiagram = () => `<style>
   body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 22px 26px; background: #fbfaff; color: #1f1d2b; }
   h1 { font-size: 21px; margin: 0 0 4px; }
   .lead { color: #5d5a70; margin: 0 0 14px; }
@@ -242,7 +242,7 @@ sequenceDiagram
   <div class="risk"><b>Retried capture</b>Without a key, the card is charged twice.</div>
   <div class="risk slow"><b>Slow mail server</b>Holds the order open while it sends.</div>
 </div>
-<script src="${assetsOrigin}/mermaid.min.js"></script>
+<script src="${assetsOrigin()}/mermaid.min.js"></script>
 <script>mermaid.initialize({ startOnLoad: true, theme: "neutral", sequence: { mirrorActors: false, showSequenceNumbers: true } });</script>`;
 
 const phoneMockup = (body: string) => `<style>
@@ -390,7 +390,7 @@ test("the README's screenshots", async ({ page }) => {
 
   await test.step("the canvas next to the conversation", async () => {
     await openConversation(page, ids.explainCheckout);
-    await callCanvasTool(host, ids.explainCheckout, "show", { title: "Checkout, end to end", html: checkoutDiagram });
+    await callCanvasTool(host, ids.explainCheckout, "show", { title: "Checkout, end to end", html: checkoutDiagram() });
     await expect(page.locator(".canvas-frame.show iframe").contentFrame().locator(".mermaid svg")).toBeVisible();
     await save(page, "canvas");
   });

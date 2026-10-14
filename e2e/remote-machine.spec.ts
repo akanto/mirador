@@ -14,17 +14,19 @@ import {
   startConversation,
   workspaceCard,
 } from "./helpers.ts";
+import { freePorts } from "./free-ports.ts";
 import { TestHost } from "./test-host.ts";
 
-const PUBLIC_PORT = 5163;
-const PUBLIC_CANVAS_PORT = 5164;
-const publicOrigin = `http://localhost:${PUBLIC_PORT}`;
+/** Where the stand-in for tailscale serve listens, in front of the host's own port and its canvas port after it. */
+let publicPort = 0;
+const publicOrigin = () => `http://localhost:${publicPort}`;
+const publicCanvasOrigin = () => `http://localhost:${publicPort + 1}`;
 /** The server other devices reach at its public address. */
-const host = new TestHost(5165, {
-  environment: { MIRADOR_PUBLIC_ORIGIN: publicOrigin, MIRADOR_PUBLIC_CANVAS_ORIGIN: `http://localhost:${PUBLIC_CANVAS_PORT}` },
+const host = new TestHost({
+  environment: () => ({ MIRADOR_PUBLIC_ORIGIN: publicOrigin(), MIRADOR_PUBLIC_CANVAS_ORIGIN: publicCanvasOrigin() }),
 });
 /** The user's own computer, which opens the server as one of its machines. */
-const laptop = new TestHost(5161);
+const laptop = new TestHost();
 
 /** Stands in for tailscale serve: another address in front of the host, which keeps listening on 127.0.0.1 only. */
 function forward(fromPort: number, toPort: number) {
@@ -44,8 +46,9 @@ function forward(fromPort: number, toPort: number) {
 let forwarders: Server[] = [];
 
 test.beforeAll(async () => {
+  publicPort = await freePorts(2);
   await Promise.all([host.start(), laptop.start()]);
-  forwarders = await Promise.all([forward(PUBLIC_PORT, host.port), forward(PUBLIC_CANVAS_PORT, host.port + 1)]);
+  forwarders = await Promise.all([forward(publicPort, host.port), forward(publicPort + 1, host.port + 1)]);
 });
 test.afterAll(async () => {
   forwarders.forEach((server) => server.close());
@@ -70,11 +73,11 @@ test("another device joins the machine at its public address with an invite, and
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const { settings, link } = await inviteLinkFrom(page);
-  expect(link).toMatch(new RegExp(`^${publicOrigin}/#/join/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`));
+  expect(link).toMatch(new RegExp(`^${publicOrigin()}/#/join/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`));
 
   const phone = await (await browser.newContext()).newPage();
   await test.step("a device without an invite is asked for one", async () => {
-    await phone.goto(publicOrigin);
+    await phone.goto(publicOrigin());
     await expect(phone.getByRole("heading", { name: "Join this machine" })).toBeVisible();
   });
 
@@ -122,11 +125,11 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     await machines.getByLabel("Name").fill("Home server");
     await machines.getByLabel("Address or invite link").fill(link);
     await machines.getByRole("button", { name: "Add and join" }).click();
-    await expect(machines.locator(".machine-list li")).toHaveText(/Home server\s*http:\/\/localhost:5163/);
+    await expect(machines.locator(".machine-list li")).toHaveText(new RegExp(`Home server\\s*${publicOrigin()}`));
     await expect(machines.locator(".machine-not-joined")).toHaveCount(0);
     await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toBeVisible();
 
-    await machines.getByLabel("Address or invite link").fill(`${publicOrigin}/`);
+    await machines.getByLabel("Address or invite link").fill(`${publicOrigin()}/`);
     await expect(machines.getByText("This machine is already in the list.")).toBeVisible();
     await expect(machines.getByRole("button", { name: "Add", exact: true })).toBeDisabled();
   });
@@ -145,7 +148,7 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
   });
 
   await test.step("its canvas pages load their libraries from this computer, whose browser need not trust the server's certificate", async () => {
-    const html = `<div id="out"></div><script src="http://localhost:${PUBLIC_CANVAS_PORT}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
+    const html = `<div id="out"></div><script src="${publicCanvasOrigin()}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
     void callCanvasTool(host, serverConversation, "show", { title: "Chart", html }).catch(() => {});
     const canvasPage = frame.locator(".canvas-frame.show iframe");
     await expect(canvasPage.contentFrame().locator("#out")).toHaveText(/^d3 7/);
@@ -247,7 +250,7 @@ test("a machine added by its address alone asks for an invite code in this compu
 });
 
 test("pages of other sites cannot join for their visitors", async () => {
-  const otherOrigin = await fetch(`${publicOrigin}/join`, {
+  const otherOrigin = await fetch(`${publicOrigin()}/join`, {
     method: "POST",
     headers: { origin: "http://evil.example", "content-type": "application/json" },
     body: JSON.stringify({ code: "AAAA-AAAA-AAAA" }),

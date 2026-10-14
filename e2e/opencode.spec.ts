@@ -19,7 +19,7 @@ import {
 import { SPARE_MODELS, ScriptedModel, opencodeProgram, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4840);
+const host = new TestHost();
 const model = new ScriptedModel();
 const PROFILE = "scripted opencode";
 const MARKER = "opencode-terminal-marker-17";

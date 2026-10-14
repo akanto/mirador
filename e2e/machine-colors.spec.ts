@@ -2,8 +2,8 @@ import { expect, test, type Locator } from "@playwright/test";
 import { chooseInSettings, openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const server = new TestHost(5212);
-const laptop = new TestHost(5214);
+const server = new TestHost();
+const laptop = new TestHost();
 
 test.beforeAll(async () => {
   await Promise.all([server.start(), laptop.start()]);

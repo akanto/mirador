@@ -6,7 +6,7 @@ import { isHostCommandLine } from "../desktop/src/core/host-command.ts";
 import { addWorkspace, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5010, { copiesSource: true });
+const host = new TestHost({ copiesSource: true });
 
 test.describe.configure({ mode: "serial" });
 test.beforeAll(() => host.start());

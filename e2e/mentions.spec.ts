@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5080);
+const host = new TestHost();
 
 test.beforeAll(async () => {
   ["src/server/main.ts", "src/server/routes.ts", "docs/guide.md"].forEach((file) => {

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, openProfiles, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5300, { withoutProfiles: true });
+const host = new TestHost({ withoutProfiles: true });
 
 test.beforeAll(async () => {
   await host.start();

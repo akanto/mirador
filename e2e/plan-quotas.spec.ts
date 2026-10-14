@@ -5,7 +5,7 @@ import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5238, { runsUserStatusLine: true });
+const host = new TestHost({ runsUserStatusLine: true });
 const api = new FakeClaudeApi();
 const PROFILE = "subscription";
 const MINUTE = 60;

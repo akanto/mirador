@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, openProfiles, sendMessage, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5270, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
 const agentLogFile = join(host.root, "agent-log");
 const profileName = "wedged";

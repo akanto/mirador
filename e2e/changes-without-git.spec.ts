@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5355, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const reportFile = join(host.projectDir, "report.txt");
 
 test.beforeAll(async () => {

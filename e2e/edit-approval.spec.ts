@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, lastAgentMessage, openSettings, sendMessage, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5320, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const appFile = join(host.projectDir, "src", "app.ts");
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
 

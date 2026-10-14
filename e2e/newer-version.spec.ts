@@ -12,8 +12,8 @@ import { TestHost } from "./test-host.ts";
 
 /** The fake GitHub's port is known only once it listens, which is before the host starts and reads this. */
 const releaseEnvironment: Record<string, string> = { MIRADOR_NEWER_VERSION_CHECK: "on" };
-const releaseHost = new TestHost(4722, { copiesSource: true, environment: releaseEnvironment });
-const checkoutHost = new TestHost(4724, { copiesSource: true, environment: { MIRADOR_NEWER_VERSION_CHECK: "on" } });
+const releaseHost = new TestHost({ copiesSource: true, environment: releaseEnvironment });
+const checkoutHost = new TestHost({ copiesSource: true, environment: { MIRADOR_NEWER_VERSION_CHECK: "on" } });
 
 const github = createServer((_, response) => {
   response.writeHead(200, { "Content-Type": "application/json" });

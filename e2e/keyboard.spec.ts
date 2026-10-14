@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4820);
+const host = new TestHost();
 const secondProjectDir = join(host.root, "second-project");
 
 test.describe.configure({ mode: "serial" });

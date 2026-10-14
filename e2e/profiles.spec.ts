@@ -5,7 +5,7 @@ import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
 import { addWorkspace, createProfile, openProfiles, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4780);
+const host = new TestHost();
 const prelaunchMarker = join(host.root, "prelaunch-ran");
 
 const gateway = new FakeGateway();

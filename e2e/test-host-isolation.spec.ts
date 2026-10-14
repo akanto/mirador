@@ -15,7 +15,7 @@ test.beforeAll(async () => {
   await api.start();
   mkdirSync(join(home, ".claude"), { recursive: true });
   writeFileSync(join(home, ".claude", "CLAUDE.md"), `${USERS_OWN_INSTRUCTION}.\n`);
-  host = new TestHost(5248, { environment: { HOME: home, ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_OAUTH_TOKEN: "e2e-subscription-token", CLAUDE_CODE_MAX_RETRIES: "0" } });
+  host = new TestHost({ environment: { HOME: home, ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_OAUTH_TOKEN: "e2e-subscription-token", CLAUDE_CODE_MAX_RETRIES: "0" } });
   await host.start();
 });
 test.afterAll(async () => {

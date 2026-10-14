@@ -5,8 +5,8 @@ import { TestHost } from "./test-host.ts";
 /** On macOS /bin/sh is bash; on Linux it is often dash, which has no line editing. */
 const lineEditingShell = process.platform === "darwin" ? "/bin/sh" : "/bin/bash";
 
-function useHost(port: number) {
-  const host = new TestHost(port, { shell: lineEditingShell });
+function useHost() {
+  const host = new TestHost({ shell: lineEditingShell });
   test.beforeAll(() => host.start());
   test.afterAll(async () => {
     await host.stop();
@@ -17,7 +17,7 @@ function useHost(port: number) {
 
 test.describe("on macOS", () => {
   test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
-  const host = useHost(4750);
+  const host = useHost();
 
   test("on macOS, ⌘K clears the terminal for good, and ⌘←, ⌘→, ⌘⌫, ⌥← and ⌥→ edit the line as in Terminal.app", async ({ page }) => {
     await signIn(page, host);
@@ -66,7 +66,7 @@ test.describe("on macOS", () => {
 
 test.describe("on Linux", () => {
   test.skip(process.platform !== "linux", "Ctrl+Shift+V pastes through the browser's own Linux key binding");
-  const host = useHost(4790);
+  const host = useHost();
 
   test("Ctrl+Shift+C copies the terminal's selection and Ctrl+Shift+V pastes, as in GNOME Terminal", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);

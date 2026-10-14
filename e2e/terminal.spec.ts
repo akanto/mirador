@@ -5,7 +5,7 @@ import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
 import { addWorkspace, createProfile, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4920);
+const host = new TestHost();
 const gateway = new FakeGateway();
 const claudeConfigDir = join(host.root, "claude-config");
 const sessionRegistry = join(claudeConfigDir, "sessions");

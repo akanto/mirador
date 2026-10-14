@@ -5,7 +5,7 @@ import { addWorkspace, createProfile, sendMessage, signIn } from "./helpers.ts";
 import { processTreeOf } from "./process-tree.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5390, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const agentPidFile = join(host.root, "agent-pid");
 const stubbornAgentPids: number[] = [];
 

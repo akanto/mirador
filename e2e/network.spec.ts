@@ -6,15 +6,18 @@ import { join } from "node:path";
 import { addWorkspace, addWorkspaceFromSidebar, callCanvasTool, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const networkOrigin = "https://127.0.0.1:5192";
-const networkCanvasOrigin = "https://127.0.0.1:5193";
+/** Where the host serves the network: on the two ports after its own and its canvas port. */
+const networkOriginAt = (port: number) => `https://127.0.0.1:${port + 2}`;
+const networkCanvasOriginAt = (port: number) => `https://127.0.0.1:${port + 3}`;
 /** On the network from its environment, at an address its own certificate covers wherever the tests run. */
-const host = new TestHost(5190, {
-  environment: { MIRADOR_NETWORK: "on", MIRADOR_PUBLIC_ORIGIN: networkOrigin, MIRADOR_PUBLIC_CANVAS_ORIGIN: networkCanvasOrigin },
+const host = new TestHost({
+  environment: (port) => ({ MIRADOR_NETWORK: "on", MIRADOR_PUBLIC_ORIGIN: networkOriginAt(port), MIRADOR_PUBLIC_CANVAS_ORIGIN: networkCanvasOriginAt(port) }),
 });
-const hostSwitchedInSettings = new TestHost(5196);
+const networkOrigin = () => networkOriginAt(host.port);
+const networkCanvasOrigin = () => networkCanvasOriginAt(host.port);
+const hostSwitchedInSettings = new TestHost();
 /** Another computer's Mirador, which shows the host as one of its machines. */
-const laptop = new TestHost(5200);
+const laptop = new TestHost();
 
 test.beforeAll(async () => {
   await Promise.all([host.start(), hostSwitchedInSettings.start(), laptop.start()]);
@@ -59,11 +62,11 @@ test("a device joins over HTTPS with an invite link that names the host's certif
   const fingerprint = createHash("sha256").update(new X509Certificate(authority).raw).digest("base64url");
   await settings.getByRole("button", { name: "Invite a device" }).click();
   const link = (await settings.locator(".invite-link").textContent())!;
-  expect(link).toMatch(new RegExp(`^${networkOrigin}/#/join/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/${fingerprint}$`));
+  expect(link).toMatch(new RegExp(`^${networkOrigin()}/#/join/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/${fingerprint}$`));
 
   await test.step("the host's own certificate authority vouches for both of its network ports", async () => {
-    expect(await fetchTrusting(authority, `${networkOrigin}/mirador-ca.pem`)).toBe(authority);
-    expect(await fetchTrusting(authority, `${networkCanvasOrigin}/d3.min.js`)).toContain("d3js.org");
+    expect(await fetchTrusting(authority, `${networkOrigin()}/mirador-ca.pem`)).toBe(authority);
+    expect(await fetchTrusting(authority, `${networkCanvasOrigin()}/d3.min.js`)).toContain("d3js.org");
   });
 
   const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
@@ -73,9 +76,9 @@ test("a device joins over HTTPS with an invite link that names the host's certif
   });
 
   await test.step("the network port has no sign-in link, MCP endpoint or script messages", async () => {
-    expect(await statusOf(phone.request, "get", `${networkOrigin}/auth?token=anything`)).toBe(404);
-    expect(await statusOf(phone.request, "post", `${networkOrigin}/mcp/some-conversation`)).toBe(404);
-    expect(await statusOf(phone.request, "post", `${networkOrigin}/sessions/some-session/messages`)).toBe(404);
+    expect(await statusOf(phone.request, "get", `${networkOrigin()}/auth?token=anything`)).toBe(404);
+    expect(await statusOf(phone.request, "post", `${networkOrigin()}/mcp/some-conversation`)).toBe(404);
+    expect(await statusOf(phone.request, "post", `${networkOrigin()}/sessions/some-session/messages`)).toBe(404);
   });
 });
 
@@ -83,7 +86,7 @@ test("the host's own page loads canvas libraries from this machine, though agent
   await signIn(page, host);
   await addWorkspaceFromSidebar(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const html = `<div id="out"></div><script src="${networkCanvasOrigin}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
+  const html = `<div id="out"></div><script src="${networkCanvasOrigin()}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
   const result = await callCanvasTool(host, conversationId, "show", { title: "Chart", html });
 
   expect(result, "this browser does not trust the host's own certificate authority").toContain("rendered without script errors");
@@ -103,9 +106,9 @@ test("turning the network on in Settings takes effect when the host restarts", a
   settings = await openSettings(page, "Devices");
   await expect(networkRoute()).toBeChecked();
   await expect(settings.getByRole("link", { name: "certificate authority" })).toHaveAttribute("href", "/mirador-ca.pem");
-  await expect(settings.getByText(/reach it directly at https:\/\/.+:5198/)).toBeVisible();
+  await expect(settings.getByText(new RegExp(`reach it directly at https://.+:${hostSwitchedInSettings.port + 2}`))).toBeVisible();
   const authority = authorityOf(hostSwitchedInSettings);
-  expect(await fetchTrusting(authority, "https://127.0.0.1:5198/mirador-ca.pem")).toBe(authority);
+  expect(await fetchTrusting(authority, `${networkOriginAt(hostSwitchedInSettings.port)}/mirador-ca.pem`)).toBe(authority);
 
   await settings.getByRole("radio", { name: "Only on this machine" }).check();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
@@ -122,7 +125,7 @@ test("another Mirador joins over HTTPS only with the certificate authority the i
   await page.locator(".sidebar").getByRole("button", { name: "Machines…" }).click();
   const machines = page.getByRole("dialog", { name: "Machines" });
   await machines.getByLabel("Name").fill("Network box");
-  await machines.getByLabel("Address or invite link").fill(networkOrigin);
+  await machines.getByLabel("Address or invite link").fill(networkOrigin());
   await machines.getByRole("button", { name: "Add", exact: true }).click();
   await machines.locator(".machine-list li", { hasText: "Network box" }).getByRole("button", { name: "Open", exact: true }).click();
   const join = page.getByRole("region", { name: "Join Network box" });

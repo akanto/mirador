@@ -5,13 +5,15 @@ import { join } from "node:path";
 import { allowNotifications, notificationsShown, openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const networkOrigin = "https://127.0.0.1:5206";
+/** Where the server serves the network: on the two ports after its own and its canvas port. */
+const networkOriginAt = (port: number) => `https://127.0.0.1:${port + 2}`;
 /** On the network with its own certificate authority, which the laptop learns as it asks to join. */
-const server = new TestHost(5204, {
+const server = new TestHost({
   fakePrograms: true,
-  environment: { MIRADOR_NETWORK: "on", MIRADOR_PUBLIC_ORIGIN: networkOrigin, MIRADOR_PUBLIC_CANVAS_ORIGIN: "https://127.0.0.1:5207" },
+  environment: (port) => ({ MIRADOR_NETWORK: "on", MIRADOR_PUBLIC_ORIGIN: networkOriginAt(port), MIRADOR_PUBLIC_CANVAS_ORIGIN: `https://127.0.0.1:${port + 3}` }),
 });
-const laptop = new TestHost(5208);
+const networkOrigin = () => networkOriginAt(server.port);
+const laptop = new TestHost();
 
 const notificationsOnDesktop = join(server.root, "notify-send.log");
 const linksOpened = join(server.root, "xdg-open.log");
@@ -54,7 +56,7 @@ test("another Mirador asks to join over HTTPS, and gets in once someone at the m
   await page.locator(".sidebar").getByRole("button", { name: "Machines…" }).click();
   const machines = page.getByRole("dialog", { name: "Machines" });
   await machines.getByLabel("Name").fill("Server");
-  await machines.getByLabel("Address or invite link").fill(networkOrigin);
+  await machines.getByLabel("Address or invite link").fill(networkOrigin());
   await machines.getByRole("button", { name: "Add", exact: true }).click();
   await machines.locator(".machine-list li", { hasText: "Server" }).getByRole("button", { name: "Open", exact: true }).click();
   const join = page.getByRole("region", { name: "Join Server" });
@@ -105,7 +107,7 @@ test("a browser on the network asks to join, and is signed in once someone at th
   const serverPage = await browser.newPage();
   await signIn(serverPage, server);
   const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
-  await phone.goto(networkOrigin);
+  await phone.goto(networkOrigin());
   await phone.getByLabel("Name this device").fill("Phone");
   await phone.getByRole("button", { name: "Ask to join" }).click();
   const number = await numberShownIn(phone.locator(".join-machine"));
@@ -120,7 +122,7 @@ test("a browser on the network asks to join, and is signed in once someone at th
 
 test("while no page of the machine is open, a request to join shows on its desktop, and mirador approve there lets the browser in", async ({ browser }) => {
   const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
-  await phone.goto(networkOrigin);
+  await phone.goto(networkOrigin());
   await phone.getByLabel("Name this device").fill("Tablet");
   await phone.getByRole("button", { name: "Ask to join" }).click();
   const number = await numberShownIn(phone.locator(".join-machine"));

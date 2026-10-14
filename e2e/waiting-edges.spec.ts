@@ -4,7 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, addWorkspaceFromSidebar, callCanvasTool, dragOnto, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4925);
+const host = new TestHost();
 const sideProjectDir = join(host.root, "side-project");
 
 test.beforeAll(async () => {

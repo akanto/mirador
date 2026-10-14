@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, chooseInSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5130);
+const host = new TestHost();
 
 test.beforeAll(async () => {
   mkdirSync(host.projectDir, { recursive: true });

@@ -5,7 +5,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, callCanvasTool, primaryModifier, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5180, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 
 function git(...args: string[]) {
   return execFileSync("git", ["-C", host.projectDir, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { encoding: "utf8" }).trim();

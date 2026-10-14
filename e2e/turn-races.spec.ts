@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5410, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
 
 /** An opencode that is an agent of its own, holding a WRITE turn until the file it waits for exists. */

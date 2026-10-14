@@ -74,14 +74,16 @@ bun start                  # host on 127.0.0.1:4600, canvas assets on :4601
 bun run dev                # the same, with UI hot reload
 bunx tsc --noEmit -p .     # type check
 bun test tests/            # unit tests
-bunx playwright test       # e2e, one worker; never two native runs at once
+scripts/e2e.sh [e2e/<spec>.spec.ts ...]   # e2e on this machine, 4 workers, from a copy of the tree
 scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu via Docker
-scripts/test-spec.sh e2e/<spec>.spec.ts   # just those specs, in Docker; parallel-safe
+scripts/test-spec.sh e2e/<spec>.spec.ts   # just those specs, in Docker
 ```
 
-- **E2E ports:** each e2e spec starts its own host with `new TestHost(<port>)`, which also takes port+1 for canvas assets, and port+2 and +3 when it serves the network. Pick N in 4720–5499 so that none of these is another host's. `tests/e2e-ports.test.ts` checks it, counting the network ports of hosts started with `MIRADOR_NETWORK`; a host switched onto the network in Settings and restarted (`network.spec.ts`, 5196) needs its +2 and +3 kept free by hand. mirador-mobile's e2e uses 5800 and up.
+- **Run e2e with `scripts/e2e.sh`:** it copies the files git tracks or would add into a temp folder and runs Playwright there, with its own test-results. Any number of runs, yours and agents', go at once, and the checkout can be edited while they run. The copy stays only when a test failed, for its traces. Playwright arguments pass through, e.g. `--workers=1`.
+- **`bunx playwright test` runs from the checkout itself:** its hosts pick up edits to `web/` and `host/` mid-run, and two such runs wipe each other's test-results. Keep it for retaking the README screenshots (`MIRADOR_SCREENSHOTS=1`), which it writes into `docs/`.
+- **E2E hosts take free ports:** `new TestHost()` takes four ports in a row in 20000–31999 at its first start (its own, canvas assets, and two for the network) and keeps them across restarts. Read `host.port` and `host.origin` in hooks and tests, not as the spec loads; an `environment` that depends on the port is a function of it. mirador-mobile's e2e uses 5800 and up.
 - **Serial specs:** run the whole file, not `-g`.
-- **Don't edit `web/` or `host/` while e2e runs:** native test hosts rebuild from the working tree. Both native rules (one run at a time, no edits during a run) apply only to `bunx playwright` in this checkout; agents run their specs with `scripts/test-spec.sh` instead — it snapshots the tree into a container, and each run has its own ports and result files, so container runs never collide with edits or each other. Specs waiting on a real Claude reply need `ANTHROPIC_API_KEY` exported; two `linux-test.sh` full-suite runs still can't overlap (shared results dir).
+- **Real Claude replies:** specs that wait for one use your Claude Code login natively, and need `ANTHROPIC_API_KEY` exported in Docker. Two `linux-test.sh` full-suite runs can't overlap (shared results dir).
 
 ## Architecture Overview
 

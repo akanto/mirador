@@ -4,7 +4,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { addWorkspace, currentMatch, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5420);
+const host = new TestHost();
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

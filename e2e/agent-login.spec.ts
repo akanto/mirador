@@ -6,7 +6,7 @@ import { addWorkspace, createProfile, signIn, startConversation } from "./helper
 import { ScriptedModel, opencodeProgram, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4835, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const model = new ScriptedModel();
 const signedInAccount = join(host.root, "signed-in-account");
 const refuseSignIn = join(host.root, "refuse-sign-in");

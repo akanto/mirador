@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   mkdirSync(scratch, { recursive: true });
   writeFileSync(wrapper, `#!/bin/sh\necho "$@" >> "${wrapperLog}"\nexec "${installedClaude}" "$@"\n`);
   chmodSync(wrapper, 0o755);
-  host = new TestHost(5250, { environment: { ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_OAUTH_TOKEN: "e2e-subscription-token", CLAUDE_CODE_MAX_RETRIES: "0" } });
+  host = new TestHost({ environment: { ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_OAUTH_TOKEN: "e2e-subscription-token", CLAUDE_CODE_MAX_RETRIES: "0" } });
   await host.start();
 });
 test.afterAll(async () => {

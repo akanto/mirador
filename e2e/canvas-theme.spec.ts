@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, chooseInSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5297);
+const host = new TestHost();
 
 // Later tests use the workspace the first one adds.
 test.describe.configure({ mode: "serial" });

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, lastAgentMessage, openSettings, pasteImage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4730);
+const host = new TestHost();
 const QUEUED = "Also, which colour fills [Image #1] - answer with the colour's name.";
 const AFTER_TURN = "Reply with just the word LATER.";
 

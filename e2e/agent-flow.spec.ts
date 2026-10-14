@@ -14,7 +14,7 @@ import {
 } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4720);
+const host = new TestHost();
 const CHOSEN_NAME = "Named by the user";
 let page: Page;
 const agentTitles: string[] = [];

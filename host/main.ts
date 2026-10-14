@@ -14,7 +14,7 @@ import { signedInWith } from "./sign-in.ts";
 import { SignInCodes, signInLink } from "./sign-in-codes.ts";
 import { Hub } from "./hub.ts";
 import { ImageStore } from "./images.ts";
-import { NotifierMute } from "./notifier.ts";
+import { MUTED_LIST_FILE, NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
 import { HostRestart, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "./restart.ts";
@@ -41,7 +41,7 @@ store.rememberAuthorityFingerprint(ownAuthorityFingerprint);
 const hub = new Hub();
 const images = new ImageStore(join(config.dataDir, "images"));
 const notifications = new SystemNotifications(store, hub);
-const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, "notifier-muted.json"));
+const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, MUTED_LIST_FILE));
 notifierMute.unmuteSessionsOfEarlierRuns();
 const conversations = new ConversationService(store, hub, config, notifierMute, images, notifications);
 const canvasAssetsOrigins = [

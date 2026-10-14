@@ -5,7 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5030, { fakePrograms: true });
+const host = new TestHost({ fakePrograms: true });
 const fakeProgramsDir = host.fakeProgramsDir;
 const ghLog = join(host.root, "gh.log");
 const ghAuthLog = join(host.root, "gh-auth.log");

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { addWorkspace, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5040);
+const host = new TestHost();
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {

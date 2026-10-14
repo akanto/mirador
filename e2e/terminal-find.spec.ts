@@ -2,8 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-function useHost(port: number) {
-  const host = new TestHost(port);
+function useHost() {
+  const host = new TestHost();
   test.beforeAll(() => host.start());
   test.afterAll(async () => {
     await host.stop();
@@ -31,7 +31,7 @@ async function openTerminalWithLines(page: Page, host: TestHost) {
 
 test.describe("on macOS", () => {
   test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
-  const host = useHost(5330);
+  const host = useHost();
 
   test("⌘F finds in the terminal's output, with match case, whole word and regular expression, and Esc gives the keys back to the shell", async ({ page }) => {
     await openTerminalWithLines(page, host);
@@ -91,7 +91,7 @@ test.describe("on macOS", () => {
 
 test.describe("on Linux", () => {
   test.use({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
-  const host = useHost(5332);
+  const host = useHost();
 
   test("Ctrl+Shift+F finds in the terminal, as in GNOME Terminal, rather than searching every workspace", async ({ page }) => {
     await openTerminalWithLines(page, host);

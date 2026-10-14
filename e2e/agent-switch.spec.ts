@@ -4,7 +4,7 @@ import { addWorkspace, createProfile, sendMessage, signIn, startConversation, wa
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(4726);
+const host = new TestHost();
 const model = new ScriptedModel();
 
 test.beforeAll(async () => {

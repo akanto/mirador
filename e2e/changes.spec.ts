@@ -6,7 +6,7 @@ import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn, waitF
 import { scratchPath, TestHost } from "./test-host.ts";
 
 const home = scratchPath("changes-home");
-const host = new TestHost(5340, { fakePrograms: true, environment: { HOME: home } });
+const host = new TestHost({ fakePrograms: true, environment: { HOME: home } });
 const appFile = join(host.projectDir, "src", "app.ts");
 const generatedFile = join(host.projectDir, "src", "generated.txt");
 const outsideFile = join(home, "elsewhere", "notes.md");

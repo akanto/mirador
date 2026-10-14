@@ -5,15 +5,15 @@ import { join } from "node:path";
 import { openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5172);
-const hostAddressedByEnvironment = new TestHost(5174, {
+const host = new TestHost();
+const hostAddressedByEnvironment = new TestHost({
   environment: { MIRADOR_PUBLIC_ORIGIN: "https://env.example.com", MIRADOR_PUBLIC_CANVAS_ORIGIN: "https://env.example.com:8443" },
 });
 
 /** Stands in for the machine's Tailscale: its name answers nothing, so Settings has to offer to expose Mirador itself. */
 const tailscaleStub = join(host.root, "tailscale");
 const tailscaleCalls = join(host.root, "tailscale-calls");
-const hostWithTailscale = new TestHost(5176, { environment: { MIRADOR_TAILSCALE: tailscaleStub } });
+const hostWithTailscale = new TestHost({ environment: { MIRADOR_TAILSCALE: tailscaleStub } });
 
 test.beforeAll(async () => {
   await Promise.all([host.start(), hostAddressedByEnvironment.start(), hostWithTailscale.start()]);

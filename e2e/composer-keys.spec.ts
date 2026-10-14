@@ -2,7 +2,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost(5230);
+const host = new TestHost();
 
 test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
 test.beforeAll(() => host.start());
