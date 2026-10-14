@@ -61,14 +61,14 @@ describe("launch agent labels", () => {
 describe("host launch agent plist", () => {
   const plist = hostAgentPlist({
     label: "x.host.4600",
-    argv: hostArgv("/bin/zsh", "/bun/bin/bun", {}),
+    argv: hostArgv("/bin/zsh", "/bun/bin/bun", {}, "/repo"),
     workingDirectory: "/repo",
     logPath: "/data/logs/host.log",
   });
 
   test("starts the host through a login shell at load and keeps it alive", () => {
     expect(plist).toContain("<key>Label</key>\n  <string>x.host.4600</string>");
-    expect(plist).toContain('<string>/bin/zsh</string>\n    <string>-ilc</string>\n    <string>exec "$0" "$@"</string>');
+    expect(plist).toContain('<string>/bin/zsh</string>\n    <string>-ilc</string>\n    <string>cd -- "$0" &amp;&amp; exec "$@"</string>\n    <string>/repo</string>');
     expect(plist).toContain("<string>/bun/bin/bun</string>\n    <string>host/main.ts</string>");
     expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
     expect(plist).toContain("<key>KeepAlive</key>\n  <true/>");
@@ -82,7 +82,7 @@ describe("host launch agent plist", () => {
   });
 
   test("carries a dev port's overrides only as arguments", () => {
-    const dev = hostAgentPlist({ label: "x", argv: hostArgv("/bin/zsh", "/bun", { MIRADOR_PORT: "4790" }), workingDirectory: "/repo", logPath: "/l" });
+    const dev = hostAgentPlist({ label: "x", argv: hostArgv("/bin/zsh", "/bun", { MIRADOR_PORT: "4790" }, "/repo"), workingDirectory: "/repo", logPath: "/l" });
     expect(dev).toContain("<string>MIRADOR_PORT=4790</string>");
     expect(dev).not.toContain("EnvironmentVariables");
   });

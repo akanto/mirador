@@ -88,7 +88,7 @@ export class HostUserService implements BackgroundHost {
 
   private unitFor(settings: DesktopSettings) {
     const { shell, overrides, logPath } = this.environment;
-    return hostServiceUnit({ port: this.port, argv: hostArgv(shell, settings.bun, overrides), workingDirectory: settings.hostDirectory, logPath });
+    return hostServiceUnit({ port: this.port, argv: hostArgv(shell, settings.bun, overrides, settings.hostDirectory), workingDirectory: settings.hostDirectory, logPath });
   }
 
   private async systemctlOrThrow(action: string, ...arguments_: string[]) {

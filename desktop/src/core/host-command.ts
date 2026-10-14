@@ -4,10 +4,11 @@ export function loginShell(env: Record<string, string | undefined>, accountShell
   return env.SHELL || accountShell || "/bin/sh";
 }
 
-export function hostArgv(shell: string, bun: string, overrides: Record<string, string>) {
+/** The login shell runs the user's rc files, and one may cd elsewhere, so the host goes back to its directory before it starts. */
+export function hostArgv(shell: string, bun: string, overrides: Record<string, string>, hostDirectory: string) {
   const assignments = Object.entries(overrides).map(([name, value]) => `${name}=${value}`);
   const command = assignments.length > 0 ? ["/usr/bin/env", ...assignments, bun, HOST_ENTRY] : [bun, HOST_ENTRY];
-  return [shell, "-ilc", 'exec "$0" "$@"', ...command];
+  return [shell, "-ilc", 'cd -- "$0" && exec "$@"', hostDirectory, ...command];
 }
 
 /** `exec` keeps the pid, so a live host shows up in `ps` as just the bun invocation. */

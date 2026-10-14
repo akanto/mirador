@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { installedAppPath } from "../desktop/src/core/app-bundle.ts";
 import { hostArgv, isHostCommandLine, loginShell } from "../desktop/src/core/host-command.ts";
 import { authUrl, dataPaths, hostEnvironmentOverrides, resolveRuntime } from "../desktop/src/core/runtime.ts";
@@ -61,14 +64,30 @@ describe("runtime", () => {
 });
 
 describe("host command", () => {
-  test("runs bun through the login shell so the user's profile applies", () => {
-    expect(hostArgv("/bin/zsh", "/bun/bin/bun", {})).toEqual(["/bin/zsh", "-ilc", 'exec "$0" "$@"', "/bun/bin/bun", "host/main.ts"]);
+  test("runs bun through the login shell so the user's profile applies, back in the host's directory", () => {
+    expect(hostArgv("/bin/zsh", "/bun/bin/bun", {}, "/Apps/mirador")).toEqual(["/bin/zsh", "-ilc", 'cd -- "$0" && exec "$@"', "/Apps/mirador", "/bun/bin/bun", "host/main.ts"]);
   });
 
   test("hands overrides over as command-line assignments, never the environment", () => {
-    expect(hostArgv("/bin/zsh", "/bun/bin/bun", { MIRADOR_PORT: "4790" })).toEqual([
-      "/bin/zsh", "-ilc", 'exec "$0" "$@"', "/usr/bin/env", "MIRADOR_PORT=4790", "/bun/bin/bun", "host/main.ts",
+    expect(hostArgv("/bin/zsh", "/bun/bin/bun", { MIRADOR_PORT: "4790" }, "/Apps/mirador")).toEqual([
+      "/bin/zsh", "-ilc", 'cd -- "$0" && exec "$@"', "/Apps/mirador", "/usr/bin/env", "MIRADOR_PORT=4790", "/bun/bin/bun", "host/main.ts",
     ]);
+  });
+
+  test("finds the host's entry even when the user's profile changes directory", () => {
+    const home = mkdtempSync(join(tmpdir(), "mirador-home-"));
+    const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
+    writeFileSync(join(home, ".bash_profile"), "cd /\n");
+    mkdirSync(join(hostDirectory, "host"));
+    writeFileSync(join(hostDirectory, "host", "main.ts"), "");
+    try {
+      const run = Bun.spawnSync(hostArgv("/bin/bash", "/bin/ls", {}, hostDirectory), { cwd: hostDirectory, env: { HOME: home, PATH: "/usr/bin:/bin" }, stdin: "ignore" });
+      expect(run.stdout.toString().trim()).toBe("host/main.ts");
+      expect(run.exitCode).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(hostDirectory, { recursive: true, force: true });
+    }
   });
 
   test("uses the environment's shell, then the account's, then sh", () => {
@@ -82,6 +101,7 @@ describe("host command", () => {
     expect(isHostCommandLine("bun host/main.ts")).toBe(true);
     expect(isHostCommandLine('/bin/zsh -ilc exec "$0" "$@" /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
     expect(isHostCommandLine('/bin/zsh -ilc exec "$0" "$@" /usr/bin/env MIRADOR_PORT=4790 /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
+    expect(isHostCommandLine('/bin/zsh -ilc cd -- "$0" && exec "$@" /Apps/mirador /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
   });
 
   test("does not mistake other processes for a host", () => {

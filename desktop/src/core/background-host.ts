@@ -50,7 +50,7 @@ export class BackgroundHostAgent implements BackgroundHost {
     const { shell, overrides, logPath } = this.environment;
     return hostAgentPlist({
       label: this.agent.label,
-      argv: hostArgv(shell, settings.bun, overrides),
+      argv: hostArgv(shell, settings.bun, overrides, settings.hostDirectory),
       workingDirectory: settings.hostDirectory,
       logPath,
     });

@@ -48,14 +48,14 @@ describe("host user service unit", () => {
   });
 
   test("runs the host through the login shell, restarts it, and appends its output to the log", () => {
-    const unit = hostServiceUnit({ port: 4600, argv: hostArgv("/bin/bash", "/bun/bin/bun", {}), workingDirectory: "/repo", logPath: "/home/me/.mirador/logs/host.log" });
+    const unit = hostServiceUnit({ port: 4600, argv: hostArgv("/bin/bash", "/bun/bin/bun", {}, "/repo"), workingDirectory: "/repo", logPath: "/home/me/.mirador/logs/host.log" });
     expect(unit).toBe(
       [
         "[Unit]",
         "Description=Mirador host on port 4600",
         "",
         "[Service]",
-        'ExecStart="/bin/bash" "-ilc" "exec \\"$$0\\" \\"$$@\\"" "/bun/bin/bun" "host/main.ts"',
+        'ExecStart="/bin/bash" "-ilc" "cd -- \\"$$0\\" && exec \\"$$@\\"" "/repo" "/bun/bin/bun" "host/main.ts"',
         "WorkingDirectory=/repo",
         "Restart=always",
         "StandardOutput=append:/home/me/.mirador/logs/host.log",

@@ -74,7 +74,7 @@ export class DesktopApp {
       logPath: paths.hostLog,
       settings,
       hostAnswers: () => hostAnswers(runtime.origin),
-      spawnHost: (current) => spawnDetachedHost(hostArgv(shell, current.bun, overrides), current.hostDirectory, paths.hostLog),
+      spawnHost: (current) => spawnDetachedHost(hostArgv(shell, current.bun, overrides, current.hostDirectory), current.hostDirectory, paths.hostLog),
       processes: systemProcesses,
       pidFile: new PidFileOnDisk(paths.ownedHostPid),
       background,
