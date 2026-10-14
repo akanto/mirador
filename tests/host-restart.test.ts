@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { lastTurnRequest, openTurnTheAgentWorkedOn } from "../host/conversations.ts";
-import { hostCommandLine, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "../host/restart.ts";
+import { loadConfig } from "../host/config.ts";
+import { ConversationService, lastTurnRequest, openTurnTheAgentWorkedOn } from "../host/conversations.ts";
+import { Hub } from "../host/hub.ts";
+import { HostRestart, hostCommandLine, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "../host/restart.ts";
+import { Store } from "../host/store.ts";
 import type { ConversationEvent } from "../shared/model.ts";
 import { SourceWatcher } from "../host/source-watcher.ts";
 
@@ -23,6 +26,78 @@ describe("takeTurnsStoppedForRestart", () => {
     expect(takeTurnsStoppedForRestart(dataDir)).toEqual(["c1", "c2"]);
     expect(existsSync(file)).toBe(false);
     expect(takeTurnsStoppedForRestart(dataDir)).toEqual([]);
+  });
+});
+
+/** A conversation that ran a turn before, so it has a session, on a profile whose pre-launch command runs until `releasePrelaunch`. */
+function conversationWithSlowStartingAgent() {
+  const scratch = mkdtempSync(join(tmpdir(), "mirador-restart-start-"));
+  const prelaunchStarted = join(scratch, "prelaunch-started");
+  const prelaunchReleased = join(scratch, "prelaunch-released");
+  const workspacePath = join(scratch, "project");
+  mkdirSync(workspacePath);
+  const store = new Store(":memory:");
+  const prelaunch = `touch '${prelaunchStarted}'; while [ ! -e '${prelaunchReleased}' ]; do sleep 0.05; done; exit 3`;
+  store.saveProfile({ id: "p1", name: "slow start", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch, mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
+  store.insertWorkspace({ id: "w1", name: "project", path: workspacePath, defaultLaunch: { harness: "claude", profileId: "p1" }, createdAt: 1 });
+  store.insertConversation({
+    id: "c1",
+    workspaceId: "w1",
+    harness: "claude",
+    profileId: "p1",
+    title: "t",
+    titleSetByUser: false,
+    acpSessionId: "session-of-an-earlier-turn",
+    askMode: "wait",
+    bypassPermissions: false,
+    status: "idle",
+    statusDetail: null,
+    openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
+    usageLimit: null,
+    jobWaits: [],
+    waitingFor: null,
+    pendingRequest: null,
+    activity: null,
+    configOptions: [],
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
+  const conversations = new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
+  return {
+    conversations,
+    prelaunchHasStarted: () => existsSync(prelaunchStarted),
+    releasePrelaunch: () => writeFileSync(prelaunchReleased, ""),
+  };
+}
+
+describe("prepareForRestart", () => {
+  test("stops a turn whose agent is still starting, and names it for the next host to continue", async () => {
+    const { conversations, prelaunchHasStarted, releasePrelaunch } = conversationWithSlowStartingAgent();
+    conversations.send("c1", "Fix the build").catch(() => {});
+    while (!prelaunchHasStarted()) await Bun.sleep(20);
+
+    const prepared = conversations.prepareForRestart();
+    setTimeout(releasePrelaunch, 200);
+    expect(await prepared).toEqual(["c1"]);
+    expect(conversations.runningTurnsCount()).toBe(0);
+  });
+});
+
+describe("HostRestart", () => {
+  test("goes through with a restart whose turns could not be stopped, rather than leave the host holding every queue", async () => {
+    const conversations = { prepareForRestart: () => Promise.reject(new Error("The agent is not running")) } as unknown as ConversationService;
+    const hub = { broadcast: () => {} } as unknown as Hub;
+    let servicesStopped = false;
+    const reexecutions: string[][] = [];
+    const reexecute = ((_file: string, args: string[]) => void reexecutions.push(args)) as unknown as typeof process.execve;
+    const restart = new HostRestart(hub, conversations, mkdtempSync(join(tmpdir(), "mirador-restart-")), async () => void (servicesStopped = true), reexecute);
+
+    await restart.restart();
+    expect(servicesStopped).toBe(true);
+    expect(reexecutions).toHaveLength(1);
   });
 });
 

@@ -38,6 +38,7 @@ export class HostRestart {
     private readonly conversations: ConversationService,
     private readonly dataDir: string,
     private readonly stopServices: () => Promise<void>,
+    private readonly reexecute: typeof process.execve = process.execve?.bind(process),
   ) {}
 
   hostCodeEdited() {
@@ -49,17 +50,26 @@ export class HostRestart {
   /**
    * Running turns are stopped the way Stop does, so their agents can continue them after the restart. The process
    * re-executes itself rather than exiting, keeping its pid for whoever supervises it (the desktop app, launchd, a terminal).
+   * Once begun, a restart goes through whatever fails on the way: a host left half stopped holds every queue for good.
    */
   async restart() {
-    const reexecute = process.execve?.bind(process);
+    const reexecute = this.reexecute;
     if (!reexecute) throw new Error("This version of Bun cannot restart the host in place; restart it from the tray or the terminal instead.");
     if (this.restarting) return;
     this.restarting = true;
     console.log(`${new Date().toISOString()} restarting the host in place`);
     this.hub.broadcast({ type: "host.restarting" });
-    const stoppedTurns = await this.conversations.prepareForRestart();
-    writeFileSync(join(this.dataDir, STOPPED_TURNS_FILE), JSON.stringify(stoppedTurns), { mode: 0o600 });
-    await stoppedWithinTimeout(this.stopServices);
+    await this.stopTurnsForTheNextHostToContinue();
+    await stoppedWithinTimeout(this.stopServices).catch((error) => console.error(`${new Date().toISOString()} stopping the services failed:`, error));
     reexecute(process.execPath, hostCommandLine(process.argv0, Bun.main, process.cwd(), process.argv.slice(2)), process.env);
+  }
+
+  private async stopTurnsForTheNextHostToContinue() {
+    try {
+      const stoppedTurns = await this.conversations.prepareForRestart();
+      writeFileSync(join(this.dataDir, STOPPED_TURNS_FILE), JSON.stringify(stoppedTurns), { mode: 0o600 });
+    } catch (error) {
+      console.error(`${new Date().toISOString()} the turns stopped for the restart will not continue after it:`, error);
+    }
   }
 }

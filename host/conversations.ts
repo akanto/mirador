@@ -444,9 +444,10 @@ export class ConversationService {
     this.sendNextQueuedMessage(conversationId);
   }
 
+  /** A turn whose agent cannot take the cancel, such as one still starting, is waited for all the same. */
   private async stopTurn(conversationId: string) {
     const { turnEnded } = this.runtime(conversationId);
-    await this.cancel(conversationId);
+    await this.cancel(conversationId).catch((error) => console.error(`${new Date().toISOString()} cancelling the turn failed; waiting for it to end:`, error));
     await turnEnded;
   }
 
