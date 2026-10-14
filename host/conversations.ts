@@ -33,6 +33,7 @@ import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
+import { canTryAgain } from "../shared/try-again.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
 import { pendingAsk, pendingPermission } from "./pending-requests.ts";
@@ -486,11 +487,14 @@ export class ConversationService {
     const checkpoint = startsTurn ? await this.snapshotFiles(conversationId) : null;
     this.store.turnStarted(conversationId);
     this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, notes);
+    let promptSent = false;
     try {
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
       const prompt = await this.promptContent(conversationId, withNotes(notes, text), imageIds);
-      const response = await this.harnessFor(this.get(conversationId)).prompt(sessionId, prompt);
+      const harness = this.harnessFor(this.get(conversationId));
+      promptSent = true;
+      const response = await harness.prompt(sessionId, prompt);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
       this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
@@ -499,7 +503,7 @@ export class ConversationService {
         this.append(conversationId, { type: "turn-end", stopReason: "cancelled" });
         this.notifyTurnEnded(conversationId, { stopReason: "cancelled" });
       } else {
-        this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error) });
+        this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error, promptSent) });
       }
     } finally {
       runtime.running = false;
@@ -650,6 +654,13 @@ export class ConversationService {
     const runtime = this.runtime(conversationId);
     if (!runtime.usageLimit || this.stopping) return;
     runtime.automaticContinues = automatically ? runtime.automaticContinues + 1 : 0;
+    this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION).catch(() => {});
+  }
+
+  /** The agent still holds the message its failed turn began with, so trying again asks it to continue. */
+  tryAgainAfterError(conversationId: string, errorSeq: number) {
+    if (this.runtime(conversationId).running || this.stopping) return;
+    if (!canTryAgain(this.store.listEventsFrom(conversationId, errorSeq), errorSeq)) return;
     this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION).catch(() => {});
   }
 
@@ -1363,14 +1374,15 @@ export class ConversationService {
   }
 
   /** Returns the failure's message. A turn Claude's usage limit stopped holds the queue until the limit resets. */
-  private recordTurnFailure(conversationId: string, error: unknown) {
+  private recordTurnFailure(conversationId: string, error: unknown, promptSent: boolean) {
+    const continuable = promptSent && { continuable: true as const };
     if (!isUsageLimitError(error) || !this.store.hasConversation(conversationId)) {
-      this.append(conversationId, { type: "error", message: errorMessage(error), ...(isAuthRequiredError(error) && { authRequired: true as const }) });
+      this.append(conversationId, { type: "error", message: errorMessage(error), ...continuable, ...(isAuthRequiredError(error) && { authRequired: true as const }) });
       return errorMessage(error);
     }
     const message = usageLimitMessage(error);
     const resetsAt = usageLimitResetIn(message);
-    this.append(conversationId, { type: "error", message, usageLimit: { resetsAt } });
+    this.append(conversationId, { type: "error", message, usageLimit: { resetsAt }, ...continuable });
     this.waitForUsageLimitReset(conversationId, resetsAt);
     return message;
   }

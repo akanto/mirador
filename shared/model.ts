@@ -428,8 +428,9 @@ export type ConversationEvent =
   /**
    * `usageLimit`: Claude's usage limit stopped the turn; it resets at `resetsAt`, when the message names a time.
    * `authRequired`: the agent refused the prompt until the user signs in again.
+   * `continuable`: the error ended a turn after its message went to the agent, so the agent can continue from it.
    */
-  | { type: "error"; message: string; usageLimit?: { resetsAt: number | null }; authRequired?: true }
+  | { type: "error"; message: string; usageLimit?: { resetsAt: number | null }; authRequired?: true; continuable?: true }
   /** The agent's sign-in, started from the conversation in a terminal tab, ended. */
   | { type: "login-ended"; signedIn: boolean }
   | { type: "usage-limit-wait-stopped" }

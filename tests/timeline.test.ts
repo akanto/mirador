@@ -3,6 +3,7 @@ import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
+import { canTryAgain } from "../shared/try-again.ts";
 import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
@@ -132,6 +133,37 @@ describe("an API error Claude Code also says as the agent's message", () => {
   test("keeps a reply an unrelated error follows, even one the error happens to contain", () => {
     expect(buildTimeline(stored([agentText("All done."), { type: "error", message: "ACP connection closed" }])).map(({ kind }) => kind)).toEqual(["agent", "error"]);
     expect(buildTimeline(stored([agentText("Done."), { type: "error", message: "Done. Then the agent stopped" }])).map(({ kind }) => kind)).toEqual(["agent", "error"]);
+  });
+});
+
+describe("a failed turn the user can try again", () => {
+  const failed = (message: string): ConversationEvent => ({ type: "error", message, continuable: true });
+  const errorsOfferingTryAgain = (events: ConversationEvent[]) =>
+    buildTimeline(stored(events)).flatMap((block) => (block.kind === "error" && block.tryAgainSeq !== undefined ? [`${block.message} @${block.tryAgainSeq}`] : []));
+
+  test("only the error that ended the latest turn offers it, naming itself", () => {
+    const tryAgain: ConversationEvent = { type: "user-message", text: "Continue where you left off." };
+    expect(errorsOfferingTryAgain([{ type: "user-message", text: "go" }, failed("502")])).toEqual(["502 @2"]);
+    expect(errorsOfferingTryAgain([{ type: "user-message", text: "go" }, failed("502"), tryAgain, failed("503")])).toEqual(["503 @4"]);
+    expect(errorsOfferingTryAgain([{ type: "user-message", text: "go" }, failed("502"), tryAgain, agentText("Done.")])).toEqual([]);
+    expect(errorsOfferingTryAgain([{ type: "user-message", text: "go" }, failed("502"), { type: "context-cleared" }])).toEqual([]);
+  });
+
+  test("not a usage limit or a sign-in, which have their own buttons, nor an error before the message went to the agent or one the turn went on after", () => {
+    expect(errorsOfferingTryAgain([{ type: "error", message: "limit", usageLimit: { resetsAt: 1 }, continuable: true }])).toEqual([]);
+    expect(errorsOfferingTryAgain([{ type: "error", message: "log in", authRequired: true, continuable: true }])).toEqual([]);
+    expect(errorsOfferingTryAgain([{ type: "user-message", text: "go" }, { type: "error", message: "The agent did not start" }])).toEqual([]);
+    expect(errorsOfferingTryAgain([{ type: "error", message: "Could not resume the previous agent session; starting a fresh one." }])).toEqual([]);
+  });
+
+  test("the host tries again only from the error still ending the latest turn", () => {
+    const events = stored([{ type: "user-message", text: "go" }, failed("502"), { type: "error", message: "Could not set Model to opus" }]);
+    expect(canTryAgain(events.slice(1), 2)).toBe(true);
+    expect(canTryAgain(events.slice(2), 2)).toBe(false);
+    expect(canTryAgain(events, 1)).toBe(false);
+    const leftBehind = stored([failed("502"), { type: "user-message", text: "something else" }]);
+    expect(canTryAgain(leftBehind, 1)).toBe(false);
+    expect(canTryAgain(stored([failed("502"), { type: "context-cleared" }]), 1)).toBe(false);
   });
 });
 

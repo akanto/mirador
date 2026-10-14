@@ -747,6 +747,8 @@ export function startServer(services: HostServices) {
         return conversations.setQueuedMessageAfterTurn(message.conversationId, message.messageId, message.afterTurn);
       case "conversation.usage-limit.continue":
         return conversations.continueAfterUsageLimit(message.conversationId);
+      case "conversation.try-again":
+        return conversations.tryAgainAfterError(message.conversationId, message.errorSeq);
       case "conversation.usage-limit.stop-waiting":
         return conversations.stopWaitingForUsageLimit(message.conversationId);
       case "conversation.job-wait.stop":

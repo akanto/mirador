@@ -363,6 +363,9 @@ const ToolCallsAwaitingPermission = createContext<ReadonlySet<string>>(new Set()
 /** Whether the canvas, in view, shows the diffs of edits waiting for permission, so their chat cards can stay small. */
 const CanvasShowsEdits = createContext(false);
 
+/** Whether the agent is at work in the conversation, so a failed turn cannot be tried again yet. */
+const ConversationBusy = createContext(false);
+
 const lastPathSegment = (path: string) => path.split("/").filter(Boolean).at(-1) ?? path;
 
 function CommandLine({ command, directory }: { command: string; directory?: string | null }) {
@@ -811,8 +814,23 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
           </div>
         );
       }
+      if (block.tryAgainSeq !== undefined) return <FailedTurnLine message={block.message} conversationId={conversationId} errorSeq={block.tryAgainSeq} />;
       return <div className={block.usageLimit ? "usage-limit-line" : "error-line"}>{block.message}</div>;
   }
+}
+
+function FailedTurnLine({ message, conversationId, errorSeq }: { message: string; conversationId: string; errorSeq: number }) {
+  const busy = useContext(ConversationBusy);
+  return (
+    <div className="error-line try-again-line">
+      <span>{message}</span>
+      {!busy && (
+        <button type="button" data-hint={hints.tryAgain} onClick={() => connection.send({ type: "conversation.try-again", conversationId, errorSeq })}>
+          Try again
+        </button>
+      )}
+    </div>
+  );
 }
 
 interface ScrollAnchor {
@@ -1593,57 +1611,59 @@ export function ChatPanel({
       <SubagentStates.Provider value={subagentStates}>
         <StepsAtWork.Provider value={runningSteps}>
           <CanvasShowsEdits.Provider value={canvasShowsEdits}>
-            <ChatHeader
-              conversation={conversation}
-              profiles={profiles}
-              canvasVisible={canvasVisible}
-              onToggleCanvas={onToggleCanvas}
-              terminalVisible={terminalVisible}
-              onToggleTerminal={onToggleTerminal}
-              runningSubagents={runningSubagents.length}
-              onShowRunningSubagent={showRunningSubagent}
-              onFind={find.open}
-              begun={begun}
-            />
-            {find.query !== null && <FindBar find={find} />}
-            <MatchesFind.Provider value={find.matches}>
-              <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
-                {!open.loaded && <div className="notice-line">Loading…</div>}
-                {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
-                {(firstLoaded > 0 || earlier.available) && (
-                  <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
-                    {earlierEntriesLabel(firstLoaded, earlier)}
-                  </button>
-                )}
-                {timeline.slice(firstLoaded).map((block, offset) => (
-                  <TimestampedEntry
-                    key={block.key}
-                    block={block}
-                    startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
-                    harness={conversation.harness}
-                    conversationId={conversation.id}
-                  />
-                ))}
-                {conversation.status === "running" && <div className="working">Working…</div>}
-              </div>
-            </MatchesFind.Provider>
-            {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
-            {conversation.openInTerminal && (
-              <div className="terminal-warning" role="status">
-                This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
-                there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
-                it there first.
-              </div>
-            )}
-            <Composer
-              conversation={conversation}
-              events={open.events}
-              holdsEarliest={!open.hasEarlier}
-              pendingCommands={pendingCommands}
-              promptTemplates={promptTemplates}
-              onManageTemplates={onManageTemplates}
-            />
-            <Statusline conversation={conversation} profiles={profiles} />
+            <ConversationBusy.Provider value={busy}>
+              <ChatHeader
+                conversation={conversation}
+                profiles={profiles}
+                canvasVisible={canvasVisible}
+                onToggleCanvas={onToggleCanvas}
+                terminalVisible={terminalVisible}
+                onToggleTerminal={onToggleTerminal}
+                runningSubagents={runningSubagents.length}
+                onShowRunningSubagent={showRunningSubagent}
+                onFind={find.open}
+                begun={begun}
+              />
+              {find.query !== null && <FindBar find={find} />}
+              <MatchesFind.Provider value={find.matches}>
+                <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
+                  {!open.loaded && <div className="notice-line">Loading…</div>}
+                  {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
+                  {(firstLoaded > 0 || earlier.available) && (
+                    <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
+                      {earlierEntriesLabel(firstLoaded, earlier)}
+                    </button>
+                  )}
+                  {timeline.slice(firstLoaded).map((block, offset) => (
+                    <TimestampedEntry
+                      key={block.key}
+                      block={block}
+                      startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
+                      harness={conversation.harness}
+                      conversationId={conversation.id}
+                    />
+                  ))}
+                  {conversation.status === "running" && <div className="working">Working…</div>}
+                </div>
+              </MatchesFind.Provider>
+              {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
+              {conversation.openInTerminal && (
+                <div className="terminal-warning" role="status">
+                  This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
+                  there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
+                  it there first.
+                </div>
+              )}
+              <Composer
+                conversation={conversation}
+                events={open.events}
+                holdsEarliest={!open.hasEarlier}
+                pendingCommands={pendingCommands}
+                promptTemplates={promptTemplates}
+                onManageTemplates={onManageTemplates}
+              />
+              <Statusline conversation={conversation} profiles={profiles} />
+            </ConversationBusy.Provider>
           </CanvasShowsEdits.Provider>
         </StepsAtWork.Provider>
       </SubagentStates.Provider>

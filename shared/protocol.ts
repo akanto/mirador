@@ -144,6 +144,7 @@ export type ClientMessage =
   | { type: "conversation.queue.move"; conversationId: string; messageId: string; beforeMessageId: string | null }
   | { type: "conversation.queue.set-after-turn"; conversationId: string; messageId: string; afterTurn: boolean }
   | { type: "conversation.usage-limit.continue"; conversationId: string }
+  | { type: "conversation.try-again"; conversationId: string; errorSeq: number }
   | { type: "conversation.usage-limit.stop-waiting"; conversationId: string }
   | { type: "conversation.job-wait.stop"; conversationId: string; waitId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }

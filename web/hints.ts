@@ -150,6 +150,7 @@ export const hints = {
   usageLimit:
     "Claude Code stopped at its usage limit. Instead of sending your queued messages into the same wall, the host keeps them, and like Claude Code it asks the agent to continue where it left off a minute after the limit resets; your queued messages follow. It does that at most twice in a row by itself; after that, or when the message names no reset time, it waits for you.\n\nThe wait survives a host restart.",
   continueAfterUsageLimit: "Ask the agent to continue where it left off now, e.g. after switching to a profile that signs in to another account. Queued messages follow.",
+  tryAgain: "Ask the agent to continue where it left off. It still has the message the failed turn began with.",
   stopWaitingForUsageLimit: "Stop waiting for the reset: the agent does not continue by itself, and messages you queued go out now.",
   jobWait:
     "The agent left this job running and ran mirador when-done, so it need not poll it. Mirador checks on it now and then: a process every second, a container every 5 seconds, a job on another machine every 20 seconds over ssh. When it ends, the message goes to the agent as your next message, or, if the agent asked so, only to you.\n\nThe wait survives a host restart.",

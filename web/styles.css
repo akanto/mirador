@@ -2250,13 +2250,15 @@ button.edits-waiting {
   white-space: pre-wrap;
 }
 
-.sign-in-line {
+.sign-in-line,
+.try-again-line {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.sign-in-line > span {
+.sign-in-line > span,
+.try-again-line > span {
   flex: 1;
 }
 

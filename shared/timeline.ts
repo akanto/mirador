@@ -15,6 +15,7 @@ import { jobWaitEndedNotice } from "./job-waits.ts";
 import { harnessLabels, type HarnessId, type StoredEvent } from "./model.ts";
 import type { EditDiff } from "./review.ts";
 import { turnTitle, whatWasLeft } from "./reverts.ts";
+import { leavesFailedTurnBehind, offersTryAgain } from "./try-again.ts";
 import { UserCommandLog, type UserCommand } from "./user-commands.ts";
 
 function profileChangedNotice(profileName: string | null, agent: HarnessId | undefined) {
@@ -146,8 +147,11 @@ export type TimelineBlock =
   | (Origin & { kind: "command"; command: UserCommand })
   | ErrorBlock;
 
-/** `authRequired` until a sign-in started from the conversation succeeds, then `signedInSince`. */
-type ErrorBlock = Origin & { kind: "error"; message: string; usageLimit?: true; authRequired?: true; signedInSince?: true };
+/**
+ * `authRequired` until a sign-in started from the conversation succeeds, then `signedInSince`.
+ * `tryAgainSeq`: the error ended the latest turn, which the user can try again by naming this error.
+ */
+type ErrorBlock = Origin & { kind: "error"; message: string; usageLimit?: true; authRequired?: true; signedInSince?: true; tryAgainSeq?: number };
 
 export type Author = "user" | "script" | "agent";
 
@@ -304,6 +308,7 @@ class TimelineBuilder {
   private readonly callsNamingASession: Set<string>;
   private readonly commands = new UserCommandLog();
   private readonly errorsAwaitingSignIn: ErrorBlock[] = [];
+  private failedTurn: ErrorBlock | null = null;
   private readonly streamedMessages = new StreamedMessages();
   /** What each turn began with, for the note a revert leaves. */
   private readonly messageTexts = new Map<number, string>();
@@ -315,6 +320,7 @@ class TimelineBuilder {
   add({ seq, at, event }: StoredEvent) {
     const origin = { key: String(seq), at };
     this.commands.apply(event);
+    if (leavesFailedTurnBehind(event)) this.leaveFailedTurnBehind();
     switch (event.type) {
       case "user-command":
         return this.push({ kind: "command", ...origin, command: this.commands.get(event.commandId)! });
@@ -355,6 +361,11 @@ class TimelineBuilder {
           ...(event.authRequired && { authRequired: true as const }),
         };
         if (block.authRequired) this.errorsAwaitingSignIn.push(block);
+        if (offersTryAgain(event)) {
+          this.leaveFailedTurnBehind();
+          block.tryAgainSeq = seq;
+          this.failedTurn = block;
+        }
         return this.push(block);
       }
       case "login-ended":
@@ -478,6 +489,11 @@ class TimelineBuilder {
     this.currentPlan = null;
     this.subagentsOfThisTurn.splice(0).forEach((subagent) => (subagent.turnEnded = stopReason));
     this.toolsOfThisTurn.splice(0).filter((block) => block.endedAt === undefined).forEach((block) => (block.leftUnfinished = true));
+  }
+
+  private leaveFailedTurnBehind() {
+    delete this.failedTurn?.tryAgainSeq;
+    this.failedTurn = null;
   }
 
   /** Claude Code says an API error as the agent's message, and the failed prompt reports it again as an error. */

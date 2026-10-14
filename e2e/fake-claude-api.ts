@@ -36,7 +36,8 @@ const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
 
 /**
  * Claude's Messages API for a subscription that Claude Code believes it signs in to (CLAUDE_CODE_OAUTH_TOKEN): while
- * `limited`, every request is refused the way the API refuses once a usage limit is reached; otherwise each reply
+ * `limited`, every request is refused the way the API refuses once a usage limit is reached; while `failing`, it fails
+ * the way a gateway in front of the API does when it cannot reach it, with a 502; otherwise each reply
  * quotes the user's newest message. A message starting with `BACKGROUND ` runs the rest as a Bash command in the
  * background; once it ends, the reply to Claude Code's notification of it waits until `answerEndedCommands`, then
  * runs `true` in Bash, so the turn Claude Code started on its own asks for one more reply after it. A message starting
@@ -45,6 +46,7 @@ const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
  */
 export class FakeClaudeApi {
   limited = true;
+  failing = false;
   /** When the limit resets, in epoch seconds; Claude Code shows it as "resets 6:20pm (Europe/Budapest)". */
   resetsAt = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
   /** The plan's usage limits each answer reports, as shares of 0 to 1, and when they start over, in epoch seconds. */
@@ -109,6 +111,11 @@ export class FakeClaudeApi {
     this.systemPrompts.set(typed, systemTextOf(body));
     this.userMessages.set(typed, textOf(body.messages.findLast(({ role }) => role === "user")?.content ?? ""));
     this.history.push(body.messages.map(({ role, content }) => `${role}: ${textOf(content)}`));
+    if (this.failing) {
+      this.refused.push(typed);
+      response.writeHead(502, { "content-type": "application/json" });
+      return response.end(JSON.stringify({ error: "<urlopen error [Errno 8] nodename nor servname provided, or not known>" }));
+    }
     if (this.limited) {
       this.refused.push(typed);
       response.writeHead(429, { "content-type": "application/json", ...this.limitHeaders() });
