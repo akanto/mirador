@@ -106,3 +106,25 @@ test("a pasted image taken out of the message box, or left out of the message se
   await waitForTurnToEnd(page);
   await expect.poll(() => storedImages(conversationId)).toHaveLength(1);
 });
+
+test("a pasted image opens over the page, scaled down to fit the window and centred in it", async ({ page }) => {
+  await signIn(page, host);
+  await page.locator(".workspace li").first().click();
+  await startScriptedConversation(page);
+  const preview = page.getByRole("dialog", { name: "Image" });
+  const { width, height } = page.viewportSize()!;
+  const fitsAndIsCentred = async () => {
+    const box = (await preview.locator("img").boundingBox())!;
+    const inside = box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height;
+    const centred = Math.abs(box.x + box.width / 2 - width / 2) < 1 && Math.abs(box.y + box.height / 2 - height / 2) < 1;
+    return inside && centred;
+  };
+
+  for (const [index, size] of [{ width: 1152, height: 3000 }, { width: 4000, height: 300 }].entries()) {
+    await pasteImage(composer(page), size);
+    await page.getByRole("button", { name: `Show image #${index + 1}` }).click();
+    await expect.poll(fitsAndIsCentred, `a ${size.width}×${size.height} image`).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(preview).toHaveCount(0);
+  }
+});

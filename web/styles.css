@@ -4112,6 +4112,7 @@ button.shell-more:hover {
 }
 
 .image-preview {
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   background: rgb(10 10 14 / 0.75);
   cursor: zoom-out;
 }
