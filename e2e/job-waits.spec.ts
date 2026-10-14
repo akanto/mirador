@@ -69,7 +69,7 @@ test("the agent has the host wait for a job it left running, then resume the age
     const job = startJob();
     await whenDone(job, "build-finished check the output");
     const offered = model.requests.flatMap(({ tools }) => tools ?? []).find(({ function: { name } }) => name.endsWith("when_done"));
-    expect(offered?.function.description, "the tool tells the agent when to call it").toContain("don't poll it with sleep");
+    expect(offered?.function.description, "the tool tells the agent when to call it").toContain("Don't poll it with sleep");
     await expect(waits.locator("li")).toHaveCount(1);
     await expect(waits).toContainText(`Waiting for process ${job.pid} to end`);
     await expect(waits).toContainText("Then the agent gets: build-finished check the output");
