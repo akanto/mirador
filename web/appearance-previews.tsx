@@ -1,4 +1,5 @@
 import { commandShownClosed, outputStartsOpen, type ShellOutputStyle } from "../shared/shell-output.ts";
+import type { ShellLook } from "./shell-look.ts";
 import { BASE_TEXT_PX, FONT_SCALES, type FontScale } from "./font-scale.ts";
 import type { MachineColorStyle } from "./machine-colors.ts";
 import { pastelVariables } from "./pastels.ts";
@@ -146,6 +147,27 @@ export function ShellOutputPreview({ style }: { style: ShellOutputStyle }) {
     <span className="preview-sidebar">
       <ShellRow style={style} failed={false} />
       <ShellRow style={style} failed />
+    </span>
+  );
+}
+
+/** A shell card as the chat shows it: its header, then the command and its output in the look's colours. */
+export function ShellLookPreview({ look }: { look: ShellLook }) {
+  return (
+    <span className="preview-window preview-shell-look" data-shell-look={look}>
+      <span className="preview-shell-card">
+        <span className="preview-row">
+          <span className="preview-dot done" />
+          <Line width={50} strong />
+        </span>
+        <span className="preview-shell-look-body">
+          <span>
+            <span className="prompt">$</span> <span className="typed">bun test</span>
+          </span>
+          <span>12 pass</span>
+          <span className="link">Show more</span>
+        </span>
+      </span>
     </span>
   );
 }

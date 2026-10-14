@@ -110,6 +110,10 @@ export const hints = {
   profiles: "Named setups for an agent: environment variables and a pre-launch command, applied to the agent process the profile starts. Every conversation runs on one.",
   shellOutputStyle:
     "How each shell command the agent runs shows in a conversation until you open or close it: its command with the output a click away, the output open only when the command failed, one line with the command too a click away, or everything open. Commands you run with ! always show their output.",
+  shellLook:
+    "The colours of shell blocks in a conversation: the agent's commands, yours, and commands waiting for your approval. Follow the theme matches the rest of the app; Custom takes the background, text and prompt colours you pick.",
+  shellFont: "Any font installed on this machine, by name, e.g. JetBrains Mono. Empty, or a font this machine lacks, shows the app's monospace font.",
+  shellFontSize: "The size of shell blocks' text, against the app's text size.",
   timestamps: "Off: the time shows next to each author's name, and on a later line while you point at it.\nOn: every line shows its time.",
   textSize: "Text size across the app: 50%, 70%, 100%, 140%, or 200%. ⌘+ and ⌘− step it, ⌘0 resets.",
   theme: "Light, dark, or follow the system setting.",

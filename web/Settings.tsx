@@ -2,7 +2,7 @@ import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type Rea
 import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type PromptTemplate } from "../shared/model.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
-import { FontSizePreview, MachineColorPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
+import { FontSizePreview, MachineColorPreview, ShellLookPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
@@ -17,6 +17,18 @@ import { NewerVersionNote } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
+import {
+  changeShellAppearance,
+  DEFAULT_CUSTOM_SHELL_COLOURS,
+  DEFAULT_SHELL_APPEARANCE,
+  isFontFamily,
+  shellColourLabels,
+  shellFontSizeLabels,
+  shellLookLabels,
+  useShellAppearance,
+  type ShellColours,
+  type ShellFontSize,
+} from "./shell-look.ts";
 import { setShellOutputStyle, useShellOutputStyle } from "./shell-output.ts";
 import { isMac } from "./shortcuts.ts";
 import type { DevicesListed, SettingsPage } from "./state.ts";
@@ -266,6 +278,7 @@ function AppearanceSettings() {
   const workspaceColorStyle = useWorkspaceColorStyle();
   const machineColorStyle = useMachineColorStyle();
   const shellOutputStyle = useShellOutputStyle();
+  const shellAppearance = useShellAppearance();
   return (
     <>
       <h3>Appearance</h3>
@@ -312,6 +325,16 @@ function AppearanceSettings() {
         onChoose={setShellOutputStyle}
         preview={(option) => <ShellOutputPreview style={option} />}
       />
+      <PictureChoice
+        name="Shell colours"
+        hint={hints.shellLook}
+        labels={shellLookLabels}
+        chosen={shellAppearance.look}
+        columns={5}
+        onChoose={(look) => changeShellAppearance({ look })}
+        preview={(look) => <ShellLookPreview look={look} />}
+      />
+      <ShellLookSettings />
       <div className="appearance-settings">
         <label data-hint={hints.timestamps}>
           <input type="checkbox" checked={timestampsShown} onChange={(event) => setTimestampsShown(event.target.checked)} />
@@ -319,6 +342,60 @@ function AppearanceSettings() {
         </label>
       </div>
     </>
+  );
+}
+
+function ShellLookSettings() {
+  const { look, custom, font, size } = useShellAppearance();
+  const [fontTyped, setFontTyped] = useState(font);
+  const fontRefused = fontTyped.trim() !== "" && !isFontFamily(fontTyped);
+  const typeFont = (typed: string) => {
+    setFontTyped(typed);
+    changeShellAppearance({ font: typed });
+  };
+  const fontAsDefault = font === DEFAULT_SHELL_APPEARANCE.font && size === DEFAULT_SHELL_APPEARANCE.size;
+  return (
+    <div className="appearance-settings shell-look-settings">
+      {look === "custom" && (
+        <div className="shell-colours">
+          {(Object.keys(shellColourLabels) as (keyof ShellColours)[]).map((part) => (
+            <label key={part}>
+              <input type="color" value={custom[part]} onChange={(event) => changeShellAppearance({ custom: { ...custom, [part]: event.target.value } })} />
+              {shellColourLabels[part]}
+            </label>
+          ))}
+          <button type="button" className="link" onClick={() => changeShellAppearance({ custom: DEFAULT_CUSTOM_SHELL_COLOURS })}>
+            Reset colours
+          </button>
+        </div>
+      )}
+      <label data-hint={hints.shellFont}>
+        Shell font
+        <input type="text" value={fontTyped} placeholder="Monospace" spellCheck={false} aria-invalid={fontRefused} onChange={(event) => typeFont(event.target.value)} />
+      </label>
+      <label data-hint={hints.shellFontSize}>
+        Shell text size
+        <select value={size} onChange={(event) => changeShellAppearance({ size: event.target.value as ShellFontSize })}>
+          {Object.entries(shellFontSizeLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        className="link"
+        disabled={fontAsDefault}
+        onClick={() => {
+          setFontTyped(DEFAULT_SHELL_APPEARANCE.font);
+          changeShellAppearance({ font: DEFAULT_SHELL_APPEARANCE.font, size: DEFAULT_SHELL_APPEARANCE.size });
+        }}
+      >
+        Reset font
+      </button>
+      {fontRefused && <p className="hint shell-font-refused">A font name takes letters, digits, spaces, quotes, commas, dots and hyphens.</p>}
+    </div>
   );
 }
 

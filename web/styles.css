@@ -3586,13 +3586,65 @@ input.rename {
   background: color-mix(in srgb, var(--danger) 13%, transparent);
 }
 
-.shell-body {
+/* Settings > Appearance > Shell colours: the root element names the look; a preview names its own. */
+:root,
+[data-shell-look="theme"] {
+  --shell-background: var(--bg);
+  --shell-text: light-dark(#2b2d33, #d0d2d8);
+  --shell-typed: var(--text);
+  --shell-muted: var(--muted);
+  --shell-prompt: light-dark(#2f8a46, #7fd38a);
+  --shell-link: var(--accent);
+  /* Unset, so the block's color-scheme inherits the page's. */
+  --shell-scheme: initial;
+}
+
+[data-shell-look="terminal-dark"] {
+  --shell-background: #16171c;
   --shell-text: #d7d9e0;
+  --shell-typed: #ffffff;
   --shell-muted: #868a96;
-  background: #16171c;
+  --shell-prompt: #7fd38a;
+  --shell-link: #a5a8ff;
+  --shell-scheme: dark;
+}
+
+[data-shell-look="soft-dark"] {
+  --shell-background: #2a2c33;
+  --shell-text: #c3c6cd;
+  --shell-typed: #e6e7ea;
+  --shell-muted: #8e919a;
+  --shell-prompt: #8fcf98;
+  --shell-link: #b3b5f5;
+  --shell-scheme: dark;
+}
+
+[data-shell-look="paper"] {
+  --shell-background: #fbf8f1;
+  --shell-text: #3d3b35;
+  --shell-typed: #1f1d19;
+  --shell-muted: #7a766b;
+  --shell-prompt: #4f8a3a;
+  --shell-link: #6a5fc4;
+  --shell-scheme: light;
+}
+
+[data-shell-look="custom"] {
+  --shell-background: var(--shell-custom-background);
+  --shell-text: var(--shell-custom-text);
+  --shell-typed: var(--shell-custom-text);
+  --shell-muted: color-mix(in srgb, var(--shell-custom-text) 60%, var(--shell-custom-background));
+  --shell-prompt: var(--shell-custom-prompt);
+  --shell-link: var(--shell-custom-prompt);
+  --shell-scheme: var(--shell-custom-scheme);
+}
+
+.shell-body {
+  background: var(--shell-background);
   color: var(--shell-text);
-  font-family: var(--mono);
-  font-size: calc(12.5px * var(--font-scale));
+  color-scheme: var(--shell-scheme);
+  font-family: var(--shell-font, var(--mono));
+  font-size: calc(12.5px * var(--font-scale) * var(--shell-size, 1));
   line-height: 1.5;
   padding: 8px 12px;
 }
@@ -3610,12 +3662,12 @@ input.rename {
 
 .shell-prompt {
   flex-shrink: 0;
-  color: #7fd38a;
+  color: var(--shell-prompt);
   user-select: none;
 }
 
 .shell-typed {
-  color: #ffffff;
+  color: var(--shell-typed);
 }
 
 .shell-output {
@@ -3643,9 +3695,9 @@ button.shell-more {
   padding: 0;
   border: none;
   background: none;
-  color: #a5a8ff;
+  color: var(--shell-link);
   font: inherit;
-  font-size: calc(12px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale) * var(--shell-size, 1));
 }
 
 button.shell-more:hover {
@@ -4533,6 +4585,35 @@ button.arrangement.chosen {
   white-space: nowrap;
 }
 
+.shell-look-settings {
+  align-items: center;
+}
+
+.shell-colours {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 14px;
+}
+
+.shell-colours input[type="color"] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+}
+
+.shell-look-settings input[type="text"][aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.shell-font-refused {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 input.claude-program {
   width: 26em;
   max-width: 100%;
@@ -4717,7 +4798,61 @@ button.picture-option.chosen {
   flex-direction: column;
   gap: 3px;
   padding: 3px 5px;
-  background: #16171c;
+  background: var(--shell-background);
+}
+
+.preview-shell-body > .preview-line {
+  background: color-mix(in srgb, var(--shell-text) 55%, transparent);
+}
+
+.preview-shell-look {
+  padding: 4px;
+}
+
+.preview-shell-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.preview-shell-card > .preview-row {
+  padding: 3px 5px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-shell-look-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 6px;
+  background: var(--shell-background);
+  text-align: left;
+  color: var(--shell-text);
+  font-family: var(--shell-font, var(--mono));
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.preview-shell-look-body .prompt {
+  color: var(--shell-prompt);
+}
+
+.preview-shell-look-body .typed {
+  color: var(--shell-typed);
+}
+
+.preview-shell-look-body .link {
+  color: var(--shell-link);
 }
 
 .preview-shell-body + .preview-shell-body {
