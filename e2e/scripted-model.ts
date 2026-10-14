@@ -44,6 +44,8 @@ const finish = (finishReason: string) => ({
  */
 export class ScriptedModel {
   readonly requests: ChatRequest[] = [];
+  /** While set, every request for a reply gets this error response instead, as from a provider that is down. */
+  failure: { status: number; body: object } | null = null;
   private server?: Server;
 
   async start() {
@@ -82,6 +84,7 @@ export class ScriptedModel {
     const tools = (request.tools ?? []).map(({ function: { name } }) => name);
     const last = request.messages.at(-1);
     if (tools.length === 0) return this.stream(response, [chunk({ role: "assistant", content: "Scripted title" }), finish("stop")]);
+    if (this.failure) return response.writeHead(this.failure.status, { "content-type": "application/json" }).end(JSON.stringify(this.failure.body));
     if (last?.role === "tool") return this.say(response, `Tool result: ${toolResultOf(last)}`);
     const text = textOf(last).trim();
     const canvasTool = (action: string) => tools.find((name) => name.includes("canvas") && name.endsWith(action))!;
