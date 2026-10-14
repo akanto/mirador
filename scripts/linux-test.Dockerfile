@@ -8,7 +8,7 @@ ARG OPENCODE_VERSION=2.0.27
 ARG CLAUDE_CODE_VERSION=2.1.289
 ARG PLAYWRIGHT_VERSION=1.63.0
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git openssl unzip xz-utils && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl fish git openssl unzip xz-utils && rm -rf /var/lib/apt/lists/*
 RUN arch=$(dpkg --print-architecture | sed 's/amd64/x64/') \
  && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.xz" | tar -xJ -C /usr/local --strip-components=1
 
