@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -99,6 +99,21 @@ test("a tour walks through the code as it is, or through what the task changed w
     await page.keyboard.press("o");
     await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 1 \/.*\/service\.ts$/);
     await expect(view.locator(".review-keys")).not.toContainText("findings");
+  });
+
+  await test.step("in a wide view the steps and the explanation sit side by side, and the code takes the whole width below them", async () => {
+    await page.keyboard.press("2");
+    await view.getByRole("button", { name: "Full screen" }).click();
+    await expect(canvasPane(page)).toHaveClass(/fullscreen/);
+    const boxOf = async (locator: Locator) => (await locator.boundingBox())!;
+    const [whole, steps, explanation, code] = await Promise.all([view, view.locator(".review-list"), view.locator(".flow-step-say"), view.locator(".flow-step .code-block")].map(boxOf));
+    expect(whole.width).toBeGreaterThanOrEqual(900);
+    expect(explanation.x, "the explanation is right of the steps").toBeGreaterThanOrEqual(steps.x + steps.width - 1);
+    expect(code.y, "the code is below both").toBeGreaterThanOrEqual(Math.max(steps.y + steps.height, explanation.y + explanation.height) - 1);
+    expect(code.x, "the code starts under the steps").toBeLessThan(steps.x + 20);
+    expect(code.width).toBeGreaterThan(whole.width - 40);
+    expect(code.height, "a short excerpt keeps its own height").toBeGreaterThan(100);
+    await view.getByRole("button", { name: "Beside the chat" }).click();
   });
 
   await test.step("with since, the steps mark what changed and the Files tab shows the diff, in tour order, with the rest of a file as it was published, even after git gc", async () => {

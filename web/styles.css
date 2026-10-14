@@ -5217,25 +5217,43 @@ button.picture-option.chosen {
   margin-top: 10px;
 }
 
-@container review (min-width: 1100px) {
-  .flow-step {
-    display: grid;
-    grid-template-columns: minmax(260px, 2fr) 3fr;
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 0 18px;
+/* The steps and the step's explanation side by side on top, the code below them across the whole width, so its lines wrap less. */
+@container review (min-width: 900px) {
+  .review-split.flow-tour {
+    grid-template-rows: auto fit-content(40%) minmax(0, 1fr);
   }
 
-  .flow-step-header {
+  .flow-tour > .flow-step {
+    display: contents;
+  }
+
+  /* contain: size keeps a long list of steps from stretching the band; it scrolls instead. */
+  .flow-tour > .review-list {
+    grid-row: 1 / 3;
+    contain: size;
+  }
+
+  .flow-tour .flow-step-header {
+    grid-column: 2;
+    margin: 0;
+    padding: 10px 14px 0;
+  }
+
+  .flow-tour .flow-step-say {
+    grid-column: 2;
+    overflow: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 8px 14px 10px;
+  }
+
+  .flow-tour .code-block {
     grid-column: 1 / -1;
-  }
-
-  .flow-step-say,
-  .flow-step .code-block {
+    align-self: start;
     overflow: auto;
     min-height: 0;
     max-height: 100%;
-    margin: 0;
-    align-self: start;
+    margin: 0 14px 14px;
   }
 }
 
