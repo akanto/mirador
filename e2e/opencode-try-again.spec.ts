@@ -33,6 +33,7 @@ test("an opencode turn its provider ended with an error is tried again, and open
     model.failure = { status: 400, body: { error: { message: "Scripted bad request", type: "invalid_request_error" } } };
     await sendMessage(page, "first task");
     await expect(failedTurn).toContainText("Scripted bad request", { timeout: 120_000 });
+    await expect(failedTurn, "where opencode tags the error as failing is for the host, not shown").not.toContainText("errorName");
     await waitForTurnToEnd(page);
     await expect(tryAgain).toBeVisible();
   });

@@ -1634,11 +1634,19 @@ export function errorMessage(error: unknown): string {
   return details === null ? String(message ?? error) : `${String(message ?? error)}: ${details}`;
 }
 
-/** Claude Code tags an error with its kind, e.g. {"errorKind":"server_error"}, which is for the host to read, not for people. */
+/**
+ * Tags for the host to read, not for people: Claude Code tags an error with its kind, e.g. {"errorKind":"server_error"},
+ * and opencode with where it failed, e.g. {"service":"session","errorName":"provider.invalid-request"}.
+ */
+const ERROR_TAGS = new Set(["errorKind", "service", "errorName"]);
+
+/** opencode hands an error whose message isn't JSON over as {"details": message}, which reads best as the message alone. */
 function detailsWorthShowing(data: unknown) {
   if (data === undefined || data === null) return null;
   if (typeof data !== "object") return String(data);
   if (Array.isArray(data)) return JSON.stringify(data);
-  const { errorKind: _forTheHost, ...details } = data as Record<string, unknown>;
-  return Object.keys(details).length > 0 ? JSON.stringify(details) : null;
+  const details = Object.fromEntries(Object.entries(data).filter(([key]) => !ERROR_TAGS.has(key)));
+  const keys = Object.keys(details);
+  if (keys.length === 0) return null;
+  return keys.length === 1 && typeof details.details === "string" ? details.details : JSON.stringify(details);
 }

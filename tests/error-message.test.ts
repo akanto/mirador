@@ -10,3 +10,11 @@ test("an error line leaves out the kind Claude Code tags its errors with, and ke
   expect(errorMessage({ message: "Missing", data: ["cwd", "mcpServers"] })).toBe('Missing: ["cwd","mcpServers"]');
   expect(errorMessage("plain")).toBe("plain");
 });
+
+test("an error line leaves out where opencode tags its errors as failing, and shows a message it wraps as details as it is", () => {
+  const data = { service: "session", errorName: "provider.invalid-request" };
+  expect(errorMessage({ message: "Internal error: Scripted bad request", data })).toBe("Internal error: Scripted bad request");
+  expect(errorMessage({ message: "Internal error: OpenCode server is unavailable", data: { errorName: "ServerUnavailable" } })).toBe("Internal error: OpenCode server is unavailable");
+  expect(errorMessage({ message: "Internal error", data: { details: "socket hang up" } })).toBe("Internal error: socket hang up");
+  expect(errorMessage({ message: "Internal error", data: { ...data, details: "socket hang up", status: 502 } })).toBe('Internal error: {"details":"socket hang up","status":502}');
+});
