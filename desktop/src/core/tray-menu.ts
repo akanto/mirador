@@ -60,6 +60,9 @@ export function trayMenu(state: TrayState): TrayItem[] {
 
 export const trayTitle = (waitingCount: number) => (waitingCount > 0 ? String(waitingCount) : "");
 
+/** On macOS a tray title is text beside the icon, kept for the waiting count; Linux panels show it as the icon's tooltip. */
+export const firstTrayTitle = (platform: NodeJS.Platform, appName: string) => (platform === "darwin" ? "" : appName);
+
 export function restartDetail(appName: string, runningTurns: number): string {
   if (runningTurns === 0) return `${appName} closes and opens again.`;
   const turns = runningTurns === 1 ? "turn" : "turns";
