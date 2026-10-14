@@ -51,6 +51,7 @@ import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
 import type { HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
+import type { DroppedFiles } from "./dropped-files.ts";
 import type { ImageStore } from "./images.ts";
 import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
@@ -180,6 +181,7 @@ export class ConversationService {
     private readonly config: HostConfig,
     private readonly notifier: NotifierMute,
     private readonly images: ImageStore,
+    private readonly droppedFiles: DroppedFiles,
     private readonly notifications: SystemNotifications,
   ) {
     this.checkpoints = new Checkpoints(config.dataDir);
@@ -345,6 +347,7 @@ export class ConversationService {
     this.asksWaitedOn.delete(conversationId);
     this.store.deleteConversation(conversationId);
     this.images.deleteConversation(conversationId);
+    this.droppedFiles.deleteConversation(conversationId);
     this.hub.broadcast({ type: "conversation.deleted", conversationId });
     this.announceWaitingCount();
     if (wasRunning) this.announceRunningTurnsCount();

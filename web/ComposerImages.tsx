@@ -1,9 +1,9 @@
 import { useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type RefObject, type SetStateAction } from "react";
-import { flushSync } from "react-dom";
 import type { ImageContent } from "@agentclientprotocol/sdk";
 import { carriedImageSource, imageUrl } from "../shared/images.ts";
 import { useDraftAttachments } from "./drafts.ts";
 import { useImagePreview } from "./ImagePreview.tsx";
+import { insertAtCaret } from "./insert-at-caret.ts";
 import {
   discardImages,
   imageFilesIn,
@@ -34,13 +34,6 @@ export function useComposerImages(
   const showUploads = () => setUploadingNumbers([...uploading.current].sort((a, b) => a - b));
   const [problem, setProblem] = useState<string | null>(null);
 
-  const insertAtCaret = (insertion: string) => {
-    const box = textarea.current;
-    const [start, end] = box ? [box.selectionStart, box.selectionEnd] : [Infinity, Infinity];
-    flushSync(() => setText((current) => current.slice(0, start) + insertion + current.slice(end)));
-    box?.setSelectionRange(start + insertion.length, start + insertion.length);
-  };
-
   const reserveNumber = () => {
     const number = nextNumber([...latest.current.map(({ number }) => number), ...uploading.current]);
     uploading.current.add(number);
@@ -65,7 +58,7 @@ export function useComposerImages(
     setProblem(null);
     const pasted = files.map((file) => ({ file, number: reserveNumber() }));
     showUploads();
-    insertAtCaret(pasted.map(({ number }) => `${placeholder(number)} `).join(""));
+    insertAtCaret(textarea.current, setText, pasted.map(({ number }) => `${placeholder(number)} `).join(""));
     pasted.forEach(({ file, number }) => void upload(file, number));
   };
 
@@ -89,7 +82,6 @@ export function useComposerImages(
       event.preventDefault();
       const images = imageFilesIn(event.dataTransfer);
       if (images.length > 0) attach(images);
-      else setProblem("Only images can go into a message.");
     },
     detach(attachment: Attachment) {
       setText((current) => withoutPlaceholder(current, attachment.number));

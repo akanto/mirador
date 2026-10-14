@@ -13,6 +13,7 @@ import { ConversationSearch } from "./search.ts";
 import { signedInWith } from "./sign-in.ts";
 import { SignInCodes, signInLink } from "./sign-in-codes.ts";
 import { Hub } from "./hub.ts";
+import { DroppedFiles } from "./dropped-files.ts";
 import { ImageStore } from "./images.ts";
 import { MUTED_LIST_FILE, NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
@@ -40,10 +41,11 @@ const ownAuthorityFingerprint = certificate?.authority ? authorityFingerprint(ce
 store.rememberAuthorityFingerprint(ownAuthorityFingerprint);
 const hub = new Hub();
 const images = new ImageStore(join(config.dataDir, "images"));
+const droppedFiles = new DroppedFiles(join(config.dataDir, "dropped-files"));
 const notifications = new SystemNotifications(store, hub);
 const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, MUTED_LIST_FILE));
 notifierMute.unmuteSessionsOfEarlierRuns();
-const conversations = new ConversationService(store, hub, config, notifierMute, images, notifications);
+const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications);
 const canvasAssetsOrigins = [
   config.canvasAssetsOrigin,
   `http://127.0.0.1:${config.canvasAssetsPort}`,
@@ -88,7 +90,7 @@ const relays = new MachineRelays(
 );
 relays.startAll();
 watch.startAll();
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, droppedFiles, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();

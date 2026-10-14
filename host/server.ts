@@ -44,6 +44,7 @@ import { socketData, webSocketCompression, type BrowserSocket, type Hub, type So
 import type { MachineRelays } from "./machine-relays.ts";
 import type { MachineWatch } from "./machine-watch.ts";
 import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
+import { MAX_DROPPED_FILE_BYTES, type DroppedFiles } from "./dropped-files.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
@@ -68,6 +69,7 @@ export interface HostServices {
   statusline: StatuslineService;
   terminals: TerminalService;
   images: ImageStore;
+  droppedFiles: DroppedFiles;
   restart: HostRestart;
   desktopApp: DesktopAppCheck;
   newerVersion: NewerVersionWatcher;
@@ -103,6 +105,16 @@ const tokenCookie = (token: string, secure: boolean) =>
   `${TOKEN_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure ? "; Secure" : ""}`;
 
 
+/** A header the page encoded with encodeURIComponent, since headers carry Latin-1 only; null when missing or malformed. */
+function decodedHeader(value: string | null) {
+  if (value === null) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 export function startServer(services: HostServices) {
   const {
     config,
@@ -115,6 +127,7 @@ export function startServer(services: HostServices) {
     statusline,
     terminals,
     images,
+    droppedFiles,
     restart,
     desktopApp,
     newerVersion,
@@ -403,8 +416,8 @@ export function startServer(services: HostServices) {
     }
   }
 
-  /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images. */
-  function refusedImageRequest(request: Request, conversationId: string) {
+  /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images and dropped files. */
+  function refusedAttachmentRequest(request: Request, conversationId: string) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
     if (!signedInAs(request)) return new Response("unauthorized", { status: 401 });
     const site = request.headers.get("sec-fetch-site");
@@ -416,7 +429,7 @@ export function startServer(services: HostServices) {
 
   async function addImage(request: Bun.BunRequest<"/conversations/:conversationId/images">) {
     const { conversationId } = request.params;
-    const refused = refusedImageRequest(request, conversationId);
+    const refused = refusedAttachmentRequest(request, conversationId);
     if (refused) return refused;
     if (Number(request.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) return new Response("image too large", { status: 413 });
     try {
@@ -427,9 +440,26 @@ export function startServer(services: HostServices) {
     }
   }
 
+  /** The browser gives a dropped file's contents but not its path; the host keeps a copy and answers where it is. */
+  async function addDroppedFile(request: Bun.BunRequest<"/conversations/:conversationId/files">) {
+    const { conversationId } = request.params;
+    const refused = refusedAttachmentRequest(request, conversationId);
+    if (refused) return refused;
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_DROPPED_FILE_BYTES) {
+      return new Response(`A dropped file can be at most ${MAX_DROPPED_FILE_BYTES / 1024 / 1024} MB.`, { status: 413 });
+    }
+    const name = decodedHeader(request.headers.get("x-file-name"));
+    if (!name) return new Response("A dropped file needs a name.", { status: 400 });
+    try {
+      return Response.json({ path: await droppedFiles.save(conversationId, name, await request.blob()) });
+    } catch (error) {
+      return new Response(errorMessage(error), { status: 400 });
+    }
+  }
+
   async function serveImage(request: Bun.BunRequest<"/conversations/:conversationId/images/:imageId">) {
     const { conversationId, imageId } = request.params;
-    const refused = refusedImageRequest(request, conversationId);
+    const refused = refusedAttachmentRequest(request, conversationId);
     if (refused) return refused;
     const file = isImageId(imageId) ? images.file(conversationId, imageId) : null;
     if (!file || !(await file.exists())) return new Response("not found", { status: 404 });
@@ -439,7 +469,7 @@ export function startServer(services: HostServices) {
   /** An image an agent's tool returned, which the low-data form of its event links to. */
   function serveEventImage(request: Bun.BunRequest<"/conversations/:conversationId/events/:seq/images/:index">) {
     const { conversationId, seq, index } = request.params;
-    const refused = refusedImageRequest(request, conversationId);
+    const refused = refusedAttachmentRequest(request, conversationId);
     if (refused) return refused;
     const stored = store.findEvent(conversationId, Number(seq));
     const image = stored ? imagesOf(stored)[Number(index)] : undefined;
@@ -946,6 +976,7 @@ export function startServer(services: HostServices) {
     "/join-requests/:id/reveal": { POST: revealJoinRequestNonce },
     "/join-requests/:id/poll": { POST: pollJoinRequest },
     "/conversations/:conversationId/images": { POST: addImage },
+    "/conversations/:conversationId/files": { POST: addDroppedFile },
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
     "/mirador-ca.pem": serveAuthority,

@@ -49,7 +49,7 @@ function serviceWithConversationOn(harness: HarnessId) {
     updatedAt: 1,
   });
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, `data-${harness}`) });
-  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never);
+  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
 }
 
 test("a Claude conversation shows what its subagents spent", async () => {

@@ -29,6 +29,7 @@ import { harnessSteers, useEnterWhileBusy, type EnterWhileBusy } from "./busy-se
 import { connection } from "./connection.ts";
 import { choiceGroups } from "./choices.ts";
 import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages.tsx";
+import { useDroppedFiles } from "./dropped-files.ts";
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
@@ -1308,6 +1309,8 @@ function Composer({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const composerHeight = useComposerHeight();
   const images = useComposerImages(conversation.id, text, setText, textarea);
+  const droppedFiles = useDroppedFiles(conversation.id, setText, textarea);
+  const attaching = images.uploading || droppedFiles.copying;
   const typingAidAttributes = useTypingAidAttributes();
   const enterWhileBusy = useEnterWhileBusy();
   const canSteer = harnessSteers[conversation.harness];
@@ -1320,7 +1323,7 @@ function Composer({
     images.clearAfterSending();
   };
   const send = (afterTurn = false, message = text) => {
-    if (!message.trim() || command === "" || images.uploading || stoppedEdit.goingBack) return;
+    if (!message.trim() || command === "" || attaching || stoppedEdit.goingBack) return;
     if (isLoginCommand(message)) {
       requestLogin(conversation.id);
       setText("");
@@ -1460,6 +1463,11 @@ function Composer({
           {images.problem}
         </div>
       )}
+      {droppedFiles.problem && (
+        <div className="composer-problem" role="alert">
+          {droppedFiles.problem}
+        </div>
+      )}
       {stoppedEdit.editing && (
         <div className="editing-stopped" role="status">
           Editing your stopped message. Enter replaces it and its answer, and puts back any files it changed; Esc keeps them.
@@ -1470,7 +1478,14 @@ function Composer({
           {stoppedEdit.editing.problem}
         </div>
       )}
-      <div className={command === null ? "composer" : "composer shell-mode"} onDragOver={images.onDragOver} onDrop={images.onDrop}>
+      <div
+        className={command === null ? "composer" : "composer shell-mode"}
+        onDragOver={images.onDragOver}
+        onDrop={(event) => {
+          images.onDrop(event);
+          droppedFiles.onDrop(event);
+        }}
+      >
         {suggestions.menu}
         <textarea
           {...typingAidAttributes}
@@ -1537,7 +1552,7 @@ function Composer({
             </button>
           ) : (
             command === null && (
-              <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || images.uploading || stoppedEdit.goingBack}>
+              <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || attaching || stoppedEdit.goingBack}>
                 Send
               </button>
             )
