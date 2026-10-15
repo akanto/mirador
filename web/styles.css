@@ -1620,6 +1620,7 @@ input.picker-search {
 .message {
   max-width: 100%;
   line-height: 1.55;
+  overflow-wrap: break-word;
 }
 
 .message.user {
