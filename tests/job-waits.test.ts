@@ -300,7 +300,7 @@ esac
   });
 
   test("from Windows, ssh runs on its own and the job shows the same, though an error connecting does not stay", async () => {
-    const job = Bun.spawn(["sh", "-c", "sleep 1"]);
+    const job = Bun.spawn(["sleep", "1"]);
     const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: "box" }, binWith({ ssh: fakeSsh }), "win32");
     expect(output).toContain("Command: sleep 1");
     expect(output).toEndWith(`\nProcess ${job.pid} ended.\nPress Enter to close this tab.`);
