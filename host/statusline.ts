@@ -8,6 +8,7 @@ import type { ConversationService } from "./conversations.ts";
 import type { Store } from "./store.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
 import { commandLine, commandShell } from "./command-shell.ts";
+import { killProcessTree } from "./windows-processes.ts";
 
 const COMMAND_TIMEOUT_MS = 5_000;
 /** A command may leave a background job holding its output open; what it printed before exiting is what counts. */
@@ -89,6 +90,7 @@ function collectText(stream: ReadableStream<Uint8Array>) {
 }
 
 function killProcessGroup(pid: number) {
+  if (process.platform === "win32") return void killProcessTree(pid);
   try {
     process.kill(-pid, "SIGKILL");
   } catch {}
@@ -98,7 +100,13 @@ export type CommandResult = { output: string } | { error: string };
 
 export async function runStatusLineCommand(
   command: string,
-  { input, directory, environment, columns }: { input: unknown; directory: string; environment: Record<string, string>; columns: number },
+  {
+    input,
+    directory,
+    environment,
+    columns,
+    timeoutMs = COMMAND_TIMEOUT_MS,
+  }: { input: unknown; directory: string; environment: Record<string, string>; columns: number; timeoutMs?: number },
 ): Promise<CommandResult> {
   const child = Bun.spawn(commandLine(commandShell(() => "sh", environment), command), {
     cwd: directory,
@@ -110,12 +118,12 @@ export async function runStatusLineCommand(
     detached: true,
   });
   const [output, errors] = [collectText(child.stdout), collectText(child.stderr)];
-  const exitedInTime = await Promise.race([child.exited.then(() => true), Bun.sleep(COMMAND_TIMEOUT_MS).then(() => false)]);
+  const exitedInTime = await Promise.race([child.exited.then(() => true), Bun.sleep(timeoutMs).then(() => false)]);
   if (!exitedInTime) killProcessGroup(child.pid);
   await Promise.race([Promise.all([output.finished, errors.finished]), Bun.sleep(LATE_OUTPUT_GRACE_MS)]);
   output.stop();
   errors.stop();
-  if (!exitedInTime) return { error: `The statusline command took longer than ${COMMAND_TIMEOUT_MS / 1000} s and was stopped.` };
+  if (!exitedInTime) return { error: `The statusline command took longer than ${timeoutMs / 1000} s and was stopped.` };
   if (child.exitCode !== 0) {
     const firstError = errors.text().trim().split("\n")[0];
     return { error: `The statusline command exited with ${child.exitCode}${firstError ? `: ${firstError}` : "."}` };

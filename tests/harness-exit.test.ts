@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HarnessProcess } from "../host/acp/harness.ts";
@@ -24,6 +24,21 @@ process.stdin.resume();
 const crashingAgentWhoseChildHoldsItsOutput = `
 require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 10_000)"], { stdio: ["ignore", "inherit", "ignore"] });
 ${crashingAgent}`;
+
+/** Bun on Windows ends an agent's own children with it, but not one started apart, as a tool's shell starts its programs. */
+const crashingAgentWithAChildApart = (pidFile: string) => `
+const child = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"], { stdio: "ignore", detached: true });
+require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+${crashingAgent}`;
+
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 function crashingHarness(agent = crashingAgent) {
   const directory = mkdtempSync(join(tmpdir(), "mirador-harness-exit-"));
@@ -58,5 +73,18 @@ describe("HarnessProcess.prompt", () => {
     const prompt = harness.prompt(sessionId, [{ type: "text", text: "hello" }]);
     void harness.stop("was restarted because its profile changed");
     await expect(prompt).rejects.toThrow("The Crashing agent agent process was restarted because its profile changed.");
+  }, 15_000);
+
+  test.if(process.platform === "win32")("on Windows stopping the agent ends what it started too, as no stop signal there lets the agent end it", async () => {
+    const pidFile = join(mkdtempSync(join(tmpdir(), "mirador-harness-child-")), "child.pid");
+    const harness = crashingHarness(crashingAgentWithAChildApart(pidFile));
+    await harness.start();
+    const child = Number(readFileSync(pidFile, "utf8"));
+    expect(isRunning(child)).toBe(true);
+
+    await harness.stop("was stopped");
+    const deadline = Date.now() + 3_000;
+    while (isRunning(child) && Date.now() < deadline) await Bun.sleep(20);
+    expect(isRunning(child)).toBe(false);
   }, 15_000);
 });

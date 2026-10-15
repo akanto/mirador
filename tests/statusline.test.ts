@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
@@ -47,6 +47,15 @@ const configDirWith = (settings: unknown) => {
   const directory = mkdtempSync(join(tmpdir(), "mirador-statusline-"));
   writeFileSync(join(directory, "settings.json"), JSON.stringify(settings));
   return directory;
+};
+
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const run = (command: string) => runStatusLineCommand(command, { input: { hello: "world" }, directory: tmpdir(), environment: { PATH: process.env.PATH! }, columns: 42 });
@@ -101,6 +110,18 @@ describe("statusline", () => {
     const started = Date.now();
     expect(await run("(sleep 3) & echo ready")).toEqual({ output: "ready" });
     expect(Date.now() - started).toBeLessThan(1_500);
+  });
+
+  test("a command that runs too long is stopped, with what it started", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "mirador-statusline-slow-"));
+    const slowProgram = `"${process.execPath}" -e "require('fs').writeFileSync('pid', String(process.pid)); setTimeout(() => {}, 30000)"`;
+    const environment = { PATH: process.env.PATH! };
+    const result = await runStatusLineCommand(`${slowProgram}; echo after`, { input: {}, directory, environment, columns: 42, timeoutMs: 3_000 });
+    expect(result).toEqual({ error: "The statusline command took longer than 3 s and was stopped." });
+    const program = Number(readFileSync(join(directory, "pid"), "utf8"));
+    const deadline = Date.now() + 2_000;
+    while (isRunning(program) && Date.now() < deadline) await Bun.sleep(20);
+    expect(isRunning(program)).toBe(false);
   });
 
   test("the model shown is the chosen option's name", () => {

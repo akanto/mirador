@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,20 +46,35 @@ test("the agent gets each command and its output in Claude Code's tags ahead of 
   expect(withCommandOutputs([], "Just this")).toBe("Just this");
 });
 
+/** Git Bash, which runs the commands on Windows, names folders its own way (/tmp, /c/Users), so a program prints it. */
+const printWorkingDirectory = `"${process.execPath}" -e "console.log(process.cwd())"`;
+
+const programWritingItsPid = `"${process.execPath}" -e "require('fs').writeFileSync('pid', String(process.pid)); setTimeout(() => {}, 30000)"`;
+
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 test("the runner records a command's output by stream, its exit code, and can stop it with whatever it started", async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "mirador-commands-")));
   const runner = new UserCommandRunner();
   const events: ConversationEvent[] = [];
   try {
-    await runner.run("pwd; echo oops >&2; exit 3", directory, { PATH: process.env.PATH!, HOME: directory }, (event) => events.push(event));
+    await runner.run(`${printWorkingDirectory}; echo oops >&2; exit 3`, directory, { PATH: process.env.PATH!, HOME: directory }, (event) => events.push(event));
     const [finished] = userCommandsIn(stored(events));
     expect(outputOf(finished!, "stdout")).toBe(`${directory}\n`);
     expect(outputOf(finished!, "stderr")).toBe("oops\n");
-    expect(finished).toMatchObject({ command: "pwd; echo oops >&2; exit 3", ended: true, exitCode: 3 });
+    expect(finished).toMatchObject({ command: `${printWorkingDirectory}; echo oops >&2; exit 3`, ended: true, exitCode: 3 });
 
     events.length = 0;
-    const running = runner.run("sleep 30; echo after", directory, { PATH: process.env.PATH!, HOME: directory }, (event) => events.push(event));
-    while (events.length === 0) await Bun.sleep(10);
+    const running = runner.run(`${programWritingItsPid}; echo after`, directory, { PATH: process.env.PATH!, HOME: directory }, (event) => events.push(event));
+    while (!existsSync(join(directory, "pid"))) await Bun.sleep(10);
+    const program = Number(readFileSync(join(directory, "pid"), "utf8"));
     const commandId = (events[0] as { commandId: string }).commandId;
     expect(runner.isRunning(commandId)).toBe(true);
     const stoppedAt = Date.now();
@@ -66,7 +82,10 @@ test("the runner records a command's output by stream, its exit code, and can st
     await running;
     expect(Date.now() - stoppedAt).toBeLessThan(2_000);
     expect(userCommandsIn(stored(events))[0]).toMatchObject({ ended: true, exitCode: null, chunks: [] });
+    const deadline = Date.now() + 2_000;
+    while (isRunning(program) && Date.now() < deadline) await Bun.sleep(20);
+    expect(isRunning(program)).toBe(false);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-});
+}, 15_000);

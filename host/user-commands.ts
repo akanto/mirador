@@ -2,6 +2,7 @@ import type { Subprocess } from "bun";
 import type { CommandStream, ConversationEvent } from "../shared/model.ts";
 import { loginShell } from "./acp/environment.ts";
 import { commandLine, commandShell } from "./command-shell.ts";
+import { killProcessTree } from "./windows-processes.ts";
 
 const OUTPUT_BATCH_MS = 200;
 const MAX_KEPT_CHARACTERS = 1_000_000;
@@ -37,8 +38,12 @@ class OutputBatcher {
   }
 }
 
-/** The command runs in a process group of its own, so stopping it also stops whatever the shell started. */
+/**
+ * The command runs in a process group of its own, so stopping it also stops whatever the shell started. Windows has no
+ * process groups, so there the process tree is killed.
+ */
 function stopProcessGroup(child: Subprocess) {
+  if (process.platform === "win32") return void killProcessTree(child.pid);
   try {
     process.kill(-child.pid, "SIGTERM");
   } catch {
@@ -55,6 +60,7 @@ async function readInto(stream: ReadableStream<Uint8Array>, onText: (text: strin
 /** Runs `!` commands from the message box with the user's login shell, without input, recording them as conversation events. */
 export class UserCommandRunner {
   private readonly running = new Map<string, Subprocess>();
+  private readonly stopped = new Set<string>();
 
   isRunning(commandId: string) {
     return this.running.has(commandId);
@@ -77,11 +83,12 @@ export class UserCommandRunner {
       this.running.set(commandId, child);
       await Promise.all([readInto(child.stdout, (text) => output.add("stdout", text)), readInto(child.stderr, (text) => output.add("stderr", text))]);
       await child.exited;
-      exitCode = child.signalCode ? null : child.exitCode;
+      exitCode = child.signalCode || this.stopped.has(commandId) ? null : child.exitCode;
     } catch (error) {
       output.add("stderr", `${error instanceof Error ? error.message : String(error)}\n`);
     } finally {
       this.running.delete(commandId);
+      this.stopped.delete(commandId);
       output.flush();
       record({ type: "user-command-ended", commandId, exitCode });
     }
@@ -89,13 +96,15 @@ export class UserCommandRunner {
 
   stop(commandId: string) {
     const child = this.running.get(commandId);
-    if (child) stopProcessGroup(child);
+    if (!child) return;
+    this.stopped.add(commandId);
+    stopProcessGroup(child);
   }
 
   /** Waits for the commands to exit, as the terminals' shutdown does for its shells. */
   async shutdown() {
     const exits = [...this.running.values()].map(({ exited }) => exited);
-    this.running.forEach(stopProcessGroup);
+    [...this.running.keys()].forEach((commandId) => this.stop(commandId));
     await Promise.all(exits);
   }
 }

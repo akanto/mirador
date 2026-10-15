@@ -6,6 +6,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import type { HarnessId } from "../../shared/model.ts";
 import { MIRADOR_VERSION } from "../../shared/version.ts";
 import { commandLine, commandShell } from "../command-shell.ts";
+import { killProcessTree } from "../windows-processes.ts";
 
 export type ConfigValue = string | boolean;
 
@@ -131,13 +132,17 @@ export class HarnessProcess {
    * Settles once the agent process has exited. An agent that handles the stop signal can defer it as long as it
    * likes — claude-agent-acp disposes itself on SIGTERM, which wedges when the turn is wedged — so the grace
    * period ends with SIGKILL; a connection left closed and uncleaned would fail every later prompt of its own kind.
+   * Windows has no stop signal, so there the agent cannot end what it started: it is killed at once with all of it.
    */
   stop(reason?: string) {
     this.stopReason = reason;
     const child = this.child;
     this.connection?.close();
-    child?.kill();
-    if (child) setTimeout(() => child.exitCode === null && child.signalCode === null && child.kill("SIGKILL"), FORCE_KILL_GRACE_MS).unref();
+    if (process.platform === "win32" && child?.pid !== undefined) void killProcessTree(child.pid);
+    else if (child) {
+      child.kill();
+      setTimeout(() => child.exitCode === null && child.signalCode === null && child.kill("SIGKILL"), FORCE_KILL_GRACE_MS).unref();
+    }
     return this.exited;
   }
 
