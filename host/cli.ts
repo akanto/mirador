@@ -1,4 +1,5 @@
 import { parseArgs } from "node:util";
+import { windowsPidOf } from "./command-shell.ts";
 import { loadConfig } from "./config.ts";
 import { DeviceService } from "./devices.ts";
 import { JoinRequestService } from "./join-requests.ts";
@@ -98,6 +99,8 @@ function printColumns(rows: string[][]) {
   rows.forEach((row) => console.log(filled(row).join("   ").trimEnd()));
 }
 
+const startedFromGitBash = process.platform === "win32" && process.env.MSYSTEM !== undefined;
+
 function jobWaitRequest(args: string[]): { session: string | undefined; request: JobWaitRequest } {
   const { values, positionals } = parseArgs({
     args,
@@ -109,7 +112,8 @@ function jobWaitRequest(args: string[]): { session: string | undefined; request:
   if (pid !== undefined && !isPid(Number(pid))) throw new Error(`"${pid}" is not a process id`);
   if (container !== undefined && !isContainerName(container)) throw new Error(`"${container}" is not a container name or id`);
   if (host !== null && !isSshHost(host)) throw new Error(`"${host}" is not a host ssh can reach: give user@host or a name from your ssh config`);
-  const job = pid !== undefined ? { kind: "process" as const, pid: Number(pid) } : { kind: "container" as const, name: container! };
+  const pidOnThisMachine = (pid: number) => (startedFromGitBash && host === null ? windowsPidOf(pid) : pid);
+  const job = pid !== undefined ? { kind: "process" as const, pid: pidOnThisMachine(Number(pid)) } : { kind: "container" as const, name: container! };
   return { session, request: { job, sshHost: host, message: positionals.join(" ") || null, resume: !values["no-resume"] } };
 }
 

@@ -3,13 +3,19 @@ import type { JobWait, JobWaitEnd, WaitedJob } from "../shared/model.ts";
 import type { Store } from "./store.ts";
 import type { TerminalProgram } from "./terminals.ts";
 
+/** Git Bash's $! is a number of its own, not the Windows pid the host checks. */
+const windowsPidAdvice = (platform: NodeJS.Platform) =>
+  platform === "win32"
+    ? " On Windows, Mirador needs the Windows pid of a job on this machine, which `$!` in Git Bash is not: read it a second after the start, as in `sleep 1; cat /proc/$!/winpid`."
+    : "";
+
 /** Appended to Claude Code's system prompt, so agents in Mirador hand their waiting to the host. */
-export const jobWaitGuidance = `# Jobs left running
-When a job will outlast your turn (a build, a test suite, a deploy, anything that takes more than a couple of minutes), start it with \`nohup <command> > <log> 2>&1 &\` and take its pid from \`$!\`, not with the Bash tool's run_in_background. Then run \`mirador when-done --pid <pid> "<message>"\` (or \`--container <name>\` for a Docker or Podman container; add \`--host <user@host>\` for a job on another machine, reached over ssh) and end your turn. Don't poll it with sleep and don't spawn an agent to watch it. The user follows your work in Mirador, which shows the jobs it waits for; a run_in_background job, and the harness waking you when it exits, don't show there. When the job ends, the message comes back to you as the user's next message, so write it as your instruction for picking up the work. Add \`--no-resume\` when the user should decide what happens next: Mirador then only tells them.`;
+export const jobWaitGuidance = (platform = process.platform) => `# Jobs left running
+When a job will outlast your turn (a build, a test suite, a deploy, anything that takes more than a couple of minutes), start it with \`nohup <command> > <log> 2>&1 &\` and take its pid from \`$!\`, not with the Bash tool's run_in_background.${windowsPidAdvice(platform)} Then run \`mirador when-done --pid <pid> "<message>"\` (or \`--container <name>\` for a Docker or Podman container; add \`--host <user@host>\` for a job on another machine, reached over ssh) and end your turn. Don't poll it with sleep and don't spawn an agent to watch it. The user follows your work in Mirador, which shows the jobs it waits for; a run_in_background job, and the harness waking you when it exits, don't show there. When the job ends, the message comes back to you as the user's next message, so write it as your instruction for picking up the work. Add \`--no-resume\` when the user should decide what happens next: Mirador then only tells them.`;
 
 /** For the canvas server's when_done tool, which any agent can call: opencode gives its commands no session id that `mirador when-done` could name the conversation by. */
-export const jobWaitToolDescription =
-  "Have Mirador wait for a job you leave running, then send you a message. When a job will outlast your turn (a build, a test suite, a deploy, anything that takes more than a couple of minutes), start it with `nohup <command> > <log> 2>&1 &` and take its pid from `$!`, not with the Bash tool's run_in_background; or name its Docker or Podman container, and for a job on another machine its host. Then call this and end your turn. Don't poll it with sleep and don't spawn an agent to watch it. The user follows your work in Mirador, which shows the jobs it waits for; a run_in_background job, and the harness waking you when it exits, don't show there. When the job ends, the message comes back to you as the user's next message, so write it as your instruction for picking up the work. The same as the `mirador when-done` command.";
+export const jobWaitToolDescription = (platform = process.platform) =>
+  `Have Mirador wait for a job you leave running, then send you a message. When a job will outlast your turn (a build, a test suite, a deploy, anything that takes more than a couple of minutes), start it with \`nohup <command> > <log> 2>&1 &\` and take its pid from \`$!\`, not with the Bash tool's run_in_background; or name its Docker or Podman container, and for a job on another machine its host.${windowsPidAdvice(platform)} Then call this and end your turn. Don't poll it with sleep and don't spawn an agent to watch it. The user follows your work in Mirador, which shows the jobs it waits for; a run_in_background job, and the harness waking you when it exits, don't show there. When the job ends, the message comes back to you as the user's next message, so write it as your instruction for picking up the work. The same as the \`mirador when-done\` command.`;
 
 /** `unknown`: the check failed, e.g. ssh could not connect or Docker did not answer. */
 export type JobState = "running" | "ended" | "unknown";

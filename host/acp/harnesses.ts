@@ -147,7 +147,7 @@ const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_revie
 export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { withoutUserSettings = false } = {}) {
   if (harness !== "claude") return undefined;
   return {
-    systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance] : []), jobWaitGuidance].join("\n\n") },
+    systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance] : []), jobWaitGuidance()].join("\n\n") },
     claudeCode: {
       options: {
         ...(withoutUserSettings && { settingSources: ["project", "local"] }),

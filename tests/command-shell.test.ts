@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commandLine, commandShell, findGitBash, findPowerShell, powershellInvocation, programName, terminalShell } from "../host/command-shell.ts";
+import { commandLine, commandShell, findGitBash, findPowerShell, powershellInvocation, programName, terminalShell, windowsPidOf } from "../host/command-shell.ts";
 
 const gitBash = "C:\\Program Files\\Git\\bin\\bash.exe";
 const withGitBash = { gitBash: () => gitBash, powershell: () => "pwsh.exe" };
@@ -90,5 +90,42 @@ describe("a terminal tab", () => {
     expect(shell).toEqual(["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo"]);
     expect(programName(shell[0]!)).toBe("pwsh");
     expect(programName("powershell.exe")).toBe("powershell");
+  });
+});
+
+describe("a Git Bash pid", () => {
+  const fakeGitBash = (script: string) => {
+    const gitBash = join(mkdtempSync(join(tmpdir(), "fake-git-bash-")), "bash");
+    writeFileSync(gitBash, `#!/bin/sh\n${script}`);
+    chmodSync(gitBash, 0o755);
+    return gitBash;
+  };
+
+  /** Its fake Git Bash is a shell script, which Windows does not run; there the last test asks the real one. */
+  test.skipIf(process.platform === "win32")("becomes the Windows pid Git Bash knows behind it; one no MSYS process has, or one without Git Bash, stays", () => {
+    const gitBash = fakeGitBash('[ "$2" = "cat /proc/495/winpid" ] && echo 10948 && exit 0\necho "cat: $2: No such file or directory" >&2; exit 1\n');
+    expect(windowsPidOf(495, gitBash)).toBe(10948);
+    expect(windowsPidOf(496, gitBash)).toBe(496);
+    expect(windowsPidOf(495, null)).toBe(495);
+  });
+
+  test.skipIf(process.platform === "win32")("becomes the Windows pid it settles on, not the bash or nohup in between", () => {
+    const reads = join(mkdtempSync(join(tmpdir(), "winpid-reads-")), "count");
+    const gitBash = fakeGitBash(`echo x >> "${reads}"\n[ "$(wc -l < "${reads}")" -le 1 ] && echo 7001 || echo 7002\n`);
+    expect(windowsPidOf(495, gitBash)).toBe(7002);
+  });
+
+  test.if(process.platform === "win32")("is the Windows pid of the job Git Bash started, read right after that Git Bash has exited", () => {
+    const folder = mkdtempSync(join(tmpdir(), "git-bash-job-")).replaceAll("\\", "/");
+    const job = `nohup "${process.execPath.replaceAll("\\", "/")}" -e "require('fs').writeFileSync('${folder}/windows-pid', String(process.pid)); setTimeout(() => {}, 10000)" > /dev/null 2>&1 & echo $!`;
+    const started = Bun.spawnSync([findGitBash(process.env)!, "-c", job], { stdout: "pipe" });
+    const gitBashPid = Number(started.stdout.toString().trim());
+    const translated = windowsPidOf(gitBashPid);
+    const deadline = Date.now() + 5_000;
+    while (!existsSync(`${folder}/windows-pid`) && Date.now() < deadline) Bun.sleepSync(50);
+    const windowsPid = Number(readFileSync(`${folder}/windows-pid`, "utf8"));
+    process.kill(windowsPid);
+    expect(gitBashPid).not.toBe(windowsPid);
+    expect(translated).toBe(windowsPid);
   });
 });

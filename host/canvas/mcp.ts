@@ -462,7 +462,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
   server.registerTool(
     "when_done",
     {
-      description: jobWaitToolDescription,
+      description: jobWaitToolDescription(),
       inputSchema: z.object({
         pid: z.number().optional().describe("The process to wait for, by its pid."),
         container: z.string().optional().describe("Or the Docker or Podman container to wait for, by its name or id."),

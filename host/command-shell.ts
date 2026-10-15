@@ -23,6 +23,29 @@ export function findGitBash(environment: Environment, exists: (path: string) => 
   return [...GIT_INSTALL_FOLDERS, ...gitFolders].map((folder) => win32.join(folder, "bin", "bash.exe")).find((bash) => exists(bash)) ?? null;
 }
 
+const WINPID_SETTLE_MS = 200;
+const WINPID_READS = 10;
+
+function winpidReading(gitBash: string, pid: number) {
+  const reading = Bun.spawnSync([gitBash, "-c", `cat /proc/${pid}/winpid`], { stdout: "pipe", stderr: "ignore" });
+  const windowsPid = Number(reading.stdout.toString().trim());
+  return reading.exitCode === 0 && Number.isInteger(windowsPid) && windowsPid > 0 ? windowsPid : null;
+}
+
+/** Right after `&` the pid behind a Git Bash pid is still the bash or nohup that goes on to start the job, so read until two reads agree. */
+function settledReading(read: () => number | null, readsLeft: number, previous = read()): number | null {
+  if (previous === null || readsLeft === 0) return previous;
+  Bun.sleepSync(WINPID_SETTLE_MS);
+  const next = read();
+  return next === previous ? next : settledReading(read, readsLeft - 1, next);
+}
+
+/** The Windows pid of a job started from Git Bash, whose `$!` is an MSYS pid; a pid no MSYS process has stays. */
+export function windowsPidOf(pid: number, gitBash = findGitBash(process.env)) {
+  if (!gitBash) return pid;
+  return settledReading(() => winpidReading(gitBash, pid), WINPID_READS) ?? pid;
+}
+
 /** PowerShell 7 when installed, as Claude Code prefers it, else the Windows PowerShell every Windows has. */
 export const findPowerShell = (environment: Environment, which = onPathOf(environment)) => which("pwsh") ?? which("powershell") ?? "powershell.exe";
 

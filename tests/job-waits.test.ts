@@ -402,10 +402,18 @@ describe("waitingOnJobsHint", () => {
 
 describe("job wait guidance", () => {
   test("steers the agent from run_in_background to a nohup job Mirador can show, in the system prompt and the tool alike", () => {
-    for (const text of [jobWaitGuidance, jobWaitToolDescription]) {
+    for (const text of [jobWaitGuidance(), jobWaitToolDescription()]) {
       expect(text).toContain("nohup <command> > <log> 2>&1 &");
       expect(text).toContain("not with the Bash tool's run_in_background");
       expect(text).toContain("The user follows your work in Mirador, which shows the jobs it waits for");
+    }
+  });
+
+  test("on Windows, asks for the job's Windows pid, which Git Bash's $! is not, in the system prompt and the tool alike", () => {
+    for (const describe of [jobWaitGuidance, jobWaitToolDescription]) {
+      expect(describe("win32")).toContain("Mirador needs the Windows pid of a job on this machine, which `$!` in Git Bash is not: read it a second after the start, as in `sleep 1; cat /proc/$!/winpid`.");
+      expect(describe("darwin")).not.toContain("winpid");
+      expect(describe("linux")).not.toContain("winpid");
     }
   });
 });
