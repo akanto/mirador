@@ -61,6 +61,14 @@ describe("buildMachineBun", () => {
     expect(buildMachineBun(empty, home)).toBe(installed);
   });
 
+  test("is not the link to the running Bun that bun run puts first on the PATH", () => {
+    const home = newFolder();
+    const bunRunFolder = join(home, "bun-node-c6da4a4d3");
+    fakeBun(join(bunRunFolder, BUN_PROGRAM), "1.4.3");
+    const installed = fakeBun(join(home, "installed", BUN_PROGRAM), "1.4.3");
+    expect(buildMachineBun([bunRunFolder, dirname(installed)].join(delimiter), home)).toBe(installed);
+  });
+
   test.skipIf(process.platform === "win32")("is never the Bun Electrobun pins, also through a symbolic link", () => {
     const home = newFolder();
     const pinned = fakeBun(join(home, ".hutch", "toolchains", "bun", "1.4.0", "bun"), "1.4.0");

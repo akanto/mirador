@@ -1,11 +1,11 @@
 import type { ElectrobunConfig } from "electrobun";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
+import { buildMachineBun } from "./scripts/ship-build-bun.ts";
 
 const hostDirectory = resolve(import.meta.dir, "..");
-const bun = Bun.which("bun") ?? join(homedir(), ".bun", "bin", process.platform === "win32" ? "bun.exe" : "bun");
+const bun = buildMachineBun();
 /** `bun run build:release`: the app carries Mirador, staged by scripts/stage-mirador.sh, instead of running this checkout. */
 const carriesMirador = process.env.MIRADOR_DESKTOP_RELEASE === "1";
 /** Worked out by the Bun the host runs on: Electrobun's command line may evaluate this file on another Bun, whose transpiler can write the same code differently. */

@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, readdirSync, realpathSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, join, sep } from "node:path";
+import { basename, delimiter, join, sep } from "node:path";
 
 /** Where the Bun is inside an app Electrobun built, by the system it is for. */
 const BUN_IN_APP: Record<string, string[]> = {
@@ -16,9 +16,13 @@ const BUN_IN_APP: Record<string, string[]> = {
 
 export const BUN_PROGRAM = process.platform === "win32" ? "bun.exe" : "bun";
 
-/** Found as electrobun.config.ts finds it: the first on the PATH, else where Bun's installer puts it. */
+/** `bun run` puts a folder of its own first on the PATH, and on Windows it holds a link to the running Bun in a temporary folder. */
+const isBunRunFolder = (folder: string) => basename(folder).startsWith("bun-node-");
+
+/** The first on the PATH, else where Bun's installer puts it. */
 export function buildMachineBun(path = process.env.PATH ?? "", home = homedir()) {
-  const onPath = path.split(delimiter).filter(Boolean).map((folder) => join(folder, BUN_PROGRAM)).find(existsSync);
+  const folders = path.split(delimiter).filter((folder) => folder !== "" && !isBunRunFolder(folder));
+  const onPath = folders.map((folder) => join(folder, BUN_PROGRAM)).find(existsSync);
   const bun = onPath ?? join(home, ".bun", "bin", BUN_PROGRAM);
   if (realpathSync(bun).startsWith(join(realpathSync(home), ".hutch") + sep)) throw new Error(`${bun} is the Bun Electrobun pins, not the build machine's`);
   return bun;
