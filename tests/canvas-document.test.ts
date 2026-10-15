@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { resolveAsset } from "../host/canvas/assets.ts";
-import { buildCanvasDocument, TEXT_CONTRAST_SCRIPT } from "../shared/canvas-document.ts";
+import { resolveAsset, serveCanvasAssets } from "../host/canvas/assets.ts";
+import { buildCanvasDocument, CANVAS_SHELL_PAGE, CANVAS_SHELL_PATH, TEXT_CONTRAST_SCRIPT } from "../shared/canvas-document.ts";
 
 const assetsOrigin = "http://127.0.0.1:4601";
 
@@ -84,5 +84,22 @@ describe("resolveAsset", () => {
     expect(resolveAsset("/three/addons/../../package.json")).toBeNull();
     expect(resolveAsset("/three/addons/%2e%2e/%2e%2e/package.json")).toBeNull();
     expect(resolveAsset("/etc/passwd")).toBeNull();
+  });
+});
+
+describe("serveCanvasAssets", () => {
+  test("serves the shell canvas frames load with the canvas policy, sandboxed wherever it is framed, and never from a cache", async () => {
+    const server = serveCanvasAssets(0);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}${CANVAS_SHELL_PATH}`);
+      const policy = response.headers.get("content-security-policy");
+      expect(policy).toContain("script-src 'unsafe-inline' 'unsafe-eval' blob: 'self'");
+      expect(policy).toContain("connect-src 'none'");
+      expect(policy).toEndWith("sandbox allow-scripts");
+      expect(response.headers.get("cache-control")).toBe("no-cache");
+      expect(await response.text()).toBe(CANVAS_SHELL_PAGE);
+    } finally {
+      server.stop(true);
+    }
   });
 });

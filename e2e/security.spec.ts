@@ -59,6 +59,22 @@ test("rejects browsers and clients without the right credentials", async ({ page
   expect(await readImage({ Cookie: cookie })).toBe(404);
 });
 
+test("the page loads nothing and connects to nothing but its own host, as its Content-Security-Policy says", async ({ page }) => {
+  await page.goto(`${host.origin}/`);
+  const policy = await page.locator("meta[http-equiv='Content-Security-Policy']").getAttribute("content");
+  expect(policy).toContain("script-src 'self'");
+  expect(policy).toContain("connect-src 'self'");
+
+  const inlineScriptRan = await page.evaluate(async () => {
+    const probe = document.createElement("script");
+    probe.textContent = "window.__miradorCspProbe = true";
+    document.head.append(probe);
+    await new Promise((wait) => setTimeout(wait, 250));
+    return "__miradorCspProbe" in window;
+  });
+  expect(inlineScriptRan).toBe(false);
+});
+
 test("a browser signs in with a one-time link from mirador sign-in, and the host prints no token where no terminal reads it", async ({ page }) => {
   const browserToken = new URL(host.authUrl).searchParams.get("token")!;
   expect(host.log).toContain("Mirador is running");

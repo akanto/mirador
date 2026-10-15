@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { HERE_PATH } from "../addresses.ts";
-import { CAPTURE_LIBRARY_PATH } from "../../shared/canvas-document.ts";
+import { CANVAS_SHELL_PAGE, CANVAS_SHELL_PATH, CANVAS_SHELL_POLICY, CAPTURE_LIBRARY_PATH } from "../../shared/canvas-document.ts";
 
 const packageDir = (name: string) => dirname(Bun.resolveSync(`${name}/package.json`, import.meta.dir));
 
@@ -23,6 +23,9 @@ const singleFiles: Record<string, string> = {
 /** Canvas pages run in opaque-origin iframes, so module imports from here need CORS. */
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600" };
 
+/** Not cached: after an update, the panel and the shell it writes into must speak the same version. */
+const shellHeaders = { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CANVAS_SHELL_POLICY, "Cache-Control": "no-cache" };
+
 export function resolveAsset(pathname: string): string | null {
   if (singleFiles[pathname]) return singleFiles[pathname];
   const mount = Object.keys(mounts).find((prefix) => pathname.startsWith(prefix));
@@ -42,6 +45,7 @@ export function serveCanvasAssets(port: number, certificate: { chain: string; ke
       if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
       const pathname = new URL(request.url).pathname;
       if (pathname === HERE_PATH) return Response.json({ mirador: true }, { headers: corsHeaders });
+      if (pathname === CANVAS_SHELL_PATH) return new Response(CANVAS_SHELL_PAGE, { headers: shellHeaders });
       const file = resolveAsset(pathname);
       if (!file || !(await Bun.file(file).exists())) return new Response("not found", { status: 404, headers: corsHeaders });
       return new Response(Bun.file(file), { headers: corsHeaders });

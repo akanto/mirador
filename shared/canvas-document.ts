@@ -1,6 +1,8 @@
 export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
 export type CanvasFrameMessage =
+  /** The shell a canvas frame loads first, ready for the page to write into it. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; kind: "shell-ready" }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "error"; message: string }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "rendered"; errors: string[] }
   /** `overflowWidth` is how wide the content wants to be, when that is wider than the frame. */
@@ -43,6 +45,29 @@ export function canvasThemeMessage(theme: CanvasTheme) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "theme", theme };
 }
 
+/**
+ * Where a canvas frame loads from on the canvas assets origin, and the page it is then given to show. A srcdoc, data: or
+ * blob: frame would answer to the app page's Content-Security-Policy as well as its own, which refuses the page's scripts;
+ * a frame loaded from a server answers only to the policy it is served with.
+ */
+export const CANVAS_SHELL_PATH = "/canvas-shell.html";
+
+export function canvasPageMessage(document: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "page", document };
+}
+
+export const CANVAS_SHELL_PAGE = `<!doctype html>
+<script>
+  addEventListener("message", (event) => {
+    const data = event.data;
+    if (event.source !== parent || !data || data.source !== ${JSON.stringify(CANVAS_MESSAGE_SOURCE)} || data.kind !== "page") return;
+    document.open();
+    document.write(data.document);
+    document.close();
+  });
+  parent.postMessage({ source: ${JSON.stringify(CANVAS_MESSAGE_SOURCE)}, kind: "shell-ready" }, "*");
+</script>`;
+
 export function canvasImportMap(assetsOrigin: string) {
   return {
     imports: {
@@ -68,6 +93,9 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
     "base-uri 'none'",
   ].join("; ");
 }
+
+/** 'self' is whatever address the viewer reached the assets at; the sandbox keeps the shell's origin opaque even where it is framed without one. */
+export const CANVAS_SHELL_POLICY = `${canvasContentSecurityPolicy("'self'")}; sandbox allow-scripts`;
 
 /**
  * Whether text reads on what is behind it, as plain JS for the frame. `readableTextColor(color, backgrounds, scheme)`

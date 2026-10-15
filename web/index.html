@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- The app loads and connects to nothing but its own host; script-src 'self' is the XSS wall. frame-src stays open for the rail's frames of other machines and the canvas frames, which load from the canvas assets origin and answer to the policy it serves them with. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; connect-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src *" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mirador</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />

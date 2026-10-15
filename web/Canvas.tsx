@@ -1,6 +1,6 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
-import { buildCanvasDocument, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
+import { buildCanvasDocument, CANVAS_SHELL_PATH, canvasPageMessage, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
 import type { AskQuestion, CanvasItem } from "../shared/model.ts";
 import { BarMenu, type BarMenuEntry } from "./BarMenu.tsx";
@@ -111,6 +111,7 @@ function CanvasFrame({
     const listener = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || !isCanvasFrameMessage(event.data)) return;
       const message = event.data;
+      if (message.kind === "shell-ready") frame.current?.contentWindow?.postMessage(canvasPageMessage(document), "*");
       if (message.kind === "error") setErrors((current) => [...current, message.message]);
       if (message.kind === "rendered") onRenderedRef.current?.(message.errors);
       if (message.kind === "size") {
@@ -132,7 +133,15 @@ function CanvasFrame({
   const fitted = fitsContent ? fittedStyles(contentSize, roomWidth) : {};
   return (
     <div ref={box} className={`canvas-frame ${className ?? ""}`} style={fitted.box}>
-      <iframe ref={frame} sandbox="allow-scripts" srcDoc={document} title={frameId} style={fitted.frame} onLoad={() => postThemeTo(frame)} />
+      <iframe
+        key={document}
+        ref={frame}
+        sandbox="allow-scripts"
+        src={`${assetsOrigin}${CANVAS_SHELL_PATH}`}
+        title={frameId}
+        style={fitted.frame}
+        onLoad={() => postThemeTo(frame)}
+      />
       {errors.length > 0 && (
         <ul className="frame-errors">
           {errors.map((error, index) => (
