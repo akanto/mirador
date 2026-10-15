@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { join } from "node:path";
 import { connect as connectTls } from "node:tls";
+import { TOKEN_COOKIE } from "../shared/protocol.ts";
 import { addWorkspace, addWorkspaceFromSidebar, callCanvasTool, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -164,4 +165,57 @@ test("the network closes a connection that goes quiet after a request, so a devi
   });
   expect(quietFor.answered).toBe(true);
   expect(quietFor.closedAfterMs).toBeLessThan(20_000);
+});
+
+/** Posts to the network a chunk every 2 s, 16 s in all, as a signed-in page on a slow connection does, and answers what came back. */
+function trickleToTheNetwork(path: string, headers: string[], chunks: string[]) {
+  const { hostname, port } = new URL(networkOrigin());
+  const signedInCookie = `${TOKEN_COOKIE}=${new URL(host.authUrl).searchParams.get("token")}`;
+  return new Promise<{ status: string; body: string }>((resolve) => {
+    let received = "";
+    const socket = connectTls({ host: hostname, port: Number(port), ca: authorityOf(host) }, async () => {
+      socket.write(
+        [
+          `POST ${path} HTTP/1.1`,
+          `Host: ${hostname}:${port}`,
+          `Origin: ${networkOrigin()}`,
+          `Cookie: ${signedInCookie}`,
+          ...headers,
+          `Content-Length: ${Buffer.byteLength(chunks.join(""))}`,
+          "Connection: close",
+          "",
+          "",
+        ].join("\r\n"),
+      );
+      for (const chunk of chunks) {
+        await new Promise((wait) => setTimeout(wait, 2_000));
+        if (!socket.destroyed) socket.write(chunk);
+      }
+    });
+    socket.on("data", (data) => (received += data));
+    socket.on("error", () => {});
+    socket.on("close", () => {
+      const [head = "", body = ""] = received.split("\r\n\r\n");
+      resolve({ status: head.split("\r\n")[0] || "no answer", body });
+    });
+    setTimeout(() => socket.destroy(), 40_000);
+  });
+}
+
+test("an image or file a device on a slow network sends still arrives, though it takes longer than a quiet connection may", async ({ page }) => {
+  await signIn(page, host);
+  await addWorkspaceFromSidebar(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const fileChunks = Array.from({ length: 8 }, (_, index) => `line ${index} of a file that trickles in\n`);
+  const imageChunks = Array.from({ length: 8 }, (_, index) => `bytes ${index} of an image`);
+
+  const [file, image] = await Promise.all([
+    trickleToTheNetwork(`/conversations/${conversationId}/files`, ["Content-Type: application/octet-stream", "X-File-Name: notes.txt"], fileChunks),
+    trickleToTheNetwork(`/conversations/${conversationId}/images`, ["Content-Type: image/png"], imageChunks),
+  ]);
+
+  expect(file.status, "the file took longer to arrive than Bun lets a request take by default").toBe("HTTP/1.1 200 OK");
+  expect(readFileSync((JSON.parse(file.body) as { path: string }).path, "utf8")).toBe(fileChunks.join(""));
+  expect(image.status, "the image took longer to arrive than Bun lets a request take by default").toBe("HTTP/1.1 200 OK");
+  expect((JSON.parse(image.body) as { imageId: string }).imageId).toMatch(/\.png$/);
 });

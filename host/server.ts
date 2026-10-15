@@ -427,10 +427,14 @@ export function startServer(services: HostServices) {
     return null;
   }
 
-  async function addImage(request: Bun.BunRequest<"/conversations/:conversationId/images">) {
+  /** The network listener drops a request still arriving after Bun's default 10 s; an upload from a signed-in page may take longer. */
+  const letUploadTakeItsTime = (request: Request, server: Bun.Server<SocketData>) => server.timeout(request, 0);
+
+  async function addImage(request: Bun.BunRequest<"/conversations/:conversationId/images">, server: Bun.Server<SocketData>) {
     const { conversationId } = request.params;
     const refused = refusedAttachmentRequest(request, conversationId);
     if (refused) return refused;
+    letUploadTakeItsTime(request, server);
     if (Number(request.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) return new Response("image too large", { status: 413 });
     try {
       const imageId = await images.save(conversationId, request.headers.get("content-type") ?? "", await request.arrayBuffer());
@@ -441,10 +445,11 @@ export function startServer(services: HostServices) {
   }
 
   /** The browser gives a dropped file's contents but not its path; the host keeps a copy and answers where it is. */
-  async function addDroppedFile(request: Bun.BunRequest<"/conversations/:conversationId/files">) {
+  async function addDroppedFile(request: Bun.BunRequest<"/conversations/:conversationId/files">, server: Bun.Server<SocketData>) {
     const { conversationId } = request.params;
     const refused = refusedAttachmentRequest(request, conversationId);
     if (refused) return refused;
+    letUploadTakeItsTime(request, server);
     if (Number(request.headers.get("content-length") ?? 0) > MAX_DROPPED_FILE_BYTES) {
       return new Response(`A dropped file can be at most ${MAX_DROPPED_FILE_BYTES / 1024 / 1024} MB.`, { status: 413 });
     }
