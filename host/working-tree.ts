@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type { ChangeStatus } from "../shared/changes.ts";
 import type { FileBefore } from "./edit-diff.ts";
 import { LineCountCache } from "./line-count-cache.ts";
@@ -111,7 +111,7 @@ const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store"]);
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
 export const MAX_SCANNED_FILES = 50_000;
 
-/** The files under `directory`, relative to it, skipping the folders nothing of the user's lives in; it stops after `limit` of them, and says so. */
+/** The files under `directory`, relative to it with / as git writes them, skipping the folders nothing of the user's lives in; it stops after `limit` of them, and says so. */
 async function scannedFiles(directory: string, limit: number) {
   const files: string[] = [];
   const pending = [""];
@@ -119,7 +119,7 @@ async function scannedFiles(directory: string, limit: number) {
     const entries = await readdir(join(directory, folder), { withFileTypes: true }).catch(() => []);
     entries
       .filter(({ name }) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name))
-      .forEach((entry) => (entry.isDirectory() ? pending.push(join(folder, entry.name)) : entry.isFile() && files.push(join(folder, entry.name))));
+      .forEach((entry) => (entry.isDirectory() ? pending.push(posix.join(folder, entry.name)) : entry.isFile() && files.push(posix.join(folder, entry.name))));
   }
   return { files: files.slice(0, limit), truncated: files.length > limit };
 }

@@ -192,6 +192,19 @@ test("a path the agent gives relative to the workspace counts as the project's f
   expect(list.outside).toEqual([]);
 });
 
+test("a file the agent edits in a folder is listed once, by the path git gives it, as the agent's, in a repository or not", async () => {
+  await mkdir(join(projectDir, "src"));
+  await startTurn();
+  await Bun.sleep(20);
+  await write("src/app.ts", "one\n");
+  agentEdits("t1", join(projectDir, "src", "app.ts"), null, "one\n");
+
+  expect((await changes.list("c1", "turn")).project).toEqual([{ path: "src/app.ts", status: "added", added: 1, removed: 0, byAgent: true }]);
+  await leaveGit();
+  expect((await changes.list("c1", "turn")).project).toEqual([{ path: "src/app.ts", status: "added", added: 1, removed: 0, byAgent: true }]);
+  expect((await changes.diff("c1", "turn", "src/app.ts")).source).toBe("agent");
+});
+
 test("before the first turn there is nothing to list for this turn", async () => {
   expect(await changes.list("c1", "turn")).toEqual({ scope: "turn", base: "no-turn", project: [], outside: [] });
 });

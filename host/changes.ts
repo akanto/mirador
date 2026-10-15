@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { isAbsolute, join, normalize, resolve, sep } from "node:path";
+import { isAbsolute, join, normalize, posix, resolve, sep } from "node:path";
 import type { ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
 import type { ChangedFile, ChangeList, ChangeScope, ChangesBase, FileChanges } from "../shared/changes.ts";
 import type { StoredEvent, Workspace } from "../shared/model.ts";
@@ -71,9 +71,10 @@ async function projectDirectories(workspace: Workspace) {
   return [await realpath(workspace.path).catch(() => workspace.path), workspace.path];
 }
 
+/** A file of the project by its path in the project, with / as git writes it, so the agent's edits match git's files on Windows too. */
 const projectPathOf = (path: string, directories: string[]) => {
   const shown = shownPath(path, directories);
-  return shown === path ? null : shown;
+  return shown === path ? null : shown.split(sep).join(posix.sep);
 };
 
 /** A path a page names as the project's: relative, and inside the workspace once resolved. */
