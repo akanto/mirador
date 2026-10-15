@@ -20,10 +20,15 @@ process.stdin.on("data", (chunk) => {
 process.stdin.resume();
 `;
 
-function crashingHarness() {
+/** Bun on Windows sometimes never reports the end of an exited agent's stdout; a child holding it open does the same anywhere. */
+const crashingAgentWhoseChildHoldsItsOutput = `
+require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 10_000)"], { stdio: ["ignore", "inherit", "ignore"] });
+${crashingAgent}`;
+
+function crashingHarness(agent = crashingAgent) {
   const directory = mkdtempSync(join(tmpdir(), "mirador-harness-exit-"));
   const script = join(directory, "crashing-agent.js");
-  writeFileSync(script, crashingAgent);
+  writeFileSync(script, agent);
   return new HarnessProcess(
     { id: "opencode", label: "Crashing agent", logName: "crashing", command: [process.execPath, script], environment: {}, prelaunch: "", startsOneAtATime: false },
     { onSessionUpdate: () => {}, onPermissionRequest: async () => ({ outcome: { outcome: "cancelled" } } as never), onExit: () => {} },
@@ -38,6 +43,13 @@ describe("HarnessProcess.prompt", () => {
     const { sessionId } = await harness.newSession({ cwd: tmpdir(), mcpServers: [] });
     await expect(harness.prompt(sessionId, [{ type: "text", text: "hello" }])).rejects.toThrow("The Crashing agent agent process exited with 3.");
   }, 15_000);
+
+  test("fails with how the agent process went away even when its output never ends", async () => {
+    const harness = crashingHarness(crashingAgentWhoseChildHoldsItsOutput);
+    await harness.start();
+    const { sessionId } = await harness.newSession({ cwd: tmpdir(), mcpServers: [] });
+    await expect(harness.prompt(sessionId, [{ type: "text", text: "hello" }])).rejects.toThrow("The Crashing agent agent process exited with 3.");
+  }, 5_000);
 
   test("fails with the reason the host gave when it stops the agent during the turn", async () => {
     const harness = crashingHarness();

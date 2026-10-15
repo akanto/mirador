@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -6,7 +7,8 @@ import * as acp from "@agentclientprotocol/sdk";
 /**
  * An agent that takes every prompt and never finishes it, ignoring `session/cancel`, the way a model request against a
  * llama.cpp still loading its model leaves a turn: the agent is wedged, so only killing its process ends the turn.
- * A prompt starting with CRASH makes the process die in the middle of the turn instead. One of `EDIT ` and a JSON
+ * A prompt starting with CRASH makes the process die in the middle of the turn instead; CRASH LEAVING A CHILD first
+ * starts a process that holds the agent's output open for a minute. One of `EDIT ` and a JSON
  * array of edits asks permission for each edit at once, and ends the turn with what the user answered to each; `TOOLS `
  * and a JSON array of `{"kind": toolKind, "title": text}` does the same for tools of any kind.
  * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
@@ -169,6 +171,7 @@ acp
     if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
+    if (startsWith(ctx.params.prompt, "CRASH LEAVING A CHILD")) spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: ["ignore", "inherit", "ignore"] });
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
   })

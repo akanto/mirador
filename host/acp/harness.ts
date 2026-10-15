@@ -14,6 +14,11 @@ const PRELAUNCH_OUTPUT_IN_ERRORS = 600;
 const FORCE_KILL_GRACE_MS = 3000;
 /** A connection closes just before its process exits; a stop that has to SIGKILL the agent takes the grace period. */
 const EXIT_WAIT_MS = FORCE_KILL_GRACE_MS + 2000;
+/**
+ * The connection does not wait any longer for the end of an exited agent's output: a child it started can hold the
+ * output open, and Bun on Windows sometimes never reports its end, which would leave the turn running for good.
+ */
+const LAST_OUTPUT_AFTER_EXIT_MS = 1000;
 /** claude-agent-acp's extension for adding a message to the running turn, advertised in `_meta.steering` at initialize. */
 const STEERING_METHOD = "_session/steering";
 
@@ -188,18 +193,22 @@ export class HarnessProcess {
       child.stderr!.resume();
     });
     child.stderr!.pipe(log);
-    child.once("exit", (code, signal) => goneBecause(this.stopReason ?? `exited with ${code ?? signal}`));
     const stream = acp.ndJsonStream(
       Writable.toWeb(child.stdin!),
       Readable.toWeb(child.stdout!) as unknown as ReadableStream<Uint8Array>,
     );
-    this.connection = acp
+    const connection = acp
       .client({ name: "mirador" })
       .onNotification(acp.methods.client.session.update, (ctx) => this.listener.onSessionUpdate(ctx.params))
       .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
         this.listener.onPermissionRequest(ctx.params, ctx.signal),
       )
       .connect(stream);
+    this.connection = connection;
+    child.once("exit", (code, signal) => {
+      goneBecause(this.stopReason ?? `exited with ${code ?? signal}`);
+      setTimeout(() => connection.close(), LAST_OUTPUT_AFTER_EXIT_MS).unref();
+    });
     return this.initialize();
   }
 

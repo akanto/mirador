@@ -124,6 +124,15 @@ test("An agent process that dies in the middle of a turn ends it with one error 
   await expect(timeline(page).locator(".error-line")).toHaveCount(1);
 });
 
+test("An agent process that dies while a process it started holds its output open still ends the turn", async ({ page }) => {
+  await signInToWorkspace(page);
+  await startConversationWithoutModel(page);
+  await sendMessage(page, "CRASH LEAVING A CHILD");
+
+  await expect(timeline(page).locator(".error-line")).toHaveText(/agent process exited with 1/, { timeout: 15_000 });
+  await expect(status(page)).toHaveText("idle");
+});
+
 test("Saving a changed profile stops the turns its agent runs, as Stop does, and continues them on the restarted agent", async ({ page }) => {
   await signInToWorkspace(page);
   await wedgedConversation(page, "WEDGE before the edit");
