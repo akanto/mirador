@@ -103,7 +103,7 @@ function killGroupOf(child: Subprocess) {
  * program the shell started that still runs.
  */
 async function foregroundCommand(shellPid: number): Promise<string | null> {
-  if (process.platform === "win32") return (await childProgramNames(shellPid))[0] ?? null;
+  if (process.platform === "win32") return childProgramNames(shellPid)[0] ?? null;
   const groups = Bun.spawn(["ps", "-o", "tpgid=,pgid=", "-p", String(shellPid)], { stdout: "pipe", stderr: "ignore" });
   const [foregroundGroup, shellGroup] = (await new Response(groups.stdout).text()).trim().split(/\s+/);
   if (!foregroundGroup || foregroundGroup === shellGroup || Number(foregroundGroup) <= 0) return null;

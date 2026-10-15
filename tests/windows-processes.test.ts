@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { childProgramNames, descendantsOf, killProcessTree, parseProcessSnapshot, type WindowsProcess } from "../host/windows-processes.ts";
+import { childProgramNames, descendantsOf, killProcessTree, processSnapshot, type WindowsProcess } from "../host/windows-processes.ts";
 import { fakeProgram } from "./fake-program.ts";
 
 const started = (pid: number, parentPid: number, startedAt: number, name = `program-${pid}.exe`): WindowsProcess => ({ pid, parentPid, startedAt, name });
@@ -24,15 +24,13 @@ describe("a Windows process tree", () => {
   test("is empty for a pid no process has", () => {
     expect(descendantsOf(5, [started(10, 5, 100)])).toEqual([]);
   });
+});
 
-  test("is read from lines of pid, parent pid, start time and name, a name with spaces included", () => {
-    const snapshot = "0 0 0 System Idle Process\r\n4 0 0 System\r\n6704 6632 1760405328234000 explorer.exe\r\n\r\n";
-    expect(parseProcessSnapshot(snapshot)).toEqual([
-      started(0, 0, 0, "System Idle Process"),
-      started(4, 0, 0, "System"),
-      started(6704, 6632, 1760405328234000, "explorer.exe"),
-    ]);
-  });
+test.if(process.platform === "win32")("on Windows the snapshot has this process with its parent, program and start", () => {
+  const startedAtMs = Date.now() - process.uptime() * 1000;
+  const thisProcess = processSnapshot().find(({ pid }) => pid === process.pid);
+  expect(thisProcess).toMatchObject({ parentPid: process.ppid, name: "bun.exe" });
+  expect(Math.abs(thisProcess!.startedAt / 1000 - startedAtMs)).toBeLessThan(1000);
 });
 
 const isRunning = (pid: number) => {
@@ -50,7 +48,7 @@ test.if(process.platform === "win32")("on Windows a cmd.exe's programs are named
   const viaCmd = Bun.spawn([fakeProgram(directory, "starter", startingAnother)], { stdout: "pipe" });
   const grandchild = Number(new TextDecoder().decode((await viaCmd.stdout.getReader().read()).value).trim());
   try {
-    expect(await childProgramNames(viaCmd.pid)).toContain("bun");
+    expect(childProgramNames(viaCmd.pid)).toContain("bun");
     await killProcessTree(viaCmd.pid);
     await viaCmd.exited;
     const deadline = Date.now() + 5_000;
