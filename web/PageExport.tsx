@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from "react";
-import { suggestedPagePath } from "../shared/canvas-export.ts";
+import { markdownPagePath, suggestedPagePath, type MarkdownDelivery } from "../shared/canvas-export.ts";
 import type { CanvasItem } from "../shared/model.ts";
 import { placedBelow, useClosing, type BarMenuEntry } from "./BarMenu.tsx";
-import { AlreadyThere, copyPageHtml, copyPageImage, downloadPage, savePageToProject } from "./canvas-export.ts";
+import { useEnterWhileBusy } from "./busy-sending.ts";
+import { AlreadyThere, askAgentForMarkdown, copyPageHtml, copyPageImage, downloadPage, savePageToProject } from "./canvas-export.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
@@ -36,6 +37,7 @@ export function usePageExport(page: CanvasItem | undefined, frame: RefObject<HTM
   const [placement, setPlacement] = useState<CSSProperties>();
   const [saveFormOpen, setSaveFormOpen] = useState(false);
   const [status, setStatus] = useStatus();
+  const enterWhileBusy = useEnterWhileBusy();
   useEffect(() => setSaveFormOpen(false), [page?.id]);
   if (!page) return { entries: [], opened: null };
 
@@ -51,7 +53,11 @@ export function usePageExport(page: CanvasItem | undefined, frame: RefObject<HTM
     }
   };
   const copyImage = () => (frame.current ? copyPageImage(frame.current) : Promise.reject(new Error("The page is not shown.")));
-  const download: BarMenuEntry = { label: "Download", onChoose: (opener) => run(opener, "Preparing the file…", () => downloadPage(page), "Downloaded") };
+  const askForMarkdown = (label: string, delivery: MarkdownDelivery, done: string): BarMenuEntry => ({
+    label,
+    onChoose: (opener) => run(opener, "Asking the agent…", async () => askAgentForMarkdown(page, delivery, enterWhileBusy === "after-turn"), done),
+  });
+  const download: BarMenuEntry ={ label: "Download", onChoose: (opener) => run(opener, "Preparing the file…", () => downloadPage(page), "Downloaded") };
   const saveToProject: BarMenuEntry = {
     label: "Save to project…",
     onChoose: (opener) => {
@@ -65,6 +71,8 @@ export function usePageExport(page: CanvasItem | undefined, frame: RefObject<HTM
   const entries: BarMenuEntry[] = [
     { label: "Copy as image", onChoose: (opener) => run(opener, "Drawing the page…", copyImage, "Copied as an image") },
     { label: "Copy HTML", onChoose: (opener) => run(opener, "Copying…", () => copyPageHtml(page.id), "Copied the HTML") },
+    { ...askForMarkdown("Ask agent for Markdown", "reply", "Asked the agent. The Markdown comes in the chat."), separatorBefore: true },
+    askForMarkdown("Ask agent to save Markdown file", "file", `Asked the agent. The Markdown comes in the chat and in ${markdownPagePath(page.title)}.`),
     { ...firstSaving!, separatorBefore: true },
     ...otherSaving,
   ];

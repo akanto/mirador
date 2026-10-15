@@ -1,4 +1,5 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
+import { fenced } from "../shared/fenced.ts";
 import type { CanvasItem } from "../shared/model.ts";
 import { cutWithEllipsis } from "../shared/text-cut.ts";
 import {
@@ -111,13 +112,6 @@ function selectionLabel({ path, rows }: Pick<LineSelection, "path" | "rows">) {
 
 const lineToOpen = (rows: DiffRow[]) => rows.find((row) => row.newLine !== null)?.newLine ?? rows[0]?.oldLine ?? 1;
 
-/** A fence longer than any run of backticks in the code, so the code cannot close it. */
-function fenced(code: string) {
-  const longestRun = Math.max(0, ...(code.match(/`+/g) ?? []).map((run) => run.length));
-  const fence = "`".repeat(Math.max(3, longestRun + 1));
-  return `${fence}diff\n${code}\n${fence}`;
-}
-
 const UPDATE_THE_REVIEW =
   "If your answer changes anything in the review (a finding, the tour, the summary or the verdict), change just those parts with the update_review tool; publish the whole review again only if the code under review changed.";
 
@@ -131,7 +125,7 @@ function questionAbout(item: WalkthroughItem, place: AskingAbout, finding: Revie
   const code = place.rows.map(diffLine).join("\n");
   const subject = finding ? `${finding.id} ("${finding.title}") at ${selectionLabel(place)}` : selectionLabel(place);
   const comment = finding ? `\n\nIts comment now reads:\n\n${quoted(finding.body)}` : "";
-  const asked = `About ${subject} in the ${item.kind} "${item.title}":${comment}\n\n${fenced(code)}\n\n${question.trim()}`;
+  const asked = `About ${subject} in the ${item.kind} "${item.title}":${comment}\n\n${fenced(code, "diff")}\n\n${question.trim()}`;
   return updatesReview ? `${asked}\n\n${UPDATE_THE_REVIEW}` : asked;
 }
 

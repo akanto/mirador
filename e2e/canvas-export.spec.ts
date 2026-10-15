@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 /** Agents are told the public canvas address, but this browser reaches the host locally and draws pages from the local one. */
@@ -127,12 +127,48 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
     });
     await page.reload();
     await exportToggle(page).click();
-    await expect(page.getByRole("menu", { name: "Export the page" }).getByRole("menuitem")).toHaveText(["Copy as image", "Copy HTML", "Save to project…"]);
+    await expect(page.getByRole("menu", { name: "Export the page" }).getByRole("menuitem")).toHaveText([
+      "Copy as image",
+      "Copy HTML",
+      "Ask agent for Markdown",
+      "Ask agent to save Markdown file",
+      "Save to project…",
+    ]);
     await page.keyboard.press("Escape");
   });
 
   await test.step("only a shown page offers Export: not the Changes tab over it", async () => {
     await page.locator(".canvas-header:visible .changes-toggle").click();
     await expect(exportToggle(page)).toHaveCount(0);
+  });
+});
+
+test("Export asks the agent for the page as Markdown, in the chat or also as a file in the project, with the page's HTML in the request", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "show", {
+    title: "Release plan",
+    html: "<h1>Release plan</h1><table><tr><th>Month</th><th>Goal</th></tr><tr><td>May</td><td>Beta</td></tr></table>",
+  });
+  await expect(canvasPage(page).locator("h1")).toHaveText("Release plan");
+  const request = page.locator(".timeline:visible .message.user").last();
+
+  await test.step("for the chat: the request goes to the page's conversation as the user's message, asking for no file", async () => {
+    await exportBy(page, "Ask agent for Markdown");
+    await expect(exportStatus(page)).toHaveText("Asked the agent. The Markdown comes in the chat.");
+    await expect(request).toContainText('Write the canvas page "Release plan" as Markdown');
+    await expect(request).toContainText("write no file");
+    await expect(request).toContainText("<td>May</td><td>Beta</td>");
+    await waitForTurnToEnd(page);
+  });
+
+  await test.step("as a file: the request names the path beside where Save to project offers the HTML", async () => {
+    await exportBy(page, "Ask agent to save Markdown file");
+    await expect(exportStatus(page)).toHaveText("Asked the agent. The Markdown comes in the chat and in docs/release-plan.md.");
+    await expect(request).toContainText("Save it as docs/release-plan.md in the project, and reply with the same Markdown in one code block");
+    await expect(request).toContainText("<td>May</td><td>Beta</td>");
   });
 });
