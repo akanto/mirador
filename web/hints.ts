@@ -176,7 +176,7 @@ export const hints = {
   afterTurnMessage: "Keeps the message until the running turn ends (or you press Stop), then sends it as your next message.",
   enterWhileBusy: "What Enter does with a message while the agent works; ⌥Enter (Alt+Enter) does the other. With opencode, messages always wait for the turn to end.",
   scriptMessage:
-    "A script the agent started sent this as your next message, so the agent picks up when the script is done. Scripts send with scripts/mirador-message.",
+    "A script the agent started sent this as your next message, so the agent picks up when the script is done. Scripts send with mirador message.",
   gitBranch: "The git branch checked out in the workspace directory.",
   model: "The model the agent uses, as chosen in the Model menu above.",
   cost: "What the conversation has cost so far, as the agent reports it.",

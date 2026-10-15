@@ -5,7 +5,7 @@ desktop="$(cd "$(dirname "$0")/.." && pwd)"
 stage="$desktop/release/mirador"
 rm -rf "$stage"
 mkdir -p "$stage"
-git -C "$desktop/.." archive HEAD host web shared bin scripts/mirador-message package.json bun.lock patches tsconfig.json | tar -x -C "$stage"
+git -C "$desktop/.." archive HEAD host web shared bin package.json bun.lock patches tsconfig.json | tar -x -C "$stage"
 cd "$stage"
 bun install --production --frozen-lockfile
 # Mirador runs the Claude Code installed on the computer, so the copy claude-agent-acp's SDK bundles only takes room.

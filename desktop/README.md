@@ -182,7 +182,7 @@ The release assets are built from the repository root with `make` (`make help` l
 
 ### What a release build carries
 
-`build:release` stages the committed `host`, `web`, `shared` and `bin` files and `scripts/mirador-message`, with their production dependencies, in `release/mirador` (`scripts/stage-mirador.sh`). The app carries them in `Contents/Resources/app/mirador` on macOS and `Resources/app/mirador` on Linux, runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, which is one more reason to build on the platform the app is for.
+`build:release` stages the committed `host`, `web`, `shared` and `bin` files, with their production dependencies, in `release/mirador` (`scripts/stage-mirador.sh`). The app carries them in `Contents/Resources/app/mirador` on macOS and `Resources/app/mirador` on Linux, runs that copy on the Bun inside it, and the `mirador` command its agents run uses the same Bun. The dependencies are this machine's, which is one more reason to build on the platform the app is for.
 
 On Linux the payload is written as POSIX ustar (`TAR_OPTIONS=--format=ustar`): GNU tar's default writes `node_modules`' long paths as long-name entries, which Electrobun's Linux installer refuses with `TarUnsupportedFileType`.
 

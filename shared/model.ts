@@ -250,7 +250,7 @@ export interface QueuedMessage {
   id: string;
   text: string;
   imageIds: string[];
-  /** Posted by a script the agent started (scripts/mirador-message) rather than typed by the user. */
+  /** Posted by a script the agent started (mirador message) rather than typed by the user. */
   fromScript?: true;
   /** Waits for the running turn to end, then goes out as the next message, instead of joining the turn (⌥Enter). */
   afterTurn?: true;

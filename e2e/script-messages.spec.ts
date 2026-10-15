@@ -6,7 +6,7 @@ import { addWorkspace, lastAgentMessage, sendMessage, signIn, startConversation,
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
-const miradorMessage = resolve("scripts/mirador-message");
+const mirador = resolve("bin/mirador");
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
@@ -17,7 +17,7 @@ test.afterAll(async () => {
 function runMiradorMessage(args: string[]) {
   return new Promise<{ exitCode: number | null; stderr: string }>((settle) => {
     const environment = { ...process.env, MIRADOR_URL: host.origin, MIRADOR_SCRIPT_TOKEN: host.scriptToken };
-    const script = spawn(miradorMessage, args, { env: environment, stdio: ["ignore", "ignore", "pipe"] });
+    const script = spawn(mirador, ["message", ...args], { env: environment, stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     script.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     script.on("close", (exitCode) => settle({ exitCode, stderr }));
@@ -53,7 +53,7 @@ test("a script the agent starts, or anything with the agent's session, messages 
   await test.step("a command the agent runs reaches its own conversation, and the agent reads the message", async () => {
     await sendMessage(
       page,
-      `Run the shell command \`${miradorMessage} "The build finished with 3 warnings."\` with your Bash tool. A message about the build will reach you; then reply with just the number of warnings, as a digit.`,
+      `Run the shell command \`${mirador} message "The build finished with 3 warnings."\` with your Bash tool. A message about the build will reach you; then reply with just the number of warnings, as a digit.`,
     );
     await expect(messagesFromScripts(page)).toHaveText(["The build finished with 3 warnings."], { timeout: 120_000 });
     await waitForTurnToEnd(page);

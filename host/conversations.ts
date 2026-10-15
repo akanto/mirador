@@ -1189,7 +1189,7 @@ export class ConversationService {
     return harness === "claude" && !profile?.environment.trim();
   }
 
-  /** Where scripts the agent starts reach the host (scripts/mirador-message), and the mirador command they do it with. */
+  /** The mirador command, and where it reaches the host from the agent or a script it starts (mirador message, mirador when-done). */
   private scriptEnvironment(path: string | undefined) {
     return { MIRADOR_URL: this.config.appOrigin, MIRADOR_SCRIPT_TOKEN: this.config.scriptToken, ...miradorCommandEnvironment(path) };
   }

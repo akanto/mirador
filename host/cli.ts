@@ -16,7 +16,8 @@ const usage = `usage: mirador <command>
   invite     Make a one-time code another browser or app joins this Mirador with
   approve    Let in the devices that ask to join this Mirador, by typing the number each shows
   devices    List the devices that joined this Mirador, and which are connected now
-  when-done  Have Mirador wait for a job an agent left running, then send the agent a message (run it from the agent)`;
+  when-done  Have Mirador wait for a job an agent left running, then send the agent a message (run it from the agent)
+  message    Send the agent's conversation a message as your next one (run it from the agent, or a script it started)`;
 
 const whenDoneUsage = `usage: mirador when-done (--pid <pid> | --container <name>) [--host <user@host>] [--no-resume] [--session <agent session id>] ["<message>"]
 
@@ -24,6 +25,13 @@ const whenDoneUsage = `usage: mirador when-done (--pid <pid> | --container <name
   Then the message goes to the agent's conversation as your next message, so the agent carries on;
   with --no-resume only you are told. Without a message, it says the job ended.
   Run it from an agent in Mirador: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).`;
+
+const messageUsage = `usage: mirador message [--session <agent session id>] ["<message>"]   (no message: read it from stdin)
+
+  The message goes to the agent's conversation as your next message: right away when the agent is idle, else queued behind its turn.
+  A job the agent left running can end with it, so the agent picks up where the job leaves off.
+  Run it from an agent in Mirador, or a script it started: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).
+  opencode gives its commands no session id, so its conversations can only be reached with --session.`;
 
 /** The host prints a sign-in link only to a terminal, and each link works once, so a new browser needs a new link. */
 function signIn() {
@@ -118,31 +126,61 @@ function jobWaitRequest(args: string[]): { session: string | undefined; request:
 }
 
 /** Plain, unlike console.error, which Bun colours red on a terminal: agents read this. */
-function fail(problem: string, exitCode: number) {
-  process.stderr.write(`mirador when-done: ${problem}\n`);
+function fail(command: string, problem: string, exitCode: number) {
+  process.stderr.write(`mirador ${command}: ${problem}\n`);
   process.exitCode = exitCode;
+}
+
+class NotFromAnAgent extends Error {}
+
+const problemWithUsage = (error: unknown, usage: string) => (error instanceof NotFromAnAgent ? error.message : `${(error as Error).message}\n\n${usage}`);
+
+/** Mirador gives its agents the URL and token, and Claude Code gives every command it runs its session id; a script started from there inherits all three. */
+function agentConversation(session: string | undefined) {
+  const { MIRADOR_URL: url, MIRADOR_SCRIPT_TOKEN: token } = process.env;
+  if (!url || !token) throw new NotFromAnAgent("MIRADOR_URL and MIRADOR_SCRIPT_TOKEN are not set; run it from an agent in Mirador, or a script it started");
+  const sessionId = session ?? process.env.CLAUDE_CODE_SESSION_ID;
+  if (!sessionId) throw new NotFromAnAgent("CLAUDE_CODE_SESSION_ID is not set; pass --session");
+  const post = (path: string, contentType: string, body: string) =>
+    fetch(`${url}/sessions/${encodeURIComponent(sessionId)}/${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": contentType }, body }).catch(() => null);
+  return { post, unreachable: `could not reach Mirador at ${url}` };
 }
 
 /** Lets the agent end its turn instead of polling: the host checks on the job, and the agent hears back when it ends. */
 async function whenDone(args: string[]) {
   let parsed: ReturnType<typeof jobWaitRequest>;
+  let conversation: ReturnType<typeof agentConversation>;
   try {
     parsed = jobWaitRequest(args);
+    conversation = agentConversation(parsed.session);
   } catch (error) {
-    return fail(`${(error as Error).message}\n\n${whenDoneUsage}`, 2);
+    return fail("when-done", problemWithUsage(error, whenDoneUsage), 2);
   }
-  const { MIRADOR_URL: url, MIRADOR_SCRIPT_TOKEN: token } = process.env;
-  const session = parsed.session ?? process.env.CLAUDE_CODE_SESSION_ID;
-  if (!url || !token) return fail("MIRADOR_URL and MIRADOR_SCRIPT_TOKEN are not set; run it from an agent in Mirador, or a script it started", 2);
-  if (!session) return fail("CLAUDE_CODE_SESSION_ID is not set; pass --session", 2);
-  const response = await fetch(`${url}/sessions/${encodeURIComponent(session)}/job-waits`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(parsed.request),
-  }).catch(() => null);
-  if (!response?.ok) return fail(response ? await response.text() : `could not reach Mirador at ${url}`, 1);
+  const response = await conversation.post("job-waits", "application/json", JSON.stringify(parsed.request));
+  if (!response?.ok) return fail("when-done", response ? await response.text() : conversation.unreachable, 1);
   const { wait } = await response.json();
   console.log(waitSetUpReply(wait));
+}
+
+/** Like command substitution in a shell, which drops the newline a piped message ends with. */
+const withoutFinalNewlines = (text: string) => text.replace(/[\r\n]+$/, "");
+
+/** The message is the user's next one, sent right away when the agent is idle, else queued behind its turn. */
+async function message(args: string[]) {
+  let typed: string;
+  let conversation: ReturnType<typeof agentConversation>;
+  try {
+    const { values, positionals } = parseArgs({ args, options: { session: { type: "string" } }, allowPositionals: true });
+    typed = positionals.join(" ");
+    conversation = agentConversation(values.session);
+    if (!typed && process.stdin.isTTY) throw new Error("no message given");
+  } catch (error) {
+    return fail("message", problemWithUsage(error, messageUsage), 2);
+  }
+  const text = typed || withoutFinalNewlines(await Bun.stdin.text());
+  if (!text) return fail("message", `the message is empty\n\n${messageUsage}`, 2);
+  const response = await conversation.post("messages", "text/plain; charset=utf-8", text);
+  if (!response?.ok) return fail("message", response ? await response.text() : conversation.unreachable, 1);
 }
 
 const commands = new Map<string, (args: string[]) => void | Promise<void>>([
@@ -151,6 +189,7 @@ const commands = new Map<string, (args: string[]) => void | Promise<void>>([
   ["approve", approve],
   ["devices", listDevices],
   ["when-done", whenDone],
+  ["message", message],
 ]);
 const asksForHelp = (command: string | undefined) => command === undefined || ["help", "--help", "-h"].includes(command);
 

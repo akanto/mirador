@@ -308,7 +308,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
   - Waits are kept in the database, so they go on after a host restart, and a job that ended meanwhile is noticed then.
   - While it waits, the conversation shows the job above the message box, with *Stop waiting*.
   - **Click the job to follow it** in a terminal tab, locally or over ssh: its command line and how long it has run, then its output file (`tail -f`) or the container's logs, until it ends. Clicking again shows the same tab. Ctrl+C closes the tab and leaves the job running.
-- **`scripts/mirador-message "<text>"`** (or text on stdin) sends text to the agent's conversation as your next message: at once if the agent is idle, else queued. It shows as *From a script*. It finds the conversation by the `CLAUDE_CODE_SESSION_ID` every command Claude Code runs inherits, with the `MIRADOR_URL` and `MIRADOR_SCRIPT_TOKEN` Mirador gives its agents. opencode's commands carry no session id, so they, and anything else, need `--session <agent session id>`. The script token survives restarts, and unknown sessions or empty messages are refused with the reason.
+- **`mirador message "<text>"`** (or text on stdin) sends text to the agent's conversation as your next message: at once if the agent is idle, else queued. It shows as *From a script*. It finds the conversation by the `CLAUDE_CODE_SESSION_ID` every command Claude Code runs inherits, with the `MIRADOR_URL` and `MIRADOR_SCRIPT_TOKEN` Mirador gives its agents. opencode's commands carry no session id, so they, and anything else, need `--session <agent session id>`. The script token survives restarts, and unknown sessions or empty messages are refused with the reason.
 
 ### Notifications and waiting for you
 
@@ -383,7 +383,7 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 
 ### Command line and environment
 
-- `mirador sign-in` prints a one-time sign-in link for a browser on this machine. `mirador invite` prints a one-time invite code (and a link once the machine has an address). `mirador approve` lets in a device that asked to join. `mirador devices` lists devices, even while Mirador is stopped. `mirador when-done` waits for a job. Put `bin/mirador` on your `PATH` with a link: `ln -s "$PWD/bin/mirador" ~/.local/bin/mirador`.
+- `mirador sign-in` prints a one-time sign-in link for a browser on this machine. `mirador invite` prints a one-time invite code (and a link once the machine has an address). `mirador approve` lets in a device that asked to join. `mirador devices` lists devices, even while Mirador is stopped. `mirador when-done` waits for a job, and `mirador message` sends the agent's conversation a message. Put `bin/mirador` on your `PATH` with a link: `ln -s "$PWD/bin/mirador" ~/.local/bin/mirador`.
 - **Environment**: `MIRADOR_PORT` (default 4600; canvas assets use the next port), `MIRADOR_CANVAS_PORT`, `MIRADOR_DATA_DIR` (default `~/.mirador`), `MIRADOR_NETWORK` and `MIRADOR_NETWORK_PORT`, `MIRADOR_PUBLIC_ORIGIN` and `MIRADOR_PUBLIC_CANVAS_ORIGIN`, `MIRADOR_TLS_CERTIFICATE` and `MIRADOR_TLS_KEY`, `MIRADOR_BUN`.
 - **State** lives in the data directory: the SQLite database, browser and script tokens, `config.json` (address and network), and agent logs under `logs/`.
 
