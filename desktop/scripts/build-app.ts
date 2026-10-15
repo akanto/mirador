@@ -13,10 +13,7 @@ function run(command: string[], env: Record<string, string | undefined> = proces
   if (exitCode !== 0) process.exit(exitCode ?? 1);
 }
 
-if (release) {
-  if (process.platform === "win32") throw new Error("Staging Mirador into the app needs sh, so the release build does not run on Windows yet");
-  run(["scripts/stage-mirador.sh"]);
-}
+if (release) run([process.execPath, "scripts/stage-mirador.ts"]);
 
 run([process.execPath, "x", "electrobun", "build", "--env=stable"], {
   ...process.env,
