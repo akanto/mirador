@@ -1,7 +1,7 @@
 import type { EditDiff } from "./review.ts";
 
 /** This turn: since the files as they were when the turn began. Uncommitted: since the repository's HEAD. Session: the agent's edits since the conversation began. */
-export const changeScopes = ["turn", "uncommitted", "session"] as const;
+export const changeScopes = ["turn", "session", "uncommitted"] as const;
 export type ChangeScope = (typeof changeScopes)[number];
 
 export type ChangeStatus = "added" | "modified" | "deleted";
