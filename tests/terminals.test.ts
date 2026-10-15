@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MAX_TERMINALS_PER_TAB, type Conversation, type TerminalTab } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
+import { findPowerShell, programName } from "../host/command-shell.ts";
 import { Hub, type BrowserSocket } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
 import { RESTARTED_NOTE, TerminalService } from "../host/terminals.ts";
@@ -15,6 +16,30 @@ let hub: Hub;
 const TEST_SAVE_DELAY_MS = 50;
 const originalShell = process.env.SHELL;
 const originalHome = process.env.HOME;
+
+/**
+ * What the tests type differs with the terminal's shell: sh here, and on Windows PowerShell, where $$ means something
+ * else, printf is missing, and sleep runs inside the shell, so it never shows as busy.
+ */
+const shell =
+  process.platform === "win32"
+    ? {
+        name: programName(findPowerShell(process.env)),
+        pid: "$PID",
+        settingTitle: (title: string) => `$Host.UI.RawUI.WindowTitle = '${title}'`,
+        runningBun: (script: string) => `& '${process.execPath}' -e "${script}"`,
+      }
+    : {
+        name: "sh",
+        pid: "$$",
+        settingTitle: (title: string) => `printf '\\033]0;%s\\007' '${title}'`,
+        runningBun: (script: string) => `'${process.execPath}' -e "${script}"`,
+      };
+
+/** Enter is a carriage return, as a browser's terminal sends it. */
+const typing = (terminalId: string, line: string) => terminals.input(terminalId, `${line}\r`);
+
+const waitingForALine = [process.execPath, "-e", "process.stdin.once('data', () => process.exit(0))"];
 
 function fakeBrowser() {
   const received: ServerMessage[] = [];
@@ -119,10 +144,11 @@ test("a terminal runs a shell in the workspace folder, sized as asked, and strea
   terminals.attach(elsewhere.socket, "c2");
   const { terminalId } = terminals.open("c1", 100, 30);
 
-  terminals.input(terminalId, "pwd; stty size\n");
+  const printingFolderAndSize = shell.runningBun("console.log(process.cwd()); console.log(process.stdout.rows + ' ' + process.stdout.columns)");
+  typing(terminalId, printingFolderAndSize);
   expect(await outputContaining(watching.received, "30 100")).toContain(`${workspaceDir}\r\n30 100`);
   terminals.resize(terminalId, 120, 40);
-  terminals.input(terminalId, "stty size\n");
+  typing(terminalId, printingFolderAndSize);
   expect(await outputContaining(watching.received, "40 120")).toContain("40 120");
   expect(elsewhere.received.filter(({ type }) => type.startsWith("terminal"))).toEqual([{ type: "terminals.listed", conversationId: "c2", tabs: [] }]);
 });
@@ -131,13 +157,13 @@ test("a browser that attaches later gets the tabs and can replay what each termi
   const first = fakeBrowser();
   terminals.attach(first.socket, "c1");
   const { tabId, terminalId } = terminals.open("c1", 100, 30);
-  terminals.input(terminalId, "echo before-reload\n");
+  typing(terminalId, "echo before-reload");
   expect(await outputContaining(first.received, "before-reload\r\n")).toContain("before-reload\r\n");
 
   const reloaded = fakeBrowser();
   terminals.attach(reloaded.socket, "c1");
   terminals.replay(reloaded.socket, terminalId);
-  expect(lastTabs(reloaded.received)).toEqual([{ id: tabId, name: "sh", terminals: [{ id: terminalId, title: null }], layout: { terminalId } }]);
+  expect(lastTabs(reloaded.received)).toMatchObject([{ id: tabId, name: shell.name, terminals: [{ id: terminalId }], layout: { terminalId } }]);
   const replayed = reloaded.received.find((message) => message.type === "terminal.replayed");
   expect(replayed).toMatchObject({ terminalId, data: expect.stringContaining("before-reload\r\n") });
 });
@@ -146,15 +172,17 @@ test("clearing a terminal forgets the output above the cursor's line, in every w
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 100, 30);
-  terminals.input(terminalId, "echo above-the-cursor; printf on-the-cursor-line\n");
-  await outputContaining(browser.received, "above-the-cursor\r\non-the-cursor-line");
+  typing(terminalId, "echo above-$((1+1))-the-cursor");
+  await outputContaining(browser.received, "above-2-the-cursor\r\n");
+  terminals.input(terminalId, "typed-on-the-cursor-line");
+  await outputContaining(browser.received, "typed-on-the-cursor-line");
 
   terminals.clear(terminalId);
   expect(browser.received.at(-1)).toEqual({ type: "terminal.cleared", terminalId });
   terminals.replay(browser.socket, terminalId);
   const replayed = browser.received.findLast((message) => message.type === "terminal.replayed");
-  expect(replayed).toMatchObject({ data: expect.stringContaining("on-the-cursor-line") });
-  expect(replayed).not.toMatchObject({ data: expect.stringContaining("above-the-cursor") });
+  expect(replayed).toMatchObject({ data: expect.stringContaining("typed-on-the-cursor-line") });
+  expect(replayed).not.toMatchObject({ data: expect.stringContaining("above-2-the-cursor") });
 });
 
 test("new tabs are named after the shell with the lowest free number, and a tab splits into at most four terminals", async () => {
@@ -166,16 +194,16 @@ test("new tabs are named after the shell with the lowest free number, and a tab 
 
   expect(splits.every(({ tabId }) => tabId === first.tabId)).toBe(true);
   expect(lastTabs(browser.received)?.map(({ name, terminals }) => [name, terminals.length])).toEqual([
-    ["sh", MAX_TERMINALS_PER_TAB],
-    ["sh 2", 1],
+    [shell.name, MAX_TERMINALS_PER_TAB],
+    [`${shell.name} 2`, 1],
   ]);
   expect(() => terminals.open("c1", 80, 24, beside(first.terminalId))).toThrow(`A tab holds at most ${MAX_TERMINALS_PER_TAB} terminals.`);
 
   terminals.closeTab(second.tabId);
-  expect((await tabsOnceSettled(browser.received, (tabs) => tabs.length === 1)).map(({ name }) => name)).toEqual(["sh"]);
+  expect((await tabsOnceSettled(browser.received, (tabs) => tabs.length === 1)).map(({ name }) => name)).toEqual([shell.name]);
   expect(() => terminals.open("c1", 80, 24, beside(second.terminalId))).toThrow("That terminal is closed.");
   terminals.open("c1", 80, 24);
-  expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual(["sh", "sh 2"]);
+  expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual([shell.name, `${shell.name} 2`]);
 });
 
 test.if(process.platform === "win32")("on Windows a new tab runs PowerShell in the workspace folder, and is named after it", async () => {
@@ -225,7 +253,7 @@ test("a terminal that exits leaves its tab, and the tab goes with its last termi
   terminals.attach(browser.socket, "c1");
   const kept = terminals.open("c1", 80, 24);
   const exiting = terminals.open("c1", 80, 24, beside(kept.terminalId));
-  terminals.input(exiting.terminalId, "exit 3\n");
+  typing(exiting.terminalId, "exit 3");
   const exited = await eventually(() => browser.received.find((message) => message.type === "terminal.exited"), (message) => message !== undefined);
   expect(exited).toEqual({ type: "terminal.exited", terminalId: exiting.terminalId, exitCode: 3 });
   expect(lastTabs(browser.received)).toMatchObject([{ id: kept.tabId, terminals: [{ id: kept.terminalId }] }]);
@@ -239,20 +267,18 @@ test("each terminal in a tab carries the title its shell sets", async () => {
   terminals.attach(browser.socket, "c1");
   const { tabId, terminalId } = terminals.open("c1", 80, 24);
   const split = terminals.open("c1", 80, 24, beside(terminalId));
-  terminals.input(split.terminalId, "printf '\\033]0;my-title\\007'\n");
+  typing(split.terminalId, shell.settingTitle("my-title"));
   const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[1]?.title === "my-title");
-  expect(tab?.terminals).toEqual([
-    { id: terminalId, title: null },
-    { id: split.terminalId, title: "my-title" },
-  ]);
+  expect(tab?.terminals.map(({ id }) => id)).toEqual([terminalId, split.terminalId]);
+  expect(tab?.terminals[0]?.title).not.toBe("my-title");
 });
 
 test("a runaway title is cut to 200 characters", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
-  terminals.input(terminalId, "printf '\\033]0;%s\\007' \"$(printf 'x%.0s' $(seq 1 500))\"\n");
-  const [tab] = await tabsOnceSettled(browser.received, ([only]) => (only?.terminals[0]?.title?.length ?? 0) > 0);
+  typing(terminalId, shell.settingTitle("x".repeat(500)));
+  const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[0]?.title?.startsWith("x") === true);
   expect(tab?.terminals[0]?.title).toBe("x".repeat(200));
 });
 
@@ -274,12 +300,12 @@ test("a terminal splits beside or below itself, and the others close up when one
   expect(closedUp?.layout).toEqual({ axis: "columns", children: [{ terminalId: left.terminalId }, { terminalId: belowRight.terminalId }] });
 });
 
-test("closing unless busy closes a terminal at its prompt, and keeps one running a command, naming it", async () => {
+test.skipIf(process.platform === "win32")("closing unless busy closes a terminal at its prompt, and keeps one running a command, naming it", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const idle = terminals.open("c1", 80, 24);
   const working = terminals.open("c1", 80, 24, beside(idle.terminalId));
-  terminals.input(working.terminalId, "echo started; sleep 30\n");
+  typing(working.terminalId, "echo started; sleep 30");
   await outputContaining(browser.received, "started\r\n");
   await Bun.sleep(200);
 
@@ -296,7 +322,7 @@ test("closing a tab unless busy closes it when every shell sits at its prompt, a
   const idle = terminals.open("c1", 80, 24);
   const working = terminals.open("c1", 80, 24);
   const split = terminals.open("c1", 80, 24, beside(working.terminalId));
-  terminals.input(split.terminalId, "echo started; sleep 30\n");
+  typing(split.terminalId, shell.runningBun("console.log('started'); setTimeout(() => {}, 30000)"));
   await outputContaining(browser.received, "started\r\n");
   await Bun.sleep(200);
 
@@ -304,7 +330,7 @@ test("closing a tab unless busy closes it when every shell sits at its prompt, a
   expect(browser.received.findLast((message) => message.type === "terminal.busy")).toEqual({
     type: "terminal.busy",
     terminalId: split.terminalId,
-    command: "sleep",
+    command: "bun",
     tabId: working.tabId,
   });
   await terminals.closeTabUnlessBusy(browser.socket, idle.tabId);
@@ -315,14 +341,14 @@ test("closing a tab unless busy closes it when every shell sits at its prompt, a
 test("a program with a key runs once: opening it again while it runs shows its terminal, and after it ends starts it anew", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
-  const follow = { tabName: "follow", key: "follow job", command: ["sh", "-c", "read line"] };
+  const follow = { tabName: "follow", key: "follow job", command: waitingForALine };
   const first = terminals.openProgram("c1", 80, 24, follow);
   const again = terminals.openProgram("c1", 80, 24, follow);
   expect({ tabId: again.tabId, terminalId: again.terminalId }).toEqual({ tabId: first.tabId, terminalId: first.terminalId });
-  const unkeyed = terminals.openProgram("c1", 80, 24, { tabName: "follow", command: ["sh", "-c", "read line"] });
+  const unkeyed = terminals.openProgram("c1", 80, 24, { tabName: "follow", command: waitingForALine });
   expect(lastTabs(browser.received)?.map(({ id }) => id)).toEqual([first.tabId, unkeyed.tabId]);
 
-  terminals.input(first.terminalId, "\n");
+  typing(first.terminalId, "");
   await first.exited;
   const afterEnding = terminals.openProgram("c1", 80, 24, follow);
   expect(afterEnding.terminalId).not.toBe(first.terminalId);
@@ -331,9 +357,10 @@ test("a program with a key runs once: opening it again while it runs shows its t
 test("shutting down waits for every shell to exit, so a host that re-executes itself leaves no zombie behind", async () => {
   const watching = fakeBrowser();
   terminals.attach(watching.socket, "c1");
-  [terminals.open("c1", 80, 24), terminals.open("c1", 80, 24)].forEach(({ terminalId }) => terminals.input(terminalId, "echo shell-$$-up\n"));
+  [terminals.open("c1", 80, 24), terminals.open("c1", 80, 24)].forEach(({ terminalId }) => typing(terminalId, `echo shell-${shell.pid}-up`));
   const shellsUp = () => new Set(outputOf(watching.received).match(/shell-\d+-up/g));
   const pids = [...(await eventually(shellsUp, (up) => up.size === 2))].map((up) => Number(up.split("-")[1]));
+  expect(pids).toHaveLength(2);
 
   await terminals.shutdown();
 
@@ -352,7 +379,7 @@ test("two conversations of a workspace have tabs of their own, and closing one c
 
   terminals.closeConversation("c1");
   expect(await tabsOnceSettled(first.received, (tabs) => tabs.length === 0)).toEqual([]);
-  terminals.input(ofSecond.terminalId, "echo still-$((40+2))\n");
+  typing(ofSecond.terminalId, "echo still-$((40+2))");
   expect(await outputContaining(second.received, "still-42")).toContain("still-42");
   expect(lastTabs(second.received)?.map(({ id }) => id)).toEqual([ofSecond.tabId]);
 });
@@ -363,8 +390,9 @@ test("after a restart, a conversation's tabs and splits come back with new shell
   const first = terminals.open("c1", 80, 24);
   terminals.open("c1", 80, 24, below(first.terminalId));
   const second = terminals.open("c1", 80, 24);
-  terminals.input(first.terminalId, "OLD=old-shell; echo before-$((1+1))\n");
-  await outputContaining(before.received, "before-2");
+  typing(first.terminalId, `echo before-$((1+1))-shell-${shell.pid}`);
+  const oldShell = await eventually(() => outputOf(before.received).match(/before-2-shell-(\d+)/)?.[1], (pid) => pid !== undefined);
+  expect(oldShell).toBeDefined();
   const tabsBefore = lastTabs(before.received)!;
 
   await restartHost();
@@ -377,21 +405,23 @@ test("after a restart, a conversation's tabs and splits come back with new shell
   const history = replayed(after.received, first.terminalId);
   expect(history).toContain("before-2");
   expect(history.indexOf(RESTARTED_NOTE)).toBeGreaterThan(history.lastIndexOf("before-2"));
-  terminals.input(first.terminalId, "echo after-${OLD:-new-shell}\n");
-  expect(await outputContaining(after.received, "after-new-shell")).toContain("after-new-shell");
-});
+  typing(first.terminalId, `echo after-$((1+1))-shell-${shell.pid}`);
+  const newShell = await eventually(() => outputOf(after.received).match(/after-2-shell-(\d+)/)?.[1], (pid) => pid !== undefined);
+  expect(newShell).toBeDefined();
+  expect(newShell).not.toBe(oldShell);
+}, 15_000);
 
 test("a full scrollback kept over a restart loses only its oldest lines to the new shell's output", async () => {
   const before = fakeBrowser();
   terminals.attach(before.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
-  terminals.input(terminalId, "awk 'BEGIN { for (i = 0; i < 4000; i++) printf \"line-%d %080d\\n\", i, 0 }'; echo filled-$((2*3))\n");
+  typing(terminalId, `${shell.runningBun("for (let i = 0; i < 4000; i++) console.log('line-' + i + ' ' + '0'.repeat(80))")}; echo filled-$((2*3))`);
   await eventually(() => outputOf(before.received), (output) => output.includes("filled-6"), 20_000);
 
   await restartHost();
   const after = fakeBrowser();
   terminals.attach(after.socket, "c1");
-  terminals.input(terminalId, "echo after-$((5+5))\n");
+  typing(terminalId, "echo after-$((5+5))");
   await outputContaining(after.received, "after-10");
   terminals.replay(after.socket, terminalId);
   const history = replayed(after.received, terminalId);
@@ -405,7 +435,7 @@ test("a program's tab, a closed tab and a closed split are not there after a res
   terminals.attach(browser.socket, "c1");
   const kept = terminals.open("c1", 80, 24);
   const closedSplit = terminals.open("c1", 80, 24, beside(kept.terminalId));
-  terminals.openProgram("c1", 80, 24, { tabName: "follow", command: ["sh", "-c", "read line"] });
+  terminals.openProgram("c1", 80, 24, { tabName: "follow", command: waitingForALine });
   const closedTab = terminals.open("c1", 80, 24);
   terminals.close(closedSplit.terminalId);
   terminals.closeTab(closedTab.tabId);
@@ -414,7 +444,7 @@ test("a program's tab, a closed tab and a closed split are not there after a res
   await restartHost();
   const after = fakeBrowser();
   terminals.attach(after.socket, "c1");
-  expect(lastTabs(after.received)).toEqual([{ id: kept.tabId, name: "sh", layout: { terminalId: kept.terminalId }, terminals: [{ id: kept.terminalId, title: null }] }]);
+  expect(lastTabs(after.received)).toEqual([{ id: kept.tabId, name: shell.name, layout: { terminalId: kept.terminalId }, terminals: [{ id: kept.terminalId, title: null }] }]);
 });
 
 test("a terminal's output is not saved before the save delay, and is saved when the host stops", async () => {
@@ -422,7 +452,7 @@ test("a terminal's output is not saved before the save delay, and is saved when 
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
-  terminals.input(terminalId, "echo pending-$((4*4))\n");
+  typing(terminalId, "echo pending-$((4*4))");
   await outputContaining(browser.received, "pending-16");
   expect(savedOutputOf(terminalId)).not.toContain("pending-16");
 
@@ -434,7 +464,7 @@ test("clearing a terminal clears its saved output at once, and deleting the conv
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
-  terminals.input(terminalId, "echo secret-$((3*3))\n");
+  typing(terminalId, "echo secret-$((3*3))");
   const savedOutput = () => store.listTerminalTabs("c1")[0]?.scrollback.get(terminalId) ?? "";
   expect(await eventually(savedOutput, (saved) => saved.includes("secret-9"))).toContain("secret-9");
 
@@ -454,14 +484,17 @@ test("opening a terminal for a conversation that no longer exists fails", () => 
 test("closing a program's terminal ends what the program started too", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
-  const program = terminals.openProgram("c1", 80, 24, { tabName: "login", command: ["/bin/sh", "-c", 'sh -c "echo started-\\$\\$; exec sleep 1000"; echo after'] });
+  const startingAnother = "const child = Bun.spawn([process.execPath, '-e', 'setTimeout(() => {}, 1000000)']); console.log('started-' + child.pid); await child.exited";
+  const program = terminals.openProgram("c1", 80, 24, { tabName: "login", command: [process.execPath, "-e", startingAnother] });
   const started = await eventually(() => outputOf(browser.received).match(/started-(\d+)/)?.[1], (pid) => pid !== undefined);
+  expect(started).toBeDefined();
   terminals.close(program.terminalId);
   await program.exited;
   expect(await eventually(() => isRunning(Number(started)), (running) => !running)).toBe(false);
 });
 
-test("a program that ignores the hangup is killed after a grace period, with what it started, so its terminal still closes", async () => {
+/** Windows has no hangup: closing a terminal there kills it at once with everything it started. */
+test.skipIf(process.platform === "win32")("a program that ignores the hangup is killed after a grace period, with what it started, so its terminal still closes", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const command = ["/bin/sh", "-c", "trap '' HUP; echo ignoring-$$; while :; do sleep 1000; done"];
