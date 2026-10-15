@@ -9,8 +9,12 @@ test("reads the shell from a getent passwd line or a dscl UserShell record", () 
   expect(shellInUserRecord("No such key: UserShell")).toBeUndefined();
 });
 
-test("finds this account's shell without $SHELL", () => {
+test.skipIf(process.platform === "win32")("finds this account's shell without $SHELL", () => {
   const shell = accountShell();
   expect(shell).toStartWith("/");
   expect(existsSync(shell!)).toBe(true);
+});
+
+test("a Windows account has no shell to find", () => {
+  expect(accountShell("win32")).toBeUndefined();
 });
