@@ -61,6 +61,23 @@ test("with copy on select switched on in Settings → Terminal, selecting text i
     expect(await copied(page)).toHaveLength(copiesBefore);
   });
 
+  await test.step("dragging past the terminal edge scrolls the terminal and copies the selection on release", async () => {
+    await page.locator(".terminal-pane .xterm").click();
+    await page.keyboard.type("for i in $(seq 1 40); do echo \"scroll-line-$i\"; done\n");
+    await expect(screen).toContainText("scroll-line-40");
+    const terminalBox = (await page.locator(".terminal-pane .terminal-screen").boundingBox())!;
+    const startY = terminalBox.y + terminalBox.height - 20;
+    const startX = terminalBox.x + 30;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX, terminalBox.y - 15, { steps: 10 });
+    await page.waitForTimeout(500);
+    await page.mouse.move(startX, -50, { steps: 5 });
+    await page.mouse.up();
+    const last = await lastCopied(page);
+    expect(last).toContain("scroll-line");
+  });
+
   await test.step("when the browser refuses the copy, the terminal says how to copy instead, and no error goes unhandled", async () => {
     await page.evaluate(() => {
       const unhandled: string[] = [];

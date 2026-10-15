@@ -3,8 +3,8 @@ import type { DesktopMenuMessage } from "../shared/desktop-menu.ts";
 import { addWorkspace, primaryModifier, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-function useHost(port: number) {
-  const host = new TestHost(port);
+function useHost() {
+  const host = new TestHost();
   test.beforeAll(() => host.start());
   test.afterAll(async () => {
     await host.stop();
@@ -59,7 +59,7 @@ async function expectToOpenInANewTab(page: Page, address: string, click: () => P
 
 test.describe("on Linux", () => {
   test.use({ userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
-  const host = useHost(5050);
+  const host = useHost();
 
   test("Ctrl+click opens a web address or a hyperlink a terminal shows in a new tab, as in Konsole; a plain or ⌘-click leaves it to the terminal", async ({ page }) => {
     const { plainAddress, hyperlink } = await openTerminalWithLinks(page, host);
@@ -79,7 +79,7 @@ test.describe("on Linux", () => {
 
 test.describe("on macOS", () => {
   test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
-  const host = useHost(5052);
+  const host = useHost();
 
   test("⌘-click opens a web address or a hyperlink a terminal shows in a new tab; a plain or Ctrl+click leaves it to the terminal", async ({ page }) => {
     const { plainAddress, hyperlink } = await openTerminalWithLinks(page, host);
@@ -95,7 +95,7 @@ test.describe("on macOS", () => {
 });
 
 test.describe("inside the desktop app", () => {
-  const host = useHost(5054);
+  const host = useHost();
 
   test("a terminal's links open in the browser when the page asks the app with its nonce", async ({ page }) => {
     await page.addInitScript(() => {
