@@ -75,19 +75,22 @@ async function diffOf(file: string, change: "deleted" | "mode" | "modified" | { 
 const pathsOf = async (file: string, change: "deleted" | "mode" | "modified") =>
   parseGitDiff(await diffOf(file, change)).map(({ path, change }) => [path, change]);
 
+/** Windows does not allow ", \ or control characters in a file name, so git there makes no diff of such a file to read. */
+const testWithNamesWindowsForbids = test.skipIf(process.platform === "win32");
+
 describe("parseGitDiff", () => {
-  test("keeps C-quoted paths whole when only the diff header carries them, deleted or mode-only", async () => {
+  testWithNamesWindowsForbids("keeps C-quoted paths whole when only the diff header carries them, deleted or mode-only", async () => {
     expect(await pathsOf('we"ird\\name.txt', "deleted")).toEqual([['we"ird\\name.txt', "deleted"]]);
     expect(parseGitDiff(await diffOf('we"ird\\name.txt', "mode")).map(({ path, hunks }) => [path, hunks.length])).toEqual([['we"ird\\name.txt', 0]]);
   });
 
-  test("turns git's octal escapes for control characters back into the characters they spell", async () => {
+  testWithNamesWindowsForbids("turns git's octal escapes for control characters back into the characters they spell", async () => {
     const name = "ctl\u0001.txt";
     expect(await diffOf(name, "deleted")).toContain('"a/ctl\\001.txt"');
     expect(await pathsOf(name, "deleted")).toEqual([[name, "deleted"]]);
   });
 
-  test("decodes the non-ASCII characters git keeps raw inside a quoted name", async () => {
+  testWithNamesWindowsForbids("decodes the non-ASCII characters git keeps raw inside a quoted name", async () => {
     expect(await pathsOf('café"q.txt', "modified")).toEqual([['café"q.txt', "modified"]]);
     expect(await pathsOf('café"q-del.txt', "deleted")).toEqual([['café"q-del.txt', "deleted"]]);
     expect(await pathsOf('中"文.txt', "deleted")).toEqual([['中"文.txt', "deleted"]]);
@@ -96,10 +99,13 @@ describe("parseGitDiff", () => {
 
   test("leaves out the tab git ends the new side's line with when the name has a space", async () => {
     expect(await pathsOf("space mod.txt", "modified")).toEqual([["space mod.txt", "modified"]]);
+  });
+
+  testWithNamesWindowsForbids("leaves out that tab from a quoted name with a space too", async () => {
     expect(await pathsOf('dq"space mod.txt', "modified")).toEqual([['dq"space mod.txt', "modified"]]);
   });
 
-  test("reads both names of a rename between quoted names", async () => {
+  testWithNamesWindowsForbids("reads both names of a rename between quoted names", async () => {
     const files = parseGitDiff(await diffOf('ren"src.txt', { renamedTo: 'ren é"b.txt' }));
     expect(files.map(({ path, oldPath, change }) => [path, oldPath, change])).toEqual([['ren é"b.txt', 'ren"src.txt', "renamed"]]);
   });

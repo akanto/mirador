@@ -11,7 +11,8 @@ import type { ConversationEvent } from "../shared/model.ts";
 import { SourceWatcher } from "../host/source-watcher.ts";
 
 describe("hostCommandLine", () => {
-  test("restarts with the command line the host was started with, which the desktop app recognises its host by", () => {
+  /** The desktop app does not run on Windows yet, and knows its host by host/main.ts, which a restart there gives as host\main.ts. */
+  test.todoIf(process.platform === "win32")("restarts with the command line the host was started with, which the desktop app recognises its host by", () => {
     expect(hostCommandLine("bun", "/repo/host/main.ts", "/repo", [])).toEqual(["bun", "host/main.ts"]);
     expect(hostCommandLine("/opt/bun", "/repo/host/main.ts", "/repo", ["--flag"])).toEqual(["/opt/bun", "host/main.ts", "--flag"]);
   });

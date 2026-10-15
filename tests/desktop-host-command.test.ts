@@ -9,8 +9,11 @@ import { relayPorts } from "../shared/relay-ports.ts";
 
 const home = "/Users/someone";
 
+/** The desktop app does not run on Windows yet: its paths and the way it starts its host there are still to come. */
+const testOnceTheDesktopRunsOnWindows = test.todoIf(process.platform === "win32");
+
 describe("runtime", () => {
-  test("defaults to the real app's port, its canvas port and data directory", () => {
+  testOnceTheDesktopRunsOnWindows("defaults to the real app's port, its canvas port and data directory", () => {
     expect(resolveRuntime({}, home)).toEqual({
       port: 4600,
       canvasPort: 4601,
@@ -48,7 +51,7 @@ describe("runtime", () => {
     expect(hostEnvironmentOverrides(resolveRuntime({ MIRADOR_PORT: "4790" }, home), home)).toEqual({ MIRADOR_PORT: "4790" });
   });
 
-  test("keeps the app's own files in the data directory", () => {
+  testOnceTheDesktopRunsOnWindows("keeps the app's own files in the data directory", () => {
     expect(dataPaths("/data")).toEqual({
       settings: "/data/desktop.json",
       ownedHostPid: "/data/desktop-host.pid",
@@ -74,7 +77,7 @@ describe("host command", () => {
     ]);
   });
 
-  test("finds the host's entry even when the user's profile changes directory", () => {
+  testOnceTheDesktopRunsOnWindows("finds the host's entry even when the user's profile changes directory", () => {
     const home = mkdtempSync(join(tmpdir(), "mirador-home-"));
     const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
     writeFileSync(join(home, ".bash_profile"), "cd /\n");

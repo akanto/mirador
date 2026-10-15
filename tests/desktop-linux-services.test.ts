@@ -36,7 +36,7 @@ class FakeSystemctl {
 }
 
 describe("host user service unit", () => {
-  test("is named and placed per port, under the user's config folder", () => {
+  test.skipIf(process.platform === "win32")("is named and placed per port, under the user's config folder", () => {
     expect(hostServiceName(4600)).toBe("mirador-host-4600.service");
     expect(userUnitPath("/home/me/.config", hostServiceName(4790))).toBe("/home/me/.config/systemd/user/mirador-host-4790.service");
   });
@@ -120,7 +120,7 @@ describe("host user service", () => {
 });
 
 describe("autostart entry", () => {
-  test("is named per port in the user's autostart folder", () => {
+  test.skipIf(process.platform === "win32")("is named per port in the user's autostart folder", () => {
     expect(autostartEntryPath("/home/me/.config", 4600)).toBe("/home/me/.config/autostart/mirador-4600.desktop");
   });
 

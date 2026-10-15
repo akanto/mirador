@@ -16,12 +16,16 @@ beforeEach(async () => {
 
 afterEach(() => rm(directory, { recursive: true, force: true }));
 
-test("a dropped file is copied under its own name, in a private folder of its own, and goes away with the conversation", async () => {
+test.skipIf(process.platform === "win32")("a dropped file's folder is open to its owner only", async () => {
+  const path = await files.save(conversationId, "server.log", new Blob(["line one\n"]));
+  expect((await stat(dirname(path))).mode & 0o777).toBe(0o700);
+});
+
+test("a dropped file is copied under its own name, in a folder of its own, and goes away with the conversation", async () => {
   const path = await files.save(conversationId, "server.log", new Blob(["line one\nline two\n"]));
   expect(basename(path)).toBe("server.log");
   expect(dirname(dirname(path))).toBe(join(directory, conversationId));
   expect(await Bun.file(path).text()).toBe("line one\nline two\n");
-  expect((await stat(dirname(path))).mode & 0o777).toBe(0o700);
 
   const again = await files.save(conversationId, "server.log", new Blob(["a later copy"]));
   expect(again).not.toBe(path);

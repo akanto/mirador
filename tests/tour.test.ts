@@ -22,10 +22,23 @@ function folderWith(files: Record<string, string>) {
 
 const lines = (...each: string[]) => each.join("\n") + "\n";
 
-/** git still reads this repo but fails to write to it, like a read-only .git or a gc lock would. Call the result to let it write again. */
-function withoutWritesIn(directory: string) {
-  execFileSync("chmod", ["-R", "a-w", directory]);
-  return () => execFileSync("chmod", ["-R", "u+w", directory]);
+/**
+ * git still reads this repo but cannot add an object to it, as with a read-only .git: once its objects are packed, a file
+ * stands where each folder of loose objects would go. Call the result to let it write again.
+ */
+function withoutNewObjects(git: (...args: string[]) => string, directory: string) {
+  git("repack", "-adq");
+  git("prune-packed");
+  const objectFolders = Array.from({ length: 256 }, (_, index) => join(directory, ".git", "objects", index.toString(16).padStart(2, "0")));
+  objectFolders.forEach((folder) => writeFileSync(folder, ""));
+  return () => objectFolders.forEach((folder) => rmSync(folder));
+}
+
+/** git cannot make a ref under refs/mirador/: a file stands where that folder would go. Call the result to let it again. */
+function withoutMiradorRefs(directory: string) {
+  const inTheWay = join(directory, ".git", "refs", "mirador");
+  writeFileSync(inTheWay, "");
+  return () => rmSync(inTheWay);
 }
 
 /** A checkout with an app/ folder, where the task changed a line of service.ts and wrote new.ts and a gitignored file, none of it committed. */
@@ -207,8 +220,8 @@ describe("snapshotTour", () => {
   });
 
   test("with since, git failing to write while taking the snapshot of the current files says what to fix instead of failing with git's own error", async () => {
-    const { directory } = checkoutWithUncommittedWork();
-    const allowWrites = withoutWritesIn(join(directory, ".git"));
+    const { directory, git } = checkoutWithUncommittedWork();
+    const allowWrites = withoutNewObjects(git, directory);
     let problems: string[];
     try {
       problems = await problemsOf(snapshotTour(request(join(directory, "app"), { since: "HEAD" })));
@@ -218,7 +231,7 @@ describe("snapshotTour", () => {
 
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain(`since: Mirador could not read the files in ${realpathSync(join(directory, "app"))} as they are now to compare with HEAD`);
-    expect(problems[0]).toContain("insufficient permission for adding an object");
+    expect(problems[0]).toContain("failed to insert into database");
     expect(problems[0]).toContain("fatal: updating files failed. Fix what git reports, or leave since out to show the tour without what changed.");
     expect(problems[0]).not.toContain("..");
   });
@@ -247,7 +260,7 @@ describe("snapshotTour", () => {
 
   test("with since, git failing to keep the files the tour was made from says the tour was not shown instead of failing with git's own error", async () => {
     const { directory, git } = checkoutWithUncommittedWork();
-    const allowWrites = withoutWritesIn(join(directory, ".git/refs"));
+    const allowWrites = withoutMiradorRefs(directory);
     let problems: string[];
     try {
       problems = await problemsOf(snapshotTour(request(join(directory, "app"), { since: "HEAD" })));
@@ -257,7 +270,7 @@ describe("snapshotTour", () => {
 
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("snapshot: Mirador could not keep the files the tour was made from in git");
-    expect(problems[0]).toContain("unable to create directory for");
+    expect(problems[0]).toContain("cannot lock ref 'refs/mirador/tours/");
     expect(problems[0]).toContain("Fix what git reports, or leave since out to show the tour without what changed.");
     expect(problems[0]).not.toContain("..");
     expect(git("for-each-ref", "refs/mirador/tours/")).toBe("");

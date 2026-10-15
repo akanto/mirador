@@ -42,7 +42,7 @@ const javaClass = () => {
   return Buffer.concat([bytes, thinHeader(MH_EXECUTE)]);
 };
 
-test("every program and library in the app is found by its header, the deepest first, and nothing else is", () => {
+test.skipIf(process.platform === "win32")("every program and library in the app is found by its header, the deepest first, and nothing else is", () => {
   write("Contents/MacOS/launcher", thinHeader(MH_EXECUTE));
   write("Contents/MacOS/libNativeWrapper.dylib", thinHeader(MH_DYLIB));
   write("Contents/Resources/uninstall", fatBinary(thinHeader(MH_EXECUTE)));

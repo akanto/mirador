@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { processTreeOf, waitForProcessesToEnd, type ProcessTree } from "../e2e/process-tree.ts";
 
+/** The e2e suite reads processes with ps, which Windows does not have; it runs there once it reads them another way. */
+const describeOnceTheE2eSuiteRunsOnWindows = describe.todoIf(process.platform === "win32");
+
 const startedTrees: ProcessTree[] = [];
 const directories: string[] = [];
 
@@ -34,7 +37,7 @@ async function startNestedProcesses(seconds: number) {
   return { outer, innermost: Number(readFileSync(innermostPidFile, "utf8")) };
 }
 
-describe("processTreeOf", () => {
+describeOnceTheE2eSuiteRunsOnWindows("processTreeOf", () => {
   test("holds a process and the processes it started, at any depth", async () => {
     const { outer, innermost } = await startNestedProcesses(30);
     const tree = processTreeOf(outer.pid!);
@@ -44,7 +47,7 @@ describe("processTreeOf", () => {
   });
 });
 
-describe("waitForProcessesToEnd", () => {
+describeOnceTheE2eSuiteRunsOnWindows("waitForProcessesToEnd", () => {
   test("waits for processes that outlive the one that started them", async () => {
     const { outer, innermost } = await startNestedProcesses(3);
     const tree = processTreeOf(outer.pid!);

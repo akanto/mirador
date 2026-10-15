@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HarnessProcess } from "../host/acp/harness.ts";
 
+/** Windows knows a program by its extension, so a file without one is not found rather than refused. */
+const UNRUNNABLE_ERROR = process.platform === "win32" ? "ENOENT" : "EACCES";
+
 describe("HarnessProcess.start", () => {
   test("fails with why the agent could not start when its program isn't executable, and the harness counts as gone", async () => {
     const directory = mkdtempSync(join(tmpdir(), "mirador-harness-spawn-"));
@@ -15,7 +18,7 @@ describe("HarnessProcess.start", () => {
       { onSessionUpdate: () => {}, onPermissionRequest: async () => ({ outcome: { outcome: "cancelled" } } as never), onExit: (_harness, reason) => void (exitedReason = reason) },
       directory,
     );
-    await expect(harness.start()).rejects.toThrow(/The Unrunnable agent agent process could not start: .*EACCES/);
+    await expect(harness.start()).rejects.toThrow(new RegExp(`The Unrunnable agent agent process could not start: .*${UNRUNNABLE_ERROR}`));
     expect(exitedReason as string | null).toMatch(/could not start/);
     expect(await harness.stop()).toMatch(/could not start/);
   }, 15_000);

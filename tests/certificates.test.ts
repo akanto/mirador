@@ -30,6 +30,10 @@ test("Mirador's own authority issues a server certificate for every name, which 
   expect(await answersPinnedTo(certificate, certificate.authority!, "localhost")).toBe("hello");
   expect(await answersPinnedTo(certificate, certificate.authority!, "127.0.0.1")).toBe("hello");
   expect(authorityFingerprint(certificate.authority!)).toMatch(/^[\w-]{43}$/);
+});
+
+test.skipIf(process.platform === "win32")("the authority's and the server's keys are readable by their owner only", () => {
+  ownServingCertificate(dataDir, ["localhost"]);
   ["authority-key.pem", "server-key.pem"].forEach((key) => expect(statSync(join(dataDir, "tls", key)).mode & 0o777).toBe(0o600));
 });
 

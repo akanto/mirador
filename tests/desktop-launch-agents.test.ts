@@ -53,7 +53,7 @@ describe("launch agent labels", () => {
     expect(openAtLoginLabel(4790)).not.toBe(openAtLoginLabel(4600));
   });
 
-  test("live in the user's LaunchAgents folder", () => {
+  test.skipIf(process.platform === "win32")("live in the user's LaunchAgents folder", () => {
     expect(launchAgentPath("/Users/me", "x.y")).toBe("/Users/me/Library/LaunchAgents/x.y.plist");
   });
 });

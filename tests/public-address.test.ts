@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { configFilePath, loadConfig, localNetworkName, reachability, savedNetwork, saveNetwork, savedPublicAddress, savePublicAddress } from "../host/config.ts";
 import { Store } from "../host/store.ts";
 
@@ -107,8 +107,9 @@ test("on the network, the host listens on its port plus 2 and 3 and is reached a
 });
 
 test("the owner's certificate needs both files, found from the data directory when the paths are relative", () => {
-  writeConfigFile({ network: true, tlsCertificate: "tls/mine.pem", tlsKey: "/etc/mirador/mine-key.pem" });
-  expect(reachability({}, dataDir, 4600).network?.ownCertificate).toEqual({ certificatePath: join(dataDir, "tls/mine.pem"), keyPath: "/etc/mirador/mine-key.pem" });
+  const keyPath = resolve(sep, "etc", "mirador", "mine-key.pem");
+  writeConfigFile({ network: true, tlsCertificate: "tls/mine.pem", tlsKey: keyPath });
+  expect(reachability({}, dataDir, 4600).network?.ownCertificate).toEqual({ certificatePath: join(dataDir, "tls/mine.pem"), keyPath });
   writeConfigFile({ network: true, tlsCertificate: "tls/mine.pem" });
   expect(() => reachability({}, dataDir, 4600)).toThrow(`Set both tlsCertificate and tlsKey in ${configFilePath(dataDir)}, or neither.`);
   expect(() => reachability({ MIRADOR_NETWORK: "maybe" }, dataDir, 4600)).toThrow("MIRADOR_NETWORK must be on or off.");
