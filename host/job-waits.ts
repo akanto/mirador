@@ -154,11 +154,24 @@ const jobStateIn = (output: string): JobState => {
   return state === "running" || state === "ended" ? state : "unknown";
 };
 
-export async function checkJob({ job, sshHost }: Pick<JobWait, "job" | "sshHost">): Promise<JobState> {
-  if (job.kind === "process" && !sshHost) return processRuns(job.pid) ? "running" : "ended";
-  const command = sshHost
-    ? ["ssh", "-o", "BatchMode=yes", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "--", sshHost, jobCheckCommand(job)]
-    : ["sh", "-c", jobCheckCommand(job)];
+/** As jobCheckCommand checks a container, without a shell, which Windows lacks. */
+async function containerState(name: string, environment: Record<string, string | undefined>): Promise<JobState> {
+  const engine = Bun.which("docker", { PATH: environment.PATH }) ?? Bun.which("podman", { PATH: environment.PATH });
+  if (!engine) return "unknown";
+  const inspecting = Bun.spawn([engine, "inspect", "--type", "container", "-f", "{{.State.Running}}", name], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: CHECK_TIMEOUT_MS,
+  });
+  const [running, errors] = await Promise.all([new Response(inspecting.stdout).text(), new Response(inspecting.stderr).text(), inspecting.exited]);
+  if (/[Nn]o such/.test(errors)) return "ended";
+  return ({ true: "running", false: "ended" } as const)[running.trim()] ?? "unknown";
+}
+
+export async function checkJob({ job, sshHost }: Pick<JobWait, "job" | "sshHost">, environment: Record<string, string | undefined> = process.env): Promise<JobState> {
+  if (!sshHost) return job.kind === "process" ? (processRuns(job.pid) ? "running" : "ended") : containerState(job.name, environment);
+  const command = ["ssh", "-o", "BatchMode=yes", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "--", sshHost, jobCheckCommand(job)];
   const checking = Bun.spawn(command, { stdin: "ignore", stdout: "pipe", stderr: "ignore", timeout: CHECK_TIMEOUT_MS });
   const [output, exitCode] = await Promise.all([new Response(checking.stdout).text(), checking.exited]);
   return exitCode === SSH_FAILED ? "unknown" : jobStateIn(output);
@@ -211,14 +224,56 @@ function followContainerScript(name: string) {
 /** A shell script that prints what the job runs and since when, then follows its output until it ends. */
 const followJobScript = (job: WaitedJob) => (job.kind === "process" ? followProcessScript(job.pid) : followContainerScript(job.name));
 
-/** Without BatchMode, unlike the checks: in a terminal, ssh can ask for a password. When it cannot connect, its error stays. */
-function overSsh(sshHost: string, script: string) {
-  const ssh = ["ssh", "-t", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "--", sshHost, `sh -c ${singleQuoted(script)}`];
-  return `${ssh.map(singleQuoted).join(" ")}; [ $? -ne ${SSH_FAILED} ] || { ${closeOnEnter}; }`;
+const closeOnEnterInPowerShell = "Write-Host -NoNewline 'Press Enter to close this tab.'; [void][Console]::ReadLine()";
+
+/** As followProcessScript, but Windows does not tell which file a process's output goes to, so there is none to follow. */
+function followProcessInPowerShell(pid: number) {
+  return [
+    `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue`,
+    `if (-not $process) { Write-Host 'Process ${pid} is not running.'; ${closeOnEnterInPowerShell}; exit 1 }`,
+    `Write-Host "Command: $((Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine)"`,
+    "if ($process.StartTime) { $elapsed = (Get-Date) - $process.StartTime; Write-Host ('Running for: {0:00}:{1:00}:{2:00}' -f [math]::Floor($elapsed.TotalHours), $elapsed.Minutes, $elapsed.Seconds) }",
+    "Write-Host 'On Windows this tab cannot find the file its output goes to, so it only shows when the process ends.'",
+    `while (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { Start-Sleep 1 }`,
+    `Write-Host ''; Write-Host 'Process ${pid} ended.'`,
+    closeOnEnterInPowerShell,
+  ].join("\n");
 }
 
-export function followJobProgram(wait: Pick<JobWait, "job" | "sshHost">): TerminalProgram {
-  const script = followJobScript(wait.job);
+function followContainerInPowerShell(name: string) {
+  const inspect = (format: string) => `& $engine inspect --type container -f '${format}' ${name}`;
+  return [
+    "$engine = 'docker', 'podman' | ForEach-Object { Get-Command $_ -CommandType Application -ErrorAction SilentlyContinue } | Select-Object -First 1 -ExpandProperty Source",
+    `if (-not $engine) { Write-Host 'Neither docker nor podman is installed here.'; ${closeOnEnterInPowerShell}; exit 1 }`,
+    inspect("Image: {{.Config.Image}}"),
+    `if ($LASTEXITCODE -ne 0) { ${closeOnEnterInPowerShell}; exit 1 }`,
+    inspect("Command: {{.Path}}{{range .Args}} {{.}}{{end}}"),
+    inspect("Started: {{.State.StartedAt}}"),
+    "Write-Host ''",
+    `& $engine logs --tail 50 -f ${name}`,
+    `Write-Host ''; Write-Host 'Container ${name} ended.'`,
+    closeOnEnterInPowerShell,
+  ].join("\n");
+}
+
+/** Without BatchMode, unlike the checks: in a terminal, ssh can ask for a password. */
+const sshFollowing = (sshHost: string, script: string) => ["ssh", "-t", "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10", "--", sshHost, `sh -c ${singleQuoted(script)}`];
+
+/** When ssh cannot connect, its error stays. */
+const overSsh = (sshHost: string, script: string) => `${sshFollowing(sshHost, script).map(singleQuoted).join(" ")}; [ $? -ne ${SSH_FAILED} ] || { ${closeOnEnter}; }`;
+
+/**
+ * On Windows, ssh runs on its own: Windows PowerShell would garble the quotes in the script it passes, so when ssh
+ * cannot connect there, the tab closes with its error.
+ */
+function followCommand({ job, sshHost }: Pick<JobWait, "job" | "sshHost">, platform: NodeJS.Platform) {
+  if (sshHost) return platform === "win32" ? sshFollowing(sshHost, followJobScript(job)) : ["sh", "-c", overSsh(sshHost, followJobScript(job))];
+  if (platform !== "win32") return ["sh", "-c", followJobScript(job)];
+  const script = job.kind === "process" ? followProcessInPowerShell(job.pid) : followContainerInPowerShell(job.name);
+  return ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", script];
+}
+
+export function followJobProgram(wait: Pick<JobWait, "job" | "sshHost">, platform = process.platform): TerminalProgram {
   const job = describeJob(wait);
-  return { tabName: job, key: `follow ${job}`, command: ["sh", "-c", wait.sshHost ? overSsh(wait.sshHost, script) : script] };
+  return { tabName: job, key: `follow ${job}`, command: followCommand(wait, platform) };
 }
