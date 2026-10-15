@@ -36,6 +36,7 @@ const SNAPSHOT_MESSAGE = "mirador: the files at the start of a turn";
 const stagingMessageOn = (head: string) => `mirador: the staged files at the start of a turn\n\nHEAD ${head || "unborn"}`;
 /** Mirador's own commits need no identity or signing setup from the user's git config. */
 export const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost", "-c", "commit.gpgsign=false"];
+const WITHOUT_AUTOCRLF = ["-c", "core.autocrlf=false"];
 
 /**
  * The files of a workspace, kept per turn so a turn can be undone.
@@ -235,11 +236,15 @@ export class Checkpoints {
     return result;
   }
 
-  /** On our own index unless told another; paths given to git are taken as they are, never as patterns. */
-  private async git(workspace: Workspace, args: string[], { input, index = join(this.dataDir, "checkpoints", `${workspace.id}.index`) }: GitOptions = {}) {
+  /**
+   * On our own index unless told another; paths given to git are taken as they are, never as patterns. Files go into our
+   * own index and back out without core.autocrlf's conversion, while the user's index is compared with their own.
+   */
+  private async git(workspace: Workspace, args: string[], { input, index }: GitOptions = {}) {
     await mkdir(join(this.dataDir, "checkpoints"), { recursive: true });
-    const child = Bun.spawn(["git", "-C", workspace.path, ...IDENTITY, ...args], {
-      env: { ...process.env, GIT_INDEX_FILE: index, GIT_LITERAL_PATHSPECS: "1" },
+    const conversion = index === undefined ? WITHOUT_AUTOCRLF : [];
+    const child = Bun.spawn(["git", "-C", workspace.path, ...IDENTITY, ...conversion, ...args], {
+      env: { ...process.env, GIT_INDEX_FILE: index ?? join(this.dataDir, "checkpoints", `${workspace.id}.index`), GIT_LITERAL_PATHSPECS: "1" },
       stdin: input === undefined ? "ignore" : new Blob([input]),
       stdout: "pipe",
       stderr: "pipe",

@@ -50,6 +50,24 @@ test("a restore puts back what a turn changed, deletes what it created, and says
   await expect(read("added.txt")).rejects.toThrow();
 });
 
+test("a restore puts files back with the line endings they had, even where core.autocrlf would convert them", async () => {
+  await git(projectDir, ["config", "core.autocrlf", "true"]);
+  await write("unix.txt", "lf\n");
+  await write("windows.txt", "crlf\r\n");
+  await write("mixed.txt", "lf\ncrlf\r\n");
+  const before = await git(projectDir, ["status", "--porcelain"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await Promise.all(["kept.txt", "unix.txt", "windows.txt", "mixed.txt"].map((file) => write(file, "changed by the agent\n")));
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("kept.txt")).toBe("one\n");
+  expect(await read("unix.txt")).toBe("lf\n");
+  expect(await read("windows.txt")).toBe("crlf\r\n");
+  expect(await read("mixed.txt")).toBe("lf\ncrlf\r\n");
+  expect((await git(projectDir, ["status", "--porcelain"])).stdout).toBe(before.stdout);
+});
+
 test("a restored folder holds only what the snapshot had, and the folder a deleted file made is gone with it", async () => {
   await mkdir(join(projectDir, "src"));
   await write("src/deep.txt", "deep\n");

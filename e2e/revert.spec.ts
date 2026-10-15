@@ -199,3 +199,29 @@ test("in a workspace below the repository's top, an undo puts back that folder's
   expect(readFileSync(readme, "utf8")).toBe("the user's own change\n");
   expect(readFileSync(madeAtTop, "utf8")).toBe("made outside the app\n");
 });
+
+test("an undo puts files back with the line endings they had, even where core.autocrlf would convert them", async ({ page }) => {
+  const unix = join(host.projectDir, "unix.txt");
+  const windows = join(host.projectDir, "windows.txt");
+  git("config", "core.autocrlf", "true");
+  writeFileSync(unix, "lf\n");
+  writeFileSync(windows, "crlf\r\n");
+
+  await signIn(page, host);
+  await workspaceCard(page, host.projectDir).getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  await startConversationWithoutModel(page);
+  await sendMessage(page, "Change the line endings");
+  await expect(status(page)).toHaveText("idle", { timeout: 60_000 });
+  writeFileSync(unix, "changed by the turn\r\n");
+  writeFileSync(windows, "changed by the turn\n");
+
+  await userMessage(page).hover();
+  await undoFiles(page).click();
+  const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+  await expect(dialog).toContainText("2 files put back as they were");
+  await dialog.getByRole("button", { name: "Put the files back" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(readFileSync(unix, "utf8")).toBe("lf\n");
+  expect(readFileSync(windows, "utf8")).toBe("crlf\r\n");
+  git("config", "--unset", "core.autocrlf");
+});
