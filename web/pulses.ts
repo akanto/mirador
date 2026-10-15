@@ -26,6 +26,29 @@ export function applyPulses(on: boolean) {
   document.documentElement.dataset.pulses = pulseStyleFor(on, navigator.userAgent);
 }
 
+const PULSE_ANIMATION = "pulse";
+
+const isPulse = (animation: Animation): animation is CSSAnimation =>
+  animation instanceof CSSAnimation && animation.animationName === PULSE_ANIMATION;
+
+const pulsesStep = () => document.documentElement.dataset.pulses === ("stepped" satisfies PulseStyle);
+
+/**
+ * WebKitGTK paints the changes of every dot that steps at the same moment in one frame, so with all pulses in one
+ * phase, many stepped dots cost about what one does. Each stepped pulse counts its cycles from the page's start, not
+ * from when its dot appeared.
+ */
+export function keepPulsesInStep() {
+  document.addEventListener("animationstart", ({ animationName }) => {
+    if (animationName !== PULSE_ANIMATION || !pulsesStep()) return;
+    document
+      .getAnimations()
+      .filter(isPulse)
+      .filter((pulse) => pulse.startTime !== 0)
+      .forEach((pulse) => (pulse.startTime = 0));
+  });
+}
+
 export function usePulsesOn() {
   const [on, setOn] = useState(storedPulsesOn);
   const choose = (next: boolean) => {

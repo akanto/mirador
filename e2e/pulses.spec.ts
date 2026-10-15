@@ -43,7 +43,13 @@ const runningDotAnimation = (page: Page) =>
       return { animationName, animationTimingFunction };
     });
 
-test("on Linux the running dot pulses in a few steps rather than every frame, Settings can stop the pulse, and reduced motion stops it", async ({
+const pulsePhases = (page: Page) =>
+  page.evaluate(() => {
+    const pulses = document.getAnimations().filter((animation) => animation instanceof CSSAnimation && animation.animationName === "pulse");
+    return { pulses: pulses.length, startTimes: [...new Set(pulses.map((pulse) => pulse.startTime))] };
+  });
+
+test("on Linux the running dots pulse in a few steps rather than every frame and all in one phase, Settings can stop the pulse, and reduced motion stops it", async ({
   browser,
 }) => {
   const linux = await signedInAs(browser, linuxDesktopApp);
@@ -60,6 +66,14 @@ test("on Linux the running dot pulses in a few steps rather than every frame, Se
     const { animationName, animationTimingFunction } = await runningDotAnimation(linux);
     expect(animationName).toBe("pulse");
     expect(animationTimingFunction).toMatch(/^steps\(4/);
+  });
+
+  await test.step("a dot that starts later pulses in the same phase, so their steps change in one frame", async () => {
+    await linux.getByRole("button", { name: "+ New conversation" }).click();
+    await sendMessage(linux, "WEDGE");
+    await expect(linux.locator(".chat-header:visible .badge")).toHaveText("running", { timeout: 30_000 });
+    await expect.poll(() => pulsePhases(linux)).toEqual({ pulses: expect.any(Number), startTimes: [0] });
+    expect((await pulsePhases(linux)).pulses).toBeGreaterThanOrEqual(2);
   });
 
   await test.step("turning the pulse off in Settings stops it, and stays remembered", async () => {
