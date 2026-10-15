@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -267,6 +268,23 @@ describe("snapshotReview", () => {
       ["docs folder/notes file.md", "added"],
       ["service.ts", "modified"],
     ]);
+  });
+
+  test.if(process.platform === "win32")("accepts an absolute path through the checkout's short 8.3 name, as a Windows account with a long name has in its TEMP", async () => {
+    const { directory } = gitRepository();
+    mkdirSync(join(directory, "docs"));
+    writeFileSync(join(directory, "docs", "notes.md"), "# Notes\n");
+    await git(directory, ["add", "."]);
+    await git(directory, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "add notes"]);
+    const shortName = execFileSync("powershell.exe", ["-NoProfile", "-Command", `(New-Object -ComObject Scripting.FileSystemObject).GetFolder('${directory}').ShortPath`], { encoding: "utf8" }).trim();
+    expect(shortName).not.toBe(directory);
+
+    const flow = [
+      { title: "Entry", at: join(shortName, "service.ts:5"), say: "load" },
+      { title: "Notes", at: join(shortName, "docs", "notes.md:1"), say: "read" },
+    ];
+    const review = await snapshotReview(request(directory, { flow }));
+    expect(review.flow.map(({ at }) => at.path)).toEqual(["service.ts", "docs/notes.md"]);
   });
 
   test("accepts absolute paths inside the checkout, and lists every wrong anchor at once", async () => {

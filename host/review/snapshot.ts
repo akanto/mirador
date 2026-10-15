@@ -1,5 +1,5 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import {
   anchorLabel,
   parseAnchor,
@@ -159,8 +159,12 @@ export class AnchorReader {
     return { at, excerpt: excerptAround(at, lines) };
   }
 
+  /**
+   * An absolute path as git names the file: the native realpath also expands Windows' short 8.3 names, which git never
+   * reports its checkout by, and git separates folders with / on Windows too.
+   */
   private relativePath(path: string) {
-    const fromRoot = isAbsolute(path) ? relative(this.root, existsSync(path) ? realpathSync(path) : path) : path;
+    const fromRoot = isAbsolute(path) ? relative(this.root, existsSync(path) ? realpathSync.native(path) : path).split(sep).join(posix.sep) : path;
     return fromRoot.replace(/^\.\//, "");
   }
 
