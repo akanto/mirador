@@ -53,6 +53,10 @@ const subjectAltName = (names: string[]) => names.map((name) => (isIpAddress(nam
 /** Openssl's config parser expands $name inside values and reads " and \ as quoting; quoting with those escaped keeps any text verbatim. */
 export const opensslConfigValue = (value: string) => `"${value.replace(/["\\$]/g, "\\$&")}"`;
 
+/** openssl refuses a common name over 64 characters; clients check the names in subjectAltName, so a long host name is cut. */
+const COMMON_NAME_CHARACTERS = 64;
+const commonName = (after = "") => `Mirador on ${hostname()}`.slice(0, COMMON_NAME_CHARACTERS - after.length) + after;
+
 /** Git for Windows ships openssl but its installer leaves it off PATH; the native build comes before the MSYS one. */
 const GIT_OPENSSL_FOLDERS = [win32.join("mingw64", "bin"), win32.join("usr", "bin")];
 
@@ -99,7 +103,7 @@ function authorityIn(directory: string) {
       "prompt = no",
       "x509_extensions = authority",
       "[subject]",
-      `CN = ${opensslConfigValue(`Mirador on ${hostname()} (certificate authority)`)}`,
+      `CN = ${opensslConfigValue(commonName(" (certificate authority)"))}`,
       "[authority]",
       "basicConstraints = critical, CA:TRUE, pathlen:0",
       "keyUsage = critical, keyCertSign, cRLSign",
@@ -137,7 +141,7 @@ function swapInStagedPair(directory: string) {
 }
 
 function issueServerCertificate(directory: string, names: string[]) {
-  writePrivately(join(directory, "server.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = ${opensslConfigValue(`Mirador on ${hostname()}`)}`, ""].join("\n"));
+  writePrivately(join(directory, "server.cnf"), ["[req]", "distinguished_name = subject", "prompt = no", "[subject]", `CN = ${opensslConfigValue(commonName())}`, ""].join("\n"));
   writePrivately(
     join(directory, "server.ext"),
     [

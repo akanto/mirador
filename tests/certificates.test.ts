@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createPrivateKey, generateKeyPairSync, X509Certificate } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import * as os from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { authorityFingerprint, findOpenssl, namesIn, namesToCover, opensslMissing, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
@@ -92,6 +93,20 @@ test("host names go into the openssl config quoted, so its variable expansion ca
   ownServingCertificate(dataDir, ["localhost"]);
   for (const config of ["server.cnf", "authority.cnf"]) {
     expect(readFileSync(join(dataDir, "tls", config), "utf8")).toMatch(/^CN = "Mirador on .*"$/m);
+  }
+});
+
+test("a host name too long for a certificate's common name is cut short there, and the certificate is still made", async () => {
+  const machine = "a-rather-long-machine-name.with-several-parts.example.internal";
+  const named = spyOn(os, "hostname").mockReturnValue(machine);
+  try {
+    const certificate = ownServingCertificate(dataDir, ["localhost"]);
+    const commonNameOf = (pem: string) => new X509Certificate(pem).subject.replace(/^CN=/, "");
+    expect(commonNameOf(certificate.authority!)).toBe(`${`Mirador on ${machine}`.slice(0, 40)} (certificate authority)`);
+    expect(commonNameOf(certificate.chain)).toBe(`Mirador on ${machine}`.slice(0, 64));
+    expect(await answersPinnedTo(certificate, certificate.authority!, "localhost")).toBe("hello");
+  } finally {
+    named.mockRestore();
   }
 });
 
