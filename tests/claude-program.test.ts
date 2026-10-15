@@ -15,6 +15,15 @@ function programIn(directory: string, name: string, script = "#!/bin/sh\necho '9
 
 const scratch = () => mkdtempSync(join(tmpdir(), "claude-program-"));
 
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 test("without a program set, claude is found on PATH; a program set in Settings is used only if it can run", () => {
   const onPath = scratch();
   const claude = programIn(onPath, "claude");
@@ -82,6 +91,21 @@ test("a version check is given up on within its timeout when the program ignores
   expect(await versionOf(ignoresTerm, 2000)).toBeNull();
   expect(Date.now() - started).toBeLessThan(4000);
 });
+
+test.if(process.platform === "win32")("on Windows a claude.cmd that hangs on --version is given up on, and the program it runs ends with it", async () => {
+  const directory = scratch();
+  const pidFile = join(directory, "pid");
+  writeFileSync(join(directory, "claude.js"), `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30_000);`);
+  const claude = join(directory, "claude.cmd");
+  writeFileSync(claude, `@"${process.execPath}" "%~dp0claude.js" %*\r\n`);
+
+  expect(await versionOf(claude, 2000)).toBeNull();
+  expect(existsSync(pidFile)).toBe(true);
+  const program = Number(readFileSync(pidFile, "utf8"));
+  const deadline = Date.now() + 3_000;
+  while (isRunning(program) && Date.now() < deadline) await Bun.sleep(20);
+  expect(isRunning(program)).toBe(false);
+}, 15_000);
 
 test("Claude Code's agent is told which program to run, a profile may name its own, and a missing one says how to install it", () => {
   const program = programIn(scratch(), "claude");
