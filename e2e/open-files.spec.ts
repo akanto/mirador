@@ -57,3 +57,22 @@ test("a file the agent wrote is a link in its tool card, and clicking it opens t
     });
   }
 });
+
+test("a file path the agent writes in backticks in its reply is a link that opens the file", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  await sendMessage(page, `SAY Look at \`${appFile}\` and \`src/app.ts\`, then \`not a file\`.`);
+  await waitForTurnToEnd(page);
+
+  for (const path of [appFile, "src/app.ts"]) {
+    await test.step(`the path ${path} opens`, async () => {
+      const before = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
+      await page.locator(".markdown").getByRole("button", { name: path, exact: true }).click();
+      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").slice(before.length)).toContain(path);
+    });
+  }
+  await expect(page.locator(".markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
+});
+

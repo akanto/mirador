@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, posix, resolve, sep } from "node:path";
 import type { ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
@@ -6,7 +7,7 @@ import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
-import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
+import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredPaths, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
 
@@ -124,7 +125,7 @@ export class Changes {
     const project = changes
       ? [
           ...changes.map((change) => ({ ...change, byAgent: agentProjectFiles.has(change.path) })),
-          ...(scope === "turn" ? [...agentProjectFiles].filter(([path]) => !changes.some((change) => change.path === path)).map(([path, edit]) => agentOnly(path, edit)) : []),
+          ...(scope !== "uncommitted" ? [...agentProjectFiles].filter(([path]) => !changes.some((change) => change.path === path)).map(([path, edit]) => agentOnly(path, edit)) : []),
         ]
       : [...agentProjectFiles].map(([path, edit]) => agentOnly(path, edit));
     return { scope, base: start.base, project: project.sort(byPath), outside: outside.sort(byPath), ...(truncated && { filesCheckedAtMost: MAX_SCANNED_FILES }) };
@@ -178,6 +179,7 @@ export class Changes {
     const inWorkspace = file.startsWith(resolve(workspace.path) + sep);
     const changedByAgent = this.agentEdits(conversationId, workspace, 0).some((edit) => edit.path === file);
     if (!inWorkspace && !changedByAgent) throw new Error(`${path} is neither a file of this workspace nor one the agent changed in this conversation.`);
+    if (!existsSync(file)) throw new Error(`${path} does not exist.`);
     this.openWithDefault(file);
   }
 
@@ -187,7 +189,7 @@ export class Changes {
   }
 
   private async startOf(conversationId: string, workspace: Workspace, scope: ChangeScope): Promise<ScopeStart> {
-    if (scope === "session") return { fromSeq: 0, revision: null, base: "session" };
+    if (scope === "session") return { fromSeq: 0, revision: null, since: this.sessionStart(conversationId), base: "session" };
     if (scope === "uncommitted") {
       return (await isRepository(workspace.path)) ? { fromSeq: 0, revision: await headOrEmptyTree(workspace.path), base: "head" } : { fromSeq: 0, revision: null, base: "not-a-repository" };
     }
@@ -198,8 +200,21 @@ export class Changes {
     return kept ? { fromSeq: turn.seq, revision: turn.checkpoint, base: "turn-start" } : { fromSeq: turn.seq, revision: null, base: "turn-not-kept" };
   }
 
+  /** When the conversation's first event was made: a session holds everything the agent and its scripts wrote after it. */
+  private sessionStart(conversationId: string) {
+    return this.store.listEventsBetween(conversationId, 0, 1)[0]?.at ?? 0;
+  }
+
+  /** In a repository, git already lists what it tracks, so a session adds only what .gitignore hides. */
+  private async writtenSince(workspace: Workspace, scope: ChangeScope, since: number) {
+    const written = await filesWrittenSince(workspace.path, since);
+    if (scope !== "session" || !(await isRepository(workspace.path))) return written;
+    const hidden = await ignoredPaths(workspace.path, written.changes.map(({ path }) => path));
+    return { ...written, changes: written.changes.filter(({ path }) => hidden.has(path)) };
+  }
+
   private async treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<{ changes: TreeChange[] | null; truncated: boolean }> {
-    if (start.since !== undefined) return filesWrittenSince(workspace.path, start.since);
+    if (start.since !== undefined) return this.writtenSince(workspace, scope, start.since);
     if (!start.revision) return { changes: null, truncated: false };
     const changes = scope === "turn" ? await this.checkpoints.changesSince(workspace, start.revision) : await uncommittedChanges(workspace.path);
     return { changes, truncated: false };

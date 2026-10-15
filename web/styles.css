@@ -1977,6 +1977,13 @@ button.running-subagent:hover {
   margin: 6px 0 4px;
 }
 
+.file-link {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
 .location {
   background: none;
   border: 0;

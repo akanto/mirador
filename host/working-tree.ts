@@ -145,6 +145,13 @@ export async function filesWrittenSince(directory: string, since: number, limit 
   return { changes, truncated };
 }
 
+/** The paths of the given ones that .gitignore hides, from git's own rules; tracked files are never hidden. */
+export async function ignoredPaths(directory: string, paths: string[]): Promise<Set<string>> {
+  if (paths.length === 0) return new Set();
+  const result = await git(directory, ["check-ignore", "--stdin", "-z"], paths.join("\0") + "\0");
+  return new Set(result.stdout.split("\0").filter(Boolean));
+}
+
 /** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */
 export async function createdSince(directory: string, path: string, since: number) {
   return ((await stat(join(directory, path)).catch(() => null))?.birthtimeMs ?? 0) >= since;

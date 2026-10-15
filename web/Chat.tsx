@@ -772,7 +772,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
       const refused = harness === "claude" ? refusedPanelCommand(block.text) : null;
       return (
         <div className="message agent">
-          <MarkdownText text={block.text} />
+          <MarkdownText text={block.text} conversationId={conversationId} />
           <MessageImages conversationId={conversationId} carried={block.images} />
           {refused && (
             <div className="terminal-command">
@@ -788,7 +788,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
       return (
         <details className="thought">
           <summary>Thinking</summary>
-          <MarkdownText text={block.text} />
+          <MarkdownText text={block.text} conversationId={conversationId} />
         </details>
       );
     case "tool":

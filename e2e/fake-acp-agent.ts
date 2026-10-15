@@ -13,7 +13,7 @@ import * as acp from "@agentclientprotocol/sdk";
  * and a JSON array of `{"kind": toolKind, "title": text}` does the same for tools of any kind.
  * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
  * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, and
- * `{"waitFor": path}` holds the turn until that file exists.
+ * `{"waitFor": path}` holds the turn until that file exists. `SAY ` followed by text answers with that text, as markdown.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -134,6 +134,11 @@ async function makePlan(client: acp.AgentContext, sessionId: string, steps: { co
   return { stopReason: "end_turn" as const };
 }
 
+async function sayText(client: acp.AgentContext, sessionId: string, text: string) {
+  await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+  return { stopReason: "end_turn" as const };
+}
+
 async function streamWords(client: acp.AgentContext, sessionId: string, count: number) {
   for (const word of Array.from({ length: count }, (_, position) => `word${position + 1} `)) {
     await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: word } } });
@@ -178,6 +183,7 @@ acp
     if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
     if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
+    if (startsWith(ctx.params.prompt, "SAY ")) return sayText(ctx.client, ctx.params.sessionId, text.slice("SAY ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
     if (startsWith(ctx.params.prompt, "CRASH LEAVING A CHILD")) spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: ["ignore", "inherit", "ignore"] });

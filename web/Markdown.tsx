@@ -3,11 +3,18 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { isFromAnotherSite, siteOf, useExternalImagesBlocked } from "./external-images.ts";
 import { hints } from "./hints.ts";
+import { looksLikeFilePath } from "../shared/file-paths.ts";
+import { connection } from "./connection.ts";
 
 const COPY_OUTCOME_SHOWN_MS = 1_500;
 
 /** The block's text as written: markdown ends a code block's last line with a line break the author did not write. */
 const codeIn = (block: HTMLPreElement | null) => (block?.textContent ?? "").replace(/\n$/, "");
+
+const InsideCodeBlock = createContext(false);
+
+/** The conversation whose files the agent's paths in a text name, or null where there is none to open them in. */
+const FilesOfConversation = createContext<string | null>(null);
 
 function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps) {
   const block = useRef<HTMLPreElement>(null);
@@ -27,7 +34,9 @@ function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps
   };
   return (
     <div className="copyable-code">
-      <pre ref={block} {...props} />
+      <pre ref={block} {...props}>
+        <InsideCodeBlock.Provider value={true}>{props.children}</InsideCodeBlock.Provider>
+      </pre>
       <button type="button" className={`code-copy ${label === "Copy" ? "" : "shown"}`} onClick={copy}>
         {label}
       </button>
@@ -61,7 +70,19 @@ function MarkdownImage({ node: _node, ...props }: ComponentProps<"img"> & ExtraP
   );
 }
 
-const markdownComponents: Components = { a: MarkdownLink, img: MarkdownImage, pre: CodeBlock };
+function MarkdownCode({ node: _node, children, ...props }: ComponentProps<"code"> & ExtraProps) {
+  const conversationId = useContext(FilesOfConversation);
+  const insideCodeBlock = useContext(InsideCodeBlock);
+  const text = typeof children === "string" ? children : "";
+  if (!conversationId || insideCodeBlock || !looksLikeFilePath(text)) return <code {...props}>{children}</code>;
+  return (
+    <button type="button" className="file-link" data-hint={hints.openFile} onClick={() => connection.send({ type: "files.open", conversationId, path: text })}>
+      <code>{text}</code>
+    </button>
+  );
+}
+
+const markdownComponents: Components = { a: MarkdownLink, img: MarkdownImage, pre: CodeBlock, code: MarkdownCode };
 
 const STREAM_RENDER_INTERVAL_MS = 150;
 
@@ -92,11 +113,13 @@ const RenderedMarkdown = memo(function RenderedMarkdown({ text }: { text: string
   );
 });
 
-export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
+export const MarkdownText = memo(function MarkdownText({ text, conversationId }: { text: string; conversationId?: string }) {
   const shown = useThrottledText(text);
   return (
-    <div className="markdown">
-      <RenderedMarkdown text={shown} />
-    </div>
+    <FilesOfConversation.Provider value={conversationId ?? null}>
+      <div className="markdown">
+        <RenderedMarkdown text={shown} />
+      </div>
+    </FilesOfConversation.Provider>
   );
 });

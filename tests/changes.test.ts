@@ -389,3 +389,22 @@ test("the session scope lists every file the agent changed since the conversatio
   expect(session.project.map((file) => file.path)).toEqual(["app.ts"]);
   expect((await changes.list("c1", "turn")).project).toEqual([]);
 });
+
+test("a file that is gone is refused rather than handed to the system's default program", async () => {
+  await startTurn();
+  expect(() => changes.openFile("c1", "missing.ts")).toThrow("does not exist");
+  expect(openedByDefault).toEqual([]);
+});
+
+test("the session scope adds the git-ignored files written since the session began, and leaves out tracked files that only git lists", async () => {
+  await write(".gitignore", "build/\n");
+  await write("app.ts", "one\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "base"]);
+  await startTurn();
+  await mkdir(join(projectDir, "build"));
+  await writeFile(join(projectDir, "build", "out.js"), "built\n");
+  await write("app.ts", "two\n");
+  const session = await changes.list("c1", "session");
+  expect(session.project.map((file) => file.path)).toEqual(["build/out.js"]);
+});
