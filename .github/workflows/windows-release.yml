@@ -1,0 +1,43 @@
+name: Windows release
+
+# make release starts this for the release's commit and waits for the whole run, so a job added here holds the release.
+run-name: Windows release of ${{ inputs.commit }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: The commit to build
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Electrobun does not cross-compile, so the Windows app is built on Windows.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - working-directory: desktop
+        run: bun install --frozen-lockfile
+      - working-directory: desktop
+        run: bun run build:release
+      - name: Name the files as the release does
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory release-files | Out-Null
+          Copy-Item desktop/artifacts/win-x64-Mirador-Setup.zip release-files/Mirador-windows-x64-Setup.zip
+          Copy-Item desktop/artifacts/stable-win-x64-update.json, desktop/artifacts/stable-win-x64-Mirador.tar.zst release-files/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mirador-windows-x64
+          path: release-files/
+          if-no-files-found: error

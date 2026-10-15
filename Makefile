@@ -19,7 +19,7 @@ TAP_DIR ?=
 help: ## List the goals (builds take the committed files only)
 	@grep -E '^[a-z0-9 -]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  make %-14s %s\n", $$1, $$2}'
 
-release: ## Release VERSION=x.y.z up to a checked draft on GitHub: bump, gate, both builds, update files, notes from dist/release-notes-VERSION.md (needs LINUX_HOST=user@host; FROM=step goes on from a failed step)
+release: ## Release VERSION=x.y.z up to a checked draft on GitHub: bump, gate, every build (Windows on GitHub Actions), update files, notes from dist/release-notes-VERSION.md (needs LINUX_HOST=user@host; FROM=step goes on from a failed step)
 	LINUX_HOST=$(LINUX_HOST) bun scripts/release.ts release $(VERSION) $(FROM)
 
 publish: ## Publish the draft of VERSION=x.y.z as the latest release
@@ -63,7 +63,7 @@ linux-remote: ## From a Mac: make linux on LINUX_HOST=user@host, with the instal
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/Mirador-linux-*-Setup.tar.gz' $(DIST)/
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/stable-linux-*' $(DIST)/
 
-update-files: ## What the apps fetch to update themselves, with patches from the last 5 releases, into dist/ (on a Mac, after make macos-signed and make linux-remote)
+update-files: ## What the apps fetch to update themselves, with patches from the last 5 releases, into dist/ (on a Mac, after the builds)
 	bun desktop/scripts/update-files.ts $(DIST)
 
 checksums: $(DIST)/install.sh ## install.sh copied into dist/, and the SHA-256 of what dist/ holds, for the release notes

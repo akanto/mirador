@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { caskMismatches, digestMismatches, isBuildOf, missingAssets, notesWithChecksums, releaseAssets, releaseOf, stepsFrom } from "../scripts/release.ts";
+import { caskMismatches, digestMismatches, isBuildOf, missingAssets, notesWithChecksums, releaseAssets, releaseOf, runIdIn, stepsFrom } from "../scripts/release.ts";
 
 test("a release is made in a worktree of its own, into dist/ of the checkout, from the notes there", () => {
   expect(releaseOf("0.5.0", "/checkout", "/tmp")).toEqual({
@@ -48,9 +48,25 @@ test("goes on from the step named, or runs them all", () => {
 });
 
 test("the release must hold every installer, install.sh and each platform's update file", () => {
-  const complete = ["Mirador-macos-arm64.zip", "Mirador-linux-x64-Setup.tar.gz", "Mirador-linux-arm64-Setup.tar.gz", "install.sh", "stable-macos-arm64-update.json", "stable-linux-x64-update.json", "stable-linux-arm64-update.json"];
+  const complete = [
+    "Mirador-macos-arm64.zip",
+    "Mirador-linux-x64-Setup.tar.gz",
+    "Mirador-linux-arm64-Setup.tar.gz",
+    "Mirador-windows-x64-Setup.zip",
+    "install.sh",
+    "stable-macos-arm64-update.json",
+    "stable-linux-x64-update.json",
+    "stable-linux-arm64-update.json",
+    "stable-win-x64-update.json",
+  ];
   expect(missingAssets(complete)).toEqual([]);
   expect(missingAssets(complete.filter((file) => !file.startsWith("stable-linux-arm64")))).toEqual(["stable-linux-arm64-update.json"]);
+  expect(missingAssets(complete.filter((file) => !file.includes("win")))).toEqual(["Mirador-windows-x64-Setup.zip", "stable-win-x64-update.json"]);
+});
+
+test("follows the Windows build gh started, by the run its URL names", () => {
+  expect(runIdIn("https://github.com/sodre90/mirador/actions/runs/38818040351\n")).toBe("38818040351");
+  expect(runIdIn("✓ Created workflow_dispatch event for windows-release.yml at main\n")).toBeNull();
 });
 
 test("a build line names the commit however many digits its clone shortens it to", () => {

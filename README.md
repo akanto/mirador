@@ -411,19 +411,19 @@ Build the arm64 release installer on an x64 Linux machine too: in Docker on Appl
 A release is made with three goals, each when the one before has been checked. Write the notes into `dist/release-notes-x.y.z.md` first:
 
 ```bash
-make release VERSION=x.y.z LINUX_HOST=user@host   # in a worktree at origin/main: names the release, runs every test, builds and checks both apps, and leaves a draft on GitHub whose files are checked against dist/x.y.z
+make release VERSION=x.y.z LINUX_HOST=user@host   # in a worktree at origin/main: names the release, runs every test, builds and checks every app, and leaves a draft on GitHub whose files are checked against dist/x.y.z
 make publish VERSION=x.y.z                        # publishes the draft as the latest release
 make tap VERSION=x.y.z                            # pushes its Homebrew cask to the tap
 ```
 
-A step that fails names the step to go on from once it is fixed (`FROM=step`). `make release` runs the goals below, which can also be run alone. The release assets go to `dist/` (`make help` lists the goals):
+A step that fails names the step to go on from once it is fixed (`FROM=step`). The Windows app is built by the *Windows release* workflow on GitHub's Windows runner, which `make release` starts for the release's commit, waits for, and downloads from. The rest it builds with the goals below, which can also be run alone. The release assets go to `dist/` (`make help` lists the goals):
 
 ```bash
 make macos                               # the macOS app carrying Mirador, zipped (on a Mac)
 make macos-signed                        # the same, signed with your Developer ID and notarized by Apple (see desktop/README.md)
 make linux                               # both Linux release installers, built and checked as above (on an x64 Linux machine)
 make linux-remote LINUX_HOST=user@host   # from a Mac: make linux on that machine, with the installers and update files copied back
-make update-files                        # what the apps fetch to update themselves, with patches from the last 5 releases (on a Mac, after macos-signed and linux-remote)
+make update-files                        # what the apps fetch to update themselves, with patches from the last 5 releases (on a Mac, after the builds)
 make checksums                           # install.sh copied in with them, and the SHA-256 of all of it, for the release notes
 make cask                                # the Homebrew cask for the sodre90/homebrew-tap tap, with the SHA-256 of the macOS zip and the Linux installers
 ```

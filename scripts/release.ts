@@ -19,9 +19,13 @@ const CHECKOUT = join(import.meta.dir, "..");
 const VERSION_FILE = join("shared", "version.ts");
 const RELEASE_ASSET = /^(Mirador-|stable-)|^install\.sh$/;
 const CHECKSUMS_HEADING = "## Checksums (SHA-256)";
-const PLATFORMS = ["macos-arm64", "linux-x64", "linux-arm64"];
-const REQUIRED_ASSETS = [...Object.values(CASK_ASSETS), "install.sh", ...PLATFORMS.map((platform) => `stable-${platform}-update.json`)];
+const PLATFORMS = ["macos-arm64", "linux-x64", "linux-arm64", "win-x64"];
+const WINDOWS_INSTALLER = "Mirador-windows-x64-Setup.zip";
+const REQUIRED_ASSETS = [...Object.values(CASK_ASSETS), WINDOWS_INSTALLER, "install.sh", ...PLATFORMS.map((platform) => `stable-${platform}-update.json`)];
 const BUILD_LINE = "== release of ";
+const WINDOWS_WORKFLOW = "windows-release.yml";
+const WINDOWS_ARTIFACT = "mirador-windows-x64";
+const WINDOWS_FILE = /^(Mirador-windows-|stable-win-)/;
 
 export interface Release {
   version: string;
@@ -73,6 +77,9 @@ export function caskMismatches(cask: string, uploaded: Record<string, string>) {
   });
 }
 
+/** The run `gh workflow run` started, from the URL it prints. */
+export const runIdIn = (output: string) => output.match(/\/actions\/runs\/(\d+)/)?.[1] ?? null;
+
 export function stepsFrom<Step extends { name: string }>(steps: Step[], from: string | undefined) {
   if (!from) return steps;
   const start = steps.findIndex((step) => step.name === from);
@@ -99,6 +106,13 @@ async function runAndRead(command: string[], cwd: string) {
   const exitCode = await child.exited;
   if (exitCode !== 0) throw new Error(`${command.join(" ")} failed with exit code ${exitCode}`);
   return chunks.join("");
+}
+
+/** What the command printed on both its outputs. */
+function readBoth(command: string[], cwd = CHECKOUT) {
+  const { exitCode, stdout, stderr } = Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
+  if (exitCode !== 0) throw new Error(`${command.join(" ")} failed: ${stderr.toString().trim()}`);
+  return `${stdout}${stderr}`;
 }
 
 function read(command: string[], cwd = CHECKOUT) {
@@ -159,6 +173,19 @@ async function linux(release: Release) {
   if (built.length === 0 || !built.every((line) => isBuildOf(line, head))) throw new Error(`The Linux builds are not of ${head}: ${built.join("; ")}`);
 }
 
+/** Built on GitHub's Windows runner from the release's commit, as Electrobun does not cross-compile. */
+export function windows(release: Release) {
+  const head = headOf(release);
+  const started = readBoth(["gh", "workflow", "run", WINDOWS_WORKFLOW, "--repo", RELEASES_REPOSITORY, "--ref", "main", "-f", `commit=${head}`]);
+  const runId = runIdIn(started);
+  if (!runId) throw new Error(`gh started the Windows build without naming its run; find "Windows release of ${head}" with gh run list --workflow ${WINDOWS_WORKFLOW}`);
+  run(["gh", "run", "watch", runId, "--repo", RELEASES_REPOSITORY, "--exit-status", "--compact", "--interval", "30"], release.worktree);
+  for (const earlier of readdirSync(release.dist).filter((file) => WINDOWS_FILE.test(file))) rmSync(join(release.dist, earlier));
+  run(["gh", "run", "download", runId, "--repo", RELEASES_REPOSITORY, "--name", WINDOWS_ARTIFACT, "--dir", release.dist], release.worktree);
+  const { version } = JSON.parse(readFileSync(join(release.dist, "stable-win-x64-update.json"), "utf8")) as { version: string };
+  if (version !== release.version) throw new Error(`The Windows build says ${version}, not ${release.version}`);
+}
+
 function macos(release: Release) {
   try {
     run(["make", "macos-signed", `DIST=${release.dist}`], release.worktree);
@@ -216,6 +243,7 @@ const RELEASE_STEPS = [
   { name: "bump", run: bump },
   { name: "gate", run: gate },
   { name: "linux", run: linux },
+  { name: "windows", run: windows },
   { name: "macos", run: macos },
   { name: "verify", run: verifyMacos },
   { name: "update-files", run: updateFiles },
