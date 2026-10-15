@@ -30,7 +30,10 @@ jobs:
           "core.autocrlf: $(git config --get core.autocrlf)"
           where.exe git bun node pwsh powershell bash sh ps
           "::endgroup::"
-          bunx playwright test e2e/streamed-reply.spec.ts
+          cmd /c "bunx playwright test e2e/streamed-reply.spec.ts > e2e-output.txt 2>&1"
+          $status = $LASTEXITCODE
+          Get-Content e2e-output.txt | Where-Object { $_ -notmatch 'auth\?token' }
+          exit $status
       - if: failure()
         shell: pwsh
         run: |
@@ -49,4 +52,35 @@ jobs:
           path: |
             test-results/
             e2e-logs/
+          if-no-files-found: ignore
+
+  # Measures the rest of the suite as it stands on Windows: which specs pass, which fail and how long it all takes.
+  # It does not decide whether the spike is green.
+  survey:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install chromium
+      - shell: pwsh
+        run: |
+          $unixTools = "sh.exe", "sleep.exe", "openssl.exe"
+          $env:Path = ($env:Path -split ";" | Where-Object { $folder = $_; $folder -and -not ($unixTools | Where-Object { Test-Path -LiteralPath (Join-Path $folder $_) }) }) -join ";"
+          $env:PLAYWRIGHT_JSON_OUTPUT_NAME = "survey.json"
+          $started = Get-Date
+          cmd /c "bunx playwright test --timeout=180000 --global-timeout=6000000 --reporter=list,json > survey-output.txt 2>&1"
+          "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
+          Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?token' }
+          if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?token=[^"\s\\&]*', 'auth?token=REDACTED' | Set-Content survey.json }
+          exit 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-e2e-survey
+          path: survey.json
+          retention-days: 7
           if-no-files-found: ignore
