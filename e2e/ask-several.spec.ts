@@ -67,11 +67,30 @@ test("several questions come one page at a time, can be changed on a review page
     await expect(ask.locator(".ask-review li").first()).toContainText("Blue");
   });
 
-  await ask.getByRole("button", { name: "Submit" }).click();
+  await test.step("a note for all the answers is written on the review page and stays there", async () => {
+    const closingNote = ask.getByRole("textbox", { name: "Note for the agent on all the answers" });
+    await closingNote.fill("Keep it short");
+    await ask.locator(".ask-review li").first().getByRole("button", { name: "Change" }).click();
+    await next.click();
+    await next.click();
+    await expect(closingNote).toHaveValue("Keep it short");
+    await ask.getByRole("button", { name: "Submit" }).click();
+  });
+
   expect(await toolResult).toBe(
-    ["The user answered 2 questions:", "1. Which color?", "   The user chose: Blue", "2. Which size?", "   The user chose: Huge\nand round", "   Their note: fits the wall"].join("\n"),
+    [
+      "The user answered 2 questions:",
+      "1. Which color?",
+      "   The user chose: Blue",
+      "2. Which size?",
+      "   The user chose: Huge\nand round",
+      "   Their note: fits the wall",
+      "Their note on all the answers: Keep it short",
+    ].join("\n"),
   );
   await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue · Huge and round”");
+  await openFromCanvasHistory(page, "2 questions: Which color?");
+  await expect(ask.locator(".ask-answer")).toContainText("Note on all the answers: “Keep it short”");
 });
 
 test("your own answer to one question can run over several lines with Shift+Enter, and Enter sends it", async ({ page }) => {

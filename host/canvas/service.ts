@@ -429,7 +429,7 @@ function answersFor(item: CanvasItem, label: string, note: string | undefined, a
     throw new Error(`Answer all ${questions.length} questions.`);
   }
   const entries = answers.map(({ label, note }, index) => ({ question: questions[index]!.question, label, note: note?.trim() || undefined }));
-  return { label: answersSummary(entries), answers: entries };
+  return { label: answersSummary(entries), note: note?.trim() || undefined, answers: entries };
 }
 
 const noteLine = (note: string | undefined, prefix: string) => (note ? [`${prefix}${note}`] : []);
@@ -437,7 +437,7 @@ const noteLine = (note: string | undefined, prefix: string) => (note ? [`${prefi
 export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
   if (answers) {
     const each = answers.flatMap((entry, index) => [`${index + 1}. ${entry.question}`, `   The user chose: ${entry.label}`, ...noteLine(entry.note, "   Their note: ")]);
-    return [`The user answered ${answers.length} questions:`, ...each].join("\n");
+    return [`The user answered ${answers.length} questions:`, ...each, ...noteLine(note, "Their note on all the answers: ")].join("\n");
   }
   return [`The user chose: ${label}`, ...noteLine(note, "Their note: ")].join("\n");
 }
@@ -445,7 +445,7 @@ export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
 function answerAsMessage(item: CanvasItem, { label, note, answers }: GivenAnswer) {
   if (answers) {
     const each = answers.flatMap((entry, index) => [`${index + 1}. "${entry.question}": ${entry.label}`, ...noteLine(entry.note, "   Note: ")]);
-    return ["My answers to your questions:", ...each].join("\n");
+    return ["My answers to your questions:", ...each, ...noteLine(note, "Note on all the answers: ")].join("\n");
   }
   return [`My answer to your question "${item.question}": ${label}`, ...noteLine(note, "Note: ")].join("\n");
 }

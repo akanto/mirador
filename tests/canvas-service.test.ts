@@ -137,6 +137,21 @@ describe("CanvasService", () => {
     );
   });
 
+  test("a note for all several answers comes after the list, in the tool result and the message", async () => {
+    const { store, canvas, nextMessages, askSeveral } = setUp();
+    const item = askSeveral();
+    const answer = canvas.waitForAnswer(item, new AbortController().signal);
+    canvas.answer(item.id, "", " Keep it short ", [{ label: "Blue" }, { label: "Huge" }]);
+    const given = await answer;
+    expect(store.findCanvasItem(item.id)?.answer?.note).toBe("Keep it short");
+    expect(answerAsToolResult(given)).toBe(
+      ["The user answered 2 questions:", "1. Color?", "   The user chose: Blue", "2. Size?", "   The user chose: Huge", "Their note on all the answers: Keep it short"].join("\n"),
+    );
+    const late = askSeveral();
+    canvas.answer(late.id, "", "   ", [{ label: "Red" }, { label: "Small" }]);
+    expect(nextMessages.at(-1)).toBe('My answers to your questions:\n1. "Color?": Red\n2. "Size?": Small');
+  });
+
   test("several answers sent late arrive as one next message", async () => {
     const { store, canvas, nextMessages, askSeveral } = setUp();
     const item = askSeveral();

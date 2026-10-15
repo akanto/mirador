@@ -176,13 +176,14 @@ const draftAnswer = ({ choice, other }: AskDraft) => (choice === SOMETHING_ELSE 
 interface AskProgress {
   drafts: AskDraft[];
   page: number;
+  note: string;
 }
 
 /** What the user has answered so far and which question they are on, kept for as long as the page lives, so leaving the conversation and coming back loses nothing. */
 const askProgressByItem = new Map<string, AskProgress>();
 
 function useAskProgress(itemId: string, questionCount: number) {
-  const [progress, setProgress] = useState<AskProgress>(() => askProgressByItem.get(itemId) ?? { drafts: Array.from({ length: questionCount }, emptyDraft), page: 0 });
+  const [progress, setProgress] = useState<AskProgress>(() => askProgressByItem.get(itemId) ?? { drafts: Array.from({ length: questionCount }, emptyDraft), page: 0, note: "" });
   useEffect(() => {
     askProgressByItem.set(itemId, progress);
   }, [itemId, progress]);
@@ -190,6 +191,8 @@ function useAskProgress(itemId: string, questionCount: number) {
     drafts: progress.drafts,
     page: progress.page,
     setPage: (page: number) => setProgress((current) => ({ ...current, page })),
+    note: progress.note,
+    setNote: (note: string) => setProgress((current) => ({ ...current, note })),
     changeDraft: (index: number, change: Partial<AskDraft>) =>
       setProgress((current) => ({ ...current, drafts: current.drafts.map((draft, at) => (at === index ? { ...draft, ...change } : draft)) })),
   };
@@ -305,6 +308,7 @@ function AnsweredSeveral({ answer }: { answer: NonNullable<CanvasItem["answer"]>
           </li>
         ))}
       </ol>
+      {answer.note && <div>Note on all the answers: “{answer.note}”</div>}
       <span className="delivered">{deliveredNote(answer)}</span>
     </div>
   );
@@ -314,7 +318,8 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
   const questions = questionsOf(item);
   const several = item.questions !== undefined;
   const waiting = item.status === "waiting";
-  const { drafts, page, setPage, changeDraft } = useAskProgress(item.id, questions.length);
+  const typingAidAttributes = useTypingAidAttributes();
+  const { drafts, page, setPage, changeDraft, note, setNote } = useAskProgress(item.id, questions.length);
   const answers = drafts.map(draftAnswer);
   const onReviewPage = several && waiting && page >= questions.length;
   const shownQuestion = questions[Math.min(page, questions.length - 1)];
@@ -328,7 +333,7 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
       }
       if (answers.some((answer) => !answer)) return;
       const entries = drafts.map((draft) => ({ label: draftAnswer(draft)!, note: draft.note.trim() || undefined }));
-      connection.send({ type: "ask.answer", itemId: item.id, label: answersSummary(entries), answers: entries });
+      connection.send({ type: "ask.answer", itemId: item.id, label: answersSummary(entries), answers: entries, note: note.trim() || undefined });
       return;
     }
     const [answer] = answers;
@@ -393,6 +398,18 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
           <button type="submit" className="primary" disabled={!currentAnswer}>
             Submit
           </button>
+        </div>
+      )}
+      {onReviewPage && (
+        <div className="ask-extras">
+          <textarea
+            {...typingAidAttributes}
+            aria-label="Note for the agent on all the answers"
+            value={note}
+            placeholder="Optional note for the agent (sent with all your answers)"
+            onChange={(event) => setNote(event.target.value)}
+            onKeyDown={answerOnEnter}
+          />
         </div>
       )}
       {waiting && several && (
