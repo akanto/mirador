@@ -7,6 +7,7 @@ import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterW
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
+import { externalImages, setExternalImages, useExternalImagesBlocked } from "./external-images.ts";
 import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export.ts";
@@ -115,6 +116,7 @@ export function SettingsDialog({
       <>
         <SendingSettings />
         <PromptTemplateSettings templates={promptTemplates} />
+        <ExternalImageSettings />
         {isMac && <TypingSettings />}
       </>
     ),
@@ -619,6 +621,34 @@ function NotificationSettings() {
         </label>
       </div>
       {notice && <p className="hint">{notice}</p>}
+    </>
+  );
+}
+
+function ExternalImageSettings() {
+  const choice = externalImages.use();
+  const stillBlocked = useExternalImagesBlocked();
+  return (
+    <>
+      <h3>Images from other sites</h3>
+      <p className="hint">
+        An agent's reply can show an image from any site. Loading it tells that site the image's address, which an agent misled by
+        what it read can fill with what it read. Remembered in this browser.
+      </p>
+      <div className="external-images">
+        <label>
+          <input type="checkbox" checked={choice === "blocked"} onChange={(event) => setExternalImages(event.target.checked ? "blocked" : "shown")} />
+          Show images from other sites as links
+        </label>
+      </div>
+      {choice === "shown" && stillBlocked && (
+        <p className="hint">
+          They load after a reload.{" "}
+          <button type="button" className="link" onClick={() => location.reload()}>
+            Reload
+          </button>
+        </p>
+      )}
     </>
   );
 }

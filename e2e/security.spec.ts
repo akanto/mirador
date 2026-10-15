@@ -61,9 +61,12 @@ test("rejects browsers and clients without the right credentials", async ({ page
 
 test("the page loads nothing and connects to nothing but its own host, as its Content-Security-Policy says", async ({ page }) => {
   await page.goto(`${host.origin}/`);
-  const policy = await page.locator("meta[http-equiv='Content-Security-Policy']").getAttribute("content");
+  const [policy, imagePolicy] = await page
+    .locator("meta[http-equiv='Content-Security-Policy']")
+    .evaluateAll((policies) => policies.map((meta) => meta.getAttribute("content")));
   expect(policy).toContain("script-src 'self'");
   expect(policy).toContain("connect-src 'self'");
+  expect(imagePolicy, "images from other sites stay blocked until Settings allows them").toBe("img-src 'self' data: blob:");
 
   const inlineScriptRan = await page.evaluate(async () => {
     const probe = document.createElement("script");

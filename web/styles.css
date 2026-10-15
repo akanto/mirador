@@ -4590,6 +4590,7 @@ button.arrangement.chosen {
 .terminal-settings,
 .start-hidden,
 .notification-settings,
+.external-images,
 .typing-aids {
   display: flex;
   flex-wrap: wrap;
@@ -4602,6 +4603,7 @@ button.arrangement.chosen {
 .terminal-settings label,
 .start-hidden label,
 .notification-settings label,
+.external-images label,
 .typing-aids label {
   display: flex;
   align-items: center;

@@ -175,6 +175,7 @@ export const hints = {
   steerMessage: "Adds the message to the running turn: Claude Code reads it at once, cutting off what it is writing, or, while it runs tools, as soon as they finish.",
   afterTurnMessage: "Keeps the message until the running turn ends (or you press Stop), then sends it as your next message.",
   enterWhileBusy: "What Enter does with a message while the agent works; ⌥Enter (Alt+Enter) does the other. With opencode, messages always wait for the turn to end.",
+  blockedImage: "Opens the image in your browser. Mirador does not load images from other sites itself, so an agent cannot send them what it read; Settings → Conversations can change that.",
   scriptMessage:
     "A script the agent started sent this as your next message, so the agent picks up when the script is done. Scripts send with mirador message.",
   gitBranch: "The git branch checked out in the workspace directory.",

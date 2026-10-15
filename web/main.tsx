@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { askDesktopAppForNonce } from "./desktop-bridge.ts";
 import { closeWhatHasFocusOnCommandW } from "./desktop-close.ts";
+import { applyExternalImages, externalImages } from "./external-images.ts";
 import { openOutsideLinksInTheBrowser } from "./outside-links.ts";
 import { applyFontScale, currentFontScale } from "./font-scale.ts";
 import { applyShellAppearance, storedShellAppearance } from "./shell-look.ts";
@@ -10,6 +11,7 @@ import { applyTimestampsShown, storedTimestampsShown } from "./timestamps.ts";
 import { applyWaitingStyle, storedWaitingStyle } from "./waiting.ts";
 import { applyWorkspaceColorStyle } from "./workspace-colors.ts";
 
+applyExternalImages(externalImages.get());
 applyFontScale(currentFontScale());
 applyTheme(storedTheme());
 applyShellAppearance(storedShellAppearance());

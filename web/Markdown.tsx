@@ -1,6 +1,8 @@
-import { memo, useEffect, useRef, useState, type ComponentProps } from "react";
-import Markdown, { type ExtraProps } from "react-markdown";
+import { createContext, memo, useContext, useEffect, useRef, useState, type ComponentProps } from "react";
+import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isFromAnotherSite, siteOf, useExternalImagesBlocked } from "./external-images.ts";
+import { hints } from "./hints.ts";
 
 const COPY_OUTCOME_SHOWN_MS = 1_500;
 
@@ -33,6 +35,34 @@ function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps
   );
 }
 
+/** A badge is an image inside a link, and a link cannot hold another. */
+const InsideLink = createContext(false);
+
+function MarkdownLink({ node: _node, children, ...props }: ComponentProps<"a"> & ExtraProps) {
+  return (
+    <a {...props} target="_blank" rel="noreferrer">
+      <InsideLink.Provider value={true}>{children}</InsideLink.Provider>
+    </a>
+  );
+}
+
+function MarkdownImage({ node: _node, ...props }: ComponentProps<"img"> & ExtraProps) {
+  const externalImagesBlocked = useExternalImagesBlocked();
+  const insideLink = useContext(InsideLink);
+  const source = typeof props.src === "string" ? props.src : "";
+  if (!externalImagesBlocked || !isFromAnotherSite(source, location.origin)) return <img {...props} />;
+  const site = siteOf(source, location.origin);
+  const label = props.alt ? `${props.alt} (image from ${site})` : `Image from ${site}`;
+  if (insideLink) return <span className="blocked-image">{label}</span>;
+  return (
+    <a href={source} target="_blank" rel="noreferrer" className="blocked-image" data-hint={hints.blockedImage}>
+      {label}
+    </a>
+  );
+}
+
+const markdownComponents: Components = { a: MarkdownLink, img: MarkdownImage, pre: CodeBlock };
+
 const STREAM_RENDER_INTERVAL_MS = 150;
 
 /** Throttled, not debounced: a debounce would hold the text back for as long as the chunks keep arriving. */
@@ -56,10 +86,7 @@ function useThrottledText(text: string) {
 /** Parsing is the costly part, so a re-render with the same text reuses the last result. */
 const RenderedMarkdown = memo(function RenderedMarkdown({ text }: { text: string }) {
   return (
-    <Markdown
-      remarkPlugins={[remarkGfm]}
-      components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />, pre: CodeBlock }}
-    >
+    <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
       {text}
     </Markdown>
   );
