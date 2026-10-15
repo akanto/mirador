@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { sessionsOpenInTerminals } from "../host/terminal-sessions.ts";
 
 async function exitedProcessId() {
-  const finished = Bun.spawn(["true"]);
+  const finished = Bun.spawn([process.execPath, "-e", ""]);
   await finished.exited;
   return finished.pid;
 }

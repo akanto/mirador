@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { servePortOnTailnet, tailnetName, tailscaleCommand } from "../host/tailscale.ts";
+import { fakeProgram } from "./fake-program.ts";
 
 let directory: string;
 let calls: string;
@@ -16,10 +17,11 @@ afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
 /** Stands in for the Tailscale command, printing what the test wants and recording how it was called. */
 function tailscaleSaying(stdout: string, exitCode = 0) {
-  const command = join(directory, "tailscale");
-  writeFileSync(command, `#!/bin/sh\necho "$@" >> ${JSON.stringify(calls)}\necho ${JSON.stringify(stdout)}\nexit ${exitCode}\n`);
-  chmodSync(command, 0o755);
-  return command;
+  return fakeProgram(
+    directory,
+    "tailscale",
+    `require("node:fs").appendFileSync(${JSON.stringify(calls)}, process.argv.slice(2).join(" ") + "\\n"); console.log(${JSON.stringify(stdout)}); process.exit(${exitCode});`,
+  );
 }
 
 const called = () => readFileSync(calls, "utf8").trim().split("\n");

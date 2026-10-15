@@ -6,6 +6,35 @@ import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, 
 import { Store } from "../host/store.ts";
 import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, waitingOnJobsHint, waitSetUpReply, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd } from "../shared/model.ts";
+import { fakeProgram } from "./fake-program.ts";
+
+/** What ssh runs on the far machine, and the program a tab follows a job with off Windows, are POSIX shell, which Windows has none of. */
+const hasPosixShell = process.platform !== "win32";
+
+/** Docker as these tests need it: each command line answered as listed, a container named gone missing, anything else as with no daemon. */
+const fakeDocker = `
+const answers = {
+  "inspect --type container -f {{.State.Running}} up": [0, "true"],
+  "inspect --type container -f {{.State.Running}} exited": [0, "false"],
+  "inspect --type container -f {{.State.Running}} removed": [1, "", "Error: No such object: removed"],
+  "inspect --type container -f {{.State.Running}} build-true": [1, "", "Error: No such object: build-true"],
+  "inspect --type container -f Image: {{.Config.Image}} web": [0, "Image: nginx:1"],
+  "inspect --type container -f Command: {{.Path}}{{range .Args}} {{.}}{{end}} web": [0, "Command: nginx -g daemon off;"],
+  "inspect --type container -f Started: {{.State.StartedAt}} web": [0, "Started: 2026-10-04T12:00:00Z"],
+  "logs --tail 50 -f web": [0, "GET / 200"],
+};
+const missing = process.argv.at(-1) === "gone" ? [1, "", "Error: No such container: gone"] : undefined;
+const [code, output, error] = answers[process.argv.slice(2).join(" ")] ?? missing ?? [1, "", "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"];
+if (output) console.log(output);
+if (error) console.error(error);
+process.exit(code);
+`;
+
+const dockerBin = (script = fakeDocker) => {
+  const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
+  fakeProgram(bin, "docker", script);
+  return bin;
+};
 
 const sleepProcess: JobWaitRequest = { job: { kind: "process", pid: 4242 }, sshHost: null, message: "Slept, carry on", resume: true };
 const remoteBuild: JobWait = { id: "j1", job: { kind: "container", name: "build" }, sshHost: "me@fedora", message: "Build done", resume: false, since: 1 };
@@ -188,7 +217,7 @@ describe("JobWaits", () => {
 
 describe("checkJob", () => {
   test("a process of this machine runs until it exits", async () => {
-    const sleeping = Bun.spawn(["sleep", "30"]);
+    const sleeping = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 30_000)"]);
     const job = { job: { kind: "process" as const, pid: sleeping.pid }, sshHost: null };
     expect(await checkJob(job)).toBe("running");
     sleeping.kill();
@@ -196,50 +225,39 @@ describe("checkJob", () => {
     expect(await checkJob(job)).toBe("ended");
   });
 
-  test("another user's process runs too, though this user may not signal it", async () => {
+  test.if(hasPosixShell)("another user's process runs too, though this user may not signal it", async () => {
     const init = { kind: "process" as const, pid: 1 };
     expect(await checkJob({ job: init, sshHost: null })).toBe("running");
     const checking = Bun.spawn(["/bin/sh", "-c", jobCheckCommand(init)], { stdout: "pipe" });
     expect((await new Response(checking.stdout).text()).trim()).toBe("running");
   });
 
-  const fakeDocker = `#!/bin/sh
-case "$*" in
-  "inspect --type container -f {{.State.Running}} up") echo true ;;
-  "inspect --type container -f {{.State.Running}} exited") echo false ;;
-  "inspect --type container -f {{.State.Running}} removed") echo "Error: No such object: removed" >&2; exit 1 ;;
-  "inspect --type container -f {{.State.Running}} build-true") echo "Error: No such object: build-true" >&2; exit 1 ;;
-  *) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock" >&2; exit 1 ;;
-esac
-`;
-
-  const podmanWrapperDocker = fakeDocker.replace("\n", '\necho "Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg." >&2\n');
-
-  const dockerBin = (script: string) => {
-    const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
-    writeFileSync(join(bin, "docker"), script);
-    chmodSync(join(bin, "docker"), 0o755);
-    return bin;
-  };
+  const podmanWrapperDocker = `console.error("Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg.");\n${fakeDocker}`;
 
   const checkingContainers = {
-    "on this machine, without a shell": (name: string, path: string) => checkJob({ job: { kind: "container", name }, sshHost: null }, { PATH: path }),
-    "with the command ssh runs": async (name: string, path: string) => {
-      const checking = Bun.spawn(["/bin/sh", "-c", jobCheckCommand({ kind: "container", name })], { env: { PATH: path }, stdout: "pipe" });
-      return (await new Response(checking.stdout).text()).trim();
+    "on this machine, without a shell": {
+      runsHere: true,
+      checkContainer: (name: string, path: string) => checkJob({ job: { kind: "container", name }, sshHost: null }, { PATH: path }),
+    },
+    "with the command ssh runs": {
+      runsHere: hasPosixShell,
+      checkContainer: async (name: string, path: string) => {
+        const checking = Bun.spawn(["/bin/sh", "-c", jobCheckCommand({ kind: "container", name })], { env: { PATH: path }, stdout: "pipe" });
+        return (await new Response(checking.stdout).text()).trim();
+      },
     },
   };
 
-  describe.each(Object.entries(checkingContainers))("checked %s", (_, checkContainer) => {
-    test("a container has ended once it stopped or is gone; a Docker that does not answer leaves it unknown", async () => {
-      const bin = dockerBin(fakeDocker);
+  describe.each(Object.entries(checkingContainers))("checked %s", (_, { runsHere, checkContainer }) => {
+    test.if(runsHere)("a container has ended once it stopped or is gone; a Docker that does not answer leaves it unknown", async () => {
+      const bin = dockerBin();
       expect(await checkContainer("up", bin)).toBe("running");
       expect(await checkContainer("exited", bin)).toBe("ended");
       expect(await checkContainer("removed", bin)).toBe("ended");
       expect(await checkContainer("stuck", bin)).toBe("unknown");
     });
 
-    test("the Podman wrapper's stderr banner does not hide a running, stopped or gone container", async () => {
+    test.if(runsHere)("the Podman wrapper's stderr banner does not hide a running, stopped or gone container", async () => {
       const bin = dockerBin(podmanWrapperDocker);
       expect(await checkContainer("up", bin)).toBe("running");
       expect(await checkContainer("exited", bin)).toBe("ended");
@@ -247,29 +265,19 @@ esac
       expect(await checkContainer("build-true", bin)).toBe("ended");
     });
 
-    test("without Docker or Podman a container cannot be checked", async () => {
+    test.if(runsHere)("without Docker or Podman a container cannot be checked", async () => {
       expect(await checkContainer("up", mkdtempSync(join(tmpdir(), "no-docker-")))).toBe("unknown");
     });
   });
 });
 
-describe("followJobProgram", () => {
+describe.if(hasPosixShell)("followJobProgram", () => {
   const fakeSsh = `#!/bin/sh
 while [ "$1" != "--" ]; do shift; done
 shift
 [ "$1" = unreachable ] && { echo "ssh: connect to host unreachable port 22: Connection refused" >&2; exit 255; }
 shift
 exec /bin/sh -c "$*"
-`;
-
-  const fakeDocker = `#!/bin/sh
-case "$*" in
-  *"Image: "*" web") echo "Image: nginx:1" ;;
-  *"Command: "*" web") echo "Command: nginx -g daemon off;" ;;
-  *"Started: "*" web") echo "Started: 2026-10-04T12:00:00Z" ;;
-  "logs --tail 50 -f web") echo "GET / 200" ;;
-  *) echo "Error: No such container: $(echo "$*" | sed 's/.* //')" >&2; exit 1 ;;
-esac
 `;
 
   const binWith = (programs: Record<string, string>) => {
@@ -315,7 +323,7 @@ esac
   });
 
   test("a container shows its image, command and start, then its logs until it stops; one that is gone says so", async () => {
-    const bin = binWith({ docker: fakeDocker });
+    const bin = dockerBin();
     expect(await follow({ job: { kind: "container", name: "web" }, sshHost: null }, bin)).toBe(
       "Image: nginx:1\nCommand: nginx -g daemon off;\nStarted: 2026-10-04T12:00:00Z\n\nGET / 200\n\nContainer web ended.\nPress Enter to close this tab.",
     );
@@ -324,30 +332,6 @@ esac
 });
 
 describe.if(process.platform === "win32")("job waits on Windows", () => {
-  const fakeDocker = `
-const answers = {
-  "inspect --type container -f {{.State.Running}} up": [0, "true"],
-  "inspect --type container -f {{.State.Running}} exited": [0, "false"],
-  "inspect --type container -f {{.State.Running}} removed": [1, "", "Error: No such object: removed"],
-  "inspect --type container -f Image: {{.Config.Image}} web": [0, "Image: nginx:1"],
-  "inspect --type container -f Command: {{.Path}}{{range .Args}} {{.}}{{end}} web": [0, "Command: nginx -g daemon off;"],
-  "inspect --type container -f Started: {{.State.StartedAt}} web": [0, "Started: 2026-10-04T12:00:00Z"],
-  "logs --tail 50 -f web": [0, "GET / 200"],
-};
-const [code, output, error] = answers[process.argv.slice(2).join(" ")] ?? [1, "", "Error: No such container: " + process.argv.at(-1)];
-if (output) console.log(output);
-if (error) console.error(error);
-process.exit(code);
-`;
-
-  /** Windows runs no script without an extension, so docker.cmd hands the arguments to the script. */
-  const dockerBin = () => {
-    const bin = mkdtempSync(join(tmpdir(), "fake-docker-"));
-    writeFileSync(join(bin, "docker.js"), fakeDocker);
-    writeFileSync(join(bin, "docker.cmd"), `@"${process.execPath}" "%~dp0docker.js" %*\r\n`);
-    return bin;
-  };
-
   const environmentWithFirstOnPath = (bin: string) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toUpperCase() !== "PATH")),
     PATH: `${bin};${process.env.PATH}`,
@@ -360,14 +344,6 @@ process.exit(code);
     return `${output}${errors}`.replaceAll("\r\n", "\n");
   };
 
-  test("a container is checked without a shell", async () => {
-    const bin = dockerBin();
-    const check = (name: string) => checkJob({ job: { kind: "container", name }, sshHost: null }, { PATH: bin });
-    expect(await check("up")).toBe("running");
-    expect(await check("exited")).toBe("ended");
-    expect(await check("removed")).toBe("ended");
-  });
-
   test("a container's tab shows its image, command and start, then its logs until it stops; one that is gone says so", async () => {
     const bin = dockerBin();
     expect(await follow({ job: { kind: "container", name: "web" }, sshHost: null }, bin)).toBe(
@@ -378,9 +354,9 @@ process.exit(code);
 
   test("a process's tab shows its command line and how long it has run, says its output cannot be followed, and waits for its end", async () => {
     const bin = dockerBin();
-    const job = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 2000)"]);
+    const job = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 6000)"]);
     const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: null }, bin);
-    expect(output).toMatch(/^Command: .*setTimeout\(\(\) => \{\}, 2000\)/);
+    expect(output).toMatch(/^Command: .*setTimeout\(\(\) => \{\}, 6000\)/);
     expect(output).toMatch(/\nRunning for: \d\d:\d\d:\d\d\n/);
     expect(output).toContain("On Windows this tab cannot find the file its output goes to");
     expect(output).toEndWith(`\nProcess ${job.pid} ended.\nPress Enter to close this tab.`);

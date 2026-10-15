@@ -9,7 +9,7 @@ describe("HarnessProcess.start", () => {
     const directory = mkdtempSync(join(tmpdir(), "mirador-harness-log-"));
     mkdirSync(join(directory, "broken-log.log"));
     const harness = new HarnessProcess(
-      { id: "claude", label: "Noisy agent", logName: "broken-log", command: ["/bin/sh", "-c", "echo noise >&2; exit 3"], environment: {}, prelaunch: "", startsOneAtATime: false },
+      { id: "claude", label: "Noisy agent", logName: "broken-log", command: [process.execPath, "-e", "console.error('noise'); process.exit(3)"], environment: {}, prelaunch: "", startsOneAtATime: false },
       { onSessionUpdate: () => {}, onPermissionRequest: async () => ({ outcome: { outcome: "cancelled" } } as never), onExit: () => {} },
       directory,
     );
