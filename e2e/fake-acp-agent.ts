@@ -134,6 +134,14 @@ async function makePlan(client: acp.AgentContext, sessionId: string, steps: { co
   return { stopReason: "end_turn" as const };
 }
 
+async function streamWords(client: acp.AgentContext, sessionId: string, count: number) {
+  for (const word of Array.from({ length: count }, (_, position) => `word${position + 1} `)) {
+    await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: word } } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return { stopReason: "end_turn" as const };
+}
+
 if (ignoresSigterm) {
   process.on("SIGTERM", () => {});
   setInterval(() => {}, 60_000);
@@ -171,6 +179,7 @@ acp
     if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
+    if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
     if (startsWith(ctx.params.prompt, "CRASH LEAVING A CHILD")) spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: ["ignore", "inherit", "ignore"] });
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };

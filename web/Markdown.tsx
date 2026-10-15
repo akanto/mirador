@@ -33,16 +33,43 @@ function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps
   );
 }
 
+const STREAM_RENDER_INTERVAL_MS = 150;
+
+/** Throttled, not debounced: a debounce would hold the text back for as long as the chunks keep arriving. */
+function useThrottledText(text: string) {
+  const [shown, setShown] = useState(text);
+  const lastShownAt = useRef(0);
+  useEffect(() => {
+    if (text === shown) return;
+    const timer = setTimeout(
+      () => {
+        lastShownAt.current = Date.now();
+        setShown(text);
+      },
+      Math.max(0, lastShownAt.current + STREAM_RENDER_INTERVAL_MS - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [text, shown]);
+  return shown;
+}
+
 /** Parsing is the costly part, so a re-render with the same text reuses the last result. */
+const RenderedMarkdown = memo(function RenderedMarkdown({ text }: { text: string }) {
+  return (
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />, pre: CodeBlock }}
+    >
+      {text}
+    </Markdown>
+  );
+});
+
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
+  const shown = useThrottledText(text);
   return (
     <div className="markdown">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{ a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />, pre: CodeBlock }}
-      >
-        {text}
-      </Markdown>
+      <RenderedMarkdown text={shown} />
     </div>
   );
 });
