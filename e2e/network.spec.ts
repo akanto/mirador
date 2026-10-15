@@ -3,6 +3,7 @@ import { createHash, X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { join } from "node:path";
+import { connect as connectTls } from "node:tls";
 import { addWorkspace, addWorkspaceFromSidebar, callCanvasTool, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -146,4 +147,21 @@ test("another Mirador joins over HTTPS only with the certificate authority the i
     await expect(page.getByRole("navigation", { name: "Machines" }).getByRole("button", { name: "Network box" }), "the laptop keeps up with the host").not.toHaveClass(/away/);
     await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toBeVisible();
   });
+});
+
+test("the network closes a connection that goes quiet after a request, so a device cannot hold the host's sockets open", async () => {
+  const { hostname, port } = new URL(networkOrigin());
+  const quietFor = await new Promise<{ answered: boolean; closedAfterMs: number }>((resolve) => {
+    let answered = false;
+    const opened = Date.now();
+    const socket = connectTls({ host: hostname, port: Number(port), ca: authorityOf(host) }, () => {
+      socket.write(`GET /mirador-ca.pem HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`);
+    });
+    socket.on("data", () => (answered = true));
+    socket.on("error", () => {});
+    socket.on("close", () => resolve({ answered, closedAfterMs: Date.now() - opened }));
+    setTimeout(() => socket.destroy(), 30_000);
+  });
+  expect(quietFor.answered).toBe(true);
+  expect(quietFor.closedAfterMs).toBeLessThan(20_000);
 });

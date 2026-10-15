@@ -224,3 +224,18 @@ test("the ask tool advertises one question or several, tells the agent to ask se
   expect(await callCanvasTool(host, conversationId, "ask", both)).toContain("not both");
   expect(await callCanvasTool(host, conversationId, "ask", { html: "<p>context</p>", questions: [oneQuestion, oneQuestion] })).toContain("on each question");
 });
+
+/** Bun closes a request that goes quiet for longer than its 10 s default, unless the listener says otherwise. */
+const LONGER_THAN_BUNS_IDLE_TIMEOUT_MS = 12_000;
+
+test("an answer the user takes their time over still reaches the agent", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(host.origin);
+  const conversationId = await startConversation(page);
+  const ask = page.locator(".ask");
+  const toolResult = callCanvasTool(host, conversationId, "ask", { question: "Ship it?", options: [{ label: "Yes" }, { label: "No" }] });
+  await ask.getByRole("radio", { name: "Yes" }).check();
+  await page.waitForTimeout(LONGER_THAN_BUNS_IDLE_TIMEOUT_MS);
+  await ask.getByRole("button", { name: "Submit" }).click();
+  expect(await toolResult).toBe("The user chose: Yes");
+});

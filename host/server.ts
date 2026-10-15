@@ -1070,6 +1070,8 @@ export function startServer(services: HostServices) {
   const options = serveOptions({
     hostname: "127.0.0.1",
     port: config.port,
+    // An agent's ask waits here for the user's answer, longer than Bun's default timeout lets a request take. The network
+    // listener keeps that default, so a device on the network cannot hold its sockets open by going quiet.
     idleTimeout: 0,
     development: config.developmentMode,
     routes: { ...routesForDevices, ...routesForThisMachine },
@@ -1082,7 +1084,6 @@ export function startServer(services: HostServices) {
           hostname: "0.0.0.0",
           port: network.port,
           tls: { cert: certificate.chain, key: certificate.key },
-          idleTimeout: 0,
           development: config.developmentMode,
           routes: routesForDevices,
           fetch: upgradeSockets,
