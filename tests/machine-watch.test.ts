@@ -109,7 +109,7 @@ describe("MachineWatch", () => {
     cleanUp.push(() => machine.server.stop(true));
     const { notifications } = watching(machine.origin);
     await eventually(() => expect(machine.sockets).toHaveLength(2));
-    const notification: SystemNotification = { conversationId: "a", title: "Deploy", workspace: "infra", body: "Asks: Ship it?" };
+    const notification: SystemNotification = { kind: "question", conversationId: "a", title: "Deploy", workspace: "infra", body: "Asks: Ship it?" };
     machine.send("/notifications", { type: "system-notification", notification });
     machine.send("/ws", { type: "system-notification", notification });
     await eventually(() => expect(notifications).toEqual([{ ...notification, machineId: "m1", workspace: "Home server · infra" }]));

@@ -14,8 +14,7 @@ export type NotificationReason =
 export type NotificationKind = NotificationReason["kind"] | "join-request";
 
 export interface SystemNotification {
-  /** Absent from hosts before devices could choose which kinds they get. */
-  kind?: NotificationKind;
+  kind: NotificationKind;
   /** Set when another machine sent it on through this host; the conversation is that machine's. */
   machineId?: string;
   /** None when it is about this machine itself, e.g. a device asking to join it. */

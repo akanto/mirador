@@ -58,7 +58,7 @@ describe("delivery", () => {
     hub.add(socket);
     return { socket, received };
   }
-  const notification: SystemNotification = { conversationId: "c1", title: "t", workspace: "w", body: "Finished, waiting for you" };
+  const notification: SystemNotification = { kind: "finished", conversationId: "c1", title: "t", workspace: "w", body: "Finished, waiting for you" };
   const notificationsIn = (received: ServerMessage[]) => received.filter(({ type }) => type === "system-notification");
 
   test("goes to every open page while the desktop app is not listening", () => {

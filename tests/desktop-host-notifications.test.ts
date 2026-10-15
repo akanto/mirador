@@ -4,7 +4,7 @@ import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 
-const notification: SystemNotification = { conversationId: "c1", title: "Fix the tray menu", workspace: "mirador", body: "Asks: Which layout?" };
+const notification: SystemNotification = { kind: "question", conversationId: "c1", title: "Fix the tray menu", workspace: "mirador", body: "Asks: Which layout?" };
 
 class FakeSocket implements NotificationSocket {
   onmessage: ((event: MessageEvent) => void) | null = null;
