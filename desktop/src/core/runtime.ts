@@ -47,6 +47,10 @@ export function hostEnvironmentOverrides(runtime: Runtime, home: string): Record
 export interface DataPaths {
   settings: string;
   ownedHostPid: string;
+  /** Written by a host a Windows scheduled task runs, which the app does not start itself. */
+  backgroundHostPid: string;
+  hostTaskXml: string;
+  hostTaskScript: string;
   hostLog: string;
   desktopLog: string;
   browserToken: string;
@@ -57,6 +61,9 @@ export interface DataPaths {
 export const dataPaths = (dataDir: string): DataPaths => ({
   settings: join(dataDir, "desktop.json"),
   ownedHostPid: join(dataDir, "desktop-host.pid"),
+  backgroundHostPid: join(dataDir, "background-host.pid"),
+  hostTaskXml: join(dataDir, "host-task.xml"),
+  hostTaskScript: join(dataDir, "host-task.cmd"),
   hostLog: join(dataDir, "logs", "host.log"),
   desktopLog: join(dataDir, "logs", "desktop.log"),
   browserToken: join(dataDir, "browser-token"),

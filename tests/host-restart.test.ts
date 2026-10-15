@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../host/config.ts";
 import { ConversationService, lastTurnRequest, openTurnTheAgentWorkedOn } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
-import { HostRestart, hostCommandLine, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "../host/restart.ts";
+import { HostRestart, hostCommandLine, relaunchOf, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import { Store } from "../host/store.ts";
 import type { ConversationEvent } from "../shared/model.ts";
 import { SourceWatcher } from "../host/source-watcher.ts";
@@ -93,13 +93,48 @@ describe("HostRestart", () => {
     const conversations = { prepareForRestart: () => Promise.reject(new Error("The agent is not running")) } as unknown as ConversationService;
     const hub = { broadcast: () => {} } as unknown as Hub;
     let servicesStopped = false;
-    const reexecutions: string[][] = [];
-    const reexecute = ((_file: string, args: string[]) => void reexecutions.push(args)) as unknown as typeof process.execve;
-    const restart = new HostRestart(hub, conversations, mkdtempSync(join(tmpdir(), "mirador-restart-")), async () => void (servicesStopped = true), reexecute);
+    let relaunches = 0;
+    const restart = new HostRestart(hub, conversations, mkdtempSync(join(tmpdir(), "mirador-restart-")), async () => void (servicesStopped = true), () => void relaunches++);
 
     await restart.restart();
     expect(servicesStopped).toBe(true);
-    expect(reexecutions).toHaveLength(1);
+    expect(relaunches).toBe(1);
+  });
+
+  test("refuses before it stops anything when nothing would start the host again", async () => {
+    let turnsStopped = false;
+    const conversations = { prepareForRestart: async () => ((turnsStopped = true), []) } as unknown as ConversationService;
+    const hub = { broadcast: () => {} } as unknown as Hub;
+    const restart = new HostRestart(hub, conversations, mkdtempSync(join(tmpdir(), "mirador-restart-")), async () => {}, null);
+
+    await expect(restart.restart()).rejects.toThrow("restart it from the tray or the terminal");
+    expect(turnsStopped).toBe(false);
+  });
+});
+
+describe("relaunchOf", () => {
+  test("re-executes the host in place where the system can", () => {
+    expect(relaunchOf({}, "darwin", true)).toEqual({ by: "re-executing" });
+    expect(relaunchOf({ MIRADOR_RESTART_EXIT_CODE: "75" }, "linux", true)).toEqual({ by: "re-executing" });
+  });
+
+  test("on Windows, leaves it to the scheduled task or the desktop app that started the host", () => {
+    expect(relaunchOf({ MIRADOR_SCHEDULED_TASK: "Mirador host 4600 S-1-5-21-1" }, "win32", true)).toEqual({ by: "scheduled-task", task: "Mirador host 4600 S-1-5-21-1" });
+    expect(relaunchOf({ MIRADOR_RESTART_EXIT_CODE: "75" }, "win32", true)).toEqual({ by: "exit-code", exitCode: 75 });
+  });
+
+  test("is taken out of the environment, with the pid written where the app asked, so the host's programs do not act on it", () => {
+    const pidFile = join(mkdtempSync(join(tmpdir(), "mirador-relaunch-")), "data", "background-host.pid");
+    const env: Record<string, string | undefined> = { MIRADOR_SCHEDULED_TASK: "Mirador-host-4600-S-1", MIRADOR_PID_FILE: pidFile, MIRADOR_RESTART_EXIT_CODE: "75", PATH: "/bin" };
+    expect(takeRelaunchEnvironment(env, "win32", false)).toEqual({ by: "scheduled-task", task: "Mirador-host-4600-S-1" });
+    expect(env).toEqual({ PATH: "/bin" });
+    expect(readFileSync(pidFile, "utf8")).toBe(`${process.pid}\n`);
+  });
+
+  test("is none for a host that nothing would start again", () => {
+    expect(relaunchOf({}, "win32", true)).toBeNull();
+    expect(relaunchOf({ MIRADOR_RESTART_EXIT_CODE: "soon" }, "win32", false)).toBeNull();
+    expect(relaunchOf({}, "linux", false)).toBeNull();
   });
 });
 

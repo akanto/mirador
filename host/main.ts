@@ -18,7 +18,7 @@ import { ImageStore } from "./images.ts";
 import { MUTED_LIST_FILE, NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
-import { HostRestart, stoppedWithinTimeout, takeTurnsStoppedForRestart } from "./restart.ts";
+import { HostRestart, relaunch, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "./restart.ts";
 import { DesktopAppCheck } from "./desktop-app-check.ts";
 import { NewerVersionWatcher, newerVersionLookup } from "./newer-version.ts";
 import { desktopAppCode } from "../shared/desktop-app-code.ts";
@@ -31,6 +31,7 @@ import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
 
 const config = loadConfig();
+const relaunchHow = takeRelaunchEnvironment(process.env, process.platform, typeof process.execve === "function");
 const { network } = config.reachability;
 const certificate = network && servingCertificate(config.dataDir, namesToCover(config.publicOrigin && new URL(config.publicOrigin).hostname), network.ownCertificate);
 const store = new Store(config.databasePath);
@@ -59,7 +60,7 @@ const networkAssetsServer = network && certificate && serveCanvasAssets(network.
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, store);
-const restart = new HostRestart(hub, conversations, config.dataDir, stopServices);
+const restart = new HostRestart(hub, conversations, config.dataDir, stopServices, relaunchHow && (() => relaunch(relaunchHow)));
 const sourceDir = dirname(import.meta.dir);
 const desktopApp = new DesktopAppCheck(
   () => desktopAppCode(join(sourceDir, "desktop")),

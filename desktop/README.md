@@ -109,6 +109,13 @@ On launch the app checks whether something already answers on the port.
 
 The LaunchAgents and services carry no environment values, as the login shell supplies the environment. A non-default port or data directory is passed as plain `MIRADOR_*=value` arguments, so a default install has none.
 
+On Windows:
+
+- **The app's own host** starts on Bun itself, with no shell, and ends with the app.
+- **Run host in the background** is a scheduled task of your account, `Mirador-host-<port>-<your SID>`, which starts at login. It runs `<data dir>\host-task.cmd`, which sets the environment and starts the host, in a console that shows no window. The host writes its pid to `<data dir>\background-host.pid`, and the app stops it with Ctrl-C. Before an update, the app stops a background host that runs the app's own copy, as Windows does not let an update replace a folder a program works in; the app starts it again after the update.
+- **Open at login** is a value, `Mirador-<port>`, in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, naming the launcher. The launcher drops its arguments, so this is only available on the default port and data folder.
+- **Restart host**: Windows cannot re-execute a process, so the host restarts by exiting. The app starts its own host again, and a background host runs its task again before it exits.
+
 ### Closing and quitting
 
 - **Closing the window** stops nothing. ⌘W closes what has focus inside Mirador first (the open dialog, else the focused terminal's shell), and asks before it closes the window; the window's close button doesn't ask.

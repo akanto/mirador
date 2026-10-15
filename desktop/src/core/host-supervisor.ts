@@ -10,7 +10,7 @@ export interface SupervisorPorts {
   logPath: string;
   settings: { current(): DesktopSettings; update(patch: Partial<DesktopSettings>): DesktopSettings };
   hostAnswers(): Promise<boolean>;
-  spawnHost(settings: DesktopSettings): number;
+  spawnHost(settings: DesktopSettings, restartRequested: () => void): number;
   processes: ProcessTable;
   pidFile: PidFile;
   background: BackgroundHost;
@@ -77,6 +77,11 @@ export class HostSupervisor {
     this.ports.settings.update({ hostRunsInBackground: true });
   }
 
+  /** Only Windows needs this: elsewhere the background host keeps running through an update, and is reloaded after it. */
+  async stopBackgroundBeforeUpdate(runsTheAppSCopy: boolean) {
+    if (runsTheAppSCopy && (await this.status()) === "background") await this.ports.background.stopBeforeUpdate();
+  }
+
   async disableBackground() {
     const wasBackground = (await this.status()) === "background";
     await this.ports.background.remove();
@@ -96,9 +101,15 @@ export class HostSupervisor {
   private spawnOwned(settings: DesktopSettings) {
     const running = this.ownedPid();
     if (running !== null) return running;
-    const pid = this.ports.spawnHost(settings);
+    const pid = this.ports.spawnHost(settings, () => void this.startOwnedAgain());
     this.ports.pidFile.write(pid);
     return pid;
+  }
+
+  /** What the tray shows from its next status check tells whether the host came back. */
+  private async startOwnedAgain() {
+    this.ports.pidFile.clear();
+    await this.waitForHost(this.spawnOwned(this.ports.settings.current())).catch(() => {});
   }
 
   private ownedPid() {

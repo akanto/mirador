@@ -64,6 +64,7 @@ export class DesktopApp {
       shell,
       overrides,
       hostLog: paths.hostLog,
+      hostTaskFiles: { taskXml: paths.hostTaskXml, taskScript: paths.hostTaskScript, pidFile: paths.backgroundHostPid },
     });
     this.openAtLogin = openAtLogin;
     this.supervisor = new HostSupervisor({
@@ -71,7 +72,7 @@ export class DesktopApp {
       logPath: paths.hostLog,
       settings,
       hostAnswers: () => hostAnswers(runtime.origin),
-      spawnHost: (current) => spawnOwnedHost(current, { shell, overrides, logPath: paths.hostLog }),
+      spawnHost: (current, restartRequested) => spawnOwnedHost(current, { shell, overrides, logPath: paths.hostLog }, restartRequested),
       processes: systemProcesses,
       pidFile: new PidFileOnDisk(paths.ownedHostPid),
       background,
@@ -120,8 +121,9 @@ export class DesktopApp {
   async openWindow() {
     if (this.window.isOpen) return this.window.bringToFront();
     await this.busyWith("starting", async () => {
+      const statusBeforeStart = await this.supervisor.status();
       await this.supervisor.start();
-      await this.reloadHostAfterUpdate();
+      await this.reloadHostAfterUpdate(statusBeforeStart);
       this.window.open(authUrl(this.environment.runtime, this.browserToken()));
     });
     if (!this.window.isOpen) setDockIconVisible(false);
@@ -164,11 +166,11 @@ export class DesktopApp {
   /**
    * The app updates itself by swapping its own files and handing over to Electrobun's helper, so this start may be the
    * first after an update: a host started from the copy inside the app is still running the old files and only a reload
-   * makes it run the new ones.
+   * makes it run the new ones. One that only started now, as Windows had it stopped for the update, runs them already.
    */
-  private async reloadHostAfterUpdate() {
+  private async reloadHostAfterUpdate(statusBeforeStart: HostStatus) {
     const pendingUpdate = takePendingUpdate(this.environment.paths.pendingUpdate);
-    if (!hostRunsReplacedFiles(pendingUpdate, this.environment.settings.runsTheMiradorItCarries(), await this.supervisor.status())) return;
+    if (!hostRunsReplacedFiles(pendingUpdate, this.environment.settings.runsTheMiradorItCarries(), statusBeforeStart)) return;
     await this.supervisor.restart();
   }
 
@@ -185,7 +187,13 @@ export class DesktopApp {
     });
     if (response !== 0) return;
     markUpdatePending(this.environment.paths.pendingUpdate);
-    await this.selfUpdate?.install().catch((error) => this.report(error));
+    try {
+      await this.supervisor.stopBackgroundBeforeUpdate(this.environment.settings.runsTheMiradorItCarries());
+      await this.selfUpdate?.install();
+    } catch (error) {
+      await this.supervisor.start().catch(() => {});
+      await this.report(error);
+    }
   }
 
   private async turnsTheRestartStops() {

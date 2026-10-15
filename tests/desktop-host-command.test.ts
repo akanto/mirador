@@ -6,6 +6,7 @@ import { installedAppPath } from "../desktop/src/core/app-bundle.ts";
 import { hostArgv, isHostCommandLine, loginShell } from "../desktop/src/core/host-command.ts";
 import { spawnOwnedHost } from "../desktop/src/core/host-process.ts";
 import { systemProcesses } from "../desktop/src/core/processes.ts";
+import { parentOf } from "../desktop/src/core/windows-processes.ts";
 import { authUrl, dataPaths, hostEnvironmentOverrides, resolveRuntime } from "../desktop/src/core/runtime.ts";
 import { relayPorts } from "../shared/relay-ports.ts";
 
@@ -54,6 +55,9 @@ describe("runtime", () => {
     expect(dataPaths("/data")).toEqual({
       settings: join("/data", "desktop.json"),
       ownedHostPid: join("/data", "desktop-host.pid"),
+      backgroundHostPid: join("/data", "background-host.pid"),
+      hostTaskXml: join("/data", "host-task.xml"),
+      hostTaskScript: join("/data", "host-task.cmd"),
       hostLog: join("/data", "logs", "host.log"),
       desktopLog: join("/data", "logs", "desktop.log"),
       browserToken: join("/data", "browser-token"),
@@ -136,6 +140,7 @@ describe("host command", () => {
     expect(isHostCommandLine('"C:\\Program Files\\Mirador\\app\\bin\\bun.exe" host/main.ts')).toBe(true);
     expect(isHostCommandLine("C:\\Users\\me\\.bun\\bin\\BUN.EXE host\\main.ts")).toBe(true);
     expect(isHostCommandLine("bun.exe host/main.ts")).toBe(true);
+    expect(isHostCommandLine('"C:\\Users\\me\\AppData\\Local\\com.sodre90.mirador\\stable\\app\\bin\\bun.exe"  host/main.ts  ')).toBe(true);
   });
 
   test("does not mistake other processes for a host", () => {
@@ -190,9 +195,22 @@ describe("owned host", () => {
     mkdirSync(join(hostDirectory, "host"));
     writeFileSync(join(hostDirectory, "host", "main.ts"), "console.log(JSON.stringify({ directory: process.cwd(), port: process.env.MIRADOR_PORT }));\n");
     try {
-      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: { MIRADOR_PORT: "4790" }, logPath }, "win32");
+      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: { MIRADOR_PORT: "4790" }, logPath }, () => {}, "win32");
       expect(pid).toBeGreaterThan(0);
       expect(JSON.parse(await lineWrittenTo(logPath))).toEqual({ directory: realpathSync(hostDirectory), port: "4790" });
+    } finally {
+      rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("on Windows restarts by exiting with the code it was given, which has the app start it again", async () => {
+    const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
+    mkdirSync(join(hostDirectory, "host"));
+    writeFileSync(join(hostDirectory, "host", "main.ts"), "process.exit(Number(process.env.MIRADOR_RESTART_EXIT_CODE));\n");
+    try {
+      const { promise: restartRequested, resolve } = Promise.withResolvers<void>();
+      spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: {}, logPath: join(hostDirectory, "host.log") }, resolve, "win32");
+      await restartRequested;
     } finally {
       rmSync(hostDirectory, { recursive: true, force: true });
     }
@@ -203,7 +221,8 @@ describe("owned host", () => {
     mkdirSync(join(hostDirectory, "host"));
     writeFileSync(join(hostDirectory, "host", "main.ts"), "await Bun.sleep(60_000);\n");
     try {
-      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: {}, logPath: join(hostDirectory, "host.log") }, "win32");
+      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: {}, logPath: join(hostDirectory, "host.log") }, () => {}, "win32");
+      expect(parentOf(pid)).toBe(process.pid);
       const commandLine = systemProcesses.commandLine(pid);
       expect(commandLine).toEndWith(" host/main.ts");
       expect(isHostCommandLine(commandLine!)).toBe(true);

@@ -78,6 +78,8 @@ export class HostUserService implements BackgroundHost {
     await this.systemctlOrThrow("reload the user units", "daemon-reload");
   }
 
+  async stopBeforeUpdate() {}
+
   private unitText() {
     try {
       return readFileSync(this.unitPath, "utf8");

@@ -17,6 +17,7 @@ class World {
   events: string[] = [];
   spawnedHostsDieImmediately = false;
   agentFailsToLoad = false;
+  restartRequests: (() => void)[] = [];
 
   addExternalHost() {
     this.answering = true;
@@ -58,6 +59,10 @@ class World {
         world.agentLoaded = false;
         world.answering = false;
       },
+      async stopBeforeUpdate() {
+        world.events.push("stop agent for update");
+        world.answering = false;
+      },
     };
     return new HostSupervisor({
       port: 4600,
@@ -70,7 +75,8 @@ class World {
         },
       },
       hostAnswers: async () => world.answering,
-      spawnHost() {
+      spawnHost(_settings, restartRequested) {
+        world.restartRequests.push(restartRequested);
         const pid = world.nextPid++;
         world.events.push(`spawn ${pid}`);
         if (!world.spawnedHostsDieImmediately) world.processes.set(pid, HOST_COMMAND);
@@ -179,6 +185,19 @@ describe("host supervisor", () => {
     expect(world.pidOnDisk).toBe(1001);
   });
 
+  test("starts an owned host again that exited asking for it, as one on Windows restarts", async () => {
+    const world = new World();
+    const supervisor = world.supervisor();
+    await supervisor.start();
+    world.processes.delete(1000);
+    world.answering = false;
+    world.restartRequests[0]!();
+    await Bun.sleep(0);
+    expect(world.events).toEqual(["spawn 1000", "spawn 1001"]);
+    expect(world.pidOnDisk).toBe(1001);
+    expect(await supervisor.status()).toBe("owned");
+  });
+
   test("reports a host that dies right after starting", async () => {
     const world = new World();
     world.spawnedHostsDieImmediately = true;
@@ -237,6 +256,18 @@ describe("host supervisor", () => {
       world.events.length = 0;
       expect(await supervisor.restart()).toBe("background");
       expect(world.events).toEqual(["kickstart"]);
+    });
+
+    test("stops a background host running the app's own copy before an update, and no other host", async () => {
+      const world = new World();
+      const supervisor = world.supervisor();
+      await supervisor.stopBackgroundBeforeUpdate(true);
+      await supervisor.enableBackground();
+      world.events.length = 0;
+      await supervisor.stopBackgroundBeforeUpdate(false);
+      expect(world.events).toEqual([]);
+      await supervisor.stopBackgroundBeforeUpdate(true);
+      expect(world.events).toEqual(["stop agent for update"]);
     });
 
     test("quitting leaves a background host running", async () => {

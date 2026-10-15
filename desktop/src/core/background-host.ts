@@ -10,6 +10,8 @@ export interface BackgroundHost {
   ensureLoaded(settings: DesktopSettings): Promise<void>;
   restart(): Promise<void>;
   remove(): Promise<void>;
+  /** Only Windows keeps an update from replacing the folder a running program works in. */
+  stopBeforeUpdate(): Promise<void>;
 }
 
 export interface BackgroundHostEnvironment {
@@ -45,6 +47,8 @@ export class BackgroundHostAgent implements BackgroundHost {
   remove() {
     return this.agent.uninstall();
   }
+
+  async stopBeforeUpdate() {}
 
   private plistFor(settings: DesktopSettings) {
     const { shell, overrides, logPath } = this.environment;
