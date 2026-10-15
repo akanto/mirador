@@ -7,6 +7,7 @@ import { profileEnvironment } from "./acp/harnesses.ts";
 import type { ConversationService } from "./conversations.ts";
 import type { Store } from "./store.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
+import { commandLine, commandShell } from "./command-shell.ts";
 
 const COMMAND_TIMEOUT_MS = 5_000;
 /** A command may leave a background job holding its output open; what it printed before exiting is what counts. */
@@ -99,7 +100,7 @@ export async function runStatusLineCommand(
   command: string,
   { input, directory, environment, columns }: { input: unknown; directory: string; environment: Record<string, string>; columns: number },
 ): Promise<CommandResult> {
-  const child = Bun.spawn(["sh", "-c", command], {
+  const child = Bun.spawn(commandLine(commandShell(() => "sh", environment), command), {
     cwd: directory,
     env: { ...environment, COLUMNS: String(columns), TERM: "xterm-256color", COLORTERM: "truecolor" },
     stdin: new Blob([JSON.stringify(input)]),

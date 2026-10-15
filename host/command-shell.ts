@@ -1,0 +1,62 @@
+import { existsSync } from "node:fs";
+import { win32 } from "node:path";
+
+export type CommandShell = { kind: "posix" | "powershell"; program: string };
+
+type Environment = Record<string, string | undefined>;
+type WindowsShells = { gitBash: (environment: Environment) => string | null; powershell: (environment: Environment) => string };
+
+const GIT_INSTALL_FOLDERS = ["C:\\Program Files\\Git", "C:\\Program Files (x86)\\Git"];
+const BASH_NAMES = new Set(["bash.exe", "sh.exe", "bash", "sh"]);
+
+const onPathOf = (environment: Environment) => (program: string) => Bun.which(program, { PATH: environment.PATH });
+
+/**
+ * Git Bash where Claude Code finds it: CLAUDE_CODE_GIT_BASH_PATH when it names a bash or sh that exists, then Git's
+ * install folders, then the Git on PATH.
+ */
+export function findGitBash(environment: Environment, exists: (path: string) => boolean = existsSync, which = onPathOf(environment)) {
+  const configured = environment.CLAUDE_CODE_GIT_BASH_PATH;
+  if (configured && BASH_NAMES.has(win32.basename(configured).toLowerCase()) && exists(configured)) return configured;
+  const git = which("git");
+  const gitFolders = git ? [win32.dirname(win32.dirname(git)), win32.dirname(win32.dirname(win32.dirname(git)))] : [];
+  return [...GIT_INSTALL_FOLDERS, ...gitFolders].map((folder) => win32.join(folder, "bin", "bash.exe")).find((bash) => exists(bash)) ?? null;
+}
+
+/** PowerShell 7 when installed, as Claude Code prefers it, else the Windows PowerShell every Windows has. */
+export const findPowerShell = (environment: Environment, which = onPathOf(environment)) => which("pwsh") ?? which("powershell") ?? "powershell.exe";
+
+/**
+ * The shell for a command string. On Windows it is the one Claude Code finds in the environment the command runs with:
+ * Git Bash, else PowerShell, so status-line scripts and commands written for Claude Code run the same. Elsewhere it is
+ * the one the caller names, asked for only there.
+ */
+export function commandShell(
+  unixShell: () => string,
+  environment: Environment,
+  { platform = process.platform, windows = { gitBash: findGitBash, powershell: findPowerShell } }: { platform?: NodeJS.Platform; windows?: WindowsShells } = {},
+): CommandShell {
+  if (platform !== "win32") return { kind: "posix", program: unixShell() };
+  const gitBash = windows.gitBash(environment);
+  return gitBash ? { kind: "posix", program: gitBash } : { kind: "powershell", program: windows.powershell(environment) };
+}
+
+/**
+ * PowerShell exits with 1 for a native command that failed and writes progress to stderr; this keeps the command's own
+ * exit code and stderr for its errors.
+ */
+const powershellScript = (command: string) =>
+  `$ProgressPreference = 'SilentlyContinue'\n${command}\nif (-not $?) { exit $(if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }) }`;
+
+/**
+ * The command line that runs `command` in `shell`, with the user's profile when `login`. PowerShell gets it with
+ * -Command rather than -EncodedCommand, which would write its errors to stderr as XML.
+ */
+export function commandLine(shell: CommandShell, command: string, { login = false } = {}): string[] {
+  if (shell.kind === "posix") return [shell.program, login ? "-lc" : "-c", command];
+  return [shell.program, "-NoLogo", ...(login ? [] : ["-NoProfile"]), "-NonInteractive", "-Command", powershellScript(command)];
+}
+
+const powershellQuoted = (text: string) => `'${text.replaceAll("'", "''")}'`;
+
+export const powershellInvocation = ([program, ...args]: string[]) => `& ${[program!, ...args].map(powershellQuoted).join(" ")}`;

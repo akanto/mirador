@@ -1,6 +1,7 @@
 import type { Subprocess } from "bun";
 import type { CommandStream, ConversationEvent } from "../shared/model.ts";
 import { loginShell } from "./acp/environment.ts";
+import { commandLine, commandShell } from "./command-shell.ts";
 
 const OUTPUT_BATCH_MS = 200;
 const MAX_KEPT_CHARACTERS = 1_000_000;
@@ -65,7 +66,7 @@ export class UserCommandRunner {
     const output = new OutputBatcher(commandId, record);
     let exitCode: number | null = null;
     try {
-      const child = Bun.spawn([loginShell(), "-lc", command], {
+      const child = Bun.spawn(commandLine(commandShell(loginShell, environment), command, { login: true }), {
         cwd: directory,
         env: environment,
         detached: true,

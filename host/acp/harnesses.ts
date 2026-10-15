@@ -8,6 +8,7 @@ import { applyEnvironment, parseEnvironment } from "../../shared/profile-environ
 import { claudeProgramMissing, findClaudeProgram } from "./claude-program.ts";
 import { agentEnvironment } from "./environment.ts";
 import type { HarnessSpec } from "./harness.ts";
+import { commandShell, powershellInvocation } from "../command-shell.ts";
 
 const claudeAgentEntry = join(
   dirname(Bun.resolveSync("@agentclientprotocol/claude-agent-acp/package.json", import.meta.dir)),
@@ -48,13 +49,25 @@ const loginCommandFor: Record<HarnessId, (environment: Record<string, string>) =
   opencode: () => [opencodeCommand()[0]!, "auth", "login"],
 };
 
+const powershellKeepOpenOnFailure = (command: string[]) =>
+  [
+    powershellInvocation(command),
+    "if ($?) { exit 0 }",
+    "$status = if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }",
+    'Write-Host -NoNewline "`nSigning in ended with status $status. Press Enter to close this tab."',
+    "[void][Console]::ReadLine()",
+    "exit $status",
+  ].join("\n");
+
 /**
  * A failed sign-in keeps its tab open until Enter, so its output can be read; one that worked closes it. The command
  * comes in as arguments, so nothing in it is quoted for the shell.
  */
-export function loginCommand(harness: HarnessId, environment: Record<string, string>): string[] {
+export function loginCommand(harness: HarnessId, environment: Record<string, string>, shell = commandShell(() => "/bin/sh", environment)): string[] {
+  const signIn = loginCommandFor[harness](environment);
+  if (shell.kind === "powershell") return [shell.program, "-NoLogo", "-NoProfile", "-Command", powershellKeepOpenOnFailure(signIn)];
   const keepOpenOnFailure = '"$@" && exit 0; status=$?; printf "\\nSigning in ended with status %s. Press Enter to close this tab." "$status"; read -r _; exit "$status"';
-  return ["/bin/sh", "-c", keepOpenOnFailure, "mirador-login", ...loginCommandFor[harness](environment)];
+  return [shell.program, "-c", keepOpenOnFailure, "mirador-login", ...signIn];
 }
 
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

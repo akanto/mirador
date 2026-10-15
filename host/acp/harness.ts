@@ -5,6 +5,7 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { HarnessId } from "../../shared/model.ts";
 import { MIRADOR_VERSION } from "../../shared/version.ts";
+import { commandLine, commandShell } from "../command-shell.ts";
 
 export type ConfigValue = string | boolean;
 
@@ -244,7 +245,8 @@ export class HarnessProcess {
     const logSizeBefore = existsSync(logPath) ? statSync(logPath).size : 0;
     const log = openSync(logPath, "a");
     const outcome = await new Promise<string | null>((resolve) => {
-      const shell = spawn(process.env.SHELL || "/bin/sh", ["-c", this.spec.prelaunch], {
+      const [program, ...args] = commandLine(commandShell(() => process.env.SHELL || "/bin/sh", this.spec.environment), this.spec.prelaunch);
+      const shell = spawn(program!, args, {
         env: this.spec.environment,
         stdio: ["ignore", log, log],
       });
