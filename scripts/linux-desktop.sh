@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds the desktop app's Linux installer, installs it in a container the way a user would, and checks it there on a
-# virtual display: it opens its window and host, registers itself to open at login, keeps running when its window is
-# closed, and a second launch hands over to it and quits, bringing its window back.
+# Builds the desktop app's Linux installer, installs it in a container the way a user would, and checks it there: it
+# carries the Bun it was built with, and on a virtual display it opens its window and host, registers itself to open at
+# login, keeps running when its window is closed, and a second launch hands over to it and quits, bringing its window back.
 # Usage: [MIRADOR_LINUX_ARCH=x64|arm64] [MIRADOR_LINUX_RELEASE=1] scripts/linux-desktop.sh
 # MIRADOR_LINUX_RELEASE=1 builds the release installer instead, the one to hand out: from the committed files only (run
 # it from the main checkout or a clone, as the container clones it), carrying Mirador and Linux production dependencies,
@@ -58,6 +58,8 @@ run_in_container --volume "$results:/results" --env "RELEASE=$release" "mirador-
     window_shown() { xdotool search --onlyvisible --name "^Mirador$" >/dev/null 2>&1; }
     window_gone() { ! window_shown; }
     app_running() { kill -0 "$app" 2>/dev/null; }
+
+    check "it carries the Bun it was built with, $(bun --version)" test "$("$(dirname "$launcher")/bun" --version)" = "$(bun --version)"
 
     echo "== start on a virtual display"
     export DISPLAY=:99

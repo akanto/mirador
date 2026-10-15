@@ -37,6 +37,6 @@ export default {
   },
   /** Only a release build updates itself; its patches come from `make update-files`, as Electrobun's would diff the unsigned macOS app. */
   ...(carriesMirador && { release: { baseUrl: `https://github.com/${RELEASES_REPOSITORY}/releases/latest/download`, generatePatch: false } }),
-  scripts: { postBuild: "scripts/add-local-network-usage.ts" },
+  scripts: { postBuild: "scripts/post-build.ts" },
   runtime: { exitOnLastWindowClosed: false },
 } satisfies ElectrobunConfig;
