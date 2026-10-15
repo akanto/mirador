@@ -178,6 +178,48 @@ test("new tabs are named after the shell with the lowest free number, and a tab 
   expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual(["sh", "sh 2"]);
 });
 
+test.if(process.platform === "win32")("on Windows a new tab runs PowerShell in the workspace folder, and is named after it", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 100, 30);
+
+  terminals.input(terminalId, "Write-Output \"in $((Get-Location).Path) with $($PSVersionTable.PSEdition)\"\r");
+  expect(await outputContaining(browser.received, `in ${workspaceDir} with`)).toMatch(/with (Desktop|Core)/);
+  expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual([expect.stringMatching(/^(powershell|pwsh)$/)]);
+});
+
+test.if(process.platform === "win32")("on Windows closing unless busy closes a terminal at its prompt, keeps one running a program, naming it, and closing that ends the program too", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const idle = terminals.open("c1", 80, 24);
+  const working = terminals.open("c1", 80, 24, beside(idle.terminalId));
+  terminals.input(working.terminalId, `& '${process.execPath}' -e "console.log('started-' + process.pid); setTimeout(() => {}, 30000)"\r`);
+  const program = Number(await eventually(() => outputOf(browser.received).match(/started-(\d+)/)?.[1], (pid) => pid !== undefined));
+
+  await terminals.closeUnlessBusy(browser.socket, working.terminalId);
+  expect(browser.received.findLast((message) => message.type === "terminal.busy")).toEqual({ type: "terminal.busy", terminalId: working.terminalId, command: "bun" });
+  await terminals.closeUnlessBusy(browser.socket, idle.terminalId);
+  const [left] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals.length === 1);
+  expect(left?.terminals.map(({ id }) => id)).toEqual([working.terminalId]);
+
+  expect(isRunning(program)).toBe(true);
+  terminals.close(working.terminalId);
+  expect(await eventually(() => isRunning(program), (running) => !running)).toBe(false);
+}, 20_000);
+
+test.if(process.platform === "win32")("on Windows closing a terminal ends what its shell started outside the terminal too", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  const detached = `Start-Process -PassThru -WindowStyle Hidden -FilePath '${process.execPath}' -ArgumentList '-e', '"setTimeout(() => {}, 30000)"'`;
+  terminals.input(terminalId, `Write-Output "started-$((${detached}).Id)"\r`);
+  const program = Number(await eventually(() => outputOf(browser.received).match(/started-(\d+)/)?.[1], (pid) => pid !== undefined));
+
+  expect(isRunning(program)).toBe(true);
+  terminals.close(terminalId);
+  expect(await eventually(() => isRunning(program), (running) => !running)).toBe(false);
+}, 20_000);
+
 test("a terminal that exits leaves its tab, and the tab goes with its last terminal", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commandLine, commandShell, findGitBash, findPowerShell, powershellInvocation } from "../host/command-shell.ts";
+import { commandLine, commandShell, findGitBash, findPowerShell, powershellInvocation, programName, terminalShell } from "../host/command-shell.ts";
 
 const gitBash = "C:\\Program Files\\Git\\bin\\bash.exe";
 const withGitBash = { gitBash: () => gitBash, powershell: () => "pwsh.exe" };
@@ -72,4 +72,23 @@ test("PowerShell 7 is preferred when installed, else Windows PowerShell", () => 
 
 test("a program and its arguments reach PowerShell as they are, quotes included", () => {
   expect(powershellInvocation(["C:\\Program Files\\claude.exe", "auth", "it's"])).toBe("& 'C:\\Program Files\\claude.exe' 'auth' 'it''s'");
+});
+
+describe("a terminal tab", () => {
+  test("runs the login shell as a login shell on the Mac and Linux, named after it", () => {
+    const shell = terminalShell(() => "/bin/zsh", {}, { platform: "darwin" });
+    expect(shell).toEqual(["/bin/zsh", "-l"]);
+    expect(programName(shell[0]!)).toBe("zsh");
+  });
+
+  test("runs PowerShell on Windows, found in the tab's environment, without asking for a Unix shell, named without .exe", () => {
+    const noUnixShell = () => {
+      throw new Error("process.getuid is not a function");
+    };
+    const powershellOnPath = ({ PATH }: Record<string, string | undefined>) => `${PATH}\\pwsh.exe`;
+    const shell = terminalShell(noUnixShell, { PATH: "C:\\Program Files\\PowerShell\\7" }, { platform: "win32", powershell: powershellOnPath });
+    expect(shell).toEqual(["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo"]);
+    expect(programName(shell[0]!)).toBe("pwsh");
+    expect(programName("powershell.exe")).toBe("powershell");
+  });
 });

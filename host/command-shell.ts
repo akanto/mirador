@@ -41,6 +41,17 @@ export function commandShell(
   return gitBash ? { kind: "posix", program: gitBash } : { kind: "powershell", program: windows.powershell(environment) };
 }
 
+/** What a terminal tab runs: the user's login shell, or on Windows, where there is none, PowerShell as Windows Terminal opens it. */
+export function terminalShell(
+  unixShell: () => string,
+  environment: Environment,
+  { platform = process.platform, powershell = findPowerShell }: { platform?: NodeJS.Platform; powershell?: (environment: Environment) => string } = {},
+): string[] {
+  return platform === "win32" ? [powershell(environment), "-NoLogo"] : [unixShell(), "-l"];
+}
+
+export const programName = (program: string) => win32.basename(program).replace(/\.exe$/i, "");
+
 /**
  * PowerShell exits with 1 for a native command that failed and writes progress to stderr; this keeps the command's own
  * exit code and stderr for its errors.

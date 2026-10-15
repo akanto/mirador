@@ -5,8 +5,10 @@ import { MAX_TERMINALS_PER_TAB, type TerminalTab } from "../shared/model.ts";
 import type { ServerMessage, TerminalSplit } from "../shared/protocol.ts";
 import { splitTerminal, terminalsIn, withoutTerminal, type TerminalLayout } from "../shared/terminal-layout.ts";
 import { agentEnvironment, loginShell } from "./acp/environment.ts";
+import { programName, terminalShell } from "./command-shell.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
+import { childProgramNames, killProcessTree } from "./windows-processes.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
 const SCROLLBACK_SAVE_DELAY_MS = 15_000;
@@ -97,9 +99,11 @@ function killGroupOf(child: Subprocess) {
 
 /**
  * What runs in the foreground of the shell's terminal, or null while the shell itself waits at its prompt: the
- * terminal's foreground process group is then the shell's own.
+ * terminal's foreground process group is then the shell's own. Windows has no such group, so there it is the first
+ * program the shell started that still runs.
  */
 async function foregroundCommand(shellPid: number): Promise<string | null> {
+  if (process.platform === "win32") return (await childProgramNames(shellPid))[0] ?? null;
   const groups = Bun.spawn(["ps", "-o", "tpgid=,pgid=", "-p", String(shellPid)], { stdout: "pipe", stderr: "ignore" });
   const [foregroundGroup, shellGroup] = (await new Response(groups.stdout).text()).trim().split(/\s+/);
   if (!foregroundGroup || foregroundGroup === shellGroup || Number(foregroundGroup) <= 0) return null;
@@ -188,11 +192,13 @@ export class TerminalService {
 
   /**
    * A shell that ignores the hangup is killed after a grace period, with its process group: what runs in it most likely
-   * ignores the hangup the kernel sends it once the shell is gone, too.
+   * ignores the hangup the kernel sends it once the shell is gone, too. Windows has neither, so there it is killed at
+   * once with everything it started.
    */
   close(terminalId: string) {
     const child = this.shells.get(terminalId)?.child;
     if (!child) return;
+    if (process.platform === "win32") return void killProcessTree(child.pid);
     child.kill("SIGHUP");
     setTimeout(() => isRunning(child) && killGroupOf(child), HANGUP_GRACE_MS).unref();
   }
@@ -307,7 +313,7 @@ export class TerminalService {
 
   /** Named after the shell (or the program), numbered from 2 with the lowest number no open tab uses: zsh, zsh 2, zsh 3… */
   private newTab(conversationId: string, program?: TerminalProgram): Tab {
-    const baseName = program?.tabName ?? basename(loginShell());
+    const baseName = program?.tabName ?? programName(terminalShell(loginShell, agentEnvironment())[0]!);
     const taken = new Set(this.tabsIn(conversationId).map(({ name }) => name));
     const numbered = (number: number) => (number === 1 ? baseName : `${baseName} ${number}`);
     let number = 1;
@@ -328,9 +334,10 @@ export class TerminalService {
       programKey: program?.key,
       saved: tab.saved,
     };
-    shell.child = Bun.spawn(program?.command ?? [loginShell(), "-l"], {
+    const environment = program?.environment ?? agentEnvironment();
+    shell.child = Bun.spawn(program?.command ?? terminalShell(loginShell, environment), {
       cwd,
-      env: { ...(program?.environment ?? agentEnvironment()), TERM: "xterm-256color", COLORTERM: "truecolor" },
+      env: { ...environment, TERM: "xterm-256color", COLORTERM: "truecolor" },
       terminal: {
         cols: dimension(columns),
         rows: dimension(rows),
