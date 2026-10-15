@@ -16,6 +16,7 @@ import { Splitter } from "./Splitter.tsx";
 import { HIGHLIGHT_LIMIT } from "./terminal-find.ts";
 import { TerminalFind } from "./TerminalFind.tsx";
 import { terminalCopyKey, terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
+import { openLinksIn } from "./terminal-links.ts";
 import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
 import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
 import { useClosesWhileFocused } from "./desktop-close.ts";
@@ -206,6 +207,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     };
     view.loadAddon(fit);
     view.loadAddon(searcher);
+    openLinksIn(view);
     setSearch(searcher);
     view.attachCustomKeyEventHandler((event) => {
       if (event.defaultPrevented) return false;

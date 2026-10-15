@@ -42,6 +42,7 @@ export const hints = {
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",
+  terminalLink: (click: string) => `${click} to open the link in your browser.`,
   terminalFontSize: "Font size in terminal splits and tabs (11 to 24 px). ⌘+ and ⌘− step it when a terminal is focused.",
   connectedDevicesInSidebar: "While devices are connected, a line at the bottom of the sidebar says how many; click it to see which. Remembered in this browser.",
   connectedDevices: (names: string[]) => `Connected now: ${names.join(", ")}. Click to see all devices in Settings → Devices.`,

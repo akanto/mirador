@@ -3,8 +3,8 @@ import { desktopNonce, inDesktopApp, sendToDesktopApp } from "./desktop-bridge.t
 const OPEN_LINK_MESSAGE = "mirador:open-link";
 
 function webAddress(address: string) {
-  if (!URL.canParse(address, location.href)) return null;
-  const url = new URL(address, location.href);
+  if (!URL.canParse(address)) return null;
+  const url = new URL(address);
   return url.protocol === "http:" || url.protocol === "https:" ? url : null;
 }
 
@@ -29,6 +29,15 @@ function openOutsideLinksWith(open: (url: string) => void, canOpen = () => true)
   window.addEventListener("auxclick", (event) => event.button === 1 && takeOver(event, true), true);
 }
 
+const inAFrame = () => window.parent !== window;
+
+const askTheParentPageToOpen = (url: string) => window.parent.postMessage({ type: OPEN_LINK_MESSAGE, url }, "*");
+
+function askTheAppToOpen(url: string) {
+  const nonce = desktopNonce();
+  if (nonce) sendToDesktopApp({ type: "desktop-open-link", nonce, url });
+}
+
 const isOpenLinkMessage = (data: unknown): data is { type: string; url: string } =>
   typeof data === "object" && data !== null && (data as { type?: unknown }).type === OPEN_LINK_MESSAGE && typeof (data as { url?: unknown }).url === "string";
 
@@ -45,16 +54,21 @@ function machineFrameSending(event: MessageEvent) {
  */
 export function openOutsideLinksInTheBrowser() {
   if (!inDesktopApp()) return;
-  if (window.parent !== window) return openOutsideLinksWith((url) => window.parent.postMessage({ type: OPEN_LINK_MESSAGE, url }, "*"));
-  const open = (url: string) => {
-    const nonce = desktopNonce();
-    if (nonce) sendToDesktopApp({ type: "desktop-open-link", nonce, url });
-  };
+  if (inAFrame()) return openOutsideLinksWith(askTheParentPageToOpen);
   // An app built before this never hands over a nonce, and still opens links from its window's navigation events.
-  openOutsideLinksWith(open, () => desktopNonce() !== null);
+  openOutsideLinksWith(askTheAppToOpen, () => desktopNonce() !== null);
   window.addEventListener("message", (event) => {
     if (!isOpenLinkMessage(event.data) || !machineFrameSending(event)) return;
     const url = webAddress(event.data.url);
-    if (url) open(url.href);
+    if (url) askTheAppToOpen(url.href);
   });
+}
+
+/** Opens a web address that is not a link of the page, such as one in a terminal, the way the page's links to other sites open. */
+export function openWebAddress(address: string) {
+  const url = webAddress(address);
+  if (!url) return;
+  if (inDesktopApp() && inAFrame()) askTheParentPageToOpen(url.href);
+  else if (inDesktopApp() && desktopNonce() !== null) askTheAppToOpen(url.href);
+  else window.open(url.href, "_blank", "noopener");
 }
