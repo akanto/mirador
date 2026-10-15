@@ -408,7 +408,15 @@ MIRADOR_LINUX_RELEASE=1 scripts/linux-desktop.sh   # the same for the release in
 
 Build the arm64 release installer on an x64 Linux machine too: in Docker on Apple Silicon, Electrobun's toolchain crashes (see `desktop/README.md`).
 
-The release assets go to `dist/` (`make help` lists the goals):
+A release is made with three goals, each when the one before has been checked. Write the notes into `dist/release-notes-x.y.z.md` first:
+
+```bash
+make release VERSION=x.y.z LINUX_HOST=user@host   # in a worktree at origin/main: names the release, runs every test, builds and checks both apps, and leaves a draft on GitHub whose files are checked against dist/x.y.z
+make publish VERSION=x.y.z                        # publishes the draft as the latest release
+make tap VERSION=x.y.z                            # pushes its Homebrew cask to the tap
+```
+
+A step that fails names the step to go on from once it is fixed (`FROM=step`). `make release` runs the goals below, which can also be run alone. The release assets go to `dist/` (`make help` lists the goals):
 
 ```bash
 make macos                               # the macOS app carrying Mirador, zipped (on a Mac)

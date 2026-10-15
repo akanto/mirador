@@ -10,11 +10,23 @@ ZIP_APP := ditto -c -k --norsrc --keepParent
 LINUX_HOST ?=
 REMOTE_DIR ?= mirador-release
 REMOTE_TMPDIR ?= $$HOME/mirador-release-tmp
+VERSION ?=
+FROM ?=
+TAP_DIR ?=
 
-.PHONY: help macos macos-signed macos-staple linux linux-x64 linux-arm64 linux-remote update-files checksums cask clean
+.PHONY: help release publish tap macos macos-signed macos-staple linux linux-x64 linux-arm64 linux-remote update-files checksums cask clean
 
 help: ## List the goals (builds take the committed files only)
 	@grep -E '^[a-z0-9 -]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  make %-14s %s\n", $$1, $$2}'
+
+release: ## Release VERSION=x.y.z up to a checked draft on GitHub: bump, gate, both builds, update files, notes from dist/release-notes-VERSION.md (needs LINUX_HOST=user@host; FROM=step goes on from a failed step)
+	LINUX_HOST=$(LINUX_HOST) bun scripts/release.ts release $(VERSION) $(FROM)
+
+publish: ## Publish the draft of VERSION=x.y.z as the latest release
+	bun scripts/release.ts publish $(VERSION)
+
+tap: ## Push the Homebrew cask of the published VERSION=x.y.z to the tap in TAP_DIR (~/prj/homebrew-tap by default)
+	TAP_DIR=$(TAP_DIR) bun scripts/release.ts tap $(VERSION)
 
 macos: ## The macOS app with Mirador inside, zipped into dist/ (on a Mac)
 	@[ "$$(uname -s)" = Darwin ] || { echo "make macos needs a Mac" >&2; exit 2; }
