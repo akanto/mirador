@@ -168,6 +168,23 @@ describe("SourceWatcher", () => {
       watcher.stop();
     }
   });
+
+  test("loading a module is not an edit, though Windows tells of its folder then", async () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
+    ["web", "shared", "host/acp"].forEach((directory) => mkdirSync(join(sourceDir, directory), { recursive: true }));
+    writeFileSync(join(sourceDir, "host", "acp", "harness.ts"), "export const loaded = true;\n");
+    await Bun.sleep(200);
+    const edited: string[] = [];
+    const watcher = new SourceWatcher(sourceDir, { uiEdited: () => edited.push("ui"), hostEdited: () => edited.push("host") });
+    watcher.start();
+    try {
+      expect((await import(join(sourceDir, "host", "acp", "harness.ts"))).loaded).toBe(true);
+      await Bun.sleep(300);
+      expect(edited).toEqual([]);
+    } finally {
+      watcher.stop();
+    }
+  });
 });
 
 describe("stoppedWithinTimeout", () => {
