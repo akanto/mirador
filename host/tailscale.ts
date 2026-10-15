@@ -1,3 +1,5 @@
+import { delimiter } from "node:path";
+
 /** Where the Tailscale command sits when it is not on PATH, the app's own binary included. */
 const TAILSCALE_DIRECTORIES = ["/Applications/Tailscale.app/Contents/MacOS", "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"];
 
@@ -7,7 +9,7 @@ const SERVE_TIMEOUT_MS = 20000;
 export const tailscaleCommand = (env: NodeJS.ProcessEnv = process.env): string | null => {
   const configured = env.MIRADOR_TAILSCALE;
   if (configured) return Bun.which(configured);
-  return Bun.which("tailscale") ?? Bun.which("tailscale", { PATH: TAILSCALE_DIRECTORIES.join(":") });
+  return Bun.which("tailscale") ?? Bun.which("tailscale", { PATH: TAILSCALE_DIRECTORIES.join(delimiter) });
 };
 
 async function tailscale(command: string, args: string[], timeout: number) {

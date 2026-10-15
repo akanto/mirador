@@ -23,5 +23,5 @@ export function withMention(text: string, caret: number, suggestion: MentionSugg
   return { text: before + inserted + (suggestion.directory ? after : after.replace(/^ /, "")), caret: before.length + inserted.length };
 }
 
-/** A query that names a path itself (absolute, under home, or relative), rather than words to search the workspace for. */
-export const isPathQuery = (query: string) => /^[~/.]/.test(query);
+/** A query that names a path itself (absolute, on a Windows drive too, under home, or relative), rather than words to search the workspace for. */
+export const isPathQuery = (query: string) => /^(?:[~/.]|[A-Za-z]:[\\/])/.test(query);

@@ -61,7 +61,7 @@ describe("statusline", () => {
 
   test("the transcript lives in a directory named after the project path", () => {
     expect(claudeTranscriptPath("/home/me/.claude", "/Users/me/.dotfiles/my_app", "s1")).toBe(
-      "/home/me/.claude/projects/-Users-me--dotfiles-my-app/s1.jsonl",
+      join("/home/me/.claude", "projects", "-Users-me--dotfiles-my-app", "s1.jsonl"),
     );
   });
 

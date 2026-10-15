@@ -129,8 +129,8 @@ describe("a file's line changes, asked for again after every tool call", () => {
 
 describe("a path shown to the user", () => {
   test("is relative to its workspace, even when the file's name starts with two dots", () => {
-    expect(shownPath("/ws/..hidden/x.ts", ["/ws"])).toBe("..hidden/x.ts");
-    expect(shownPath("/ws/src/a.ts", ["/ws"])).toBe("src/a.ts");
+    expect(shownPath("/ws/..hidden/x.ts", ["/ws"])).toBe(join("..hidden", "x.ts"));
+    expect(shownPath("/ws/src/a.ts", ["/ws"])).toBe(join("src", "a.ts"));
     expect(shownPath("/other/x.ts", ["/ws"])).toBe("/other/x.ts");
   });
 });

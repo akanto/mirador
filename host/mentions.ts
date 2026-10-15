@@ -1,6 +1,6 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, posix, resolve } from "node:path";
 import { isPathQuery, type MentionSuggestion } from "../shared/mentions.ts";
 import { expandHome } from "./paths.ts";
 
@@ -19,14 +19,18 @@ export async function mentionSuggestions(workspaceDirectory: string, query: stri
   return searchWorkspace(workspaceDirectory, query);
 }
 
+/** Windows takes either slash between a path's names; elsewhere a backslash is part of a name. */
+const PATH_SEPARATORS = process.platform === "win32" ? ["/", "\\"] : ["/"];
+const parentOf = (path: string) => path.slice(0, Math.max(...PATH_SEPARATORS.map((separator) => path.lastIndexOf(separator))) + 1);
+
 const isDirectoryEntry = async (directory: string, entry: Dirent) =>
   entry.isDirectory() || (entry.isSymbolicLink() && Boolean((await stat(join(directory, entry.name)).catch(() => null))?.isDirectory()));
 
 async function completePath(workspaceDirectory: string, typed: string): Promise<MentionSuggestion[]> {
   const path = typed === "~" ? "~/" : typed;
-  const typedParent = path.slice(0, path.lastIndexOf("/") + 1);
+  const typedParent = parentOf(path);
   const partialName = path.slice(typedParent.length).toLowerCase();
-  const directory = typedParent.startsWith("/") || typedParent.startsWith("~") ? expandHome(typedParent) : resolve(workspaceDirectory, typedParent);
+  const directory = isAbsolute(typedParent) || typedParent.startsWith("~") ? expandHome(typedParent) : resolve(workspaceDirectory, typedParent);
   const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
   const matching = entries
     .filter(({ name }) => name.toLowerCase().startsWith(partialName) && (partialName.startsWith(".") || !name.startsWith(".")))
@@ -62,7 +66,7 @@ async function walkFiles(root: string) {
   let level = [""];
   for (let depth = 0; depth < MAX_WALK_DEPTH && level.length > 0 && files.length < MAX_WALKED_FILES; depth++) {
     const listed = await Promise.all(level.map(async (relative) => ({ relative, entries: await readdir(join(root, relative), { withFileTypes: true }).catch(() => []) })));
-    const visible = listed.flatMap(({ relative, entries }) => entries.filter(({ name }) => !name.startsWith(".")).map((entry) => ({ entry, path: join(relative, entry.name) })));
+    const visible = listed.flatMap(({ relative, entries }) => entries.filter(({ name }) => !name.startsWith(".")).map((entry) => ({ entry, path: posix.join(relative, entry.name) })));
     files.push(...visible.filter(({ entry }) => entry.isFile()).map(({ path }) => path));
     level = visible.filter(({ entry }) => entry.isDirectory() && !SKIPPED_WHILE_WALKING.has(entry.name)).map(({ path }) => path);
   }

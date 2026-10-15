@@ -45,6 +45,22 @@ describe("@mentions", () => {
     expect((await mentionSuggestions(workspace, "~/")).every(({ path }) => path.startsWith("~/"))).toBe(true);
   });
 
+  test.if(process.platform === "win32")("on Windows a path may be typed with backslashes", async () => {
+    expect(await paths(`${workspace}\\do`)).toEqual([`${workspace}\\docs/`]);
+    expect(await paths(".\\src\\")).toEqual([".\\src\\server/", ".\\src\\web/"]);
+  });
+
+  test("outside git, words search the workspace's files and their directories by the same names", async () => {
+    const plainFolder = mkdtempSync(join(tmpdir(), "mirador-mentions-plain-"));
+    mkdirSync(join(plainFolder, "src", "server"), { recursive: true });
+    writeFileSync(join(plainFolder, "src", "server", "main.ts"), "");
+    try {
+      expect((await mentionSuggestions(plainFolder, "server")).map(({ path }) => path)).toEqual(["src/server/", "src/server/main.ts"]);
+    } finally {
+      rmSync(plainFolder, { recursive: true, force: true });
+    }
+  });
+
   test("words search the workspace's files and directories that git does not ignore, the closest match first", async () => {
     expect(await paths("main")).toEqual(["src/web/Main.tsx", "src/server/main.ts"]);
     expect((await paths("server"))[0]).toBe("src/server/");

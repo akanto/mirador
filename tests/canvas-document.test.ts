@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { resolveAsset } from "../host/canvas/assets.ts";
 import { buildCanvasDocument, TEXT_CONTRAST_SCRIPT } from "../shared/canvas-document.ts";
 
@@ -75,8 +76,8 @@ describe("readableTextColor", () => {
 
 describe("resolveAsset", () => {
   test("serves library files", () => {
-    expect(resolveAsset("/d3.min.js")).toEndWith("d3/dist/d3.min.js");
-    expect(resolveAsset("/three/addons/controls/OrbitControls.js")).toEndWith("three/examples/jsm/controls/OrbitControls.js");
+    expect(resolveAsset("/d3.min.js")).toEndWith(join("d3", "dist", "d3.min.js"));
+    expect(resolveAsset("/three/addons/controls/OrbitControls.js")).toEndWith(join("three", "examples", "jsm", "controls", "OrbitControls.js"));
   });
 
   test("refuses paths outside the mounted directories", () => {

@@ -5,7 +5,7 @@
  * files; and every package's source maps and type declarations.
  */
 import { existsSync, readdirSync, readFileSync, rmdirSync, rmSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, normalize, relative } from "node:path";
 
 /** What host/canvas/assets.ts serves of mermaid, with what resolving the package and its licence need. */
 export const MERMAID_FILES_KEPT = ["package.json", "LICENSE", "dist/mermaid.min.js"];
@@ -67,8 +67,9 @@ function removeEmptyFolders(folder: string) {
 }
 
 function keepOnly(folder: string, kept: string[]) {
+  const keptPaths = kept.map(normalize);
   filesUnder(folder)
-    .filter((file) => !kept.includes(relative(folder, file)))
+    .filter((file) => !keptPaths.includes(relative(folder, file)))
     .forEach((file) => rmSync(file));
 }
 

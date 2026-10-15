@@ -1,6 +1,6 @@
 import { RequestError } from "@agentclientprotocol/sdk";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { harnessIds, harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
 import { canvasUseGuidance } from "../canvas/guidance.ts";
 import { jobWaitGuidance } from "../job-waits.ts";
@@ -17,7 +17,7 @@ const claudeAgentEntry = join(
 /** Where opencode's installers put it, for hosts started without a login shell's PATH (e.g. by launchd). */
 const opencodeInstallDirectories = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".opencode", "bin")];
 
-const findOpencode = () => Bun.which("opencode") ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(":") });
+const findOpencode = () => Bun.which("opencode") ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(delimiter) });
 
 function opencodeCommand(): string[] {
   const executable = findOpencode();

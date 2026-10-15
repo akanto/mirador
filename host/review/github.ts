@@ -1,3 +1,4 @@
+import { delimiter } from "node:path";
 import { answersOf, isCommentable, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 
 const PULL_REQUEST_URL = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#]\S*)?$/;
@@ -16,7 +17,7 @@ export type GitHubCli = (args: string[], body?: unknown) => Promise<unknown>;
 const GH_INSTALL_DIRECTORIES = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
 const GH_CHECK_TIMEOUT_MS = 10_000;
 
-const ghSearchPath = () => [process.env.PATH, ...GH_INSTALL_DIRECTORIES].filter(Boolean).join(":");
+const ghSearchPath = () => [process.env.PATH, ...GH_INSTALL_DIRECTORIES].filter(Boolean).join(delimiter);
 
 export const ghCli: GitHubCli = async (args, body) => {
   const executable = Bun.which("gh", { PATH: ghSearchPath() });

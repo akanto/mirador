@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import type { ClaudeProgram } from "../../shared/model.ts";
 
 /** Where Claude Code's installers put it (native, Homebrew, npm), for hosts started without a login shell's PATH. */
@@ -14,7 +14,7 @@ export const claudeProgramMissing = (configured: string) =>
 /** The Claude Code this computer has: the program set in Settings, else the claude on PATH or in an installer's directory. */
 export function findClaudeProgram(configured: string, path = process.env.PATH): string | null {
   if (configured) return Bun.which(configured.replace(/^~(?=\/)/, homedir()));
-  return Bun.which("claude", { PATH: path }) ?? Bun.which("claude", { PATH: claudeInstallDirectories().join(":") });
+  return Bun.which("claude", { PATH: path }) ?? Bun.which("claude", { PATH: claudeInstallDirectories().join(delimiter) });
 }
 
 /** A broken install can hang on --version, e.g. one stuck on a terminal; its version stays unknown rather than holding up Settings. */

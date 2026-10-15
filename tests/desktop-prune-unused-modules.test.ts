@@ -57,6 +57,6 @@ test("pruning keeps mermaid's served file and what the rest of the app needs, an
 test("every file the canvas serves from a pruned package survives pruning", () => {
   const servedFromModules = (pathname: string) => relative(join(import.meta.dir, "..", "node_modules"), resolveAsset(pathname)!);
 
-  expect(MERMAID_FILES_KEPT.map((file) => `mermaid/${file}`)).toContain(servedFromModules("/mermaid.min.js"));
+  expect(MERMAID_FILES_KEPT.map((file) => join("mermaid", file))).toContain(servedFromModules("/mermaid.min.js"));
   ["/three/build/three.module.js", "/three/addons/controls/OrbitControls.js"].forEach((pathname) => expect(servedFromModules(pathname)).not.toStartWith("three/src/"));
 });
