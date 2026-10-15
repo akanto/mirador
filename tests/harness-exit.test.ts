@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HarnessProcess } from "../host/acp/harness.ts";
+import { fakeProgram } from "./fake-program.ts";
 
 /** Answers initialize and session/new, then dies with exit code 3 in the middle of the first prompt. */
 const crashingAgent = `
@@ -50,6 +51,29 @@ function crashingHarness(agent = crashingAgent) {
     directory,
   );
 }
+
+describe("HarnessProcess.start", () => {
+  test("starts an agent whose program is a script, on Windows a .cmd as npm installs opencode, in a folder whose name holds a space", async () => {
+    const directory = join(mkdtempSync(join(tmpdir(), "mirador-harness-script-")), "npm global");
+    mkdirSync(directory);
+    const harness = new HarnessProcess(
+      {
+        id: "opencode",
+        label: "Scripted agent",
+        logName: "scripted",
+        command: [fakeProgram(directory, "opencode", crashingAgent), "acp"],
+        environment: { ...process.env } as Record<string, string>,
+        prelaunch: "",
+        startsOneAtATime: false,
+      },
+      { onSessionUpdate: () => {}, onPermissionRequest: async () => ({ outcome: { outcome: "cancelled" } } as never), onExit: () => {} },
+      directory,
+    );
+    await harness.start();
+    expect(await harness.newSession({ cwd: tmpdir(), mcpServers: [] })).toMatchObject({ sessionId: "crashing" });
+    await harness.stop();
+  }, 15_000);
+});
 
 describe("HarnessProcess.prompt", () => {
   test("fails with how the agent process went away when it dies during the turn, not with a closed connection", async () => {

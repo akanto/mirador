@@ -1,0 +1,52 @@
+name: Windows e2e spike
+
+on:
+  push:
+    branches: [windows-e2e-spike]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install chromium
+      # As in the unit tests: Git for Windows puts only its cmd folder on PATH, so a user's Windows has no sh, sleep or
+      # openssl there; the runner's PATH has them, from Git's other folders and from OpenSSL.
+      - shell: pwsh
+        run: |
+          $unixTools = "sh.exe", "sleep.exe", "openssl.exe"
+          $env:Path = ($env:Path -split ";" | Where-Object { $folder = $_; $folder -and -not ($unixTools | Where-Object { Test-Path -LiteralPath (Join-Path $folder $_) }) }) -join ";"
+          "::group::What the specs run with"
+          "TEMP: $env:TEMP"
+          "core.autocrlf: $(git config --get core.autocrlf)"
+          where.exe git bun node pwsh powershell bash sh ps
+          "::endgroup::"
+          bunx playwright test e2e/streamed-reply.spec.ts
+      - if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force e2e-logs | Out-Null
+          Get-ChildItem -Path $env:TEMP -Directory -Filter "mirador-e2e-*" | ForEach-Object {
+            $hostDir = $_
+            Get-ChildItem -Path $hostDir.FullName -Recurse -File -Include *.log | ForEach-Object {
+              $target = Join-Path e2e-logs ($hostDir.Name + "-" + $_.Name)
+              Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?token' } | Set-Content -LiteralPath $target
+            }
+          }
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-e2e-results
+          path: |
+            test-results/
+            e2e-logs/
+          if-no-files-found: ignore

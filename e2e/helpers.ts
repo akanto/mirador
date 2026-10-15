@@ -48,8 +48,11 @@ export async function addWorkspace(page: Page, directory: string) {
   await expect(workspaceCard(page, directory)).toBeVisible();
 }
 
+/** A Windows path's backslashes would start CSS escapes: in "C:\Users\…\AppData", \A is a line feed. */
+const cssString = (text: string) => `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+
 export const workspaceCard = (scope: Page | FrameLocator, directory: string) =>
-  scope.locator(".workspace", { has: scope.locator(`.workspace-heading[title="${directory}"]`) });
+  scope.locator(".workspace", { has: scope.locator(`.workspace-heading[title=${cssString(directory)}]`) });
 
 /** With the sidebar's button, which shows whether or not there are workspaces already. */
 export async function addWorkspaceFromSidebar(page: Page, directory: string) {
