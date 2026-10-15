@@ -1,5 +1,7 @@
-import Electrobun, { BrowserWindow, Utils } from "electrobun/main";
+import Electrobun, { BrowserWindow, PATHS, Utils } from "electrobun/main";
+import { join } from "node:path";
 import { navigationRules } from "../core/navigation.ts";
+import { giveWindowIcon } from "../core/window-icon.ts";
 import { setDockIconVisible } from "./dock.ts";
 
 interface HostMessageEvent {
@@ -7,6 +9,11 @@ interface HostMessageEvent {
 }
 
 const WINDOW_SIZE = { width: 1280, height: 800 };
+
+/** Windows takes the icon of a window's title bar and taskbar button from the window, and Electrobun gives it none. */
+function showAppIcon(window: BrowserWindow) {
+  if (process.platform === "win32" && window.ptr !== null) giveWindowIcon(BigInt(window.ptr), join(PATHS.RESOURCES_FOLDER, "app.ico"));
+}
 
 export class MainWindow {
   private window: BrowserWindow | null = null;
@@ -33,6 +40,7 @@ export class MainWindow {
     if (this.window) return this.bringToFront();
     // sandbox keeps Electrobun's bridge secret out of every frame, including the agents' canvas iframes.
     const window = new BrowserWindow({ title: this.title, url, frame: WINDOW_SIZE, sandbox: true });
+    showAppIcon(window);
     // The navigationRules constructor option is ignored by Electrobun 2.0.2; only this call takes effect.
     window.webview.setNavigationRules(navigationRules([this.appOrigin, ...this.framedOrigins]));
     window.on("close", () => {
