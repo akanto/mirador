@@ -73,7 +73,7 @@ bun install
 bun start                  # host on 127.0.0.1:4600, canvas assets on :4601
 bun run dev                # the same, with UI hot reload
 bunx tsc --noEmit -p .     # type check
-bun test tests/            # unit tests
+bun run test               # unit tests
 scripts/e2e.sh [e2e/<spec>.spec.ts ...]   # e2e on this machine, 4 workers, from a copy of the tree
 scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu via Docker
 scripts/test-spec.sh e2e/<spec>.spec.ts   # just those specs, in Docker

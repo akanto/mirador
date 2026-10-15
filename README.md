@@ -391,7 +391,7 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 
 ```bash
 bun run typecheck
-bun test tests          # unit tests
+bun run test            # unit tests
 bunx playwright test    # e2e: a real Claude Code on haiku, opencode against a scripted fake model (installed Google Chrome on macOS, Playwright's Chromium elsewhere)
 MIRADOR_E2E_MINIMAL_ENV=1 bunx playwright test e2e/agent-flow.spec.ts   # host started with a bare environment
 MIRADOR_EXPERIMENT=1 MIRADOR_TEST_MODEL=default MIRADOR_TEST_EFFORT=default bunx playwright test e2e/experiment-unprompted.spec.ts
