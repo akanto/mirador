@@ -1,23 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installedAppPath } from "../desktop/src/core/app-bundle.ts";
 import { hostArgv, isHostCommandLine, loginShell } from "../desktop/src/core/host-command.ts";
+import { spawnOwnedHost } from "../desktop/src/core/host-process.ts";
+import { systemProcesses } from "../desktop/src/core/processes.ts";
 import { authUrl, dataPaths, hostEnvironmentOverrides, resolveRuntime } from "../desktop/src/core/runtime.ts";
 import { relayPorts } from "../shared/relay-ports.ts";
 
 const home = "/Users/someone";
 
-/** The desktop app does not run on Windows yet: its paths and the way it starts its host there are still to come. */
-const testOnceTheDesktopRunsOnWindows = test.todoIf(process.platform === "win32");
-
 describe("runtime", () => {
-  testOnceTheDesktopRunsOnWindows("defaults to the real app's port, its canvas port and data directory", () => {
+  test("defaults to the real app's port, its canvas port and data directory", () => {
     expect(resolveRuntime({}, home)).toEqual({
       port: 4600,
       canvasPort: 4601,
-      dataDir: "/Users/someone/.mirador",
+      dataDir: join(home, ".mirador"),
       origin: "http://127.0.0.1:4600",
       canvasOrigin: "http://127.0.0.1:4601",
       relayOrigins: expect.any(Array),
@@ -51,14 +50,14 @@ describe("runtime", () => {
     expect(hostEnvironmentOverrides(resolveRuntime({ MIRADOR_PORT: "4790" }, home), home)).toEqual({ MIRADOR_PORT: "4790" });
   });
 
-  testOnceTheDesktopRunsOnWindows("keeps the app's own files in the data directory", () => {
+  test("keeps the app's own files in the data directory", () => {
     expect(dataPaths("/data")).toEqual({
-      settings: "/data/desktop.json",
-      ownedHostPid: "/data/desktop-host.pid",
-      hostLog: "/data/logs/host.log",
-      desktopLog: "/data/logs/desktop.log",
-      browserToken: "/data/browser-token",
-      pendingUpdate: "/data/desktop-update-pending",
+      settings: join("/data", "desktop.json"),
+      ownedHostPid: join("/data", "desktop-host.pid"),
+      hostLog: join("/data", "logs", "host.log"),
+      desktopLog: join("/data", "logs", "desktop.log"),
+      browserToken: join("/data", "browser-token"),
+      pendingUpdate: join("/data", "desktop-update-pending"),
     });
   });
 
@@ -78,7 +77,7 @@ describe("host command", () => {
     ]);
   });
 
-  testOnceTheDesktopRunsOnWindows("finds the host's entry even when the user's profile changes directory", () => {
+  test.skipIf(process.platform === "win32")("finds the host's entry even when the user's profile changes directory", () => {
     const home = mkdtempSync(join(tmpdir(), "mirador-home-"));
     const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
     writeFileSync(join(home, ".bash_profile"), "cd /\n");
@@ -132,10 +131,19 @@ describe("host command", () => {
     expect(isHostCommandLine('/bin/zsh -ilc cd -- "$0" && exec "$@" /Apps/mirador /Users/me/.bun/bin/bun host/main.ts')).toBe(true);
   });
 
+  test("recognises a host Windows started, whose program may be quoted and whose entry may use Windows' separator", () => {
+    expect(isHostCommandLine("C:\\Users\\me\\.bun\\bin\\bun.exe host/main.ts")).toBe(true);
+    expect(isHostCommandLine('"C:\\Program Files\\Mirador\\app\\bin\\bun.exe" host/main.ts')).toBe(true);
+    expect(isHostCommandLine("C:\\Users\\me\\.bun\\bin\\BUN.EXE host\\main.ts")).toBe(true);
+    expect(isHostCommandLine("bun.exe host/main.ts")).toBe(true);
+  });
+
   test("does not mistake other processes for a host", () => {
     expect(isHostCommandLine("vim host/main.ts")).toBe(false);
     expect(isHostCommandLine("/Users/me/.bun/bin/bun host/main.ts --watch")).toBe(false);
     expect(isHostCommandLine("/usr/bin/python3 server.py")).toBe(false);
+    expect(isHostCommandLine("C:\\Tools\\notbun.exe host/main.ts")).toBe(false);
+    expect(isHostCommandLine("C:\\Windows\\notepad.exe host\\main.ts")).toBe(false);
     expect(isHostCommandLine("")).toBe(false);
   });
 });
@@ -152,8 +160,59 @@ describe("installed app", () => {
     );
   });
 
+  test("is the launcher beside the runtime on Windows", () => {
+    expect(installedAppPath("C:\\Users\\me\\AppData\\Local\\com.sodre90.mirador\\stable\\app\\bin\\bun.exe", "win32")).toBe(
+      "C:\\Users\\me\\AppData\\Local\\com.sodre90.mirador\\stable\\app\\bin\\launcher.exe",
+    );
+  });
+
   test("is absent when bun runs outside an installed app", () => {
     expect(installedAppPath("/Users/me/.bun/bin/bun", "darwin")).toBeNull();
     expect(installedAppPath("/home/me/.bun/bin/bun", "linux")).toBeNull();
+    expect(installedAppPath("C:\\Users\\me\\.bun\\bin\\bun.exe", "win32")).toBeNull();
+  });
+});
+
+async function lineWrittenTo(path: string) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const text = existsSync(path) ? readFileSync(path, "utf8") : "";
+    if (text.endsWith("\n")) return text;
+    await Bun.sleep(50);
+  }
+  throw new Error(`Nothing was written to ${path}`);
+}
+
+describe("owned host", () => {
+  test("on Windows starts on Bun itself, in the host's directory, with the overrides in its environment", async () => {
+    const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
+    const logPath = join(hostDirectory, "logs", "host.log");
+    mkdirSync(join(hostDirectory, "host"));
+    writeFileSync(join(hostDirectory, "host", "main.ts"), "console.log(JSON.stringify({ directory: process.cwd(), port: process.env.MIRADOR_PORT }));\n");
+    try {
+      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: { MIRADOR_PORT: "4790" }, logPath }, "win32");
+      expect(pid).toBeGreaterThan(0);
+      expect(JSON.parse(await lineWrittenTo(logPath))).toEqual({ directory: realpathSync(hostDirectory), port: "4790" });
+    } finally {
+      rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform !== "win32")("on Windows is recognised by its command line while it runs, and not once it was ended", async () => {
+    const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
+    mkdirSync(join(hostDirectory, "host"));
+    writeFileSync(join(hostDirectory, "host", "main.ts"), "await Bun.sleep(60_000);\n");
+    try {
+      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: {}, logPath: join(hostDirectory, "host.log") }, "win32");
+      const commandLine = systemProcesses.commandLine(pid);
+      expect(commandLine).toEndWith(" host/main.ts");
+      expect(isHostCommandLine(commandLine!)).toBe(true);
+      systemProcesses.terminate(pid);
+      const deadline = Date.now() + 5_000;
+      while (systemProcesses.commandLine(pid) !== null && Date.now() < deadline) await Bun.sleep(50);
+      expect(systemProcesses.commandLine(pid)).toBeNull();
+    } finally {
+      rmSync(hostDirectory, { recursive: true, force: true });
+    }
   });
 });

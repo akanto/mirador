@@ -1,12 +1,13 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { commandLineOf } from "./windows-processes.ts";
 
 export interface ProcessTable {
   commandLine(pid: number): string | null;
   terminate(pid: number): void;
 }
 
-export const systemProcesses: ProcessTable = {
+const unixProcesses: ProcessTable = {
   commandLine(pid) {
     const listing = Bun.spawnSync(["ps", "-p", String(pid), "-o", "command="]);
     const commandLine = listing.exitCode === 0 ? listing.stdout.toString().trim() : "";
@@ -16,6 +17,17 @@ export const systemProcesses: ProcessTable = {
     process.kill(pid, "SIGTERM");
   },
 };
+
+/** Windows has no ps, and the system tells a command line without the app running a program every few seconds. */
+const windowsProcesses: ProcessTable = {
+  commandLine: commandLineOf,
+  /** Windows has no SIGTERM, so the host ends at once, without stopping its services first. */
+  terminate(pid) {
+    process.kill(pid, "SIGTERM");
+  },
+};
+
+export const systemProcesses = process.platform === "win32" ? windowsProcesses : unixProcesses;
 
 export interface PidFile {
   read(): number | null;

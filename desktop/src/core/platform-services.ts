@@ -11,7 +11,6 @@ export interface PlatformContext {
   port: number;
   home: string;
   configHome: string;
-  uid: number;
   appPath: string | null;
   shell: string;
   overrides: Record<string, string>;
@@ -23,9 +22,31 @@ export interface PlatformServices {
   background: BackgroundHost;
 }
 
-/** launchd LaunchAgents on macOS; on Linux a systemd user service for the host and an XDG autostart entry for the app. */
+const notOnWindowsYet = (what: string) => new Error(`${what} is not available on Windows yet.`);
+
+const noLoginItem: LoginItem = {
+  available: false,
+  enable() {
+    throw notOnWindowsYet("Opening Mirador at login");
+  },
+  disable() {},
+};
+
+const noBackgroundHost: BackgroundHost = {
+  isLoaded: async () => false,
+  ensureLoaded: async () => {
+    throw notOnWindowsYet("Running the host in the background");
+  },
+  restart: async () => {},
+  remove: async () => {},
+};
+
+/**
+ * launchd LaunchAgents on macOS; on Linux a systemd user service for the host and an XDG autostart entry for the app.
+ * Windows has neither yet, so there the app runs the host it owns.
+ */
 export function platformServices(context: PlatformContext): PlatformServices {
-  const { platform, appName, port, home, configHome, uid, appPath, shell, overrides, hostLog } = context;
+  const { platform, appName, port, home, configHome, appPath, shell, overrides, hostLog } = context;
   const backgroundEnvironment = { shell, overrides, logPath: hostLog };
   if (platform === "linux") {
     return {
@@ -33,7 +54,8 @@ export function platformServices(context: PlatformContext): PlatformServices {
       background: new HostUserService(port, userUnitPath(configHome, hostServiceName(port)), backgroundEnvironment),
     };
   }
-  const agentAt = (label: string) => new LaunchAgent(label, launchAgentPath(home, label), uid);
+  if (platform === "win32") return { openAtLogin: noLoginItem, background: noBackgroundHost };
+  const agentAt = (label: string) => new LaunchAgent(label, launchAgentPath(home, label), process.getuid!());
   return {
     openAtLogin: new OpenAtLogin(agentAt(openAtLoginLabel(port)), appPath, overrides),
     background: new BackgroundHostAgent(agentAt(hostAgentLabel(port)), backgroundEnvironment),

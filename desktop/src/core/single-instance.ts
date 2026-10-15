@@ -16,9 +16,9 @@ async function reachesRunningInstance(socketPath: string) {
 }
 
 /**
- * Linux tells a running app nothing when it is launched again (macOS sends "reopen"), so a second launch connects to
- * the first one's socket, which opens its window, and gets null back so it can quit. The newcomer hangs up: had the
- * first one closed the connection, the newcomer could see it reset before it opened and start a second app.
+ * Linux and Windows tell a running app nothing when it is launched again (macOS sends "reopen"), so a second launch
+ * connects to the first one's socket, which opens its window, and gets null back so it can quit. The newcomer hangs up:
+ * had the first one closed the connection, the newcomer could see it reset before it opened and start a second app.
  * Binding is the claim, so of two launches at the same moment only one gets the socket.
  */
 export async function claimSingleInstance(socketPath: string, onLaunchedAgain: () => void): Promise<InstanceLock | null> {

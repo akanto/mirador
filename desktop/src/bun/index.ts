@@ -22,7 +22,7 @@ const miradorInsideApp = { hostDirectory: join(PATHS.RESOURCES_FOLDER, "app", "m
 let app: DesktopApp | undefined;
 
 async function isLaunchedAgain() {
-  if (process.platform !== "linux") return false;
+  if (process.platform === "darwin") return false;
   const socketPath = join(runtime.dataDir, `desktop-${runtime.port}.sock`);
   return (await claimSingleInstance(socketPath, () => void app?.openWindow())) === null;
 }
@@ -36,7 +36,6 @@ async function launch() {
     shell: loginShell(process.env, accountShell()),
     home,
     configHome: process.env.XDG_CONFIG_HOME || join(home, ".config"),
-    uid: process.getuid!(),
     appPath: installedAppPath(process.execPath),
     isPackaged: Electrobun.app.isPackaged,
     builtFromCode: BUILD_DESKTOP_APP_CODE,

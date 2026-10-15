@@ -1,9 +1,8 @@
 import { Utils } from "electrobun/main";
 import { readFileSync } from "node:fs";
 import type { NewerVersion } from "../../../shared/newer-version.ts";
-import { hostArgv } from "../core/host-command.ts";
 import { HostNotifications, nativeNotification } from "../core/host-notifications.ts";
-import { hostAnswers, spawnDetachedHost } from "../core/host-process.ts";
+import { hostAnswers, spawnOwnedHost } from "../core/host-process.ts";
 import { HostSupervisor, type HostStatus } from "../core/host-supervisor.ts";
 import type { LoginItem } from "../core/open-at-login.ts";
 import type { SelfUpdate, UpdateOffer } from "../core/self-update.ts";
@@ -31,7 +30,6 @@ export interface DesktopEnvironment {
   shell: string;
   home: string;
   configHome: string;
-  uid: number;
   appPath: string | null;
   isPackaged: boolean;
   /** What the app was built from, for the host to tell when its checkout has moved on; a release build has none. */
@@ -54,7 +52,7 @@ export class DesktopApp {
   private readonly pageNonce = crypto.randomUUID();
 
   constructor(private readonly environment: DesktopEnvironment) {
-    const { appName, runtime, paths, settings, shell, home, configHome, uid, appPath } = environment;
+    const { appName, runtime, paths, settings, shell, home, configHome, appPath } = environment;
     const overrides = hostEnvironmentOverrides(runtime, home);
     const { openAtLogin, background } = platformServices({
       platform: process.platform,
@@ -62,7 +60,6 @@ export class DesktopApp {
       port: runtime.port,
       home,
       configHome,
-      uid,
       appPath,
       shell,
       overrides,
@@ -74,7 +71,7 @@ export class DesktopApp {
       logPath: paths.hostLog,
       settings,
       hostAnswers: () => hostAnswers(runtime.origin),
-      spawnHost: (current) => spawnDetachedHost(hostArgv(shell, current.bun, overrides, current.hostDirectory), current.hostDirectory, paths.hostLog),
+      spawnHost: (current) => spawnOwnedHost(current, { shell, overrides, logPath: paths.hostLog }),
       processes: systemProcesses,
       pidFile: new PidFileOnDisk(paths.ownedHostPid),
       background,

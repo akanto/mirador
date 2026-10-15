@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 
-const HOST_ENTRY = "host/main.ts";
+export const HOST_ENTRY = "host/main.ts";
 /** Goes to the directory given first and hands its pid to the command after it, in the login shell's own syntax. */
 const BACK_TO_DIRECTORY_AND_EXEC = { posix: 'cd -- "$0" && exec "$@"', fish: "cd -- $argv[1] && exec $argv[2..-1]" };
 
@@ -16,10 +16,13 @@ export function hostArgv(shell: string, bun: string, overrides: Record<string, s
   return [shell, "-ilc", script, hostDirectory, ...command];
 }
 
-/** `exec` keeps the pid, so a live host shows up in `ps` as just the bun invocation. */
+/** Windows writes the entry with its own separator once the host has started itself again. */
+const HOST_ENTRIES = [HOST_ENTRY, HOST_ENTRY.replace("/", "\\")];
+/** Windows quotes a program whose path has spaces in it. */
+const BUN_PROGRAM_AT_END = /(^|[/\\])bun(\.exe)?"?$/i;
+
+/** `exec` keeps the pid, so a live host shows up in `ps` as just the bun invocation; Windows starts it without a shell. */
 export function isHostCommandLine(commandLine: string) {
-  const suffix = ` ${HOST_ENTRY}`;
-  if (!commandLine.endsWith(suffix)) return false;
-  const executable = commandLine.slice(0, -suffix.length);
-  return executable === "bun" || executable.endsWith("/bun");
+  const entry = HOST_ENTRIES.find((candidate) => commandLine.endsWith(` ${candidate}`));
+  return entry !== undefined && BUN_PROGRAM_AT_END.test(commandLine.slice(0, -entry.length - 1));
 }
