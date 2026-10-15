@@ -75,6 +75,23 @@ describe("HarnessProcess.prompt", () => {
     await expect(prompt).rejects.toThrow("The Crashing agent agent process was restarted because its profile changed.");
   }, 15_000);
 
+  test("fails with that it was stopped when the host stops the agent during the turn without a reason, as at shutdown, on Windows too", async () => {
+    const harness = crashingHarness();
+    await harness.start();
+    const { sessionId } = await harness.newSession({ cwd: tmpdir(), mcpServers: [] });
+    const prompt = harness.prompt(sessionId, [{ type: "text", text: "hello" }]);
+    void harness.stop();
+    await expect(prompt).rejects.toThrow("The Crashing agent agent process was stopped.");
+  }, 15_000);
+
+  test("a stop while no agent process runs is not why the next one goes away", async () => {
+    const harness = crashingHarness();
+    await harness.stop();
+    await harness.start();
+    const { sessionId } = await harness.newSession({ cwd: tmpdir(), mcpServers: [] });
+    await expect(harness.prompt(sessionId, [{ type: "text", text: "hello" }])).rejects.toThrow("The Crashing agent agent process exited with 3.");
+  }, 15_000);
+
   test.if(process.platform === "win32")("on Windows stopping the agent ends what it started too, as no stop signal there lets the agent end it", async () => {
     const pidFile = join(mkdtempSync(join(tmpdir(), "mirador-harness-child-")), "child.pid");
     const harness = crashingHarness(crashingAgentWithAChildApart(pidFile));

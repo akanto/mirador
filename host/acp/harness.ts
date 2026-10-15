@@ -133,8 +133,9 @@ export class HarnessProcess {
    * likes — claude-agent-acp disposes itself on SIGTERM, which wedges when the turn is wedged — so the grace
    * period ends with SIGKILL; a connection left closed and uncleaned would fail every later prompt of its own kind.
    * Windows has no stop signal, so there the agent cannot end what it started: it is killed at once with all of it.
+   * Either way the agent process went away because it was stopped, not with the exit code or signal that ended it.
    */
-  stop(reason?: string) {
+  stop(reason = "was stopped") {
     this.stopReason = reason;
     const child = this.child;
     this.connection?.close();
@@ -175,6 +176,7 @@ export class HarnessProcess {
   }
 
   private async launch() {
+    this.stopReason = undefined;
     await this.runPrelaunch();
     const [command, ...args] = this.spec.command;
     const child = spawn(command!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.spec.environment });

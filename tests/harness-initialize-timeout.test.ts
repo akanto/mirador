@@ -68,6 +68,6 @@ describe("HarnessProcess.start", () => {
     const { harness, exits } = harnessRunning(refusingAgent);
     await expect(harness.start()).rejects.toThrow("no thanks");
     await until(() => exits.length > 0);
-    expect(exits).toEqual(["exited with SIGTERM"]);
+    expect(exits).toEqual(["was stopped"]);
   }, 15_000);
 });
