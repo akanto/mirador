@@ -286,7 +286,7 @@ ${TEXT_CONTRAST_SCRIPT}
     left: wheelPixels(turn.deltaX, turn.deltaMode, node.clientWidth),
     top: wheelPixels(turn.deltaY, turn.deltaMode, node.clientHeight),
   });
-  // WebKit does not natively scroll these sandboxed srcdoc frames. The first turns on a node show whether the engine
+  // WebKit may not natively scroll these sandboxed frames. The first turns on a node show whether the engine
   // scrolls it; where it does not, those turns are made up for and every later one scrolls here at once, so a
   // touchpad's stream of small turns neither lags nor gets lost.
   const engineScrolls = new WeakMap();
