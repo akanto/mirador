@@ -7,6 +7,7 @@ import { loginShell } from "../core/host-command.ts";
 import { dataPaths, resolveRuntime } from "../core/runtime.ts";
 import { SettingsStore } from "../core/settings.ts";
 import { claimSingleInstance } from "../core/single-instance.ts";
+import { recordStartupFailure } from "../core/startup-failure.ts";
 import { installApplicationMenu } from "./app-menu.ts";
 import { DesktopApp } from "./desktop-app.ts";
 
@@ -47,5 +48,15 @@ async function launch() {
   await app.start();
 }
 
-if (await isLaunchedAgain()) Utils.quit();
-else await launch();
+async function tellStartupFailed(error: unknown) {
+  const notice = recordStartupFailure(APP_NAME, error, paths.desktopLog);
+  await Utils.showMessageBox({ type: "error", ...notice, buttons: ["OK"] });
+  Utils.quit();
+}
+
+try {
+  if (await isLaunchedAgain()) Utils.quit();
+  else await launch();
+} catch (error) {
+  await tellStartupFailed(error);
+}

@@ -48,6 +48,7 @@ export interface DataPaths {
   settings: string;
   ownedHostPid: string;
   hostLog: string;
+  desktopLog: string;
   browserToken: string;
   /** Written before the app hands over to the updater, and cleared by the next start: that start is running new files. */
   pendingUpdate: string;
@@ -57,6 +58,7 @@ export const dataPaths = (dataDir: string): DataPaths => ({
   settings: join(dataDir, "desktop.json"),
   ownedHostPid: join(dataDir, "desktop-host.pid"),
   hostLog: join(dataDir, "logs", "host.log"),
+  desktopLog: join(dataDir, "logs", "desktop.log"),
   browserToken: join(dataDir, "browser-token"),
   pendingUpdate: join(dataDir, "desktop-update-pending"),
 });
