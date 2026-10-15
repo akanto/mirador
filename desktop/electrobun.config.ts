@@ -5,7 +5,7 @@ import { RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const hostDirectory = resolve(import.meta.dir, "..");
-const bun = Bun.which("bun") ?? join(homedir(), ".bun", "bin", "bun");
+const bun = Bun.which("bun") ?? join(homedir(), ".bun", "bin", process.platform === "win32" ? "bun.exe" : "bun");
 /** `bun run build:release`: the app carries Mirador, staged by scripts/stage-mirador.sh, instead of running this checkout. */
 const carriesMirador = process.env.MIRADOR_DESKTOP_RELEASE === "1";
 /** Worked out by the Bun the host runs on: Electrobun's command line may evaluate this file on another Bun, whose transpiler can write the same code differently. */
@@ -34,6 +34,7 @@ export default {
     },
     mac: { createDmg: false, icons: "icon.iconset", codesign: true },
     linux: { icon: "icon.iconset/icon_512x512.png" },
+    win: { icon: "icon.iconset/icon_256x256.png" },
   },
   /** Only a release build updates itself; its patches come from `make update-files`, as Electrobun's would diff the unsigned macOS app. */
   ...(carriesMirador && { release: { baseUrl: `https://github.com/${RELEASES_REPOSITORY}/releases/latest/download`, generatePatch: false } }),

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { buildMachineBun, bunInApp, shipBuildBun } from "../desktop/scripts/ship-build-bun.ts";
+import { BUN_PROGRAM, buildMachineBun, bunInApp, shipBuildBun } from "../desktop/scripts/ship-build-bun.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "mirador-ship-bun-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -34,13 +34,19 @@ describe("bunInApp", () => {
     expect(bunInApp(build, "linux")).toBe(bun);
   });
 
+  test("is in the bin folder of the Windows app", () => {
+    const build = newFolder();
+    const bun = fakeBun(join(build, "Mirador", "bin", "bun.exe"), "1.4.0");
+    expect(bunInApp(build, "win")).toBe(bun);
+  });
+
   test("needs exactly one app, and a system whose app it knows", () => {
     const build = newFolder();
     expect(() => bunInApp(build, "macos")).toThrow("found 0");
     fakeBun(join(build, "Mirador.app", "Contents", "MacOS", "bun"), "1.4.0");
     fakeBun(join(build, "Mirador-dev.app", "Contents", "MacOS", "bun"), "1.4.0");
     expect(() => bunInApp(build, "macos")).toThrow("found 2 among");
-    expect(() => bunInApp(build, "win")).toThrow("for win is not known yet");
+    expect(() => bunInApp(build, "freebsd")).toThrow("for freebsd is not known yet");
   });
 });
 
@@ -48,9 +54,9 @@ describe("buildMachineBun", () => {
   test("is the first Bun on the PATH, else the one in ~/.bun", () => {
     const home = newFolder();
     const empty = newFolder();
-    const first = fakeBun(join(home, "first", "bun"), "1.4.3");
-    fakeBun(join(home, "second", "bun"), "1.4.2");
-    const installed = fakeBun(join(home, ".bun", "bin", "bun"), "1.4.1");
+    const first = fakeBun(join(home, "first", BUN_PROGRAM), "1.4.3");
+    fakeBun(join(home, "second", BUN_PROGRAM), "1.4.2");
+    const installed = fakeBun(join(home, ".bun", "bin", BUN_PROGRAM), "1.4.1");
     expect(buildMachineBun([empty, dirname(first), join(home, "second")].join(delimiter), home)).toBe(first);
     expect(buildMachineBun(empty, home)).toBe(installed);
   });

@@ -11,12 +11,15 @@ import { delimiter, join, sep } from "node:path";
 const BUN_IN_APP: Record<string, string[]> = {
   macos: ["Contents", "MacOS", "bun"],
   linux: ["bin", "bun"],
+  win: ["bin", "bun.exe"],
 };
+
+export const BUN_PROGRAM = process.platform === "win32" ? "bun.exe" : "bun";
 
 /** Found as electrobun.config.ts finds it: the first on the PATH, else where Bun's installer puts it. */
 export function buildMachineBun(path = process.env.PATH ?? "", home = homedir()) {
-  const onPath = path.split(delimiter).filter(Boolean).map((folder) => join(folder, "bun")).find(existsSync);
-  const bun = onPath ?? join(home, ".bun", "bin", "bun");
+  const onPath = path.split(delimiter).filter(Boolean).map((folder) => join(folder, BUN_PROGRAM)).find(existsSync);
+  const bun = onPath ?? join(home, ".bun", "bin", BUN_PROGRAM);
   if (realpathSync(bun).startsWith(join(realpathSync(home), ".hutch") + sep)) throw new Error(`${bun} is the Bun Electrobun pins, not the build machine's`);
   return bun;
 }

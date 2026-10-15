@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "electrobun dev",
     "build:dev": "electrobun build --env=dev && bun scripts/add-local-network-usage.ts",
-    "build": "ELECTROBUN_DEVELOPER_ID=${ELECTROBUN_DEVELOPER_ID:--} electrobun build --env=stable && scripts/unwrap-macos-app.sh && bun scripts/add-local-network-usage.ts",
-    "build:release": "scripts/stage-mirador.sh && MIRADOR_DESKTOP_RELEASE=1 TAR_OPTIONS=--format=ustar ELECTROBUN_DEVELOPER_ID=${ELECTROBUN_DEVELOPER_ID:--} electrobun build --env=stable && scripts/unwrap-macos-app.sh && bun scripts/add-local-network-usage.ts",
+    "build": "bun scripts/build-app.ts",
+    "build:release": "bun scripts/build-app.ts --release",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
