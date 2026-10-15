@@ -366,7 +366,7 @@ body.resizing iframe {
 .dot.status-starting {
   background: var(--accent);
   border-color: var(--accent);
-  animation: pulse 1.4s infinite;
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
 .dot.status-error {
@@ -376,13 +376,13 @@ body.resizing iframe {
 
 .dot.waiting-on-job {
   border-color: var(--accent);
-  animation: pulse 2.8s infinite;
+  animation: var(--pulse) 2.8s var(--pulse-timing) infinite;
 }
 
 .dot.terminal-working {
   background: var(--ok);
   border-color: var(--ok);
-  animation: pulse 1.4s infinite;
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
 .dot.terminal-waiting {
@@ -551,6 +551,25 @@ body.resizing iframe {
 @keyframes pulse {
   50% {
     opacity: 0.4;
+  }
+}
+
+:root {
+  --pulse: pulse;
+  --pulse-timing: ease;
+}
+
+:root[data-pulses="stepped"] {
+  --pulse-timing: steps(4);
+}
+
+:root[data-pulses="off"] {
+  --pulse: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --pulse: none;
   }
 }
 
@@ -1848,7 +1867,7 @@ input.picker-search {
 
 .subagent-running > summary > .tool-status {
   color: var(--accent);
-  animation: pulse 1.4s infinite;
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
 .tool.subagent-running {
@@ -1911,7 +1930,7 @@ button.running-subagent:hover {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  animation: pulse 1.4s infinite;
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
 .subagent-done > summary > .tool-status {
@@ -2227,7 +2246,7 @@ button.edits-waiting {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  animation: pulse 1.4s infinite;
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
 .info-line {
@@ -2594,7 +2613,7 @@ button.edits-waiting {
 }
 
 .composer .stop-force {
-  animation: pulse 1.4s infinite;
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 45%, transparent);
 }
 

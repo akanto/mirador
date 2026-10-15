@@ -37,6 +37,7 @@ import { notifies, setNotificationsWanted, useNotificationSetting, type Notifica
 import { TERMINAL_FONT_SIZES, useTerminalFontSize } from "./terminal-font.ts";
 import { themeLabels, useTheme } from "./theme.ts";
 import { setCopyOnSelect, useCopyOnSelect } from "./terminal-settings.ts";
+import { usePulsesOn } from "./pulses.ts";
 import { useTimestampsShown } from "./timestamps.ts";
 import { setTypingAids, useTypingAids, type TypingAids } from "./typing-aids.ts";
 import { useWaitingStyle, waitingStyleLabels } from "./waiting.ts";
@@ -275,6 +276,7 @@ function PictureChoice<Option extends string>({
 function AppearanceSettings() {
   const [theme, setTheme] = useTheme();
   const [timestampsShown, setTimestampsShown] = useTimestampsShown();
+  const [pulsesOn, setPulsesOn] = usePulsesOn();
   const [fontScale, setFontScale] = useFontScale();
   const [waitingStyle, setWaitingStyle] = useWaitingStyle();
   const workspaceColorStyle = useWorkspaceColorStyle();
@@ -341,6 +343,10 @@ function AppearanceSettings() {
         <label data-hint={hints.timestamps}>
           <input type="checkbox" checked={timestampsShown} onChange={(event) => setTimestampsShown(event.target.checked)} />
           Show timestamps
+        </label>
+        <label data-hint={hints.pulses}>
+          <input type="checkbox" checked={pulsesOn} onChange={(event) => setPulsesOn(event.target.checked)} />
+          Pulse status dots
         </label>
       </div>
     </>

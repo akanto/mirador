@@ -120,6 +120,8 @@ export const hints = {
   shellFont: "Any font installed on this machine, by name, e.g. JetBrains Mono. Empty, or a font this machine lacks, shows the app's monospace font.",
   shellFontSize: "The size of shell blocks' text, against the app's text size.",
   timestamps: "Off: the time shows next to each author's name, and on a later line while you point at it.\nOn: every line shows its time.",
+  pulses:
+    "The dots of working conversations, and of ones waiting on a job, pulse. On Linux they change a few times a second, as each change makes the window redraw.\nOff: they stay still. They also stay still when your system asks for reduced motion.",
   textSize: "Text size across the app: 50%, 70%, 100%, 140%, or 200%. ⌘+ and ⌘− step it, ⌘0 resets.",
   theme: "Light, dark, or follow the system setting.",
   waitingStyle:
