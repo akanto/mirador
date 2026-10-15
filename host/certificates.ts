@@ -1,7 +1,8 @@
 import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, X509Certificate } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
+import { gitInstallFolders, onPathOf } from "./command-shell.ts";
 import { localNetworkName } from "./config.ts";
 
 const AUTHORITY_DAYS = 3650;
@@ -52,13 +53,26 @@ const subjectAltName = (names: string[]) => names.map((name) => (isIpAddress(nam
 /** Openssl's config parser expands $name inside values and reads " and \ as quoting; quoting with those escaped keeps any text verbatim. */
 export const opensslConfigValue = (value: string) => `"${value.replace(/["\\$]/g, "\\$&")}"`;
 
+/** Git for Windows ships openssl but its installer leaves it off PATH; the native build comes before the MSYS one. */
+const GIT_OPENSSL_FOLDERS = [win32.join("mingw64", "bin"), win32.join("usr", "bin")];
+
+export function findOpenssl(
+  environment: Record<string, string | undefined> = process.env,
+  { platform = process.platform, exists = existsSync, which = onPathOf(environment) }: { platform?: NodeJS.Platform; exists?: (path: string) => boolean; which?: (program: string) => string | null } = {},
+) {
+  const onPath = which("openssl");
+  if (onPath || platform !== "win32") return onPath;
+  const inGit = gitInstallFolders(which).flatMap((git) => GIT_OPENSSL_FOLDERS.map((folder) => win32.join(git, folder, "openssl.exe")));
+  return inGit.find((openssl) => exists(openssl)) ?? null;
+}
+
+export const opensslMissing = (platform = process.platform) =>
+  `Mirador needs openssl to make its certificate. ${platform === "win32" ? "Install Git for Windows, which comes with it" : "Install it"}, or give the host a certificate of your own (tlsCertificate and tlsKey).`;
+
 function openssl(directory: string, args: string[]) {
-  let result: ReturnType<typeof Bun.spawnSync>;
-  try {
-    result = Bun.spawnSync(["openssl", ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" });
-  } catch {
-    throw new Error("Mirador needs openssl to make its certificate. Install it, or give the host a certificate of your own (tlsCertificate and tlsKey).");
-  }
+  const program = findOpenssl();
+  if (!program) throw new Error(opensslMissing());
+  const result = Bun.spawnSync([program, ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" });
   if (result.exitCode !== 0) throw new Error(`openssl ${args[0]} failed: ${String(result.stderr ?? "").trim()}`);
 }
 

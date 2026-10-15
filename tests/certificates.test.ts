@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createPrivateKey, generateKeyPairSync, X509Certificate } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { authorityFingerprint, namesIn, namesToCover, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
+import { authorityFingerprint, findOpenssl, namesIn, namesToCover, opensslMissing, ownServingCertificate, type ServingCertificate } from "../host/certificates.ts";
 
 let dataDir: string;
 beforeEach(() => {
@@ -128,4 +128,29 @@ test("names that are not host names are left out of the names to cover, so the h
   } finally {
     logged.mockRestore();
   }
+});
+
+describe("the openssl Mirador makes its certificate with", () => {
+  const onPath = (programs: Record<string, string>) => (program: string) => programs[program] ?? null;
+  const gitOpenssl = (folder: string) => `C:\\Program Files\\Git\\${folder}\\openssl.exe`;
+
+  test("is the one on PATH, on every platform", () => {
+    const which = onPath({ openssl: "C:\\OpenSSL\\bin\\openssl.exe" });
+    expect(findOpenssl({}, { platform: "win32", exists: () => true, which })).toBe("C:\\OpenSSL\\bin\\openssl.exe");
+    expect(findOpenssl({}, { platform: "darwin", which: onPath({ openssl: "/usr/bin/openssl" }) })).toBe("/usr/bin/openssl");
+  });
+
+  test("on Windows without one on PATH, is the one Git for Windows comes with, its native build first", () => {
+    expect(findOpenssl({}, { platform: "win32", exists: () => true, which: onPath({}) })).toBe(gitOpenssl("mingw64\\bin"));
+    expect(findOpenssl({}, { platform: "win32", exists: (path) => path === gitOpenssl("usr\\bin"), which: onPath({}) })).toBe(gitOpenssl("usr\\bin"));
+    const elsewhere = "D:\\Tools\\Git\\mingw64\\bin\\openssl.exe";
+    expect(findOpenssl({}, { platform: "win32", exists: (path) => path === elsewhere, which: onPath({ git: "D:\\Tools\\Git\\cmd\\git.exe" }) })).toBe(elsewhere);
+  });
+
+  test("is missing without one on PATH, or outside Windows; the reason says what to install", () => {
+    expect(findOpenssl({}, { platform: "win32", exists: () => false, which: onPath({}) })).toBeNull();
+    expect(findOpenssl({}, { platform: "linux", exists: () => true, which: onPath({}) })).toBeNull();
+    expect(opensslMissing("win32")).toBe("Mirador needs openssl to make its certificate. Install Git for Windows, which comes with it, or give the host a certificate of your own (tlsCertificate and tlsKey).");
+    expect(opensslMissing("linux")).toBe("Mirador needs openssl to make its certificate. Install it, or give the host a certificate of your own (tlsCertificate and tlsKey).");
+  });
 });

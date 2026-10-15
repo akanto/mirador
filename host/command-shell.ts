@@ -9,7 +9,14 @@ type WindowsShells = { gitBash: (environment: Environment) => string | null; pow
 const GIT_INSTALL_FOLDERS = ["C:\\Program Files\\Git", "C:\\Program Files (x86)\\Git"];
 const BASH_NAMES = new Set(["bash.exe", "sh.exe", "bash", "sh"]);
 
-const onPathOf = (environment: Environment) => (program: string) => Bun.which(program, { PATH: environment.PATH });
+export const onPathOf = (environment: Environment) => (program: string) => Bun.which(program, { PATH: environment.PATH });
+
+/** Where Git for Windows may be installed: its usual folders, then above the git on PATH (Git\cmd\git.exe or Git\mingw64\bin\git.exe). */
+export function gitInstallFolders(which: (program: string) => string | null) {
+  const git = which("git");
+  const gitFolders = git ? [win32.dirname(win32.dirname(git)), win32.dirname(win32.dirname(win32.dirname(git)))] : [];
+  return [...GIT_INSTALL_FOLDERS, ...gitFolders];
+}
 
 /**
  * Git Bash where Claude Code finds it: CLAUDE_CODE_GIT_BASH_PATH when it names a bash or sh that exists, then Git's
@@ -18,9 +25,7 @@ const onPathOf = (environment: Environment) => (program: string) => Bun.which(pr
 export function findGitBash(environment: Environment, exists: (path: string) => boolean = existsSync, which = onPathOf(environment)) {
   const configured = environment.CLAUDE_CODE_GIT_BASH_PATH;
   if (configured && BASH_NAMES.has(win32.basename(configured).toLowerCase()) && exists(configured)) return configured;
-  const git = which("git");
-  const gitFolders = git ? [win32.dirname(win32.dirname(git)), win32.dirname(win32.dirname(win32.dirname(git)))] : [];
-  return [...GIT_INSTALL_FOLDERS, ...gitFolders].map((folder) => win32.join(folder, "bin", "bash.exe")).find((bash) => exists(bash)) ?? null;
+  return gitInstallFolders(which).map((folder) => win32.join(folder, "bin", "bash.exe")).find((bash) => exists(bash)) ?? null;
 }
 
 const WINPID_SETTLE_MS = 200;
