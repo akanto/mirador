@@ -375,7 +375,7 @@ export interface Conversation {
   queuedMessages: QueuedMessage[];
   usageLimit: UsageLimitWait | null;
   jobWaits: JobWait[];
-  /** Kept in memory, except for questions, so a host restart forgets the turns that ended unseen. */
+  /** A question and a turn that ended unseen outlast a host restart; a permission request ends with its agent. */
   waitingFor: WaitingFor | null;
   /** The permission request or question it waits for, the oldest first; worked out from those, never stored. */
   pendingRequest: PendingRequest | null;
