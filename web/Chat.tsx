@@ -1,5 +1,5 @@
 import type { SessionConfigOption, ToolCallContent } from "@agentclientprotocol/sdk";
-import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
+import { createContext, Fragment, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { modelLabel } from "../shared/claude-models.ts";
 import { flatSelectOptions } from "../shared/config-options.ts";
 import { hasBegun } from "../shared/conversation-begun.ts";
@@ -476,7 +476,21 @@ function ToolCard({ block, conversationId }: { block: ToolBlock; conversationId:
         {block.toolKind && <span className="tool-kind">{block.toolKind}</span>}
       </summary>
       {block.locations.length > 0 && (
-        <div className="locations">{block.locations.map((location) => `${location.path}${location.line ? `:${location.line}` : ""}`).join(", ")}</div>
+        <div className="locations">
+          {block.locations.map((location, index) => (
+            <Fragment key={index}>
+              {index > 0 && ", "}
+              <button
+                type="button"
+                className="location"
+                data-hint={hints.openFile}
+                onClick={() => connection.send({ type: "files.open", conversationId, path: location.path })}
+              >
+                {`${location.path}${location.line ? `:${location.line}` : ""}`}
+              </button>
+            </Fragment>
+          ))}
+        </div>
       )}
       {block.content.map((content, index) => (
         <ToolContent key={index} content={content} />

@@ -8,17 +8,18 @@ import { hints } from "./hints.ts";
 import { storedChoice } from "./stored-choice.ts";
 import { withHomeAsTilde } from "./workspace-folder.ts";
 
-const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted" };
+const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted", session: "This session" };
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 
 const listNotes: Partial<Record<ChangesBase, string>> = {
+  session: "The files the agent changed with its edit tools in this conversation. Files a script wrote are not listed.",
   "turn-file-times": "This folder is not a git repository, so the list holds the files written since this turn began, and the agent's edits. Deleted files and earlier versions are not known.",
   "not-a-repository": "This folder is not a git repository, so the list holds only the files the agent edited.",
   "turn-not-kept": "The files from this turn's start are no longer kept, so the list holds only the files the agent edited.",
 };
 const nothingChanged = (list: ChangeList) =>
-  list.base === "no-turn" ? "Files the agent changes in this conversation show here." : list.scope === "turn" ? "No file changed in this turn." : "No uncommitted changes.";
+  list.base === "no-turn" ? "Files the agent changes in this conversation show here." : list.scope === "turn" ? "No file changed in this turn." : list.scope === "session" ? "The agent has not changed a file in this conversation." : "No uncommitted changes.";
 
 function changesRequest<T>(send: (requestId: string) => ClientMessage, picked: (message: ServerMessage) => T | undefined) {
   return connection.sendAndAwait(send, (message, requestId) => {

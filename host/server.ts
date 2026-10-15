@@ -874,6 +874,13 @@ export function startServer(services: HostServices) {
         return;
       case "changes.open-in-editor":
         return conversations.changes.openInEditor(message.conversationId, message.path, message.line);
+      case "files.open":
+        try {
+          conversations.changes.openFile(message.conversationId, message.path);
+        } catch (error) {
+          reply({ type: "error", message: errorMessage(error) });
+        }
+        return;
       case "fs.complete":
         return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
       case "statusline.render":

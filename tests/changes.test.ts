@@ -16,6 +16,7 @@ let outsideDir: string;
 let store: Store;
 let checkpoints: Checkpoints;
 let opened: { file: string; line: number }[];
+let openedByDefault: string[];
 let changes: Changes;
 
 async function git(directory: string, args: string[]) {
@@ -70,7 +71,8 @@ beforeEach(async () => {
   });
   checkpoints = new Checkpoints(root);
   opened = [];
-  changes = new Changes(store, checkpoints, () => workspace(), (file, line) => opened.push({ file, line }));
+  openedByDefault = [];
+  changes = new Changes(store, checkpoints, () => workspace(), (file, line) => opened.push({ file, line }), (file) => openedByDefault.push(file));
 });
 
 afterEach(() => rm(root, { recursive: true, force: true }));
@@ -354,4 +356,36 @@ test("many untracked files are all counted, in the order git lists them", async 
   await Promise.all(names.map((name, index) => write(name, "x\n".repeat((index % 7) + 1))));
   const found = (await uncommittedChanges(projectDir))!.filter(({ path }) => path.startsWith("many/"));
   expect(found).toEqual(names.map((path, index) => ({ path, status: "added", added: (index % 7) + 1, removed: 0 })));
+});
+
+test("a file of the workspace opens with the system's default program, and a file outside it only once the agent changed it", async () => {
+  const outside = join(outsideDir, "notes.md");
+  await writeFile(outside, "notes\n");
+  await write("app.ts", "export {};\n");
+  await startTurn();
+  changes.openFile("c1", "app.ts");
+  expect(openedByDefault).toEqual([join(projectDir, "app.ts")]);
+  expect(() => changes.openFile("c1", outside)).toThrow("neither a file of this workspace");
+  agentEdits("t1", outside, null, "notes\n");
+  changes.openFile("c1", outside);
+  expect(openedByDefault.at(-1)).toBe(outside);
+});
+
+test("a relative path outside the workspace is refused even when the agent changed a file with that name", () => {
+  expect(() => changes.openFile("c1", "../etc/passwd")).toThrow("neither a file of this workspace");
+  expect(openedByDefault).toEqual([]);
+});
+
+test("the session scope lists every file the agent changed since the conversation began, even when a later turn changed it back", async () => {
+  await write("app.ts", "one\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "base"]);
+  await startTurn();
+  agentEdits("t1", join(projectDir, "app.ts"), "one\n", "two\n");
+  await write("app.ts", "one\n");
+  await startTurn();
+  const session = await changes.list("c1", "session");
+  expect(session.base).toBe("session");
+  expect(session.project.map((file) => file.path)).toEqual(["app.ts"]);
+  expect((await changes.list("c1", "turn")).project).toEqual([]);
 });

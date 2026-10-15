@@ -1,7 +1,7 @@
 import type { EditDiff } from "./review.ts";
 
-/** This turn: since the files as they were when the turn began. Uncommitted: since the repository's HEAD. */
-export const changeScopes = ["turn", "uncommitted"] as const;
+/** This turn: since the files as they were when the turn began. Uncommitted: since the repository's HEAD. Session: the agent's edits since the conversation began. */
+export const changeScopes = ["turn", "uncommitted", "session"] as const;
 export type ChangeScope = (typeof changeScopes)[number];
 
 export type ChangeStatus = "added" | "modified" | "deleted";
@@ -23,7 +23,7 @@ export interface ChangedFile {
  * with, the project's list is the agent's own edits; in a folder that is no repository, a turn's list is also the files
  * written since the turn began.
  */
-export type ChangesBase = "head" | "turn-start" | "turn-file-times" | "no-turn" | "turn-not-kept" | "not-a-repository";
+export type ChangesBase = "head" | "turn-start" | "turn-file-times" | "no-turn" | "turn-not-kept" | "not-a-repository" | "session";
 
 export interface ChangeList {
   scope: ChangeScope;

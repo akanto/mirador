@@ -171,6 +171,8 @@ export type ClientMessage =
   | { type: "changes.list"; requestId: string; conversationId: string; scope: ChangeScope }
   | { type: "changes.diff"; requestId: string; conversationId: string; scope: ChangeScope; path: string }
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
+  /** Opens a file in the program the host's system uses for it, when it is in the workspace or the agent changed it. */
+  | { type: "files.open"; conversationId: string; path: string }
   | { type: "fs.complete"; requestId: string; prefix: string }
   | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
   | { type: "subagent-usage.get"; requestId: string; conversationId: string; toolCallIds: string[] }

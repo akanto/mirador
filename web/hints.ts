@@ -178,6 +178,7 @@ export const hints = {
   steerMessage: "Adds the message to the running turn: Claude Code reads it at once, cutting off what it is writing, or, while it runs tools, as soon as they finish.",
   afterTurnMessage: "Keeps the message until the running turn ends (or you press Stop), then sends it as your next message.",
   enterWhileBusy: "What Enter does with a message while the agent works; ⌥Enter (Alt+Enter) does the other. With opencode, messages always wait for the turn to end.",
+  openFile: "Opens the file in the program the host's system uses for it, on the machine Mirador runs on.",
   blockedImage: "Opens the image in your browser. Mirador does not load images from other sites itself, so an agent cannot send them what it read; Settings → Conversations can change that.",
   scriptMessage:
     "A script the agent started sent this as your next message, so the agent picks up when the script is done. Scripts send with mirador message.",
@@ -207,6 +208,7 @@ export const hints = {
   changesScope: {
     turn: "The files that differ from how they were when this turn began, as the agent or anything else left them.",
     uncommitted: "git status: the files that differ from the last commit, and the files outside the project the agent edited in this conversation.",
+    session: "Every file the agent changed with its edit tools in this conversation, from its first message on, even where a later turn changed it back.",
   },
   changesRefresh: "Load the list again. It also loads after each tool call the agent finishes and when the turn ends.",
   changesByAgent: "This conversation's agent changed this file with its edit tools.",

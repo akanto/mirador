@@ -1977,6 +1977,17 @@ button.running-subagent:hover {
   margin: 6px 0 4px;
 }
 
+.location {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
 .diff {
   margin: 6px 0;
 }

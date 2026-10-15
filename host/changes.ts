@@ -109,6 +109,7 @@ export class Changes {
     private readonly checkpoints: Checkpoints,
     private readonly workspaceOf: (conversationId: string) => Workspace,
     private readonly openInIdea: (file: string, line: number) => void,
+    private readonly openWithDefault: (file: string) => void,
   ) {}
 
   async list(conversationId: string, scope: ChangeScope): Promise<ChangeList> {
@@ -170,12 +171,23 @@ export class Changes {
     this.openInIdea(join(resolve(workspace.path), path), line);
   }
 
+  /** Opens a file of the project, or one the agent changed in this conversation, with the system's default program. */
+  openFile(conversationId: string, path: string) {
+    const workspace = this.workspaceOf(conversationId);
+    const file = isAbsolute(path) ? normalize(path) : resolve(workspace.path, path);
+    const inWorkspace = file.startsWith(resolve(workspace.path) + sep);
+    const changedByAgent = this.agentEdits(conversationId, workspace, 0).some((edit) => edit.path === file);
+    if (!inWorkspace && !changedByAgent) throw new Error(`${path} is neither a file of this workspace nor one the agent changed in this conversation.`);
+    this.openWithDefault(file);
+  }
+
   /** The agent's edits from `fromSeq` on, each at its absolute path, a path the agent gave relative to the workspace resolved against it. */
   private agentEdits(conversationId: string, workspace: Workspace, fromSeq: number) {
     return agentEditsIn(this.store.toolCallEventsFrom(conversationId, fromSeq)).map((edit) => ({ ...edit, path: resolve(workspace.path, edit.path) }));
   }
 
   private async startOf(conversationId: string, workspace: Workspace, scope: ChangeScope): Promise<ScopeStart> {
+    if (scope === "session") return { fromSeq: 0, revision: null, base: "session" };
     if (scope === "uncommitted") {
       return (await isRepository(workspace.path)) ? { fromSeq: 0, revision: await headOrEmptyTree(workspace.path), base: "head" } : { fromSeq: 0, revision: null, base: "not-a-repository" };
     }
