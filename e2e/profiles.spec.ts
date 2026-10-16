@@ -10,6 +10,9 @@ const prelaunchMarker = join(host.root, "prelaunch-ran");
 
 const gateway = new FakeGateway();
 
+/** Claude Code retitles a session as later prompts come, so the conversation the tests share is opened by its id. */
+let sharedConversationId = "";
+
 const profilePicker = (page: Page) => page.getByLabel("Profile", { exact: true });
 const chosenProfile = (page: Page) => profilePicker(page).locator("option:checked");
 
@@ -54,7 +57,7 @@ test("a profile's environment and pre-launch command reach Claude Code, and its 
   await saved.getByRole("button", { name: "Close" }).click();
 
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "fake gateway · Claude Code" });
-  await startConversation(page);
+  sharedConversationId = await startConversation(page);
   await expect(chosenProfile(page)).toHaveText("fake gateway");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue("e2e-gateway-model");
   expect(readFileSync(prelaunchMarker, "utf8").trim()).toBe(gateway.url);
@@ -101,7 +104,7 @@ test("a conversation moves to another profile of its agent and continues the sam
   await signIn(page, host);
   const saved = await createProfile(page, "second gateway", `${gatewayEnvironment(gateway, "e2e-second-token")}\nANTHROPIC_MODEL=e2e-second-model`);
   await saved.getByRole("button", { name: "Close" }).click();
-  await page.locator(".workspace li", { hasText: "hello" }).click();
+  await page.goto(`${host.origin}/#/c/${sharedConversationId}`);
   await expect(chosenProfile(page)).toHaveText("fake gateway");
 
   await profilePicker(page).selectOption({ label: "second gateway" });
@@ -139,7 +142,7 @@ test("a conversation whose profile was deleted continues after picking another o
   await dialog.getByRole("button", { name: "Confirm: Delete profile" }).click();
   await expect(dialog.locator(".profile-list li", { hasText: "second gateway" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Close" }).click();
-  await page.locator(".workspace li", { hasText: "hello" }).click();
+  await page.goto(`${host.origin}/#/c/${sharedConversationId}`);
   await expect(chosenProfile(page)).toHaveText("Deleted profile");
 
   await profilePicker(page).selectOption({ label: "fake gateway" });
