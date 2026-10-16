@@ -50,7 +50,7 @@ import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turns
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
-import type { HostConfig } from "./config.ts";
+import { agentLogsDirectory, type HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
 import type { DroppedFiles } from "./dropped-files.ts";
 import type { ImageStore } from "./images.ts";
@@ -1171,7 +1171,7 @@ export class ConversationService {
         onPermissionRequest: (request, signal) => this.handlePermissionRequest(request, signal),
         onExit: (process) => this.handleHarnessExit(process),
       },
-      `${this.config.dataDir}/logs`,
+      agentLogsDirectory(this.config.dataDir),
     );
     this.harnessesByProfile.set(profile.id, harness);
     return harness;

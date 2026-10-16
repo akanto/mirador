@@ -21,6 +21,8 @@ export interface Reachability {
   networkSetByEnvironment: boolean;
 }
 
+export const agentLogsDirectory = (dataDir: string) => join(dataDir, "logs");
+
 export interface HostConfig {
   port: number;
   canvasAssetsPort: number;

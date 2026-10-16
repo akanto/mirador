@@ -3,7 +3,7 @@ import { serveCanvasAssets } from "./canvas/assets.ts";
 import { authorityFingerprint, namesToCover, servingCertificate } from "./certificates.ts";
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { CanvasService } from "./canvas/service.ts";
-import { loadConfig } from "./config.ts";
+import { agentLogsDirectory, loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
 import { DeviceService } from "./devices.ts";
 import { JoinRequestService } from "./join-requests.ts";
@@ -113,7 +113,7 @@ terminalSessions.start();
 
 if (process.stdout.isTTY) console.log(`Mirador is running. Open:\n\n  ${signInLink(config.appOrigin, signInCodes.mint())}\n`);
 else console.log(`Mirador is running at ${config.appOrigin}. To sign a browser in, open the link mirador sign-in prints.`);
-console.log(`data: ${config.dataDir}  agent logs: ${config.dataDir}/logs`);
+console.log(`data: ${config.dataDir}  agent logs: ${agentLogsDirectory(config.dataDir)}`);
 if (network) console.log(`other devices: ${config.publicOrigin} (HTTPS on port ${network.port} of every network this machine is on)`);
 
 function machineSignedOut(machineId: string) {
