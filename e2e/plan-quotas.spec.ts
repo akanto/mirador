@@ -11,7 +11,10 @@ const PROFILE = "subscription";
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 
-/** Claude settings of the test's own, whose statusline prints the rate_limits Claude Code's JSON gave it, and, past the width it was given, a word that must wrap into view. */
+/**
+ * Claude settings of the test's own, whose statusline prints the rate_limits Claude Code's JSON gave it, and, past the width it was given, a word that must wrap into view.
+ * The script's path is quoted: on Windows Git Bash runs the command, and reads a backslash as an escape.
+ */
 function claudeSettingsWithStatusline() {
   const configDir = join(host.root, "claude-config");
   mkdirSync(configDir, { recursive: true });
@@ -25,7 +28,7 @@ function claudeSettingsWithStatusline() {
       "console.log(`5h=${limits.five_hour?.used_percentage ?? 'none'} 7d=${limits.seven_day?.used_percentage ?? 'none'} ${padding} past-the-edge`);",
     ].join("\n"),
   );
-  writeFileSync(join(configDir, "settings.json"), JSON.stringify({ statusLine: { type: "command", command: `bun ${script}` } }));
+  writeFileSync(join(configDir, "settings.json"), JSON.stringify({ statusLine: { type: "command", command: `bun '${script}'` } }));
   return configDir;
 }
 
