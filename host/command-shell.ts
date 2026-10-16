@@ -109,6 +109,11 @@ export function commandLine(shell: CommandShell, command: string, { login = fals
   return [shell.program, "-NoLogo", ...(login ? [] : ["-NoProfile"]), "-NonInteractive", "-Command", powershellScript(command)];
 }
 
+const posixQuoted = (text: string) => `'${text.replaceAll("'", `'\\''`)}'`;
+
+/** `command` for a POSIX shell that appends its output to the file at `path` itself: Git Bash cannot write to a handle opened for appending. */
+export const withOutputAppendedTo = (path: string, command: string) => `exec >>${posixQuoted(path)} 2>&1\n${command}`;
+
 const powershellQuoted = (text: string) => `'${text.replaceAll("'", "''")}'`;
 
 export const powershellInvocation = ([program, ...args]: string[]) => `& ${[program!, ...args].map(powershellQuoted).join(" ")}`;
