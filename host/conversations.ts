@@ -360,7 +360,10 @@ export class ConversationService {
     this.subagentSessions.forget(conversationId);
     const runtime = this.runtimes.get(conversationId);
     const wasRunning = runtime?.running ?? false;
-    if (runtime) this.endUsageLimitWait(runtime);
+    if (runtime) {
+      this.endUsageLimitWait(runtime);
+      this.releaseSession(runtime, conversation.acpSessionId);
+    }
     this.jobWaits.forget(conversationId);
     this.runtimes.delete(conversationId);
     this.statusOverrides.delete(conversationId);

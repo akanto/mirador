@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, answerCanvasQuestion, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
@@ -26,6 +27,17 @@ test.afterAll(async () => {
 });
 
 const canvasHeading = () => page.frameLocator(".canvas-frame.show iframe").locator("h1");
+
+/** pi-acp runs one pi for each session it has open; pi renames its process, so they are told by their parent. */
+function piSessionProcesses() {
+  const processes = execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
+    .trim()
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/))
+    .map(([pid, parentPid, ...command]) => ({ pid: Number(pid), parentPid: Number(parentPid), command: command.join(" ") }));
+  const piAcp = processes.find(({ parentPid, command }) => parentPid === host.pid && command.includes("pi-acp"));
+  return processes.filter(({ parentPid }) => parentPid === piAcp?.pid);
+}
 
 test("a pi conversation replies, runs commands and uses the canvas tools", async () => {
   await signIn(page, host);
@@ -67,6 +79,26 @@ test("a second pi conversation on the same profile leaves the first one working"
   await sendMessage(page, "Still there?");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: Still there?");
+});
+
+test("deleting a pi conversation in the middle of a turn ends its pi process quietly, and the other one goes on", async () => {
+  await expect.poll(piSessionProcesses).toHaveLength(2);
+  await page.locator(".workspace li", { hasText: "Second page" }).click();
+  await sendMessage(page, "ASK Pick a size");
+  await expect(page.locator(".ask")).toBeVisible({ timeout: 60_000 });
+  const deleteButton = page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" });
+  await deleteButton.click();
+  await expect(deleteButton).toHaveText("Delete?");
+  await deleteButton.click();
+  await expect(page.locator(".workspace li", { hasText: "Second page" })).toHaveCount(0);
+  await expect.poll(piSessionProcesses).toHaveLength(1);
+  await page.waitForTimeout(1_000);
+  await expect(page.locator(".notice")).toHaveCount(0);
+
+  await page.locator(".workspace li", { hasText: "Hello pi" }).click();
+  await sendMessage(page, "After the delete");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Echo: After the delete");
 });
 
 test("after a host restart, a pi conversation goes on in its own session with the canvas tools", async () => {
