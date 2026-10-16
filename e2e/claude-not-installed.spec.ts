@@ -1,14 +1,13 @@
-import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, openSettings, signIn } from "./helpers.ts";
-import { scratchPath, TestHost } from "./test-host.ts";
+import { programOnPath, scratchPath, TestHost } from "./test-host.ts";
 
 const scratch = scratchPath("claude-not-installed");
 const homeWithoutClaude = join(scratch, "home");
 const programs = join(scratch, "programs");
-const bunDir = dirname(execFileSync("which", ["bun"], { encoding: "utf8" }).trim());
+const bunDir = dirname(programOnPath("bun"));
 const host = new TestHost({ environment: { HOME: homeWithoutClaude, PATH: [programs, bunDir, "/usr/bin", "/bin"].join(":") } });
 const installedLater = join(programs, "claude");
 

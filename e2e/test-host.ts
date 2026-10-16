@@ -1,5 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
 import { muteMarkerName, MUTED_LIST_FILE, mutedListAt } from "../host/notifier.ts";
@@ -24,6 +24,24 @@ export const defaultShell = "/bin/sh";
  * their hooks, so a folder made on import is never removed.
  */
 export const scratchPath = (name: string) => join(tmpdir(), `mirador-e2e-${name}-${crypto.randomUUID().slice(0, 8)}`);
+
+const isRunnableFile = (path: string) => {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/** Where `name` runs from on PATH, as `which` says: Windows has no which, and finds a program with an extension from PATHEXT. */
+export function programOnPath(name: string): string {
+  const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
+  const folders = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  const program = folders.flatMap((folder) => extensions.map((extension) => join(folder, name + extension))).find(isRunnableFile);
+  if (!program) throw new Error(`${name} is not on PATH`);
+  return program;
+}
 
 /**
  * A program named `name` in `directory` that runs `script` on Bun with `environment` set. Windows runs no script without
@@ -134,13 +152,13 @@ export class TestHost {
   }
 
   private get bun() {
-    return process.env.MIRADOR_E2E_MINIMAL_ENV ? execFileSync("which", ["bun"], { encoding: "utf8" }).trim() : "bun";
+    return process.env.MIRADOR_E2E_MINIMAL_ENV ? programOnPath("bun") : "bun";
   }
 
   /** MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
   private baseEnvironment(): NodeJS.ProcessEnv {
     if (!process.env.MIRADOR_E2E_MINIMAL_ENV) return process.env;
-    const bunDir = dirname(execFileSync("which", ["bun"], { encoding: "utf8" }).trim());
+    const bunDir = dirname(programOnPath("bun"));
     return {
       HOME: homedir(),
       USER: process.env.USER,
