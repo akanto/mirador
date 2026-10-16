@@ -29,8 +29,10 @@ import { SystemNotifications } from "./system-notifications.ts";
 import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
+import { keepDataFolderToHostAccount } from "./windows-folder-access.ts";
 
 const config = loadConfig();
+if (process.platform === "win32") keepDataFolderToHostAccount(config.dataDir);
 const relaunchHow = takeRelaunchEnvironment(process.env, process.platform, typeof process.execve === "function");
 const { network } = config.reachability;
 const certificate = network && servingCertificate(config.dataDir, namesToCover(config.publicOrigin && new URL(config.publicOrigin).hostname), network.ownCertificate);
