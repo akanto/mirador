@@ -263,7 +263,8 @@ export class ConversationService {
     return this.subagentUsageReader.usageOf(this.claudeConfigDirOf(conversation), conversation.acpSessionId, toolCallIds);
   }
 
-  create(workspaceId: string, launch: Launch): Conversation {
+  /** Without a launch, on the workspace's default as the host has it, which a browser may not have heard of yet. */
+  create(workspaceId: string, launch: Launch = this.existingWorkspace(workspaceId).defaultLaunch): Conversation {
     const conversation = this.insertConversation(workspaceId, launch, UNTITLED);
     this.ensureSession(conversation.id).catch(() => {});
     return conversation;

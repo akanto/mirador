@@ -7,7 +7,7 @@ import type { AppAction } from "./state.ts";
 export function startConversationIn(workspace: Workspace, dispatch: Dispatch<AppAction>) {
   if (workspace.defaultLaunch.profileId === null) return dispatch({ type: "select", conversationId: null });
   dispatch({ type: "awaiting-conversation", workspaceId: workspace.id });
-  connection.send({ type: "conversation.create", workspaceId: workspace.id, launch: workspace.defaultLaunch });
+  connection.send({ type: "conversation.create", workspaceId: workspace.id });
 }
 
 /** Hidden conversations kept in the page have the same elements as the one on screen. */

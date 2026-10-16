@@ -89,7 +89,8 @@ export type ClientMessage =
   | { type: "prompt-template.delete"; templateId: string }
   | { type: "settings.set-canvas-use"; canvasUse: CanvasUse }
   | { type: "settings.set-claude-program"; path: string }
-  | { type: "conversation.create"; workspaceId: string; launch: Launch }
+  /** Without a launch, the conversation starts on the workspace's default as the host has it when the message arrives. */
+  | { type: "conversation.create"; workspaceId: string; launch?: Launch }
   /** Puts the conversation just before another of its workspace in the sidebar, or last. */
   | { type: "conversation.move"; conversationId: string; beforeConversationId: string | null }
   | { type: "sessions.list"; requestId: string; workspaceId: string; launch: Launch }
