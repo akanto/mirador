@@ -81,8 +81,9 @@ jobs:
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
           if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
       # Traces and the kept host folders are left out: they hold the sign-in link, browser tokens and databases. Only their
-      # logs go, with auth links and the model server's address and key taken out.
-      - name: Collect host logs
+      # logs go, and each failed test's page as error-context.md writes it, with auth links and the model server's address
+      # and key taken out.
+      - name: Collect host logs and failed tests' pages
         if: always()
         shell: pwsh
         env:
@@ -100,6 +101,11 @@ jobs:
               Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Hide-ModelServer | Set-Content -LiteralPath $target
             }
           }
+          New-Item -ItemType Directory -Force e2e-pages | Out-Null
+          Get-ChildItem -Path test-results -Recurse -File -Filter error-context.md -ErrorAction SilentlyContinue | ForEach-Object {
+            $target = Join-Path e2e-pages ($_.Directory.Name + ".md")
+            Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Hide-ModelServer | Set-Content -LiteralPath $target
+          }
       - if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -107,5 +113,6 @@ jobs:
           path: |
             survey.json
             e2e-logs/
+            e2e-pages/
           retention-days: 7
           if-no-files-found: ignore
