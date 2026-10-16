@@ -392,4 +392,14 @@ describe("job wait guidance", () => {
       expect(describe("linux")).not.toContain("winpid");
     }
   });
+
+  test("on Windows, says how to start a job from PowerShell that its command does not wait for, and to wait for it with the tool there", () => {
+    const start = `In PowerShell, start it with \`Start-Process -WindowStyle Hidden -PassThru cmd.exe -ArgumentList '/d /s /c "<command> > <log> 2>&1"' | Select-Object -ExpandProperty Id\`, which prints that pid`;
+    expect(jobWaitToolDescription("win32")).toContain(`${start}.`);
+    expect(jobWaitGuidance("win32")).toContain(`${start}, and hand it to the when_done tool rather than the mirador command, whose words cmd would change.`);
+    for (const describe of [jobWaitGuidance, jobWaitToolDescription]) {
+      expect(describe("darwin")).not.toContain("Start-Process");
+      expect(describe("linux")).not.toContain("Start-Process");
+    }
+  });
 });
