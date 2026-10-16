@@ -6,6 +6,7 @@ import { TestHost } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const appFile = join(host.projectDir, "src", "app.ts");
+const appFileShown = join("src", "app.ts");
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
 
 /** An opencode that is the scripted agent, asking permission for the edits a prompt names. */
@@ -59,7 +60,7 @@ test("an edit the agent waits to make takes the canvas with the file's line numb
 
   const view = editView(page);
   await expect(canvas(page).locator(".canvas-title")).toHaveText("Edit src/app.ts");
-  await expect(view.locator(".edited-file h3")).toHaveText("src/app.ts");
+  await expect(view.locator(".edited-file h3")).toHaveText(appFileShown);
   await expect(view.locator(".edit-counts")).toHaveText("+2 −1");
   await expect(view.locator(".code-row.removed .line-number")).toHaveText("15");
   await expect(view.locator(".code-row.added .line-number")).toHaveText(["15", "16"]);
@@ -80,7 +81,7 @@ test("an edit the agent waits to make takes the canvas with the file's line numb
   });
 
   await editView(page).getByRole("button", { name: "Allow", exact: true }).click();
-  await expect(canvas(page).locator(".settled-note")).toHaveText("✓ Allowed: edit to src/app.ts");
+  await expect(canvas(page).locator(".settled-note")).toHaveText(`✓ Allowed: edit to ${appFileShown}`);
   await expect(canvas(page).locator(".settled-note")).toHaveClass(/done/);
   await expect(editView(page)).toHaveCount(0);
   await expect(lastAgentMessage(page)).toHaveText("Edit src/app.ts: allow");
@@ -109,7 +110,7 @@ test("edits waiting at once show oldest first, one not found in the file shows t
 
   await pendingCard(page).first().getByRole("button", { name: "Reject" }).click();
   await expect(canvas(page).locator(".canvas-title")).toHaveText("Write src/app.ts");
-  await expect(view.locator(".settled-note")).toHaveText("✗ Rejected: edit to src/app.ts");
+  await expect(view.locator(".settled-note")).toHaveText(`✗ Rejected: edit to ${appFileShown}`);
   await expect(view.locator(".settled-note")).toHaveClass(/neutral/);
   await expect(view.locator(".edits-more")).toHaveCount(0);
   await expect(view.locator(".edit-counts")).toHaveText("+1 −1");
@@ -117,7 +118,7 @@ test("edits waiting at once show oldest first, one not found in the file shows t
   await expect(view.locator(".edit-gap")).toHaveText(["⋯ lines 7–30"]);
 
   await view.getByRole("button", { name: "Always allow" }).click();
-  await expect(canvas(page).locator(".settled-note")).toHaveText("✓ Always allowed: edit to src/app.ts");
+  await expect(canvas(page).locator(".settled-note")).toHaveText(`✓ Always allowed: edit to ${appFileShown}`);
   await expect(lastAgentMessage(page)).toHaveText("Edit src/app.ts: reject; Write src/app.ts: always");
 });
 

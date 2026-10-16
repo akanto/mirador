@@ -2,15 +2,15 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, literally, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { scratchPath, TestHost } from "./test-host.ts";
 
 const home = scratchPath("changes-home");
-const host = new TestHost({ fakePrograms: true, environment: { HOME: home } });
+const host = new TestHost({ fakePrograms: true, environment: { HOME: home, ...(process.platform === "win32" && { USERPROFILE: home }) } });
 const appFile = join(host.projectDir, "src", "app.ts");
 const generatedFile = join(host.projectDir, "src", "generated.txt");
 const outsideFile = join(home, "elsewhere", "notes.md");
-const outsideFileShown = "~/elsewhere/notes.md";
+const outsideFileShown = join("~", "elsewhere", "notes.md");
 const editNow = join(host.root, "edit-now");
 const finishNow = join(host.root, "finish-now");
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
@@ -47,7 +47,7 @@ test.afterAll(async () => {
 });
 
 const changes = (page: Page) => page.locator(".canvas-panel .changes");
-const fileRow = (page: Page, path: string) => changes(page).locator(".changed-file").filter({ has: page.locator(".changed-path", { hasText: new RegExp(`^${path}$`) }) });
+const fileRow = (page: Page, path: string) => changes(page).locator(".changed-file").filter({ has: page.locator(".changed-path", { hasText: new RegExp(`^${literally(path)}$`) }) });
 const section = (page: Page, name: string) => changes(page).getByRole("region", { name, exact: true });
 const writeFiles = (page: Page, steps: Record<string, string>[]) => sendMessage(page, `WRITE ${JSON.stringify(steps)}`);
 

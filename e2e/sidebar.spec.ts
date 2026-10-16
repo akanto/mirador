@@ -1,10 +1,14 @@
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, sep } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
+
+/** A folder as the page shows it, with home as ~: Windows keeps the temporary folders, and so the project, under home. */
+const withHomeAsTilde = (folder: string) => (folder.startsWith(homedir() + sep) ? `~${folder.slice(homedir().length)}` : folder);
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
@@ -16,7 +20,7 @@ test("a workspace is a card: its folder under the name, new conversations at the
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const card = workspaceCard(page, host.projectDir);
-  await expect(card.locator(".workspace-folder")).toHaveText(dirname(host.projectDir));
+  await expect(card.locator(".workspace-folder")).toHaveText(withHomeAsTilde(dirname(host.projectDir)));
 
   const first = await startConversation(page);
   const second = await startConversation(page);

@@ -27,3 +27,22 @@ test("shows a file under home as ~/..., and any other path as it is", () => {
   expect(withHomeAsTilde("src/app.ts", home)).toBe("src/app.ts");
   expect(withHomeAsTilde("/Users/ada/notes/todo.md", "")).toBe("/Users/ada/notes/todo.md");
 });
+
+test("on Windows, names the folder holding the workspace with the backslash, and home as ~", () => {
+  const windowsHome = "C:\\Users\\ada";
+  expect(parentFolder("C:\\Users\\ada\\prj\\mirador", windowsHome)).toBe("~\\prj");
+  expect(parentFolder("C:\\Users\\ada\\prj\\mirador\\", windowsHome)).toBe("~\\prj");
+  expect(parentFolder("C:\\Users\\ada\\dotfiles", windowsHome)).toBe("~");
+  expect(parentFolder("C:\\Users\\ada2\\src\\x", windowsHome)).toBe("C:\\Users\\ada2\\src");
+  expect(parentFolder("D:\\work\\shop", windowsHome)).toBe("D:\\work");
+  expect(parentFolder("D:\\shop", windowsHome)).toBe("D:\\");
+  expect(parentFolder("\\\\server\\share\\shop", windowsHome)).toBe("\\\\server\\share");
+});
+
+test("on Windows, shows a file under home as ~\\..., and any other path as it is", () => {
+  const windowsHome = "C:\\Users\\ada";
+  expect(withHomeAsTilde("C:\\Users\\ada\\notes\\todo.md", windowsHome)).toBe("~\\notes\\todo.md");
+  expect(withHomeAsTilde("C:\\Users\\ada", windowsHome)).toBe("~");
+  expect(withHomeAsTilde("C:\\Users\\ada2\\notes.md", windowsHome)).toBe("C:\\Users\\ada2\\notes.md");
+  expect(withHomeAsTilde("src\\app.ts", windowsHome)).toBe("src\\app.ts");
+});

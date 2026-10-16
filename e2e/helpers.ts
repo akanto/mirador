@@ -98,6 +98,9 @@ export async function startConversation(page: Page) {
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
 
+/** `text` to match as it is in a regular expression, as a Windows path with its backslashes: Playwright's Node has no RegExp.escape. */
+export const literally = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");
 
 /** Sends a message and waits until the host has it, in the timeline or the queue, so a turn it starts already shows as running. */
