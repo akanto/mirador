@@ -20,9 +20,9 @@ test.afterAll(async () => {
   model.stop();
 });
 
-/** A job the agent might leave running, like a build started with nohup. */
+/** A job the agent might leave running, like a build started with nohup. It runs on the spec's Node, as Windows has no sleep. */
 function startJob() {
-  const job = spawn("sleep", ["300"], { stdio: "ignore" });
+  const job = spawn(process.execPath, ["-e", "setTimeout(() => {}, 300000)"], { stdio: "ignore" });
   jobs.push(job);
   return job;
 }

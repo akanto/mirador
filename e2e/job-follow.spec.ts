@@ -22,16 +22,22 @@ test.afterAll(async () => {
   model.stop();
 });
 
+/** The jobs run on the Node that runs the spec, as Windows has no sh or sleep. */
+const TICKING = "let i = 0; setInterval(() => console.log('tick ' + ++i), 300)";
+const SLEEPING = "setTimeout(() => {}, 300000)";
+const OUTPUT_UNKNOWN_ON_WINDOWS = "On Windows this tab cannot find the file its output goes to, so it only shows when the process ends.";
+const onWindows = process.platform === "win32";
+
 /** Like a job started with `nohup … > log 2>&1 &`: it writes a line every 300 ms to its log. */
 function startLoggingJob(log: string) {
   const output = openSync(log, "w");
-  const job = spawn("sh", ["-c", 'i=0; while :; do i=$((i+1)); echo "tick $i"; sleep 0.3; done'], { stdio: ["ignore", output, output] });
+  const job = spawn(process.execPath, ["-e", TICKING], { stdio: ["ignore", output, output] });
   jobs.push(job);
   return job;
 }
 
 function startSilentJob() {
-  const job = spawn("sleep", ["300"], { stdio: "ignore" });
+  const job = spawn(process.execPath, ["-e", SLEEPING], { stdio: "ignore" });
   jobs.push(job);
   return job;
 }
@@ -76,11 +82,15 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
     await waitForJob(sessionId()!, job);
     await waits.getByRole("button", { name: `process ${job.pid}` }).click();
     await expect(followTab(job)).toBeVisible();
-    await expect(terminalScreen).toContainText("Command: sh -c i=0; while :;");
+    await expect(terminalScreen).toContainText("Command: ");
+    await expect(terminalScreen).toContainText(TICKING);
     await expect(terminalScreen).toContainText(/Running for: \d\d:\d\d/);
-    await expect(terminalScreen).toContainText(/Output: \S*job\.log/);
-    await expect(terminalScreen).toContainText("tick 2");
-    await expect(terminalScreen).toContainText("tick 8");
+    if (onWindows) await expect(terminalScreen).toContainText(OUTPUT_UNKNOWN_ON_WINDOWS);
+    else {
+      await expect(terminalScreen).toContainText(/Output: \S*job\.log/);
+      await expect(terminalScreen).toContainText("tick 2");
+      await expect(terminalScreen).toContainText("tick 8");
+    }
 
     await test.step("clicking the job again shows its tab rather than opening another", async () => {
       await page.locator(".terminal-tab").filter({ hasNotText: `process ${job.pid}` }).first().click();
@@ -105,8 +115,8 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
     const job = startSilentJob();
     await waitForJob(sessionId()!, job);
     await waits.getByRole("button", { name: `process ${job.pid}` }).click();
-    await expect(terminalScreen).toContainText("Command: sleep 300");
-    await expect(terminalScreen).toContainText("Its output goes to no file this tab can follow");
+    await expect(terminalScreen).toContainText(SLEEPING);
+    await expect(terminalScreen).toContainText(onWindows ? OUTPUT_UNKNOWN_ON_WINDOWS : "Its output goes to no file this tab can follow");
     await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.press("Control+C");
     await expect(followTab(job)).toHaveCount(0);
