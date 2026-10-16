@@ -26,6 +26,15 @@ const STEERING_METHOD = "_session/steering";
 
 const latestStartByHarness = new Map<HarnessId, Promise<unknown>>();
 
+/** Windows runs a .cmd or .bat, such as the opencode.cmd npm installs, only through cmd.exe, and refuses to spawn it otherwise. */
+const isWindowsBatchFile = (program: string) => process.platform === "win32" && /\.(cmd|bat)$/i.test(program);
+
+/** The agent's arguments are the host's own, such as `acp`, so only the program's path, which may hold spaces, needs quoting for cmd.exe. */
+const spawnAgent = (program: string, args: string[], environment: Record<string, string>): ChildProcess =>
+  isWindowsBatchFile(program)
+    ? spawn(`"${program}"`, args, { stdio: ["pipe", "pipe", "pipe"], env: environment, shell: true })
+    : spawn(program, args, { stdio: ["pipe", "pipe", "pipe"], env: environment });
+
 export interface HarnessSpec {
   id: HarnessId;
   /** Names the agent process in messages, e.g. "Claude Code (work)". */
@@ -180,7 +189,7 @@ export class HarnessProcess {
     this.stopReason = undefined;
     await this.runPrelaunch();
     const [command, ...args] = this.spec.command;
-    const child = spawn(command!, args, { stdio: ["pipe", "pipe", "pipe"], env: this.spec.environment });
+    const child = spawnAgent(command!, args, this.spec.environment);
     this.child = child;
     let exitedBecause = (_reason: string) => {};
     this.exited = new Promise((resolve) => (exitedBecause = resolve));

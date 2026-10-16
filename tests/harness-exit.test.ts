@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HarnessProcess } from "../host/acp/harness.ts";
+import { fakeProgram } from "./fake-program.ts";
 
 /** Answers initialize and session/new, then dies with exit code 3 in the middle of the first prompt. */
 const crashingAgent = `
@@ -50,6 +51,43 @@ function crashingHarness(agent = crashingAgent) {
     directory,
   );
 }
+
+/** taskkill ends the program under a .cmd a moment after cmd.exe. */
+const KILL_GRACE_MS = process.platform === "win32" ? 3_000 : 0;
+
+async function runsOnAfter(pid: number, graceMs: number) {
+  const deadline = Date.now() + graceMs;
+  while (isRunning(pid) && Date.now() < deadline) await Bun.sleep(20);
+  return isRunning(pid);
+}
+
+describe("HarnessProcess.start", () => {
+  test("starts an agent whose program is a script, on Windows a .cmd as npm installs opencode, in a folder whose name holds a space, and stopping it ends the program the script runs", async () => {
+    const directory = join(mkdtempSync(join(tmpdir(), "mirador-harness-script-")), "npm global");
+    mkdirSync(directory);
+    const pidFile = join(directory, "agent.pid");
+    const agentRecordingItsPid = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));\n${crashingAgent}`;
+    const harness = new HarnessProcess(
+      {
+        id: "opencode",
+        label: "Scripted agent",
+        logName: "scripted",
+        command: [fakeProgram(directory, "opencode", agentRecordingItsPid), "acp"],
+        environment: { ...process.env } as Record<string, string>,
+        prelaunch: "",
+        startsOneAtATime: false,
+      },
+      { onSessionUpdate: () => {}, onPermissionRequest: async () => ({ outcome: { outcome: "cancelled" } } as never), onExit: () => {} },
+      directory,
+    );
+    await harness.start();
+    expect(await harness.newSession({ cwd: tmpdir(), mcpServers: [] })).toMatchObject({ sessionId: "crashing" });
+    expect(existsSync(pidFile)).toBe(true);
+    const agentPid = Number(readFileSync(pidFile, "utf8"));
+    await harness.stop();
+    expect(await runsOnAfter(agentPid, KILL_GRACE_MS)).toBe(false);
+  }, 15_000);
+});
 
 describe("HarnessProcess.prompt", () => {
   test("fails with how the agent process went away when it dies during the turn, not with a closed connection", async () => {
