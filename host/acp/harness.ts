@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, createWriteStream, mkdirSync, openSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { HarnessId } from "../../shared/model.ts";
 import { MIRADOR_VERSION } from "../../shared/version.ts";
-import { commandLine, commandShell } from "../command-shell.ts";
+import { commandLine, commandShell, withOutputAppendedTo } from "../command-shell.ts";
 import { killProcessTree } from "../windows-processes.ts";
 
 export type ConfigValue = string | boolean;
@@ -254,30 +254,34 @@ export class HarnessProcess {
 
   /**
    * The command's output goes straight to the log file rather than through a pipe: a proxy it
-   * starts in the background inherits the output and would otherwise hold the pipe open.
+   * starts in the background inherits the output and would otherwise hold the pipe open. A POSIX
+   * shell opens the file itself; PowerShell gets a handle to it.
    */
   private async runPrelaunch() {
     if (!this.spec.prelaunch.trim()) return;
     const logPath = this.logPath();
-    const logSizeBefore = existsSync(logPath) ? statSync(logPath).size : 0;
-    const log = openSync(logPath, "a");
+    appendFileSync(logPath, "");
+    const logSizeBefore = statSync(logPath).size;
+    const shell = commandShell(() => process.env.SHELL || "/bin/sh", this.spec.environment);
+    const log = shell.kind === "posix" ? "ignore" : openSync(logPath, "a");
+    const command = shell.kind === "posix" ? withOutputAppendedTo(logPath, this.spec.prelaunch) : this.spec.prelaunch;
     const outcome = await new Promise<string | null>((resolve) => {
-      const [program, ...args] = commandLine(commandShell(() => process.env.SHELL || "/bin/sh", this.spec.environment), this.spec.prelaunch);
-      const shell = spawn(program!, args, {
+      const [program, ...args] = commandLine(shell, command);
+      const prelaunch = spawn(program!, args, {
         env: this.spec.environment,
         stdio: ["ignore", log, log],
       });
       const timeout = setTimeout(() => {
-        shell.kill();
+        prelaunch.kill();
         resolve(`timed out after ${PRELAUNCH_TIMEOUT_MS / 1000} s`);
       }, PRELAUNCH_TIMEOUT_MS);
-      shell.once("error", (error) => resolve(error.message));
-      shell.once("exit", (code, signal) => {
+      prelaunch.once("error", (error) => resolve(error.message));
+      prelaunch.once("exit", (code, signal) => {
         clearTimeout(timeout);
         resolve(code === 0 ? null : `exited with ${code ?? signal}`);
       });
     });
-    closeSync(log);
+    if (log !== "ignore") closeSync(log);
     if (outcome === null) return;
     const output = readFileSync(logPath).subarray(logSizeBefore).toString().trim().slice(-PRELAUNCH_OUTPUT_IN_ERRORS);
     throw new Error(`The pre-launch command of ${this.spec.label} ${outcome}${output ? `: ${output}` : ""}`);
