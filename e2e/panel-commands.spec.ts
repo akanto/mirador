@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { programOnPath, TestHost } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const ranHere = join(host.root, "panel-command-ran");
@@ -13,7 +13,7 @@ const ranHere = join(host.root, "panel-command-ran");
  * open to read. Everything else — the agent itself — is the real Claude Code.
  */
 function fakeClaude() {
-  const real = execFileSync("which", ["claude"], { encoding: "utf8" }).trim();
+  const real = programOnPath("claude");
   mkdirSync(host.fakeProgramsDir, { recursive: true });
   const script = `#!/bin/sh
 case "$1" in

@@ -1,14 +1,13 @@
-import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { FakeClaudeApi } from "./fake-claude-api.ts";
 import { addWorkspace, openSettings, sendMessage, signIn, startConversation } from "./helpers.ts";
-import { scratchPath, TestHost } from "./test-host.ts";
+import { programOnPath, scratchPath, TestHost } from "./test-host.ts";
 
 const api = new FakeClaudeApi();
 const scratch = scratchPath("claude-program");
-const installedClaude = execFileSync("which", ["claude"], { encoding: "utf8" }).trim();
+const installedClaude = programOnPath("claude");
 const wrapperLog = join(scratch, "wrapper.log");
 const wrapper = join(scratch, "claude-wrapper");
 let host: TestHost;
