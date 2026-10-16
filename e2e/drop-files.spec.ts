@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
@@ -67,8 +67,9 @@ test("a file dropped on the message box goes in as the path of a copy on the hos
     await expect(page.locator(".composer-problem")).toHaveCount(0);
   });
 
-  const serverLog = `${literally(copies)}/[^/]+/server\\.log`;
-  const buildLog = `${literally(copies)}/[^/]+/build output\\.log`;
+  const copyOf = (name: string) => `${literally(copies)}${literally(sep)}[^${literally(sep)}]+${literally(sep)}${literally(name)}`;
+  const serverLog = copyOf("server.log");
+  const buildLog = copyOf("build output.log");
   await test.step("then each placeholder becomes the path of the file's copy, quoted when it has a space", async () => {
     release();
     await expect(composer(page)).toHaveValue(new RegExp(`^Look at \\[Image #1\\] ${serverLog} "${buildLog}" $`));
