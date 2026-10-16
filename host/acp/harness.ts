@@ -100,17 +100,18 @@ export class HarnessProcess {
   }
 
   /**
-   * Adds the message to the turn running in the session rather than starting a turn after it. False when the agent
-   * cannot, or the turn has already ended, so the message is still the caller's to send.
+   * Adds the message to the turn running in the session rather than starting a turn after it, and returns the agent's
+   * outcome. Any other than "injected", such as "promptRequired" once the turn has ended, leaves the message the
+   * caller's to send.
    */
-  async steer(sessionId: string, prompt: acp.ContentBlock[]): Promise<boolean> {
-    if (!(await this.canSteer())) return false;
+  async steer(sessionId: string, prompt: acp.ContentBlock[]): Promise<string> {
+    if (!(await this.canSteer())) return "unsupported";
     const { outcome } = await this.agent().request<{ outcome: string }>(STEERING_METHOD, {
       sessionId,
       prompt,
       _meta: { steering: { idleBehavior: "promptRequired" } },
     });
-    return outcome === "injected";
+    return outcome;
   }
 
   async canSteer() {

@@ -1260,10 +1260,11 @@ export class ConversationService {
     const notes = this.notesForAgent(conversationId);
     const text = messages.map((message) => message.text).join("\n\n");
     const imageIds = messages.flatMap((message) => message.imageIds);
-    const injected = await this.promptContent(conversationId, withNotes(notes, text), imageIds)
+    const outcome = await this.promptContent(conversationId, withNotes(notes, text), imageIds)
       .then((prompt) => harness.steer(sessionId, prompt))
-      .catch(() => false);
-    if (!injected) {
+      .catch((error: unknown) => `failed: ${errorMessage(error)}`);
+    if (outcome !== "injected") {
+      console.error(`${new Date().toISOString()} could not steer queued messages into the turn of conversation ${conversationId}, so they go back to the queue: ${outcome}`);
       this.setQueue(conversationId, runtime, [...messages, ...runtime.queuedMessages]);
       this.publish(this.get(conversationId));
       if (!runtime.running) this.sendNextQueuedMessage(conversationId);
