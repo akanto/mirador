@@ -1,5 +1,7 @@
+import { sep } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { echo, setVariable, sum, variableOr } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -26,8 +28,8 @@ test("a terminal opens under the canvas in the workspace folder, keeps its shell
   await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
 
   await page.getByRole("button", { name: "Show terminal" }).click();
-  await runInTerminal(page, "pwd; echo marker-$((6*7))");
-  await expect(screen(page)).toContainText("/project");
+  await runInTerminal(page, `pwd; ${echo(`marker-${sum("6*7")}`)}`);
+  await expect(screen(page)).toContainText(`${sep}project`);
   await expect(screen(page)).toContainText("marker-42");
   await expect(page.locator(".terminal-pane .xterm")).toHaveCSS("padding-top", "0px");
   const primary = (await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control";
@@ -42,22 +44,22 @@ test("a terminal opens under the canvas in the workspace folder, keeps its shell
   expect(terminalBox.y).toBeGreaterThanOrEqual(canvasBox.y + canvasBox.height - 1);
   expect(Math.abs(terminalBox.x - canvasBox.x)).toBeLessThan(2);
 
-  await runInTerminal(page, "SURVIVOR=still-here");
+  await runInTerminal(page, setVariable("SURVIVOR", "still-here"));
   await page.getByRole("button", { name: "Hide terminal" }).click();
   await expect(page.locator(".terminal-pane")).toHaveCount(0);
   await page.getByRole("button", { name: "Show terminal" }).click();
   await expect(screen(page)).toContainText("marker-42");
-  await runInTerminal(page, "echo $SURVIVOR");
+  await runInTerminal(page, echo("$SURVIVOR"));
   await expect(screen(page)).toContainText("still-here");
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Hide terminal" })).toBeVisible();
   await expect(screen(page)).toContainText("marker-42");
-  await runInTerminal(page, "echo again-$SURVIVOR");
+  await runInTerminal(page, echo("again-$SURVIVOR"));
   await expect(screen(page)).toContainText("again-still-here");
 
   await runInTerminal(page, "exit");
   await page.getByRole("button", { name: "Start a shell" }).click();
-  await runInTerminal(page, "echo fresh-${SURVIVOR:-shell}");
+  await runInTerminal(page, echo(`fresh-${variableOr("SURVIVOR", "shell")}`));
   await expect(screen(page)).toContainText("fresh-shell");
 });

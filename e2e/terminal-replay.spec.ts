@@ -1,7 +1,8 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { echo, promptMark, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -28,6 +29,7 @@ const cursorPositionAnswer = /\[\d+;\d+R/;
 const backgroundColourAnswer = /rgb:/;
 
 test("replaying a terminal's log does not answer the questions in it as though the user had typed the answers", async ({ page }) => {
+  test.skip(process.platform === "win32", "Windows' console answers a program's questions itself and passes none on, so a terminal's log there has none to replay");
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
@@ -93,16 +95,20 @@ async function pasteWhileReplaying(page: Page) {
 test("what the user pastes or types while a terminal's history replays reaches the shell", async ({ page }) => {
   const armPaste = await pasteWhileReplaying(page);
   await signIn(page, host);
-  await page.locator(".workspace li").first().click();
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();
   const tabs = page.getByRole("tab");
   await page.getByRole("button", { name: "New terminal tab" }).click();
+  await expect(tabs).toHaveCount(2);
   await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
-  await expect(screenOf(page, 0)).toContainText("$");
+  await expect(screenOf(page, 0)).toContainText(promptMark);
   const terminalId = (await page.locator(".terminal-pane .terminal-splits.shown .terminal-split").getAttribute("data-terminal-id"))!;
 
   await hideTerminalPane(page);
-  await armPaste({ terminalId, text: "echo pasted-$((6*7))\n" });
+  await armPaste({ terminalId, text: `${echo(`pasted-${sum("6*7")}`)}\n` });
   await terminalToggle(page, "Show terminal").click();
   await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
   await expect(screenOf(page, 0)).toContainText("pasted-42");

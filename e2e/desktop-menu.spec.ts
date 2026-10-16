@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DesktopMenu, DesktopMenuMessage } from "../shared/desktop-menu.ts";
 import { addWorkspace, chooseInSettings, signIn, startConversation } from "./helpers.ts";
+import { keepShellBusy } from "./terminal-shell.ts";
 import { jobControlShell, TestHost } from "./test-host.ts";
 
 const host = new TestHost({ shell: jobControlShell });
@@ -163,7 +164,7 @@ test("inside the macOS desktop app, ⌘W closes the open dialog, else the focuse
     await page.getByRole("button", { name: "Split right" }).click();
     await expect(splits).toHaveCount(2);
     await page.locator(".terminal-pane .xterm").nth(1).click();
-    await page.keyboard.type("sleep 30\n");
+    await keepShellBusy(page, page.locator(".terminal-pane .xterm-rows").nth(1));
   };
 
   await test.step("on a shell running a command, ⌘W asks; Esc, or waiting, keeps it and gives the shell back the keys", async () => {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { busyCommandName, echo, keepShellBusy, sum } from "./terminal-shell.ts";
 import { jobControlShell, TestHost } from "./test-host.ts";
 
 const host = new TestHost({ shell: jobControlShell });
@@ -33,7 +34,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
     await page.keyboard.press("Meta+Shift+D");
     await expect(splits(page)).toHaveCount(3);
     await expect(typingInto(page, 2)).toBeFocused();
-    await page.keyboard.type("echo below-$((2+3))\n");
+    await page.keyboard.type(`${echo(`below-${sum("2+3")}`)}\n`);
     await expect(screenOf(page, 2)).toContainText("below-5");
 
     const [left, topRight, bottomRight] = [await boxOf(page, 0), await boxOf(page, 1), await boxOf(page, 2)];
@@ -111,11 +112,11 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
 
   await test.step("⌘W on a split running a command asks first: Esc keeps it, Enter ends it", async () => {
     await page.locator(".terminal-pane .terminal-splits.shown .xterm").nth(1).click();
-    await page.keyboard.type("sleep 30\n");
+    await keepShellBusy(page, screenOf(page, 1));
     await page.keyboard.press("Meta+W");
     const confirm = page.getByRole("button", { name: "Confirm: Close terminal 2", exact: true });
     await expect(confirm).toBeFocused();
-    await expect(confirm).toHaveAttribute("data-hint", /^sleep runs in this terminal/);
+    await expect(confirm).toHaveAttribute("data-hint", new RegExp(`^${busyCommandName} runs in this terminal`));
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Close terminal 2", exact: true })).toBeVisible();
     await expect(splits(page)).toHaveCount(2);
@@ -129,7 +130,7 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
 
   await test.step("⌘W on the only terminal of a tab running a command arms the tab's close", async () => {
     await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
-    await page.keyboard.type("sleep 30\n");
+    await keepShellBusy(page, screenOf(page, 0));
     await page.keyboard.press("Meta+W");
     const closeTab = page.locator(".terminal-tab.active .close-tab");
     await expect(closeTab).toHaveText("Close?");
@@ -150,11 +151,11 @@ test("on macOS the cmux and iTerm2 keys split side by side and stacked, move bet
     await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.press("Meta+D");
     await expect(splits(page)).toHaveCount(2);
-    await page.keyboard.type("sleep 30\n");
+    await keepShellBusy(page, screenOf(page, 1));
     await tabs(page).nth(1).click({ button: "middle" });
     const closeTab = page.locator(".terminal-tab.active .close-tab");
     await expect(closeTab).toHaveText("Close?");
-    await expect(closeTab).toHaveAttribute("data-hint", /^sleep runs in this tab/);
+    await expect(closeTab).toHaveAttribute("data-hint", new RegExp(`^${busyCommandName} runs in this tab`));
     await expect(splits(page)).toHaveCount(2);
     await tabs(page).nth(1).click({ button: "middle" });
     await expect(tabs(page)).toHaveCount(1);

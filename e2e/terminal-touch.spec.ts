@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { countTo, echo, printRaw, showKeys, showKeysFollowingTheMouse } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -54,7 +55,7 @@ async function showTheTerminalWith300Lines(page: Page) {
 
   await expect(page.locator(".terminal-pane .terminal-screen")).toHaveCSS("touch-action", "none");
   await page.locator(".terminal-pane .xterm-screen").tap();
-  await page.keyboard.type("seq 1 300\n");
+  await page.keyboard.type(`${countTo(300)}\n`);
   await expect(row("300").locator("xpath=following-sibling::div[1]")).toHaveText(/\S/);
   const latest = await firstRowShown();
   const rowCount = await rows.count();
@@ -87,7 +88,7 @@ test("a finger drags the terminal's output and flings it till a touch stops it, 
   await expect.poll(() => rows.count()).toBeGreaterThan(rowCount);
   await page.setViewportSize(viewport);
   await expect.poll(() => rows.count()).toBe(rowCount);
-  await page.keyboard.type("printf '\\033[?1049h'; seq 1 100; echo full-screen; cat -v\n");
+  await page.keyboard.type(`${[printRaw("\x1b[?1049h"), countTo(100), echo("full-screen"), showKeys].join("; ")}\n`);
   await expect(row("full-screen")).toHaveCount(1);
   await finger.drag(0.8, 0.2, "after a pause");
   await expect(shown).toContainText("^[[B");
@@ -96,8 +97,9 @@ test("a finger drags the terminal's output and flings it till a touch stops it, 
   await expect(shown).toContainText("^[[A");
   await page.keyboard.press("Control+C");
 
-  await page.keyboard.type("printf '\\033[?1049l\\033[?1000h\\033[?1006h'; echo follows-the-mouse; cat -v\n");
+  await page.keyboard.type(`${[printRaw("\x1b[?1049l"), echo("follows-the-mouse"), showKeysFollowingTheMouse].join("; ")}\n`);
   await expect(row("follows-the-mouse")).toHaveCount(1);
+  await expect(page.locator(".terminal-pane .xterm"), "the terminal follows the mouse").toHaveClass(/enable-mouse-events/);
   await finger.drag(0.8, 0.2, "after a pause");
   await expect(shown).toContainText("^[[<65;");
   await expect(shown).not.toContainText("^[[<64;");

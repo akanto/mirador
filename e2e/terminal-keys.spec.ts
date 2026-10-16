@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { echo, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 /** On macOS /bin/sh is bash; on Linux it is often dash, which has no line editing. */
@@ -31,36 +32,42 @@ test.describe("on macOS", () => {
     await page.getByRole("button", { name: "Show terminal" }).click();
     const screen = page.locator(".terminal-pane .xterm-rows");
     await page.locator(".terminal-pane .xterm").click();
-    await page.keyboard.type("echo cleared-$((1+1))\n");
+    await page.keyboard.type(`${echo(`cleared-${sum("1+1")}`)}\n`);
     await expect(screen).toContainText("cleared-2");
     await page.keyboard.press("Meta+K");
     await expect(screen).not.toContainText("cleared-2");
     await expect(palette).toHaveCount(0);
 
-    await page.keyboard.type("cho line-$((2+3))");
-    await page.keyboard.press("Meta+ArrowLeft");
-    await page.keyboard.type("e");
-    await page.keyboard.press("Meta+ArrowRight");
-    await page.keyboard.type(" end\n");
-    await expect(screen).toContainText("line-5 end");
+    await test.step("⌘←, ⌘→, ⌘⌫, ⌥← and ⌥→ edit the line as in Terminal.app", async (step) => {
+      step.skip(process.platform === "win32", "They send readline's keys, which PowerShell's PSReadLine reads otherwise (vcs-pgm.42)");
+      await page.keyboard.type("cho line-$((2+3))");
+      await page.keyboard.press("Meta+ArrowLeft");
+      await page.keyboard.type("e");
+      await page.keyboard.press("Meta+ArrowRight");
+      await page.keyboard.type(" end\n");
+      await expect(screen).toContainText("line-5 end");
 
-    await page.keyboard.type("not a command");
-    await page.keyboard.press("Meta+Backspace");
-    await page.keyboard.type("echo wiped-$((3+3))\n");
-    await expect(screen).toContainText("wiped-6");
-    await expect(screen).not.toContainText("not: command not found");
+      await page.keyboard.type("not a command");
+      await page.keyboard.press("Meta+Backspace");
+      await page.keyboard.type("echo wiped-$((3+3))\n");
+      await expect(screen).toContainText("wiped-6");
+      await expect(screen).not.toContainText("not: command not found");
 
-    await page.keyboard.type("echo $((4+4)) beta gamma");
-    await page.keyboard.press("Alt+ArrowLeft");
-    await page.keyboard.press("Alt+ArrowLeft");
-    await page.keyboard.type("X");
-    await page.keyboard.press("Alt+ArrowRight");
-    await page.keyboard.type("Y\n");
-    await expect(screen).toContainText("8 XbetaY gamma");
+      await page.keyboard.type("echo $((4+4)) beta gamma");
+      await page.keyboard.press("Alt+ArrowLeft");
+      await page.keyboard.press("Alt+ArrowLeft");
+      await page.keyboard.type("X");
+      await page.keyboard.press("Alt+ArrowRight");
+      await page.keyboard.type("Y\n");
+      await expect(screen).toContainText("8 XbetaY gamma");
+    });
 
-    await page.reload();
-    await expect(screen).toContainText("8 XbetaY gamma");
-    await expect(screen).not.toContainText("cleared-2");
+    await test.step("the clear lasts through a reload", async (step) => {
+      step.skip(process.platform === "win32", "Windows' console keeps the cleared lines and paints them again at the reload's resize (vcs-pgm.44)");
+      await page.reload();
+      await expect(screen).toContainText("8 XbetaY gamma");
+      await expect(screen).not.toContainText("cleared-2");
+    });
   });
 });
 
