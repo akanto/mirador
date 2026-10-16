@@ -215,7 +215,30 @@ test.if(process.platform === "win32")("on Windows a new tab runs PowerShell in t
   expect(await outputContaining(browser.received, `in ${workspaceDir} with`)).toMatch(/with (Desktop|Core)/);
   const [tab] = lastTabs(browser.received)!;
   expect(tab?.name).toMatch(/^(powershell|pwsh)$/);
-  expect(tab?.terminals[0]?.title ?? "").not.toMatch(/\.exe$/i);
+  expect(tab?.terminals[0]?.title).toBeNull();
+});
+
+test.if(process.platform === "win32")("on Windows a tab running Windows PowerShell keeps its own name, not the title Windows PowerShell gives itself", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  terminals.openProgram("c1", 80, 24, { tabName: "process 42", command: ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "Write-Output followed-it; [void][Console]::ReadLine()"] });
+
+  await outputContaining(browser.received, "followed-it");
+  const [tab] = lastTabs(browser.received)!;
+  expect(tab?.name).toBe("process 42");
+  expect(tab?.terminals[0]?.title).toBeNull();
+});
+
+test.if(process.platform === "win32")("on Windows a terminal whose title goes back to its console's program path goes back to its tab's name", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  typing(terminalId, shell.settingTitle("my-title"));
+  await tabsOnceSettled(browser.received, ([only]) => only?.terminals[0]?.title === "my-title");
+
+  typing(terminalId, `${shell.settingTitle(findPowerShell(process.env))}; Write-Output ('title-' + 'reset')`);
+  await outputContaining(browser.received, "title-reset");
+  expect(lastTabs(browser.received)?.[0]?.terminals[0]?.title).toBeNull();
 });
 
 test.if(process.platform === "win32")("on Windows closing unless busy closes a terminal at its prompt, keeps one running a program, naming it, and closing that ends the program too", async () => {

@@ -366,8 +366,8 @@ export class TerminalService {
   }
 
   private retitle(shell: Shell, title: string | undefined) {
-    if (title === undefined || isConsoleTitleOf(shell.program, title)) return;
-    const kept = title.slice(0, TITLE_CHARACTERS) || null;
+    if (title === undefined) return;
+    const kept = isConsoleTitleOf(shell.program, title) ? null : title.slice(0, TITLE_CHARACTERS) || null;
     if (kept === shell.title) return;
     shell.title = kept;
     this.publishListing(shell.conversationId);

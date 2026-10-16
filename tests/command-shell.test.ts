@@ -98,8 +98,11 @@ describe("a terminal tab", () => {
     expect(isConsoleTitleOf(bash, bash, "win32")).toBe(true);
     expect(isConsoleTitleOf(pwsh, `Administrator: ${pwsh}`, "win32")).toBe(true);
     expect(isConsoleTitleOf(pwsh, "Rendszergazda: C:\\PROGRAM FILES\\POWERSHELL\\7\\PWSH.EXE", "win32")).toBe(true);
-    expect(isConsoleTitleOf("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "Administrator: Windows PowerShell", "win32")).toBe(false);
+    expect(isConsoleTitleOf("powershell.exe", "Windows PowerShell", "win32")).toBe(true);
+    expect(isConsoleTitleOf("powershell.exe", "Administrator: Windows PowerShell", "win32")).toBe(true);
+    expect(isConsoleTitleOf(pwsh, "Windows PowerShell", "win32")).toBe(false);
     expect(isConsoleTitleOf(pwsh, "my-title", "win32")).toBe(false);
+    expect(isConsoleTitleOf(pwsh, "build: C:\\project", "win32")).toBe(false);
     expect(isConsoleTitleOf("/bin/zsh", "/bin/zsh", "darwin")).toBe(false);
   });
 });
