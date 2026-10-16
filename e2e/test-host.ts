@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import { accessSync, chmodSync, constants, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
@@ -63,6 +63,11 @@ const isWindowsBatchFile = (program: string) => process.platform === "win32" && 
 export function spawnProgram(program: string, args: string[], options: SpawnOptions): ChildProcess {
   if (!isWindowsBatchFile(program)) return spawn(program, args, options);
   return spawn(`"${program}"`, args.map((arg) => `"${arg}"`), { ...options, shell: true });
+}
+
+export function spawnProgramSync(program: string, args: string[], options: SpawnSyncOptionsWithStringEncoding) {
+  if (!isWindowsBatchFile(program)) return spawnSync(program, args, options);
+  return spawnSync(`"${program}"`, args.map((arg) => `"${arg}"`), { ...options, shell: true });
 }
 
 /** Where writeBunProgram puts the program named `name`: Windows runs no script without an extension, so there it is a name.cmd. */
