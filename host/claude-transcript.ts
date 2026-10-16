@@ -41,6 +41,19 @@ export function recordsUserMessage(transcript: string, text: string): boolean {
   return records(transcript).some((record) => record.type === "user" && textOf(record.message?.content).includes(text.trim()));
 }
 
+/**
+ * When Claude Code took in a message steered into its turn at `steeredAt`, which it records the message at; null if it
+ * dropped the message from its queue, as it does when the turn is stopped first. Records from before the steer don't
+ * count, as a short message like "yes" may well have been sent before.
+ */
+export function steeredMessageTakenInAt(transcript: string, text: string, steeredAt: number): number | null {
+  const steered = text.trim();
+  const takenIn = records(transcript).find(
+    (record) => record.type === "user" && Date.parse(record.timestamp) >= steeredAt && textOf(record.message?.content).includes(steered),
+  );
+  return takenIn ? Date.parse(takenIn.timestamp) : null;
+}
+
 /** The model picker's choice for a model a transcript names, matched the way claude-agent-acp matches one. */
 export function modelChoiceFor(configOptions: SessionConfigOption[], model: string): string | null {
   const picker = configOptions.find((option) => option.category === "model" && option.type === "select");

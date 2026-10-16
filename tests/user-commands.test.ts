@@ -36,6 +36,17 @@ test("finished commands wait for the next message; sent, dropped and still-runni
   expect(awaitingDelivery(commands).map(({ commandId }) => commandId)).toEqual(["waiting"]);
 });
 
+test("a command whose output went with a message the agent never answered waits for the next message again", () => {
+  const commands = userCommandsIn(
+    stored([
+      ...ranAndEnded("c1", "git status", "clean"),
+      { type: "user-message", text: "and this", attachedCommandIds: ["c1"] },
+      { type: "steered-messages-returned", seqs: [4], commandIds: ["c1"] },
+    ]),
+  );
+  expect(awaitingDelivery(commands).map(({ commandId }) => commandId)).toEqual(["c1"]);
+});
+
 test("the agent gets each command and its output in Claude Code's tags ahead of the message, long output cut in the middle", () => {
   const long = `${"a".repeat(10_000)}${"b".repeat(5_000)}${"c".repeat(20_000)}`;
   const commands = userCommandsIn(stored([...ranAndEnded("1", "git status -s", " M x\n", "warning\n"), ...ranAndEnded("2", "cat big", long)]));

@@ -3,7 +3,7 @@ import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "../host/claude-transcript.ts";
+import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, steeredMessageTakenInAt } from "../host/claude-transcript.ts";
 
 const record = (fields: Record<string, unknown>) => JSON.stringify(fields);
 const answer = (model: string, isSidechain = false) => record({ type: "assistant", isSidechain, message: { role: "assistant", model, content: [] } });
@@ -57,6 +57,21 @@ test("a transcript records the messages the user sent, however Claude Code store
   expect(recordsUserMessage(transcript, "Fix the build\n")).toBe(true);
   expect(recordsUserMessage(transcript, "Survey the docs")).toBe(false);
   expect(recordsUserMessage("", "Remember the word heliotrope")).toBe(false);
+});
+
+test("a steered message is taken in when Claude Code records it after the steer, and not when it only queued it and dropped it at the stop", () => {
+  const at = (time: string) => `2026-10-16T08:04:${time}Z`;
+  const steeredAt = Date.parse(at("25.400"));
+  const typed = (text: string, time: string) => record({ type: "user", timestamp: at(time), message: { role: "user", content: [{ type: "text", text }] } });
+  const queuedAndDequeued = [
+    typed("yes", "10.000"),
+    record({ type: "queue-operation", operation: "enqueue", timestamp: at("25.481") }),
+    record({ type: "queue-operation", operation: "dequeue", timestamp: at("25.483") }),
+    record({ type: "attachment", timestamp: at("25.486"), attachment: { type: "total_tokens_reminder" } }),
+  ];
+  const interrupted = record({ type: "user", timestamp: at("25.736"), droppedPromptUuids: ["150aa4e7"], message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] } });
+  expect(steeredMessageTakenInAt([...queuedAndDequeued, interrupted].join("\n"), "yes", steeredAt)).toBeNull();
+  expect(steeredMessageTakenInAt([...queuedAndDequeued, typed("Ran git status.\n\nyes", "25.490"), interrupted].join("\n"), "yes", steeredAt)).toBe(Date.parse(at("25.490")));
 });
 
 test("a session's transcript is found under whichever project directory Claude Code keeps it", async () => {

@@ -35,6 +35,8 @@ export class UserCommandLog {
         return this.mark(event.commandIds, "dropped");
       case "user-message":
         return this.mark(event.attachedCommandIds ?? [], "sent");
+      case "steered-messages-returned":
+        return this.mark(event.commandIds ?? [], "pending");
     }
   }
 

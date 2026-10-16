@@ -47,6 +47,7 @@ import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shar
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { withChecklistNote, type ChecklistNote } from "./canvas/checklist.ts";
 import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
+import { returnedSteerSeqs } from "../shared/steered-messages.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
@@ -64,7 +65,7 @@ import type { SystemNotifications } from "./system-notifications.ts";
 import type { TerminalProgram } from "./terminals.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
 import { TerminalWork, updatesAfter } from "./terminal-catch-up.ts";
-import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage } from "./claude-transcript.ts";
+import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, steeredMessageTakenInAt } from "./claude-transcript.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 import { ConversationSessions } from "./conversation-sessions.ts";
 import { SubagentSessions } from "./subagent-sessions.ts";
@@ -119,12 +120,28 @@ interface PromptStart {
   startsTurn?: boolean;
 }
 
+/** Messages that joined a turn together, and what of the user's went to the agent with them. */
+export interface SteeredMessages {
+  sessionId: string;
+  steeredAt: number;
+  messages: QueuedMessage[];
+  seqs: number[];
+  commandIds: string[];
+}
+
+interface TurnInProgress {
+  /** Until the turn's end shows whether the agent answered them. */
+  steered: SteeredMessages[];
+  ended: boolean;
+}
+
 interface Runtime {
   sessionId?: Promise<string>;
   harness?: HarnessProcess;
   running: boolean;
   /** Settles once the running turn has ended. */
   turnEnded?: Promise<void>;
+  turn?: TurnInProgress;
   /** While a profile switch stops the running turn, queued messages wait for the new profile. */
   holdingQueue: boolean;
   /** The latest profile switch; the next one starts after it. */
@@ -488,6 +505,8 @@ export class ConversationService {
     this.endUsageLimitWait(runtime);
     let endTurn = () => {};
     runtime.turnEnded = new Promise((resolve) => (endTurn = resolve));
+    const turn: TurnInProgress = { steered: [], ended: false };
+    runtime.turn = turn;
     runtime.openToolCalls.clear();
     this.forgetUnseenTurnEnd(conversationId);
     this.retitleFromFirstMessage(conversationId, text);
@@ -497,6 +516,7 @@ export class ConversationService {
     this.store.turnStarted(conversationId);
     this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, notes);
     let promptSent = false;
+    let answeredInFull = false;
     try {
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
@@ -504,6 +524,7 @@ export class ConversationService {
       const harness = this.harnessFor(this.get(conversationId));
       promptSent = true;
       const response = await harness.prompt(sessionId, prompt);
+      answeredInFull = response.stopReason === "end_turn";
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
       this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
@@ -515,6 +536,12 @@ export class ConversationService {
         this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error, promptSent) });
       }
     } finally {
+      turn.ended = true;
+      if (!answeredInFull) {
+        await this.returnUnansweredSteers(conversationId, runtime, turn.steered).catch((error: unknown) =>
+          console.error(`${new Date().toISOString()} could not tell whether the agent answered the messages that joined the turn of conversation ${conversationId}: ${errorMessage(error)}`),
+        );
+      }
       runtime.running = false;
       this.announceRunningTurnsCount();
       runtime.killedOnPurpose = false;
@@ -1260,6 +1287,8 @@ export class ConversationService {
     const notes = this.notesForAgent(conversationId);
     const text = messages.map((message) => message.text).join("\n\n");
     const imageIds = messages.flatMap((message) => message.imageIds);
+    const { turn } = runtime;
+    const steeredAt = Date.now();
     const outcome = await this.promptContent(conversationId, withNotes(notes, text), imageIds)
       .then((prompt) => harness.steer(sessionId, prompt))
       .catch((error: unknown) => `failed: ${errorMessage(error)}`);
@@ -1270,8 +1299,29 @@ export class ConversationService {
       if (!runtime.running) this.sendNextQueuedMessage(conversationId);
       return;
     }
-    this.appendUserMessage(conversationId, first, notes);
-    rest.forEach((message) => this.appendUserMessage(conversationId, message, NO_NOTES));
+    const seqs = [this.appendUserMessage(conversationId, first, notes), ...rest.map((message) => this.appendUserMessage(conversationId, message, NO_NOTES))];
+    const steered = { sessionId, steeredAt, messages, seqs: seqs.filter((seq) => seq !== undefined), commandIds: notes.commands.map(({ commandId }) => commandId) };
+    if (turn && !turn.ended) return void turn.steered.push(steered);
+    await this.returnUnansweredSteers(conversationId, runtime, [steered]);
+    this.sendNextQueuedMessage(conversationId);
+  }
+
+  /**
+   * A turn stopped right after a steer can leave the steered messages unanswered, and only Claude Code's transcript
+   * tells which. They go back to the front of the queue, to go out as the next turn.
+   */
+  private async returnUnansweredSteers(conversationId: string, runtime: Runtime, steered: SteeredMessages[]) {
+    const conversation = this.store.findConversation(conversationId);
+    const sessionId = steered[0]?.sessionId;
+    if (!sessionId || conversation?.harness !== "claude") return;
+    const transcript = await claudeTranscript(this.claudeConfigDirOf(conversation), sessionId);
+    const events = this.store.listEvents(conversationId);
+    const unanswered = steered.filter((steer) => !steerAnswered(transcript, events, steer));
+    if (unanswered.length === 0) return;
+    const commandIds = unanswered.flatMap((steer) => steer.commandIds);
+    this.append(conversationId, { type: "steered-messages-returned", seqs: unanswered.flatMap(({ seqs }) => seqs), ...(commandIds.length > 0 && { commandIds }) });
+    this.setQueue(conversationId, runtime, [...unanswered.flatMap(({ messages }) => messages), ...runtime.queuedMessages]);
+    this.publish(this.get(conversationId));
   }
 
   /** What the user did since their last message that the agent should hear of with this one. */
@@ -1455,7 +1505,7 @@ export class ConversationService {
     checklist?.heard();
     const attachedCommandIds = commands.map(({ commandId }) => commandId);
     const attachedRevertIds = reverts.map(({ revertId }) => revertId);
-    this.append(conversationId, {
+    return this.append(conversationId, {
       type: "user-message",
       text,
       ...(attachedCommandIds.length > 0 && { attachedCommandIds }),
@@ -1484,11 +1534,12 @@ export class ConversationService {
     return runtime;
   }
 
-  /** A turn that was still running when its conversation got deleted ends without a trace. */
+  /** Returns the event's seq. A turn that was still running when its conversation got deleted ends without a trace. */
   private append(conversationId: string, event: ConversationEvent) {
     if (!this.store.hasConversation(conversationId)) return;
     const stored = this.store.appendEvent(conversationId, event);
     this.hub.publishEvent(conversationId, stored);
+    return stored.seq;
   }
 
   private notifyTurnEnded(conversationId: string, outcome: TurnOutcome) {
@@ -1620,11 +1671,28 @@ export function openTurnTheAgentWorkedOn(events: StoredEvent[]): boolean {
   return events.slice(began + 1).some(({ event }) => event.type === "acp" && updatesTheAgentRecords.has(event.update.sessionUpdate));
 }
 
-/** What the user asked in the turn that ended last: the message that started it and any that joined it. */
+const agentOutput = new Set<string>(["agent_message_chunk", "agent_thought_chunk", "tool_call"]);
+
+/**
+ * Whether the agent began answering messages steered into its turn: it took them in, which Claude Code records, and its
+ * output came after. Claude Code writes a reply to its transcript only block by block, so a stop in the middle of the
+ * first block leaves none there. Messages with no text to find them by count as answered.
+ */
+export function steerAnswered(transcript: string, events: StoredEvent[], { messages, steeredAt }: Pick<SteeredMessages, "messages" | "steeredAt">) {
+  const withText = messages.find(({ text }) => text.trim());
+  if (!withText) return true;
+  const takenInAt = steeredMessageTakenInAt(transcript, withText.text, steeredAt);
+  return takenInAt !== null && events.some(({ at, event }) => at > takenInAt && event.type === "acp" && agentOutput.has(event.update.sessionUpdate));
+}
+
+/** What the user asked in the turn that ended last: the message that started it and any that joined it, but not those that went out again after it. */
 export function lastTurnRequest(events: StoredEvent[]): TurnRequest | null {
   const lastEnd = events.findLastIndex(endsTurn);
   const start = events.slice(0, Math.max(lastEnd, 0)).findLastIndex(endsTurn) + 1;
-  const messages = events.slice(start, lastEnd === -1 ? undefined : lastEnd).flatMap(({ event }) => (event.type === "user-message" ? [event] : []));
+  const returned = returnedSteerSeqs(events);
+  const messages = events
+    .slice(start, lastEnd === -1 ? undefined : lastEnd)
+    .flatMap(({ seq, event }) => (event.type === "user-message" && !returned.has(seq) ? [event] : []));
   const [first] = messages;
   if (!first) return null;
   return { text: messages.map(({ text }) => text).join("\n\n"), firstText: first.text, imageIds: messages.flatMap(({ imageIds = [] }) => imageIds) };

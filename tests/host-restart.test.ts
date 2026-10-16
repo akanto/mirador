@@ -148,6 +148,11 @@ describe("lastTurnRequest", () => {
     expect(lastTurnRequest(events)).toEqual({ text: "Fix the build\n\nand the docs", firstText: "Fix the build", imageIds: ["img-1"] });
   });
 
+  test("leaves out a message that joined the turn but went out again after it, as the agent never answered it", () => {
+    const events = stored([said("Fix the build"), said("and the docs"), cancelled, { type: "steered-messages-returned", seqs: [2] }]);
+    expect(lastTurnRequest(events)).toEqual({ text: "Fix the build", firstText: "Fix the build", imageIds: [] });
+  });
+
   test("counts a turn that failed as ended, and finds nothing in a turn without a message", () => {
     expect(lastTurnRequest(stored([said("lost"), { type: "error", message: "boom" }, said("Try again"), cancelled]))?.firstText).toBe("Try again");
     expect(lastTurnRequest(stored([said("done"), { type: "turn-end", stopReason: "end_turn" }, cancelled]))).toBeNull();

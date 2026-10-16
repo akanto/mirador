@@ -23,6 +23,17 @@ test("a revert note is pending until a message of the user's carries it", () => 
   expect(pendingReverts(stored(...events.map(({ event }) => event), userMessage("carry on", { attachedRevertIds: ["r1"] })))).toEqual([]);
 });
 
+test("a revert note that went with a message the agent never answered is pending again", () => {
+  const events = stored(
+    userMessage("do the thing"),
+    revertEvent("r1", 1),
+    userMessage("carry on", { attachedRevertIds: ["r1"] }),
+    { type: "turn-end", stopReason: "cancelled" },
+    { type: "steered-messages-returned", seqs: [3] },
+  );
+  expect(pendingReverts(events).map(({ revertId }) => revertId)).toEqual(["r1"]);
+});
+
 test("a revert's note names the turn it went back to, and says what changed", () => {
   const revert = { revertId: "r1", toSeq: 1, toMessage: "do the thing", restored: 3, removed: 1 };
   const note = withRevertNotes([revert], "carry on");

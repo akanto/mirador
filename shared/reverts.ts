@@ -1,4 +1,5 @@
 import type { ConversationEvent, StoredEvent } from "./model.ts";
+import { returnedSteerSeqs } from "./steered-messages.ts";
 import { cutWithEllipsis } from "./text-cut.ts";
 
 /** A turn whose files the user put back, and what the restore did. */
@@ -19,7 +20,8 @@ const messageOf = (events: StoredEvent[], seq: number) => {
 
 /** The reverts whose note has not gone to the agent with a message of the user's yet. */
 export function pendingReverts(events: StoredEvent[]): Revert[] {
-  const sent = new Set(events.flatMap(({ event }) => (event.type === "user-message" ? (event.attachedRevertIds ?? []) : [])));
+  const returned = returnedSteerSeqs(events);
+  const sent = new Set(events.flatMap(({ seq, event }) => (event.type === "user-message" && !returned.has(seq) ? (event.attachedRevertIds ?? []) : [])));
   return events
     .filter(({ event }) => event.type === "revert")
     .map(({ event }) => event as Extract<ConversationEvent, { type: "revert" }>)

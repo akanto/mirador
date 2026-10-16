@@ -25,6 +25,25 @@ describe("buildTimeline", () => {
     ]);
   });
 
+  test("shows a message that joined a stopped turn but went out again after it only where it went out", () => {
+    const timeline = buildTimeline(
+      stored([
+        { type: "user-message", text: "First task" },
+        { type: "user-message", text: "Also this" },
+        { type: "turn-end", stopReason: "cancelled" },
+        { type: "steered-messages-returned", seqs: [2] },
+        { type: "user-message", text: "Also this" },
+        agentText("Done"),
+      ]),
+    );
+    expect(timeline.map((block) => [block.kind, "text" in block ? block.text : ""])).toEqual([
+      ["user", "First task"],
+      ["notice", "Turn ended: cancelled"],
+      ["user", "Also this"],
+      ["agent", "Done"],
+    ]);
+  });
+
   test("keeps hook notices out of the agent's reply", () => {
     const timeline = buildTimeline(stored([agentText("DONE"), agentText("**Notice:** Stop says", { claudeCode: { kind: "informational" } })]));
     expect(timeline.map(({ kind }) => kind)).toEqual(["agent", "info"]);

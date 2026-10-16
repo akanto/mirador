@@ -328,6 +328,8 @@ class TimelineBuilder {
       case "user-command-ended":
       case "user-command-dropped":
         return;
+      case "steered-messages-returned":
+        return this.dropUserBlocks(event.seqs);
       case "user-message":
         this.currentPlan = null;
         this.messageTexts.set(seq, event.text);
@@ -489,6 +491,12 @@ class TimelineBuilder {
     this.currentPlan = null;
     this.subagentsOfThisTurn.splice(0).forEach((subagent) => (subagent.turnEnded = stopReason));
     this.toolsOfThisTurn.splice(0).filter((block) => block.endedAt === undefined).forEach((block) => (block.leftUnfinished = true));
+  }
+
+  private dropUserBlocks(seqs: number[]) {
+    const keys = new Set(seqs.map(String));
+    const kept = this.blocks.filter((block) => block.kind !== "user" || !keys.has(block.key));
+    this.blocks.splice(0, this.blocks.length, ...kept);
   }
 
   private leaveFailedTurnBehind() {

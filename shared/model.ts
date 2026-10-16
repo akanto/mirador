@@ -427,6 +427,11 @@ export type ConversationEvent =
   | { type: "user-command-output"; commandId: string; stream: CommandStream; text: string }
   | { type: "user-command-ended"; commandId: string; exitCode: number | null }
   | { type: "user-command-dropped"; commandIds: string[] }
+  /**
+   * Messages that joined a turn the user stopped before the agent answered them, by the seqs of their user-message
+   * events: they go out again as the next turn and show there. `commandIds`: the commands whose output went with them.
+   */
+  | { type: "steered-messages-returned"; seqs: number[]; commandIds?: string[] }
   | { type: "acp"; update: SessionUpdate }
   /** `edits`: the files the tool would change, as the host found the change in each, for a request that changes files. */
   | { type: "permission"; permissionId: string; toolCall: ToolCallUpdate; options: PermissionOption[]; edits?: EditDiff[] }

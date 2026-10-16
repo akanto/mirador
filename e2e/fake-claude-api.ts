@@ -65,6 +65,8 @@ export class FakeClaudeApi {
   /** Every request's messages, role by role: what the agent's own history held when it answered. */
   readonly history: string[][] = [];
   readonly refused: string[] = [];
+  /** The text the user typed last in each request held since `hold`. */
+  readonly held: string[] = [];
   private server?: Server;
   private heldReplies: (() => void)[] | null = null;
   private heldNotificationReplies: (() => void)[] = [];
@@ -112,7 +114,10 @@ export class FakeClaudeApi {
   }
 
   private reply(body: MessagesRequest, response: ServerResponse) {
-    if (this.heldReplies) return void this.heldReplies.push(() => this.reply(body, response));
+    if (this.heldReplies) {
+      this.held.push(lastTypedText(body));
+      return void this.heldReplies.push(() => this.reply(body, response));
+    }
     const typed = lastTypedText(body);
     this.systemPrompts.set(typed, systemTextOf(body));
     this.userMessages.set(typed, textOf(body.messages.findLast(({ role }) => role === "user")?.content ?? ""));
