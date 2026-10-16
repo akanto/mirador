@@ -60,32 +60,9 @@
     "bead": "vcs-vuuj"
   },
   {
-    "file": "changes.spec.ts",
-    "title": "Changes opens over a page, and a new page takes the canvas back",
-    "reason": "The turn's checkpoint is gone by the time Changes opens, so it reads as if nothing changed and the Project section never appears.",
-    "bead": "vcs-3cih"
-  },
-  {
-    "file": "workspace-groups.spec.ts",
-    "title": "workspaces and groups share one order: workspaces gather in groups that fold, land between groups, and stay in place when their group goes",
-    "reason": "After a drop the sidebar's top level comes back empty on a loaded runner.",
-    "bead": "vcs-z2f0"
-  },
-  {
-    "file": "steer-then-stop.spec.ts",
-    "title": "a message that joined the turn goes out again after Stop if the agent had not answered it yet",
-    "reason": "A steer that joined a turn the Stop cancelled gets sent again and answered twice.",
-    "bead": "vcs-6dzt"
-  },
-  {
     "file": "user-commands.spec.ts",
     "title": "! runs a command in the workspace folder, and its output goes to the agent with the next message unless dropped",
-    "reason": "Stop misses Git Bash children that carry a stale parent pid, so the command's row never records the stop; this one fails on a Windows VM too.",
+    "reason": "Stop misses Git Bash children that carry a stale parent pid, so the stopped command's row never records the stop. It fails every time on a Windows VM, and on the runner it failed in survey 10 and went over in survey 11.",
     "bead": "vcs-ikkx"
-  },
-  {
-    "file": "try-again.spec.ts",
-    "title": "a turn an API error ended is tried again from the error, and the agent still has the message it failed on",
-    "reason": "The page reload right after a host restart aborted; seen once so far."
   }
 ]
