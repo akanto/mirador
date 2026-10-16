@@ -19,8 +19,7 @@ export const isShellCommand = (block: ToolBlock) => block.toolKind === "execute"
 
 export function shellCommandOf(block: ToolBlock): ShellCommand {
   const description = stringField(block.rawInput, "description");
-  const printed = block.content
-    .flatMap((content) => textOf(content))
+  const printed = [...block.content.flatMap((content) => textOf(content)), ...(block.terminalOutput ? [block.terminalOutput] : [])]
     .filter((text) => text !== description)
     .map((text) => text.match(fencedOutput)?.[1] ?? text)
     .join("\n")
@@ -31,7 +30,7 @@ export function shellCommandOf(block: ToolBlock): ShellCommand {
     command: commandLineOf(block.rawInput, block.title),
     description,
     output: printedExitCode ? printed.slice(printedExitCode[0].length) : printed,
-    exitCode: exitCodeOf(block.rawOutput) ?? (printedExitCode ? Number(printedExitCode[1]) : null),
+    exitCode: exitCodeOf(block.rawOutput) ?? block.terminalExitCode ?? (printedExitCode ? Number(printedExitCode[1]) : null),
     directory: stringField(block.rawInput, "cwd"),
   };
 }

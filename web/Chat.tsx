@@ -671,8 +671,8 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
   );
 }
 
-const agentNames: Record<HarnessId, string> = { claude: "Claude", opencode: "opencode" };
-const agentMarks: Record<HarnessId, string> = { claude: "✳", opencode: "◆" };
+const agentNames: Record<HarnessId, string> = { claude: "Claude", opencode: "opencode", pi: "pi" };
+const agentMarks: Record<HarnessId, string> = { claude: "✳", opencode: "◆", pi: "π" };
 
 function PersonIcon() {
   return (
@@ -993,6 +993,7 @@ function earlierEntriesLabel(firstLoaded: number, earlier: EarlierHistory) {
 const queuedMessagesGoOut: Record<HarnessId, string> = {
   claude: "each joins the turn when the agent's tools finish, or waits for the turn to end, as tagged",
   opencode: "sent when the agent finishes its turn",
+  pi: "sent when the agent finishes its turn",
 };
 
 function DeliveryTag({ conversationId, message }: { conversationId: string; message: QueuedMessage }) {

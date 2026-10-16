@@ -21,6 +21,7 @@
     "diff": "9.0.0",
     "mermaid": "12",
     "modern-screenshot": "4.7.0",
+    "pi-acp": "0.0.34",
     "prismjs": "1.30.0",
     "react": "19",
     "react-dom": "19",
@@ -40,6 +41,7 @@
     "typescript": "^7.0.2"
   },
   "patchedDependencies": {
-    "@agentclientprotocol/claude-agent-acp@0.88.0": "patches/@agentclientprotocol%2Fclaude-agent-acp@0.88.0.patch"
+    "@agentclientprotocol/claude-agent-acp@0.88.0": "patches/@agentclientprotocol%2Fclaude-agent-acp@0.88.0.patch",
+    "pi-acp@0.0.34": "patches/pi-acp@0.0.34.patch"
   }
 }

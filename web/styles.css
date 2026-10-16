@@ -1594,6 +1594,10 @@ input.picker-search {
   background: #2f3542;
 }
 
+.avatar.agent-pi {
+  background: #3d5a99;
+}
+
 .avatar svg {
   width: 16px;
   height: 16px;

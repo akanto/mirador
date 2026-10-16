@@ -39,6 +39,9 @@ export interface ToolBlock extends Origin {
   locations: ToolCallLocation[];
   rawInput?: unknown;
   rawOutput?: unknown;
+  /** A command's output and exit code as pi-acp sends them, in the update's `_meta` rather than its content. */
+  terminalOutput?: string;
+  terminalExitCode?: number;
   toolName?: string;
   endedAt?: number;
   /** The turn it belongs to ended with the call still unfinished. */
@@ -237,6 +240,14 @@ interface OpencodeChild {
 }
 
 type ToolUpdate = ToolCallUpdate & { title?: string | null; name?: string | null };
+
+/** Zed's convention for a command's output, which pi-acp follows: each update carries the output added since the last. */
+function terminalMeta(update: ToolUpdate) {
+  const meta = update._meta as { terminal_output?: { data?: unknown } | null; terminal_exit?: { exit_code?: unknown } | null } | null | undefined;
+  const output = meta?.terminal_output?.data;
+  const exitCode = meta?.terminal_exit?.exit_code;
+  return { output: typeof output === "string" ? output : "", exitCode: typeof exitCode === "number" ? exitCode : undefined };
+}
 
 const OPENCODE_SUBAGENT_TOOL = "subagent";
 
@@ -536,6 +547,7 @@ class TimelineBuilder {
     const title = ownTitle(update);
     const name = toolName ?? toolNameIn(update, title);
     const background = launchedInBackground || (update.rawInput as { background?: unknown } | undefined)?.background === true;
+    const terminal = terminalMeta(update);
     if (existing) {
       if (name) this.name(existing, name, origin.at);
       if (background) existing.launchedInBackground = true;
@@ -547,6 +559,8 @@ class TimelineBuilder {
       if (update.locations) existing.locations = update.locations;
       if (update.rawInput !== undefined) existing.rawInput = update.rawInput;
       if (update.rawOutput !== undefined) existing.rawOutput = update.rawOutput;
+      if (terminal.output) existing.terminalOutput = (existing.terminalOutput ?? "") + terminal.output;
+      if (terminal.exitCode !== undefined) existing.terminalExitCode = terminal.exitCode;
       return;
     }
     const block: ToolBlock = {
@@ -560,6 +574,8 @@ class TimelineBuilder {
       locations: update.locations ?? [],
       rawInput: update.rawInput,
       rawOutput: update.rawOutput,
+      ...(terminal.output && { terminalOutput: terminal.output }),
+      ...(terminal.exitCode !== undefined && { terminalExitCode: terminal.exitCode }),
       ...(ends && { endedAt: origin.at }),
       ...(background && { launchedInBackground: true }),
     };

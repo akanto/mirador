@@ -60,6 +60,23 @@ describe("buildTimeline", () => {
     expect(timeline[0]).toMatchObject({ kind: "tool", title: "Read", status: "completed", rawOutput: "ok" });
   });
 
+  test("gathers a command's output and exit code from the terminal meta pi-acp sends", () => {
+    const timeline = buildTimeline(
+      stored([
+        acp({ sessionUpdate: "tool_call", toolCallId: "t1", title: "ls", kind: "execute", status: "pending", content: [{ type: "terminal", terminalId: "t1" }] }),
+        acp({ sessionUpdate: "tool_call_update", toolCallId: "t1", status: "in_progress", _meta: { terminal_output: { terminal_id: "t1", data: "a.txt\n" } } }),
+        acp({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "t1",
+          status: "failed",
+          _meta: { terminal_output: { terminal_id: "t1", data: "ls: b.txt: No such file\n" }, terminal_exit: { terminal_id: "t1", exit_code: 1, signal: null } },
+        }),
+      ]),
+    );
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0]).toMatchObject({ kind: "tool", status: "failed", terminalOutput: "a.txt\nls: b.txt: No such file\n", terminalExitCode: 1 });
+  });
+
   test("marks a permission as resolved with the chosen option", () => {
     const timeline = buildTimeline(
       stored([

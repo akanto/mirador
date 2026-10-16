@@ -18,6 +18,9 @@ ANTHROPIC_MODEL=qwen3-coder
   opencode: `OPENCODE_CONFIG=/Users/you/.config/opencode/work.json
 # or inline, merged over your opencode config:
 OPENCODE_CONFIG_CONTENT='{"model":"llama.cpp/qwen3"}'`,
+  pi: `PI_CODING_AGENT_DIR=/Users/you/.pi/work
+# or another pi than the one on PATH:
+PI_ACP_PI_COMMAND=/opt/homebrew/bin/pi`,
 };
 
 function useSaveProfile(onSaved: (profileId: string) => void) {

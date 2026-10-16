@@ -9,8 +9,8 @@ export const enterWhileBusyLabels: Record<EnterWhileBusy, string> = {
   "after-turn": "Sends the message after the turn ends",
 };
 
-/** Claude Code takes messages into a running turn (ACP steering); opencode only between turns. */
-export const harnessSteers: Record<HarnessId, boolean> = { claude: true, opencode: false };
+/** Claude Code takes messages into a running turn (ACP steering); opencode and pi only between turns. */
+export const harnessSteers: Record<HarnessId, boolean> = { claude: true, opencode: false, pi: false };
 
 const enterWhileBusy = storedChoice<EnterWhileBusy>("mirador-enter-while-busy", ["steer", "after-turn"], "steer");
 

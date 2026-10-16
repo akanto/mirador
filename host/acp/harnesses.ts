@@ -21,6 +21,14 @@ const opencodeInstallDirectories = ["/opt/homebrew/bin", "/usr/local/bin", join(
 
 const findOpencode = () => Bun.which("opencode", { PATH: currentPath() }) ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(delimiter) });
 
+/**
+ * pi-acp is the ACP side of pi: it starts one `pi --mode rpc` per session. Looked up when pi starts, so a checkout whose
+ * packages predate it still runs the other agents.
+ */
+const piAcpEntry = () => join(dirname(Bun.resolveSync("pi-acp/package.json", import.meta.dir)), "dist/index.js");
+
+const findPi = (path = currentPath()) => Bun.which("pi", { PATH: path });
+
 function opencodeCommand(): string[] {
   const executable = findOpencode();
   if (!executable) throw new Error("opencode is not installed: no opencode executable on PATH or in its usual install directories.");
@@ -29,13 +37,18 @@ function opencodeCommand(): string[] {
 
 /** The agents this machine has a program for. */
 export function installedHarnesses(claudeProgramSetting: string): HarnessId[] {
-  const programOf: Record<HarnessId, () => string | null> = { claude: () => findClaudeProgram(claudeProgramSetting), opencode: findOpencode };
+  const programOf: Record<HarnessId, () => string | null> = {
+    claude: () => findClaudeProgram(claudeProgramSetting),
+    opencode: findOpencode,
+    pi: () => findPi(),
+  };
   return harnessIds.filter((harness) => programOf[harness]() !== null);
 }
 
 const commandFor: Record<HarnessId, () => string[]> = {
   claude: () => [process.execPath, claudeAgentEntry],
   opencode: opencodeCommand,
+  pi: () => [process.execPath, piAcpEntry()],
 };
 
 const AUTH_REQUIRED_CODE = RequestError.authRequired().code;
@@ -48,6 +61,7 @@ export const isAuthRequiredError = (error: unknown) =>
 const loginCommandFor: Record<HarnessId, (environment: Record<string, string>) => string[]> = {
   claude: (environment) => [environment.CLAUDE_CODE_EXECUTABLE!, "auth", "login"],
   opencode: () => [opencodeCommand()[0]!, "auth", "login"],
+  pi: (environment) => [environment.PI_ACP_PI_COMMAND!],
 };
 
 const powershellKeepOpenOnFailure = (command: string[]) =>
@@ -121,10 +135,23 @@ function withCanvasToolsPlugin(environment: Record<string, string>): Record<stri
 export function launchEnvironment(harness: HarnessId, profile: Profile | null, claudeProgramSetting: string): Record<string, string> {
   const environment = profileEnvironment(profile);
   if (harness === "opencode") return withCanvasToolsPlugin(environment);
+  if (harness === "pi") return piAcpEnvironment(environment);
   if (environment.CLAUDE_CODE_EXECUTABLE) return environment;
   const program = findClaudeProgram(claudeProgramSetting, environment.PATH);
   if (!program) throw new Error(claudeProgramMissing(claudeProgramSetting));
   return { ...environment, CLAUDE_CODE_EXECUTABLE: program };
+}
+
+/**
+ * pi-acp runs the pi in PI_ACP_PI_COMMAND, rather than whichever its own PATH finds, and keeps its startup notes (pi's
+ * version, every skill) out of the conversation. A profile may set either itself.
+ */
+function piAcpEnvironment(profileEnvironment: Record<string, string>): Record<string, string> {
+  const environment: Record<string, string> = { PI_ACP_QUIET_STARTUP: "true", ...profileEnvironment };
+  if (environment.PI_ACP_PI_COMMAND) return environment;
+  const program = findPi(environment.PATH);
+  if (!program) throw new Error("pi is not installed: no pi executable on PATH. Install it with npm install -g @earendil-works/pi-coding-agent.");
+  return { ...environment, PI_ACP_PI_COMMAND: program };
 }
 
 export function profileEnvironment(profile: Profile | null): Record<string, string> {

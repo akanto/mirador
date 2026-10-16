@@ -36,6 +36,13 @@ describe("shell commands", () => {
     expect(command).toEqual({ command: "false", description: "Fail", output: "boom", exitCode: 1, directory: "/work/project" });
   });
 
+  test("pi: the output and exit code come from the terminal meta, not the content", () => {
+    const command = shellCommandOf(
+      toolBlock({ title: "ls b.txt", content: [{ type: "terminal", terminalId: "t1" }], terminalOutput: "ls: b.txt: No such file\n", terminalExitCode: 1 }),
+    );
+    expect(command).toEqual({ command: "ls b.txt", description: null, output: "ls: b.txt: No such file", exitCode: 1, directory: null });
+  });
+
   test("colour codes are stripped, and the title stands in for a missing command", () => {
     const command = shellCommandOf(toolBlock({ title: "Terminal", content: [text("\x1b[31mred\x1b[0m plain")] }));
     expect(command.command).toBe("Terminal");

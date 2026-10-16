@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type ServerResponse, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
@@ -174,4 +174,32 @@ export function opencodeProgram() {
   const found = searchedDirectories.map((directory) => join(directory, "opencode")).find((candidate) => existsSync(candidate));
   if (!found) throw new Error(`opencode is neither on PATH nor in ${installDirectory}`);
   return found;
+}
+
+/**
+ * A profile environment that points pi at the scripted model and keeps it away from the user's own pi setup: settings,
+ * models, extensions and sessions all live under `root`.
+ */
+export function scriptedPiEnvironment(model: ScriptedModel, root: string) {
+  const agentDirectory = join(root, "pi-agent");
+  mkdirSync(agentDirectory, { recursive: true });
+  const provider = { baseUrl: model.url, api: "openai-completions", apiKey: "unused", models: [{ id: "scripted", name: "Scripted" }] };
+  writeFileSync(join(agentDirectory, "models.json"), JSON.stringify({ providers: { e2e: provider } }));
+  writeFileSync(join(agentDirectory, "settings.json"), JSON.stringify({ defaultProvider: "e2e", defaultModel: "scripted" }));
+  return [`PI_CODING_AGENT_DIR=${agentDirectory}`, "PI_OFFLINE=1"].join("\n");
+}
+
+/** pi as the host finds it, on PATH; null where it is not installed. */
+export function piProgram() {
+  const candidates = (process.env.PATH ?? "").split(delimiter).map((directory) => join(directory, process.platform === "win32" ? "pi.cmd" : "pi"));
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+/** pi-acp keeps a map of every session it starts in the user's ~/.pi; the ones a test started under `root` come out of it again. */
+export function forgetPiAcpSessionsUnder(root: string) {
+  const sessionMap = join(homedir(), ".pi", "pi-acp", "session-map.json");
+  if (!existsSync(sessionMap)) return;
+  const map = JSON.parse(readFileSync(sessionMap, "utf8")) as { sessions: Record<string, { cwd: string; sessionFile: string }> };
+  const kept = Object.entries(map.sessions).filter(([, { cwd, sessionFile }]) => !cwd.startsWith(root) && !sessionFile.startsWith(root));
+  writeFileSync(sessionMap, `${JSON.stringify({ ...map, sessions: Object.fromEntries(kept) }, null, 2)}\n`);
 }
