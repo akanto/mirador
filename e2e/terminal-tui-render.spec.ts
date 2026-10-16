@@ -10,7 +10,7 @@ test.afterAll(async () => {
   await host.cleanUp();
 });
 
-const tuiScript = String.raw`
+const posixTuiScript = String.raw`
 draw() {
   set -- $(stty size); h=$1; w=$2
   i=1
@@ -25,6 +25,9 @@ while :; do
   sleep 0.2
 done
 `;
+
+/** The same program in PowerShell, which reads the size from the console that ConPTY keeps at the terminal's. */
+const powershellTuiScript = String.raw`$e = [char]27; [Console]::Write("$e[?1049h$e[2J"); $prev = ''; while ($true) { $h = [Console]::WindowHeight; $w = [Console]::WindowWidth; if ("$h $w" -ne $prev) { $prev = "$h $w"; for ($i = 1; $i -le $h; $i++) { [Console]::Write("$e[$i;1H$e[KROW-$i-$w") }; [Console]::Write("$e[$h;1H$e[KSTATUS") }; Start-Sleep -Milliseconds 200 }`;
 
 test("a full-screen program keeps painting every row after the terminal grows and shrinks", async ({ page }) => {
   await signIn(page, host);
@@ -42,7 +45,7 @@ test("a full-screen program keeps painting every row after the terminal grows an
     return { rowCount: texts.length, blank };
   };
 
-  await page.keyboard.type(`${tuiScript}\n`);
+  await page.keyboard.type(`${process.platform === "win32" ? powershellTuiScript : posixTuiScript}\n`);
   await expect.poll(paintedEverywhere, { message: "the program paints every row to begin with" }).toEqual(
     expect.objectContaining({ blank: [] }),
   );

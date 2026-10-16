@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
+import { echo, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -28,7 +29,7 @@ test("with copy on select switched on in Settings → Terminal, selecting text i
   await page.getByRole("button", { name: "Show terminal" }).click();
   const screen = page.locator(".terminal-pane .xterm-rows");
   await page.locator(".terminal-pane .xterm").click();
-  await page.keyboard.type("echo copy-$((5+5)) and-more\n");
+  await page.keyboard.type(`${echo(`copy-${sum("5+5")} and-more`)}\n`);
   await expect(screen).toContainText("copy-10 and-more");
   const row = (await screen.locator(":scope > div", { hasText: /^copy-10 and-more\s*$/ }).boundingBox())!;
   const onTheWord = { x: row.x + 20, y: row.y + row.height / 2 };

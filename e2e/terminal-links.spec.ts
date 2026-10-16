@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { DesktopMenuMessage } from "../shared/desktop-menu.ts";
 import { addWorkspace, primaryModifier, signIn, startConversation } from "./helpers.ts";
+import { echo, printRaw, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 function useHost() {
@@ -25,8 +26,8 @@ async function openTerminalWithLinks(page: Page, host: TestHost) {
   await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();
   await terminal(page).click();
-  await page.keyboard.type("echo https://example.com/plain-$((1+1))\n");
-  await page.keyboard.type(`printf '\\033]8;;${HYPERLINK_ADDRESS}\\033\\\\the docs\\033]8;;\\033\\\\\\n'\n`);
+  await page.keyboard.type(`${echo(`https://example.com/plain-${sum("1+1")}`)}\n`);
+  await page.keyboard.type(`${printRaw(`\x1b]8;;${HYPERLINK_ADDRESS}\x1b\\the docs\x1b]8;;\x1b\\\n`)}\n`);
   const screen = page.locator(".terminal-pane .xterm-rows");
   await expect(screen).toContainText("the docs");
   const pointInto = async (line: RegExp) => {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { countTo, echo, printRaw, shellTabName, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -41,22 +42,22 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await startConversation(page);
 
   await page.getByRole("button", { name: "Show terminal" }).click();
-  await expect(tabs(page)).toHaveText(["sh"]);
-  await typeInto(page, 0, "echo first-$((1+1))");
+  await expect(tabs(page)).toHaveText([shellTabName]);
+  await typeInto(page, 0, echo(`first-${sum("1+1")}`));
   await expect(screenOf(page, 0)).toContainText("first-2");
 
   await page.getByRole("button", { name: "New terminal tab" }).click();
-  await expect(tabs(page)).toHaveText(["sh", "sh 2"]);
-  await expect(page.getByRole("tab", { name: "sh 2" })).toHaveAttribute("aria-selected", "true");
+  await expect(tabs(page)).toHaveText([shellTabName, `${shellTabName} 2`]);
+  await expect(page.getByRole("tab", { name: `${shellTabName} 2` })).toHaveAttribute("aria-selected", "true");
   await expect(typingInto(page, 0)).toBeFocused();
-  await page.keyboard.type("echo second-$((2+2))\n");
+  await page.keyboard.type(`${echo(`second-${sum("2+2")}`)}\n`);
   await expect(screenOf(page, 0)).toContainText("second-4");
   await expect(screenOf(page, 0)).not.toContainText("first-2");
 
   await page.getByRole("button", { name: "Split right" }).click();
   await expect(views(page)).toHaveCount(2);
   await expect(typingInto(page, 1)).toBeFocused();
-  await page.keyboard.type("echo right-$((3+3))\n");
+  await page.keyboard.type(`${echo(`right-${sum("3+3")}`)}\n`);
   await expect(screenOf(page, 1)).toContainText("right-6");
   await expect(screenOf(page, 0)).not.toContainText("right-6");
 
@@ -65,15 +66,15 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await dragBy(page, ".terminal-splits.shown .terminal-group > .splitter", -80);
   expect(await leftWidth()).toBeLessThan(evenWidth - 60);
 
-  await typeInto(page, 0, "printf '\\033]0;my-title\\007'");
-  await expect(tabs(page)).toHaveText(["sh", "my-title"]);
+  await typeInto(page, 0, printRaw("\x1b]0;my-title\x07"));
+  await expect(tabs(page)).toHaveText([shellTabName, "my-title"]);
   await expect(page.locator(".terminal-splits.shown .split-title")).toHaveText(["my-title", "Terminal 2"]);
 
   const other = await context.newPage();
   await other.goto(page.url());
-  await expect(tabs(other)).toHaveText(["sh", "my-title"]);
+  await expect(tabs(other)).toHaveText([shellTabName, "my-title"]);
 
-  await page.getByRole("tab", { name: "sh", exact: true }).click();
+  await page.getByRole("tab", { name: shellTabName, exact: true }).click();
   await expect(views(page)).toHaveCount(1);
   await expect(screenOf(page, 0)).toContainText("first-2");
 
@@ -84,8 +85,8 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(page.locator(".split-strip")).toHaveCount(0);
 
   await confirm(page, "Close my-title");
-  await expect(tabs(page)).toHaveText(["sh"]);
-  await expect(tabs(other)).toHaveText(["sh"]);
+  await expect(tabs(page)).toHaveText([shellTabName]);
+  await expect(tabs(other)).toHaveText([shellTabName]);
 
   const split = page.getByRole("button", { name: "Split right" });
   for (const count of [2, 3, 4]) {
@@ -95,7 +96,7 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   await expect(split).toBeDisabled();
 
   await page.reload();
-  await expect(tabs(page)).toHaveText(["sh"]);
+  await expect(tabs(page)).toHaveText([shellTabName]);
   await expect(views(page)).toHaveCount(4);
   await expect(screenOf(page, 0)).toContainText("first-2");
 
@@ -108,7 +109,7 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
       last = now;
     }
   };
-  await typeInto(page, 0, "seq 1 400");
+  await typeInto(page, 0, countTo(400));
   await expect(screenOf(page, 0)).toContainText("400");
   const atBottom = await settledTopRow();
   for (const _ of [1, 2, 3, 4]) await page.mouse.wheel(0, -1500);
@@ -116,7 +117,7 @@ test("terminals open in tabs and side-by-side splits that every window shares, t
   const scrolledUp = await settledTopRow();
   await page.getByRole("button", { name: "New terminal tab" }).click();
   await expect(tabs(page)).toHaveCount(2);
-  await page.getByRole("tab", { name: "sh", exact: true }).click();
+  await page.getByRole("tab", { name: shellTabName, exact: true }).click();
   await expect(views(page)).toHaveCount(4);
   expect(await settledTopRow()).toBe(scrolledUp);
 });

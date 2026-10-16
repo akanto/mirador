@@ -1,0 +1,61 @@
+import { join } from "node:path";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { findPowerShell, programName } from "../host/command-shell.ts";
+import { foldersOnPath, programIn } from "./test-host.ts";
+
+/**
+ * What specs type into a terminal tab, in the language of the shell it runs: sh, or on Windows PowerShell, which a tab
+ * runs there whatever SHELL says. The PowerShell lines run in Windows PowerShell 5.1 as in pwsh 7, so they write ESC as
+ * [char]27 and join commands with ; only.
+ */
+const onWindows = process.platform === "win32";
+
+/** A tab is named after its shell: the specs' sh, or the PowerShell the host finds on Windows. */
+export const shellTabName = onWindows ? programName(findPowerShell(process.env, (name) => programIn(foldersOnPath(), name) ?? null)) : "sh";
+
+/** `expression` worked out by the shell, so the line typed never shows what it prints. */
+export const sum = (expression: string) => (onWindows ? `$(${expression})` : `$((${expression}))`);
+
+export const echo = (text: string) => (onWindows ? `echo "${text}"` : `echo ${text}`);
+
+export const setVariable = (name: string, value: string) => (onWindows ? `$${name}='${value}'` : `${name}=${value}`);
+
+export const variableOr = (name: string, fallback: string) => (onWindows ? `$(if ($${name}) { $${name} } else { '${fallback}' })` : `\${${name}:-${fallback}}`);
+
+export const shellPid = onWindows ? "$PID" : "$$";
+
+/** Shows in the prompt of a shell waiting for a command. */
+export const promptMark = onWindows ? "PS " : "$";
+
+export const countTo = (last: number) => (onWindows ? `1..${last}` : `seq 1 ${last}`);
+
+/** Prints `text`, control characters and all, with no line break after it. */
+export function printRaw(text: string) {
+  if (!onWindows) return `printf '${[...text].map((character) => posixPrintfEscapes[character] ?? character).join("")}'`;
+  const quoted = [...text].map((character) => (character < " " ? `$([char]${character.charCodeAt(0)})` : (powershellEscapes[character] ?? character)));
+  return `[Console]::Write("${quoted.join("")}")`;
+}
+
+const posixPrintfEscapes: Record<string, string> = { "\x1b": "\\033", "\x07": "\\007", "\n": "\\n", "\\": "\\\\", "%": "%%" };
+const powershellEscapes: Record<string, string> = { '"': '`"', $: "`$", "`": "``" };
+
+/**
+ * Shows the keys the terminal sends, as `cat -v` does, until Ctrl+C. Windows has no cat -v, and its console turns the
+ * terminal's escape sequences into key presses unless asked for them as they are, so there a Bun program asks.
+ */
+export const showKeys = onWindows ? `bun "${join(import.meta.dirname, "show-keys.ts")}"` : "cat -v";
+
+/** Asks the terminal to report the mouse, as SGR, then shows what it sends; on Windows show-keys asks, as only it can. */
+export const showKeysFollowingTheMouse = onWindows ? `${showKeys} --follow-mouse` : `${printRaw("\x1b[?1000h\x1b[?1006h")}; ${showKeys}`;
+
+/** The name the host gives the command keepShellBusy runs. */
+export const busyCommandName = onWindows ? "bun" : "sleep";
+
+/**
+ * Types a command that keeps the shell busy for 30 s. PowerShell's sleep runs inside the shell, where the host sees no
+ * command running, so on Windows Bun waits instead, and as Bun takes a moment to start, this waits until it prints.
+ */
+export async function keepShellBusy(page: Page, screen: Locator) {
+  await page.keyboard.type(`${onWindows ? "bun -e 'console.log(`busy-${6 * 7}`); setTimeout(() => {}, 30000)'" : "sleep 30"}\n`);
+  if (onWindows) await expect(screen).toContainText("busy-42");
+}

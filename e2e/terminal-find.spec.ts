@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { echo, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 function useHost() {
@@ -19,13 +20,16 @@ const tally = (page: Page) => findBar(page).locator(".find-tally");
 const highlights = (page: Page) => page.locator(".terminal-pane .xterm-find-result-decoration");
 
 /** Four lines to find in; the command that prints them does not contain the word itself. */
+const printFourLines =
+  process.platform === "win32" ? `$w='rror'; "e$w one"; "E$w two"; "te$w three"; "e$w four"` : `w=rror; printf "e$w one\\nE$w two\\nte$w three\\ne$w four\\n"`;
+
 async function openTerminalWithLines(page: Page, host: TestHost) {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
   await page.getByRole("button", { name: "Show terminal" }).click();
   await page.locator(".terminal-pane .xterm").click();
-  await page.keyboard.type(`w=rror; printf "e$w one\\nE$w two\\nte$w three\\ne$w four\\n"\n`);
+  await page.keyboard.type(`${printFourLines}\n`);
   await expect(screen(page)).toContainText("error four");
 }
 
@@ -84,7 +88,7 @@ test.describe("on macOS", () => {
     await query.press("Escape");
     await expect(findBar(page)).toHaveCount(0);
     await expect(highlights(page)).toHaveCount(0);
-    await page.keyboard.type("echo back-$((1+1))\n");
+    await page.keyboard.type(`${echo(`back-${sum("1+1")}`)}\n`);
     await expect(screen(page)).toContainText("back-2");
   });
 });
