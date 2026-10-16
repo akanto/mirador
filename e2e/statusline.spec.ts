@@ -11,7 +11,10 @@ const host = new TestHost({ runsUserStatusLine: true });
 const api = new FakeClaudeApi();
 const model = new ScriptedModel();
 
-/** Claude settings of the test's own, whose statusline prints what Claude Code's JSON and the profile environment gave it. */
+/**
+ * Claude settings of the test's own, whose statusline prints what Claude Code's JSON and the profile environment gave it.
+ * The script's path is quoted: on Windows Git Bash runs the command, and reads a backslash as an escape.
+ */
 function claudeSettingsWithStatusline() {
   const configDir = join(host.root, "claude-config");
   mkdirSync(configDir, { recursive: true });
@@ -24,7 +27,7 @@ function claudeSettingsWithStatusline() {
       "console.log(`\\x1b[1;32mstatus\\x1b[0m context ${used} ${process.env.STATUSLINE_MARKER} cols ${process.env.COLUMNS}`);",
     ].join("\n"),
   );
-  writeFileSync(join(configDir, "settings.json"), JSON.stringify({ statusLine: { type: "command", command: `bun ${script}` } }));
+  writeFileSync(join(configDir, "settings.json"), JSON.stringify({ statusLine: { type: "command", command: `bun '${script}'` } }));
   return configDir;
 }
 
