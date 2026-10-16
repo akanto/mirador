@@ -14,6 +14,13 @@ permissions:
   contents: read
 
 jobs:
+  # The gate vcs-pgm.14 asks for: every spec passes, or fails for a reason stated in e2e/windows-known-issues.json.
+  # Needs the owner's model server up, since the specs that wait for a real reply wait for it.
+  e2e:
+    uses: ./.github/workflows/windows-e2e.yml
+    with:
+      commit: ${{ inputs.commit }}
+    secrets: inherit
   build:
     # Electrobun does not cross-compile, so the Windows app is built on Windows.
     runs-on: windows-latest
