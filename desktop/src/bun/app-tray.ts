@@ -1,5 +1,6 @@
 import { Tray } from "electrobun/main";
 import { firstTrayTitle, isTrayAction, trayMenu, trayTitle, type TrayAction, type TrayState } from "../core/tray-menu.ts";
+import { setDockBadgeLabel } from "./dock.ts";
 
 /** macOS tints the black template image to suit the menu bar; Linux panels are light or dark, so they get the colour icon. */
 const trayIcon =
@@ -19,10 +20,13 @@ export class AppTray {
     });
   }
 
+  /** The count shows beside the menu bar icon and, while the Dock icon is visible, as its badge. */
   showWaitingCount(count: number) {
     if (process.platform !== "darwin" || count === this.shownWaitingCount) return;
     this.shownWaitingCount = count;
-    this.tray.setTitle(trayTitle(count));
+    const title = trayTitle(count);
+    this.tray.setTitle(title);
+    setDockBadgeLabel(title);
   }
 
   render(state: TrayState) {
