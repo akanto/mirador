@@ -57,6 +57,9 @@ async function listenLikeTheDesktopApp() {
     if (kind === "waiting") waiting.push(Number(count));
     if (kind === "running-turns") runningTurns.push(Number(count));
   });
+  // The host reports the running turns as the notifier's socket opens, so this first count is the host before the test's own turn.
+  // Waiting for it keeps a slow-to-start notifier from first reporting the turn the test has already begun.
+  await expect.poll(() => runningTurns[0], { timeout: 30_000 }).toBe(0);
   return { waiting, runningTurns, stop: () => desktopApp.kill() };
 }
 
