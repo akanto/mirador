@@ -5,7 +5,7 @@ import type { WindowsProcess } from "../host/windows-processes.ts";
 const POLL_INTERVAL_MS = 100;
 const KILLED_PROCESSES_EXIT_MS = 2_000;
 
-interface RunningProcess {
+export interface RunningProcess {
   pid: number;
   parentPid: number;
   startedAt: string;
@@ -31,10 +31,18 @@ function runningProcesses(): RunningProcess[] {
     .map(([pid, parentPid, , ...startedAt]) => ({ pid: Number(pid), parentPid: Number(parentPid), startedAt: startedAt.join(" ") }));
 }
 
-function withDescendants(tree: ProcessTree, processes: RunningProcess[]): ProcessTree {
-  const children = processes.filter(({ pid, parentPid }) => tree.has(parentPid) && !tree.has(pid));
+/**
+ * Windows keeps a process's parent pid after that parent exits, and gives the pid to later processes, so there a process
+ * only counts as a child of one that started before it. Elsewhere an orphan gets a new parent.
+ */
+const isNewChild = (tree: ProcessTree, { pid, parentPid, startedAt }: RunningProcess, platform: NodeJS.Platform) =>
+  tree.has(parentPid) && !tree.has(pid) && (platform !== "win32" || Number(tree.get(parentPid)) < Number(startedAt));
+
+/** The tree with every process its members started, at any depth. */
+export function withDescendants(tree: ProcessTree, processes: RunningProcess[], platform = process.platform): ProcessTree {
+  const children = processes.filter((running) => isNewChild(tree, running, platform));
   const grown = new Map([...tree, ...children.map(({ pid, startedAt }) => [pid, startedAt] as const)]);
-  return children.length === 0 ? grown : withDescendants(grown, processes);
+  return children.length === 0 ? grown : withDescendants(grown, processes, platform);
 }
 
 function stillRunningWithDescendants(tree: ProcessTree): ProcessTree {
