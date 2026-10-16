@@ -54,11 +54,11 @@ linux-x64 linux-arm64: linux-%:
 	cp "$${TMPDIR:-/tmp}/mirador-linux-desktop-$*-release/linux-$*-Mirador-Setup.tar.gz" $(DIST)/Mirador-linux-$*-Setup.tar.gz
 	cp "$${TMPDIR:-/tmp}/mirador-linux-desktop-$*-release/"stable-linux-$*-* $(DIST)/
 
-linux-remote: ## From a Mac: make linux on LINUX_HOST=user@host, with the installers and update files copied back into dist/
+linux-remote: ## From a Mac: make linux on LINUX_HOST=user@host, both architectures at once, with the installers and update files copied back into dist/
 	@[ -n "$(LINUX_HOST)" ] || { echo "Name the x64 Linux machine: make linux-remote LINUX_HOST=user@host" >&2; exit 2; }
 	@[ -z "$$(git status --porcelain)" ] || echo "Uncommitted changes and files never added to git stay out of the build: sending HEAD ($$(git rev-parse --short HEAD))" >&2
 	git bundle create - HEAD --tags | ssh $(LINUX_HOST) 'cat > $(REMOTE_DIR).bundle'
-	ssh $(LINUX_HOST) 'set -e; bundle=$$(realpath $(REMOTE_DIR).bundle); mkdir -p $(REMOTE_DIR) $(REMOTE_TMPDIR); cd $(REMOTE_DIR); git init -q; git config core.ignorecase false; git fetch -q --force --tags "$$bundle" HEAD; rm -f "$$bundle"; git checkout -qf --detach FETCH_HEAD; git clean -qfdx -e /dist/; TMPDIR=$(REMOTE_TMPDIR) make linux'
+	ssh $(LINUX_HOST) 'set -e; bundle=$$(realpath $(REMOTE_DIR).bundle); mkdir -p $(REMOTE_DIR) $(REMOTE_TMPDIR); cd $(REMOTE_DIR); git init -q; git config core.ignorecase false; git fetch -q --force --tags "$$bundle" HEAD; rm -f "$$bundle"; git checkout -qf --detach FETCH_HEAD; git clean -qfdx -e /dist/; TMPDIR=$(REMOTE_TMPDIR) make -j2 --output-sync=target linux'
 	mkdir -p $(DIST)
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/Mirador-linux-*-Setup.tar.gz' $(DIST)/
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/stable-linux-*' $(DIST)/
