@@ -46,6 +46,7 @@ async function stopWhileWorking(page: Page, task: string, meanwhile = () => {}) 
   await sendMessage(page, task);
   await expect(page.locator(".composer:visible .stop")).toBeVisible();
   await expect(userMessages(page).last()).toHaveText(task);
+  await expect.poll(() => api.held.includes(task), { timeout: 60_000 }).toBe(true);
   meanwhile();
   await composer(page).press("Escape");
   await waitForTurnToEnd(page);
