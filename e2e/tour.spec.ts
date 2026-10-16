@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const ideaLog = join(host.root, "idea.log");
@@ -42,9 +42,7 @@ function createUncommittedWork() {
 }
 
 function writeFakeIdea() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  writeFileSync(join(host.fakeProgramsDir, "idea"), `#!/bin/bash\nprintf '%s\\n' "$*" >> "${ideaLog}"\n`);
-  chmodSync(join(host.fakeProgramsDir, "idea"), 0o755);
+  writeBunProgram(host.fakeProgramsDir, "idea", join(import.meta.dirname, "fake-idea.ts"), { FAKE_IDEA_LOG: ideaLog });
 }
 
 const tour = (change: Record<string, unknown> = {}) => ({
@@ -97,7 +95,7 @@ test("a tour walks through the code as it is, or through what the task changed w
     await expect(view.locator(".code-row.anchored")).toHaveCount(4);
     await expect(view.locator(".code-row.added, .code-row.removed")).toHaveCount(0);
     await page.keyboard.press("o");
-    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 1 \/.*\/service\.ts$/);
+    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 1 .*[\\/]service\.ts$/);
     await expect(view.locator(".review-keys")).not.toContainText("findings");
   });
 

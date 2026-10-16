@@ -1,8 +1,8 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, openProfiles, sendMessage, signIn } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
@@ -11,12 +11,7 @@ const profileName = "wedged";
 
 /** An opencode that is an agent of its own, taking prompts and never finishing them. */
 function fakeOpencode() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  writeFileSync(
-    join(host.fakeProgramsDir, "opencode"),
-    `#!/bin/sh\nFAKE_ACP_PROMPTS='${promptsFile}' FAKE_ACP_LOG='${agentLogFile}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
-  );
-  chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: promptsFile, FAKE_ACP_LOG: agentLogFile });
 }
 
 /** The prompts the agent was given, in the order they arrived. */

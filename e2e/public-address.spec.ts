@@ -11,14 +11,22 @@ const hostAddressedByEnvironment = new TestHost({
 });
 
 /** Stands in for the machine's Tailscale: its name answers nothing, so Settings has to offer to expose Mirador itself. */
-const tailscaleStub = join(host.root, "tailscale");
+const tailscaleStub = join(host.root, process.platform === "win32" ? "tailscale.cmd" : "tailscale");
 const tailscaleCalls = join(host.root, "tailscale-calls");
 const hostWithTailscale = new TestHost({ environment: { MIRADOR_TAILSCALE: tailscaleStub } });
 
-test.beforeAll(async () => {
-  await Promise.all([host.start(), hostAddressedByEnvironment.start(), hostWithTailscale.start()]);
+/** Windows runs no script without an extension, so there the stub is a .cmd. */
+function writeTailscaleStub() {
+  if (process.platform === "win32") {
+    return writeFileSync(tailscaleStub, `@echo %*>> "${tailscaleCalls}"\r\n@if "%~1"=="status" echo {"Self":{"DNSName":"localhost."}}\r\n@exit /b 0\r\n`);
+  }
   writeFileSync(tailscaleStub, `#!/bin/sh\necho "$@" >> ${JSON.stringify(tailscaleCalls)}\n[ "$1" = status ] && echo '{"Self":{"DNSName":"localhost."}}'\nexit 0\n`);
   chmodSync(tailscaleStub, 0o755);
+}
+
+test.beforeAll(async () => {
+  await Promise.all([host.start(), hostAddressedByEnvironment.start(), hostWithTailscale.start()]);
+  writeTailscaleStub();
 });
 test.afterAll(async () => {
   await Promise.all([host.stop(), hostAddressedByEnvironment.stop(), hostWithTailscale.stop()]);
@@ -89,7 +97,7 @@ test("a machine with Tailscale is offered one button for both of its ports, and 
   await test.step("the button serves Mirador's own port and the canvas port on the tailnet", async () => {
     await expose.click();
     await expect(expose).toBeEnabled();
-    const calls = readFileSync(tailscaleCalls, "utf8").trim().split("\n");
+    const calls = readFileSync(tailscaleCalls, "utf8").trim().split(/\r?\n/);
     expect(calls).toContain("status --json");
     expect(calls).toContain(`serve --bg --https=${hostWithTailscale.port} http://127.0.0.1:${hostWithTailscale.port}`);
     expect(calls).toContain(`serve --bg --https=${hostWithTailscale.port + 1} http://127.0.0.1:${hostWithTailscale.port + 1}`);

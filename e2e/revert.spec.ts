@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, addWorkspaceFromSidebar, createProfile, primaryModifier, sendMessage, signIn, workspaceCard } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
@@ -15,10 +15,7 @@ let headAtStart = "";
 
 /** An opencode stand-in that is an agent of its own, taking prompts and ending its turns at once. */
 function fakeOpencode() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  const program = join(host.fakeProgramsDir, "opencode");
-  writeFileSync(program, `#!/bin/sh\nFAKE_ACP_PROMPTS='${promptsFile}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`);
-  chmodSync(program, 0o755);
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: promptsFile });
 }
 
 /** Everything the agent was given, in order; a prompt of several lines is written as it stands. */

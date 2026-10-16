@@ -37,9 +37,12 @@ const isRunnableFile = (path: string) => {
 
 export const foldersOnPath = () => (process.env.PATH ?? "").split(delimiter).filter(Boolean);
 
-/** The first of `folders` that `name` runs from: Windows finds a program with an extension from PATHEXT. */
+/**
+ * The first of `folders` that `name` runs from: Windows finds a program with an extension from PATHEXT. That lists them
+ * in capitals, while the host shows a program's path as its file has it, in small letters.
+ */
 export function programIn(folders: string[], name: string): string | undefined {
-  const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
+  const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").toLowerCase().split(";") : [""];
   return folders.flatMap((folder) => extensions.map((extension) => join(folder, name + extension))).find(isRunnableFile);
 }
 
@@ -58,24 +61,28 @@ export function spawnProgram(program: string, args: string[], options: SpawnOpti
   return spawn(`"${program}"`, args.map((arg) => `"${arg}"`), { ...options, shell: true });
 }
 
-/**
- * A program named `name` in `directory` that runs `script` on Bun with `environment` set. Windows runs no script without
- * an extension, so there it is a name.cmd.
- */
+/** Where writeBunProgram puts the program named `name`: Windows runs no script without an extension, so there it is a name.cmd. */
+export const bunProgramPath = (directory: string, name: string) => join(directory, process.platform === "win32" ? `${name}.cmd` : name);
+
+/** A program named `name` in `directory` that runs `script` on Bun with `environment` set. */
 export function writeBunProgram(directory: string, name: string, script: string, environment: Record<string, string> = {}) {
   mkdirSync(directory, { recursive: true });
+  const program = bunProgramPath(directory, name);
   if (process.platform === "win32") {
     const settings = Object.entries(environment).map(([variable, value]) => `@set "${variable}=${value}"\r\n`);
-    writeFileSync(join(directory, `${name}.cmd`), `${settings.join("")}@bun "${script}" %*\r\n`);
+    writeFileSync(program, `${settings.join("")}@bun "${script}" %*\r\n`);
     return;
   }
   const settings = Object.entries(environment).map(([variable, value]) => `${variable}='${value}' `);
-  writeFileSync(join(directory, name), `#!/bin/sh\n${settings.join("")}exec bun '${script}' "$@"\n`);
-  chmodSync(join(directory, name), 0o755);
+  writeFileSync(program, `#!/bin/sh\n${settings.join("")}exec bun '${script}' "$@"\n`);
+  chmodSync(program, 0o755);
 }
 
 /** Windows names it Path; a second key named PATH beside it would leave which one the host gets to chance. */
 const pathVariableOf = (environment: NodeJS.ProcessEnv) => Object.keys(environment).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
+
+/** A host environment whose PATH is just `folders`, under the name the system gives PATH. */
+export const pathOf = (folders: string[]) => ({ [pathVariableOf(process.env)]: folders.join(delimiter) });
 
 const withFirstOnPath = (environment: NodeJS.ProcessEnv, directory: string) => {
   const pathVariable = pathVariableOf(environment);
