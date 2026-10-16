@@ -14,6 +14,8 @@ test.afterAll(async () => {
 
 const LINK = "https://chrome-devtools-frontend.appspot.com/serve_rev/@d04cdb24/inspector.html?wss=192.168.1.160:19555/devtools/page/AB12";
 const COMMANDS = "./infra/cdp_tls.sh\ntools/pod_devtools.sh 9555";
+/** Chromium on Windows puts text on the clipboard with Windows line breaks, as pasting there expects. */
+const COMMANDS_AS_COPIED = process.platform === "win32" ? COMMANDS.replaceAll("\n", "\r\n") : COMMANDS;
 const reply = ["Open the link:", "", "```", LINK, "```", "", "Then run `tools/pod_devtools.sh 9333`, or copy both at once:", "", "```bash", COMMANDS, "```"].join("\n");
 
 const turn = [
@@ -74,7 +76,7 @@ test("each code block in a reply has a Copy button, shown on hover or always on 
 
     await commandsBlock.hover();
     await commandsCopy.click();
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(COMMANDS);
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(COMMANDS_AS_COPIED);
   });
 
   await test.step("the find bar finds the reply's words, not the buttons", async () => {
