@@ -30,7 +30,7 @@ test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   await gateway.start();
   await host.start();
-  terminalSessionId = await runClaudeInTerminal(host.projectDir, `${MARKER}: remember the number 42`);
+  terminalSessionId = await runClaudeInTerminal(host.projectDirInTerminal, `${MARKER}: remember the number 42`);
 });
 test.afterAll(async () => {
   await host.stop();
@@ -99,7 +99,7 @@ test("a terminal session continues and forks on the model that answered in it, n
   mkdirSync(configDir, { recursive: true });
   writeFileSync(join(configDir, "settings.json"), JSON.stringify({ model: "opus" }));
   const environment = `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${configDir}`;
-  const sessionId = await runClaudeInTerminal(host.projectDir, "Say hi", environment);
+  const sessionId = await runClaudeInTerminal(host.projectDirInTerminal, "Say hi", environment);
   const model = page.getByLabel("Model", { exact: true }).filter({ visible: true });
 
   await signIn(page, host);

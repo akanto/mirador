@@ -45,7 +45,7 @@ function openInTerminal(sessionId: string, status: string) {
 async function takeTurnInTerminal(sessionId: string, prompt: string) {
   host.muteNotifier(sessionId);
   const env = applyEnvironment(agentEnvironment(), parseEnvironment(environment()));
-  const claude = spawn(bundledClaude, ["-p", prompt, "--resume", sessionId], { cwd: host.projectDir, env, stdio: "ignore" });
+  const claude = spawn(bundledClaude, ["-p", prompt, "--resume", sessionId], { cwd: host.projectDirInTerminal, env, stdio: "ignore" });
   await new Promise((resolve) => claude.once("exit", resolve));
 }
 

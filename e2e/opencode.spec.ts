@@ -29,8 +29,8 @@ const MARKER = "opencode-terminal-marker-17";
  */
 async function runOpencodeInTerminal(prompt: string) {
   const isolated = applyEnvironment(agentEnvironment(), parseEnvironment(scriptedOpencodeEnvironment(model, host.root)));
-  const env = { ...isolated, PWD: host.projectDir };
-  const opencode = spawnProgram(opencodeProgram(), ["run", "--standalone", "--model", "e2e/scripted", prompt], { cwd: host.projectDir, env, stdio: "ignore" });
+  const env = { ...isolated, PWD: host.projectDirInTerminal };
+  const opencode = spawnProgram(opencodeProgram(), ["run", "--standalone", "--model", "e2e/scripted", prompt], { cwd: host.projectDirInTerminal, env, stdio: "ignore" });
   const exitCode = await new Promise((resolve) => opencode.once("exit", resolve));
   expect(exitCode).toBe(0);
 }

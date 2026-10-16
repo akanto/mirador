@@ -1009,7 +1009,7 @@ export class ConversationService {
     const harness = this.harnessFor(conversation);
     this.runtime(conversationId).harness = harness;
     const capabilities = await harness.start();
-    const sessionRequest = this.sessionRequest(conversationId, this.existingWorkspace(conversation.workspaceId));
+    const sessionRequest = await this.sessionRequest(conversationId, this.existingWorkspace(conversation.workspaceId));
 
     const canResume = Boolean(capabilities.agentCapabilities?.sessionCapabilities?.resume);
     if (conversation.acpSessionId && canResume && this.agentHasRecorded(conversationId)) {
@@ -1053,10 +1053,7 @@ export class ConversationService {
     if (!capabilities.agentCapabilities?.loadSession) throw new Error(`${harness.spec.label} cannot load existing sessions.`);
     if (mode === "fork" && !capabilities.agentCapabilities.sessionCapabilities?.fork) throw new Error(`${harness.spec.label} cannot fork sessions.`);
     this.setStatus(conversationId, "starting", "Loading the session's history…");
-    const sessionRequest = {
-      ...this.sessionRequest(conversationId, this.existingWorkspace(conversation.workspaceId)),
-      cwd: await recordedDirectory(this.existingWorkspace(conversation.workspaceId)),
-    };
+    const sessionRequest = await this.sessionRequest(conversationId, this.existingWorkspace(conversation.workspaceId));
     const loadedId = mode === "fork" ? (await harness.forkSession({ sessionId, cwd: sessionRequest.cwd })).sessionId : sessionId;
     this.muteNotifier(conversation, loadedId);
     this.save({ ...this.get(conversationId), acpSessionId: loadedId });
@@ -1080,7 +1077,7 @@ export class ConversationService {
     const replay: acp.SessionNotification[] = [];
     this.replaysBeingRead.set(sessionId, replay);
     try {
-      const loaded = await harness.loadSession({ ...this.sessionRequest(conversationId, workspace), cwd: await recordedDirectory(workspace), sessionId });
+      const loaded = await harness.loadSession({ ...(await this.sessionRequest(conversationId, workspace)), sessionId });
       this.bindSession(conversationId, sessionId, loaded.configOptions);
     } finally {
       this.replaysBeingRead.delete(sessionId);
@@ -1093,14 +1090,10 @@ export class ConversationService {
   }
 
   /** A test host's own Claude Code works without the settings and instructions of the user who runs the tests. */
-  private sessionRequest(conversationId: string, workspace: Workspace) {
+  private async sessionRequest(conversationId: string, workspace: Workspace) {
     const conversation = this.get(conversationId);
     const withoutUserSettings = this.config.testSkipsUserSettings && this.onUsersOwnSetup(conversation);
-    return {
-      cwd: workspace.path,
-      mcpServers: [this.canvasServerFor(conversationId)],
-      _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings }),
-    };
+    return { cwd: await recordedDirectory(workspace), mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings }) };
   }
 
   /** claude-notifier hooks into Claude Code only. */
@@ -1725,8 +1718,12 @@ export function optionThatAllows(options: acp.PermissionOption[]): string | null
   return allowing?.optionId ?? null;
 }
 
-/** Claude Code and opencode record a session's directory with symlinks resolved (e.g. /var → /private/var on macOS). */
-const recordedDirectory = (workspace: Workspace) => realpath(workspace.path);
+/**
+ * The workspace's folder as its agent gets it in every request: with symlinks resolved, as Claude Code and opencode
+ * record a session's directory (e.g. /var → /private/var on macOS), and on Windows with 8.3 short names written out
+ * long. Claude Code files a session under the spelling it started in, but looks sessions up only under the long one.
+ */
+const recordedDirectory = (workspace: Workspace) => realpath(workspace.path).catch(() => workspace.path);
 
 export function errorMessage(error: unknown): string {
   if (typeof error !== "object" || error === null) return String(error);
