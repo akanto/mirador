@@ -1023,6 +1023,7 @@ export class ConversationService {
         await this.restoreConfigChoices(conversationId, conversation.acpSessionId, conversation.configOptions);
         return conversation.acpSessionId;
       } catch (error) {
+        this.closeSessionIfConversationDeleted(conversationId, harness, conversation.acpSessionId);
         this.append(conversationId, {
           type: "error",
           message: `Could not resume the previous agent session (${errorMessage(error)}); starting a fresh one.`,
@@ -1031,12 +1032,20 @@ export class ConversationService {
     }
 
     const created = await harness.newSession(sessionRequest);
+    this.closeSessionIfConversationDeleted(conversationId, harness, created.sessionId);
     this.muteNotifier(conversation, created.sessionId);
     this.bindSession(conversationId, created.sessionId, created.configOptions);
     await this.restoreConfigChoices(conversationId, created.sessionId, conversation.configOptions);
     if (isFirstSession) await this.applyProfileMode(conversationId, created.sessionId);
     if (this.onUsersOwnSetup(conversation)) await this.applyTestModelOverride(conversationId, created.sessionId);
     return created.sessionId;
+  }
+
+  /** Delete closes the session a conversation has; one the agent was still opening when the conversation went is closed here. */
+  private closeSessionIfConversationDeleted(conversationId: string, harness: HarnessProcess, sessionId: string) {
+    if (this.store.findConversation(conversationId)) return;
+    harness.closeSession(sessionId).catch(() => {});
+    throw new Error("The conversation was deleted while its agent session opened.");
   }
 
   /** Replayed history arrives as session updates before the load request returns, so the session is bound first. */

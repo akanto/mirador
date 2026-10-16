@@ -9,6 +9,8 @@ import { TestHost } from "./test-host.ts";
 const host = new TestHost();
 const model = new ScriptedModel();
 const PROFILE = "scripted pi";
+const SLOW_PROFILE = "slow scripted pi";
+const SLOW_PI_START_SECONDS = 3;
 let page: Page;
 
 test.describe.configure({ mode: "serial" });
@@ -31,15 +33,15 @@ const canvasHeading = () => page.frameLocator(".canvas-frame.show iframe").locat
 const CANVAS_RENDERING_RULES = "Rendering environment: every page renders in a sandboxed iframe with NO network access";
 const OWN_APPENDED_INSTRUCTIONS = "Instructions from the user's own APPEND_SYSTEM.md";
 
-/** pi-acp runs one pi for each session it has open; pi renames its process, so they are told by their parent. */
+/** Each profile has its pi-acp, which runs one pi for each session it has open; pi renames its process, so they are told by their parent. */
 function piSessionProcesses() {
   const processes = execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
     .trim()
     .split("\n")
     .map((line) => line.trim().split(/\s+/))
     .map(([pid, parentPid, ...command]) => ({ pid: Number(pid), parentPid: Number(parentPid), command: command.join(" ") }));
-  const piAcp = processes.find(({ parentPid, command }) => parentPid === host.pid && command.includes("pi-acp"));
-  return processes.filter(({ parentPid }) => parentPid === piAcp?.pid);
+  const piAcps = new Set(processes.filter(({ parentPid, command }) => parentPid === host.pid && command.includes("pi-acp")).map(({ pid }) => pid));
+  return processes.filter(({ parentPid }) => piAcps.has(parentPid));
 }
 
 test("a pi conversation replies, runs commands and uses the canvas tools", async () => {
@@ -106,6 +108,25 @@ test("deleting a pi conversation in the middle of a turn ends its pi process qui
   await sendMessage(page, "After the delete");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: After the delete");
+});
+
+test("deleting a pi conversation while its session opens ends the pi that session starts", async () => {
+  const slowPi = join(host.root, "slow-pi");
+  writeFileSync(slowPi, `#!/bin/sh\nsleep ${SLOW_PI_START_SECONDS}\nexec '${piProgram()}' "$@"\n`, { mode: 0o755 });
+  const dialog = await createProfile(page, SLOW_PROFILE, `${scriptedPiEnvironment(model, host.root)}\nPI_ACP_PI_COMMAND=${slowPi}`, "", "pi");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${SLOW_PROFILE} · pi` });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
+  await expect.poll(piSessionProcesses).toHaveLength(2);
+
+  const deleteButton = page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" });
+  await deleteButton.click();
+  await deleteButton.click();
+  await expect(page.locator(".workspace li")).toHaveCount(1);
+  await expect.poll(piSessionProcesses, { timeout: (SLOW_PI_START_SECONDS + 20) * 1_000 }).toHaveLength(1);
+  await expect(page.locator(".notice")).toHaveCount(0);
+  await page.locator(".workspace li", { hasText: "Hello pi" }).click();
 });
 
 test("after a host restart, a pi conversation goes on in its own session with the canvas tools", async () => {
