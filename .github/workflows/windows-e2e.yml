@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
       - run: bunx playwright install chromium
       - name: Install Claude Code
