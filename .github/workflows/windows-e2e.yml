@@ -34,9 +34,23 @@ jobs:
           & (Join-Path (npm prefix --global) "opencode.cmd") --version
       # As in the unit tests: Git for Windows puts only its cmd folder on PATH, so a user's Windows has no sh, sleep or
       # openssl there; the runner's PATH has them, from Git's other folders and from OpenSSL.
+      # Specs that wait for a real reply get it from the owner's model server, on the "haiku" the test hosts choose. The
+      # server doesn't serve tool search's tool_reference blocks, and Haiku has Claude Code load MCP tools upfront anyway.
       - name: Run the suite
         shell: pwsh
+        env:
+          ANTHROPIC_BASE_URL: ${{ secrets.LLM_SERVER_URL }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.LLM_SERVER_KEY }}
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: radiance-qwen3.8-flash-next
+          ANTHROPIC_DEFAULT_SONNET_MODEL: radiance-qwen3.8-flash-next
+          ANTHROPIC_DEFAULT_OPUS_MODEL: radiance-qwen3.8-flash-next
+          ANTHROPIC_SMALL_FAST_MODEL: radiance-qwen3.8-flash-next
+          ENABLE_TOOL_SEARCH: "false"
         run: |
+          $serverHost = ($env:ANTHROPIC_BASE_URL -as [uri]).Host
+          if ($serverHost) { "::add-mask::$serverHost" }
+          $modelServer = @($env:ANTHROPIC_AUTH_TOKEN, $env:ANTHROPIC_BASE_URL, $serverHost) | Where-Object { $_ }
+          filter Hide-ModelServer { $text = $_; foreach ($secret in $modelServer) { $text = $text.Replace($secret, "REDACTED") }; $text }
           $unixTools = "sh.exe", "sleep.exe", "openssl.exe"
           $env:Path = ($env:Path -split ";" | Where-Object { $folder = $_; $folder -and -not ($unixTools | Where-Object { Test-Path -LiteralPath (Join-Path $folder $_) }) }) -join ";"
           "::group::What the specs run with"
@@ -49,20 +63,25 @@ jobs:
           cmd /c "bunx playwright test --timeout=180000 --global-timeout=6000000 --reporter=list,json > survey-output.txt 2>&1"
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
-          if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Set-Content survey.json }
+          if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
       # Traces and the kept host folders are left out: they hold the sign-in link, browser tokens and databases. Only their
-      # logs go, with auth links taken out.
+      # logs go, with auth links and the model server's address and key taken out.
       - name: Collect host logs
         if: always()
         shell: pwsh
+        env:
+          LLM_SERVER_URL: ${{ secrets.LLM_SERVER_URL }}
+          LLM_SERVER_KEY: ${{ secrets.LLM_SERVER_KEY }}
         run: |
+          $modelServer = @($env:LLM_SERVER_KEY, $env:LLM_SERVER_URL, ($env:LLM_SERVER_URL -as [uri]).Host) | Where-Object { $_ }
+          filter Hide-ModelServer { $text = $_; foreach ($secret in $modelServer) { $text = $text.Replace($secret, "REDACTED") }; $text }
           New-Item -ItemType Directory -Force e2e-logs | Out-Null
           Get-ChildItem -Path $env:TEMP -Directory -Filter "mirador-e2e-*" | ForEach-Object {
             $hostDir = $_
             $logs = @(Get-Item -LiteralPath (Join-Path $hostDir.FullName "host.log") -ErrorAction SilentlyContinue) + @(Get-ChildItem -Path (Join-Path $hostDir.FullName "data\logs") -File -Filter *.log -ErrorAction SilentlyContinue)
             $logs | ForEach-Object {
               $target = Join-Path e2e-logs ($hostDir.Name + "-" + $_.Name)
-              Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Set-Content -LiteralPath $target
+              Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Hide-ModelServer | Set-Content -LiteralPath $target
             }
           }
       - if: always()
