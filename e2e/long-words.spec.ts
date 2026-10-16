@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -34,7 +34,7 @@ test("a word too long for the chat breaks onto the next line, in a message and i
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(turn)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const message = page.locator(".message.user");
   const reply = page.locator(".message.agent");

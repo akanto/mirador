@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -169,7 +169,7 @@ test("the agent has the host wait for a job it left running, then resume the age
     await host.stop();
     job.kill();
     await host.start();
-    await page.reload();
+    await reloadFromRestartedHost(page);
     await expect(notices.filter({ hasText: `Process ${job.pid} ended` })).toHaveCount(1);
     await expect(fromScript.filter({ hasText: "ended-while-host-was-down" })).toHaveCount(1);
     await waitForTurnToEnd(page);

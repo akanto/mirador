@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, chooseInSettings, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, chooseInSettings, openSettings, reloadFromRestartedHost, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -47,7 +47,7 @@ test("a shell command the agent ran shows what ran with its output a click away,
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(checkedTheBuild)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
   const card = (description: string) => page.locator(".timeline .shell", { hasText: description });
   const tests = card("Run the unit tests");
   const typeCheck = card("Type check");
@@ -93,7 +93,7 @@ test("shell blocks follow the theme until Settings give them other colours, a fo
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(checkedTheBuild)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
   const block = page.locator(".timeline .shell", { hasText: "Run the unit tests" }).locator(".shell-body").first();
   const shown = (property: "backgroundColor" | "color" | "fontFamily" | "fontSize") => block.evaluate((element, name) => getComputedStyle(element)[name], property);
   const promptColour = () => block.locator(".shell-prompt").evaluate((element) => getComputedStyle(element).color);

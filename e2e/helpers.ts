@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { expect, type Frame, type FrameLocator, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Frame, type FrameLocator, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
 /** Presses on the item and moves to just inside the top or bottom edge of the target, leaving the button down. */
@@ -38,6 +38,20 @@ export async function callCanvasTool(host: TestHost, conversationId: string, nam
 export async function signIn(page: Page, host: TestHost) {
   await page.goto(host.authUrl);
   await expect(page.getByText("No conversation selected").or(page.getByRole("heading", { name: "Set up a profile to start" }))).toBeVisible();
+}
+
+/**
+ * Loads the page again from a host the spec just restarted. The page also loads again by itself once it reaches a
+ * restarted host, which may serve newer code, and that cuts a reload in flight short; one more reload then lands.
+ */
+export async function reloadFromRestartedHost(page: Page) {
+  try {
+    await page.reload();
+  } catch (error) {
+    if (!String(error).includes("net::ERR_ABORTED")) throw error;
+    test.info().annotations.push({ type: "reload cut short", description: "the page's own reload, on reaching the restarted host, cut the spec's short" });
+    await page.reload();
+  }
 }
 
 export async function addWorkspace(page: Page, directory: string) {

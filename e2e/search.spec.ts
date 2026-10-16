@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, addWorkspaceFromSidebar, currentMatch, primaryModifier, signIn, workspaceCard } from "./helpers.ts";
+import { addWorkspace, addWorkspaceFromSidebar, currentMatch, primaryModifier, reloadFromRestartedHost, signIn, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -40,7 +40,7 @@ test("Cmd+Shift+F searches every workspace, and a match opens in its conversatio
   execFileSync("bun", [join(import.meta.dirname, "seed-long-conversation.ts"), join(host.dataDir, "state.sqlite"), older, "120"]);
   seed(newer, [{ type: "user-message", text: "Where is the needle?" }]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const shortcut = `${await primaryModifier(page)}+Shift+KeyF`;
   const dialog = page.getByRole("dialog", { name: "Search all workspaces" });

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openSettings, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -41,7 +41,7 @@ test("each author's name carries the time; later lines show theirs while pointed
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(turn)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const userLine = page.locator(".timeline-entry", { has: page.locator(".message.user") });
   const userLineTime = userLine.locator(".author .timestamp");

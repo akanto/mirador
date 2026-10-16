@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -36,7 +36,7 @@ test("a hook's message shows the hook's name once and folds away when it runs ov
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(turn)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const hookMessages = page.locator(".timeline .hook-message");
   const folded = hookMessages.nth(0);

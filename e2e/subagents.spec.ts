@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -37,7 +37,7 @@ test("a subagent's work folds into its card, and the header counts the subagents
   execFileSync("bun", [join(import.meta.dirname, "seed-subagents.ts"), join(host.dataDir, "state.sqlite"), conversationId]);
   execFileSync("bun", [join(import.meta.dirname, "seed-subagent-transcript.ts"), join(host.dataDir, "state.sqlite"), conversationId, claudeConfigDir]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const cards = page.locator(".timeline .tool.subagent");
   const [explore, watch] = [cards.nth(0), cards.nth(1)];

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page, type WebSocket } from "@playwright/test";
-import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, reloadFromRestartedHost, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -43,7 +43,7 @@ test("a recently opened conversation shows again at once, where it was left, wit
   execFileSync("bun", [join(import.meta.dirname, "seed-long-conversation.ts"), join(host.dataDir, "state.sqlite"), long, "225"]);
   await host.start();
   const received = framesReceived(page);
-  await page.reload();
+  await reloadFromRestartedHost(page);
   await expect(timeline(page).locator(".timeline-entry").last()).toContainText("answer 224");
 
   await test.step("output of a command that finishes while another conversation is shown is there on return, at the bottom where the reader was", async () => {

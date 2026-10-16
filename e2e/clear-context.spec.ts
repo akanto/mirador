@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -75,7 +75,7 @@ test("/clear starts the agent afresh while the conversation stays on screen, als
   await test.step("after a restart the agent resumes the fresh session, and the cleared context stays away", async () => {
     await host.stop();
     await host.start();
-    await page.reload();
+    await reloadFromRestartedHost(page);
     await sendMessage(page, "after-restart");
     await waitForTurnToEnd(page);
     await expect.poll(context).toContain("after-restart");

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, currentMatch, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, currentMatch, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -59,7 +59,7 @@ test("Cmd+F finds text anywhere in the conversation, in entries not loaded yet a
   execFileSync("bun", [join(import.meta.dirname, "seed-long-conversation.ts"), database, conversationId, "120"]);
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), database, conversationId, JSON.stringify(newestTurn)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const bar = page.getByRole("search");
   const input = bar.getByLabel("Find in this conversation");
@@ -188,7 +188,7 @@ test("a single letter in a long, busy conversation is found at once, highlighted
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-busy-conversation.ts"), join(host.dataDir, "state.sqlite"), conversationId, "30", "35"]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
   await expect(page.locator(".timeline .load-earlier")).toBeVisible();
 
   await page.keyboard.press("Control+KeyF");

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
-import { addWorkspace, currentMatch, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, currentMatch, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -37,7 +37,7 @@ test("each code block in a reply has a Copy button, shown on hover or always on 
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(turn)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const message = page.locator(".message.agent");
   const [linkBlock, commandsBlock] = [0, 1].map((index) => message.locator(".copyable-code").nth(index));

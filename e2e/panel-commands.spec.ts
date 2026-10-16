@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, createProfile, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -76,7 +76,7 @@ test("a command the agent says it cannot open here offers the tab that can", asy
   await host.stop();
   agentRefusedToOpen("/things-to-come isn't available in this environment.", conversationId);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const refusal = page.locator(".timeline:visible .message.agent", { hasText: "isn't available in this environment" });
   await expect(refusal).toBeVisible();

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, pasteImage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, pasteImage, reloadFromRestartedHost, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -52,7 +52,7 @@ test("images in a replayed session's messages and in the agent's replies show as
   ];
   execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), conversationId, JSON.stringify(replayed)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const timeline = page.locator(".timeline:visible");
   const shown = (message: string) => timeline.locator(`${message} .message-images img`);

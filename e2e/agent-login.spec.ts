@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, createProfile, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { ScriptedModel, opencodeProgram, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -57,7 +57,7 @@ test("Log in runs the agent's sign-in with the conversation's profile in a termi
   await host.stop();
   agentRefusedForSignIn(conversationId);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   const logIn = signInLine(page).getByRole("button", { name: "Log in" });
   const signInTab = page.locator(".terminal-tab", { hasText: "opencode sign-in" });

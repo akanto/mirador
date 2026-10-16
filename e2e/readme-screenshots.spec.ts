@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspaceFromSidebar, callCanvasTool, signIn, workspaceCard } from "./helpers.ts";
+import { addWorkspaceFromSidebar, callCanvasTool, reloadFromRestartedHost, signIn, workspaceCard } from "./helpers.ts";
 import type { Demo, DemoConversation } from "./seed-demo.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -383,7 +383,7 @@ test("the README's screenshots", async ({ page }) => {
   await host.stop();
   execFileSync("bun", [join(import.meta.dirname, "seed-demo.ts"), join(host.dataDir, "state.sqlite"), JSON.stringify(demo)]);
   await host.start();
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   void callCanvasTool(host, ids.settingsLayout, "ask", settingsQuestion).catch(() => {});
   await expect(page.locator(".workspace").getByText("Needs you")).toBeVisible();

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, openProfiles, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, openProfiles, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -68,7 +68,7 @@ test("a profile sets the mode, YOLO and Questions of the conversations that star
   await test.step("after a host restart before its first message, the conversation keeps the profile's mode", async () => {
     await host.stop();
     await host.start();
-    await page.reload();
+    await reloadFromRestartedHost(page);
     await page.locator(`li[data-reorder-id="${profiled}"]`).click();
     await sendMessage(page, "hello after the restart");
     await waitForTurnToEnd(page);
