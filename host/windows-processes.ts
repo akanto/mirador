@@ -20,11 +20,19 @@ const openKernel32 = () =>
     OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.u64 },
     GetProcessTimes: { args: [FFIType.u64, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     CloseHandle: { args: [FFIType.u64], returns: FFIType.i32 },
+    SetConsoleCtrlHandler: { args: [FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
   }).symbols;
 
 let kernel32Functions: ReturnType<typeof openKernel32> | undefined;
 /** kernel32 is there only on Windows, so it is opened at its first use rather than as the module loads. */
 const kernel32 = () => (kernel32Functions ??= openKernel32());
+
+/**
+ * A process that ignores Ctrl+C hands that on to every process it starts, and ssh, among others, starts its sessions so:
+ * a host started there would leave the programs in its terminal tabs deaf to Ctrl+C. The host takes Ctrl+C again, and
+ * quits on it as it does on SIGINT elsewhere.
+ */
+export const stopIgnoringCtrlC = () => kernel32().SetConsoleCtrlHandler(null, 0) !== 0;
 
 function* processEntries(snapshot: bigint) {
   const { Process32FirstW, Process32NextW } = kernel32();

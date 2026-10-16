@@ -30,7 +30,9 @@ import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
 import { keepDataFolderToHostAccount } from "./windows-folder-access.ts";
+import { stopIgnoringCtrlC } from "./windows-processes.ts";
 
+if (process.platform === "win32") stopIgnoringCtrlC();
 const config = loadConfig();
 if (process.platform === "win32") keepDataFolderToHostAccount(config.dataDir);
 const relaunchHow = takeRelaunchEnvironment(process.env, process.platform, typeof process.execve === "function");
