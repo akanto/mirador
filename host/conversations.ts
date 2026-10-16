@@ -851,9 +851,25 @@ export class ConversationService {
     const running = [...this.runtimes].filter(([, runtime]) => runtime.harness === harness && runtime.running);
     running.forEach(([, runtime]) => (runtime.killedOnPurpose = true));
     const stopped = running.map(([conversationId]) => ({ conversationId, sessionId: this.get(conversationId).acpSessionId }));
+    this.moveIdleConversationsOff(harness);
     await harness.stop(reason);
     await Promise.all(running.map(([, runtime]) => runtime.turnEnded));
     return stopped;
+  }
+
+  /**
+   * The next message of a conversation idle on an agent being stopped starts a fresh one, rather than reach this one
+   * before its exit is noticed, which on Windows, where ending a process tree takes a while, it would.
+   */
+  private moveIdleConversationsOff(harness: HarnessProcess) {
+    this.harnessesByProfile.forEach((current, profileId) => {
+      if (current === harness) this.harnessesByProfile.delete(profileId);
+    });
+    this.runtimes.forEach((runtime) => {
+      if (runtime.harness !== harness || runtime.running) return;
+      runtime.harness = undefined;
+      runtime.sessionId = undefined;
+    });
   }
 
   /** As after a restart, on a fresh agent process. */
@@ -960,14 +976,18 @@ export class ConversationService {
     return Promise.all([this.commands.shutdown(), ...[...this.harnessesByProfile.values()].map((harness) => harness.stop())]);
   }
 
+  /** An open that fails after another has replaced it, as when the agent it was on is stopped, leaves the newer one be. */
   private ensureSession(conversationId: string, open = () => this.openSession(conversationId)): Promise<string> {
     const runtime = this.runtime(conversationId);
-    runtime.sessionId ??= open().catch((error) => {
+    if (runtime.sessionId) return runtime.sessionId;
+    const opening: Promise<string> = open().catch((error) => {
+      if (runtime.sessionId && runtime.sessionId !== opening) throw error;
       runtime.sessionId = undefined;
       this.setStatus(conversationId, "error", errorMessage(error));
       throw error;
     });
-    return runtime.sessionId;
+    runtime.sessionId = opening;
+    return opening;
   }
 
   private releaseSession(runtime: Runtime, sessionId: string | null) {
