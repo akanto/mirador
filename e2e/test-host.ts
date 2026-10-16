@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync, type ChildProcess, type SpawnOptions, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
-import { accessSync, chmodSync, constants, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
 import { muteMarkerName, MUTED_LIST_FILE, mutedListAt } from "../host/notifier.ts";
@@ -139,6 +139,13 @@ export class TestHost {
   readonly root = join(tmpdir(), `mirador-e2e-${crypto.randomUUID().slice(0, 8)}`);
   readonly dataDir = join(this.root, "data");
   readonly projectDir = join(this.root, "project");
+  /**
+   * The project directory as a terminal of the user's own is in it: under its long name, where a Windows runner's TEMP has
+   * an 8.3 short one. Claude Code files a session under the spelling it started in, but looks sessions up under the long one.
+   */
+  get projectDirInTerminal() {
+    return realpathSync.native(this.projectDir);
+  }
   /** With the fakePrograms option, programs here come first on the host's PATH (stand-ins for gh, idea, …). */
   readonly fakeProgramsDir = join(this.root, "fake-programs");
   /** Where the host runs from: the repository, or a copy of its source that the spec may edit. */
