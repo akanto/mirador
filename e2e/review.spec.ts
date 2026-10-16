@@ -1,15 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { bunProgramPath, TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const fakeProgramsDir = host.fakeProgramsDir;
 const ghLog = join(host.root, "gh.log");
 const ghAuthLog = join(host.root, "gh-auth.log");
 const ghLoggedOut = join(host.root, "gh-logged-out");
+const ghThreads = join(host.root, "gh-review-threads.json");
 const ideaLog = join(host.root, "idea.log");
 const PULL_REQUEST = "https://ghe.example.com/team/shop/pull/7";
 
@@ -94,42 +95,16 @@ const conversations = {
 
 /** gh and idea stand-ins that log how they were called; gh answers like GitHub for pull 7 of team/shop. */
 function writeFakePrograms(head: string) {
-  mkdirSync(fakeProgramsDir, { recursive: true });
-  const gh = `#!/bin/bash
-if [[ "$1 $2" == "auth status" ]]; then
-  printf '%s\\n' "$*" >> "${ghAuthLog}"
-  [[ -e "${ghLoggedOut}" ]] && exit 1
-  exit 0
-fi
-input=""
-if [[ " $* " == *" --input - "* ]]; then input=$(cat); fi
-printf '%s\\t%s\\n' "$*" "$input" >> "${ghLog}"
-case "$*" in
-  *"pulls/7"*) echo '{"node_id":"PR_7","head":{"sha":"${head}"}}' ;;
-  *graphql*)
-    if [[ "$input" == *"states: PENDING"* ]]; then
-      echo '{"data":{"repository":{"pullRequest":{"reviews":{"nodes":[]}}}}}'
-    elif [[ "$input" == *"reviewThreads("* ]]; then
-      echo '${JSON.stringify(conversations)}'
-    elif [[ "$input" == *"addPullRequestReviewThreadReply("* ]]; then
-      echo '{"data":{"addPullRequestReviewThreadReply":{"comment":{"url":"${PULL_REQUEST}#discussion_r90"}}}}'
-    elif [[ "$input" == *"resolveReviewThread("* ]]; then
-      echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}'
-    elif [[ "$input" == *"addPullRequestReview("* ]]; then
-      echo '{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"PRR_1","url":"${PULL_REQUEST}#pullrequestreview-1"}}}}'
-    else
-      echo '{"data":{"addPullRequestReviewThread":{"thread":{"id":"THREAD"}}}}'
-    fi ;;
-esac
-`;
-  const idea = `#!/bin/bash\nprintf '%s\\n' "$*" >> "${ideaLog}"\n`;
-  [
-    ["gh", gh],
-    ["idea", idea],
-  ].forEach(([name, script]) => {
-    writeFileSync(join(fakeProgramsDir, name!), script!);
-    chmodSync(join(fakeProgramsDir, name!), 0o755);
+  writeFileSync(ghThreads, JSON.stringify(conversations));
+  writeBunProgram(fakeProgramsDir, "gh", join(import.meta.dirname, "fake-gh.ts"), {
+    FAKE_GH_LOG: ghLog,
+    FAKE_GH_AUTH_LOG: ghAuthLog,
+    FAKE_GH_LOGGED_OUT: ghLoggedOut,
+    FAKE_GH_HEAD: head,
+    FAKE_GH_THREADS: ghThreads,
+    FAKE_GH_PULL_REQUEST: PULL_REQUEST,
   });
+  writeBunProgram(fakeProgramsDir, "idea", join(import.meta.dirname, "fake-idea.ts"), { FAKE_IDEA_LOG: ideaLog });
 }
 
 const review = (change: Record<string, unknown> = {}) => ({
@@ -247,7 +222,7 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await expect(view.locator(".code-row.anchored")).toHaveCount(4);
     await expect(view.locator(".code-row.removed")).toHaveText([/const user = authenticate\(request\);$/]);
     await page.keyboard.press("o");
-    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 1 \/.*\/service\.ts$/);
+    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 1 .*[\\/]service\.ts$/);
     await page.keyboard.press("ArrowRight");
     await expect(view.locator(".flow-step h3")).toHaveText("Items are fetched");
   });
@@ -285,7 +260,7 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await firstHunk.getByRole("button", { name: "Line 4", exact: true }).click({ modifiers: ["Shift"] });
     await expect(view.locator(".selection-label")).toHaveText("service.ts:2-4");
     await page.keyboard.press("o");
-    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 2 \/.*\/service\.ts$/);
+    await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 2 .*[\\/]service\.ts$/);
     await page.keyboard.press("a");
     const question = page.getByRole("dialog", { name: "Ask the agent about these lines" }).locator("textarea");
     await expect(page.getByRole("button", { name: "Ask and update the review" })).toBeDisabled();
@@ -621,7 +596,7 @@ test("with no gh on the machine, the Post panel says to install it, and Post wai
   const view = page.locator(".review");
   const hint = view.locator(".github-cli-problem");
   const post = view.getByRole("button", { name: "Post 2 findings to the pull request" });
-  const fakeGh = join(fakeProgramsDir, "gh");
+  const fakeGh = bunProgramPath(fakeProgramsDir, "gh");
   const putAway = join(host.root, "gh-put-away");
 
   renameSync(fakeGh, putAway);

@@ -1,19 +1,13 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, openSettings, sendMessage, signIn } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 
 /** An opencode that is the scripted agent, which never finishes a WEDGE prompt, so its conversation stays running. */
 function fakeOpencode() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  writeFileSync(
-    join(host.fakeProgramsDir, "opencode"),
-    `#!/bin/sh\nFAKE_ACP_PROMPTS='${join(host.root, "prompts")}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
-  );
-  chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts") });
 }
 
 test.beforeAll(async () => {

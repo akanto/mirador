@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, literally, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
-import { scratchPath, TestHost } from "./test-host.ts";
+import { scratchPath, TestHost, writeBunProgram } from "./test-host.ts";
 
 const home = scratchPath("changes-home");
 const host = new TestHost({ fakePrograms: true, environment: { HOME: home, ...(process.platform === "win32" && { USERPROFILE: home }) } });
@@ -18,12 +18,7 @@ const withLine15 = (text: string) => numbered(30).replace("line 15\n", `${text}\
 
 /** An opencode that is the scripted agent, writing the files a prompt names. */
 function fakeOpencode() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  writeFileSync(
-    join(host.fakeProgramsDir, "opencode"),
-    `#!/bin/sh\nFAKE_ACP_PROMPTS='${join(host.root, "prompts")}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
-  );
-  chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts") });
 }
 
 const git = (...args: string[]) => execFileSync("git", ["-C", host.projectDir, "-c", "user.name=t", "-c", "user.email=t@t", ...args]);
