@@ -32,6 +32,22 @@ jobs:
           npm install --global @opencode/cli@2.0.27
           npm prefix --global | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
           & (Join-Path (npm prefix --global) "opencode.cmd") --version
+      # A test host waits for the processes it started and kills those that outlive it. Windows keeps a parent pid after
+      # that parent exits and gives the pid to later processes: these are the runner's processes a host could take for its own.
+      - name: Processes with a stale parent
+        shell: pwsh
+        run: |
+          $processes = bun e2e/windows-process-list.ts | ConvertFrom-Json
+          $byPid = @{}; $processes | ForEach-Object { $byPid[[int]$_.pid] = $_ }
+          $isStale = { param($process) $process.parentPid -ne 0 -and (-not $byPid.ContainsKey([int]$process.parentPid) -or $byPid[[int]$process.parentPid].startedAt -gt $process.startedAt) }
+          "Processes whose parent pid is gone or belongs to a later process:"
+          $processes | Where-Object { & $isStale $_ } | ForEach-Object { "  $($_.name) $($_.pid), parent pid $($_.parentPid)" }
+          "This step's ancestors:"
+          $current = $byPid[[int]$PID]
+          while ($current) {
+            "  $($current.name) $($current.pid)$(if (& $isStale $current) { ', parent pid stale' })"
+            $current = if (& $isStale $current) { $null } else { $byPid[[int]$current.parentPid] }
+          }
       # As in the unit tests: Git for Windows puts only its cmd folder on PATH, so a user's Windows has no sh, sleep or
       # openssl there; the runner's PATH has them, from Git's other folders and from OpenSSL.
       # Specs that wait for a real reply get it from the owner's model server, on the "haiku" the test hosts choose. The
