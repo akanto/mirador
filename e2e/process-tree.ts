@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import type { WindowsProcess } from "../host/windows-processes.ts";
 
 const POLL_INTERVAL_MS = 100;
 const KILLED_PROCESSES_EXIT_MS = 2_000;
@@ -12,8 +14,15 @@ interface RunningProcess {
 /** Processes by pid, each with when it started: a later process that gets the same pid is not one of them. */
 export type ProcessTree = ReadonlyMap<number, string>;
 
+/** Windows has no ps; the host's own snapshot of its processes is read on Bun, as the specs run in Node. */
+function runningWindowsProcesses(): RunningProcess[] {
+  const processes: WindowsProcess[] = JSON.parse(execFileSync("bun", [join(import.meta.dirname, "windows-process-list.ts")], { encoding: "utf8" }));
+  return processes.map(({ pid, parentPid, startedAt }) => ({ pid, parentPid, startedAt: String(startedAt) }));
+}
+
 /** Every process on this computer that still runs; zombies are left out, as they have ended and only wait to be reaped. */
 function runningProcesses(): RunningProcess[] {
+  if (process.platform === "win32") return runningWindowsProcesses();
   return execFileSync("ps", ["-A", "-o", "pid=,ppid=,stat=,lstart="], { encoding: "utf8" })
     .trim()
     .split("\n")

@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { muteMarkerName, MUTED_LIST_FILE, mutedListAt } from "../host/notifier.ts";
 import { freePorts } from "./free-ports.ts";
 import { processTreeOf, waitForProcessesToEnd } from "./process-tree.ts";
@@ -24,6 +24,30 @@ export const defaultShell = "/bin/sh";
  * their hooks, so a folder made on import is never removed.
  */
 export const scratchPath = (name: string) => join(tmpdir(), `mirador-e2e-${name}-${crypto.randomUUID().slice(0, 8)}`);
+
+/**
+ * A program named `name` in `directory` that runs `script` on Bun with `environment` set. Windows runs no script without
+ * an extension, so there it is a name.cmd.
+ */
+export function writeBunProgram(directory: string, name: string, script: string, environment: Record<string, string> = {}) {
+  mkdirSync(directory, { recursive: true });
+  if (process.platform === "win32") {
+    const settings = Object.entries(environment).map(([variable, value]) => `@set "${variable}=${value}"\r\n`);
+    writeFileSync(join(directory, `${name}.cmd`), `${settings.join("")}@bun "${script}" %*\r\n`);
+    return;
+  }
+  const settings = Object.entries(environment).map(([variable, value]) => `${variable}='${value}' `);
+  writeFileSync(join(directory, name), `#!/bin/sh\n${settings.join("")}exec bun '${script}' "$@"\n`);
+  chmodSync(join(directory, name), 0o755);
+}
+
+/** Windows names it Path; a second key named PATH beside it would leave which one the host gets to chance. */
+const pathVariableOf = (environment: NodeJS.ProcessEnv) => Object.keys(environment).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
+
+const withFirstOnPath = (environment: NodeJS.ProcessEnv, directory: string) => {
+  const pathVariable = pathVariableOf(environment);
+  return { [pathVariable]: [directory, environment[pathVariable]].filter(Boolean).join(delimiter) };
+};
 
 interface TestHostOptions {
   /** Test hosts share the user's home directory, so only a host that opts in runs statusline commands from Claude settings; its spec points a profile at settings of its own. */
@@ -166,7 +190,7 @@ export class TestHost {
         MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
         MIRADOR_NEWER_VERSION_CHECK: "off",
         SHELL: this.options.shell ?? defaultShell,
-        ...(this.options.fakePrograms && { PATH: `${this.fakeProgramsDir}:${this.baseEnvironment().PATH}` }),
+        ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
         ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -241,7 +265,7 @@ export class TestHost {
   async cleanUp() {
     this.unmuteOwnSessions();
     if (process.env.MIRADOR_E2E_KEEP) return;
-    rmSync(this.root, { recursive: true, force: true });
+    rmSync(this.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     this.removeClaudeTranscripts();
     await new Promise((resolve) => setTimeout(resolve, TRANSCRIPT_WRITERS_GRACE_MS));
     this.removeClaudeTranscripts();
