@@ -4,6 +4,7 @@
  * line, as on Windows `bun run` runs those in its own shell, which has no sh scripts and no `${NAME:-default}`.
  */
 import { join } from "node:path";
+import { buildMachineBun, requireDefinedBun } from "./ship-build-bun.ts";
 
 const desktop = join(import.meta.dir, "..");
 const release = process.argv.includes("--release");
@@ -13,7 +14,10 @@ function run(command: string[], env: Record<string, string | undefined> = proces
   if (exitCode !== 0) process.exit(exitCode ?? 1);
 }
 
-if (release) run([process.execPath, "scripts/stage-mirador.ts"]);
+if (release) {
+  requireDefinedBun(buildMachineBun());
+  run([process.execPath, "scripts/stage-mirador.ts"]);
+}
 
 run([process.execPath, "x", "electrobun", "build", "--env=stable"], {
   ...process.env,

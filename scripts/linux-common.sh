@@ -9,7 +9,7 @@ esac
 
 # Images and the Bun cache are kept per architecture, so building for one never replaces the other.
 build_image() {
-  docker build --quiet --platform "$platform" --build-arg "ARCH=$arch" --tag "mirador-$1-$arch" \
+  docker build --quiet --platform "$platform" --build-arg "ARCH=$arch" --build-arg "BUN_VERSION=$(<"$repo/.bun-version")" --tag "mirador-$1-$arch" \
     --file "$repo/scripts/$1.Dockerfile" "$repo/scripts" >/dev/null
 }
 

@@ -24,7 +24,7 @@ jobs:
           ref: ${{ inputs.commit }}
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
       - working-directory: desktop
         run: bun install --frozen-lockfile

@@ -13,6 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { CASK_ASSETS } from "../desktop/scripts/homebrew-cask.ts";
+import { buildMachineBun, definedBunVersion, requireDefinedBun } from "../desktop/scripts/ship-build-bun.ts";
 import { isNewerVersion, RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 
 const CHECKOUT = join(import.meta.dir, "..");
@@ -154,6 +155,7 @@ function bump(release: Release) {
 /** Restart specs flake under load, so the gate waits for a mirador-mobile e2e run another session started. */
 function gate(release: Release) {
   if (Bun.spawnSync(["pgrep", "-f", "mirador-mobile/e2e/run.ts"]).exitCode === 0) throw new Error("A mirador-mobile e2e run is going on; wait for it to end");
+  requireDefinedBun(buildMachineBun(), definedBunVersion(release.worktree));
   run(["bunx", "tsc", "--noEmit", "-p", "."], release.worktree);
   run(["bun", "run", "test"], release.worktree);
   run(["scripts/e2e.sh"], release.worktree);

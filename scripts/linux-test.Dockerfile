@@ -2,7 +2,8 @@
 # opencode and Playwright's Chromium, as a non-root user because Claude Code refuses to skip permission prompts as root.
 FROM ubuntu:24.04
 
-ARG BUN_VERSION=1.4.3
+# .bun-version names the Bun, which build_image passes in.
+ARG BUN_VERSION
 ARG NODE_VERSION=22.13.1
 ARG OPENCODE_VERSION=2.0.27
 ARG CLAUDE_CODE_VERSION=2.1.289

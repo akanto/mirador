@@ -416,7 +416,7 @@ make publish VERSION=x.y.z                        # publishes the draft as the l
 make tap VERSION=x.y.z                            # pushes its Homebrew cask to the tap
 ```
 
-A step that fails names the step to go on from once it is fixed (`FROM=step`). The Windows app is built by the *Windows release* workflow on GitHub's Windows runner, which `make release` starts for the release's commit, waits for, and downloads from. The rest it builds with the goals below, which can also be run alone. The release assets go to `dist/` (`make help` lists the goals):
+A step that fails names the step to go on from once it is fixed (`FROM=step`). The Windows app is built by the *Windows release* workflow on GitHub's Windows runner, which `make release` starts for the release's commit, waits for, and downloads from. Every app carries the Bun `.bun-version` names, the one the checks run on: a release build refuses any other, and the gate refuses to run on another. The rest it builds with the goals below, which can also be run alone. The release assets go to `dist/` (`make help` lists the goals):
 
 ```bash
 make macos                               # the macOS app carrying Mirador, zipped (on a Mac)
