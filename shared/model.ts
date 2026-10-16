@@ -211,6 +211,9 @@ export interface ClaudeProgram {
   configured: string;
   found: string | null;
   version: string | null;
+  /** Where the host looks for claude after PATH, and the command that installs Claude Code, both for the host's platform. */
+  installFolders: string;
+  installCommand: string;
 }
 
 export const isCanvasUse = (value: unknown): value is CanvasUse => typeof value === "string" && Object.hasOwn(canvasUseLabels, value);

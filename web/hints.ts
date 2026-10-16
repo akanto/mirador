@@ -165,8 +165,8 @@ export const hints = {
   followJob:
     "Follow it in a terminal tab of this conversation: what it runs, how long it has run, then its output as it comes, from the file a process writes to or from the container's logs. The tab says when the job ends. Ctrl+C closes it; the job keeps running.",
   stopWaitingForJob: "Stop waiting for this job: when it ends, nobody is told. It keeps running.",
-  claudeProgram:
-    "The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ~/.local/bin, /opt/homebrew/bin or /usr/local/bin.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.",
+  claudeProgram: (installFolders: string) =>
+    `The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ${installFolders}.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.`,
   canvasUse:
     "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
   terminalCommand:

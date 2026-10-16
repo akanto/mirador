@@ -84,7 +84,7 @@ export const initialState: AppState = {
   profiles: [],
   promptTemplates: [],
   canvasUse: "often",
-  claudeProgram: { configured: "", found: null, version: null },
+  claudeProgram: { configured: "", found: null, version: null, installFolders: "", installCommand: "" },
   installedAgents: [],
   version: "",
   canvasAssetsOrigin: "",

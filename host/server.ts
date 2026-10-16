@@ -5,7 +5,6 @@ import {
   isCanvasUse,
   isPastel,
   type CanvasUse,
-  type ClaudeProgram,
   type ClientAddress,
   type FoundAddress,
   type ListedDevice,
@@ -20,7 +19,7 @@ import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { CANVAS_ASSETS_ORIGIN_HEADER, DESKTOP_APP_CODE_PARAMETER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
-import { claudeProgramLookUps } from "./acp/claude-program.ts";
+import { claudeProgramLookUps, claudeProgramReport } from "./acp/claude-program.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
@@ -617,7 +616,7 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "prompt-template.upserted", template: store.findPromptTemplate(id)! });
   }
 
-  let claudeProgram: ClaudeProgram = { configured: store.claudeProgramSetting(), found: null, version: null };
+  let claudeProgram = claudeProgramReport(store.claudeProgramSetting(), null, null);
   const lookUpClaudeProgram = claudeProgramLookUps((program) => {
     claudeProgram = program;
     hub.broadcast({ type: "settings.claude-program", claudeProgram });

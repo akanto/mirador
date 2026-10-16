@@ -467,10 +467,10 @@ function AboutSettings({ version, newerVersion, claudeProgram }: { version: stri
   );
 }
 
-function foundClaudeProgram({ configured, found, version }: ClaudeProgram) {
+function foundClaudeProgram({ configured, found, version, installCommand }: ClaudeProgram) {
   if (found) return version ? `Runs ${found}, ${version}` : `Runs ${found}`;
   if (configured) return "Nothing at that path can run.";
-  return "Claude Code is not installed. Install it with curl -fsSL https://claude.ai/install.sh | bash, or enter where its claude program is.";
+  return `Claude Code is not installed. Install it with ${installCommand}, or enter where its claude program is.`;
 }
 
 function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
@@ -486,7 +486,7 @@ function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
         Mirador runs the Claude Code installed on the host's computer. A change restarts its agents, which stops the turns they are running.
       </p>
       <div className="sending-settings">
-        <label data-hint={hints.claudeProgram}>
+        <label data-hint={hints.claudeProgram(claudeProgram.installFolders)}>
           Program
           <input
             type="text"

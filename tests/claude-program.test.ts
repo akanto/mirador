@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeProgramLookUps, findClaudeProgram, versionOf } from "../host/acp/claude-program.ts";
+import { claudeProgramLookUps, claudeProgramMissing, claudeProgramReport, findClaudeProgram, versionOf } from "../host/acp/claude-program.ts";
 import { launchEnvironment } from "../host/acp/harnesses.ts";
 import type { ClaudeProgram, Profile } from "../shared/model.ts";
 import { fakeProgram } from "./fake-program.ts";
@@ -45,21 +45,21 @@ test("Settings shows the program found and the version it reports", async () => 
   const reports: ClaudeProgram[] = [];
   await claudeProgramLookUps((reported) => reports.push(reported))(program);
   expect(reports).toEqual([
-    { configured: program, found: program, version: null },
-    { configured: program, found: program, version: "9.9.9 (Claude Code)" },
+    claudeProgramReport(program, program, null),
+    claudeProgramReport(program, program, "9.9.9 (Claude Code)"),
   ]);
 
   const missing = join(scratch(), "missing");
   const missingReports: ClaudeProgram[] = [];
   await claudeProgramLookUps((reported) => missingReports.push(reported))(missing);
-  expect(missingReports).toEqual([{ configured: missing, found: null, version: null }]);
+  expect(missingReports).toEqual([claudeProgramReport(missing, null, null)]);
 });
 
 test("Settings shows the program found while its version is still unknown", async () => {
   const program = programIn(scratch(), "claude", hangs(30));
   const reports: ClaudeProgram[] = [];
   const lookUp = claudeProgramLookUps((reported) => reports.push(reported), 1000)(program);
-  expect(reports).toEqual([{ configured: program, found: program, version: null }]);
+  expect(reports).toEqual([claudeProgramReport(program, program, null)]);
   await lookUp;
 });
 
@@ -72,7 +72,7 @@ test("a lookup overtaken by a newer one does not report over it", async () => {
   const staleLookUp = lookUp(hanging);
   await lookUp(working);
   await staleLookUp;
-  expect(reports.at(-1)).toEqual({ configured: working, found: working, version: "9.9.9 (Claude Code)" });
+  expect(reports.at(-1)).toEqual(claudeProgramReport(working, working, "9.9.9 (Claude Code)"));
 }, 15_000);
 
 test("a claude that hangs on --version is given up on and killed, on Windows with what its claude.cmd runs, and left as found with no version", async () => {
@@ -108,4 +108,14 @@ test("Claude Code's agent is told which program to run, a profile may name its o
 
   const missing = join(scratch(), "missing");
   expect(() => launchEnvironment("claude", null, missing)).toThrow(`The Claude Code program set in Settings › Agents, ${missing}, does not exist or cannot run.`);
+});
+
+test("without Claude Code, the host names the folders it looked in and the install command for its own platform", () => {
+  expect(claudeProgramMissing("", "darwin")).toBe(
+    "Claude Code is not installed: no claude on PATH or in ~/.local/bin, /opt/homebrew/bin or /usr/local/bin. Install it with `curl -fsSL https://claude.ai/install.sh | bash`, or set its path in Settings › Agents.",
+  );
+  expect(claudeProgramMissing("", "win32")).toBe(
+    "Claude Code is not installed: no claude on PATH or in %USERPROFILE%\\.local\\bin. Install it with `irm https://claude.ai/install.ps1 | iex`, or set its path in Settings › Agents.",
+  );
+  expect(claudeProgramReport("", null, null)).toMatchObject({ installCommand: process.platform === "win32" ? "irm https://claude.ai/install.ps1 | iex" : "curl -fsSL https://claude.ai/install.sh | bash" });
 });
