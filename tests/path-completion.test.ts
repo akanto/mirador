@@ -13,6 +13,10 @@ describe("highlightedCompletion", () => {
     expect(highlightedCompletion("~/prj/mirador/", ["~/prj/mirador/desktop/", "~/prj/mirador/web/"], null)).toBeNull();
   });
 
+  test("a path ending in a backslash, as typed on Windows, names a folder too", () => {
+    expect(highlightedCompletion("C:\\Users\\", ["C:\\Users\\me/", "C:\\Users\\Public/"], null)).toBeNull();
+  });
+
   test("a folder picked with the arrow keys is the one Enter takes", () => {
     expect(highlightedCompletion("~/prj/mirador/", ["~/prj/mirador/desktop/", "~/prj/mirador/web/"], 1)).toBe(1);
   });

@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { Subprocess } from "bun";
 import type { ClaudeProgram } from "../../shared/model.ts";
+import { expandHome } from "../paths.ts";
 import { killProcessTree } from "../windows-processes.ts";
 
 /** Where Claude Code's installers put it (native, Homebrew, npm), for hosts started without a login shell's PATH. */
@@ -25,7 +26,7 @@ export const claudeProgramReport = (configured: string, found: string | null, ve
 
 /** The Claude Code this computer has: the program set in Settings, else the claude on PATH or in an installer's directory. */
 export function findClaudeProgram(configured: string, path = process.env.PATH): string | null {
-  if (configured) return Bun.which(configured.replace(/^~(?=\/)/, homedir()));
+  if (configured) return Bun.which(expandHome(configured));
   return Bun.which("claude", { PATH: path }) ?? Bun.which("claude", { PATH: claudeInstallDirectories().join(delimiter) });
 }
 

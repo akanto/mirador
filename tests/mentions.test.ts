@@ -48,6 +48,9 @@ describe("@mentions", () => {
   test.if(process.platform === "win32")("on Windows a path may be typed with backslashes", async () => {
     expect(await paths(`${workspace}\\do`)).toEqual([`${workspace}\\docs/`]);
     expect(await paths(".\\src\\")).toEqual([".\\src\\server/", ".\\src\\web/"]);
+    const underHome = await mentionSuggestions(workspace, "~\\");
+    expect(underHome.length).toBeGreaterThan(0);
+    expect(underHome.every(({ path }) => path.startsWith("~\\"))).toBe(true);
   });
 
   test("outside git, words search the workspace's files and their directories by the same names", async () => {

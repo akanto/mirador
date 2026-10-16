@@ -1,6 +1,9 @@
+/** A path typed on Windows may end its folder with a backslash. */
+const endsAFolder = (path: string) => path.endsWith("/") || path.endsWith("\\");
+
 /** A folder name still being typed: the completions extend it, and it does not name a folder yet. */
 function typingAName(path: string, completions: string[]) {
-  return !path.endsWith("/") && !completions.includes(`${path}/`) && completions.some((completion) => completion.startsWith(path));
+  return !endsAFolder(path) && !completions.includes(`${path}/`) && completions.some((completion) => completion.startsWith(path));
 }
 
 /**

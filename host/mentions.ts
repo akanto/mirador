@@ -2,7 +2,7 @@ import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, posix, resolve } from "node:path";
 import { isPathQuery, type MentionSuggestion } from "../shared/mentions.ts";
-import { expandHome } from "./paths.ts";
+import { expandHome, parentOf } from "./paths.ts";
 
 const MAX_SUGGESTIONS = 30;
 const FILE_LIST_TTL_MS = 15_000;
@@ -18,10 +18,6 @@ export async function mentionSuggestions(workspaceDirectory: string, query: stri
   if (query === "" || isPathQuery(query)) return completePath(workspaceDirectory, query);
   return searchWorkspace(workspaceDirectory, query);
 }
-
-/** Windows takes either slash between a path's names; elsewhere a backslash is part of a name. */
-const PATH_SEPARATORS = process.platform === "win32" ? ["/", "\\"] : ["/"];
-const parentOf = (path: string) => path.slice(0, Math.max(...PATH_SEPARATORS.map((separator) => path.lastIndexOf(separator))) + 1);
 
 const isDirectoryEntry = async (directory: string, entry: Dirent) =>
   entry.isDirectory() || (entry.isSymbolicLink() && Boolean((await stat(join(directory, entry.name)).catch(() => null))?.isDirectory()));
