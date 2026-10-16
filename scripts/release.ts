@@ -263,7 +263,7 @@ async function makeRelease(release: Release, from: string | undefined) {
   if (steps[0]?.run !== makeWorktree && !existsSync(release.worktree)) throw new Error(`There is no release worktree at ${release.worktree} to go on in; start from the beginning`);
   const goOn = (step: string) => `make release VERSION=${release.version}${process.env.LINUX_HOST ? ` LINUX_HOST=${process.env.LINUX_HOST}` : ""}${release.windows ? "" : " WINDOWS=no"} FROM=${step}`;
   for (const step of steps) {
-    console.log(`\n== ${step.name}`);
+    console.log(`\n== ${step.name} at ${new Date().toTimeString().slice(0, 8)}`);
     try {
       await step.run(release);
     } catch (error) {
