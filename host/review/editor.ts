@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, normalize, sep } from "node:path";
+import { currentPath } from "../current-path.ts";
 
 /** Where IntelliJ IDEA's launcher script goes: Homebrew, "Create Command-line Launcher…", and JetBrains Toolbox. */
 const IDEA_INSTALL_DIRECTORIES = [
@@ -19,7 +20,7 @@ export function openInIdea(repository: string, path: string, line: number) {
 
 /** Opens an absolute path at a line in IntelliJ IDEA; the caller decides which files a page may open. */
 export function launchIdea(file: string, line: number) {
-  const executable = Bun.which("idea") ?? Bun.which("idea", { PATH: IDEA_INSTALL_DIRECTORIES.join(delimiter) });
+  const executable = Bun.which("idea", { PATH: currentPath() }) ?? Bun.which("idea", { PATH: IDEA_INSTALL_DIRECTORIES.join(delimiter) });
   if (!executable) {
     throw new Error("IntelliJ IDEA's command-line launcher (idea) was not found. In IDEA, choose Tools › Create Command-line Launcher…, then try again.");
   }

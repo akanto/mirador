@@ -996,6 +996,7 @@ export function startServer(services: HostServices) {
   };
 
   function sendSnapshot(socket: BrowserSocket) {
+    if (!claudeProgram.found) void lookUpClaudeProgram(store.claudeProgramSetting());
     hub.send(socket, {
       type: "snapshot",
       workspaces: store.listWorkspaces(),

@@ -6,6 +6,7 @@ import type { ServerMessage, TerminalSplit } from "../shared/protocol.ts";
 import { splitTerminal, terminalsIn, withoutTerminal, type TerminalLayout } from "../shared/terminal-layout.ts";
 import { agentEnvironment, loginShell } from "./acp/environment.ts";
 import { programName, terminalShell } from "./command-shell.ts";
+import { hostEnvironment } from "./current-path.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
 import { childProgramNames, killProcessTree } from "./windows-processes.ts";
@@ -313,7 +314,7 @@ export class TerminalService {
 
   /** Named after the shell (or the program), numbered from 2 with the lowest number no open tab uses: zsh, zsh 2, zsh 3… */
   private newTab(conversationId: string, program?: TerminalProgram): Tab {
-    const baseName = program?.tabName ?? programName(terminalShell(loginShell, agentEnvironment())[0]!);
+    const baseName = program?.tabName ?? programName(terminalShell(loginShell, agentEnvironment(hostEnvironment()))[0]!);
     const taken = new Set(this.tabsIn(conversationId).map(({ name }) => name));
     const numbered = (number: number) => (number === 1 ? baseName : `${baseName} ${number}`);
     let number = 1;
@@ -334,7 +335,7 @@ export class TerminalService {
       programKey: program?.key,
       saved: tab.saved,
     };
-    const environment = program?.environment ?? agentEnvironment();
+    const environment = program?.environment ?? agentEnvironment(hostEnvironment());
     shell.child = Bun.spawn(program?.command ?? terminalShell(loginShell, environment), {
       cwd,
       env: { ...environment, TERM: "xterm-256color", COLORTERM: "truecolor" },

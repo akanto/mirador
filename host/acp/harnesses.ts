@@ -9,6 +9,7 @@ import { claudeProgramMissing, findClaudeProgram } from "./claude-program.ts";
 import { agentEnvironment } from "./environment.ts";
 import type { HarnessSpec } from "./harness.ts";
 import { commandShell, powershellInvocation } from "../command-shell.ts";
+import { currentPath, hostEnvironment } from "../current-path.ts";
 
 const claudeAgentEntry = join(
   dirname(Bun.resolveSync("@agentclientprotocol/claude-agent-acp/package.json", import.meta.dir)),
@@ -18,7 +19,7 @@ const claudeAgentEntry = join(
 /** Where opencode's installers put it, for hosts started without a login shell's PATH (e.g. by launchd). */
 const opencodeInstallDirectories = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".opencode", "bin")];
 
-const findOpencode = () => Bun.which("opencode") ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(delimiter) });
+const findOpencode = () => Bun.which("opencode", { PATH: currentPath() }) ?? Bun.which("opencode", { PATH: opencodeInstallDirectories.join(delimiter) });
 
 function opencodeCommand(): string[] {
   const executable = findOpencode();
@@ -127,12 +128,12 @@ export function launchEnvironment(harness: HarnessId, profile: Profile | null, c
 }
 
 export function profileEnvironment(profile: Profile | null): Record<string, string> {
-  if (!profile) return agentEnvironment();
+  if (!profile) return agentEnvironment(hostEnvironment());
   const environment = parseEnvironment(profile.environment);
   if (environment.errors.length > 0) {
     throw new Error(`Profile "${profile.name}" has an invalid environment: ${environment.errors.join("; ")}`);
   }
-  return applyEnvironment(agentEnvironment(), environment);
+  return applyEnvironment(agentEnvironment(hostEnvironment()), environment);
 }
 
 /** None of them changes files or runs commands for the agent, so none is worth a permission prompt. */
