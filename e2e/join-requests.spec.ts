@@ -121,6 +121,7 @@ test("a browser on the network asks to join, and is signed in once someone at th
 });
 
 test("while no page of the machine is open, a request to join shows on its desktop, and mirador approve there lets the browser in", async ({ browser }) => {
+  test.skip(process.platform === "win32", "Windows has no notify-send, so a join request shows nothing on its desktop yet (vcs-pgm.36)");
   const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
   await phone.goto(networkOrigin());
   await phone.getByLabel("Name this device").fill("Tablet");
