@@ -9,7 +9,9 @@ test("a release is made in a worktree of its own, into dist/ of the checkout, fr
     worktree: join("/tmp", "mirador-release-0.5.0"),
     dist: join("/checkout", "dist", "0.5.0"),
     notes: join("/checkout", "dist", "release-notes-0.5.0.md"),
+    windows: true,
   });
+  expect(releaseOf("0.5.0", "/checkout", "/tmp", false).windows).toBe(false);
 });
 
 test("a release is named x.y.z", () => {
@@ -31,6 +33,11 @@ test("the checksums of the files built take the place of any the notes had", () 
 test("the release holds the installers, the update files and the install scripts, nothing else dist/ has", () => {
   const dist = ["signing", "mirador.rb", "release-notes.md", "stable-macos-arm64-update.json", "install.sh", "install.ps1", "Mirador-macos-arm64.zip", "Mirador-linux-x64-Setup.tar.gz"];
   expect(releaseAssets(dist)).toEqual(["Mirador-linux-x64-Setup.tar.gz", "Mirador-macos-arm64.zip", "install.ps1", "install.sh", "stable-macos-arm64-update.json"]);
+});
+
+test("a release without Windows leaves out the Windows app and install.ps1, which would fetch it", () => {
+  const dist = ["Mirador-macos-arm64.zip", "Mirador-windows-x64-Setup.zip", "install.sh", "install.ps1", "stable-macos-arm64-update.json", "stable-win-x64-update.json", "stable-win-x64-Mirador.tar.zst"];
+  expect(releaseAssets(dist, false)).toEqual(["Mirador-macos-arm64.zip", "install.sh", "stable-macos-arm64-update.json"]);
 });
 
 test("names the assets GitHub holds other bytes of, or none of", () => {
@@ -64,6 +71,20 @@ test("the release must hold every installer, both install scripts and each platf
   expect(missingAssets(complete.filter((file) => !file.startsWith("stable-linux-arm64")))).toEqual(["stable-linux-arm64-update.json"]);
   expect(missingAssets(complete.filter((file) => !file.includes("win")))).toEqual(["Mirador-windows-x64-Setup.zip", "stable-win-x64-update.json"]);
   expect(missingAssets(complete.filter((file) => file !== "install.ps1"))).toEqual(["install.ps1"]);
+});
+
+test("a release without Windows needs every other installer, install.sh and the other platforms' update files", () => {
+  const withoutWindows = [
+    "Mirador-macos-arm64.zip",
+    "Mirador-linux-x64-Setup.tar.gz",
+    "Mirador-linux-arm64-Setup.tar.gz",
+    "install.sh",
+    "stable-macos-arm64-update.json",
+    "stable-linux-x64-update.json",
+    "stable-linux-arm64-update.json",
+  ];
+  expect(missingAssets(withoutWindows, false)).toEqual([]);
+  expect(missingAssets(withoutWindows.filter((file) => file !== "install.sh"), false)).toEqual(["install.sh"]);
 });
 
 test("follows the Windows build gh started, by the run its URL names", () => {

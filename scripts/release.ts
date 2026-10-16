@@ -2,7 +2,8 @@
 /**
  * Makes a release, as the Makefile's release goals run it:
  *   release <version> [from-step]  bumps the version, gates, builds, signs and checks every app, and leaves a checked
- *                                  draft on GitHub with the notes in dist/release-notes-<version>.md
+ *                                  draft on GitHub with the notes in dist/release-notes-<version>.md; with WINDOWS=no in
+ *                                  the environment, without the Windows app and install.ps1
  *   publish <version>              publishes that draft as the latest release
  *   tap <version>                  pushes the Homebrew cask of the published release to the tap
  * The release is made in a worktree of its own at origin/main, so nothing uncommitted in this checkout reaches it, and
@@ -27,6 +28,7 @@ const BUILD_LINE = "== release of ";
 const WINDOWS_WORKFLOW = "windows-release.yml";
 const WINDOWS_ARTIFACT = "mirador-windows-x64";
 const WINDOWS_FILE = /^(Mirador-windows-|stable-win-)/;
+const isWindowsOnly = (file: string) => WINDOWS_FILE.test(file) || file === "install.ps1";
 
 export interface Release {
   version: string;
@@ -34,9 +36,10 @@ export interface Release {
   worktree: string;
   dist: string;
   notes: string;
+  windows: boolean;
 }
 
-export function releaseOf(version: string, checkout = CHECKOUT, temporary = tmpdir()): Release {
+export function releaseOf(version: string, checkout = CHECKOUT, temporary = tmpdir(), windows = true): Release {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`Name the release as x.y.z, not "${version}"`);
   return {
     version,
@@ -44,6 +47,7 @@ export function releaseOf(version: string, checkout = CHECKOUT, temporary = tmpd
     worktree: join(temporary, `mirador-release-${version}`),
     dist: join(checkout, "dist", version),
     notes: join(checkout, "dist", `release-notes-${version}.md`),
+    windows,
   };
 }
 
@@ -53,9 +57,9 @@ export function notesWithChecksums(notes: string, checksums: string) {
   return `${withoutChecksums}\n\n${CHECKSUMS_HEADING}\n\n\`\`\`\n${checksums.trim()}\n\`\`\`\n`;
 }
 
-export const releaseAssets = (files: string[]) => files.filter((file) => RELEASE_ASSET.test(file)).sort();
+export const releaseAssets = (files: string[], windows = true) => files.filter((file) => RELEASE_ASSET.test(file) && (windows || !isWindowsOnly(file))).sort();
 
-export const missingAssets = (files: string[]) => REQUIRED_ASSETS.filter((asset) => !files.includes(asset));
+export const missingAssets = (files: string[], windows = true) => REQUIRED_ASSETS.filter((asset) => (windows || !isWindowsOnly(asset)) && !files.includes(asset));
 
 /** `git describe` shortens the commit to as few digits as its clone needs, so the build machine's may be shorter or longer. */
 export function isBuildOf(buildLine: string, commit: string) {
@@ -227,8 +231,8 @@ function updateFiles(release: Release) {
 
 function draft(release: Release) {
   if (releasesNamed(release) !== "") throw new Error(`GitHub has a release ${release.tag} already, maybe a draft an earlier run left; delete it with gh release delete ${release.tag} --yes`);
-  const assets = releaseAssets(readdirSync(release.dist));
-  const missing = missingAssets(assets);
+  const assets = releaseAssets(readdirSync(release.dist), release.windows);
+  const missing = missingAssets(assets, release.windows);
   if (missing.length > 0) throw new Error(`${release.dist} lacks ${missing.join(", ")}`);
   const checksums = assets.map((asset) => `${sha256Of(join(release.dist, asset))}  ${asset}`).join("\n");
   const notes = join(release.dist, "release-notes.md");
@@ -254,10 +258,10 @@ const RELEASE_STEPS = [
 
 async function makeRelease(release: Release, from: string | undefined) {
   if (!existsSync(release.notes)) throw new Error(`Write the release notes into ${release.notes} first; the checksums are added to them`);
-  const steps = stepsFrom(RELEASE_STEPS, from);
+  const steps = stepsFrom(RELEASE_STEPS.filter((step) => release.windows || step.run !== windows), from);
   if (steps.some((step) => step.run === linux)) requireLinuxHost();
   if (steps[0]?.run !== makeWorktree && !existsSync(release.worktree)) throw new Error(`There is no release worktree at ${release.worktree} to go on in; start from the beginning`);
-  const goOn = (step: string) => `make release VERSION=${release.version}${process.env.LINUX_HOST ? ` LINUX_HOST=${process.env.LINUX_HOST}` : ""} FROM=${step}`;
+  const goOn = (step: string) => `make release VERSION=${release.version}${process.env.LINUX_HOST ? ` LINUX_HOST=${process.env.LINUX_HOST}` : ""}${release.windows ? "" : " WINDOWS=no"} FROM=${step}`;
   for (const step of steps) {
     console.log(`\n== ${step.name}`);
     try {
@@ -292,7 +296,7 @@ function tap(release: Release) {
 }
 
 async function main([command, version, from]: string[]) {
-  const release = releaseOf(version ?? "");
+  const release = releaseOf(version ?? "", CHECKOUT, tmpdir(), process.env.WINDOWS !== "no");
   if (command === "release") await makeRelease(release, from);
   else if (command === "publish") publish(release);
   else if (command === "tap") tap(release);

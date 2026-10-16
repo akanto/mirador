@@ -19,8 +19,8 @@ TAP_DIR ?=
 help: ## List the goals (builds take the committed files only)
 	@grep -E '^[a-z0-9 -]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  make %-14s %s\n", $$1, $$2}'
 
-release: ## Release VERSION=x.y.z up to a checked draft on GitHub: bump, gate, every build (Windows on GitHub Actions), update files, notes from dist/release-notes-VERSION.md (needs LINUX_HOST=user@host; FROM=step goes on from a failed step)
-	LINUX_HOST=$(LINUX_HOST) bun scripts/release.ts release $(VERSION) $(FROM)
+release: ## Release VERSION=x.y.z up to a checked draft on GitHub: bump, gate, every build (Windows on GitHub Actions), update files, notes from dist/release-notes-VERSION.md (needs LINUX_HOST=user@host; FROM=step goes on from a failed step; WINDOWS=no leaves Windows out)
+	LINUX_HOST=$(LINUX_HOST) WINDOWS=$(WINDOWS) bun scripts/release.ts release $(VERSION) $(FROM)
 
 publish: ## Publish the draft of VERSION=x.y.z as the latest release
 	bun scripts/release.ts publish $(VERSION)
