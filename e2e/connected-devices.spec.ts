@@ -1,8 +1,7 @@
-import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { openSettings, signIn } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { spawnProgramSync, TestHost } from "./test-host.ts";
 
 const host = new TestHost();
 
@@ -15,8 +14,11 @@ test.afterAll(async () => {
 /** What `tailscale serve` adds to each request it passes on to the host. */
 const viaTailscale = { "x-forwarded-for": "100.101.5.7", "tailscale-user-login": "someone@github" };
 
+/** Windows runs no script without an extension, so there Mirador's command line is mirador.cmd. */
+const mirador = join(import.meta.dirname, "..", "bin", process.platform === "win32" ? "mirador.cmd" : "mirador");
+
 function miradorDevices() {
-  const run = spawnSync(join(import.meta.dirname, "..", "bin", "mirador"), ["devices"], {
+  const run = spawnProgramSync(mirador, ["devices"], {
     env: { ...process.env, MIRADOR_DATA_DIR: host.dataDir, MIRADOR_PORT: String(host.port) },
     encoding: "utf8",
   });
