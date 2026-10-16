@@ -87,5 +87,6 @@ test("a command the agent says it cannot open here offers the tab that can", asy
   await refusal.getByRole("button", { name: "Open a terminal tab" }).click();
 
   await expect(page.locator(".terminal-tab", { hasText: "/things-to-come" })).toBeVisible();
+  await expect(page.locator(".terminal-pane .terminal-splits.shown .xterm-rows")).toContainText("panel /things-to-come with");
   expect(ran()[0]).toBe("command=/things-to-come");
 });
