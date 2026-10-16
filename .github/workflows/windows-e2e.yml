@@ -76,7 +76,7 @@ jobs:
           $env:PLAYWRIGHT_JSON_OUTPUT_NAME = "survey.json"
           $env:MIRADOR_E2E_KEEP = "1"
           $started = Get-Date
-          cmd /c "bunx playwright test --timeout=180000 --global-timeout=6000000 --reporter=list,json > survey-output.txt 2>&1"
+          cmd /c "bunx playwright test --global-timeout=6000000 --reporter=list,json > survey-output.txt 2>&1"
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
           if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
