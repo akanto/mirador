@@ -12,10 +12,18 @@ const USERS = "S-1-5-32-545";
 const system32 = (program: string) => join(process.env.SystemRoot ?? "C:\\Windows", "System32", program);
 const icacls = (...args: string[]) => expect(Bun.spawnSync([system32("icacls.exe"), ...args]).success).toBe(true);
 
-/** Who may use the path, by SID, and whether each grant comes from the folder it is in. */
+/**
+ * Who may use the path, by SID, and whether each grant comes from the folder it is in. Through .NET rather than Get-Acl:
+ * a Windows PowerShell started under PowerShell 7, as CI runs the tests, cannot load Get-Acl's module from PowerShell 7's
+ * PSModulePath.
+ */
 function grantsOn(path: string) {
-  const script = "(Get-Acl -LiteralPath $env:GRANTS_OF).Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value + ' ' + $_.IsInherited }";
-  const { stdout } = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], { env: { ...process.env, GRANTS_OF: path } });
+  const script = [
+    "$acl = if ([IO.Directory]::Exists($env:GRANTS_OF)) { [IO.Directory]::GetAccessControl($env:GRANTS_OF) } else { [IO.File]::GetAccessControl($env:GRANTS_OF) }",
+    "foreach ($rule in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) { $rule.IdentityReference.Value + ' ' + $rule.IsInherited }",
+  ].join("\n");
+  const { success, stdout, stderr } = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], { env: { ...process.env, GRANTS_OF: path } });
+  if (!success) throw new Error(`could not read the access list of ${path}: ${stderr.toString()}`);
   return stdout
     .toString()
     .split(/\r?\n/)
