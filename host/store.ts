@@ -237,6 +237,11 @@ export class Store {
     this.db.run("PRAGMA foreign_keys = ON");
     // mirador invite writes here while the host runs.
     this.db.run("PRAGMA busy_timeout = 5000");
+    this.db.transaction(() => this.bringUpToDate()).immediate();
+  }
+
+  /** In one transaction, as each commit waits for the disk: a new database's tables, one by one, took seconds on a busy Windows. */
+  private bringUpToDate() {
     const hadPromptTemplates = this.hasTable("prompt_templates");
     const keptTrackOfOfferedTemplates = this.hasTable("offered_prompt_templates");
     this.db.run(schema);

@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -44,6 +44,17 @@ function seededStore() {
 const sidebarOrder = (store: Store) => sidebarIds(sidebarItems(store.listWorkspaces(), store.listWorkspaceGroups()));
 
 const canvasItem: CanvasItem = { id: "i1", conversationId: "c1", kind: "show", title: "x", html: "<p>", status: "shown", createdAt: 1 };
+
+const WAL_HEADER_BYTES = 32;
+const WAL_FRAME_HEADER_BYTES = 24;
+
+/** Each commit waits for the disk once, and leaves one frame in the write-ahead log that names the database's size. */
+function commitsInWriteAheadLog(databasePath: string) {
+  const log = readFileSync(`${databasePath}-wal`);
+  const frameBytes = WAL_FRAME_HEADER_BYTES + log.readUInt32BE(8);
+  const frameStarts = Array.from({ length: (log.length - WAL_HEADER_BYTES) / frameBytes }, (_, frame) => WAL_HEADER_BYTES + frame * frameBytes);
+  return frameStarts.filter((start) => log.readUInt32BE(start + 4) !== 0).length;
+}
 
 describe("Store", () => {
   test("a new workspace goes first and a new conversation last, and they keep the order they are given", () => {
@@ -385,6 +396,14 @@ describe("Store", () => {
     reopened.setCanvasUse("often");
     expect(reopened.canvasUse()).toBe("often");
     reopened.close();
+  });
+
+  test("sets up a new database in one commit, as each one waits for the disk", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    expect(commitsInWriteAheadLog(path)).toBe(1);
+    expect(store.listPromptTemplates()).toHaveLength(defaultPromptTemplates.length);
+    store.close();
   });
 
   test("adds the profile and agent columns to a database created before they existed", () => {
