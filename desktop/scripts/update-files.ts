@@ -4,6 +4,7 @@
  * Electrobun's <prefix>-update.json, the app's archive, and a patch from each of the last releases that carry update
  * files. Usage: update-files.ts <dist>
  * On a Mac it packs the signed, stapled dist/signing/Mirador.app again, as Electrobun packs its archive before signing.
+ * Each build's patches, one build to an update.json, are made in a process of its own, all at once.
  * The Linux and Windows archives are Electrobun's own, which `make linux` and `make release` copy into dist/.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -146,17 +147,31 @@ export const githubReleases: Releases = {
   },
 };
 
+const PATCHES_FOR = "--patches-for";
+
+/** bsdiff takes many times an archive's size in memory, so a build's patches are made one after another. */
+async function writePatchesForEachBuild(dist: string, manifests: string[]) {
+  const runs = manifests.map((name) => ({ name, patching: Bun.spawn([process.execPath, import.meta.path, dist, PATCHES_FOR, name], { stdio: ["ignore", "inherit", "inherit"] }) }));
+  const exits = await Promise.all(runs.map(async ({ name, patching }) => ({ name, code: await patching.exited })));
+  const failed = exits.filter(({ code }) => code !== 0).map(({ name }) => name);
+  if (failed.length > 0) throw new Error(`The patches for ${failed.join(", ")} failed.`);
+}
+
 if (import.meta.main) {
-  const dist = process.argv[2];
+  const [dist, option, manifestName] = process.argv.slice(2);
   if (!dist) throw new Error("Usage: update-files.ts <dist>");
   const tools = electrobunTools();
-  if (existsSync(join(dist, "signing", "Mirador.app"))) {
-    const artifacts = join(DESKTOP, "artifacts");
-    const built = readdirSync(artifacts).filter((name) => isManifestFile(name) && name.includes("-macos-"));
-    if (built.length !== 1) throw new Error(`Expected one macOS update.json in ${artifacts}, found ${built.length}.`);
-    packSignedMacApp(dist, readManifest(join(artifacts, built[0]!)), tools);
+  if (option === PATCHES_FOR) {
+    writePatches(dist, readManifest(join(dist, manifestName!)), githubReleases, tools);
+  } else {
+    if (existsSync(join(dist, "signing", "Mirador.app"))) {
+      const artifacts = join(DESKTOP, "artifacts");
+      const built = readdirSync(artifacts).filter((name) => isManifestFile(name) && name.includes("-macos-"));
+      if (built.length !== 1) throw new Error(`Expected one macOS update.json in ${artifacts}, found ${built.length}.`);
+      packSignedMacApp(dist, readManifest(join(artifacts, built[0]!)), tools);
+    }
+    const manifests = readdirSync(dist).filter(isManifestFile);
+    if (manifests.length === 0) throw new Error(`No update files in ${dist}: run make macos-signed or make linux-remote first.`);
+    await writePatchesForEachBuild(dist, manifests);
   }
-  const manifests = readdirSync(dist).filter(isManifestFile);
-  if (manifests.length === 0) throw new Error(`No update files in ${dist}: run make macos-signed or make linux-remote first.`);
-  manifests.forEach((name) => writePatches(dist, readManifest(join(dist, name)), githubReleases, tools));
 }
