@@ -1,12 +1,13 @@
-import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import type { Conversation } from "../shared/model.ts";
 import { addWorkspace, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { spawnProgram, TestHost } from "./test-host.ts";
 
 const host = new TestHost();
 const mirador = resolve("bin/mirador");
+/** What a script outside Git Bash runs: Windows runs no script without an extension, so there it is mirador.cmd. */
+const miradorForScripts = process.platform === "win32" ? `${mirador}.cmd` : mirador;
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
@@ -17,7 +18,7 @@ test.afterAll(async () => {
 function runMiradorMessage(args: string[]) {
   return new Promise<{ exitCode: number | null; stderr: string }>((settle) => {
     const environment = { ...process.env, MIRADOR_URL: host.origin, MIRADOR_SCRIPT_TOKEN: host.scriptToken };
-    const script = spawn(mirador, ["message", ...args], { env: environment, stdio: ["ignore", "ignore", "pipe"] });
+    const script = spawnProgram(miradorForScripts, ["message", ...args], { env: environment, stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     script.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
     script.on("close", (exitCode) => settle({ exitCode, stderr }));
