@@ -18,11 +18,11 @@ import { isNewerVersion, RELEASES_REPOSITORY } from "../shared/newer-version.ts"
 
 const CHECKOUT = join(import.meta.dir, "..");
 const VERSION_FILE = join("shared", "version.ts");
-const RELEASE_ASSET = /^(Mirador-|stable-)|^install\.sh$/;
+const RELEASE_ASSET = /^(Mirador-|stable-)|^install\.(sh|ps1)$/;
 const CHECKSUMS_HEADING = "## Checksums (SHA-256)";
 const PLATFORMS = ["macos-arm64", "linux-x64", "linux-arm64", "win-x64"];
 const WINDOWS_INSTALLER = "Mirador-windows-x64-Setup.zip";
-const REQUIRED_ASSETS = [...Object.values(CASK_ASSETS), WINDOWS_INSTALLER, "install.sh", ...PLATFORMS.map((platform) => `stable-${platform}-update.json`)];
+const REQUIRED_ASSETS = [...Object.values(CASK_ASSETS), WINDOWS_INSTALLER, "install.sh", "install.ps1", ...PLATFORMS.map((platform) => `stable-${platform}-update.json`)];
 const BUILD_LINE = "== release of ";
 const WINDOWS_WORKFLOW = "windows-release.yml";
 const WINDOWS_ARTIFACT = "mirador-windows-x64";

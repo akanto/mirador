@@ -28,9 +28,9 @@ test("the checksums of the files built take the place of any the notes had", () 
   expect(notesWithChecksums(notes, "new  Mirador-macos-arm64.zip")).toBe("Mirador 0.5.0.\n\n## Checksums (SHA-256)\n\n```\nnew  Mirador-macos-arm64.zip\n```\n");
 });
 
-test("the release holds the installers, the update files and install.sh, nothing else dist/ has", () => {
-  const dist = ["signing", "mirador.rb", "release-notes.md", "stable-macos-arm64-update.json", "install.sh", "Mirador-macos-arm64.zip", "Mirador-linux-x64-Setup.tar.gz"];
-  expect(releaseAssets(dist)).toEqual(["Mirador-linux-x64-Setup.tar.gz", "Mirador-macos-arm64.zip", "install.sh", "stable-macos-arm64-update.json"]);
+test("the release holds the installers, the update files and the install scripts, nothing else dist/ has", () => {
+  const dist = ["signing", "mirador.rb", "release-notes.md", "stable-macos-arm64-update.json", "install.sh", "install.ps1", "Mirador-macos-arm64.zip", "Mirador-linux-x64-Setup.tar.gz"];
+  expect(releaseAssets(dist)).toEqual(["Mirador-linux-x64-Setup.tar.gz", "Mirador-macos-arm64.zip", "install.ps1", "install.sh", "stable-macos-arm64-update.json"]);
 });
 
 test("names the assets GitHub holds other bytes of, or none of", () => {
@@ -47,13 +47,14 @@ test("goes on from the step named, or runs them all", () => {
   expect(() => stepsFrom(steps, "linx")).toThrow('There is no step "linx"; the steps are bump, gate, draft');
 });
 
-test("the release must hold every installer, install.sh and each platform's update file", () => {
+test("the release must hold every installer, both install scripts and each platform's update file", () => {
   const complete = [
     "Mirador-macos-arm64.zip",
     "Mirador-linux-x64-Setup.tar.gz",
     "Mirador-linux-arm64-Setup.tar.gz",
     "Mirador-windows-x64-Setup.zip",
     "install.sh",
+    "install.ps1",
     "stable-macos-arm64-update.json",
     "stable-linux-x64-update.json",
     "stable-linux-arm64-update.json",
@@ -62,6 +63,7 @@ test("the release must hold every installer, install.sh and each platform's upda
   expect(missingAssets(complete)).toEqual([]);
   expect(missingAssets(complete.filter((file) => !file.startsWith("stable-linux-arm64")))).toEqual(["stable-linux-arm64-update.json"]);
   expect(missingAssets(complete.filter((file) => !file.includes("win")))).toEqual(["Mirador-windows-x64-Setup.zip", "stable-win-x64-update.json"]);
+  expect(missingAssets(complete.filter((file) => file !== "install.ps1"))).toEqual(["install.ps1"]);
 });
 
 test("follows the Windows build gh started, by the run its URL names", () => {

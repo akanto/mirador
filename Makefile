@@ -66,14 +66,14 @@ linux-remote: ## From a Mac: make linux on LINUX_HOST=user@host, with the instal
 update-files: ## What the apps fetch to update themselves, with patches from the last 5 releases, into dist/ (on a Mac, after the builds)
 	bun desktop/scripts/update-files.ts $(DIST)
 
-checksums: $(DIST)/install.sh ## install.sh copied into dist/, and the SHA-256 of what dist/ holds, for the release notes
-	@cd $(DIST) && shopt -s nullglob && $(SHA256) Mirador-* stable-* install.sh
+checksums: $(DIST)/install.sh $(DIST)/install.ps1 ## install.sh and install.ps1 copied into dist/, and the SHA-256 of what dist/ holds, for the release notes
+	@cd $(DIST) && shopt -s nullglob && $(SHA256) Mirador-* stable-* install.sh install.ps1
 
 cask: ## The Homebrew cask for the sodre90/homebrew-tap tap, with the SHA-256 of the release's macOS zip and Linux installers, into dist/mirador.rb
 	bun desktop/scripts/homebrew-cask.ts $(DIST)
 
-$(DIST)/install.sh: install.sh
-	@mkdir -p $(DIST) && cp install.sh $@
+$(DIST)/install.sh $(DIST)/install.ps1: $(DIST)/%: %
+	@mkdir -p $(DIST) && cp $< $@
 
 clean: ## Empty dist/
 	rm -rf $(DIST)

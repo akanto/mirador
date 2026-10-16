@@ -212,7 +212,7 @@ A release build updates itself from the latest release, on macOS only when it is
 Upload every file it writes with the release, under the same names, in this order: `releases/latest/download` follows the newest published release, so installed apps see a release the moment it is published.
 
 1. Run `make update-files` before the new release exists. A release already published would take one of the five places.
-2. Create the release as a draft, with the installers, `install.sh` and every update file.
+2. Create the release as a draft, with the installers, `install.sh`, `install.ps1` and every update file.
 3. Publish it.
 
 The release build's `baseUrl` is set at build time, so an app from before it cannot update itself.

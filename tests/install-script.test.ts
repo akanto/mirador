@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -75,7 +75,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
   });
 
   type Machine = {
-    os: "Darwin" | "Linux";
+    os: "Darwin" | "Linux" | "MINGW64_NT-10.0-26100";
     arch?: string;
     appleSilicon?: boolean;
     runningFrom?: string;
@@ -240,6 +240,13 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     expect(requested).toEqual([]);
   });
 
+  test("in a Windows shell such as Git Bash it points to install.ps1, before downloading anything", async () => {
+    const result = await install(machineOf({ os: "MINGW64_NT-10.0-26100", arch: "x86_64" }));
+    expect(result.exitCode).toBe(1);
+    expect(result.errors).toContain("on Windows, run this in PowerShell instead: irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex");
+    expect(requested).toEqual([]);
+  });
+
   test("a failed download stops the install with the address it tried", async () => {
     assets.delete("Mirador-macos-arm64.zip");
     try {
@@ -256,4 +263,218 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("curl -fsSL https://claude.ai/install.sh | bash");
   });
+});
+
+const POWERSHELL_INSTALL_SCRIPT = join(import.meta.dir, "..", "install.ps1");
+
+/**
+ * As Electrobun's installer: it reads its payload from .installer beside it, waits for its Close button unless told to
+ * close itself, then installs the app under LOCALAPPDATA and starts it. Copied in as the app's launcher, it notes each
+ * start and runs for a while, with --stay for long.
+ */
+const FAKE_INSTALLER = `
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Threading;
+public static class FakeInstaller {
+  public static int Main(string[] args) {
+    string self = Process.GetCurrentProcess().MainModule.FileName;
+    string folder = Path.GetDirectoryName(self);
+    if (Path.GetFileName(self).Equals("launcher.exe", StringComparison.OrdinalIgnoreCase)) {
+      File.AppendAllText(Path.Combine(folder, "starts.log"), "started\\n");
+      Thread.Sleep(args.Length > 0 && args[0] == "--stay" ? 120000 : 3000);
+      return 0;
+    }
+    if (!File.Exists(Path.Combine(folder, ".installer", "Mirador-Setup.tar.zst"))) return 3;
+    if (Environment.GetEnvironmentVariable("ELECTROBUN_INSTALLER_UI_AUTOCLOSE") != "1") Thread.Sleep(Timeout.Infinite);
+    if (Environment.GetEnvironmentVariable("FAKE_INSTALLER_FAILS") == "1") return 1;
+    string bin = Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA"), "com.sodre90.mirador", "stable", "app", "bin");
+    Directory.CreateDirectory(bin);
+    string launcher = Path.Combine(bin, "launcher.exe");
+    File.Copy(self, launcher, true);
+    Process.Start(new ProcessStartInfo(launcher) { UseShellExecute = false });
+    return 0;
+  }
+}`;
+
+const SETUP_ARCHIVE = "Mirador-windows-x64-Setup.zip";
+const INSTALLER_TIMEOUT = 90_000;
+
+function powershell(command: string) {
+  const result = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]);
+  if (result.exitCode !== 0) throw new Error(`${command}: ${result.stderr}`);
+}
+
+/** install.ps1 is what Windows users paste into PowerShell, which runs the script as GitHub serves it. */
+describe.skipIf(process.platform !== "win32")("install.ps1", () => {
+  const windowsRoot = join(root, "windows");
+  const fakeInstaller = join(windowsRoot, "fake-installer.exe");
+  const windowsAssets = new Map<string, string>();
+  const asked: string[] = [];
+  let windowsServer: ReturnType<typeof Bun.serve>;
+  let machines = 0;
+
+  /** As GitHub sends release files, which Windows PowerShell's irm must still read as text. */
+  const releaseFile = (path: string) => new Response(Bun.file(path), { headers: { "Content-Type": "application/octet-stream" } });
+
+  function setupArchive() {
+    const folder = join(windowsRoot, "setup");
+    mkdirSync(join(folder, ".installer"), { recursive: true });
+    copyFileSync(fakeInstaller, join(folder, "Mirador-Setup.exe"));
+    writeFileSync(join(folder, ".installer", "Mirador-Setup.tar.zst"), "the app");
+    const archive = join(windowsRoot, SETUP_ARCHIVE);
+    const tar = Bun.spawnSync([join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"), "-a", "-c", "-f", archive, "-C", folder, "Mirador-Setup.exe", ".installer"]);
+    if (tar.exitCode !== 0) throw new Error(tar.stderr.toString());
+    return archive;
+  }
+
+  beforeAll(() => {
+    mkdirSync(windowsRoot, { recursive: true });
+    const source = join(windowsRoot, "fake-installer.cs");
+    writeFileSync(source, FAKE_INSTALLER);
+    powershell(`Add-Type -TypeDefinition (Get-Content -Raw '${source}') -OutputAssembly '${fakeInstaller}' -OutputType WindowsApplication`);
+    windowsAssets.set("install.ps1", POWERSHELL_INSTALL_SCRIPT);
+    windowsAssets.set(SETUP_ARCHIVE, setupArchive());
+    windowsServer = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        const name = new URL(request.url).pathname.slice(1);
+        asked.push(name);
+        const asset = windowsAssets.get(name);
+        return asset ? releaseFile(asset) : new Response("Not Found", { status: 404 });
+      },
+    });
+  }, 120_000);
+
+  afterAll(() => {
+    powershell(`Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith('${windowsRoot}\\', 'OrdinalIgnoreCase') } | Stop-Process -Force`);
+    windowsServer.stop(true);
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+  });
+
+  function windowsMachine({ agent = true, failingInstaller = false, architecture = "AMD64" } = {}) {
+    const folder = join(windowsRoot, `machine-${++machines}`);
+    const [localAppData, temp, profile] = ["local", "temp", "profile"].map((name) => join(folder, name));
+    [localAppData, temp, profile].forEach((path) => mkdirSync(path, { recursive: true }));
+    if (agent) {
+      mkdirSync(join(profile, ".local", "bin"), { recursive: true });
+      writeFileSync(join(profile, ".local", "bin", "claude.exe"), "");
+    }
+    const { PROCESSOR_ARCHITEW6432: _, ...inherited } = process.env;
+    const environment = {
+      ...inherited,
+      PROCESSOR_ARCHITECTURE: architecture,
+      LOCALAPPDATA: localAppData,
+      TEMP: temp,
+      TMP: temp,
+      USERPROFILE: profile,
+      MIRADOR_DOWNLOAD_URL: `http://127.0.0.1:${windowsServer.port}`,
+      ...(failingInstaller && { FAKE_INSTALLER_FAILS: "1" }),
+    };
+    const app = join(localAppData, "com.sodre90.mirador", "stable", "app");
+    return { app, launcher: join(app, "bin", "launcher.exe"), temp, environment };
+  }
+
+  /** As people run it: fetched with irm and run by iex in the PowerShell they typed it into. */
+  async function installOnWindows(machine: ReturnType<typeof windowsMachine>) {
+    asked.length = 0;
+    const run = Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `irm ${machine.environment.MIRADOR_DOWNLOAD_URL}/install.ps1 | iex`], {
+      env: machine.environment,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [output, errors] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text(), run.exited]);
+    return { output: output.replaceAll("\r\n", "\n"), errors };
+  }
+
+  const startsOf = (machine: ReturnType<typeof windowsMachine>) => readFileSync(join(machine.app, "bin", "starts.log"), "utf8").trim().split("\n");
+  const setupsLeftIn = (temp: string) => readdirSync(temp).filter((name) => name.startsWith("mirador-install-"));
+  const windowsHasAnAgent = ["claude", "opencode"].some((program) => Bun.which(program) !== null);
+
+  test(
+    "runs the release's installer, which closes itself once it has installed and started the app, and leaves nothing behind",
+    async () => {
+      const machine = windowsMachine();
+      const result = await installOnWindows(machine);
+      expect(result.output).toContain(`Installed Mirador in ${machine.app}`);
+      expect(result.output).toContain("Mirador is starting.");
+      expect(result.output).not.toContain("not installed");
+      expect(asked).toEqual(["install.ps1", SETUP_ARCHIVE]);
+      await Bun.sleep(4000);
+      expect(startsOf(machine)).toEqual(["started"]);
+      expect(setupsLeftIn(machine.temp)).toEqual([]);
+    },
+    INSTALLER_TIMEOUT,
+  );
+
+  test(
+    "asks the user to quit a Mirador running from the app's folder, before downloading anything",
+    async () => {
+      const machine = windowsMachine();
+      mkdirSync(dirname(machine.launcher), { recursive: true });
+      copyFileSync(fakeInstaller, machine.launcher);
+      const running = Bun.spawn([machine.launcher, "--stay"]);
+      try {
+        await Bun.sleep(500);
+        const result = await installOnWindows(machine);
+        expect(result.output).toContain("Mirador was not installed: Mirador is running. Quit it from its tray icon, with Run host in the background off, then run this again.");
+        expect(asked).toEqual(["install.ps1"]);
+      } finally {
+        running.kill();
+      }
+    },
+    INSTALLER_TIMEOUT,
+  );
+
+  test(
+    "a failed installer stops the install with its exit code, and keeps it for the user to run",
+    async () => {
+      const machine = windowsMachine({ failingInstaller: true });
+      const result = await installOnWindows(machine);
+      const kept = /its installer failed \(exit code 1\)\. Run (.+Mirador-Setup\.exe) to see why\./.exec(result.output.replaceAll("\n", ""));
+      expect(kept).not.toBeNull();
+      expect(existsSync(kept![1]!)).toBe(true);
+      expect(existsSync(machine.launcher)).toBe(false);
+    },
+    INSTALLER_TIMEOUT,
+  );
+
+  test(
+    "a failed download stops the install with the address it tried",
+    async () => {
+      const archive = windowsAssets.get(SETUP_ARCHIVE)!;
+      windowsAssets.delete(SETUP_ARCHIVE);
+      try {
+        const machine = windowsMachine();
+        const result = await installOnWindows(machine);
+        expect(result.output).toContain(`Mirador was not installed: could not download ${machine.environment.MIRADOR_DOWNLOAD_URL}/${SETUP_ARCHIVE}`);
+        expect(setupsLeftIn(machine.temp)).toEqual([]);
+      } finally {
+        windowsAssets.set(SETUP_ARCHIVE, archive);
+      }
+    },
+    INSTALLER_TIMEOUT,
+  );
+
+  test(
+    "a Windows on Arm machine is refused before downloading anything",
+    async () => {
+      const result = await installOnWindows(windowsMachine({ architecture: "ARM64" }));
+      expect(result.output).toContain("Mirador was not installed: Mirador's Windows app is built for x64, not ARM64.");
+      expect(asked).toEqual(["install.ps1"]);
+    },
+    INSTALLER_TIMEOUT,
+  );
+
+  test.skipIf(windowsHasAnAgent)(
+    "without Claude Code or opencode it says how to install Claude Code",
+    async () => {
+      const result = await installOnWindows(windowsMachine({ agent: false }));
+      expect(result.output).toContain("Mirador is starting.");
+      expect(result.output).toContain("irm https://claude.ai/install.ps1 | iex");
+    },
+    INSTALLER_TIMEOUT,
+  );
 });

@@ -424,7 +424,7 @@ make macos-signed                        # the same, signed with your Developer 
 make linux                               # both Linux release installers, built and checked as above (on an x64 Linux machine)
 make linux-remote LINUX_HOST=user@host   # from a Mac: make linux on that machine, with the installers and update files copied back
 make update-files                        # what the apps fetch to update themselves, with patches from the last 5 releases (on a Mac, after the builds)
-make checksums                           # install.sh copied in with them, and the SHA-256 of all of it, for the release notes
+make checksums                           # install.sh and install.ps1 copied in with them, and the SHA-256 of all of it, for the release notes
 make cask                                # the Homebrew cask for the sodre90/homebrew-tap tap, with the SHA-256 of the macOS zip and the Linux installers
 ```
 
