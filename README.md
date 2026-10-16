@@ -12,7 +12,7 @@ Mirador runs your coding agents (Claude Code, opencode and pi) and gives them a 
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
 ```
 
-That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. It runs the Claude Code, opencode or pi you already have. [More ways to get it](#get-it).
+That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. On Windows (x64), `irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex` in PowerShell does the same. It runs the Claude Code, opencode or pi you already have. [More ways to get it](#get-it).
 
 *A mirador is a lookout: the place you climb to see the whole landscape at once.*
 
@@ -70,7 +70,7 @@ Keep or drop each finding, reword it, ask the agent about any lines, and open th
 
 ## Get it
 
-Mirador runs on **macOS** (Apple Silicon) and **Linux** (x64 and arm64), and in any browser on your network. Android and iOS apps are coming, and Windows is planned.
+Mirador runs on **macOS** (Apple Silicon), **Linux** (x64 and arm64) and **Windows** (x64), and in any browser on your network. Android and iOS apps are coming.
 
 ### The desktop app
 
@@ -83,7 +83,15 @@ The script downloads the latest release for your computer, installs it and start
 - **macOS** (Apple Silicon): the app goes where it already is, else in `/Applications`, or in `~/Applications` when that isn't writable. Quit a Mirador running from there first.
 - **Linux** (x64 or arm64): the libraries the app needs (GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg) are installed first, with `sudo apt-get` or `sudo dnf`; on other distributions the script names them. The app goes in `~/.local/share/com.sodre90.mirador`, with an entry in your applications menu.
 
-The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), opencode and pi (`npm install -g @earendil-works/pi-coding-agent`, on Node 22.19 or later). The script tells you when none of them is there.
+**Windows** (x64), in PowerShell:
+
+```powershell
+irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex
+```
+
+The app goes in `%LOCALAPPDATA%\com.sodre90.mirador`, and starts. To run the script again, quit Mirador from its tray icon first, with *Run host in the background* off.
+
+The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`, or `irm https://claude.ai/install.ps1 | iex` on Windows), opencode and pi (`npm install -g @earendil-works/pi-coding-agent`, on Node 22.19 or later). The script tells you when none of them is there.
 
 **With Homebrew**, on macOS or Linux:
 
@@ -112,7 +120,9 @@ mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup &&
 
 The installer starts Mirador, and puts it in your applications menu.
 
-**Signing in**: Mirador runs the `claude` on your PATH (or in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`), or the program set in *Settings › Agents*, so it uses the sign-in and version you already have. Without a sign-in, a conversation offers *Log in*, which opens that Claude Code's own sign-in in a terminal tab. For opencode, install [opencode](https://opencode.ai) and Mirador finds it. For pi, install it (`npm install -g @earendil-works/pi-coding-agent`) and Mirador finds it on your `PATH`; *Log in* opens pi itself in a terminal tab, where `/login` signs in.
+**Windows**: `Mirador-windows-x64-Setup.zip`. Extract it and run `Mirador-Setup.exe`. The app is not signed yet, so SmartScreen warns when the installer first runs: *More info*, then *Run anyway*. The installer installs without a click, then waits at "Installation complete" for *Close*, and starts Mirador.
+
+**Signing in**: Mirador runs the `claude` on your PATH (or in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`; on Windows in `%USERPROFILE%\.local\bin`), or the program set in *Settings › Agents*, so it uses the sign-in and version you already have. Without a sign-in, a conversation offers *Log in*, which opens that Claude Code's own sign-in in a terminal tab. For opencode, install [opencode](https://opencode.ai) and Mirador finds it. For pi, install it (`npm install -g @earendil-works/pi-coding-agent`) and Mirador finds it on your `PATH`; *Log in* opens pi itself in a terminal tab, where `/login` signs in.
 
 ### From source
 
@@ -122,6 +132,20 @@ bun start
 ```
 
 Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs one browser in with a cookie, works once, and expires after 10 minutes. `bin/mirador sign-in` makes a new link for the next browser. Ctrl+C stops the host, and the agents with it.
+
+### On Windows
+
+- **Shells**: as Claude Code does, Mirador runs `!` commands, the status line, the pre-launch command and the sign-in tab in Git Bash (`CLAUDE_CODE_GIT_BASH_PATH`, else where Git is installed), or in PowerShell when there is no Git Bash. Terminal tabs open PowerShell: PowerShell 7 when it is installed, else Windows PowerShell.
+- **The `mirador` command**: PowerShell and cmd run `bin\mirador.cmd`, and Git Bash runs the `bin/mirador` script beside it; to run `mirador` from a checkout, put its `bin` folder on your PATH. `mirador.cmd` goes through cmd, which reads `&`, `%…%` and `"` in its arguments as its own, so a PowerShell script the agent runs pipes such text in instead, as UTF-8 for accents and symbols:
+
+  ```powershell
+  $OutputEncoding = [Text.UTF8Encoding]::new($false)
+  'Build done: 3 warnings & 1 "flaky" test' | mirador message
+  ```
+
+  In Git Bash, any text arrives as typed.
+- **The data folder**, `%USERPROFILE%\.mirador`, is kept to your account, SYSTEM and Administrators at every host start, as `chmod 700` keeps it to you on macOS and Linux. Access someone gave the folder itself stays, and the host warns about it when it starts.
+- **Before you uninstall**, turn off *Run host in the background* and *Open at login*: uninstalling doesn't remove them yet.
 
 ## Everything Mirador does
 
@@ -296,7 +320,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **macOS keys**, the ones cmux and iTerm2 share: `⌘D` splits right and `⌘⇧D` down, `⌥⌘←→↑↓` move between splits, `⌘[`/`⌘]` go to the previous or next split, `⌘T` opens a tab, `⌘⇧[`/`⌘⇧]`, `⌘1…⌘9` and `⌃1…⌃9` switch tabs, and `⌘⇧↩` zooms the focused split (*Show all* brings the others back). In Chrome, `⌘T`, `⌘W`, `⌘⇧[`/`⌘⇧]` and `⌥⌘←→` stay Chrome's.
 - **Closing**: `⌘W` closes the focused shell, and a middle click closes a tab. Either asks first while a command runs: Enter ends it, and so does `⌘W` again when `⌘W` asked; Esc keeps it.
 - **Line editing** as in a macOS terminal: `⌘←`, `⌘→`, `⌘⌫`, `⌥←`, `⌥→`, and `⌘K` clears for good.
-- **Find** with `⌘F` (`Ctrl+Shift+F` on Linux, where `Ctrl+F` stays the shell's) searches the focused split's scrollback. Every match is highlighted. Enter goes to the match further up, Shift+Enter further down. Match case, whole word and regular expression are toggles, as in VS Code. Esc, or `⌘W` in the desktop app, closes it and puts the cursor back in the shell.
+- **Find** with `⌘F` (`Ctrl+Shift+F` on Linux and Windows, where `Ctrl+F` stays the shell's) searches the focused split's scrollback. Every match is highlighted. Enter goes to the match further up, Shift+Enter further down. Match case, whole word and regular expression are toggles, as in VS Code. Esc, or `⌘W` in the desktop app, closes it and puts the cursor back in the shell.
 - **Copy on select** (*Settings → Terminal*). On Linux, `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste, and `Ctrl+C` stays the interrupt.
 - **On a touch screen**, a finger scrolls the output, and a quick swipe keeps it going until a touch stops it. In a full-screen program such as less or vim it scrolls as a wheel does there.
 - **Nerd Font aware**, with a dark terminal in both themes.
@@ -357,11 +381,11 @@ Off macOS, Ctrl stands in for ⌘ and Alt for ⌥. The ⌥ bindings go by physic
 
 ### The desktop app
 
-A native window around Mirador, for macOS and Linux ([full details](desktop/README.md)).
+A native window around Mirador, for macOS, Linux and Windows ([full details](desktop/README.md)).
 
 - **Menu bar or tray app**: closing the window leaves it running, and on macOS the Dock icon hides until the window comes back. On macOS `⌘W` closes the open dialog, else the focused terminal's shell, and asks before it closes the window. The menu has the Mirador version and the host's status, a newer version when there is one, *Open*, *Restart host*, *Run host in the background*, *Open at login* and *Quit*. On a Linux desktop without a tray, *Desktop app…* in the sidebar has the same menu.
 - **Uses a host that is already running** and never stops one it didn't start. Otherwise it starts one through your login shell, so agents see the same environment as in your terminal.
-- **Run the host in the background**: a LaunchAgent on macOS, or a systemd user service on Linux, so the host keeps running without the app and starts at login.
+- **Run the host in the background**: a LaunchAgent on macOS, a systemd user service on Linux, or a scheduled task on Windows, so the host keeps running without the app and starts at login.
 - **Open at login** (on by default).
 - **Native notifications**, also while the window is closed (on Linux through `notify-send`).
 - **One window, one app**: a second launch hands over to the running app. Links to other sites open in your browser.

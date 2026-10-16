@@ -1,11 +1,12 @@
 # Mirador desktop app
 
-Mirador in a window of its own, with a menu bar item on macOS and a tray icon on Linux. It starts the Mirador host for you, keeps it running while the window is closed, opens at login and shows Mirador's notifications natively.
+Mirador in a window of its own, with a menu bar item on macOS and a tray icon on Linux and Windows. It starts the Mirador host for you, keeps it running while the window is closed, opens at login and shows Mirador's notifications natively.
 
 The app adds no server of its own: the UI and the host are Mirador's `bun host/main.ts`. A release build carries its own copy of Mirador and the Bun it runs on, so it needs neither Bun nor a checkout. A build of your own runs your checkout instead.
 
 - [Install on macOS](#install-on-macos)
 - [Install on Linux](#install-on-linux)
+- [Install on Windows](#install-on-windows)
 - [Install a build of your own](#install-a-build-of-your-own)
 - [Using it](#using-it)
 - [Uninstall](#uninstall)
@@ -57,6 +58,18 @@ mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup &&
 The app goes in `~/.local/share/com.sodre90.mirador/stable/app/`, and *Mirador* in your applications menu (`~/.local/share/applications/Mirador.desktop`). The installer starts it; later, start it from there.
 
 Notifications go through `notify-send`: install `libnotify-bin` (Debian, Ubuntu) or `libnotify` (Fedora) to get them. Stock GNOME shows no tray icons until you add the AppIndicator extension (`gnome-shell-extension-appindicator` on Fedora); the app's menu is also under *Desktop app…* at the bottom of Mirador's sidebar.
+
+## Install on Windows
+
+For x64. In PowerShell:
+
+```powershell
+irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex
+```
+
+The script installs the app for your user in `%LOCALAPPDATA%\com.sodre90.mirador\stable\app\`, and starts it. Run it again to update; quit Mirador from its tray icon first, with *Run host in the background* off.
+
+**By hand**: download `Mirador-windows-x64-Setup.zip` from the [releases](https://github.com/sodre90/mirador/releases), extract it and run `Mirador-Setup.exe`. The app is not signed yet, so SmartScreen warns when the installer first runs: *More info*, then *Run anyway*. The installer installs without a click, then waits at "Installation complete" for *Close*, and starts Mirador.
 
 ## Install a build of your own
 
@@ -170,6 +183,8 @@ systemctl --user daemon-reload
 ~/.local/share/com.sodre90.mirador/stable/uninstall --quiet   # Electrobun's uninstaller: the app and its menu entry
 rm -f ~/.mirador/desktop.json ~/.mirador/desktop-host.pid ~/.mirador/desktop-4600.sock ~/.mirador/logs/host.log
 ```
+
+**Windows**: turn off *Run host in the background* and *Open at login* in the tray menu, as uninstalling doesn't remove them yet. Quit the app, then uninstall Mirador in *Settings › Apps › Installed apps*.
 
 ## Build and release
 
