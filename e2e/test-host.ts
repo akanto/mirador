@@ -3,6 +3,7 @@ import { accessSync, chmodSync, constants, cpSync, createWriteStream, existsSync
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
 import { muteMarkerName, MUTED_LIST_FILE, mutedListAt } from "../host/notifier.ts";
+import { HOST_RELAUNCH, HOST_RESTART_EXIT_CODE } from "../shared/host-relaunch.ts";
 import { freePorts } from "./free-ports.ts";
 import { processTreeOf, waitForProcessesToEnd } from "./process-tree.ts";
 
@@ -99,6 +100,8 @@ const PORTS_PER_HOST = 4;
 const PORT_ATTEMPTS = 3;
 const PORT_TAKEN = /EADDRINUSE|Is port \d+ in use/;
 
+const timesRunningIn = (log: string) => log.split("Mirador is running").length - 1;
+
 /** Runs the real host (and through it a real Claude Code on a cheap model) in throwaway directories. */
 export class TestHost {
   /** Only a path until start(): Playwright also imports spec files in a process that never runs their hooks. */
@@ -117,6 +120,8 @@ export class TestHost {
   authUrl = "";
   private process?: ChildProcess;
   private output = "";
+  private startedAgain?: Promise<void>;
+  private stopRequested = false;
 
   /** A port number first is what specs gave before hosts took free ports themselves; it is not used. */
   constructor(optionsOrUnusedPort: TestHostOptions | number = {}, options: TestHostOptions = {}) {
@@ -208,25 +213,33 @@ export class TestHost {
   private async launch(port: number) {
     this.starts += 1;
     this.output = "";
-    const child = spawn(this.bun, ["host/main.ts"], {
-      cwd: this.sourceDir,
-      env: {
-        ...this.baseEnvironment(),
-        MIRADOR_PORT: String(port),
-        MIRADOR_DATA_DIR: this.dataDir,
-        MIRADOR_MCP_TOKEN: this.mcpToken,
-        MIRADOR_TEST_MODEL: process.env.MIRADOR_TEST_MODEL ?? "haiku",
-        MIRADOR_TEST_EFFORT: process.env.MIRADOR_TEST_EFFORT ?? "low",
-        MIRADOR_TEST_SKIP_USER_SETTINGS: "1",
-        MIRADOR_TAILSCALE: join(this.root, "no-tailscale-on-this-machine"),
-        MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
-        MIRADOR_NEWER_VERSION_CHECK: "off",
-        SHELL: this.options.shell ?? defaultShell,
-        ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
-        ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    this.stopRequested = false;
+    await this.run(port, this.environmentFor(port));
+  }
+
+  private environmentFor(port: number): NodeJS.ProcessEnv {
+    return {
+      ...this.baseEnvironment(),
+      MIRADOR_PORT: String(port),
+      MIRADOR_DATA_DIR: this.dataDir,
+      MIRADOR_MCP_TOKEN: this.mcpToken,
+      MIRADOR_TEST_MODEL: process.env.MIRADOR_TEST_MODEL ?? "haiku",
+      MIRADOR_TEST_EFFORT: process.env.MIRADOR_TEST_EFFORT ?? "low",
+      MIRADOR_TEST_SKIP_USER_SETTINGS: "1",
+      MIRADOR_TAILSCALE: join(this.root, "no-tailscale-on-this-machine"),
+      MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
+      MIRADOR_NEWER_VERSION_CHECK: "off",
+      SHELL: this.options.shell ?? defaultShell,
+      ...(process.platform === "win32" && { [HOST_RELAUNCH.restartExitCode]: String(HOST_RESTART_EXIT_CODE) }),
+      ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
+      ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
+    };
+  }
+
+  /** Runs the host until it says it is running once more than this test host's log already has it. */
+  private async run(port: number, env: NodeJS.ProcessEnv) {
+    const timesRunningBefore = timesRunningIn(this.output);
+    const child = spawn(this.bun, ["host/main.ts"], { cwd: this.sourceDir, env, stdio: ["ignore", "pipe", "pipe"] });
     this.process = child;
     const log = createWriteStream(join(this.root, "host.log"), { flags: "a" });
     this.logFile = log;
@@ -236,9 +249,12 @@ export class TestHost {
     };
     child.stdout!.on("data", capture);
     child.stderr!.on("data", capture);
-    child.once("exit", (code, signal) => log.end(`\n[host exited: ${code ?? signal}]\n`));
+    child.once("exit", (code, signal) => {
+      log.end(`\n[host exited: ${code ?? signal}]\n`);
+      if (code === HOST_RESTART_EXIT_CODE && this.process === child && !this.stopRequested) this.startedAgain = this.startAgain(port, env);
+    });
     const deadline = Date.now() + 15_000;
-    while (!this.output.includes("Mirador is running")) {
+    while (timesRunningIn(this.output) === timesRunningBefore) {
       if (Date.now() > deadline || child.exitCode !== null) throw new Error(`host did not start:\n${this.output}`);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -246,10 +262,22 @@ export class TestHost {
   }
 
   /**
+   * Windows has no re-execution, so a host restarting there exits with the code it was given, and the test host starts
+   * it again with the same environment, as the desktop app does.
+   */
+  private startAgain(port: number, env: NodeJS.ProcessEnv) {
+    return this.run(port, env).catch(() => {
+      this.output += "\n[test host: the host did not start again]\n";
+    });
+  }
+
+  /**
    * The host exits once its agents and shells have ended, or after SERVICES_STOP_TIMEOUT_MS (host/restart.ts) at the
    * latest; anything still running then is waited for here and killed, so cleanUp never removes the root under a writer.
    */
   async stop() {
+    await this.startedAgain;
+    this.stopRequested = true;
     const child = this.process;
     if (!child || child.exitCode !== null) return;
     const hostProcesses = processTreeOf(child.pid!);
@@ -267,6 +295,8 @@ export class TestHost {
 
   /** Kills the host outright, as a crash does: nothing of a turn it was running gets written down. */
   async kill() {
+    await this.startedAgain;
+    this.stopRequested = true;
     const child = this.process;
     if (!child || child.exitCode !== null) return;
     const exited = new Promise((resolve) => child.once("exit", resolve));

@@ -24,7 +24,15 @@ function editSource(file: string, from: string, to: string) {
 
 const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");
 
-const commandLineOf = (pid: number) => execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
+/** Windows has no ps, and the desktop app reads a host's command line through the system there. */
+const commandLineOf = (pid: number) =>
+  (process.platform === "win32"
+    ? execFileSync("bun", [join(import.meta.dirname, "windows-command-line.ts"), String(pid)], { encoding: "utf8" })
+    : execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" })
+  ).trim();
+
+/** Windows has no re-execution: a host restarts there through what started it, as a new process. */
+const restartKeepsThePid = process.platform !== "win32";
 
 test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, and a working agent continues afterwards", async ({ page }) => {
   await signIn(page, host);
@@ -57,13 +65,13 @@ test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, 
   await composer.press("Enter");
   await expect(page.locator(".queue .queued-text")).toHaveText(["queued before the restart"]);
 
-  await test.step("Cmd+Shift+R stops the turn and restarts the host in the same process, with the same command line", async () => {
+  await test.step("Cmd+Shift+R stops the turn and restarts the host with the same command line, in the same process where it can re-execute", async () => {
     const pid = host.pid!;
     expect(isHostCommandLine(commandLineOf(pid))).toBe(true);
     await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
     await expect.poll(() => host.log.match(/Mirador is running/g)?.length, { timeout: 60_000 }).toBe(2);
-    expect(host.pid).toBe(pid);
-    expect(isHostCommandLine(commandLineOf(pid))).toBe(true);
+    if (restartKeepsThePid) expect(host.pid).toBe(pid);
+    expect(isHostCommandLine(commandLineOf(host.pid!))).toBe(true);
     await expect(hostCodeChanged).toHaveCount(0, { timeout: 30_000 });
     await expect(page.locator(".timeline")).toContainText("Turn ended: cancelled");
   });
