@@ -240,10 +240,10 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     expect(requested).toEqual([]);
   });
 
-  test("in a Windows shell such as Git Bash it points to install.ps1, before downloading anything", async () => {
+  test("in a Windows shell such as Git Bash it says Mirador runs on macOS and Linux, before downloading anything", async () => {
     const result = await install(machineOf({ os: "MINGW64_NT-10.0-26100", arch: "x86_64" }));
     expect(result.exitCode).toBe(1);
-    expect(result.errors).toContain("on Windows, run this in PowerShell instead: irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex");
+    expect(result.errors).toContain("Mirador runs on macOS and Linux; Windows is planned.");
     expect(requested).toEqual([]);
   });
 

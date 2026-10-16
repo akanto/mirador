@@ -3,8 +3,6 @@
 #
 #   curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
 #
-# On Windows, install.ps1 does it, from PowerShell.
-#
 # MIRADOR_DOWNLOAD_URL fetches the release's files from elsewhere, and MIRADOR_APP_DIR puts the macOS app in another folder
 # than the one it is in already, else /Applications.
 #
@@ -13,7 +11,6 @@
 set -eu
 
 DOWNLOAD_URL=${MIRADOR_DOWNLOAD_URL:-https://github.com/sodre90/mirador/releases/latest/download}
-WINDOWS_INSTALL="irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex"
 LINUX_APP=$HOME/.local/share/com.sodre90.mirador/stable/app
 LINUX_LIBRARIES="libgtk-3.so.0 libwebkit2gtk-4.1.so.0 libayatana-appindicator3.so.1 librsvg-2.so.2"
 APT_PACKAGES="libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2"
@@ -147,8 +144,7 @@ main() {
   case $(uname -s) in
     Darwin) install_macos ;;
     Linux) install_linux ;;
-    MINGW* | MSYS* | CYGWIN*) fail "on Windows, run this in PowerShell instead: $WINDOWS_INSTALL" ;;
-    *) fail "Mirador runs on macOS, Linux and Windows, not $(uname -s)." ;;
+    *) fail "Mirador runs on macOS and Linux; Windows is planned." ;;
   esac
   has_agent || {
     say ""
