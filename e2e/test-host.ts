@@ -121,6 +121,9 @@ const PORT_TAKEN = /EADDRINUSE|Is port \d+ in use/;
 
 const timesRunningIn = (log: string) => log.split("Mirador is running").length - 1;
 
+/** A process a signal ended has no exit code; on Windows every kill is one, as it ends the process outright. */
+const hasEnded = (child: ChildProcess) => child.exitCode !== null || child.signalCode !== null;
+
 /** Runs the real host (and through it a real Claude Code on a cheap model) in throwaway directories. */
 export class TestHost {
   /** Only a path until start(): Playwright also imports spec files in a process that never runs their hooks. */
@@ -274,7 +277,7 @@ export class TestHost {
     });
     const deadline = Date.now() + 15_000;
     while (timesRunningIn(this.output) === timesRunningBefore) {
-      if (Date.now() > deadline || child.exitCode !== null) throw new Error(`host did not start:\n${this.output}`);
+      if (Date.now() > deadline || hasEnded(child)) throw new Error(`host did not start:\n${this.output}`);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     this.authUrl = `http://127.0.0.1:${port}/auth?token=${readFileSync(join(this.dataDir, "browser-token"), "utf8").trim()}`;
@@ -298,7 +301,7 @@ export class TestHost {
     await this.startedAgain;
     this.stopRequested = true;
     const child = this.process;
-    if (!child || child.exitCode !== null) return;
+    if (!child || hasEnded(child)) return;
     const hostProcesses = processTreeOf(child.pid!);
     const exited = new Promise((resolve) => child.once("exit", resolve));
     this.logFile?.write(`\n${new Date().toISOString()} [test host: sending SIGTERM]\n`);
@@ -317,7 +320,7 @@ export class TestHost {
     await this.startedAgain;
     this.stopRequested = true;
     const child = this.process;
-    if (!child || child.exitCode !== null) return;
+    if (!child || hasEnded(child)) return;
     const exited = new Promise((resolve) => child.once("exit", resolve));
     child.kill("SIGKILL");
     await exited;
