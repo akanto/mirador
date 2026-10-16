@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { accessSync, chmodSync, constants, cpSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join } from "node:path";
@@ -34,13 +34,27 @@ const isRunnableFile = (path: string) => {
   }
 };
 
-/** Where `name` runs from on PATH, as `which` says: Windows has no which, and finds a program with an extension from PATHEXT. */
-export function programOnPath(name: string): string {
+export const foldersOnPath = () => (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+
+/** The first of `folders` that `name` runs from: Windows finds a program with an extension from PATHEXT. */
+export function programIn(folders: string[], name: string): string | undefined {
   const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
-  const folders = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
-  const program = folders.flatMap((folder) => extensions.map((extension) => join(folder, name + extension))).find(isRunnableFile);
+  return folders.flatMap((folder) => extensions.map((extension) => join(folder, name + extension))).find(isRunnableFile);
+}
+
+/** Where `name` runs from on PATH, as `which` says: Windows has no which. */
+export function programOnPath(name: string): string {
+  const program = programIn(foldersOnPath(), name);
   if (!program) throw new Error(`${name} is not on PATH`);
   return program;
+}
+
+const isWindowsBatchFile = (program: string) => process.platform === "win32" && /\.(cmd|bat)$/i.test(program);
+
+/** Node runs a Windows .cmd, such as npm's opencode.cmd, only through cmd.exe, which splits unquoted arguments at spaces. */
+export function spawnProgram(program: string, args: string[], options: SpawnOptions): ChildProcess {
+  if (!isWindowsBatchFile(program)) return spawn(program, args, options);
+  return spawn(`"${program}"`, args.map((arg) => `"${arg}"`), { ...options, shell: true });
 }
 
 /**

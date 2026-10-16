@@ -3,6 +3,7 @@ import { createServer, type ServerResponse, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { foldersOnPath, programIn } from "./test-host.ts";
 
 type ChatMessage = { role: string; content?: string | { type: string; text?: string }[] | null };
 type ChatRequest = { model?: string; messages: ChatMessage[]; tools?: { function: { name: string; description?: string } }[] };
@@ -197,8 +198,7 @@ export function scriptedOpencodeEnvironment(model: ScriptedModel, root: string) 
 /** opencode as the host finds it: on PATH, else where its installer puts it. */
 export function opencodeProgram() {
   const installDirectory = join(homedir(), ".opencode", "bin");
-  const searchedDirectories = [...(process.env.PATH ?? "").split(delimiter), installDirectory];
-  const found = searchedDirectories.map((directory) => join(directory, "opencode")).find((candidate) => existsSync(candidate));
+  const found = programIn([...foldersOnPath(), installDirectory], "opencode");
   if (!found) throw new Error(`opencode is neither on PATH nor in ${installDirectory}`);
   return found;
 }

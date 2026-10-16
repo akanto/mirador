@@ -15,6 +15,10 @@ const refuseSignIn = join(host.root, "refuse-sign-in");
 function fakeOpencodeSignIn() {
   const realOpencode = opencodeProgram();
   mkdirSync(host.fakeProgramsDir, { recursive: true });
+  if (process.platform === "win32") {
+    writeFileSync(join(host.fakeProgramsDir, "opencode.cmd"), windowsSignInScript(realOpencode));
+    return;
+  }
   const script = `#!/bin/sh
 if [ "$1" = auth ] && [ "$2" = login ]; then
   if [ -e '${refuseSignIn}' ]; then echo "sign-in refused"; exit 1; fi
@@ -26,6 +30,20 @@ exec '${realOpencode}' "$@"
   writeFileSync(join(host.fakeProgramsDir, "opencode"), script);
   chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
 }
+
+/** A batch file that runs another batch file without `call` hands over to it for good, as exec does. */
+const windowsSignInScript = (realOpencode: string) =>
+  [
+    "@echo off",
+    'if "%~1"=="auth" if "%~2"=="login" goto signIn',
+    `"${realOpencode}" %*`,
+    "exit /b %errorlevel%",
+    ":signIn",
+    `if exist "${refuseSignIn}" (echo sign-in refused& exit /b 1)`,
+    `<nul set /p "=%SIGN_IN_ACCOUNT%" > "${signedInAccount}"`,
+    "exit /b 0",
+    "",
+  ].join("\r\n");
 
 test.beforeAll(async () => {
   fakeOpencodeSignIn();
