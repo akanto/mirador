@@ -79,6 +79,9 @@ test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, 
   });
 });
 
+/** Some models carry on with a turn the restart cut short rather than answer the message that came after it. */
+const QUEUED_MESSAGE = "Run no command, and reply with just the word QUEUED.";
+
 test("a host stopped from outside, like the tray's Restart, keeps the queued messages and sends them once it is back", async ({ page }) => {
   await signIn(page, host);
   await startConversation(page);
@@ -88,12 +91,12 @@ test("a host stopped from outside, like the tray's Restart, keeps the queued mes
   await sendMessage(page, "Run the shell command `sleep 30` with your Bash tool, then reply with the single word SLEPT.");
   await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
   const composer = page.locator(".composer textarea");
-  await composer.fill("Reply with just the word QUEUED.");
+  await composer.fill(QUEUED_MESSAGE);
   await composer.press("Enter");
-  await expect(page.locator(".queue .queued-text")).toHaveText(["Reply with just the word QUEUED."]);
+  await expect(page.locator(".queue .queued-text")).toHaveText([QUEUED_MESSAGE]);
 
   await host.restart();
-  await expect(page.locator(".message.user").last()).toHaveText("Reply with just the word QUEUED.", { timeout: 60_000 });
+  await expect(page.locator(".message.user").last()).toHaveText(QUEUED_MESSAGE, { timeout: 60_000 });
   await expect(page.locator(".queue .queued-text")).toHaveCount(0);
   await waitForTurnToEnd(page);
   await expect(page.locator(".message.agent").last()).toContainText("QUEUED");
