@@ -76,8 +76,21 @@ export class ScriptedModel {
 
   /** The user's messages in the latest request for a reply, not a title: what the agent's context holds of the conversation. */
   userMessagesInContext() {
-    const latestReply = this.requests.findLast(({ tools }) => (tools ?? []).length > 0);
-    return (latestReply?.messages ?? []).filter(({ role }) => role === "user").map(textOf);
+    return this.latestReplyRequest().messages.filter(({ role }) => role === "user").map(textOf);
+  }
+
+  /** The system messages of the latest request for a reply. */
+  systemPromptInContext() {
+    return this.latestReplyRequest().messages.filter(({ role }) => role === "system" || role === "developer").map(textOf).join("\n\n");
+  }
+
+  /** The description the agent gave the model of the tool whose name ends with `name`, in the latest request for a reply. */
+  toolDescription(name: string) {
+    return (this.latestReplyRequest().tools ?? []).find(({ function: tool }) => tool.name.endsWith(name))?.function.description;
+  }
+
+  private latestReplyRequest() {
+    return this.requests.findLast(({ tools }) => (tools ?? []).length > 0) ?? { messages: [] };
   }
 
   private reply(request: ChatRequest, response: ServerResponse) {

@@ -3,6 +3,7 @@ import * as z from "zod/v4";
 import type { ConversationService } from "../conversations.ts";
 import { CANVAS_SERVER_NAME } from "../acp/harnesses.ts";
 import { JobWaitRefused, jobWaitToolDescription } from "../job-waits.ts";
+import { canvasInstructions } from "./guidance.ts";
 import { readJobWaitRequest, waitSetUpReply } from "../../shared/job-waits.ts";
 import { answerAsToolResult, type CanvasService, type ChecklistCanvasItem, type RenderOutcome } from "./service.ts";
 import { anchorLabel, answersOf, findingSeverities, isCommentable, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
@@ -12,23 +13,6 @@ import { carriedOverDone, describeTicks, itemNamed, type UserTick } from "./chec
 import { MIRADOR_VERSION } from "../../shared/version.ts";
 
 const PROGRESS_HEARTBEAT_MS = 15_000;
-
-export function canvasInstructions(assetsOrigin: string) {
-  return `The canvas is a browser panel next to this conversation. The user finds long terminal text and ASCII diagrams hard to read, so prefer the canvas for anything visual.
-
-- show: render an HTML page: architecture or flow diagrams, UI mockups, side-by-side comparisons, charts, 3D scenes, visual explanations, code-review walkthroughs.
-- ask: whenever you need the user to decide between options (design choices, approaches, trade-offs), ask here instead of in plain text. Give each option a short label and, when it helps, an HTML preview. A question takes the canvas's place of what you showed before, so to ask about a page, pass it as the question's html rather than calling show first. When you have more than one thing to ask, ask them all in one call with questions, one entry each; never fold several questions into one, or offer \"accept all\" or \"change some answers\" as options.
-- tour: when you explain how code works, or walk the user through code you changed, publish a guided tour of its flow with this tool rather than show: steps anchored to lines, which the page shows with the code. Pass since to mark what you changed and show its diff.
-- review: when you review code changes (a pull request or a branch), publish the review with this tool rather than show. The user reads it as a guided tour of the code flow, the diff with your findings on it, and posts the findings they keep to the pull request.
-- update_review: to change parts of a review already shown (reword a finding, add or take one out, a new verdict), change just those parts with this tool; the user keeps their place in the review. Publish the whole review again only when the code under review changed.
-- checklist: when you work through several steps, publish them as a checklist the user sees beside the canvas, and tick each item with update_checklist as you finish it. An item is yours, the user's or both of yours to do; the user can tick any of them, and you hear of their ticks with their next message or in update_checklist's result.
-
-Rendering environment: every page renders in a sandboxed iframe with NO network access (no fetch, no external CDNs, fonts or images), shown light or dark as the panel's theme is. Write self-contained HTML with inline CSS and JS, and pick every colour (background, text, cards, inline code and code blocks, borders, lines) with light-dark() so the page follows that theme, e.g. <style>html { background: light-dark(#ffffff, #111214); color: light-dark(#1c1c1e, #ececee); }</style>. Don't use @media (prefers-color-scheme): it follows the system, not the panel. A script that draws in colour reads the theme as getComputedStyle(document.documentElement).colorScheme, "light" or "dark". Available libraries:
-- three.js (ES modules): <script type="module">import * as THREE from "three"; import { OrbitControls } from "three/addons/controls/OrbitControls.js";</script>
-- D3 v7: <script src="${assetsOrigin}/d3.min.js"></script> (global d3)
-- Mermaid: <script src="${assetsOrigin}/mermaid.min.js"></script><script>mermaid.initialize({ startOnLoad: true, theme: getComputedStyle(document.documentElement).colorScheme === "dark" ? "dark" : "default" })</script> with <pre class="mermaid">...</pre>
-When someone is viewing the conversation, show reports back script errors from the page so you can fix them.`;
-}
 
 const anchorSchema = (what: string) =>
   z.string().min(3).describe(`${what} Written "path:line" or "path:start-end": the path relative to the repository root, lines of the reviewed (new) version.`);

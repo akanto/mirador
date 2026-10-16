@@ -513,11 +513,11 @@ function CanvasSettings({ canvasUse }: { canvasUse: CanvasUse }) {
       <h3>Canvas</h3>
       <p className="hint">
         Kept by the host for every browser. A conversation picks up a change when its session next starts: a new one at once, an open one after the host
-        restarts. Claude Code only; opencode follows the canvas's own instructions.
+        restarts. Claude Code and pi; opencode follows the canvas's own instructions.
       </p>
       <div className="sending-settings">
         <label data-hint={hints.canvasUse}>
-          Claude Code uses the canvas
+          Claude Code and pi use the canvas
           <select value={canvasUse} onChange={(event) => connection.send({ type: "settings.set-canvas-use", canvasUse: event.target.value as CanvasUse })}>
             {Object.entries(canvasUseLabels).map(([value, label]) => (
               <option key={value} value={value}>

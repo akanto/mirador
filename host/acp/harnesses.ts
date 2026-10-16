@@ -2,7 +2,7 @@ import { RequestError } from "@agentclientprotocol/sdk";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { harnessIds, harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
-import { canvasUseGuidance } from "../canvas/guidance.ts";
+import { canvasInstructions, canvasUseGuidance } from "../canvas/guidance.ts";
 import { jobWaitGuidance } from "../job-waits.ts";
 import { applyEnvironment, parseEnvironment } from "../../shared/profile-environment.ts";
 import { claudeProgramMissing, findClaudeProgram } from "./claude-program.ts";
@@ -167,13 +167,30 @@ export function profileEnvironment(profile: Profile | null): Record<string, stri
 const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "checklist", "update_checklist", "when_done"];
 
 /**
+ * opencode needs nothing: it offers no question tool over ACP, puts the canvas server's own instructions in its prompt,
+ * and the user's own opencode permission settings apply unchanged.
+ */
+export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { canvasAssetsOrigin, withoutUserSettings = false }: { canvasAssetsOrigin: string; withoutUserSettings?: boolean }) {
+  if (harness === "claude") return claudeSessionMeta(canvasUse, { withoutUserSettings });
+  if (harness === "pi") return piSessionMeta(canvasUse, canvasAssetsOrigin);
+  return undefined;
+}
+
+/**
+ * pi leaves the instructions of MCP servers whose tools it declares directly out of its prompt, so the canvas server's
+ * come in the text Mirador's pi-acp patch appends. pi's commands get no session id for `mirador when-done`, so its job
+ * waits go through the canvas's when_done tool, as opencode's do.
+ */
+export function piSessionMeta(canvasUse: CanvasUse, canvasAssetsOrigin: string) {
+  const canvasServerInstructions = `# Canvas server instructions\n${canvasInstructions(canvasAssetsOrigin)}`;
+  return { systemPrompt: { append: [canvasServerInstructions, ...(canvasUse === "often" ? [canvasUseGuidance] : [])].join("\n\n") } };
+}
+
+/**
  * Session options Claude Code reads from `_meta.claudeCode.options` (claude-agent-acp).
  * AskUserQuestion is disabled so questions go through the visual `ask` tool instead.
- * opencode needs nothing: it offers no question tool over ACP, and the user's own
- * opencode permission settings apply unchanged.
  */
-export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { withoutUserSettings = false } = {}) {
-  if (harness !== "claude") return undefined;
+export function claudeSessionMeta(canvasUse: CanvasUse, { withoutUserSettings = false } = {}) {
   return {
     systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance] : []), jobWaitGuidance()].join("\n\n") },
     claudeCode: {

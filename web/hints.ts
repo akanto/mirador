@@ -168,7 +168,7 @@ export const hints = {
   claudeProgram: (installFolders: string) =>
     `The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ${installFolders}.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.`,
   canvasUse:
-    "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's system prompt also tells it to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
+    "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's and pi's system prompts also tell them to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
   terminalCommand:
     "Claude Code shows this one only in its own terminal, so this opens it there: a terminal tab of this conversation, run by the Claude Code this conversation's profile uses. The panel is where the command happens; the agent's answer above is only its refusal.",
   logIn:

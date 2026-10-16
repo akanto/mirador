@@ -1091,7 +1091,11 @@ export class ConversationService {
   private sessionRequest(conversationId: string, workspace: Workspace) {
     const conversation = this.get(conversationId);
     const withoutUserSettings = this.config.testSkipsUserSettings && this.onUsersOwnSetup(conversation);
-    return { cwd: workspace.path, mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { withoutUserSettings }) };
+    return {
+      cwd: workspace.path,
+      mcpServers: [this.canvasServerFor(conversationId)],
+      _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings }),
+    };
   }
 
   /** claude-notifier hooks into Claude Code only. */

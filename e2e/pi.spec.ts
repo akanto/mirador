@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, answerCanvasQuestion, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, forgetPiAcpSessionsUnder, piProgram, scriptedPiEnvironment } from "./scripted-model.ts";
@@ -27,6 +28,8 @@ test.afterAll(async () => {
 });
 
 const canvasHeading = () => page.frameLocator(".canvas-frame.show iframe").locator("h1");
+const CANVAS_RENDERING_RULES = "Rendering environment: every page renders in a sandboxed iframe with NO network access";
+const OWN_APPENDED_INSTRUCTIONS = "Instructions from the user's own APPEND_SYSTEM.md";
 
 /** pi-acp runs one pi for each session it has open; pi renames its process, so they are told by their parent. */
 function piSessionProcesses() {
@@ -43,6 +46,7 @@ test("a pi conversation replies, runs commands and uses the canvas tools", async
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const dialog = await createProfile(page, PROFILE, scriptedPiEnvironment(model, host.root), "", "pi");
+  writeFileSync(join(host.root, "pi-agent", "APPEND_SYSTEM.md"), OWN_APPENDED_INSTRUCTIONS);
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · pi` });
   await startConversation(page);
@@ -52,8 +56,11 @@ test("a pi conversation replies, runs commands and uses the canvas tools", async
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: Hello pi");
   await expect(page.locator(".message.agent")).toHaveCount(1);
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+  expect(model.systemPromptInContext()).toContain(OWN_APPENDED_INSTRUCTIONS);
+  expect(model.toolDescription("when_done")).toContain("Have Mirador wait for a job you leave running");
 
-  await sendMessage(page, "RUN printenv PI_ACP_MCP_SERVERS || echo no-canvas-servers-in-env");
+  await sendMessage(page, "RUN printenv PI_ACP_SESSION || echo no-canvas-servers-in-env");
   await waitForTurnToEnd(page);
   await expect(page.locator(".shell-output").last()).toHaveText("no-canvas-servers-in-env");
 
@@ -108,4 +115,5 @@ test("after a host restart, a pi conversation goes on in its own session with th
   await expect(canvasHeading()).toHaveText("After restart", { timeout: 60_000 });
   await waitForTurnToEnd(page);
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "Still there?", "SHOW After restart"]));
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
 });

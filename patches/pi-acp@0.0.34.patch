@@ -1,46 +1,43 @@
-diff --git a/node_modules/pi-acp/.bun-tag-63373806b8923e4c b/.bun-tag-63373806b8923e4c
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/pi-acp/.bun-tag-c29c3351454c85ae b/.bun-tag-c29c3351454c85ae
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/index.js b/dist/index.js
-index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72eed8b3c74 100755
+index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..3215eb4536803b1fb01110921fe16c4fad9b00d5 100755
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -71,6 +71,8 @@ function shouldUseShellForPiCommand(cmd) {
  }
  
  // src/pi-rpc/process.ts
-+var MCP_SERVERS_EXTENSION = fileURLToPath(new URL("./mcp-servers-extension.js", import.meta.url));
-+var MCP_SERVERS_VARIABLE = "PI_ACP_MCP_SERVERS";
++var SESSION_EXTENSION = fileURLToPath(new URL("./session-extension.js", import.meta.url));
++var SESSION_VARIABLE = "PI_ACP_SESSION";
  var PiRpcSpawnError = class extends Error {
    /** Underlying spawn error code, e.g. ENOENT, EACCES */
    code;
-@@ -130,11 +132,13 @@ var PiRpcProcess = class _PiRpcProcess {
+@@ -130,11 +132,15 @@ var PiRpcProcess = class _PiRpcProcess {
      const cmd = getPiCommand(params.piCommand);
      const args = ["--mode", "rpc", "--no-themes"];
      if (params.sessionPath) args.push("--session", params.sessionPath);
 +    const mcpServers = (params.mcpServers ?? []).filter((server) => server.type !== "sse");
-+    if (mcpServers.length > 0) args.push("--extension", MCP_SERVERS_EXTENSION);
++    const appendSystemPrompt = params.appendSystemPrompt ?? "";
++    const forwardsSession = mcpServers.length > 0 || appendSystemPrompt !== "";
++    if (forwardsSession) args.push("--extension", SESSION_EXTENSION);
      const start = shouldUseShellForPiCommand(cmd) ? crossSpawn : spawn;
      const child = start(cmd, args, {
        cwd: params.cwd,
        stdio: "pipe",
 -      env: process.env
-+      env: mcpServers.length > 0 ? { ...process.env, [MCP_SERVERS_VARIABLE]: JSON.stringify(mcpServers) } : process.env
++      env: forwardsSession ? { ...process.env, [SESSION_VARIABLE]: JSON.stringify({ mcpServers, appendSystemPrompt }) } : process.env
      });
      try {
        await new Promise((resolve4, reject) => {
-@@ -754,6 +758,7 @@ var SessionManager = class {
+@@ -754,6 +760,8 @@ var SessionManager = class {
      try {
        proc = await PiRpcProcess.spawn({
          cwd: params.cwd,
 +        mcpServers: params.mcpServers,
++        appendSystemPrompt: params.appendSystemPrompt,
          piCommand: params.piCommand
        });
      } catch (e) {
-@@ -1790,6 +1795,7 @@ function getEnableSkillCommands(cwd) {
+@@ -1790,6 +1798,7 @@ function getEnableSkillCommands(cwd) {
    return true;
  }
  function getQuietStartup(cwd) {
@@ -48,15 +45,24 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
    const merged = getMergedSettings(cwd);
    const direct = merged.quietStartup;
    if (typeof direct === "boolean") return direct;
-@@ -1946,6 +1952,7 @@ var PiAcpAgent = class {
+@@ -1888,6 +1897,7 @@ function mergeCommands(a, b) {
+   return out;
+ }
+ var pkg = readNearestPackageJson(import.meta.url);
++var appendedSystemPrompt = (params) => params._meta?.systemPrompt?.append ?? "";
+ var PiAcpAgent = class {
+   conn;
+   sessions = new SessionManager();
+@@ -1946,6 +1956,8 @@ var PiAcpAgent = class {
          proc = await PiRpcProcess.spawn({
            cwd,
            sessionPath: stored.sessionFile,
 +          mcpServers: opts?.mcpServers ?? [],
++          appendSystemPrompt: opts?.appendSystemPrompt,
            piCommand: process.env.PI_ACP_PI_COMMAND
          });
        } catch (e) {
-@@ -1990,7 +1997,7 @@ var PiAcpAgent = class {
+@@ -1990,7 +2002,7 @@ var PiAcpAgent = class {
        }),
        agentCapabilities: {
          loadSession: true,
@@ -65,7 +71,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
          promptCapabilities: {
            image: true,
            audio: false,
-@@ -2000,7 +2007,9 @@ var PiAcpAgent = class {
+@@ -2000,7 +2012,9 @@ var PiAcpAgent = class {
            // **UNSTABLE** ACP capability used by Zed's codex-acp adapter.
            // Enables a native session picker in clients that support it.
            list: {},
@@ -76,7 +82,15 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
          }
        }
      };
-@@ -2079,7 +2088,6 @@ var PiAcpAgent = class {
+@@ -2015,6 +2029,7 @@ var PiAcpAgent = class {
+     const session = await this.sessions.create({
+       cwd: params.cwd,
+       mcpServers: params.mcpServers,
++      appendSystemPrompt: appendedSystemPrompt(params),
+       conn: this.conn,
+       fileCommands,
+       piCommand: process.env.PI_ACP_PI_COMMAND
+@@ -2079,7 +2094,6 @@ var PiAcpAgent = class {
      });
      if (preludeText)
        session.setStartupInfo(preludeText);
@@ -84,7 +98,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
      const response = {
        sessionId: session.sessionId,
        configOptions,
-@@ -2521,6 +2529,12 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2521,6 +2535,12 @@ ${JSON.stringify(stats, null, 2)}`;
      return { sessions, nextCursor, _meta: {} };
    }
    async loadSession(params) {
@@ -97,7 +111,17 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
      if (!isAbsolute3(params.cwd)) {
        throw RequestError3.invalidParams(`cwd must be an absolute path: ${params.cwd}`);
      }
-@@ -2545,13 +2559,12 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2533,7 +2553,8 @@ ${JSON.stringify(stats, null, 2)}`;
+     const enableSkillCommands = getEnableSkillCommands(params.cwd);
+     const session = await this.restoreSession(params.sessionId, {
+       cwd: params.cwd,
+-      mcpServers: params.mcpServers
++      mcpServers: params.mcpServers,
++      appendSystemPrompt: appendedSystemPrompt(params)
+     });
+     const proc = session.proc;
+     let configuration;
+@@ -2545,13 +2566,12 @@ ${JSON.stringify(stats, null, 2)}`;
      }
      const { configOptions, models, modes } = configuration;
      const fileCommands = loadSlashCommands(params.cwd);
@@ -112,7 +136,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
      const messages = Array.isArray(data?.messages) ? data.messages : [];
      for (const m of messages) {
        const role = String(m?.role ?? "");
-@@ -2677,6 +2690,10 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2677,6 +2697,10 @@ ${JSON.stringify(stats, null, 2)}`;
      }, 0);
      return response;
    }
@@ -123,27 +147,28 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..5637ecbc4b7328aa77d131648c72a72e
    async deleteSession(params) {
      const stored = this.store.get(params.sessionId);
      const piSession = findPiSession(params.sessionId);
-diff --git a/node_modules/pi-acp/dist/mcp-servers-extension.js b/dist/mcp-servers-extension.js
+diff --git a/node_modules/pi-acp/dist/session-extension.js b/dist/session-extension.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6473b6c73e4d89683247c7801bd41502dcbfb9d
+index 0000000000000000000000000000000000000000..06beea8e3c2152f90742140e2183992197395060
 --- /dev/null
-+++ b/dist/mcp-servers-extension.js
-@@ -0,0 +1,27 @@
++++ b/dist/session-extension.js
+@@ -0,0 +1,35 @@
 +/**
-+ * Loaded into each pi that pi-acp starts for a session with MCP servers: it hands the servers the ACP client sent in
-+ * session/new or session/load to pi's built-in MCP support, with their tools declared to the model directly.
++ * Loaded into each pi that pi-acp starts for a session with MCP servers or added system prompt text. It hands the
++ * servers the ACP client sent in session/new, session/load or session/resume to pi's built-in MCP support, with their
++ * tools declared to the model directly, and adds the client's `_meta.systemPrompt.append` to pi's system prompt.
 + */
-+const MCP_SERVERS_VARIABLE = "PI_ACP_MCP_SERVERS";
-+const SERVERS_KEY = Symbol.for("pi-acp.mcpServers");
++const SESSION_VARIABLE = "PI_ACP_SESSION";
++const SESSION_KEY = Symbol.for("pi-acp.session");
 +
 +/**
 + * Read once per process, as a reload loads the extension again, and taken out of the environment, which the bash tool's
 + * commands inherit, since server headers and environments can hold credentials.
 + */
-+function sessionServers() {
-+  globalThis[SERVERS_KEY] ??= JSON.parse(process.env[MCP_SERVERS_VARIABLE] ?? "[]");
-+  delete process.env[MCP_SERVERS_VARIABLE];
-+  return globalThis[SERVERS_KEY];
++function sessionOptions() {
++  globalThis[SESSION_KEY] ??= JSON.parse(process.env[SESSION_VARIABLE] ?? "{}");
++  delete process.env[SESSION_VARIABLE];
++  return globalThis[SESSION_KEY];
 +}
 +
 +const asObject = (pairs) => Object.fromEntries((pairs ?? []).map(({ name, value }) => [name, value]));
@@ -154,5 +179,12 @@ index 0000000000000000000000000000000000000000..c6473b6c73e4d89683247c7801bd4150
 +}
 +
 +export default function (pi) {
-+  for (const server of sessionServers()) pi.registerMcpServer(server.name, { ...piServerConfig(server), exposure: "direct" });
++  const { mcpServers = [], appendSystemPrompt = "" } = sessionOptions();
++  for (const server of mcpServers) pi.registerMcpServer(server.name, { ...piServerConfig(server), exposure: "direct" });
++  // Not pi's --append-system-prompt, which would take the place of the APPEND_SYSTEM.md files pi finds.
++  if (appendSystemPrompt) {
++    pi.on("before_agent_start", ({ systemPromptOptions }) => {
++      systemPromptOptions.appendSystemPrompt = [systemPromptOptions.appendSystemPrompt, appendSystemPrompt].filter(Boolean).join("\n\n");
++    });
++  }
 +}
