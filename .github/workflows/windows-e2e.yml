@@ -1,0 +1,66 @@
+name: Windows e2e
+
+on:
+  push:
+    branches: [windows-e2e]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs the whole suite as it stands on Windows and reports which specs pass and fail, and how long it all takes.
+  survey:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install chromium
+      - name: Install Claude Code
+        shell: pwsh
+        run: |
+          irm https://claude.ai/install.ps1 | iex
+          "$env:USERPROFILE\.local\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      # As in the unit tests: Git for Windows puts only its cmd folder on PATH, so a user's Windows has no sh, sleep or
+      # openssl there; the runner's PATH has them, from Git's other folders and from OpenSSL.
+      - name: Run the suite
+        shell: pwsh
+        run: |
+          $unixTools = "sh.exe", "sleep.exe", "openssl.exe"
+          $env:Path = ($env:Path -split ";" | Where-Object { $folder = $_; $folder -and -not ($unixTools | Where-Object { Test-Path -LiteralPath (Join-Path $folder $_) }) }) -join ";"
+          "::group::What the specs run with"
+          where.exe git bun node pwsh powershell bash claude
+          claude --version
+          "::endgroup::"
+          $env:PLAYWRIGHT_JSON_OUTPUT_NAME = "survey.json"
+          $started = Get-Date
+          cmd /c "bunx playwright test --timeout=180000 --global-timeout=6000000 --reporter=list,json > survey-output.txt 2>&1"
+          "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
+          Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?token' }
+          if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Set-Content survey.json }
+      # Traces are left out: they hold the sign-in link. Host logs go with auth links taken out.
+      - name: Collect host logs
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force e2e-logs | Out-Null
+          Get-ChildItem -Path $env:TEMP -Directory -Filter "mirador-e2e-*" | ForEach-Object {
+            $hostDir = $_
+            Get-ChildItem -Path $hostDir.FullName -Recurse -File -Include *.log | ForEach-Object {
+              $target = Join-Path e2e-logs ($hostDir.Name + "-" + $_.Name)
+              Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Set-Content -LiteralPath $target
+            }
+          }
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-e2e-survey
+          path: |
+            survey.json
+            e2e-logs/
+          retention-days: 7
+          if-no-files-found: ignore
