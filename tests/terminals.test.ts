@@ -206,14 +206,16 @@ test("new tabs are named after the shell with the lowest free number, and a tab 
   expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual([shell.name, `${shell.name} 2`]);
 });
 
-test.if(process.platform === "win32")("on Windows a new tab runs PowerShell in the workspace folder, and is named after it", async () => {
+test.if(process.platform === "win32")("on Windows a new tab runs PowerShell in the workspace folder, and is named after it, not after the path its console is titled with", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 100, 30);
 
   terminals.input(terminalId, "Write-Output \"in $((Get-Location).Path) with $($PSVersionTable.PSEdition)\"\r");
   expect(await outputContaining(browser.received, `in ${workspaceDir} with`)).toMatch(/with (Desktop|Core)/);
-  expect(lastTabs(browser.received)?.map(({ name }) => name)).toEqual([expect.stringMatching(/^(powershell|pwsh)$/)]);
+  const [tab] = lastTabs(browser.received)!;
+  expect(tab?.name).toMatch(/^(powershell|pwsh)$/);
+  expect(tab?.terminals[0]?.title ?? "").not.toMatch(/\.exe$/i);
 });
 
 test.if(process.platform === "win32")("on Windows closing unless busy closes a terminal at its prompt, keeps one running a program, naming it, and closing that ends the program too", async () => {

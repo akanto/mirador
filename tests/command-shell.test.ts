@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commandLine, commandShell, findGitBash, findPowerShell, powershellInvocation, programName, terminalShell, windowsPidOf } from "../host/command-shell.ts";
+import { commandLine, commandShell, findGitBash, findPowerShell, isConsoleTitleOf, powershellInvocation, programName, terminalShell, windowsPidOf } from "../host/command-shell.ts";
 
 const gitBash = "C:\\Program Files\\Git\\bin\\bash.exe";
 const withGitBash = { gitBash: () => gitBash, powershell: () => "pwsh.exe" };
@@ -90,6 +90,17 @@ describe("a terminal tab", () => {
     expect(shell).toEqual(["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo"]);
     expect(programName(shell[0]!)).toBe("pwsh");
     expect(programName("powershell.exe")).toBe("powershell");
+  });
+
+  test("on Windows takes no title that only names the console's program, elevated or not, in any language", () => {
+    const bash = "C:\\Program Files\\Git\\bin\\bash.exe";
+    const pwsh = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+    expect(isConsoleTitleOf(bash, bash, "win32")).toBe(true);
+    expect(isConsoleTitleOf(pwsh, `Administrator: ${pwsh}`, "win32")).toBe(true);
+    expect(isConsoleTitleOf(pwsh, "Rendszergazda: C:\\PROGRAM FILES\\POWERSHELL\\7\\PWSH.EXE", "win32")).toBe(true);
+    expect(isConsoleTitleOf("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "Administrator: Windows PowerShell", "win32")).toBe(false);
+    expect(isConsoleTitleOf(pwsh, "my-title", "win32")).toBe(false);
+    expect(isConsoleTitleOf("/bin/zsh", "/bin/zsh", "darwin")).toBe(false);
   });
 });
 

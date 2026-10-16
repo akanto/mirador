@@ -5,7 +5,7 @@ import { MAX_TERMINALS_PER_TAB, type TerminalTab } from "../shared/model.ts";
 import type { ServerMessage, TerminalSplit } from "../shared/protocol.ts";
 import { splitTerminal, terminalsIn, withoutTerminal, type TerminalLayout } from "../shared/terminal-layout.ts";
 import { agentEnvironment, loginShell } from "./acp/environment.ts";
-import { programName, terminalShell } from "./command-shell.ts";
+import { isConsoleTitleOf, programName, terminalShell } from "./command-shell.ts";
 import { hostEnvironment } from "./current-path.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
@@ -54,6 +54,7 @@ interface Shell {
   scrollback: string[];
   scrollbackLength: number;
   title: string | null;
+  program: string;
   programKey: string | undefined;
   saved: boolean;
 }
@@ -324,6 +325,8 @@ export class TerminalService {
 
   private spawn(tab: Tab, cwd: string, columns: number, rows: number, { program, restarting }: ShellStart = {}) {
     const decoder = new TextDecoder();
+    const environment = program?.environment ?? agentEnvironment(hostEnvironment());
+    const command = program?.command ?? terminalShell(loginShell, environment);
     const shell: Shell = {
       id: restarting?.terminalId ?? crypto.randomUUID(),
       conversationId: tab.conversationId,
@@ -332,11 +335,11 @@ export class TerminalService {
       scrollback: restarting ? linesOf(restarting.scrollback) : [],
       scrollbackLength: restarting?.scrollback.length ?? 0,
       title: null,
+      program: command[0]!,
       programKey: program?.key,
       saved: tab.saved,
     };
-    const environment = program?.environment ?? agentEnvironment(hostEnvironment());
-    shell.child = Bun.spawn(program?.command ?? terminalShell(loginShell, environment), {
+    shell.child = Bun.spawn(command, {
       cwd,
       env: { ...environment, TERM: "xterm-256color", COLORTERM: "truecolor" },
       terminal: {
@@ -363,7 +366,7 @@ export class TerminalService {
   }
 
   private retitle(shell: Shell, title: string | undefined) {
-    if (title === undefined) return;
+    if (title === undefined || isConsoleTitleOf(shell.program, title)) return;
     const kept = title.slice(0, TITLE_CHARACTERS) || null;
     if (kept === shell.title) return;
     shell.title = kept;

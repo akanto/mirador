@@ -81,6 +81,13 @@ export function terminalShell(
 export const programName = (program: string) => win32.basename(program).replace(/\.exe$/i, "");
 
 /**
+ * Windows titles a new console with its program's path, after "Administrator: " in the system's language when elevated:
+ * a terminal named so says no more than its tab's name.
+ */
+export const isConsoleTitleOf = (program: string, title: string, platform: NodeJS.Platform = process.platform) =>
+  platform === "win32" && programName(title).toLowerCase() === programName(program).toLowerCase();
+
+/**
  * PowerShell exits with 1 for a native command that failed and writes progress to stderr; this keeps the command's own
  * exit code and stderr for its errors.
  */
