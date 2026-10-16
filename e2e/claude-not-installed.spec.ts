@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, openSettings, signIn } from "./helpers.ts";
-import { pathOf, programOnPath, scratchPath, TestHost } from "./test-host.ts";
+import { pathOf, programOnPath, programOnRegistryPath, scratchPath, TestHost } from "./test-host.ts";
 
 const scratch = scratchPath("claude-not-installed");
 const homeWithoutClaude = join(scratch, "home");
@@ -17,9 +16,6 @@ const host = new TestHost({
 });
 const installCommand = onWindows ? "irm https://claude.ai/install.ps1 | iex" : "curl -fsSL https://claude.ai/install.sh | bash";
 const installedLater = join(programs, onWindows ? "claude.cmd" : "claude");
-
-/** A Windows host also looks programs up on the PATH the registry holds, which a spec cannot change. */
-const claudeOnRegistryPath = () => execFileSync("bun", [join(import.meta.dirname, "windows-registry-claude.ts")], { encoding: "utf8" }).trim();
 
 /** Windows runs no script without an extension, so there the claude installed later is a .cmd. */
 function installClaudeLater() {
@@ -40,7 +36,7 @@ test.afterAll(async () => {
 });
 
 test("Settings says how to install Claude Code, and finds it once it is installed", async ({ page }) => {
-  test.skip(onWindows && claudeOnRegistryPath() !== "", "This Windows machine has a claude on the PATH its registry holds, where the host looks too");
+  test.skip(onWindows && programOnRegistryPath("claude") !== "", "This Windows machine has a claude on the PATH its registry holds, where the host looks too");
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
 

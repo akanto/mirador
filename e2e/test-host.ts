@@ -53,6 +53,10 @@ export function programOnPath(name: string): string {
   return program;
 }
 
+/** A Windows host also looks programs up on the PATH the registry holds, which a spec cannot change: `name` there, or "". */
+export const programOnRegistryPath = (name: string) =>
+  execFileSync("bun", [join(import.meta.dirname, "windows-registry-program.ts"), name], { encoding: "utf8" }).trim();
+
 const isWindowsBatchFile = (program: string) => process.platform === "win32" && /\.(cmd|bat)$/i.test(program);
 
 /** Node runs a Windows .cmd, such as npm's opencode.cmd, only through cmd.exe, which splits unquoted arguments at spaces. */

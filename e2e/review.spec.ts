@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
-import { bunProgramPath, TestHost, writeBunProgram } from "./test-host.ts";
+import { bunProgramPath, programOnRegistryPath, TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const fakeProgramsDir = host.fakeProgramsDir;
@@ -584,10 +584,13 @@ test("coming back to a review's conversation shows the review as the user left i
   });
 });
 
-const ghInstalledHere = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].some((directory) => existsSync(join(directory, "gh")));
+const ghInstalledHere = () =>
+  process.platform === "win32"
+    ? programOnRegistryPath("gh") !== ""
+    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].some((directory) => existsSync(join(directory, "gh")));
 
 test("with no gh on the machine, the Post panel says to install it, and Post waits until a check finds gh", async ({ page }) => {
-  test.skip(ghInstalledHere, "A real gh is installed here; the Linux test container has none.");
+  test.skip(ghInstalledHere(), "A real gh is installed here; the Linux test container has none.");
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
