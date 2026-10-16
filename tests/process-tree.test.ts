@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { processTreeOf, waitForProcessesToEnd, type ProcessTree } from "../e2e/process-tree.ts";
+import { processTreeOf, waitForProcessesToEnd, withDescendants, type ProcessTree, type RunningProcess } from "../e2e/process-tree.ts";
 
 /** The e2e suite reads processes with ps, which Windows does not have; it runs there once it reads them another way. */
 const describeOnceTheE2eSuiteRunsOnWindows = describe.todoIf(process.platform === "win32");
@@ -70,5 +70,23 @@ describeOnceTheE2eSuiteRunsOnWindows("waitForProcessesToEnd", () => {
     await waitForProcessesToEnd(processTreeOf(outer.pid!), 300);
     expect(processTreeOf(innermost).size).toBe(0);
     expect(Date.now() - startedAt).toBeLessThan(5_000);
+  });
+});
+
+describe("withDescendants", () => {
+  const host: RunningProcess = { pid: 100, parentPid: 1, startedAt: "5000" };
+  const agent: RunningProcess = { pid: 200, parentPid: 100, startedAt: "6000" };
+  /** Started long before the host, by a process that ended and whose pid the host got. */
+  const runnerAgent: RunningProcess = { pid: 300, parentPid: 100, startedAt: "1000" };
+  const runnerJob: RunningProcess = { pid: 400, parentPid: 300, startedAt: "2000" };
+  const processes = [host, agent, runnerAgent, runnerJob];
+  const treeOfHost = new Map([[host.pid, host.startedAt]]);
+
+  test("on Windows leaves out a process that names as its parent a pid that a later process got, and what it started", () => {
+    expect([...withDescendants(treeOfHost, processes, "win32").keys()]).toEqual([100, 200]);
+  });
+
+  test("elsewhere every process that names a member as its parent belongs, as an orphan gets a new parent there", () => {
+    expect([...withDescendants(treeOfHost, processes, "darwin").keys()]).toEqual([100, 200, 300, 400]);
   });
 });
