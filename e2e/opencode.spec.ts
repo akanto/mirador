@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { agentEnvironment } from "../host/acp/environment.ts";
 import { applyEnvironment, parseEnvironment } from "../shared/profile-environment.ts";
@@ -17,7 +16,7 @@ import {
   waitForTurnToEnd,
 } from "./helpers.ts";
 import { SPARE_MODELS, ScriptedModel, opencodeProgram, scriptedOpencodeEnvironment } from "./scripted-model.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, spawnProgram } from "./test-host.ts";
 
 const host = new TestHost();
 const model = new ScriptedModel();
@@ -31,7 +30,7 @@ const MARKER = "opencode-terminal-marker-17";
 async function runOpencodeInTerminal(prompt: string) {
   const isolated = applyEnvironment(agentEnvironment(), parseEnvironment(scriptedOpencodeEnvironment(model, host.root)));
   const env = { ...isolated, PWD: host.projectDir };
-  const opencode = spawn(opencodeProgram(), ["run", "--standalone", "--model", "e2e/scripted", prompt], { cwd: host.projectDir, env, stdio: "ignore" });
+  const opencode = spawnProgram(opencodeProgram(), ["run", "--standalone", "--model", "e2e/scripted", prompt], { cwd: host.projectDir, env, stdio: "ignore" });
   const exitCode = await new Promise((resolve) => opencode.once("exit", resolve));
   expect(exitCode).toBe(0);
 }
@@ -256,7 +255,7 @@ test("deleting a conversation while its agent works ends the turn quietly", asyn
   await deleteButton.click();
   await expect(page.locator(".chat-header")).toHaveCount(0);
   await page.waitForTimeout(1_000);
-  await expect(page.locator(".notice")).toHaveCount(0);
+  await expect(page.locator(".notice")).toHaveText([]);
 });
 
 test("an image pasted into the message box goes to the agent with the message and stays in the transcript", async ({ page }) => {
