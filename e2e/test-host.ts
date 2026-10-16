@@ -78,6 +78,18 @@ export function writeBunProgram(directory: string, name: string, script: string,
   chmodSync(program, 0o755);
 }
 
+/**
+ * The program `name`.exe in `directory`: `script` compiled by Bun, with `environment` built in. Claude Code's SDK starts no
+ * .cmd on Windows (vcs-pgm.35), so a program standing in for Claude Code there is compiled.
+ */
+export function writeCompiledBunProgram(directory: string, name: string, script: string, environment: Record<string, string>) {
+  mkdirSync(directory, { recursive: true });
+  const program = join(directory, `${name}.exe`);
+  const builtIn = Object.entries(environment).flatMap(([variable, value]) => ["--define", `process.env.${variable}=${JSON.stringify(value)}`]);
+  execFileSync("bun", ["build", "--compile", script, "--outfile", program, ...builtIn]);
+  return program;
+}
+
 /** Windows names it Path; a second key named PATH beside it would leave which one the host gets to chance. */
 const pathVariableOf = (environment: NodeJS.ProcessEnv) => Object.keys(environment).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
 

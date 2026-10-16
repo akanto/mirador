@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
-import { programOnPath, TestHost } from "./test-host.ts";
+import { programOnPath, TestHost, writeCompiledBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const ranHere = join(host.root, "panel-command-ran");
@@ -14,6 +14,10 @@ const ranHere = join(host.root, "panel-command-ran");
  */
 function fakeClaude() {
   const real = programOnPath("claude");
+  if (process.platform === "win32") {
+    writeCompiledBunProgram(host.fakeProgramsDir, "claude", join(import.meta.dirname, "fake-claude.ts"), { FAKE_CLAUDE_REAL: real, FAKE_CLAUDE_PANEL_RAN: ranHere });
+    return;
+  }
   mkdirSync(host.fakeProgramsDir, { recursive: true });
   const script = `#!/bin/sh
 case "$1" in
