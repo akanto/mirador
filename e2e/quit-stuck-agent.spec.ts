@@ -1,9 +1,9 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, createProfile, sendMessage, signIn } from "./helpers.ts";
 import { processTreeOf } from "./process-tree.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const agentPidFile = join(host.root, "agent-pid");
@@ -13,15 +13,14 @@ const isRunning = (pid: number) => processTreeOf(pid).has(pid);
 
 /** An opencode that is an agent of its own, taking prompts, never finishing them, and surviving SIGTERM. */
 function fakeStubbornOpencode() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  writeFileSync(
-    join(host.fakeProgramsDir, "opencode"),
-    `#!/bin/sh\nFAKE_ACP_PROMPTS='${join(host.root, "prompts")}' FAKE_ACP_IGNORES_SIGTERM=1 FAKE_ACP_PID_FILE='${agentPidFile}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
-  );
-  chmodSync(join(host.fakeProgramsDir, "opencode"), 0o755);
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts"), FAKE_ACP_IGNORES_SIGTERM: "1", FAKE_ACP_PID_FILE: agentPidFile });
 }
 
 test.describe.configure({ mode: "serial" });
+test.skip(
+  process.platform === "win32",
+  "Node ends a Windows process outright (TerminateProcess), so a spec cannot quit the host there as a signal does; the desktop app quits it with Ctrl-C",
+);
 
 test.beforeAll(async () => {
   fakeStubbornOpencode();
