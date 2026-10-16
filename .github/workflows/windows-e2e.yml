@@ -4,6 +4,12 @@ on:
   push:
     branches: [windows-e2e]
   workflow_dispatch:
+  # make release calls this, so a spec failing with no stated reason holds the release.
+  workflow_call:
+    inputs:
+      commit:
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -15,6 +21,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.ref }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
@@ -80,6 +88,12 @@ jobs:
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
           if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
+      # The gate: a spec that fails with no reason stated in e2e/windows-known-issues.json turns this job red, and with it
+      # any release that waits for it.
+      - name: Verdict
+        if: always()
+        shell: bash
+        run: bun e2e/windows-suite-verdict.ts survey.json e2e/windows-known-issues.json
       # Traces and the kept host folders are left out: they hold the sign-in link, browser tokens and databases. Only their
       # logs go, and each failed test's page as error-context.md writes it, with auth links and the model server's address
       # and key taken out.

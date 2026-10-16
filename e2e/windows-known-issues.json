@@ -1,0 +1,91 @@
+[
+  {
+    "file": "agent-flow.spec.ts",
+    "title": "streams a reply and asks for permission in the browser",
+    "reason": "The model answers in plain text instead of asking for permission, so the permission card never appears.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "host-crash.spec.ts",
+    "title": "a host killed in the middle of a turn comes back with that turn ended, not left working",
+    "reason": "The turn never reaches a tool call, so there is no mid-turn moment to kill the host at.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "host-reload.spec.ts",
+    "title": "Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, and a working agent continues afterwards",
+    "reason": "The agent never starts a tool, so the turn is not still running across the restart.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "profiles.spec.ts",
+    "title": "switching profile while the agent works stops the turn, moves the session and continues it there, then sends the queue",
+    "reason": "The turn ends before the profile switch, so there is no running turn to stop and move.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "queue-steering.spec.ts",
+    "title": "a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end",
+    "reason": "A message steered into a running tool leaves the page without its host connection; on the runner the model also skips the tool the steer waits for (vcs-vuuj).",
+    "bead": "vcs-c337"
+  },
+  {
+    "file": "review.spec.ts",
+    "title": "a review opens full screen; the user tours the flow, moves through changes and findings, asks about lines, curates and posts the findings",
+    "reason": "The model answers in text and never calls the review tool, so no review opens.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "review.spec.ts",
+    "title": "the agent rewords one comment in place: the user stays on the finding they were reading, and their choices stay",
+    "reason": "The model never opens a review, so there is no comment for it to reword.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "script-messages.spec.ts",
+    "title": "a script the agent starts, or anything with the agent's session, messages the conversation as the user would",
+    "reason": "The model never runs the script it was asked to start, so the message never arrives.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "system-notifications.spec.ts",
+    "title": "questions elsewhere notify, in the browser or else through the desktop app while it listens",
+    "reason": "The question in the other conversation never asks, so nothing notifies.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "waiting.spec.ts",
+    "title": "the sidebar marks the conversations waiting for you, in the look chosen in Settings",
+    "reason": "The model skips the tool that gets the conversation into the state the sidebar marks.",
+    "bead": "vcs-vuuj"
+  },
+  {
+    "file": "changes.spec.ts",
+    "title": "Changes opens over a page, and a new page takes the canvas back",
+    "reason": "The turn's checkpoint is gone by the time Changes opens, so it reads as if nothing changed and the Project section never appears.",
+    "bead": "vcs-3cih"
+  },
+  {
+    "file": "workspace-groups.spec.ts",
+    "title": "workspaces and groups share one order: workspaces gather in groups that fold, land between groups, and stay in place when their group goes",
+    "reason": "After a drop the sidebar's top level comes back empty on a loaded runner.",
+    "bead": "vcs-z2f0"
+  },
+  {
+    "file": "steer-then-stop.spec.ts",
+    "title": "a message that joined the turn goes out again after Stop if the agent had not answered it yet",
+    "reason": "A steer that joined a turn the Stop cancelled gets sent again and answered twice.",
+    "bead": "vcs-6dzt"
+  },
+  {
+    "file": "user-commands.spec.ts",
+    "title": "! runs a command in the workspace folder, and its output goes to the agent with the next message unless dropped",
+    "reason": "Stop misses Git Bash children that carry a stale parent pid, so the command's row never records the stop; this one fails on a Windows VM too.",
+    "bead": "vcs-ikkx"
+  },
+  {
+    "file": "try-again.spec.ts",
+    "title": "a turn an API error ended is tried again from the error, and the agent still has the message it failed on",
+    "reason": "The page reload right after a host restart aborted; seen once so far."
+  }
+]
