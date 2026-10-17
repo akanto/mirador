@@ -44,8 +44,13 @@ test("a reply that streams in word by word shows all of its text once the turn e
   await page.getByRole("button", { name: "+ New conversation" }).click();
   await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
   const agentMessageUpdates = await countAgentMessageUpdates(page);
+  const countedFrom = Date.now();
   await sendMessage(page, `STREAM ${WORD_COUNT}`);
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText(words.join(" "));
-  expect(await agentMessageUpdates()).toBeLessThan(100);
+  // The text re-renders at most once per 150 ms, so the seconds the reply took bound the updates however fast or slow the machine delivers the words. Without the throttling the page re-renders every word, which on a loaded machine stretches past the bound.
+  const updates = await agentMessageUpdates();
+  const secondsCounted = (Date.now() - countedFrom) / 1000;
+  expect(updates).toBeGreaterThan(5);
+  expect(updates).toBeLessThan(secondsCounted * 8 + 10);
 });
