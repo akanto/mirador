@@ -1,17 +1,10 @@
 [
   {
-    "file": "agent-flow.spec.ts",
-    "title": "streams a reply and asks for permission in the browser",
-    "failure": "Locator: locator('.permission.pending') Expected: visible",
-    "reason": "The model answers in plain text instead of asking for permission, so the permission card never appears.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "host-crash.spec.ts",
-    "title": "a host killed in the middle of a turn comes back with that turn ended, not left working",
-    "failure": "Locator: locator('.timeline').locator('.tool-pending, .tool-in_progress').first() Expected: visible",
-    "reason": "The turn never reaches a tool call, so there is no mid-turn moment to kill the host at.",
-    "bead": "vcs-vuuj"
+    "file": "changes.spec.ts",
+    "title": "Changes opens over a page, and a new page takes the canvas back",
+    "failure": "Locator: locator('.canvas-panel .changes').getByRole('region', { name: 'Project', exact: true }).locator('.changed-path')",
+    "reason": "The loaded shared runner shows the Project region empty although the commit is there, on both tries, while a Windows VM and the Mac pass this file every run at the same commit. It wobbled once in survey 18, where it was listed at its old line.",
+    "bead": "vcs-16yb"
   },
   {
     "file": "host-reload.spec.ts",
@@ -21,53 +14,11 @@
     "bead": "vcs-vuuj"
   },
   {
-    "file": "profiles.spec.ts",
-    "title": "switching profile while the agent works stops the turn, moves the session and continues it there, then sends the queue",
-    "failure": "Locator: locator('.timeline').locator('.tool-pending, .tool-in_progress').first() Expected: visible",
-    "reason": "The turn ends before the profile switch, so there is no running turn to stop and move.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "queue-steering.spec.ts",
-    "title": "a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end",
-    "failure": "Locator: locator('.timeline').locator('.tool-pending, .tool-in_progress').first() Expected: visible",
-    "reason": "A message steered into a running tool leaves the page without its host connection; on the runner the model also skips the tool the steer waits for (vcs-vuuj).",
-    "bead": "vcs-c337"
-  },
-  {
-    "file": "review.spec.ts",
-    "title": "a review opens full screen; the user tours the flow, moves through changes and findings, asks about lines, curates and posts the findings",
-    "failure": "Locator: locator('.chat-header:visible .badge') Expected: \"idle\" Received: \"running\"",
-    "reason": "Asked about the lines to reply with one word, the model is still in its turn three minutes later.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "review.spec.ts",
-    "title": "the agent rewords one comment in place: the user stays on the finding they were reading, and their choices stay",
-    "failure": "Locator: locator('.chat-header:visible .badge') Expected: \"idle\" Received: \"running\"",
-    "reason": "Asked about the lines to reply with one word, the model is still in its turn three minutes later.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "script-messages.spec.ts",
-    "title": "a script the agent starts, or anything with the agent's session, messages the conversation as the user would",
-    "failure": "Locator: locator('.timeline-entry').filter({ has: locator('.author').filter({ hasText: 'From a script' }) }).locator('.message.user')",
-    "reason": "The model never runs the script it was asked to start, so the message never arrives.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "system-notifications.spec.ts",
-    "title": "questions elsewhere notify, in the browser or else through the desktop app while it listens",
-    "failure": "Expected value: \"project · Finished, waiting for you\"",
-    "reason": "The question in the other conversation never asks, so nothing notifies.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "waiting.spec.ts",
-    "title": "the sidebar marks the conversations waiting for you, in the look chosen in Settings",
-    "failure": "Locator: locator('.workspace li').first().locator('.waiting-pill') Expected: \"Needs you\"",
-    "reason": "The model skips the tool that gets the conversation into the state the sidebar marks.",
-    "bead": "vcs-vuuj"
+    "file": "host-reload.spec.ts",
+    "title": "a host stopped from outside, like the tray's Restart, keeps the queued messages and sends them once it is back",
+    "failure": "QUEUED",
+    "reason": "The restart/queue carry-over chain is fragile on Windows: one try queued nothing although its tool was running, the other carried the message across the restart but never got a reply. Which of this file's two real-model tests dies swaps between machines and runs, so the fragment is the loosest text both tries share.",
+    "bead": "vcs-b25o"
   },
   {
     "file": "user-commands.spec.ts",
