@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
@@ -5,11 +7,14 @@ import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
 const api = new FakeClaudeApi();
+const claudeConfigDir = join(host.root, "claude-config");
 const PROFILE = "usage limited";
 const CONTINUE = "Continue where you left off.";
+const AUTO_COMPACT_WINDOW = 100_000;
 
 test.beforeAll(async () => {
   await api.start();
+  mkdirSync(claudeConfigDir, { recursive: true });
   await host.start();
 });
 test.afterAll(async () => {
@@ -26,7 +31,7 @@ test("at Claude's usage limit, queued messages wait for the reset instead of fai
   test.setTimeout(300_000);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const profiles = await createProfile(page, PROFILE, subscriptionEnvironment(api));
+  const profiles = await createProfile(page, PROFILE, `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${claudeConfigDir}\nCLAUDE_CODE_AUTO_COMPACT_WINDOW=${AUTO_COMPACT_WINDOW}`);
   await profiles.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · Claude Code` });
   await startConversation(page);
@@ -97,7 +102,7 @@ test("a limit the same turn's context compaction ran into waits for the reset to
   test.setTimeout(300_000);
   api.limited = false;
   api.resetsAt = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
-  api.contextTokens = 960_000;
+  api.contextTokens = AUTO_COMPACT_WINDOW - 1_000;
   await signIn(page, host);
   await page.getByRole("navigation").getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · Claude Code` });
   await startConversation(page);
