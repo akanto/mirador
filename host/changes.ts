@@ -157,7 +157,8 @@ export class Changes {
     if (await createdSince(workspace.path, path, since)) {
       return { path, source: "files", diffs: [fileChangeDiff(path, { kind: "missing" }, await textFileAt(join(workspace.path, path)))] };
     }
-    return { path, source: "files", diffs: [{ ...fileChangeDiff(path, { kind: "missing" }, { kind: "missing" }), change: "modified", hiddenBecause: "this folder is not a git repository, so there is no earlier version to compare with" }] };
+    const noEarlierVersion = (await isRepository(workspace.path)) ? "git ignores this file, so there is no earlier version to compare with" : "this folder is not a git repository, so there is no earlier version to compare with";
+    return { path, source: "files", diffs: [{ ...fileChangeDiff(path, { kind: "missing" }, { kind: "missing" }), change: "modified", hiddenBecause: noEarlierVersion }] };
   }
 
   /** Opens a file of the project, or one the agent changed anywhere in this conversation, in IntelliJ IDEA. */

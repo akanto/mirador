@@ -292,3 +292,24 @@ test("This session lists the agent's edits and the git-ignored files written sin
   await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
   await expect(fileRow(page, "build/new.js").locator(".by-agent")).toHaveCount(0);
 });
+
+test("This session lists the git-ignored files written since the conversation began, and says git ignores one it cannot compare", async ({ page }) => {
+  const cacheFile = join(host.projectDir, "build", "cache.txt");
+  writeFileSync(cacheFile, "from before the conversation\n");
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  await startConversation(page);
+  await writeFiles(page, [
+    { shell: cacheFile, content: "rewritten by a script\n" },
+    { shell: join(host.projectDir, "build", "out.txt"), content: "built\n" },
+  ]);
+  await waitForTurnToEnd(page);
+
+  await changes(page).getByRole("button", { name: "This session" }).click();
+  await expect(changes(page)).toContainText("and the git-ignored files written since its first message");
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["build/cache.txt", "build/out.txt"]);
+  await expect(fileRow(page, "build/cache.txt").locator(".change-status")).toHaveText("M");
+  await expect(fileRow(page, "build/out.txt").locator(".change-status")).toHaveText("A");
+  await fileRow(page, "build/cache.txt").click();
+  await expect(changes(page).locator(".changes-diff")).toContainText("Not shown: git ignores this file, so there is no earlier version to compare with.");
+});

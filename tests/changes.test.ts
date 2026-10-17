@@ -491,3 +491,24 @@ test("before the first message the session scope lists only the agent's edits, s
   agentEdits("replayed", join(projectDir, "kept.txt"), "two", "TWO");
   expect((await changes.list("c1", "session")).project).toEqual([{ path: "kept.txt", status: "modified", added: null, removed: null, byAgent: true }]);
 });
+
+test("a git-ignored file a script rewrote in the session says git ignores it, rather than that the folder is no repository", async () => {
+  await mkdir(join(projectDir, "build"));
+  await writeFile(join(projectDir, "build", "cache.js"), "from before\n");
+  await Bun.sleep(20);
+  await startTurn();
+  await writeFile(join(projectDir, "build", "cache.js"), "rewritten by a script\n");
+  expect((await changes.list("c1", "session")).project).toEqual([{ path: "build/cache.js", status: "modified", added: null, removed: null, byAgent: false }]);
+  expect((await changes.diff("c1", "session", "build/cache.js")).diffs[0]).toMatchObject({ hiddenBecause: "git ignores this file, so there is no earlier version to compare with" });
+});
+
+test("outside a git repository, the session lists every file written since it began, and says the folder is no repository", async () => {
+  await leaveGit();
+  await startTurn();
+  await Bun.sleep(20);
+  await write("doomed.txt", "rewritten by a script\n");
+  const session = await changes.list("c1", "session");
+  expect(session.base).toBe("session");
+  expect(session.project.map((file) => file.path)).toEqual(["doomed.txt"]);
+  expect((await changes.diff("c1", "session", "doomed.txt")).diffs[0]).toMatchObject({ hiddenBecause: expect.stringContaining("not a git repository") });
+});
