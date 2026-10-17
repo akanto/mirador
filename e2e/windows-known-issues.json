@@ -21,6 +21,13 @@
     "bead": "vcs-b25o"
   },
   {
+    "file": "queue-steering.spec.ts",
+    "title": "a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end",
+    "failure": "Locator: locator('.queued').filter({ hasText: 'Reply with just the word LATER.' }).locator('.queued-delivery')",
+    "reason": "The queued chip stands but its delivery badge never appears, once awaited as \"after the turn\" and once as \"joins the turn\", so the locator line is the fragment both tries share. The page keeps its own chip while missing the updates that would say how the message is delivered — the vcs-c337 shape of a page left without its host connection. Survey 19 passed this spec and the trim dropped its older entry; at fb82a27 it failed both tries in this new shape.",
+    "bead": "vcs-c337"
+  },
+  {
     "file": "user-commands.spec.ts",
     "title": "! runs a command in the workspace folder, and its output goes to the agent with the next message unless dropped",
     "failure": "Locator: locator('.user-command').filter({ hasText: 'sleep 30; echo never' }).last().locator('.shell-exit') Expected: \"stopped\"",
