@@ -131,7 +131,7 @@ install_linux() {
 }
 
 has_agent() {
-  for program in claude opencode; do
+  for program in claude opencode pi; do
     command -v "$program" >/dev/null 2>&1 && return 0
     for directory in "$HOME/.local/bin" /opt/homebrew/bin /usr/local/bin "$HOME/.opencode/bin"; do
       [ -x "$directory/$program" ] && return 0
@@ -152,7 +152,7 @@ main() {
   esac
   has_agent || {
     say ""
-    say "Mirador runs Claude Code or opencode, and neither is installed yet. Claude Code installs with:"
+    say "Mirador runs Claude Code, opencode or pi, and none of them is installed yet. Claude Code installs with:"
     say "  curl -fsSL https://claude.ai/install.sh | bash"
   }
 }
