@@ -31,7 +31,7 @@ const messageUsage = `usage: mirador message [--session <agent session id>] ["<m
   The message goes to the agent's conversation as your next message: right away when the agent is idle, else queued behind its turn.
   A job the agent left running can end with it, so the agent picks up where the job leaves off.
   Run it from an agent in Mirador, or a script it started: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).
-  opencode gives its commands no session id, so its conversations can only be reached with --session.`;
+  opencode and pi give their commands no session id, so their conversations can only be reached with --session.`;
 
 /** The host prints a sign-in link only to a terminal, and each link works once, so a new browser needs a new link. */
 function signIn() {

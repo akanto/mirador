@@ -210,17 +210,19 @@ test("↑ after stopping a pi turn edits its message, and Enter replaces the tur
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
 });
 
-test("a pi conversation moves to another pi profile, even one with its own PI_CODING_AGENT_DIR, and goes on in the same session", async () => {
-  const dialog = await createProfile(page, OTHER_PROFILE, scriptedPiEnvironment(model, join(host.root, "other")), "", "pi");
+test("a pi conversation moves to another pi profile, even one with its own PI_CODING_AGENT_DIR, and goes on in the same session and model", async () => {
+  const dialog = await createProfile(page, OTHER_PROFILE, scriptedPiEnvironment(model, join(host.root, "other"), "other"), "", "pi");
   await dialog.getByRole("button", { name: "Close" }).click();
   const profilePicker = page.getByLabel("Profile", { exact: true }).filter({ visible: true });
   await expect(profilePicker.locator("option:checked")).toHaveText(PROFILE);
 
   await profilePicker.selectOption({ label: OTHER_PROFILE });
   await expect(page.locator(".timeline:visible")).toContainText(`Now using the profile “${OTHER_PROFILE}”`);
+  await expect(page.getByRole("button", { name: "Model", exact: true }).filter({ visible: true })).toHaveText("e2e/Scripted");
   await sendMessage(page, "After the switch");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: After the switch");
+  expect(model.requests.at(-1)!.model).toBe("scripted");
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "SHOW After going back", "After the switch"]));
   expect(model.systemPromptInContext()).not.toContain(OWN_APPENDED_INSTRUCTIONS);
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);

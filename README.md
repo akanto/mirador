@@ -2,7 +2,7 @@
 
 **See what your coding agent means.**
 
-Mirador runs your coding agents (Claude Code and opencode) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, walk you through code, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings.
+Mirador runs your coding agents (Claude Code, opencode and pi) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, walk you through code, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings.
 
 [![The trailer: no more walls of text, your agent draws now. A chat transcript crossed out beside a checkout sequence diagram on the canvas](docs/screenshots/trailer.jpg)](https://youtu.be/VmlHwR-yV4I)
 
@@ -12,7 +12,7 @@ Mirador runs your coding agents (Claude Code and opencode) and gives them a **ca
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
 ```
 
-That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. It runs the Claude Code or opencode you already have. [More ways to get it](#get-it).
+That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. It runs the Claude Code, opencode or pi you already have. [More ways to get it](#get-it).
 
 *A mirador is a lookout: the place you climb to see the whole landscape at once.*
 
@@ -22,7 +22,7 @@ Coding agents changed the pace of our work. In a few minutes an agent reads a co
 
 And we do that reading in a terminal. A terminal is a wall of text scrolling by: tool calls, diffs and explanations, all in one font, all at the speed the agent types. But people understand pictures far faster than text. A sequence diagram explains a request path at a glance, where the same in prose takes a page. A mockup settles a layout question in a second, where three paragraphs describing the options don't.
 
-Mirador was born from that gap. It keeps everything that makes a coding agent powerful (the real Claude Code and opencode, with your own settings, hooks and MCP servers) and gives the agent a canvas next to the conversation:
+Mirador was born from that gap. It keeps everything that makes a coding agent powerful (the real Claude Code, opencode and pi, with your own settings, hooks, extensions and MCP servers) and gives the agent a canvas next to the conversation:
 
 - **It shows you** what it means: architecture, flows, data, mockups, charts, even 3D scenes, instead of describing them.
 - **It asks you** with pictures: two to eight options, each with a preview, and you click one.
@@ -112,7 +112,7 @@ mkdir mirador-setup && tar -xzf Mirador-linux-*-Setup.tar.gz -C mirador-setup &&
 
 The installer starts Mirador, and puts it in your applications menu.
 
-**Signing in**: Mirador runs the `claude` on your PATH (or in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`), or the program set in *Settings › Agents*, so it uses the sign-in and version you already have. Without a sign-in, a conversation offers *Log in*, which opens that Claude Code's own sign-in in a terminal tab. For opencode, install [opencode](https://opencode.ai) and Mirador finds it.
+**Signing in**: Mirador runs the `claude` on your PATH (or in `~/.local/bin`, `/opt/homebrew/bin` or `/usr/local/bin`), or the program set in *Settings › Agents*, so it uses the sign-in and version you already have. Without a sign-in, a conversation offers *Log in*, which opens that Claude Code's own sign-in in a terminal tab. For opencode, install [opencode](https://opencode.ai) and Mirador finds it. For pi, install it (`npm install -g @earendil-works/pi-coding-agent`) and Mirador finds it on your `PATH`; *Log in* opens pi itself in a terminal tab, where `/login` signs in.
 
 ### From source
 
@@ -160,7 +160,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **As you left it**: coming back to a conversation brings its canvas back as it was, with *Changes* still open or the page still shown.
 - **History**: everything shown or asked is kept per conversation, across reloads and restarts. *Older* and *Newer* step through it, and *History* lists it newest first, with each question's outcome. *Clear* empties the canvas without deleting anything.
 - **Hide, show and full screen**: the canvas keeps receiving pages while hidden.
-- **Claude Code uses the canvas** (*Settings → Canvas*): *As needed*, or *Often* (the default), which adds guidance to Claude Code's system prompt, such as ending a larger coding task with a tour of what changed. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode follows the canvas's own instructions, without this guidance.
+- **Claude Code and pi use the canvas** (*Settings → Canvas*): *As needed*, or *Often* (the default), which adds guidance to Claude Code's and pi's system prompts, such as ending a larger coding task with a tour of what changed. The canvas tools are always loaded, so Claude Code's tool search never hides them. opencode follows the canvas's own instructions, without this guidance.
 
 ### Questions
 
@@ -211,15 +211,15 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 
 ### Conversations and agents
 
-- **Claude Code and opencode** over ACP, in the workspace's folder, with your normal settings: Claude Code with `~/.claude` (settings, hooks, MCP servers; claude-notifier is muted for Mirador's sessions), opencode with `~/.config/opencode` (providers, agents, plugins, MCP servers, and its permission settings: Mirador forces nothing, so with opencode's defaults most tools run without asking). opencode is found on `PATH`, else in `/opt/homebrew/bin`, `/usr/local/bin` or `~/.opencode/bin`.
-- **Profiles** (*Profiles…*): an agent plus the environment it starts with, e.g. Claude Code through a work gateway or a local llama.cpp server, or opencode with another config (`OPENCODE_CONFIG=…`, or inline `OPENCODE_CONFIG_CONTENT='{…}'`).
+- **Claude Code, opencode and pi** over ACP, in the workspace's folder, with your normal settings: Claude Code with `~/.claude` (settings, hooks, MCP servers; claude-notifier is muted for Mirador's sessions), opencode with `~/.config/opencode` (providers, agents, plugins, MCP servers, and its permission settings: Mirador forces nothing, so with opencode's defaults most tools run without asking). opencode is found on `PATH`, else in `/opt/homebrew/bin`, `/usr/local/bin` or `~/.opencode/bin`. pi with `~/.pi/agent` (settings, models, extensions, skills), through [pi-acp](https://github.com/svkozak/pi-acp), which Mirador carries; pi is found on `PATH`.
+- **Profiles** (*Profiles…*): an agent plus the environment it starts with, e.g. Claude Code through a work gateway or a local llama.cpp server, or opencode with another config (`OPENCODE_CONFIG=…`, or inline `OPENCODE_CONFIG_CONTENT='{…}'`), or pi with another agent folder (`PI_CODING_AGENT_DIR=…`) or another pi (`PI_ACP_PI_COMMAND=…`).
   - Every conversation runs on a profile. On first start Mirador offers one filled in: an installed agent as it is set up on this machine, with an empty environment. Conversations from before profiles move onto such a profile per agent.
   - The last profile stays until you create another; the workspaces of a deleted profile move to another one.
   - Environment lines are `KEY=value`, `-u KEY` and `# comment`, so the lines of a `claude_env=( … )` alias paste as they are.
   - An optional pre-launch command can start a proxy first; if it fails, you see its output.
   - Each profile has defaults for mode, YOLO and questions, its own agent process and its own log (`logs/<agent>-<name>-<id>.log`). Saving a profile with a changed environment or pre-launch command restarts its agent.
   - Profiles, including their tokens, are stored in the SQLite database with owner-only permissions. Secrets are masked on screen.
-- **Switch profile mid-conversation** (*Profile* in the conversation's header, even after the profile was deleted): the new profile's agent resumes the same session, on that profile's default model. Switching while the agent works stops the turn, and once the session is back the agent continues where it left off. A profile that keeps sessions elsewhere (another `CLAUDE_CONFIG_DIR`, or opencode's `XDG_DATA_HOME`) starts a fresh session instead. pi goes on in the same session even with another `PI_CODING_AGENT_DIR`: pi-acp finds its sessions through a map of its own in `~/.pi/pi-acp`. Until the first message, the menu also offers the other agents' profiles, and picking one moves the conversation to that agent; after that they show greyed out, for a new conversation.
+- **Switch profile mid-conversation** (*Profile* in the conversation's header, even after the profile was deleted): the new profile's agent resumes the same session, on that profile's default model. pi keeps the session's own model when the new profile has it. Switching while the agent works stops the turn, and once the session is back the agent continues where it left off. A profile that keeps sessions elsewhere (another `CLAUDE_CONFIG_DIR`, or opencode's `XDG_DATA_HOME`) starts a fresh session instead. pi goes on in the same session even with another `PI_CODING_AGENT_DIR`: pi-acp finds its sessions through a map of its own in `~/.pi/pi-acp`. Until the first message, the menu also offers the other agents' profiles, and picking one moves the conversation to that agent; after that they show greyed out, for a new conversation.
 - **Every agent option** in the header: model, mode, effort and whatever else the agent offers. Lists of more than 20 choices get a search box (opencode has 500+ models).
 - **YOLO** (off by default): Mirador approves every permission request of that conversation without asking, including requests already waiting. Claude Code's own *Bypass permissions* mode is separate.
 - **Continue…** (in each workspace's card) lists the sessions the agent recorded for that folder, including ones started in a terminal, and replays the chosen one into a new conversation. *Continue* keeps the same session; *Fork* copies it.
@@ -261,7 +261,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
 - **Subagents** nest under their Agent card, which shows the prompt each got. While they work, a count shows in the header and a strip above the message box says what each is doing ("now: Read", elapsed time), with its model and tokens; a click opens its latest work.
 - **Images** show inline, also in replayed sessions and the agent's replies; click for full size.
 - **Long conversations** load the newest 200 entries and the earlier ones as you scroll up. Switching between recent conversations is instant and keeps your scroll position, and resizing panes keeps your place.
-- **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage and when each starts over (each meter turns amber past 75% and red past 90%), cost and profile. Or, in a Claude Code conversation, run your own Claude Code `statusLine` command, exactly as Claude Code would; opencode conversations keep the built-in one.
+- **Statusline**: git branch, model, context used (tokens and share of the window), your plan's 5-hour and weekly usage and when each starts over (each meter turns amber past 75% and red past 90%), cost and profile. Or, in a Claude Code conversation, run your own Claude Code `statusLine` command, exactly as Claude Code would; opencode and pi conversations keep the built-in one.
 
 ### Sidebar and workspaces
 
@@ -308,7 +308,7 @@ Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs on
   - Waits are kept in the database, so they go on after a host restart, and a job that ended meanwhile is noticed then.
   - While it waits, the conversation shows the job above the message box, with *Stop waiting*.
   - **Click the job to follow it** in a terminal tab, locally or over ssh: its command line and how long it has run, then its output file (`tail -f`) or the container's logs, until it ends. Clicking again shows the same tab. Ctrl+C closes the tab and leaves the job running.
-- **`mirador message "<text>"`** (or text on stdin) sends text to the agent's conversation as your next message: at once if the agent is idle, else queued. It shows as *From a script*. It finds the conversation by the `CLAUDE_CODE_SESSION_ID` every command Claude Code runs inherits, with the `MIRADOR_URL` and `MIRADOR_SCRIPT_TOKEN` Mirador gives its agents. opencode's commands carry no session id, so they, and anything else, need `--session <agent session id>`. The script token survives restarts, and unknown sessions or empty messages are refused with the reason.
+- **`mirador message "<text>"`** (or text on stdin) sends text to the agent's conversation as your next message: at once if the agent is idle, else queued. It shows as *From a script*. It finds the conversation by the `CLAUDE_CODE_SESSION_ID` every command Claude Code runs inherits, with the `MIRADOR_URL` and `MIRADOR_SCRIPT_TOKEN` Mirador gives its agents. opencode's and pi's commands carry no session id, so they, and anything else, need `--session <agent session id>`. The script token survives restarts, and unknown sessions or empty messages are refused with the reason.
 
 ### Notifications and waiting for you
 
@@ -392,7 +392,7 @@ A native window around Mirador, for macOS and Linux ([full details](desktop/READ
 ```bash
 bun run typecheck
 bun run test            # unit tests
-bunx playwright test    # e2e: a real Claude Code on haiku, opencode against a scripted fake model (installed Google Chrome on macOS, Playwright's Chromium elsewhere)
+bunx playwright test    # e2e: a real Claude Code on haiku, opencode and pi against a scripted fake model (installed Google Chrome on macOS, Playwright's Chromium elsewhere)
 MIRADOR_E2E_MINIMAL_ENV=1 bunx playwright test e2e/agent-flow.spec.ts   # host started with a bare environment
 MIRADOR_EXPERIMENT=1 MIRADOR_TEST_MODEL=default MIRADOR_TEST_EFFORT=default bunx playwright test e2e/experiment-unprompted.spec.ts
 MIRADOR_SCREENSHOTS=1 bunx playwright test e2e/readme-screenshots.spec.ts   # retakes this README's screenshots from a demo

@@ -244,7 +244,7 @@ export function FirstProfile({ installedAgents, conversations }: { installedAgen
     return (
       <div className="empty-state">
         <h2>Install an agent to start</h2>
-        <p>Mirador runs Claude Code or opencode, and this machine has neither. Install one, then reload this page.</p>
+        <p>Mirador runs Claude Code, opencode or pi, and this machine has none of them. Install one, then reload this page.</p>
       </div>
     );
   }

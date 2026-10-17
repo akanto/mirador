@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
 type ChatMessage = { role: string; content?: string | { type: string; text?: string }[] | null };
-type ChatRequest = { messages: ChatMessage[]; tools?: { function: { name: string; description?: string } }[] };
+type ChatRequest = { model?: string; messages: ChatMessage[]; tools?: { function: { name: string; description?: string } }[] };
 type ToolCall = { name: string; arguments: Record<string, unknown> };
 
 const textOf = (message: ChatMessage | undefined) =>
@@ -207,12 +207,16 @@ export function opencodeProgram() {
  * A profile environment that points pi at the scripted model and keeps it away from the user's own pi setup: settings,
  * models, extensions and sessions all live under `root`.
  */
-export function scriptedPiEnvironment(model: ScriptedModel, root: string) {
+export function scriptedPiEnvironment(model: ScriptedModel, root: string, defaultModel: "scripted" | "other" = "scripted") {
   const agentDirectory = join(root, "pi-agent");
   mkdirSync(agentDirectory, { recursive: true });
-  const provider = { baseUrl: model.url, api: "openai-completions", apiKey: "unused", models: [{ id: "scripted", name: "Scripted", input: ["text", "image"] }] };
+  const models = [
+    { id: "scripted", name: "Scripted", input: ["text", "image"] },
+    { id: "other", name: "Other", input: ["text", "image"] },
+  ];
+  const provider = { baseUrl: model.url, api: "openai-completions", apiKey: "unused", models };
   writeFileSync(join(agentDirectory, "models.json"), JSON.stringify({ providers: { e2e: provider } }));
-  writeFileSync(join(agentDirectory, "settings.json"), JSON.stringify({ defaultProvider: "e2e", defaultModel: "scripted" }));
+  writeFileSync(join(agentDirectory, "settings.json"), JSON.stringify({ defaultProvider: "e2e", defaultModel }));
   return [`PI_CODING_AGENT_DIR=${agentDirectory}`, "PI_OFFLINE=1"].join("\n");
 }
 

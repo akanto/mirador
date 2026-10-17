@@ -87,7 +87,7 @@ scripts/test-spec.sh e2e/<spec>.spec.ts   # just those specs, in Docker
 
 ## Architecture Overview
 
-Mirador is a localhost web app that drives coding agents (Claude Code through `claude-agent-acp`, and opencode) over ACP, and gives them a canvas with the `show`, `ask` and `review` tools.
+Mirador is a localhost web app that drives coding agents (Claude Code through `claude-agent-acp`, opencode, and pi through a patched `pi-acp`) over ACP, and gives them a canvas with the `show`, `ask` and `review` tools.
 
 - **`host/`** is the Bun server:
   - the ACP client, with one agent process per profile and many sessions on it;
