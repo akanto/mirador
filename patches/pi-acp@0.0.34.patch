@@ -1,5 +1,5 @@
 diff --git a/dist/index.js b/dist/index.js
-index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e3123bf53742 100755
+index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..8dca376a22c366f95a15128a4e2b6ffdd0f96282 100755
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -71,6 +71,8 @@ function shouldUseShellForPiCommand(cmd) {
@@ -11,7 +11,38 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
  var PiRpcSpawnError = class extends Error {
    /** Underlying spawn error code, e.g. ENOENT, EACCES */
    code;
-@@ -130,11 +132,15 @@ var PiRpcProcess = class _PiRpcProcess {
+@@ -91,13 +93,19 @@ function stripAnsi(s) {
+   return s.replace(ANSI_ESCAPE_REGEX, "");
+ }
+ var SESSION_STATS_TIMEOUT_MS = 1e3;
++var STDERR_TAIL_LENGTH = 2e3;
+ var PiRpcProcess = class _PiRpcProcess {
+   child;
+   pending = /* @__PURE__ */ new Map();
+   eventHandlers = [];
+   preludeLines = [];
++  stderrTail = "";
++  exitError;
+   constructor(child) {
+     this.child = child;
++    child.stderr?.on("data", (chunk) => {
++      this.stderrTail = (this.stderrTail + String(chunk)).slice(-STDERR_TAIL_LENGTH);
++    });
+     const rl = readline.createInterface({ input: child.stdout });
+     rl.on("line", (line) => {
+       if (!line.trim()) return;
+@@ -117,7 +125,9 @@ var PiRpcProcess = class _PiRpcProcess {
+       for (const h of this.eventHandlers) h(msg);
+     });
+     child.on("exit", (code, signal) => {
+-      const err = new Error(`pi process exited (code=${code}, signal=${signal})`);
++      const said = stripAnsi(this.stderrTail).trim();
++      const err = new Error(`pi process exited (code=${code}, signal=${signal})${said ? `: ${said}` : ""}`);
++      this.exitError = err;
+       for (const [, p] of this.pending) p.reject(err);
+       this.pending.clear();
+     });
+@@ -130,11 +140,15 @@ var PiRpcProcess = class _PiRpcProcess {
      const cmd = getPiCommand(params.piCommand);
      const args = ["--mode", "rpc", "--no-themes"];
      if (params.sessionPath) args.push("--session", params.sessionPath);
@@ -28,7 +59,16 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      });
      try {
        await new Promise((resolve4, reject) => {
-@@ -206,6 +212,11 @@ var PiRpcProcess = class _PiRpcProcess {
+@@ -166,8 +180,6 @@ var PiRpcProcess = class _PiRpcProcess {
+       }
+       throw new PiRpcSpawnError(`Could not start pi (command: ${cmd}).`, { code, cause: e });
+     }
+-    child.stderr.on("data", () => {
+-    });
+     const proc = new _PiRpcProcess(child);
+     try {
+       const state = await proc.getState();
+@@ -206,6 +218,11 @@ var PiRpcProcess = class _PiRpcProcess {
      const res = await this.request({ type: "prompt", message, images });
      if (!res.success) throw new Error(`pi prompt failed: ${res.error ?? JSON.stringify(res.data)}`);
    }
@@ -40,7 +80,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    async abort() {
      const res = await this.request({ type: "abort" });
      if (!res.success) throw new Error(`pi abort failed: ${res.error ?? JSON.stringify(res.data)}`);
-@@ -276,6 +287,23 @@ var PiRpcProcess = class _PiRpcProcess {
+@@ -276,6 +293,23 @@ var PiRpcProcess = class _PiRpcProcess {
      const res = await this.request({ type: "switch_session", sessionPath });
      if (!res.success) throw new Error(`pi switch_session failed: ${res.error ?? JSON.stringify(res.data)}`);
    }
@@ -64,7 +104,15 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    async getMessages() {
      const res = await this.request({ type: "get_messages" });
      if (!res.success) throw new Error(`pi get_messages failed: ${res.error ?? JSON.stringify(res.data)}`);
-@@ -590,7 +618,16 @@ function bashExitCode(result, isError) {
+@@ -291,6 +325,7 @@ var PiRpcProcess = class _PiRpcProcess {
+ `);
+   }
+   request(cmd, opts) {
++    if (this.exitError) return Promise.reject(this.exitError);
+     const id = crypto.randomUUID();
+     const withId = { ...cmd, id };
+     const timeoutMs = opts?.timeoutMs;
+@@ -590,7 +625,16 @@ function bashExitCode(result, isError) {
    return typeof exitCode === "number" ? exitCode : isError ? 1 : 0;
  }
  function bashOutputDelta(previous, next) {
@@ -82,7 +130,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
  }
  function bashTerminalContent(toolCallId) {
    return [{ type: "terminal", terminalId: toolCallId }];
-@@ -754,6 +791,8 @@ var SessionManager = class {
+@@ -754,6 +798,8 @@ var SessionManager = class {
      try {
        proc = await PiRpcProcess.spawn({
          cwd: params.cwd,
@@ -91,7 +139,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
          piCommand: params.piCommand
        });
      } catch (e) {
-@@ -823,6 +862,8 @@ var PiAcpSession = class {
+@@ -823,6 +869,8 @@ var PiAcpSession = class {
    // Current in-flight turn (if any). Additional prompts are queued.
    pendingTurn = null;
    turnQueue = [];
@@ -100,7 +148,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    // Track tool call statuses and ensure they are monotonic (pending -> in_progress -> completed).
    // Some pi events can arrive out of order (e.g. late toolcall_* deltas after execution starts),
    // and clients may hide progress if we ever downgrade back to `pending`.
-@@ -831,6 +872,8 @@ var PiAcpSession = class {
+@@ -831,6 +879,8 @@ var PiAcpSession = class {
    // when retry, compaction, or queued continuations run. The session-level prompt
    // completes only when `agent_settled` is emitted.
    inAgentLoop = false;
@@ -109,7 +157,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    // For ACP diff support: capture file contents before edit/write mutations,
    // then emit ToolCallContent {type:"diff"}. Compatible structured edit/write
    // events may need to be implemented in pi in the future.
-@@ -890,6 +933,15 @@ var PiAcpSession = class {
+@@ -890,6 +940,15 @@ var PiAcpSession = class {
      });
      return turnPromise;
    }
@@ -125,7 +173,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    async cancel() {
      this.cancelRequested = true;
      if (this.turnQueue.length) {
-@@ -937,10 +989,12 @@ var PiAcpSession = class {
+@@ -937,10 +996,12 @@ var PiAcpSession = class {
      await this.flushEmits();
    }
    async settleTurn() {
@@ -138,7 +186,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      this.inAgentLoop = false;
      const next = this.turnQueue.shift();
      if (next) {
-@@ -970,10 +1024,10 @@ var PiAcpSession = class {
+@@ -970,10 +1031,10 @@ var PiAcpSession = class {
      });
    }
    emitBashOutputUpdate(params) {
@@ -153,7 +201,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      this.emit({
        sessionUpdate: "tool_call_update",
        toolCallId: params.toolCallId,
-@@ -1021,12 +1075,19 @@ var PiAcpSession = class {
+@@ -1021,12 +1082,19 @@ var PiAcpSession = class {
    handlePiEvent(ev) {
      const type = String(ev.type ?? "");
      switch (type) {
@@ -174,7 +222,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
            });
            break;
          }
-@@ -1790,6 +1851,7 @@ function getEnableSkillCommands(cwd) {
+@@ -1790,6 +1858,7 @@ function getEnableSkillCommands(cwd) {
    return true;
  }
  function getQuietStartup(cwd) {
@@ -182,7 +230,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    const merged = getMergedSettings(cwd);
    const direct = merged.quietStartup;
    if (typeof direct === "boolean") return direct;
-@@ -1888,6 +1950,54 @@ function mergeCommands(a, b) {
+@@ -1888,6 +1957,54 @@ function mergeCommands(a, b) {
    return out;
  }
  var pkg = readNearestPackageJson(import.meta.url);
@@ -237,7 +285,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
  var PiAcpAgent = class {
    conn;
    sessions = new SessionManager();
-@@ -1946,6 +2056,8 @@ var PiAcpAgent = class {
+@@ -1946,6 +2063,8 @@ var PiAcpAgent = class {
          proc = await PiRpcProcess.spawn({
            cwd,
            sessionPath: stored.sessionFile,
@@ -246,7 +294,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
            piCommand: process.env.PI_ACP_PI_COMMAND
          });
        } catch (e) {
-@@ -1990,7 +2102,7 @@ var PiAcpAgent = class {
+@@ -1990,7 +2109,7 @@ var PiAcpAgent = class {
        }),
        agentCapabilities: {
          loadSession: true,
@@ -255,7 +303,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
          promptCapabilities: {
            image: true,
            audio: false,
-@@ -2000,11 +2112,33 @@ var PiAcpAgent = class {
+@@ -2000,11 +2119,33 @@ var PiAcpAgent = class {
            // **UNSTABLE** ACP capability used by Zed's codex-acp adapter.
            // Enables a native session picker in clients that support it.
            list: {},
@@ -291,7 +339,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    async newSession(params) {
      if (!isAbsolute3(params.cwd)) {
        throw RequestError3.invalidParams(`cwd must be an absolute path: ${params.cwd}`);
-@@ -2015,6 +2149,7 @@ var PiAcpAgent = class {
+@@ -2015,6 +2156,7 @@ var PiAcpAgent = class {
      const session = await this.sessions.create({
        cwd: params.cwd,
        mcpServers: params.mcpServers,
@@ -299,7 +347,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
        conn: this.conn,
        fileCommands,
        piCommand: process.env.PI_ACP_PI_COMMAND
-@@ -2079,7 +2214,6 @@ var PiAcpAgent = class {
+@@ -2079,7 +2221,6 @@ var PiAcpAgent = class {
      });
      if (preludeText)
        session.setStartupInfo(preludeText);
@@ -307,7 +355,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      const response = {
        sessionId: session.sessionId,
        configOptions,
-@@ -2521,6 +2655,12 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2521,6 +2662,12 @@ ${JSON.stringify(stats, null, 2)}`;
      return { sessions, nextCursor, _meta: {} };
    }
    async loadSession(params) {
@@ -320,7 +368,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      if (!isAbsolute3(params.cwd)) {
        throw RequestError3.invalidParams(`cwd must be an absolute path: ${params.cwd}`);
      }
-@@ -2533,7 +2673,8 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2533,7 +2680,8 @@ ${JSON.stringify(stats, null, 2)}`;
      const enableSkillCommands = getEnableSkillCommands(params.cwd);
      const session = await this.restoreSession(params.sessionId, {
        cwd: params.cwd,
@@ -330,7 +378,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      });
      const proc = session.proc;
      let configuration;
-@@ -2545,13 +2686,12 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2545,13 +2693,12 @@ ${JSON.stringify(stats, null, 2)}`;
      }
      const { configOptions, models, modes } = configuration;
      const fileCommands = loadSlashCommands(params.cwd);
@@ -345,7 +393,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
      const messages = Array.isArray(data?.messages) ? data.messages : [];
      for (const m of messages) {
        const role = String(m?.role ?? "");
-@@ -2569,12 +2709,14 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2569,12 +2716,14 @@ ${JSON.stringify(stats, null, 2)}`;
        }
        if (role === "assistant") {
          const text = normalizePiAssistantText(m?.content);
@@ -361,7 +409,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
              }
            });
          }
-@@ -2677,6 +2819,46 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2677,6 +2826,46 @@ ${JSON.stringify(stats, null, 2)}`;
      }, 0);
      return response;
    }
@@ -408,3 +456,50 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..fd786764c4b6a1f8bd6fd83252e4e312
    async deleteSession(params) {
      const stored = this.store.get(params.sessionId);
      const piSession = findPiSession(params.sessionId);
+diff --git a/node_modules/pi-acp/dist/session-extension.js b/dist/session-extension.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a293f1e5ba701624602fa57a769b6be6d0fd990
+--- /dev/null
++++ b/dist/session-extension.js
+@@ -0,0 +1,41 @@
++/**
++ * Loaded into each pi that pi-acp starts for a session with MCP servers or added system prompt text. It hands the
++ * servers the ACP client sent in session/new, session/load or session/resume to pi's built-in MCP support, with their
++ * tools declared to the model directly, and adds the client's `_meta.systemPrompt.append` to pi's system prompt.
++ */
++const SESSION_VARIABLE = "PI_ACP_SESSION";
++const SESSION_KEY = Symbol.for("pi-acp.session");
++
++/**
++ * Read once per process, as a reload loads the extension again, and taken out of the environment, which the bash tool's
++ * commands inherit, since server headers and environments can hold credentials.
++ */
++function sessionOptions() {
++  globalThis[SESSION_KEY] ??= JSON.parse(process.env[SESSION_VARIABLE] ?? "{}");
++  delete process.env[SESSION_VARIABLE];
++  return globalThis[SESSION_KEY];
++}
++
++const asObject = (pairs) => Object.fromEntries((pairs ?? []).map(({ name, value }) => [name, value]));
++
++function piServerConfig(server) {
++  if (server.type === "http") return { url: server.url, headers: asObject(server.headers) };
++  return { command: server.command, args: server.args ?? [], env: asObject(server.env) };
++}
++
++/** pi.registerMcpServer came in pi 0.99.0, and before_agent_start's systemPromptOptions with it. */
++const OLDEST_PI = "0.99.0";
++
++export default function (pi) {
++  if (typeof pi.registerMcpServer !== "function") {
++    throw new Error(`Mirador needs pi ${OLDEST_PI} or later. Update pi with npm install -g @earendil-works/pi-coding-agent`);
++  }
++  const { mcpServers = [], appendSystemPrompt = "" } = sessionOptions();
++  for (const server of mcpServers) pi.registerMcpServer(server.name, { ...piServerConfig(server), exposure: "direct" });
++  // Not pi's --append-system-prompt, which would take the place of the APPEND_SYSTEM.md files pi finds.
++  if (appendSystemPrompt) {
++    pi.on("before_agent_start", ({ systemPromptOptions }) => {
++      systemPromptOptions.appendSystemPrompt = [systemPromptOptions.appendSystemPrompt, appendSystemPrompt].filter(Boolean).join("\n\n");
++    });
++  }
++}
