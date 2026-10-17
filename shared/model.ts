@@ -22,10 +22,10 @@ export const harnessIds = Object.keys(harnessLabels) as HarnessId[];
 
 /**
  * Whether the agent can be sent back to a point in its own session, which is what takes a conversation back to an
- * earlier turn. Claude Code answers the fork point Mirador names; opencode takes `session/fork` but ignores the point,
- * so it would copy the whole session rather than leave anything behind. pi-acp offers no `session/fork`.
+ * earlier turn. Claude Code and pi answer the fork point Mirador names; opencode takes `session/fork` but ignores the
+ * point, so it would copy the whole session rather than leave anything behind.
  */
-export const harnessRewinds: Record<HarnessId, boolean> = { claude: true, opencode: false, pi: false };
+export const harnessRewinds: Record<HarnessId, boolean> = { claude: true, opencode: false, pi: true };
 
 export type AskMode = "wait" | "next-message";
 

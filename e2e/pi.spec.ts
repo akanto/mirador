@@ -173,7 +173,7 @@ test("a message sent with Enter while pi runs a command joins its turn once the 
   expect(eventsInOrder).toEqual(["RUN sleep 5; echo slept", STEERED, "turn-end"]);
 });
 
-test("↑ after stopping a pi turn gives its message back without replacing it, since pi's earlier replies carry no mark to go back to", async () => {
+test("↑ after stopping a pi turn edits its message, and Enter replaces the turn while pi keeps the turns before it", async () => {
   await sendMessage(page, "RUN sleep 30");
   await expect(page.locator(".timeline:visible").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 60_000 });
   const composer = page.locator(".composer:visible textarea");
@@ -183,7 +183,36 @@ test("↑ after stopping a pi turn gives its message back without replacing it, 
 
   await composer.press("ArrowUp");
   await expect(composer).toHaveValue("RUN sleep 30");
-  await expect(page.locator(".editing-stopped")).toHaveCount(0);
+  await expect(page.locator(".editing-stopped")).toBeVisible();
+  await composer.fill("SHOW After going back");
+  await composer.press("Enter");
+  await expect(canvasHeading()).toHaveText("After going back", { timeout: 60_000 });
+  await waitForTurnToEnd(page);
+  await expect.poll(piSessionProcesses).toHaveLength(1);
+
+  await expect(page.locator(".timeline:visible .message.user", { hasText: "RUN sleep 30" })).toHaveCount(0);
+  expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "Still there?", STEERED, "SHOW After going back"]));
+  expect(model.userMessagesInContext()).not.toContain("RUN sleep 30");
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+});
+
+test("a pi conversation from before pi marked its replies can't be taken back past its first turn", async () => {
+  const oldConversationId = await startConversation(page);
+  await host.stop();
+  const said = (text: string) => ({ type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+  const oldTurns = [{ type: "user-message", text: "Old first" }, said("Old reply"), { type: "user-message", text: "Old second" }, said("Another old reply")];
+  execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), oldConversationId, JSON.stringify(oldTurns)]);
+  await host.start();
+  await reloadFromRestartedHost(page);
+
+  const turn = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator('.message.user:text-is("Old second")') });
+  await turn.hover();
+  await turn.locator(".undo-files").click();
+  const dialog = page.getByRole("dialog", { name: "Rewind to here" });
+  await expect(dialog).toContainText("The agent's replies before this turn carry no mark of where its session should go back to");
+  await expect(dialog.getByRole("button", { name: "Rewind", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await page.locator(".workspace li", { hasText: "Hello pi" }).click();
 });
 
 test("Log in opens pi in a terminal tab, where /login offers pi's ways to sign in", async () => {
