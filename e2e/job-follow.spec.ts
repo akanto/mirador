@@ -27,6 +27,8 @@ const TICKING = "let i = 0; setInterval(() => console.log('tick ' + ++i), 300)";
 const SLEEPING = "setTimeout(() => {}, 300000)";
 const OUTPUT_UNKNOWN_ON_WINDOWS = "On Windows this tab cannot find the file its output goes to, so it only shows when the process ends.";
 const onWindows = process.platform === "win32";
+/** Windows gets a process's command line through WMI, which a loaded runner can make wait; the tab says it is following before asking. */
+const commandLinePatience = onWindows ? 60_000 : 20_000;
 
 /** Like a job started with `nohup … > log 2>&1 &`: it writes a line every 300 ms to its log. */
 function startLoggingJob(log: string) {
@@ -82,8 +84,9 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
     await waitForJob(sessionId()!, job);
     await waits.getByRole("button", { name: `process ${job.pid}` }).click();
     await expect(followTab(job)).toBeVisible();
-    await expect(terminalScreen).toContainText("Command: ");
-    await expect(terminalScreen).toContainText(TICKING);
+    if (onWindows) await expect(terminalScreen).toContainText(/Following process \d/);
+    await expect(terminalScreen).toContainText("Command: ", { timeout: commandLinePatience });
+    await expect(terminalScreen).toContainText(TICKING, { timeout: commandLinePatience });
     await expect(terminalScreen).toContainText(/Running for: \d\d:\d\d/);
     if (onWindows) await expect(terminalScreen).toContainText(OUTPUT_UNKNOWN_ON_WINDOWS);
     else {
@@ -115,7 +118,8 @@ test("clicking a waited-for job follows it in a terminal tab: what it runs, then
     const job = startSilentJob();
     await waitForJob(sessionId()!, job);
     await waits.getByRole("button", { name: `process ${job.pid}` }).click();
-    await expect(terminalScreen).toContainText(SLEEPING);
+    if (onWindows) await expect(terminalScreen).toContainText(/Following process \d/);
+    await expect(terminalScreen).toContainText(SLEEPING, { timeout: commandLinePatience });
     await expect(terminalScreen).toContainText(onWindows ? OUTPUT_UNKNOWN_ON_WINDOWS : "Its output goes to no file this tab can follow");
     await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
     await page.keyboard.press("Control+C");
