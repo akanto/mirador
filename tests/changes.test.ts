@@ -402,9 +402,31 @@ test("the session scope adds the git-ignored files written since the session beg
   await git(projectDir, ["add", "-A"]);
   await git(projectDir, ["commit", "-qm", "base"]);
   await startTurn();
+  await Bun.sleep(20);
   await mkdir(join(projectDir, "build"));
   await writeFile(join(projectDir, "build", "out.js"), "built\n");
   await write("app.ts", "two\n");
   const session = await changes.list("c1", "session");
   expect(session.project.map((file) => file.path)).toEqual(["build/out.js"]);
+});
+
+test("the session scope leaves out the git-ignored files written before the conversation's first message", async () => {
+  await mkdir(join(projectDir, "build"));
+  await writeFile(join(projectDir, "build", "old.js"), "built before\n");
+  await Bun.sleep(20);
+  await startTurn();
+  await Bun.sleep(20);
+  await writeFile(join(projectDir, "build", "new.js"), "built in the session\n");
+  const session = await changes.list("c1", "session");
+  expect(session.project.map((file) => file.path)).toEqual(["build/new.js"]);
+});
+
+test("before the first message the session scope lists only the agent's edits, such as a continued session's replayed ones, and no file a script wrote", async () => {
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "current_mode_update", currentModeId: "default" } });
+  await mkdir(join(projectDir, "build"));
+  await writeFile(join(projectDir, "build", "hook.js"), "written as the session started\n");
+  expect(await changes.list("c1", "session")).toEqual({ scope: "session", base: "session", project: [], outside: [] });
+
+  agentEdits("replayed", join(projectDir, "kept.txt"), "two", "TWO");
+  expect((await changes.list("c1", "session")).project).toEqual([{ path: "kept.txt", status: "modified", added: null, removed: null, byAgent: true }]);
 });

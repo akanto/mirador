@@ -189,7 +189,7 @@ export class Changes {
   }
 
   private async startOf(conversationId: string, workspace: Workspace, scope: ChangeScope): Promise<ScopeStart> {
-    if (scope === "session") return { fromSeq: 0, revision: null, since: this.sessionStart(conversationId), base: "session" };
+    if (scope === "session") return this.sessionStart(conversationId);
     if (scope === "uncommitted") {
       return (await isRepository(workspace.path)) ? { fromSeq: 0, revision: await headOrEmptyTree(workspace.path), base: "head" } : { fromSeq: 0, revision: null, base: "not-a-repository" };
     }
@@ -200,9 +200,13 @@ export class Changes {
     return kept ? { fromSeq: turn.seq, revision: turn.checkpoint, base: "turn-start" } : { fromSeq: turn.seq, revision: null, base: "turn-not-kept" };
   }
 
-  /** When the conversation's first event was made: a session holds everything the agent and its scripts wrote after it. */
-  private sessionStart(conversationId: string) {
-    return this.store.listEventsBetween(conversationId, 0, 1)[0]?.at ?? 0;
+  /**
+   * From the conversation's first message: a session holds everything the agent and its scripts wrote after it. Before
+   * one, only the agent's edits count, such as those of a continued session's replayed history.
+   */
+  private sessionStart(conversationId: string): ScopeStart {
+    const firstMessageAt = this.store.firstMessageAt(conversationId);
+    return { fromSeq: 0, revision: null, ...(firstMessageAt !== null && { since: firstMessageAt }), base: "session" };
   }
 
   /** In a repository, git already lists what it tracks, so a session adds only what .gitignore hides. */

@@ -845,6 +845,14 @@ export class Store {
     return latest("AND json_extract(event, '$.checkpoint') IS NOT NULL") ?? latest("");
   }
 
+  /** When the conversation's first message was sent; null before there is one. */
+  firstMessageAt(conversationId: string): number | null {
+    const row = this.db
+      .query("SELECT at FROM events WHERE conversation_id = ? AND json_extract(event, '$.type') = 'user-message' ORDER BY seq LIMIT 1")
+      .get(conversationId) as { at: number } | null;
+    return row?.at ?? null;
+  }
+
   findEvent(conversationId: string, seq: number): StoredEvent | null {
     return this.listEventsBetween(conversationId, seq, seq + 1)[0] ?? null;
   }
