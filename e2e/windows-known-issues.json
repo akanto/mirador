@@ -23,8 +23,8 @@
   {
     "file": "queue-steering.spec.ts",
     "title": "a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end",
-    "failure": "Locator: locator('.queued').filter({ hasText: 'Reply with just the word LATER.' }).locator('.queued-delivery')",
-    "reason": "The queued chip stands but its delivery badge never appears, once awaited as \"after the turn\" and once as \"joins the turn\", so the locator line is the fragment both tries share. The page keeps its own chip while missing the updates that would say how the message is delivered — the vcs-c337 shape of a page left without its host connection. Survey 19 passed this spec and the trim dropped its older entry; at fb82a27 it failed both tries in this new shape.",
+    "failure": "Locator: locator('.queue",
+    "reason": "The queue's own text is what never arrives or never settles on its badge, so the fragment is the locator prefix both shapes share: at fb82a27 both tries lost the .queued-delivery badge of the LATER message, and at 99dc176 (survey 24) both tries left .queue .queued-text empty although the image message was sent. The page keeps its own chip while missing the updates that would say how the message is delivered — the vcs-c337 shape of a page left without its host connection.",
     "bead": "vcs-c337"
   },
   {
