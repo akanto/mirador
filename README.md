@@ -83,7 +83,7 @@ The script downloads the latest release for your computer, installs it and start
 - **macOS** (Apple Silicon): the app goes where it already is, else in `/Applications`, or in `~/Applications` when that isn't writable. Quit a Mirador running from there first.
 - **Linux** (x64 or arm64): the libraries the app needs (GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg) are installed first, with `sudo apt-get` or `sudo dnf`; on other distributions the script names them. The app goes in `~/.local/share/com.sodre90.mirador`, with an entry in your applications menu.
 
-The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`) and opencode. The script tells you when neither is there.
+The app carries Mirador and the Bun it runs on, so it doesn't require Bun or a checkout. It runs the agents you have installed: Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`), opencode and pi (`npm install -g @earendil-works/pi-coding-agent`, on Node 22.19 or later). The script tells you when neither Claude Code nor opencode is there.
 
 **With Homebrew**, on macOS or Linux:
 
