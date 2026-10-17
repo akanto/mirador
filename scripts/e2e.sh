@@ -10,9 +10,11 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 copy=$(mktemp -d "${TMPDIR:-/tmp}/mirador-e2e-run-XXXXXX")
 echo "running from $copy"
 
-existing() { while IFS= read -r -d '' file; do [[ -e $file ]] && printf '%s\0' "$file"; done; }
+# Git lists a repository nested in the tree, such as an agent's worktree in .claude/worktrees, as one folder/ entry; tar
+# would copy all of it, its node_modules too.
+existingOwnFiles() { while IFS= read -r -d '' file; do if [[ $file != */ && -e $file ]]; then printf '%s\0' "$file"; fi; done; }
 # A node_modules that is a symlink isn't ignored as a folder would be; copied, it would take ln below into its target.
-(cd "$repo" && git ls-files -z --cached --others --exclude-standard -- ':(exclude)node_modules' | existing | tar --null -T - -cf -) | tar -xf - -C "$copy"
+(cd "$repo" && git ls-files -z --cached --others --exclude-standard -- ':(exclude)node_modules' | existingOwnFiles | tar --null -T - -cf -) | tar -xf - -C "$copy"
 ln -s "$repo/node_modules" "$copy/node_modules"
 
 cd "$copy"
