@@ -21,22 +21,28 @@ async function fingerOnTheTerminal(page: Page) {
   const screen = (await page.locator(".terminal-pane .xterm-screen").boundingBox())!;
   const x = screen.x + screen.width / 2;
   const at = (share: number) => screen.y + screen.height * share;
-  const touch = (type: "touchStart" | "touchMove" | "touchEnd", y: number) =>
-    cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+  // The gesture carries its own clock: on a loaded runner the dispatch delays alone would space the events
+  // past the product's pause reading, so a lift meant to fling would read as a finger resting before it.
+  const epoch = Date.now() / 1000;
+  let seconds = 0;
+  const touch = (type: "touchStart" | "touchMove" | "touchEnd", y: number, gap: number) => {
+    seconds += gap;
+    return cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }], timestamp: epoch + seconds });
+  };
   const moves = Array.from({ length: 10 }, (_, index) => (index + 1) / 10);
   return {
     async drag(from: number, to: number, lift: Lift) {
-      await touch("touchStart", at(from));
+      await touch("touchStart", at(from), 0.016);
       for (const done of moves) {
-        await touch("touchMove", at(from + (to - from) * done));
+        await touch("touchMove", at(from + (to - from) * done), 0.016);
         await page.waitForTimeout(16);
       }
       if (lift === "after a pause") await page.waitForTimeout(300);
-      await touch("touchEnd", at(to));
+      await touch("touchEnd", at(to), lift === "after a pause" ? 0.3 : 0.008);
     },
     async tap() {
-      await touch("touchStart", at(0.5));
-      await touch("touchEnd", at(0.5));
+      await touch("touchStart", at(0.5), 0.016);
+      await touch("touchEnd", at(0.5), 0.05);
     },
   };
 }
