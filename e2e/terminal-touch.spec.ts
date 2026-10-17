@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
-import { countTo, echo, printRaw, showKeys, showKeysFollowingTheMouse } from "./terminal-shell.ts";
+import { countTo, printRaw, showKeys, showKeysFollowingTheMouse } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -88,7 +88,7 @@ test("a finger drags the terminal's output and flings it till a touch stops it, 
   await expect.poll(() => rows.count()).toBeGreaterThan(rowCount);
   await page.setViewportSize(viewport);
   await expect.poll(() => rows.count()).toBe(rowCount);
-  await page.keyboard.type(`${[printRaw("\x1b[?1049h"), countTo(100), echo("full-screen"), showKeys].join("; ")}\n`);
+  await page.keyboard.type(`${[printRaw("\x1b[?1049h"), countTo(100), showKeys("full-screen")].join("; ")}\n`);
   await expect(row("full-screen")).toHaveCount(1);
   await finger.drag(0.8, 0.2, "after a pause");
   await expect(shown).toContainText("^[[B");
@@ -97,7 +97,7 @@ test("a finger drags the terminal's output and flings it till a touch stops it, 
   await expect(shown).toContainText("^[[A");
   await page.keyboard.press("Control+C");
 
-  await page.keyboard.type(`${[printRaw("\x1b[?1049l"), echo("follows-the-mouse"), showKeysFollowingTheMouse].join("; ")}\n`);
+  await page.keyboard.type(`${[printRaw("\x1b[?1049l"), showKeysFollowingTheMouse("follows-the-mouse")].join("; ")}\n`);
   await expect(row("follows-the-mouse")).toHaveCount(1);
   await expect(page.locator(".terminal-pane .xterm"), "the terminal follows the mouse").toHaveClass(/enable-mouse-events/);
   await finger.drag(0.8, 0.2, "after a pause");

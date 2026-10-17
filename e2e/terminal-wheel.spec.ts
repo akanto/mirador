@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { addWorkspace, signIn, startConversation } from "./helpers.ts";
-import { countTo, echo, printRaw, showKeys, showKeysFollowingTheMouse } from "./terminal-shell.ts";
+import { countTo, printRaw, showKeys, showKeysFollowingTheMouse } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -25,7 +25,7 @@ test("a mouse wheel over a full-screen program sends it arrow keys, also after t
     await page.mouse.wheel(0, -300);
   };
   const runFullScreenProgram = async (marker: string) => {
-    await page.keyboard.type(`${[printRaw("\x1b[?1049h"), countTo(100), echo(marker), showKeys].join("; ")}\n`);
+    await page.keyboard.type(`${[printRaw("\x1b[?1049h"), countTo(100), showKeys(marker)].join("; ")}\n`);
     await expect(row(marker)).toHaveCount(1);
   };
 
@@ -50,7 +50,7 @@ test("a mouse wheel over a full-screen program sends it arrow keys, also after t
   await page.keyboard.press("Control+C");
 
   await test.step("a full-screen program that follows the mouse gets the wheel with the keys held down", async () => {
-    await page.keyboard.type(`${[echo("follows-the-mouse"), showKeysFollowingTheMouse].join("; ")}\n`);
+    await page.keyboard.type(`${showKeysFollowingTheMouse("follows-the-mouse")}\n`);
     await expect(row("follows-the-mouse")).toHaveCount(1);
     await expect(page.locator(".terminal-pane .xterm"), "the terminal follows the mouse").toHaveClass(/enable-mouse-events/);
     await page.keyboard.down("Alt");

@@ -2,7 +2,7 @@
  * Run with Bun in a Windows terminal tab: shows the keys, wheel and mouse the terminal sends, as cat -v does, until Ctrl+C.
  * The console passes them on as the terminal wrote them only in virtual terminal input mode, which this sets. With
  * --follow-mouse it then asks the terminal to report the mouse, which the console passes on only from a program in that
- * mode, not from PowerShell.
+ * mode, not from PowerShell. Then it prints the text it was given, so a spec waits for that before it sends anything.
  */
 import { dlopen, FFIType } from "bun:ffi";
 import { writeSync } from "node:fs";
@@ -21,9 +21,11 @@ const { GetStdHandle, SetConsoleMode, ReadFile } = dlopen("kernel32.dll", {
 
 const visible = (byte: number) => (byte < 0x20 ? `^${String.fromCharCode(byte + 0x40)}` : byte === 0x7f ? "^?" : String.fromCharCode(byte));
 
+const { values, positionals } = parseArgs({ options: { "follow-mouse": { type: "boolean" } }, allowPositionals: true });
 const input = GetStdHandle(STD_INPUT_HANDLE);
 SetConsoleMode(input, ENABLE_VIRTUAL_TERMINAL_INPUT);
-if (parseArgs({ options: { "follow-mouse": { type: "boolean" } } }).values["follow-mouse"]) writeSync(1, MOUSE_REPORTS_AS_SGR);
+if (values["follow-mouse"]) writeSync(1, MOUSE_REPORTS_AS_SGR);
+writeSync(1, `${positionals.join(" ")}\r\n`);
 const buffer = new Uint8Array(256);
 const bytesRead = new Uint32Array(1);
 while (ReadFile(input, buffer, buffer.length, bytesRead, null)) {

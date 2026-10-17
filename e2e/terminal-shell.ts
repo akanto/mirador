@@ -40,13 +40,15 @@ const posixPrintfEscapes: Record<string, string> = { "\x1b": "\\033", "\x07": "\
 const powershellEscapes: Record<string, string> = { '"': '`"', $: "`$", "`": "``" };
 
 /**
- * Shows the keys the terminal sends, as `cat -v` does, until Ctrl+C. Windows has no cat -v, and its console turns the
- * terminal's escape sequences into key presses unless asked for them as they are, so there a Bun program asks.
+ * Prints `ready` on a line of its own, then shows the keys the terminal sends, as `cat -v` does, until Ctrl+C. Windows
+ * has no cat -v, and its console turns the terminal's escape sequences into key presses unless asked for them as they
+ * are, so there a Bun program asks, and prints `ready` only once it has: keys sent while Bun starts would be lost.
  */
-export const showKeys = onWindows ? `bun "${join(import.meta.dirname, "show-keys.ts")}"` : "cat -v";
+export const showKeys = (ready: string) => (onWindows ? `bun "${join(import.meta.dirname, "show-keys.ts")}" ${ready}` : `${echo(ready)}; cat -v`);
 
 /** Asks the terminal to report the mouse, as SGR, then shows what it sends; on Windows show-keys asks, as only it can. */
-export const showKeysFollowingTheMouse = onWindows ? `${showKeys} --follow-mouse` : `${printRaw("\x1b[?1000h\x1b[?1006h")}; ${showKeys}`;
+export const showKeysFollowingTheMouse = (ready: string) =>
+  onWindows ? `${showKeys(ready)} --follow-mouse` : `${printRaw("\x1b[?1000h\x1b[?1006h")}; ${showKeys(ready)}`;
 
 /** The name the host gives the command keepShellBusy runs. */
 export const busyCommandName = onWindows ? "bun" : "sleep";
