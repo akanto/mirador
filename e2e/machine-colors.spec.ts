@@ -81,4 +81,5 @@ test("a machine takes a pastel colour on its rail button, and a strip along the 
     await picker.getByRole("radio", { name: "No colour" }).click();
     await expect(railButton).toHaveCSS("background-color", uncoloured);
   });
+  await serverPage.close();
 });

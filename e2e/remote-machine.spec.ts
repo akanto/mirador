@@ -76,7 +76,7 @@ test("another device joins the machine at its public address with an invite, and
   const { settings, link } = await inviteLinkFrom(page);
   expect(link).toMatch(new RegExp(`^${publicOrigin()}/#/join/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`));
 
-  const phone = await (await browser.newContext()).newPage();
+  const phone = await browser.newPage();
   await test.step("a device without an invite is asked for one", async () => {
     await phone.goto(publicOrigin());
     await expect(phone.getByRole("heading", { name: "Join this machine" })).toBeVisible();
@@ -90,9 +90,10 @@ test("another device joins the machine at its public address with an invite, and
   });
 
   await test.step("a used invite lets nobody else in", async () => {
-    const stranger = await (await browser.newContext()).newPage();
+    const stranger = await browser.newPage();
     await stranger.goto(link);
     await expect(stranger.locator(".join-problem")).toHaveText("This invite code is wrong, used or expired. Ask for a new one.");
+    await stranger.close();
   });
 
   await test.step("revoking the device signs it out at once", async () => {
@@ -101,6 +102,7 @@ test("another device joins the machine at its public address with an invite, and
     await expect(phone.getByRole("heading", { name: "Join this machine" })).toBeVisible();
     await expect(settings.locator(".device-list .device-none")).toBeVisible();
   });
+  await phone.close();
 });
 
 test("the laptop joins the server with an invite link and shows its own Mirador in the rail, through a relay only its pages can use", async ({ page, browser }) => {
@@ -209,6 +211,7 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
     await expect(workspaceCard(frame, serverOnly)).toBeVisible();
     await expect(serverButton).not.toHaveClass(/\baway\b/);
   });
+  await server.close();
 });
 
 test("a machine added by its address alone asks for an invite code in this computer's own window", async ({ page, browser }) => {
@@ -250,6 +253,7 @@ test("a machine added by its address alone asks for an invite code in this compu
     await expect(page.frameLocator('iframe[title="Server nearby"]').getByRole("button", { name: "Settings…" })).toBeVisible();
     await expect(join).toHaveCount(0);
   });
+  await server.close();
 });
 
 test("pages of other sites cannot join for their visitors", async () => {

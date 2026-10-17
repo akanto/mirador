@@ -71,7 +71,7 @@ test("a device joins over HTTPS with an invite link that names the host's certif
     expect(await fetchTrusting(authority, `${networkCanvasOrigin()}/d3.min.js`)).toContain("d3js.org");
   });
 
-  const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
+  const phone = await browser.newPage({ ignoreHTTPSErrors: true });
   await test.step("the invite link joins a phone over HTTPS", async () => {
     await phone.goto(link);
     await expect(workspaceCard(phone, host.projectDir)).toBeVisible();
@@ -82,6 +82,7 @@ test("a device joins over HTTPS with an invite link that names the host's certif
     expect(await statusOf(phone.request, "post", `${networkOrigin()}/mcp/some-conversation`)).toBe(404);
     expect(await statusOf(phone.request, "post", `${networkOrigin()}/sessions/some-session/messages`)).toBe(404);
   });
+  await phone.close();
 });
 
 test("the host's own page loads canvas libraries from this machine, though agents were given the network address", async ({ page }) => {
@@ -148,6 +149,7 @@ test("another Mirador joins over HTTPS only with the certificate authority the i
     await expect(page.getByRole("navigation", { name: "Machines" }).getByRole("button", { name: "Network box" }), "the laptop keeps up with the host").not.toHaveClass(/away/);
     await expect(settings.locator(".device-name", { hasText: /^Mirador on / })).toBeVisible();
   });
+  await server.close();
 });
 
 test("the network closes a connection that goes quiet after a request, so a device cannot hold the host's sockets open", async () => {

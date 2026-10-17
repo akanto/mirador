@@ -106,7 +106,7 @@ test("another Mirador asks to join over HTTPS, and gets in once someone at the m
 test("a browser on the network asks to join, and is signed in once someone at the machine types the number it shows", async ({ browser }) => {
   const serverPage = await browser.newPage();
   await signIn(serverPage, server);
-  const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
+  const phone = await browser.newPage({ ignoreHTTPSErrors: true });
   await phone.goto(networkOrigin());
   await phone.getByLabel("Name this device").fill("Phone");
   await phone.getByRole("button", { name: "Ask to join" }).click();
@@ -117,12 +117,12 @@ test("a browser on the network asks to join, and is signed in once someone at th
   await prompt.getByRole("button", { name: "Approve" }).click();
   await expect(phone.getByRole("button", { name: "Settings…" })).toBeVisible();
   await expect(prompt).toHaveCount(0);
-  await serverPage.close();
+  await Promise.all([serverPage.close(), phone.close()]);
 });
 
 test("while no page of the machine is open, a request to join shows on its desktop, and mirador approve there lets the browser in", async ({ browser }) => {
   test.skip(process.platform === "win32", "Windows has no notify-send, so a join request shows nothing on its desktop yet (vcs-pgm.36)");
-  const phone = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
+  const phone = await browser.newPage({ ignoreHTTPSErrors: true });
   await phone.goto(networkOrigin());
   await phone.getByLabel("Name this device").fill("Tablet");
   await phone.getByRole("button", { name: "Ask to join" }).click();
@@ -144,4 +144,5 @@ test("while no page of the machine is open, a request to join shows on its deskt
   });
   expect(approve.stdout).toContain("Approved. Tablet gets in when it next checks, within seconds.");
   await expect(phone.getByRole("button", { name: "Settings…" })).toBeVisible();
+  await phone.close();
 });
