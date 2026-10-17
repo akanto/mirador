@@ -13,7 +13,7 @@ const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeSc
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 
 const listNotes: Partial<Record<ChangesBase, string>> = {
-  session: "The files the agent changed with its edit tools in this conversation. Files a script wrote are not listed.",
+  session: "The files the agent changed with its edit tools in this conversation, and the git-ignored files written since its first message. In a folder that is not a git repository, every file written since then.",
   "turn-file-times": "This folder is not a git repository, so the list holds the files written since this turn began, and the agent's edits. Deleted files and earlier versions are not known.",
   "not-a-repository": "This folder is not a git repository, so the list holds only the files the agent edited.",
   "turn-not-kept": "The files from this turn's start are no longer kept, so the list holds only the files the agent edited.",
