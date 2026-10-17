@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram, writeCompiledBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const appFile = join(host.projectDir, "src", "app.ts");
@@ -10,15 +10,13 @@ const outsideFile = join(host.root, "elsewhere", "notes.md");
 const openedLog = join(host.root, "opened.log");
 
 function fakeAgentAndOpeners() {
-  mkdirSync(host.fakeProgramsDir, { recursive: true });
-  writeFileSync(
-    join(host.fakeProgramsDir, "opencode"),
-    `#!/bin/sh\nFAKE_ACP_PROMPTS='${join(host.root, "prompts")}' exec bun '${join(import.meta.dirname, "fake-acp-agent.ts")}' "$@"\n`,
-  );
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts") });
   for (const opener of ["open", "xdg-open"]) {
     writeFileSync(join(host.fakeProgramsDir, opener), `#!/bin/sh\necho "$@" >> '${openedLog}'\n`);
+    chmodSync(join(host.fakeProgramsDir, opener), 0o755);
   }
-  for (const program of ["opencode", "open", "xdg-open"]) chmodSync(join(host.fakeProgramsDir, program), 0o755);
+  // Windows opens a file by running Invoke-Item on powershell.exe, so a stand-in powershell notes the opening there.
+  if (process.platform === "win32") writeCompiledBunProgram(host.fakeProgramsDir, "powershell", join(import.meta.dirname, "fake-powershell-opener.ts"), { MIRADOR_OPENED_LOG: openedLog });
 }
 
 test.describe.configure({ mode: "serial" });
