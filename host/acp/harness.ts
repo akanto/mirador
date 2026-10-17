@@ -254,8 +254,9 @@ export class HarnessProcess {
 
   /**
    * The command's output goes straight to the log file rather than through a pipe: a proxy it
-   * starts in the background inherits the output and would otherwise hold the pipe open. A POSIX
-   * shell opens the file itself; PowerShell gets a handle to it.
+   * starts in the background inherits the output and would otherwise hold the pipe open. Git Bash,
+   * which cannot write to a handle opened for appending, opens the file itself; every other shell
+   * gets a handle to it, so the command runs as written in the user's own shell, fish or csh too.
    */
   private async runPrelaunch() {
     if (!this.spec.prelaunch.trim()) return;
@@ -263,8 +264,9 @@ export class HarnessProcess {
     appendFileSync(logPath, "");
     const logSizeBefore = statSync(logPath).size;
     const shell = commandShell(() => process.env.SHELL || "/bin/sh", this.spec.environment);
-    const log = shell.kind === "posix" ? "ignore" : openSync(logPath, "a");
-    const command = shell.kind === "posix" ? withOutputAppendedTo(logPath, this.spec.prelaunch) : this.spec.prelaunch;
+    const isGitBash = process.platform === "win32" && shell.kind === "posix";
+    const log = isGitBash ? "ignore" : openSync(logPath, "a");
+    const command = isGitBash ? withOutputAppendedTo(logPath, this.spec.prelaunch) : this.spec.prelaunch;
     const outcome = await new Promise<string | null>((resolve) => {
       const [program, ...args] = commandLine(shell, command);
       const prelaunch = spawn(program!, args, {
