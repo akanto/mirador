@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, literally, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { scratchPath, TestHost } from "./test-host.ts";
@@ -265,4 +265,30 @@ test("Changes shows the files it listed last as soon as it opens again, and stil
     await expect(fileRow(page, "while-away.txt")).toBeVisible({ timeout: 60_000 });
   });
   await changes(page).getByRole("button", { name: "This turn" }).click();
+});
+
+test("This session lists the agent's edits and the git-ignored files written since the conversation's first message, and no older ones", async ({ page }) => {
+  const builtBefore = join(host.projectDir, "build", "old.js");
+  const builtInSession = join(host.projectDir, "build", "new.js");
+  writeFileSync(join(host.projectDir, ".gitignore"), "build/\n");
+  git("add", ".gitignore");
+  git("commit", "-qm", "ignore build output");
+  mkdirSync(dirname(builtBefore), { recursive: true });
+  writeFileSync(builtBefore, "built before the conversation\n");
+
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "changes · opencode" });
+  await startConversation(page);
+  await changes(page).getByRole("button", { name: "This session" }).click();
+  await expect(changes(page)).toContainText("The agent has not changed a file in this conversation.");
+  await expect(changes(page)).toContainText("and the git-ignored files written since its first message");
+
+  await writeFiles(page, [
+    { edit: appFile, content: withLine15("changed in this session") },
+    { shell: builtInSession, content: "built by a script in this session\n" },
+  ]);
+  await waitForTurnToEnd(page);
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["build/new.js", "src/app.ts"]);
+  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
+  await expect(fileRow(page, "build/new.js").locator(".by-agent")).toHaveCount(0);
 });
