@@ -218,11 +218,11 @@ test("a pi conversation moves to another pi profile, even one with its own PI_CO
 
   await profilePicker.selectOption({ label: OTHER_PROFILE });
   await expect(page.locator(".timeline:visible")).toContainText(`Now using the profile “${OTHER_PROFILE}”`);
-  await expect(page.getByRole("button", { name: "Model", exact: true }).filter({ visible: true })).toHaveText("e2e/Scripted");
   await sendMessage(page, "After the switch");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Echo: After the switch");
   expect(model.requests.at(-1)!.model).toBe("scripted");
+  await expect(page.getByRole("region", { name: "Statusline" }).filter({ visible: true })).toContainText("e2e/Scripted");
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "SHOW After going back", "After the switch"]));
   expect(model.systemPromptInContext()).not.toContain(OWN_APPENDED_INSTRUCTIONS);
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
@@ -265,6 +265,7 @@ test("a pi session started in a terminal can be forked and continued, and each g
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
 
   await (await terminalSession()).getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { level: 2, name: TERMINAL_MARKER, exact: true }).filter({ visible: true })).toBeVisible({ timeout: 30_000 });
   await expect(replayedMarker).toHaveCount(1, { timeout: 30_000 });
   await sendMessage(page, "In the original");
   await waitForTurnToEnd(page);
