@@ -1,5 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram, writeCompiledBunProgram } from "./test-host.ts";
@@ -68,7 +68,8 @@ test("a file path the agent writes in backticks in its reply is a link that open
     await test.step(`the path ${path} opens`, async () => {
       const before = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
       await page.locator(".markdown").getByRole("button", { name: path, exact: true }).click();
-      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").slice(before.length)).toContain(path);
+      // The host logs the path as it opens it: absolute, with this system's separators.
+      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").slice(before.length)).toContain(resolve(host.projectDir, path));
     });
   }
   await expect(page.locator(".markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
