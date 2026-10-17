@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
@@ -393,6 +393,16 @@ test("the session scope lists every file the agent changed since the conversatio
 test("a file that is gone is refused rather than handed to the system's default program", async () => {
   await startTurn();
   expect(() => changes.openFile("c1", "missing.ts")).toThrow("does not exist");
+  expect(openedByDefault).toEqual([]);
+});
+
+test("a program is refused rather than handed to the system's default program, which would run it", async () => {
+  await startTurn();
+  await write("build.sh", "#!/bin/sh\n");
+  await chmod(join(projectDir, "build.sh"), 0o755);
+  await write("tool.jar", "");
+  expect(() => changes.openFile("c1", "build.sh")).toThrow("would run as a program");
+  expect(() => changes.openFile("c1", "tool.jar")).toThrow("would run as a program");
   expect(openedByDefault).toEqual([]);
 });
 

@@ -76,3 +76,20 @@ test("a file path the agent writes in backticks in its reply is a link that open
   await expect(page.locator(".markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
 });
 
+
+test("a link to a program says Mirador does not run it, and opens nothing", async ({ page }) => {
+  const program = join(host.projectDir, "tools", "run.jar");
+  mkdirSync(join(host.projectDir, "tools"), { recursive: true });
+  writeFileSync(program, "");
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  await sendMessage(page, "SAY Run `tools/run.jar` to build it.");
+  await waitForTurnToEnd(page);
+
+  const openedBefore = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
+  await page.locator(".markdown").getByRole("button", { name: "tools/run.jar", exact: true }).click();
+  await expect(page.locator(".notices .notice", { hasText: "tools/run.jar would run as a program, so Mirador does not open it." })).toBeVisible();
+  expect(existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").toBe(openedBefore);
+});

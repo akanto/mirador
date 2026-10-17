@@ -7,6 +7,7 @@ import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
+import { isProgram } from "./system-open.ts";
 import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredPaths, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
@@ -180,6 +181,7 @@ export class Changes {
     const changedByAgent = this.agentEdits(conversationId, workspace, 0).some((edit) => edit.path === file);
     if (!inWorkspace && !changedByAgent) throw new Error(`${path} is neither a file of this workspace nor one the agent changed in this conversation.`);
     if (!existsSync(file)) throw new Error(`${path} does not exist.`);
+    if (isProgram(file)) throw new Error(`${path} would run as a program, so Mirador does not open it.`);
     this.openWithDefault(file);
   }
 
