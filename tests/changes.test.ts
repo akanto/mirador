@@ -408,10 +408,11 @@ test("a file that is gone is refused rather than handed to the system's default 
 
 test("a program is refused rather than handed to the system's default program, which would run it", async () => {
   await startTurn();
-  await write("build.sh", "#!/bin/sh\n");
-  await chmod(join(projectDir, "build.sh"), 0o755);
+  const script = process.platform === "win32" ? "build.bat" : "build.sh";
+  await write(script, process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n");
+  await chmod(join(projectDir, script), 0o755);
   await write("tool.jar", "");
-  await expect(changes.openFile("c1", "build.sh")).rejects.toThrow("would run as a program");
+  await expect(changes.openFile("c1", script)).rejects.toThrow("would run as a program");
   await expect(changes.openFile("c1", "tool.jar")).rejects.toThrow("would run as a program");
   expect(openedByDefault).toEqual([]);
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isProgram, systemOpenCommand } from "../host/system-open.ts";
@@ -38,8 +38,10 @@ test("on macOS and Linux a file is a program when it is executable or its type r
   await writeFile(script, "#!/bin/sh\n");
   await chmod(script, 0o755);
   await writeFile(notes, "notes\n");
+  // NTFS carries no executable bit, so a chmod there leaves no trace: the file is a program exactly when the disk says so.
+  const isExecutable = ((await stat(script)).mode & 0o111) !== 0;
   for (const platform of ["darwin", "linux"] as const) {
-    expect(isProgram(script, platform)).toBe(true);
+    expect(isProgram(script, platform)).toBe(isExecutable);
     expect(isProgram(notes, platform)).toBe(false);
   }
   expect(isProgram(join(directory, "Tool.app"), "darwin")).toBe(true);
