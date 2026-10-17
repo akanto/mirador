@@ -421,6 +421,34 @@ test("the session scope leaves out the git-ignored files written before the conv
   expect(session.project.map((file) => file.path)).toEqual(["build/new.js"]);
 });
 
+async function writeToolState() {
+  await mkdir(join(projectDir, ".beads", "backup"), { recursive: true });
+  await mkdir(join(projectDir, ".dolt", "noms"), { recursive: true });
+  await mkdir(join(projectDir, ".idea"), { recursive: true });
+  await write(".beads/backup/chunk.darc", "beads\n");
+  await write(".dolt/noms/manifest", "dolt\n");
+  await write(".idea/workspace.xml", "ide\n");
+}
+
+test("the session leaves out the git-ignored folders tools keep their own state in", async () => {
+  await write(".gitignore", "build\n.beads\n.dolt\n.idea\n");
+  await git(projectDir, ["commit", "-qam", "ignore tool state"]);
+  await startTurn();
+  await Bun.sleep(20);
+  await writeToolState();
+  await write("build", "built\n");
+  expect((await changes.list("c1", "session")).project.map((file) => file.path)).toEqual(["build"]);
+});
+
+test("outside a git repository, a turn leaves out the folders tools keep their own state in", async () => {
+  await leaveGit();
+  await startTurn();
+  await Bun.sleep(20);
+  await writeToolState();
+  await write("out.txt", "written\n");
+  expect((await changes.list("c1", "turn")).project.map((file) => file.path)).toEqual(["out.txt"]);
+});
+
 test("before the first message the session scope lists only the agent's edits, such as a continued session's replayed ones, and no file a script wrote", async () => {
   store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "current_mode_update", currentModeId: "default" } });
   await mkdir(join(projectDir, "build"));

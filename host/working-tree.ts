@@ -107,7 +107,8 @@ async function inLimitedParallel<T, R>(items: T[], work: (item: T) => Promise<R>
   return results;
 }
 
-const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store"]);
+const TOOL_STATE_FOLDERS = [".beads", ".dolt", ".idea"];
+const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store", ...TOOL_STATE_FOLDERS]);
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
 export const MAX_SCANNED_FILES = 50_000;
 
