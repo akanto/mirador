@@ -884,6 +884,8 @@ export function startServer(services: HostServices) {
       case "fs.complete":
         return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
       case "statusline.render":
+        // A page asks a moment after each change of the conversation, so the conversation may have been deleted meanwhile.
+        if (!store.findConversation(message.conversationId)) return;
         return statusline
           .render(message.conversationId, message.columns, message.runCommand)
           .then((render) => reply({ type: "statusline.rendered", requestId: message.requestId, statusline: render }))

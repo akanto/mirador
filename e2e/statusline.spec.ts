@@ -118,3 +118,26 @@ test("an opencode conversation keeps the built-in statusline, with its context o
   await expect(statusline.getByRole("button", { name: "Your statusline" })).toHaveCount(0);
   await expect(statusline.getByRole("button", { name: "Built-in" })).toHaveCount(0);
 });
+
+test("a status line asked for just after its conversation was deleted brings no error", async ({ page }) => {
+  await signIn(page, host);
+  const deletedConversationId = crypto.randomUUID();
+  const replies = await page.evaluate(async (conversationId) => {
+    const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
+    await new Promise((opened) => (socket.onopen = opened));
+    const received: string[] = [];
+    const answeredLater = new Promise((answered) => {
+      socket.onmessage = ({ data }) => {
+        const { type } = JSON.parse(data);
+        received.push(type);
+        if (type === "fs.completions") answered(null);
+      };
+    });
+    socket.send(JSON.stringify({ type: "statusline.render", requestId: "status", conversationId, columns: 80, runCommand: false }));
+    socket.send(JSON.stringify({ type: "fs.complete", requestId: "later", prefix: "/" }));
+    await answeredLater;
+    socket.close();
+    return received;
+  }, deletedConversationId);
+  expect(replies).not.toContain("error");
+});
