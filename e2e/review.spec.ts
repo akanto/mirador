@@ -13,6 +13,8 @@ const ghLoggedOut = join(host.root, "gh-logged-out");
 const ghThreads = join(host.root, "gh-review-threads.json");
 const ideaLog = join(host.root, "idea.log");
 const PULL_REQUEST = "https://ghe.example.com/team/shop/pull/7";
+/** A question asked before the conversation's agent has started shows in the timeline once it has, which takes a while on a loaded Windows runner. */
+const AGENT_START_TIMEOUT_MS = 120_000;
 
 const serviceBefore = `export function serve(request) {
   const user = authenticate(request);
@@ -271,9 +273,10 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await view.getByRole("button", { name: "Show the chat" }).click();
     await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
     const asked = page.locator(".message.user").last();
-    await expect(asked).toContainText('About service.ts:2-4 in the review "PR 7: fetch items for the user"');
+    await expect(asked).toContainText('About service.ts:2-4 in the review "PR 7: fetch items for the user"', { timeout: AGENT_START_TIMEOUT_MS });
     await expect(asked).toContainText("+  const user = authenticate(request) ?? anonymous();");
     await expect(asked).toContainText("change just those parts with the update_review tool");
+    await waitForTurnToEnd(page);
   });
 
   await test.step("kept and edited findings on the diff go to a pending review; the one outside the diff stays", async () => {
@@ -337,7 +340,6 @@ test("a review opens full screen; the user tours the flow, moves through changes
   });
 
   await test.step("with Settings set to open reviews beside the chat, the next review leaves the chat in view", async () => {
-    await waitForTurnToEnd(page);
     const settings = await openSettings(page, "Canvas");
     await settings.getByLabel("Open reviews").selectOption({ label: "In the canvas pane, beside the chat" });
     await settings.getByRole("button", { name: "Close" }).click();
