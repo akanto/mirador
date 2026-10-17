@@ -19,7 +19,8 @@ const CHOSEN_NAME = "Named by the user";
 let page: Page;
 const agentTitles: string[] = [];
 
-test.describe.configure({ mode: "serial" });
+// Real Claude Code answering while four suites run needs more than the config's five minutes per test.
+test.describe.configure({ mode: "serial", timeout: 480_000 });
 
 test.beforeAll(async ({ browser }) => {
   await host.start();
@@ -108,7 +109,7 @@ test("resumes the agent session and canvas tools after a host restart", async ()
 test("delivers an answer as the next message when the conversation is set to", async () => {
   await page.getByLabel("Questions").selectOption("next-message");
   await sendMessage(page, 'Call the canvas ask tool with question "Pick a size" and the options Small and Large. Then end your turn.');
-  await expect(page.locator(".ask").getByRole("radio", { name: "Large" })).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator(".ask").getByRole("radio", { name: "Large" })).toBeVisible({ timeout: 240_000 });
   await waitForTurnToEnd(page);
   await answerCanvasQuestion(page, "Large");
   await expect(page.locator(".message.user").last()).toContainText('My answer to your question "Pick a size": Large');

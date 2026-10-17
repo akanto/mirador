@@ -158,7 +158,7 @@ export async function createProfile(page: Page, name: string, environment: strin
 
 export async function answerCanvasQuestion(page: Page, label: string) {
   const ask = page.locator(".ask");
-  await ask.getByRole("radio", { name: label, exact: true }).check({ timeout: 120_000 });
+  await ask.getByRole("radio", { name: label, exact: true }).check({ timeout: 240_000 });
   await ask.getByRole("button", { name: "Submit" }).click();
 }
 
