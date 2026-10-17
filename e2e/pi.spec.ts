@@ -33,8 +33,15 @@ const canvasHeading = () => page.frameLocator(".canvas-frame.show iframe").locat
 const CANVAS_RENDERING_RULES = "Rendering environment: every page renders in a sandboxed iframe with NO network access";
 const OWN_APPENDED_INSTRUCTIONS = "Instructions from the user's own APPEND_SYSTEM.md";
 
+/** On Windows pi keeps its command line, with each argument quoted, and a pi whose cmd.exe ended is still counted. */
+function windowsPiProcesses() {
+  const query = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object CommandLine -match '--mode\\W+rpc' | ForEach-Object ProcessId";
+  return execFileSync("powershell", ["-NoProfile", "-Command", query], { encoding: "utf8" }).split(/\s+/).filter(Boolean);
+}
+
 /** Each profile has its pi-acp, which runs one pi for each session it has open; pi renames its process, so they are told by their parent. */
 function piSessionProcesses() {
+  if (process.platform === "win32") return windowsPiProcesses();
   const processes = execFileSync("ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8" })
     .trim()
     .split("\n")
@@ -111,8 +118,12 @@ test("deleting a pi conversation in the middle of a turn ends its pi process qui
 });
 
 test("deleting a pi conversation while its session opens ends the pi that session starts", async () => {
-  const slowPi = join(host.root, "slow-pi");
-  writeFileSync(slowPi, `#!/bin/sh\nsleep ${SLOW_PI_START_SECONDS}\nexec '${piProgram()}' "$@"\n`, { mode: 0o755 });
+  const slowPi = join(host.root, process.platform === "win32" ? "slow-pi.cmd" : "slow-pi");
+  const slowPiScript =
+    process.platform === "win32"
+      ? `@echo off\r\npowershell -NoProfile -Command "Start-Sleep -Seconds ${SLOW_PI_START_SECONDS}"\r\ncall "${piProgram()}" %*\r\n`
+      : `#!/bin/sh\nsleep ${SLOW_PI_START_SECONDS}\nexec '${piProgram()}' "$@"\n`;
+  writeFileSync(slowPi, slowPiScript, { mode: 0o755 });
   const dialog = await createProfile(page, SLOW_PROFILE, `${scriptedPiEnvironment(model, host.root)}\nPI_ACP_PI_COMMAND=${slowPi}`, "", "pi");
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${SLOW_PROFILE} · pi` });
