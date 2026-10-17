@@ -115,6 +115,19 @@ export async function sendMessage(page: Page, text: string) {
   await expect(taken).toHaveCount(takenBefore + 1);
 }
 
+/** The user messages and turn ends the page hears about, in the order they come. */
+export function eventsInOrderOn(page: Page) {
+  const events: string[] = [];
+  page.on("websocket", (socket) =>
+    socket.on("framereceived", ({ payload }) => {
+      const event = JSON.parse(String(payload)).event?.event;
+      if (event?.type === "turn-end") events.push("turn-end");
+      if (event?.type === "user-message") events.push(event.text);
+    }),
+  );
+  return events;
+}
+
 export async function waitForTurnToEnd(page: Page) {
   await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 180_000 });
 }

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, answerCanvasQuestion, createProfile, lastAgentMessage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, answerCanvasQuestion, createProfile, eventsInOrderOn, lastAgentMessage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, forgetPiAcpSessionsUnder, piProgram, scriptedPiEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -11,6 +11,7 @@ const model = new ScriptedModel();
 const PROFILE = "scripted pi";
 const SLOW_PROFILE = "slow scripted pi";
 const SLOW_PI_START_SECONDS = 3;
+const STEERED = "Also say which day it is";
 let page: Page;
 let firstConversationId: string;
 
@@ -149,6 +150,27 @@ test("after a host restart, a pi conversation goes on in its own session with th
   await waitForTurnToEnd(page);
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "Still there?", "SHOW After restart"]));
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+});
+
+test("a message sent with Enter while pi runs a command joins its turn once the command finishes", async () => {
+  const eventsInOrder = eventsInOrderOn(page);
+  await page.reload();
+  await expect(page.locator(".chat-header:visible .harness")).toHaveText("pi");
+  await sendMessage(page, "RUN sleep 5; echo slept");
+  await expect(page.locator(".timeline:visible").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 60_000 });
+  model.hold();
+
+  const composer = page.locator(".composer:visible textarea");
+  await composer.fill(STEERED);
+  await composer.press("Enter");
+  await expect(page.locator(".queued-delivery")).toHaveText(["joins the turn"]);
+  await expect(page.locator(".timeline:visible .message.user").last()).toHaveText(STEERED, { timeout: 60_000 });
+  await expect(page.locator(".queue")).toHaveCount(0);
+  model.answerHeld();
+
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText(`Echo: ${STEERED}`);
+  expect(eventsInOrder).toEqual(["RUN sleep 5; echo slept", STEERED, "turn-end"]);
 });
 
 test("Log in opens pi in a terminal tab, where /login offers pi's ways to sign in", async () => {

@@ -47,6 +47,7 @@ export class ScriptedModel {
   /** While set, every request for a reply gets this error response instead, as from a provider that is down. */
   failure: { status: number; body: object } | null = null;
   private server?: Server;
+  private heldReplies: (() => void)[] | null = null;
 
   async start() {
     this.server = createServer((request, response) => {
@@ -55,6 +56,7 @@ export class ScriptedModel {
       request.on("end", () => {
         const body = JSON.parse(Buffer.concat(chunks).toString() || "{}") as ChatRequest;
         this.requests.push(body);
+        if (this.heldReplies && (body.tools ?? []).length > 0) return void this.heldReplies.push(() => this.reply(body, response));
         this.reply(body, response);
       });
     });
@@ -67,6 +69,18 @@ export class ScriptedModel {
 
   stop() {
     this.server?.close();
+  }
+
+  /** Keeps every reply from now on waiting, so the agent stays on its model call until `answerHeld`. */
+  hold() {
+    this.heldReplies ??= [];
+  }
+
+  /** Sends the replies held since `hold`, and answers at once again. */
+  answerHeld() {
+    const held = this.heldReplies ?? [];
+    this.heldReplies = null;
+    held.forEach((answer) => answer());
   }
 
   /** Every text the agent sent the model, to check what context a conversation carries. */

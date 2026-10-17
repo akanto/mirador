@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, lastAgentMessage, openSettings, pasteImage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { expect, test } from "@playwright/test";
+import { addWorkspace, eventsInOrderOn, lastAgentMessage, openSettings, pasteImage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -13,19 +13,6 @@ test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
 });
-
-/** The user messages and turn ends the page hears about, in the order they come. */
-function eventsInOrderOn(page: Page) {
-  const events: string[] = [];
-  page.on("websocket", (socket) =>
-    socket.on("framereceived", ({ payload }) => {
-      const event = JSON.parse(String(payload)).event?.event;
-      if (event?.type === "turn-end") events.push("turn-end");
-      if (event?.type === "user-message") events.push(event.text);
-    }),
-  );
-  return events;
-}
 
 test("a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end", async ({ page }) => {
   const eventsInOrder = eventsInOrderOn(page);

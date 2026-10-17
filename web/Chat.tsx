@@ -993,7 +993,7 @@ function earlierEntriesLabel(firstLoaded: number, earlier: EarlierHistory) {
 const queuedMessagesGoOut: Record<HarnessId, string> = {
   claude: "each joins the turn when the agent's tools finish, or waits for the turn to end, as tagged",
   opencode: "sent when the agent finishes its turn",
-  pi: "sent when the agent finishes its turn",
+  pi: "each joins the turn when the agent's tools finish, or waits for the turn to end, as tagged",
 };
 
 function DeliveryTag({ conversationId, message }: { conversationId: string; message: QueuedMessage }) {
