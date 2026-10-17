@@ -28,10 +28,17 @@
     "bead": "vcs-c337"
   },
   {
+    "file": "steer-then-stop.spec.ts",
+    "title": "a message that joined the turn goes out again after Stop if the agent had not answered it yet",
+    "failure": "locator('.timeline:visible .message.agent').filter({ hasText: 'Also say which day it is' })",
+    "reason": "The steered message is answered twice: the agent answered it within the turn that Stop cancelled, so the going-out-again after Stop added a second answer, the count reads 2 where the test wants 1. Survey 22 (7e2c7b1) first held this on the runner, both tries the same, the vcs-6dzt shape the Windows VM has shown.",
+    "bead": "vcs-6dzt"
+  },
+  {
     "file": "user-commands.spec.ts",
     "title": "! runs a command in the workspace folder, and its output goes to the agent with the next message unless dropped",
-    "failure": "Locator: locator('.user-command').filter({ hasText: 'sleep 30; echo never' }).last().locator('.shell-exit') Expected: \"stopped\"",
-    "reason": "Stop misses Git Bash children that carry a stale parent pid, so the stopped command's row never records the stop. It fails every time on a Windows VM, and on the runner it failed in survey 10 and went over in survey 11.",
+    "failure": "locator('.user-command').filter({ hasText: 'sleep 30; echo never' })",
+    "reason": "Stop misses Git Bash children that carry a stale parent pid, so the stopped command's row never settles: one shape leaves .shell-exit never reading \"stopped\", since survey 22 the tries instead lose .shell-quiet's \"(no output)\". It fails every time on a Windows VM, and on the runner it failed in survey 10 and went over in survey 11.",
     "bead": "vcs-ikkx"
   }
 ]
