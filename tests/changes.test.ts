@@ -449,6 +449,19 @@ test("outside a git repository, a turn leaves out the folders tools keep their o
   expect((await changes.list("c1", "turn")).project.map((file) => file.path)).toEqual(["out.txt"]);
 });
 
+test("the session lists the git-ignored files in ignored folders and by name, and none of an untracked folder's or node_modules'", async () => {
+  await write(".gitignore", "build/\n*.log\nnode_modules/\n");
+  await git(projectDir, ["commit", "-qam", "ignore more"]);
+  await startTurn();
+  await Bun.sleep(20);
+  await Promise.all(["build/deep", "src", "untracked", "node_modules/pkg"].map((folder) => mkdir(join(projectDir, folder), { recursive: true })));
+  await write("build/deep/out.js", "built\n");
+  await write("src/debug.log", "logged\n");
+  await write("untracked/new.txt", "new\n");
+  await write("node_modules/pkg/index.js", "installed\n");
+  expect((await changes.list("c1", "session")).project.map((file) => file.path)).toEqual(["build/deep/out.js", "src/debug.log"]);
+});
+
 test("before the first message the session scope lists only the agent's edits, such as a continued session's replayed ones, and no file a script wrote", async () => {
   store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "current_mode_update", currentModeId: "default" } });
   await mkdir(join(projectDir, "build"));
