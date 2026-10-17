@@ -10,6 +10,7 @@ const host = new TestHost();
 const model = new ScriptedModel();
 const PROFILE = "scripted pi";
 const SLOW_PROFILE = "slow scripted pi";
+const OTHER_PROFILE = "other scripted pi";
 const SLOW_PI_START_SECONDS = 3;
 const STEERED = "Also say which day it is";
 let page: Page;
@@ -194,6 +195,24 @@ test("↑ after stopping a pi turn edits its message, and Enter replaces the tur
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "Still there?", STEERED, "SHOW After going back"]));
   expect(model.userMessagesInContext()).not.toContain("RUN sleep 30");
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+});
+
+test("a pi conversation moves to another pi profile, even one with its own PI_CODING_AGENT_DIR, and goes on in the same session", async () => {
+  const dialog = await createProfile(page, OTHER_PROFILE, scriptedPiEnvironment(model, join(host.root, "other")), "", "pi");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  const profilePicker = page.getByLabel("Profile", { exact: true }).filter({ visible: true });
+  await expect(profilePicker.locator("option:checked")).toHaveText(PROFILE);
+
+  await profilePicker.selectOption({ label: OTHER_PROFILE });
+  await expect(page.locator(".timeline:visible")).toContainText(`Now using the profile “${OTHER_PROFILE}”`);
+  await sendMessage(page, "After the switch");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Echo: After the switch");
+  expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "SHOW After going back", "After the switch"]));
+  expect(model.systemPromptInContext()).not.toContain(OWN_APPENDED_INSTRUCTIONS);
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+  await expect(page.locator(".timeline:visible")).not.toContainText("Could not resume");
+  await expect.poll(piSessionProcesses).toHaveLength(1);
 });
 
 test("a pi conversation from before pi marked its replies can't be taken back past its first turn", async () => {
