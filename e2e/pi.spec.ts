@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, answerCanvasQuestion, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, answerCanvasQuestion, createProfile, lastAgentMessage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, forgetPiAcpSessionsUnder, piProgram, scriptedPiEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -12,6 +12,7 @@ const PROFILE = "scripted pi";
 const SLOW_PROFILE = "slow scripted pi";
 const SLOW_PI_START_SECONDS = 3;
 let page: Page;
+let firstConversationId: string;
 
 test.describe.configure({ mode: "serial" });
 test.skip(piProgram() === null, "pi is not installed");
@@ -58,7 +59,7 @@ test("a pi conversation replies, runs commands and uses the canvas tools", async
   writeFileSync(join(host.root, "pi-agent", "APPEND_SYSTEM.md"), OWN_APPENDED_INSTRUCTIONS);
   await dialog.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · pi` });
-  await startConversation(page);
+  firstConversationId = await startConversation(page);
   await expect(page.locator(".chat-header:visible .harness")).toHaveText("pi");
 
   await sendMessage(page, "Hello pi");
@@ -148,4 +149,20 @@ test("after a host restart, a pi conversation goes on in its own session with th
   await waitForTurnToEnd(page);
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "Still there?", "SHOW After restart"]));
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+});
+
+test("Log in opens pi in a terminal tab, where /login offers pi's ways to sign in", async () => {
+  await host.stop();
+  const refusal = { type: "error", message: "Authentication required", authRequired: true };
+  execFileSync("bun", [join(import.meta.dirname, "seed-events.ts"), join(host.dataDir, "state.sqlite"), firstConversationId, JSON.stringify([refusal])]);
+  await host.start();
+  await reloadFromRestartedHost(page);
+
+  await page.locator(".timeline:visible .sign-in-line").getByRole("button", { name: "Log in" }).click();
+  const terminalScreen = page.locator(".terminal-pane .terminal-splits.shown .xterm-rows");
+  await expect(terminalScreen).toContainText("/ commands", { timeout: 30_000 });
+  await page.locator(".terminal-pane .terminal-splits.shown .xterm").click();
+  await page.keyboard.type("/login");
+  await page.keyboard.press("Enter");
+  await expect(terminalScreen).toContainText("Select authentication method:");
 });
