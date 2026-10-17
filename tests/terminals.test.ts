@@ -7,7 +7,7 @@ import type { ServerMessage } from "../shared/protocol.ts";
 import { findPowerShell, programName } from "../host/command-shell.ts";
 import { Hub, type BrowserSocket } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
-import { RESTARTED_NOTE, TerminalService } from "../host/terminals.ts";
+import { readTitle, RESTARTED_NOTE, TerminalService } from "../host/terminals.ts";
 
 let workspaceDir: string;
 let store: Store;
@@ -305,6 +305,30 @@ test("a runaway title is cut to 200 characters", async () => {
   typing(terminalId, shell.settingTitle("x".repeat(500)));
   const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[0]?.title?.startsWith("x") === true);
   expect(tab?.terminals[0]?.title).toBe("x".repeat(200));
+});
+
+test("a title sequence a chunk cut in two gives its title to the chunk that ends it, wherever the cut fell", () => {
+  const whole = "colour \x1b[31mred\x1b[0m \x1b]0;my-title\x07 then more \x1b]2;other\x1b\\";
+  for (let cut = 0; cut <= whole.length; cut++) {
+    const first = readTitle("", whole.slice(0, cut));
+    const second = readTitle(first.carry, whole.slice(cut));
+    expect(second.title ?? first.title).toBe("other");
+  }
+});
+
+test("the start of no title's sequence is not carried, and no runaway one is carried past its length", () => {
+  expect(readTitle("", "colour \x1b[31m").carry).toBe("");
+  expect(readTitle("", `\x1b]0;${"x".repeat(5_000)}`).carry).toBe("");
+  expect(readTitle("", `\x1b]0;${"x".repeat(5_000)}\x07`).title).toBe("x".repeat(5_000));
+});
+
+test("a title a program writes in two pieces arrives as one title", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  typing(terminalId, shell.runningBun("process.stdout.write('\\x1b]0;half-'); setTimeout(() => process.stdout.write('title\\x07'), 300)"));
+  const [tab] = await tabsOnceSettled(browser.received, ([only]) => only?.terminals[0]?.title === "half-title");
+  expect(tab?.terminals[0]?.title).toBe("half-title");
 });
 
 test("a terminal splits beside or below itself, and the others close up when one exits", async () => {

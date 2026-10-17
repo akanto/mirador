@@ -54,6 +54,7 @@ interface Shell {
   scrollback: string[];
   scrollbackLength: number;
   title: string | null;
+  titleCarry: string;
   program: string;
   programKey: string | undefined;
   saved: boolean;
@@ -92,7 +93,19 @@ const terminalIdsOf = (tab: Tab) => (tab.layout ? terminalsIn(tab.layout) : []);
 
 const dimension = (value: number) => Math.min(Math.max(1, Math.floor(value) || 1), MAX_DIMENSION);
 
-const lastTitleIn = (text: string) => [...text.matchAll(titleSequence)].at(-1)?.[1];
+/** The start of a title sequence a chunk cut in two, at the text's end; the chunk after it brings the rest.
+ * An escape that cannot grow into a title — a colour, a cursor move — is no title's start, so nothing of it is carried. */
+const unfinishedTitle = /\x1b(?:\])?(?:[02](?:;[^\x07\x1b]*)?)?(?:\x1b)?$/;
+const MAX_UNFINISHED_TITLE = 4096;
+
+/** The title the PTY output sets, with the start of a sequence it cut short kept as the carry for the next chunk. */
+export function readTitle(carry: string, chunk: string): { title: string | undefined; carry: string } {
+  const reading = carry + chunk;
+  const titles = [...reading.matchAll(titleSequence)];
+  const latest = titles.at(-1);
+  const open = unfinishedTitle.exec(reading.slice(latest ? latest.index + latest[0].length : 0))?.[0] ?? "";
+  return { title: latest?.[1], carry: open.length <= MAX_UNFINISHED_TITLE ? open : "" };
+}
 
 const isRunning = (child: Subprocess) => child.exitCode === null && child.signalCode === null;
 
@@ -339,6 +352,7 @@ export class TerminalService {
       scrollback: restarting ? linesOf(restarting.scrollback) : [],
       scrollbackLength: restarting?.scrollback.length ?? 0,
       title: null,
+      titleCarry: "",
       program: command[0]!,
       programKey: program?.key,
       saved: tab.saved,
@@ -368,7 +382,9 @@ export class TerminalService {
     }
     if (shell.saved && !this.stopping) this.scrollbackChanged(shell);
     this.publish(shell.conversationId, { type: "terminal.output", terminalId: shell.id, data: text });
-    this.retitle(shell, lastTitleIn(text));
+    const read = readTitle(shell.titleCarry, text);
+    shell.titleCarry = read.carry;
+    this.retitle(shell, read.title);
   }
 
   private logProgramOutputTiming(shell: Shell, text: string) {
