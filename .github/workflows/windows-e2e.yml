@@ -86,7 +86,9 @@ jobs:
           $started = Get-Date
           # A loaded runner makes some specs fail once and pass when tried again. One try again tells those apart from a spec that
           # fails every time: the Verdict lists a spec that passed on its retry, but only a spec that fails twice holds the release.
-          cmd /c "bunx playwright test --global-timeout=6000000 --retries=1 --reporter=list,json > survey-output.txt 2>&1"
+          # A release asks for two tries again, so a spec that is only flaky on the shared runner (vcs-pgm.49) has to miss three
+          # times before it holds one. The ten specs with a stated reason gain a try too, about six minutes on a 36-minute suite.
+          cmd /c "bunx playwright test --global-timeout=6000000 --retries=${{ github.event_name == 'workflow_call' && 2 || 1 }} --reporter=list,json > survey-output.txt 2>&1"
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
           if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
