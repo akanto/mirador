@@ -247,6 +247,8 @@ const closeOnEnterInPowerShell = "Write-Host -NoNewline 'Press Enter to close th
 /** As followProcessScript, but Windows does not tell which file a process's output goes to, so there is none to follow. */
 function followProcessInPowerShell(pid: number) {
   return [
+    // The command line costs a WMI query that a loaded machine can make wait; say the tab is alive before asking for it.
+    `Write-Host 'Following process ${pid}...'`,
     `$process = Get-Process -Id ${pid} -ErrorAction SilentlyContinue`,
     `if (-not $process) { Write-Host 'Process ${pid} is not running.'; ${closeOnEnterInPowerShell}; exit 1 }`,
     `Write-Host "Command: $((Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine)"`,

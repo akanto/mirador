@@ -356,11 +356,12 @@ describe.if(process.platform === "win32")("job waits on Windows", () => {
     const bin = dockerBin();
     const job = Bun.spawn([process.execPath, "-e", "setTimeout(() => {}, 6000)"]);
     const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: null }, bin);
-    expect(output).toMatch(/^Command: .*setTimeout\(\(\) => \{\}, 6000\)/);
+    expect(output).toContain(`Following process ${job.pid}...\nCommand: `);
+    expect(output).toMatch(/^Command: .*setTimeout\(\(\) => \{\}, 6000\)/m);
     expect(output).toMatch(/\nRunning for: \d\d:\d\d:\d\d\n/);
     expect(output).toContain("On Windows this tab cannot find the file its output goes to");
     expect(output).toEndWith(`\nProcess ${job.pid} ended.\nPress Enter to close this tab.`);
-    expect(await follow({ job: { kind: "process", pid: job.pid }, sshHost: null }, bin)).toBe(`Process ${job.pid} is not running.\nPress Enter to close this tab.`);
+    expect(await follow({ job: { kind: "process", pid: job.pid }, sshHost: null }, bin)).toEndWith(`Process ${job.pid} is not running.\nPress Enter to close this tab.`);
   }, 20_000);
 });
 
