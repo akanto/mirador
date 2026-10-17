@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, withRevertNotes } from "../shared/reverts.ts";
+import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, whyNoRewindTo, withRevertNotes } from "../shared/reverts.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>
   ({ type: "user-message", text, ...extra }) as ConversationEvent;
@@ -92,6 +92,18 @@ test("a rewind goes back to the last thing the agent said before the turn", () =
 test("a rewind to the first turn has nothing of the agent's to go back to", () => {
   expect(rewindPointBefore(stored(userMessage("first"), said("msg_1")), 1)).toBeNull();
   expect(rewindPointBefore(stored(said(), userMessage("first")), 2)).toBeNull();
+});
+
+test("an agent that can go back to a marked reply can take a conversation back there; one that can't is refused", () => {
+  const events = stored(userMessage("first"), said("msg_1"), userMessage("second"));
+  expect(whyNoRewindTo("claude", events, 3)).toBeUndefined();
+  expect(whyNoRewindTo("opencode", events, 3)).toContain("only Claude Code");
+});
+
+test("with no reply marked, only a first turn can be taken back, by starting the agent afresh", () => {
+  expect(whyNoRewindTo("opencode", stored(said(), userMessage("first"), said()), 2)).toBeUndefined();
+  const unmarkedTurns = stored(userMessage("first"), said(), userMessage("second"), said());
+  for (const harness of ["claude", "opencode", "pi"] as const) expect(whyNoRewindTo(harness, unmarkedTurns, 3)).toContain("no mark");
 });
 
 test("turns taken elsewhere pick up after the agent's latest message in the conversation", () => {

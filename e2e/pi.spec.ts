@@ -173,6 +173,19 @@ test("a message sent with Enter while pi runs a command joins its turn once the 
   expect(eventsInOrder).toEqual(["RUN sleep 5; echo slept", STEERED, "turn-end"]);
 });
 
+test("↑ after stopping a pi turn gives its message back without replacing it, since pi's earlier replies carry no mark to go back to", async () => {
+  await sendMessage(page, "RUN sleep 30");
+  await expect(page.locator(".timeline:visible").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 60_000 });
+  const composer = page.locator(".composer:visible textarea");
+  await composer.press("Escape");
+  await expect(page.locator(".timeline:visible").getByText("Turn ended: cancelled")).toBeVisible({ timeout: 30_000 });
+  await waitForTurnToEnd(page);
+
+  await composer.press("ArrowUp");
+  await expect(composer).toHaveValue("RUN sleep 30");
+  await expect(page.locator(".editing-stopped")).toHaveCount(0);
+});
+
 test("Log in opens pi in a terminal tab, where /login offers pi's ways to sign in", async () => {
   await host.stop();
   const refusal = { type: "error", message: "Authentication required", authRequired: true };

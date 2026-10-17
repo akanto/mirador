@@ -1,4 +1,4 @@
-import type { ConversationEvent, StoredEvent } from "./model.ts";
+import { harnessRewinds, type ConversationEvent, type HarnessId, type StoredEvent } from "./model.ts";
 import { returnedSteerSeqs } from "./steered-messages.ts";
 import { cutWithEllipsis } from "./text-cut.ts";
 
@@ -57,6 +57,18 @@ export function rewindPointBefore(events: StoredEvent[], seq: number): string | 
       : [],
   );
   return said.at(-1) ?? null;
+}
+
+const ONLY_CLAUDE_CODE_REWINDS = "Taking a conversation back needs the agent to leave part of its own session behind, which only Claude Code can do here.";
+const NO_MARK_TO_GO_BACK_TO = "The agent's replies before this turn carry no mark of where its session should go back to, so it can't be taken back there.";
+
+/**
+ * Why the agent's session can't go back to before the turn at `seq`, if it can't. With nothing marked to go back to, a
+ * fresh session stands in only for a first turn: after earlier turns it would silently forget them.
+ */
+export function whyNoRewindTo(harness: HarnessId, events: StoredEvent[], seq: number): string | undefined {
+  if (rewindPointBefore(events, seq) === null) return events.some(({ seq: at, event }) => at < seq && event.type === "user-message") ? NO_MARK_TO_GO_BACK_TO : undefined;
+  return harnessRewinds[harness] ? undefined : ONLY_CLAUDE_CODE_REWINDS;
 }
 
 /** The agent's latest message in the conversation, where turns taken elsewhere since pick up. */

@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from "node:util";
 import type * as acp from "@agentclientprotocol/sdk";
 import {
   harnessLabels,
-  harnessRewinds,
   type Activity,
   type AdoptMode,
   type AskMode,
@@ -47,7 +46,7 @@ import { hasBegun, updatesTheAgentRecords } from "../shared/conversation-begun.t
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { withChecklistNote, type ChecklistNote } from "./canvas/checklist.ts";
-import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, withRevertNotes, type Revert } from "../shared/reverts.ts";
+import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, whyNoRewindTo, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { returnedSteerSeqs } from "../shared/steered-messages.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
@@ -82,7 +81,6 @@ const NO_FILES_KEPT = "Mirador kept no files for that turn, so there is nothing 
 const AGENT_IS_WORKING = "The agent is still working. Stop its turn before going back.";
 const NOT_A_TURN = "A conversation can be taken back only to one of your own messages.";
 const AGENT_CANNOT_FORK = "The agent cannot be sent back to an earlier point in its session.";
-const ONLY_CLAUDE_CODE_REWINDS = "Taking a conversation back needs the agent to leave part of its own session behind, which only Claude Code can do here.";
 const ONLY_GIT_REPOSITORIES = "Mirador keeps a turn's files only in a workspace that is a git repository.";
 const FILES_NO_LONGER_KEPT = `Mirador no longer keeps the files of that turn: it keeps those of a workspace's newest ${SNAPSHOTS_KEPT} turns.`;
 const TURN_STOP_TIMEOUT_MS = 10_000;
@@ -666,9 +664,7 @@ export class ConversationService {
   private rewindProblem(conversationId: string, seq: number) {
     if (this.runtime(conversationId).running) return AGENT_IS_WORKING;
     if (this.store.findEvent(conversationId, seq)?.event.type !== "user-message") return NOT_A_TURN;
-    const point = rewindPointBefore(this.store.listEvents(conversationId), seq);
-    if (!point) return undefined; // The agent holds nothing of what came before, so a fresh session says the same.
-    return harnessRewinds[this.get(conversationId).harness] ? undefined : ONLY_CLAUDE_CODE_REWINDS;
+    return whyNoRewindTo(this.get(conversationId).harness, this.store.listEvents(conversationId), seq);
   }
 
   private checkpointAt(conversationId: string, seq: number) {

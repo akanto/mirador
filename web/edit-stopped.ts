@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { harnessRewinds, type Conversation, type StoredEvent } from "../shared/model.ts";
 import { stoppedMessage, type PromptHistoryEntry } from "../shared/prompt-history.ts";
-import { rewindPointBefore } from "../shared/reverts.ts";
+import { whyNoRewindTo } from "../shared/reverts.ts";
 import { rewindTo } from "./Revert.tsx";
 
 interface Editing {
@@ -19,7 +19,7 @@ export function useStoppedMessageEdit({ conversation, events, holdsEarliest, bus
   const [editing, setEditing] = useState<Editing | null>(null);
   const [goingBack, setGoingBack] = useState(false);
   const stopped = busy ? null : stoppedMessage(events);
-  const agentGoesBackToIt = stopped !== null && (harnessRewinds[conversation.harness] || (holdsEarliest && rewindPointBefore(events, stopped.seq) === null));
+  const agentGoesBackToIt = stopped !== null && (harnessRewinds[conversation.harness] || holdsEarliest) && !whyNoRewindTo(conversation.harness, events, stopped.seq);
   const replaceable = agentGoesBackToIt ? stopped : null;
   const shown = editing?.conversationId === conversation.id && editing.seq === replaceable?.seq ? editing : null;
 
