@@ -92,3 +92,29 @@ test("a reset further off than a timer can wait leaves continuing to you, rather
   await page.waitForTimeout(3_000);
   await expect(page.locator(".timeline:visible .message.user")).toHaveText(["far-off reset"]);
 });
+
+test("a limit the same turn's context compaction ran into waits for the reset too, though the compaction loses its rate_limit tag", async ({ page }) => {
+  test.setTimeout(300_000);
+  api.limited = false;
+  api.resetsAt = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
+  api.contextTokens = 960_000;
+  await signIn(page, host);
+  await page.getByRole("navigation").getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · Claude Code` });
+  await startConversation(page);
+
+  await test.step("a turn whose answer reports the context past the auto-compact threshold ends normally", async () => {
+    await sendMessage(page, "fill the context");
+    await expect(lastAgentMessage(page)).toHaveText("Answered: fill the context", { timeout: 120_000 });
+    await waitForTurnToEnd(page);
+  });
+
+  await test.step("the next turn compacts the context first, and the limit after it shows as a usage limit, not an error", async () => {
+    api.refuseAfterCompaction = "task after the compaction";
+    await sendMessage(page, "task after the compaction");
+    await expect(page.locator(".timeline:visible")).toContainText("Compact conversation", { timeout: 180_000 });
+    await expect(page.locator(".timeline:visible .usage-limit-line")).toContainText("You've hit your session limit · resets", { timeout: 180_000 });
+    await expect(page.locator(".timeline:visible .error-line")).toHaveCount(0);
+    await expect(notice(page).filter({ visible: true })).toContainText("the agent continues by itself at");
+    await waitForTurnToEnd(page);
+  });
+});

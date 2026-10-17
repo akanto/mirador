@@ -64,12 +64,34 @@ export function usageLimitResetIn(text: string, now = Date.now()): number | null
   return todayAt > now ? todayAt : instantOf(timeZone, today.year, today.month, today.day + 1, hour, minute);
 }
 
-/** Claude Code's error for a turn its usage limit stopped carries this kind. */
-export const isUsageLimitError = (error: unknown) =>
-  typeof error === "object" && error !== null && (error as { data?: { errorKind?: unknown } }).data?.errorKind === "rate_limit";
+/** The opening words Claude Code's own words for every usage limit begin with, as its SDK exports them for exactly this matching. */
+const USAGE_LIMIT_OPENINGS = [
+  "You've hit your",
+  "You've reached your",
+  "You're out of usage credits",
+  "Your org is out of usage",
+  "Your seat type doesn't include usage",
+  "Your usage allocation has been disabled by your admin",
+  "Your group's usage limit is set to $0",
+  "Fable 5 requires usage credits",
+  "You're out of extra usage",
+  "Your seat type doesn't include extra usage",
+];
+
+const bannerOf = (error: unknown) => String((error as { message?: unknown }).message ?? "").replace(/^Internal error(:\s*|$)/, "");
+
+/**
+ * Claude Code's error for a turn its usage limit stopped carries the rate_limit kind. claude-agent-acp loses that tag
+ * when the turn also compacted its context — it drops the frame carrying it after compaction's output went out — and
+ * then only Claude Code's own words are left to go by.
+ */
+export const isUsageLimitError = (error: unknown) => {
+  const kind = typeof error === "object" && error !== null ? (error as { data?: { errorKind?: unknown } }).data?.errorKind : undefined;
+  if (kind !== undefined) return kind === "rate_limit";
+  return USAGE_LIMIT_OPENINGS.some((opening) => bannerOf(error).startsWith(opening));
+};
 
 /** Claude Code's own words for the limit, e.g. "You've hit your session limit · resets 6:20pm (Europe/Budapest)". */
 export function usageLimitMessage(error: unknown) {
-  const message = String((error as { message?: unknown }).message ?? "").replace(/^Internal error(:\s*|$)/, "");
-  return message || "Claude's usage limit is reached.";
+  return bannerOf(error) || "Claude's usage limit is reached.";
 }

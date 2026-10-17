@@ -35,4 +35,14 @@ describe("a usage limit's reset", () => {
     expect(isUsageLimitError({ message: "Internal error", data: { errorKind: "overloaded" } })).toBe(false);
     expect(isUsageLimitError(new Error("rate_limit"))).toBe(false);
   });
+
+  test("is still one when claude-agent-acp drops the rate_limit tag, which it does when the turn also compacted", () => {
+    const untagged = { message: "Internal error: You've hit your session limit · resets 11:20pm (Europe/Budapest)" };
+    expect(isUsageLimitError(untagged)).toBe(true);
+    expect(usageLimitMessage(untagged)).toBe("You've hit your session limit · resets 11:20pm (Europe/Budapest)");
+    expect(isUsageLimitError({ message: "Internal error: You're out of usage credits. Run /usage-credits to buy more." })).toBe(true);
+    expect(isUsageLimitError({ message: "Internal error: Upstream error: 502 Bad Gateway" })).toBe(false);
+    expect(isUsageLimitError({ message: "Internal error" })).toBe(false);
+    expect(isUsageLimitError({ message: "Internal error: You've hit your session limit", data: { errorKind: "overloaded" } })).toBe(false);
+  });
 });

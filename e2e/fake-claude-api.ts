@@ -46,11 +46,17 @@ const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
  * runs `true` in Bash, so the turn Claude Code started on its own asks for one more reply after it. A message starting
  * with `ADVISOR AFTER BASH ` runs the rest in Bash and calls the advisor after it in the same reply, which the real
  * API never runs, so that call gets no result. A message starting with `SUBAGENT ` has a subagent do the rest, on the
- * model Claude Code picks for it.
+ * model Claude Code picks for it. While `contextTokens` is set, answers report it as their input usage, so Claude Code
+ * compacts its context on the next request; a message equal to `refuseAfterCompaction` is answered with a Bash call so
+ * the turn keeps going after the compaction, and every request after it runs into the usage limit.
  */
 export class FakeClaudeApi {
   limited = true;
   failing = false;
+  /** When set, every answer reports this many input tokens, so Claude Code thinks its context grew this big and compacts it. */
+  contextTokens: number | null = null;
+  /** Answers this message with a Bash call that keeps the same turn going, and refuses every request after it with the usage limit. */
+  refuseAfterCompaction: string | null = null;
   /** When the limit resets, in epoch seconds; Claude Code shows it as "resets 6:20pm (Europe/Budapest)". */
   resetsAt = Math.floor(Date.now() / 1000) + 3 * 60 * 60;
   /** The plan's usage limits each answer reports, as shares of 0 to 1, and when they start over, in epoch seconds. */
@@ -133,6 +139,13 @@ export class FakeClaudeApi {
       response.writeHead(429, { "content-type": "application/json", ...this.limitHeaders() });
       return response.end(JSON.stringify({ type: "error", error: { type: "rate_limit_error", message: "Rate limited" } }));
     }
+    if (this.refuseAfterCompaction === typed) {
+      this.refuseAfterCompaction = null;
+      this.limited = true;
+      this.contextTokens = null;
+      this.answered.push(typed);
+      return this.send(body, response, [this.bashCall("true", false)]);
+    }
     if (offersBash(body) && answersEndedBackgroundCommand(body)) return void this.heldNotificationReplies.push(() => this.send(body, response, [this.bashCall("true", false)]));
     this.answered.push(typed);
     if (offersAgent(body) && typed.startsWith(SUBAGENT)) return this.send(body, response, [this.agentCall(typed.slice(SUBAGENT.length))]);
@@ -159,7 +172,7 @@ export class FakeClaudeApi {
 
   private send(body: MessagesRequest, response: ServerResponse, blocks: Answer[]) {
     const id = `msg_fake_${++this.replies}`;
-    const usage = { input_tokens: 10, output_tokens: 5 };
+    const usage = { input_tokens: this.contextTokens ?? 10, output_tokens: 5 };
     const stopReason = blocks.some(({ type }) => type === "tool_use") ? "tool_use" : "end_turn";
     if (!body.stream) {
       response.writeHead(200, { "content-type": "application/json", ...this.planUsageHeaders() });

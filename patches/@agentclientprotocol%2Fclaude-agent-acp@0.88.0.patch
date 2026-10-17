@@ -1,8 +1,27 @@
 diff --git a/dist/acp-agent.js b/dist/acp-agent.js
-index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..541aa77f473be60671edef8d0fe97fcd96ce805d 100644
+index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..814f62eb8352285c4d300b5416226f85d48cd523 100644
 --- a/dist/acp-agent.js
 +++ b/dist/acp-agent.js
-@@ -8424,8 +8424,9 @@ function recordDispatchedToolUses(session, content) {
+@@ -4985,6 +4985,18 @@ export class ClaudeAcpAgent {
+                             message.parent_tool_use_id === null &&
+                             message.message.model === "<synthetic>" &&
+                             compaction.hasDeliveredOutput) {
++                            // The frame is suppressed from the client, but a usage limit that
++                            // also compacted must still be recorded: the `result` handler builds
++                            // the turn's errorKind from these, and an unrecorded limit fails the
++                            // turn as an untagged internal error.
++                            const suppressedWasUsageLimit = isSyntheticUsageLimitMessage(message.message);
++                            if (message.error || suppressedWasUsageLimit) {
++                                lastAssistantWasUsageLimit = suppressedWasUsageLimit;
++                                lastAssistantFailureTitle = assistantMessageText(message.message);
++                            }
++                            if (message.error) {
++                                lastAssistantError = message.error;
++                            }
+                             break;
+                         }
+                         // Snapshot the latest top-level assistant usage and model so the
+@@ -8424,8 +8436,9 @@ function recordDispatchedToolUses(session, content) {
      if (!Array.isArray(content))
          return;
      for (const block of content) {
@@ -13,7 +32,7 @@ index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..541aa77f473be60671edef8d0fe97fcd
              block?.type === "mcp_tool_use") &&
              typeof block.id === "string") {
              recordDispatchedToolCall(session, block.id);
-@@ -8778,6 +8779,24 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
+@@ -8778,6 +8791,24 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
                  delete toolUseCache[chunk.tool_use_id];
                  break;
              }
@@ -38,7 +57,7 @@ index 28ead902971a5baf6ec5b52065df5fde56fdcf9b..541aa77f473be60671edef8d0fe97fcd
              case "document":
              case "search_result":
              case "redacted_thinking":
-@@ -8787,7 +8806,6 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
+@@ -8787,7 +8818,6 @@ export function toAcpNotifications(content, role, sessionId, toolUseCache, clien
              case "container_upload":
              case "compaction":
              case "compaction_delta":
