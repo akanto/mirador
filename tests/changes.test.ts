@@ -498,6 +498,9 @@ test("a git-ignored file a script rewrote in the session says git ignores it, ra
   await writeFile(join(projectDir, "build", "cache.js"), "from before\n");
   await Bun.sleep(20);
   await startTurn();
+  // Linux and Windows round a file's written time down to their clock's tick, so a rewrite landing in the same
+  // tick as the turn's start reads as older than the turn; the pause puts the rewrite past the tick.
+  await Bun.sleep(20);
   await writeFile(join(projectDir, "build", "cache.js"), "rewritten by a script\n");
   expect((await changes.list("c1", "session")).project).toEqual([{ path: "build/cache.js", status: "modified", added: null, removed: null, byAgent: false }]);
   expect((await changes.diff("c1", "session", "build/cache.js")).diffs[0]).toMatchObject({ hiddenBecause: "git ignores this file, so there is no earlier version to compare with" });
