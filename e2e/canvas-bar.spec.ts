@@ -78,6 +78,8 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
       "Clear",
       "Copy as image",
       "Copy HTML",
+      "Ask agent for Markdown",
+      "Ask agent to save Markdown file",
       "Download",
       "Save to project…",
     ]);
