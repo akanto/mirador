@@ -24,14 +24,14 @@ const whenDoneUsage = `usage: mirador when-done (--pid <pid> | --container <name
   Mirador waits for the process or Docker/Podman container to end, on this machine or, with --host, on another one over ssh.
   Then the message goes to the agent's conversation as your next message, so the agent carries on;
   with --no-resume only you are told. Without a message, it says the job ended.
-  Run it from an agent in Mirador: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).`;
+  Run it from an agent in Mirador: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID or PI_SESSION_ID (or --session).`;
 
 const messageUsage = `usage: mirador message [--session <agent session id>] ["<message>"]   (no message: read it from stdin)
 
   The message goes to the agent's conversation as your next message: right away when the agent is idle, else queued behind its turn.
   A job the agent left running can end with it, so the agent picks up where the job leaves off.
-  Run it from an agent in Mirador, or a script it started: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID (or --session).
-  opencode and pi give their commands no session id, so their conversations can only be reached with --session.`;
+  Run it from an agent in Mirador, or a script it started: it needs MIRADOR_URL, MIRADOR_SCRIPT_TOKEN and CLAUDE_CODE_SESSION_ID or PI_SESSION_ID (or --session).
+  opencode gives its commands no session id, so its conversations can only be reached with --session.`;
 
 /** The host prints a sign-in link only to a terminal, and each link works once, so a new browser needs a new link. */
 function signIn() {
@@ -135,12 +135,12 @@ class NotFromAnAgent extends Error {}
 
 const problemWithUsage = (error: unknown, usage: string) => (error instanceof NotFromAnAgent ? error.message : `${(error as Error).message}\n\n${usage}`);
 
-/** Mirador gives its agents the URL and token, and Claude Code gives every command it runs its session id; a script started from there inherits all three. */
+/** Mirador gives its agents the URL and token, and Claude Code and pi give every command they run its session id; a script started from there inherits all three. */
 function agentConversation(session: string | undefined) {
   const { MIRADOR_URL: url, MIRADOR_SCRIPT_TOKEN: token } = process.env;
   if (!url || !token) throw new NotFromAnAgent("MIRADOR_URL and MIRADOR_SCRIPT_TOKEN are not set; run it from an agent in Mirador, or a script it started");
-  const sessionId = session ?? process.env.CLAUDE_CODE_SESSION_ID;
-  if (!sessionId) throw new NotFromAnAgent("CLAUDE_CODE_SESSION_ID is not set; pass --session");
+  const sessionId = session ?? (process.env.CLAUDE_CODE_SESSION_ID || process.env.PI_SESSION_ID);
+  if (!sessionId) throw new NotFromAnAgent("neither CLAUDE_CODE_SESSION_ID nor PI_SESSION_ID is set; pass --session");
   const post = (path: string, contentType: string, body: string) =>
     fetch(`${url}/sessions/${encodeURIComponent(sessionId)}/${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": contentType }, body }).catch(() => null);
   return { post, unreachable: `could not reach Mirador at ${url}` };

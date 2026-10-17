@@ -178,8 +178,7 @@ export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { canvasAs
 
 /**
  * pi leaves the instructions of MCP servers whose tools it declares directly out of its prompt, so the canvas server's
- * come in the text Mirador's pi-acp patch appends. pi's commands get no session id for `mirador when-done`, so its job
- * waits go through the canvas's when_done tool, as opencode's do.
+ * come in the text Mirador's pi-acp patch appends. Its job waits go through the canvas's when_done tool, as opencode's do.
  */
 export function piSessionMeta(canvasUse: CanvasUse, canvasAssetsOrigin: string) {
   const canvasServerInstructions = `# Canvas server instructions\n${canvasInstructions(canvasAssetsOrigin)}`;

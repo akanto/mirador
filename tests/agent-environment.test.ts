@@ -9,6 +9,8 @@ test("the variables of a session the host was started from stay out of its agent
     MIRADOR_PORT: "4700",
     CMUX_SURFACE_ID: "surface",
     CLAUDE_CODE_SESSION_ID: "outer-session",
+    PI_SESSION_ID: "outer-pi-session",
+    PI_SESSION_FILE: "/outer/session.jsonl",
     MIRADOR_URL: "http://127.0.0.1:4600",
     MIRADOR_SCRIPT_TOKEN: "outer-token",
     CLAUDE_CODE_EXECUTABLE: "/outer/claude",

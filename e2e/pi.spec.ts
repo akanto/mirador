@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { agentEnvironment } from "../host/acp/environment.ts";
 import { applyEnvironment, parseEnvironment } from "../shared/profile-environment.ts";
@@ -98,6 +98,17 @@ test("a pi conversation replies, runs commands and uses the canvas tools", async
   await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue”");
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Blue");
+});
+
+test("a command pi runs messages its own conversation with mirador message, and pi reads it", async () => {
+  const fromPisCommand = "The pi build finished.";
+  /** By its path: an agent's PATH has Mirador's own bin last, after any mirador the user installed. */
+  const mirador = resolve("bin/mirador");
+  await sendMessage(page, `RUN '${mirador}' message "${fromPisCommand}"`);
+  const messagesFromScripts = page.locator(".timeline-entry", { has: page.locator(".author", { hasText: "From a script" }) }).locator(".message.user");
+  await expect(messagesFromScripts).toHaveText([fromPisCommand], { timeout: 30_000 });
+  await expect(lastAgentMessage(page)).toContainText(`Echo: ${fromPisCommand}`, { timeout: 30_000 });
+  await waitForTurnToEnd(page);
 });
 
 test("a second pi conversation on the same profile leaves the first one working", async () => {

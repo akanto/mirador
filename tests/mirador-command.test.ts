@@ -47,6 +47,11 @@ describe("mirador message", () => {
     ]);
   });
 
+  test("from a command pi runs, it goes to pi's session", async () => {
+    expect(await run(mirador("message", "From pi"), { environment: { CLAUDE_CODE_SESSION_ID: "", PI_SESSION_ID: "pi-session" } })).toMatchObject({ exitCode: 0 });
+    expect(received.map(({ path }) => path)).toEqual(["/sessions/pi-session/messages"]);
+  });
+
   test("given no words, sends what comes in on stdin, without the line breaks it ends with", async () => {
     await run(mirador("message"), { stdin: "3 warnings:\n  unused import\n\n" });
     await run(mirador("message"), { stdin: "From PowerShell\r\n" });
@@ -61,7 +66,7 @@ describe("mirador message", () => {
     });
     expect(await run(mirador("message", "hello"), { environment: { CLAUDE_CODE_SESSION_ID: "" } })).toMatchObject({
       exitCode: 2,
-      stderr: "mirador message: CLAUDE_CODE_SESSION_ID is not set; pass --session\n",
+      stderr: "mirador message: neither CLAUDE_CODE_SESSION_ID nor PI_SESSION_ID is set; pass --session\n",
     });
     expect(await run(mirador("message", "--sesion", "x", "hello"))).toMatchObject({ exitCode: 2, stderr: expect.stringContaining("usage: mirador message") });
     expect(received).toEqual([]);
