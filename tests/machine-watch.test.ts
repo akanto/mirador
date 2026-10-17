@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { MachineWatch } from "../host/machine-watch.ts";
 import { Store } from "../host/store.ts";
 import type { MachineStatus } from "../shared/model.ts";
@@ -98,10 +98,17 @@ describe("MachineWatch", () => {
     cleanUp.push(() => machine.server.stop(true));
     const { watch } = watching(machine.origin);
     await eventually(() => expect(machine.sockets).toHaveLength(2));
-    machine.sockets.filter(({ data }) => data.path === "/ws").forEach((socket) => socket.send("not json"));
-    machine.send("/ws", { type: "snapshot" });
-    machine.send("/ws", { type: "snapshot", conversations: [conversation("a", "question")] });
-    await eventually(() => expect(watch.statuses()[0]!.waiting).toEqual(["question"]));
+    const logged = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      machine.sockets.filter(({ data }) => data.path === "/ws").forEach((socket) => socket.send("not json"));
+      machine.send("/ws", { type: "snapshot" });
+      machine.send("/ws", { type: "snapshot", conversations: [conversation("a", "question")] });
+      await eventually(() => expect(watch.statuses()[0]!.waiting).toEqual(["question"]));
+      expect(logged).toHaveBeenCalledTimes(2);
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining(`skipped a message from ${machine.origin.replace(/^http/, "ws")}/ws`), expect.any(Error));
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   test("passes the machine's notifications on as this host's, saying which machine they come from", async () => {
