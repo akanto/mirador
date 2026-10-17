@@ -1,8 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, answerCanvasQuestion, createProfile, eventsInOrderOn, lastAgentMessage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { agentEnvironment } from "../host/acp/environment.ts";
+import { applyEnvironment, parseEnvironment } from "../shared/profile-environment.ts";
+import { addWorkspace, answerCanvasQuestion, createProfile, eventsInOrderOn, lastAgentMessage, pasteImage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, forgetPiAcpSessionsUnder, piProgram, scriptedPiEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -13,6 +15,7 @@ const SLOW_PROFILE = "slow scripted pi";
 const OTHER_PROFILE = "other scripted pi";
 const SLOW_PI_START_SECONDS = 3;
 const STEERED = "Also say which day it is";
+const TERMINAL_MARKER = "pi-terminal-marker-17";
 let page: Page;
 let firstConversationId: string;
 
@@ -40,6 +43,16 @@ const OWN_APPENDED_INSTRUCTIONS = "Instructions from the user's own APPEND_SYSTE
 function windowsPiProcesses() {
   const query = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object CommandLine -match '--mode\\W+rpc' | ForEach-Object ProcessId";
   return execFileSync("powershell", ["-NoProfile", "-Command", query], { encoding: "utf8" }).split(/\s+/).filter(Boolean);
+}
+
+/**
+ * A session of the profile's pi started in a terminal in the workspace. Not synchronous: the scripted model answering
+ * it runs in this process. The prompt has no spaces, as Windows runs pi.cmd through a shell.
+ */
+async function runPiInTerminal(prompt: string) {
+  const env = applyEnvironment(agentEnvironment(), parseEnvironment(scriptedPiEnvironment(model, host.root)));
+  const pi = spawn(piProgram()!, ["-p", prompt], { cwd: host.projectDir, env, stdio: "ignore", shell: process.platform === "win32" });
+  expect(await new Promise((resolve, reject) => pi.once("exit", resolve).once("error", reject))).toBe(0);
 }
 
 /** Each profile has its pi-acp, which runs one pi for each session it has open; pi renames its process, so they are told by their parent. */
@@ -213,6 +226,50 @@ test("a pi conversation moves to another pi profile, even one with its own PI_CO
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
   await expect(page.locator(".timeline:visible")).not.toContainText("Could not resume");
   await expect.poll(piSessionProcesses).toHaveLength(1);
+});
+
+test("an image pasted into a pi conversation reaches the model with its message", async () => {
+  const composer = page.locator(".composer:visible textarea");
+  await composer.fill("Which colour is this?");
+  await pasteImage(composer, { width: 64, height: 64, color: "#e11d1d" });
+  await expect(page.locator(".pasted-images img")).toHaveJSProperty("naturalWidth", 64);
+  await composer.press("Enter");
+  await expect(lastAgentMessage(page)).toContainText("Echo: Which colour is this?", { timeout: 60_000 });
+  await waitForTurnToEnd(page);
+  const sent = page.locator(".timeline:visible .message.user", { hasText: "Which colour is this?" });
+  await expect(sent.locator(".message-images img")).toHaveJSProperty("naturalWidth", 64);
+  const lastUserMessage = model.requests.at(-1)!.messages.findLast(({ role }) => role === "user");
+  expect(JSON.stringify(lastUserMessage)).toContain("data:image/png;base64,");
+});
+
+test("a pi session started in a terminal can be forked and continued, and each goes on from its own history", async () => {
+  await runPiInTerminal(TERMINAL_MARKER);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · pi` });
+  const terminalSession = async () => {
+    await page.getByRole("button", { name: "Continue a session…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Continue a session" });
+    const session = dialog.locator(".session-list li", { hasText: TERMINAL_MARKER, has: page.getByRole("button", { name: "Continue" }) });
+    await expect(session).toHaveCount(1, { timeout: 30_000 });
+    return session;
+  };
+  const replayedMarker = page.locator(".timeline:visible .message.user", { hasText: TERMINAL_MARKER });
+
+  await (await terminalSession()).getByRole("button", { name: "Fork" }).click();
+  await expect(replayedMarker).toHaveCount(1, { timeout: 30_000 });
+  await sendMessage(page, "In the fork");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Echo: In the fork");
+  expect(model.userMessagesInContext()).toEqual([TERMINAL_MARKER, "In the fork"]);
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+
+  await (await terminalSession()).getByRole("button", { name: "Continue" }).click();
+  await expect(replayedMarker).toHaveCount(1, { timeout: 30_000 });
+  await sendMessage(page, "In the original");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Echo: In the original");
+  expect(model.userMessagesInContext()).toEqual([TERMINAL_MARKER, "In the original"]);
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+  await page.locator(".workspace li", { hasText: "Hello pi" }).click();
 });
 
 test("a pi conversation from before pi marked its replies can't be taken back past its first turn", async () => {

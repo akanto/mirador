@@ -210,7 +210,7 @@ export function opencodeProgram() {
 export function scriptedPiEnvironment(model: ScriptedModel, root: string) {
   const agentDirectory = join(root, "pi-agent");
   mkdirSync(agentDirectory, { recursive: true });
-  const provider = { baseUrl: model.url, api: "openai-completions", apiKey: "unused", models: [{ id: "scripted", name: "Scripted" }] };
+  const provider = { baseUrl: model.url, api: "openai-completions", apiKey: "unused", models: [{ id: "scripted", name: "Scripted", input: ["text", "image"] }] };
   writeFileSync(join(agentDirectory, "models.json"), JSON.stringify({ providers: { e2e: provider } }));
   writeFileSync(join(agentDirectory, "settings.json"), JSON.stringify({ defaultProvider: "e2e", defaultModel: "scripted" }));
   return [`PI_CODING_AGENT_DIR=${agentDirectory}`, "PI_OFFLINE=1"].join("\n");
