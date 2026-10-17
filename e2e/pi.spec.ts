@@ -111,6 +111,19 @@ test("a command pi runs messages its own conversation with mirador message, and 
   await waitForTurnToEnd(page);
 });
 
+test("a pi command's output past what pi keeps of it shows each line once, as pi keeps only its last lines", async () => {
+  const lastLine = 2520;
+  await sendMessage(page, `RUN seq 1 2500; for i in $(seq 2501 ${lastLine}); do echo $i; sleep 0.2; done`);
+  await waitForTurnToEnd(page);
+  const card = page.locator(".timeline .shell").last();
+  await card.locator("summary").click();
+  await card.locator(".shell-more").click();
+  const output = card.locator(".shell-output");
+  await expect(output).toContainText(String(lastLine));
+  const timesShown = (line: number) => output.evaluate((element, line) => element.textContent!.split("\n").filter((shown) => shown === String(line)).length, line);
+  for (const line of [2501, 2510, lastLine]) expect(await timesShown(line)).toBe(1);
+});
+
 test("a second pi conversation on the same profile leaves the first one working", async () => {
   await startConversation(page);
   await expect(page.locator(".chat-header:visible .harness")).toHaveText("pi");
