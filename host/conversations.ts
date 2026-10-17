@@ -1450,7 +1450,8 @@ export class ConversationService {
   /** Returns the failure's message. A turn Claude's usage limit stopped holds the queue until the limit resets. */
   private recordTurnFailure(conversationId: string, error: unknown, promptSent: boolean) {
     const continuable = promptSent && { continuable: true as const };
-    if (!isUsageLimitError(error) || !this.store.hasConversation(conversationId)) {
+    const conversation = this.store.findConversation(conversationId);
+    if (!conversation || !isUsageLimitError(error, conversation.harness)) {
       this.append(conversationId, { type: "error", message: errorMessage(error), ...continuable, ...(isAuthRequiredError(error) && { authRequired: true as const }) });
       return errorMessage(error);
     }

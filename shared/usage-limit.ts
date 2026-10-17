@@ -1,3 +1,5 @@
+import type { HarnessId } from "./model.ts";
+
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /** "resets 6:20pm (Europe/Budapest)", "resets 3pm", "resets Oct 9, 2pm (Europe/Budapest)" */
@@ -83,12 +85,12 @@ const bannerOf = (error: unknown) => String((error as { message?: unknown }).mes
 /**
  * Claude Code's error for a turn its usage limit stopped carries the rate_limit kind. claude-agent-acp loses that tag
  * when the turn also compacted its context — it drops the frame carrying it after compaction's output went out — and
- * then only Claude Code's own words are left to go by.
+ * then only Claude Code's own words are left to go by, which only a Claude conversation's errors are in.
  */
-export const isUsageLimitError = (error: unknown) => {
+export const isUsageLimitError = (error: unknown, harness: HarnessId) => {
   const kind = typeof error === "object" && error !== null ? (error as { data?: { errorKind?: unknown } }).data?.errorKind : undefined;
   if (kind !== undefined) return kind === "rate_limit";
-  return USAGE_LIMIT_OPENINGS.some((opening) => bannerOf(error).startsWith(opening));
+  return harness === "claude" && USAGE_LIMIT_OPENINGS.some((opening) => bannerOf(error).startsWith(opening));
 };
 
 /** Claude Code's own words for the limit, e.g. "You've hit your session limit · resets 6:20pm (Europe/Budapest)". */
