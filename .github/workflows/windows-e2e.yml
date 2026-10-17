@@ -92,8 +92,8 @@ jobs:
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
           if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
-      # The gate: a spec that fails with no reason stated in e2e/windows-known-issues.json turns this job red, and with it
-      # any release that waits for it.
+      # The gate: a spec that fails other than as e2e/windows-known-issues.json states, or a suite cut short, turns this job
+      # red, and with it any release that waits for it.
       - name: Verdict
         if: always()
         shell: bash

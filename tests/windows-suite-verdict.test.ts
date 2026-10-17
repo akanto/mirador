@@ -5,7 +5,17 @@ import { join } from "node:path";
 import { specsLeftOut, specsThatFailed, verdictAgainstKnownIssues } from "../e2e/windows-suite-verdict.ts";
 import type { KnownIssue } from "../e2e/windows-suite-verdict.ts";
 
-type ReportedSpec = { file: string; title: string; status: string; expectedStatus?: string; results?: { status: string }[] };
+type ReportedResult = { status: string; error?: { message: string }; errors?: { message: string }[] };
+type ReportedSpec = { file: string; title: string; status: string; expectedStatus?: string; results?: ReportedResult[] };
+
+const IT_BROKE = "Error: expect(locator).toBeVisible() failed\n\nLocator: locator('.it')\nExpected: visible";
+const failedWith = (message: string): ReportedResult => ({ status: "failed", error: { message }, errors: [{ message }] });
+
+const defaultResults = (status: string): ReportedResult[] => {
+  if (status === "unexpected") return [failedWith(IT_BROKE), failedWith(IT_BROKE)];
+  if (status === "flaky") return [failedWith(IT_BROKE), { status: "passed" }];
+  return [{ status: status === "skipped" ? "skipped" : "passed" }];
+};
 
 const report = (...specs: ReportedSpec[]) => ({
   suites: specs.map((spec) => ({
@@ -17,7 +27,7 @@ const report = (...specs: ReportedSpec[]) => ({
           {
             status: spec.status,
             expectedStatus: spec.expectedStatus ?? (spec.status === "skipped" ? "skipped" : "passed"),
-            results: spec.results ?? [{ status: spec.status === "skipped" ? "skipped" : "passed" }],
+            results: spec.results ?? defaultResults(spec.status),
           },
         ],
       },
@@ -34,7 +44,7 @@ test("a spec that ends failing is a failure, one that passes on a retry is only 
       { file: "d.spec.ts", title: "does not run here", status: "skipped" },
     ),
   );
-  expect(failing).toEqual([{ file: "b.spec.ts", title: "breaks" }]);
+  expect(failing).toEqual([{ file: "b.spec.ts", title: "breaks", messages: [IT_BROKE, IT_BROKE] }]);
   expect(flaky).toEqual([{ file: "c.spec.ts", title: "breaks then works" }]);
 });
 
@@ -69,11 +79,11 @@ test("specs nested in a folder suit take the folder's file", () => {
   const { failing } = specsThatFailed({
     suites: [{ file: "desktop", suites: [{ specs: [{ title: "tray works", tests: [{ status: "unexpected" }] }] }] }],
   });
-  expect(failing).toEqual([{ file: "desktop", title: "tray works" }]);
+  expect(failing).toEqual([{ file: "desktop", title: "tray works", messages: [] }]);
 });
 
 test("a stated reason lets its failure through, an unstated one holds the release", () => {
-  const stated: KnownIssue[] = [{ file: "b.spec.ts", title: "breaks", reason: "windows has no such shell", bead: "vcs-one" }];
+  const stated: KnownIssue[] = [{ file: "b.spec.ts", title: "breaks", failure: "Locator: locator('.it')", reason: "windows has no such shell", bead: "vcs-one" }];
   const { failing } = specsThatFailed(
     report(
       { file: "e2e/b.spec.ts", title: "breaks", status: "unexpected" },
@@ -83,14 +93,34 @@ test("a stated reason lets its failure through, an unstated one holds the releas
   );
   const { tolerated, uncovered, statedButPassing } = verdictAgainstKnownIssues(failing, stated);
   expect(tolerated).toEqual(stated);
-  expect(uncovered).toEqual([{ file: "z.spec.ts", title: "newly broken" }]);
+  expect(uncovered).toEqual([{ file: "z.spec.ts", title: "newly broken", messages: [IT_BROKE, IT_BROKE] }]);
   expect(statedButPassing).toEqual([]);
+});
+
+test("a stated spec that fails some other way on any try holds the release, as its reason does not explain that failure", () => {
+  const stated: KnownIssue[] = [{ file: "a.spec.ts", title: "breaks", failure: "Locator: locator('.it') Expected: visible", reason: "the model skips the tool" }];
+  const otherwise = "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('.other')";
+  const { failing } = specsThatFailed(
+    report(
+      { file: "a.spec.ts", title: "breaks", status: "unexpected", results: [failedWith(IT_BROKE), failedWith(otherwise)] },
+    ),
+  );
+  const { tolerated, uncovered } = verdictAgainstKnownIssues(failing, stated);
+  expect(tolerated).toEqual([]);
+  expect(uncovered.map(({ title }) => title)).toEqual(["breaks"]);
+});
+
+test("a stated failure matches through the report's colours and line breaks", () => {
+  const stated: KnownIssue[] = [{ file: "a.spec.ts", title: "breaks", failure: "Locator: locator('.badge') Expected: \"idle\" Received: \"running\"", reason: "the turn never ends" }];
+  const coloured = 'Error: \x1b[2mexpect(\x1b[22m\x1b[31mlocator\x1b[39m).toHaveText()\n\nLocator:  locator(\'.badge\')\nExpected: \x1b[32m"idle"\x1b[39m\nReceived: \x1b[31m"running"\x1b[39m';
+  const { failing } = specsThatFailed(report({ file: "a.spec.ts", title: "breaks", status: "unexpected", results: [failedWith(coloured)] }));
+  expect(verdictAgainstKnownIssues(failing, stated).tolerated).toEqual(stated);
 });
 
 test("a reason whose spec passes again is offered for removal from the list", () => {
   const stated: KnownIssue[] = [
-    { file: "a.spec.ts", title: "works", reason: "fixed but not yet trimmed" },
-    { file: "b.spec.ts", title: "breaks", reason: "still broken" },
+    { file: "a.spec.ts", title: "works", failure: "Locator: locator('.it')", reason: "fixed but not yet trimmed" },
+    { file: "b.spec.ts", title: "breaks", failure: "Locator: locator('.it')", reason: "still broken" },
   ];
   const { failing } = specsThatFailed(
     report(
@@ -109,6 +139,7 @@ test("every stated reason names a spec the suite really has", () => {
   for (const issue of stated) {
     const source = readFileSync(join(repoRoot, "e2e", issue.file), "utf8");
     expect(source, `${issue.file} has no test titled ${issue.title}`).toContain(issue.title);
+    expect(issue.failure.length, `${issue.title} states no failure message`).toBeGreaterThan(0);
     expect(issue.reason.length).toBeGreaterThan(0);
   }
 });
@@ -123,13 +154,17 @@ const gate = (report: unknown, stated: unknown) => {
 
 test("the gate lets a stated failure through and holds on one nobody explained", () => {
   const oneFailure = report({ file: "a.spec.ts", title: "breaks", status: "unexpected" });
-  const explained = gate(oneFailure, [{ file: "a.spec.ts", title: "breaks", reason: "no such shell on Windows" }]);
+  const explained = gate(oneFailure, [{ file: "a.spec.ts", title: "breaks", failure: "Locator: locator('.it')", reason: "no such shell on Windows" }]);
   expect(explained.exitCode).toBe(0);
   expect(explained.stdout.toString()).toContain("no stated reason (0)");
 
   const mystery = gate(oneFailure, []);
   expect(mystery.exitCode).toBe(1);
-  expect(mystery.stdout.toString()).toContain("a.spec.ts: breaks");
+  expect(mystery.stdout.toString()).toContain("a.spec.ts: breaks\n      failed with: Error: expect(locator).toBeVisible() failed · Locator: locator('.it') · Expected: visible");
+
+  const otherwise = gate(oneFailure, [{ file: "a.spec.ts", title: "breaks", failure: "Locator: locator('.permission')", reason: "the model skips the tool" }]);
+  expect(otherwise.exitCode).toBe(1);
+  expect(otherwise.stdout.toString()).toContain("stated as failing with: Locator: locator('.permission')\n      but failed with: Error: expect(locator).toBeVisible() failed");
 });
 
 test("the gate holds when the suite was cut short: an error outside any test, a test stopped as it ran, or one that never ran with nothing failing before it", () => {
@@ -153,7 +188,7 @@ test("the gate lets through the specs a stated failure stopped its serial file b
     { file: "serial.spec.ts", title: "first step", status: "unexpected" },
     { file: "serial.spec.ts", title: "second step", status: "skipped", expectedStatus: "passed", results: [{ status: "skipped" }] },
   );
-  const verdict = gate(stoppedFile, [{ file: "serial.spec.ts", title: "first step", reason: "the model skips the tool" }]);
+  const verdict = gate(stoppedFile, [{ file: "serial.spec.ts", title: "first step", failure: "Locator: locator('.it')", reason: "the model skips the tool" }]);
   expect(verdict.exitCode).toBe(0);
   expect(verdict.stdout.toString()).toContain("Not run, as an earlier failure in their file stopped it (1):\n  serial.spec.ts: second step");
 });
