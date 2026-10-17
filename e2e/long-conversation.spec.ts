@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openSettings, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -42,7 +42,7 @@ test("a long conversation shows its newest entries, and earlier ones load as the
       if (message.type === "conversation.history") historySizes.push(message.events.length);
     }),
   );
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   await test.step("each answer, streamed a word at a time, reaches the page as one event", async () => {
     await expect.poll(() => historySizes.at(-1)).toBeGreaterThanOrEqual(3 * 225);

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, currentMatch, primaryModifier, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, currentMatch, primaryModifier, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -49,7 +49,7 @@ test("a long conversation opens with its newest part, and earlier parts come fro
       if (message.type === "conversation.history") histories.push({ events: message.events.length, size: String(payload).length, hasEarlier: message.hasEarlier });
     }),
   );
-  await page.reload();
+  await reloadFromRestartedHost(page);
 
   await test.step("the page gets the newest turns that make up 4 MB as stored, without the raw output that repeats what each tool shows", async () => {
     await expect.poll(() => histories.at(-1)).toMatchObject({ events: TURNS_PER_PART * 4, hasEarlier: true });
