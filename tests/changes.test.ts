@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, realpath, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
@@ -363,16 +363,26 @@ test("a file of the workspace opens with the system's default program, and a fil
   await writeFile(outside, "notes\n");
   await write("app.ts", "export {};\n");
   await startTurn();
-  changes.openFile("c1", "app.ts");
+  await changes.openFile("c1", "app.ts");
   expect(openedByDefault).toEqual([join(projectDir, "app.ts")]);
-  expect(() => changes.openFile("c1", outside)).toThrow("neither a file of this workspace");
+  await expect(changes.openFile("c1", outside)).rejects.toThrow("neither a file of this workspace");
   agentEdits("t1", outside, null, "notes\n");
-  changes.openFile("c1", outside);
+  await changes.openFile("c1", outside);
   expect(openedByDefault.at(-1)).toBe(outside);
 });
 
-test("a relative path outside the workspace is refused even when the agent changed a file with that name", () => {
-  expect(() => changes.openFile("c1", "../etc/passwd")).toThrow("neither a file of this workspace");
+test("a file named by the workspace's real path opens, though the workspace was added through a link to it", async () => {
+  const link = join(root, "link");
+  await symlink(projectDir, link);
+  const linked = new Changes(store, checkpoints, () => ({ ...workspace(), path: link }), () => {}, (file) => openedByDefault.push(file));
+  await startTurn();
+  await linked.openFile("c1", join(projectDir, "kept.txt"));
+  await linked.openFile("c1", "kept.txt");
+  expect(openedByDefault).toEqual([join(projectDir, "kept.txt"), join(link, "kept.txt")]);
+});
+
+test("a relative path outside the workspace is refused even when the agent changed a file with that name", async () => {
+  await expect(changes.openFile("c1", "../etc/passwd")).rejects.toThrow("neither a file of this workspace");
   expect(openedByDefault).toEqual([]);
 });
 
@@ -392,7 +402,7 @@ test("the session scope lists every file the agent changed since the conversatio
 
 test("a file that is gone is refused rather than handed to the system's default program", async () => {
   await startTurn();
-  expect(() => changes.openFile("c1", "missing.ts")).toThrow("does not exist");
+  await expect(changes.openFile("c1", "missing.ts")).rejects.toThrow("does not exist");
   expect(openedByDefault).toEqual([]);
 });
 
@@ -401,8 +411,8 @@ test("a program is refused rather than handed to the system's default program, w
   await write("build.sh", "#!/bin/sh\n");
   await chmod(join(projectDir, "build.sh"), 0o755);
   await write("tool.jar", "");
-  expect(() => changes.openFile("c1", "build.sh")).toThrow("would run as a program");
-  expect(() => changes.openFile("c1", "tool.jar")).toThrow("would run as a program");
+  await expect(changes.openFile("c1", "build.sh")).rejects.toThrow("would run as a program");
+  await expect(changes.openFile("c1", "tool.jar")).rejects.toThrow("would run as a program");
   expect(openedByDefault).toEqual([]);
 });
 

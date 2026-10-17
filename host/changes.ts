@@ -174,10 +174,10 @@ export class Changes {
   }
 
   /** Opens a file of the project, or one the agent changed in this conversation, with the system's default program. */
-  openFile(conversationId: string, path: string) {
+  async openFile(conversationId: string, path: string) {
     const workspace = this.workspaceOf(conversationId);
     const file = isAbsolute(path) ? normalize(path) : resolve(workspace.path, path);
-    const inWorkspace = file.startsWith(resolve(workspace.path) + sep);
+    const inWorkspace = shownPath(file, await projectDirectories(workspace)) !== file;
     const changedByAgent = this.agentEdits(conversationId, workspace, 0).some((edit) => edit.path === file);
     if (!inWorkspace && !changedByAgent) throw new Error(`${path} is neither a file of this workspace nor one the agent changed in this conversation.`);
     if (!existsSync(file)) throw new Error(`${path} does not exist.`);
