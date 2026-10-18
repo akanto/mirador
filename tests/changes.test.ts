@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
 import { agentEditsIn, Changes } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
 import { Store } from "../host/store.ts";
-import { filesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
+import { createdSince, filesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
 import type { StoredEvent } from "../shared/model.ts";
 import { changesRefreshPoint, firstChangedLine } from "../web/changes.ts";
 
@@ -288,6 +288,7 @@ async function leaveGit() {
   await rm(join(projectDir, ".git"), { recursive: true });
   const longAgo = new Date(Date.now() - 60_000);
   await Promise.all(["kept.txt", "doomed.txt", ".gitignore"].map((file) => utimes(join(projectDir, file), longAgo, longAgo)));
+  await Bun.sleep(50);
 }
 
 test("outside a git repository, the uncommitted list and its diffs are the agent's own edits", async () => {
@@ -346,6 +347,18 @@ test("a folder of more files than the limit is checked in part, and says so", as
   const part = await filesWrittenSince(projectDir, everythingSinceEver, 3);
   expect(part.truncated).toBe(true);
   expect(part.changes).toHaveLength(3);
+});
+
+test("a file written in the same clock tick as the turn's start still counts as written during the turn", async () => {
+  const folder = await mkdtemp(join(root, "same-tick-"));
+  await writeFile(join(folder, "hook.js"), "written the moment the turn began\n");
+  const stats = await stat(join(folder, "hook.js"));
+  const written = Math.max(stats.mtimeMs, stats.birthtimeMs);
+
+  expect((await filesWrittenSince(folder, written + 10)).changes).toEqual([{ path: "hook.js", status: "added", added: 1, removed: 0 }]);
+  expect((await filesWrittenSince(folder, written + 100)).changes).toEqual([]);
+  expect(await createdSince(folder, "hook.js", written + 10)).toBe(true);
+  expect(await createdSince(folder, "hook.js", written + 100)).toBe(false);
 });
 
 test("an untracked file's line count follows the file as it is rewritten, even to the same size", async () => {
@@ -520,7 +533,7 @@ test("the session scope adds the git-ignored files written since the session beg
 test("the session scope leaves out the git-ignored files written before the conversation's first message", async () => {
   await mkdir(join(projectDir, "build"));
   await writeFile(join(projectDir, "build", "old.js"), "built before\n");
-  await Bun.sleep(20);
+  await Bun.sleep(50);
   await startTurn();
   await Bun.sleep(20);
   await writeFile(join(projectDir, "build", "new.js"), "built in the session\n");
@@ -601,11 +614,8 @@ test("before the first message the session scope lists only the agent's edits, s
 test("a git-ignored file a script rewrote in the session says git ignores it, rather than that the folder is no repository", async () => {
   await mkdir(join(projectDir, "build"));
   await writeFile(join(projectDir, "build", "cache.js"), "from before\n");
-  await Bun.sleep(20);
+  await Bun.sleep(50);
   await startTurn();
-  // Linux and Windows round a file's written time down to their clock's tick, so a rewrite landing in the same
-  // tick as the turn's start reads as older than the turn; the pause puts the rewrite past the tick.
-  await Bun.sleep(20);
   await writeFile(join(projectDir, "build", "cache.js"), "rewritten by a script\n");
   expect((await changes.list("c1", "session")).project).toEqual([{ path: "build/cache.js", status: "modified", added: null, removed: null, byAgent: false }]);
   expect((await changes.diff("c1", "session", "build/cache.js")).diffs[0]).toMatchObject({ hiddenBecause: "git ignores this file, so there is no earlier version to compare with" });

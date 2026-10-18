@@ -133,6 +133,9 @@ async function scannedFiles(directory: string, limit: number, skipOtherRepositor
 /** Not the change time: opening a file in Finder moves that, and a file made with an old modified time still has its birth. */
 const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(stats.mtimeMs, stats.birthtimeMs);
 
+/** Linux and Windows round a file's times down to their clock's tick, up to ~16 ms, so a write landing in the tick of the turn's start reads as older than it. */
+const FILE_TIME_TICK_MS = 16;
+
 /**
  * The files of a folder that is not a git repository which were written at or after `since` (epoch ms), by their times
  * alone: a file made since then is added with its line counts, any other is modified. Nothing says what a file held
@@ -147,9 +150,10 @@ export async function filesWrittenSince(
   { skipOtherRepositories = false } = {},
 ): Promise<{ changes: TreeChange[]; truncated: boolean }> {
   const { files, truncated } = await scannedFiles(directory, limit, skipOtherRepositories);
+  const earliestWrite = since - FILE_TIME_TICK_MS;
   const written = await inLimitedParallel(files, async (path) => {
     const stats = await stat(join(directory, path)).catch(() => null);
-    return stats && writtenAt(stats) >= since ? [{ path, createdSince: stats.birthtimeMs >= since }] : [];
+    return stats && writtenAt(stats) >= earliestWrite ? [{ path, createdSince: stats.birthtimeMs >= earliestWrite }] : [];
   });
   const changes = await inLimitedParallel(written.flat(), async ({ path, createdSince }) =>
     createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null },
@@ -166,7 +170,8 @@ export async function ignoredPaths(directory: string, paths: string[]): Promise<
 
 /** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */
 export async function createdSince(directory: string, path: string, since: number) {
-  return ((await stat(join(directory, path)).catch(() => null))?.birthtimeMs ?? 0) >= since;
+  const earliestWrite = since - FILE_TIME_TICK_MS;
+  return ((await stat(join(directory, path)).catch(() => null))?.birthtimeMs ?? 0) >= earliestWrite;
 }
 
 /** A file as `revision` holds it: its text, or that it has no such file, or that it is binary or too large to show. */
