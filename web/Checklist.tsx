@@ -1,12 +1,10 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useRef, useState } from "react";
 import { checklistItems, checklistProgress, type Checklist, type ChecklistItem } from "../shared/checklist.ts";
-import type { CanvasItem } from "../shared/model.ts";
+import type { CanvasItem, ChecklistCanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { MarkdownText } from "./Markdown.tsx";
-
-export type ChecklistCanvasItem = CanvasItem & { checklist: Checklist };
 
 const AGENT_EDIT_FLASH_MS = 2000;
 
@@ -14,7 +12,7 @@ const ownerLabels = { user: "you", both: "both" };
 
 /** The conversation's checklist is the newest the agent published and has not dismissed; a new publishing brings one back. */
 export const currentChecklist = (items: CanvasItem[]): ChecklistCanvasItem | undefined => {
-  const newest = items.filter((item): item is ChecklistCanvasItem => item.checklist !== undefined).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const newest = items.filter((item) => item.kind === "checklist").sort((a, b) => b.createdAt - a.createdAt)[0];
   return newest && !newest.checklist.dismissed ? newest : undefined;
 };
 

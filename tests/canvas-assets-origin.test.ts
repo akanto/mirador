@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import type { CanvasItem } from "../shared/model.ts";
+import type { ShowItem } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { initialState, reducer, selectedOpen, type AppState } from "../web/state.ts";
 
 const agentsOrigin = "https://box.local:4603";
-const page = (html: string): CanvasItem => ({ id: "item", conversationId: "a", kind: "show", title: "Chart", html, status: "shown", createdAt: 0 });
+const page = (html: string): ShowItem => ({ id: "item", conversationId: "a", kind: "show", title: "Chart", html, status: "shown", createdAt: 0 });
 const chart = page(`<script src="${agentsOrigin}/d3.min.js"></script><p>${agentsOrigin}</p>`);
 
 function connectedAt(canvasAssetsOrigin: string): AppState {
@@ -34,7 +34,10 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
   return reducer(connected, { type: "select", conversationId: "a" });
 }
 
-const shownHtml = (state: AppState) => selectedOpen(state)?.canvas[0]?.html;
+const shownHtml = (state: AppState) => {
+  const shown = selectedOpen(state)?.canvas[0];
+  return shown?.kind === "show" ? shown.html : undefined;
+};
 
 test("a page that reached the host at another address loads canvas libraries from there, in history and in new pages", () => {
   const local = connectedAt("http://127.0.0.1:4601");

@@ -2,7 +2,7 @@ import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { buildCanvasDocument, CANVAS_SHELL_PATH, canvasPageMessage, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
-import type { AskQuestion, CanvasItem } from "../shared/model.ts";
+import type { AskItem, AskQuestion, CanvasItem, ShowItem } from "../shared/model.ts";
 import { BarMenu, type BarMenuEntry } from "./BarMenu.tsx";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
@@ -16,7 +16,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
-import { WalkthroughView, type ReviewItem, type TourItem } from "./Review.tsx";
+import { WalkthroughView } from "./Review.tsx";
 import { currentReviewPlacement, takeArrivedReview } from "./review-placement.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
 
@@ -294,9 +294,9 @@ function answerOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   event.currentTarget.form?.requestSubmit();
 }
 
-const deliveredNote = (answer: NonNullable<CanvasItem["answer"]>) => (answer.deliveredAs === "tool-result" ? " (returned to the agent)" : " (sent as your next message)");
+const deliveredNote = (answer: NonNullable<AskItem["answer"]>) => (answer.deliveredAs === "tool-result" ? " (returned to the agent)" : " (sent as your next message)");
 
-function AnsweredSeveral({ answer }: { answer: NonNullable<CanvasItem["answer"]> }) {
+function AnsweredSeveral({ answer }: { answer: NonNullable<AskItem["answer"]> }) {
   return (
     <div className="ask-answer">
       You answered:
@@ -314,7 +314,7 @@ function AnsweredSeveral({ answer }: { answer: NonNullable<CanvasItem["answer"]>
   );
 }
 
-function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesBefore: CanvasItem[]; assetsOrigin: string }) {
+function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefore: ShowItem[]; assetsOrigin: string }) {
   const questions = questionsOf(item);
   const several = item.questions !== undefined;
   const waiting = item.status === "waiting";
@@ -436,19 +436,19 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: CanvasItem; pagesB
 const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄", tour: "↯", checklist: "☑" };
 
 function outcomeOf(item: CanvasItem) {
-  if (item.review) return item.review.verdict;
+  if (item.kind === "review") return item.review.verdict;
   if (item.status === "waiting") return "needs your answer";
   if (item.status === "cancelled") return "withdrawn";
-  if (item.status === "answered" && item.answer) return `→ ${item.answer.label}`;
+  if (item.kind === "ask" && item.status === "answered" && item.answer) return `→ ${item.answer.label}`;
   return "";
 }
 
-const outcomeIsFreeText = (item: CanvasItem) => Boolean(item.review) || item.status === "answered";
+const outcomeIsFreeText = (item: CanvasItem) => item.kind === "review" || item.status === "answered";
 
 /** Once a question is answered or withdrawn, it has had its turn on the canvas. */
-const isSettledQuestion = (item: CanvasItem) => item.kind === "ask" && item.status !== "waiting";
+const isSettledQuestion = (item: CanvasItem): item is AskItem => item.kind === "ask" && item.status !== "waiting";
 
-function settledMessage(item: CanvasItem): SettledNote {
+function settledMessage(item: AskItem): SettledNote {
   return item.status === "answered" ? { text: `✓ Answer sent: “${item.answer?.label ?? ""}”`, tone: "done" } : { text: "The agent withdrew its question.", tone: "neutral" };
 }
 
@@ -744,7 +744,7 @@ export function CanvasPanel({
             <span className="canvas-kind">{kindIcons[selected.kind]}</span>
             <span className="canvas-title">{selected.title}</span>
             {outcome && (
-              <span className={`canvas-outcome status-${selected.status}${selected.review ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
+              <span className={`canvas-outcome status-${selected.status}${selected.kind === "review" ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
                 {outcome}
               </span>
             )}
@@ -858,17 +858,17 @@ export function CanvasPanel({
             onRendered={reportRender(selected.id)}
           />
         )}
-        {!tab && selected?.kind === "review" && selected.review && (
-          <WalkthroughView key={selected.id} item={selected as ReviewItem} conversationId={selected.conversationId} />
+        {!tab && selected?.kind === "review" && (
+          <WalkthroughView key={selected.id} item={selected} conversationId={selected.conversationId} />
         )}
-        {!tab && selected?.kind === "tour" && selected.tour && (
-          <WalkthroughView key={selected.id} item={selected as TourItem} conversationId={selected.conversationId} />
+        {!tab && selected?.kind === "tour" && (
+          <WalkthroughView key={selected.id} item={selected} conversationId={selected.conversationId} />
         )}
         {!tab && selected?.kind === "ask" && (
           <AskView
             key={selected.id}
             item={selected}
-            pagesBefore={pages.filter(({ id }) => selected.shownBefore?.includes(id))}
+            pagesBefore={pages.filter((page): page is ShowItem => page.kind === "show" && selected.shownBefore?.includes(page.id) === true)}
             assetsOrigin={assetsOrigin}
           />
         )}

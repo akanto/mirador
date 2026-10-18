@@ -8,11 +8,22 @@ import { Hub } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
 import type { SystemNotifications } from "../host/system-notifications.ts";
 import { questionsOf } from "../shared/ask.ts";
+import type { AskItem, CanvasItem, ReviewItem } from "../shared/model.ts";
 import type { Review, ReviewAnswer, ReviewFinding } from "../shared/review.ts";
 import type { NotificationReason } from "../shared/system-notifications.ts";
 import { completeDirectories } from "../host/paths.ts";
 import type { ReviewProblems } from "../host/review/snapshot.ts";
 import { gitRepository, reviewRequest } from "./review-repository.ts";
+
+function asAsk(item: CanvasItem | undefined) {
+  expect(item?.kind).toBe("ask");
+  return item as AskItem | undefined;
+}
+
+function asReview(item: CanvasItem | undefined) {
+  expect(item?.kind).toBe("review");
+  return (item as ReviewItem | undefined)?.review;
+}
 
 function setUp() {
   const store = new Store(":memory:");
@@ -72,8 +83,8 @@ describe("CanvasService", () => {
   test("a question keeps the least width the agent asked for its answer boxes", () => {
     const { store, canvas, ask } = setUp();
     const roomy = canvas.openAsk("c1", { question: "Which fix?", options: [{ label: "Fix" }, { label: "Leave" }], optionWidth: 480 });
-    expect(store.findCanvasItem(roomy.id)?.optionWidth).toBe(480);
-    expect(store.findCanvasItem(ask().id)).not.toHaveProperty("optionWidth");
+    expect(asAsk(store.findCanvasItem(roomy.id))?.optionWidth).toBe(480);
+    expect(asAsk(store.findCanvasItem(ask().id))).not.toHaveProperty("optionWidth");
   });
 
   test("the conversation hears when its question opens, is answered and is withdrawn, but not about pages shown", async () => {
@@ -120,7 +131,7 @@ describe("CanvasService", () => {
     await expect(answer).rejects.toThrow("timeout");
     canvas.answer(item.id, "Red");
     expect(nextMessages).toEqual(['My answer to your question "Color?": Red']);
-    expect(store.findCanvasItem(item.id)?.answer?.deliveredAs).toBe("next-message");
+    expect(asAsk(store.findCanvasItem(item.id))?.answer?.deliveredAs).toBe("next-message");
   });
 
   test("several questions are one item, and their answers come back together as the tool result", async () => {
@@ -143,7 +154,7 @@ describe("CanvasService", () => {
     const answer = canvas.waitForAnswer(item, new AbortController().signal);
     canvas.answer(item.id, "", " Keep it short ", [{ label: "Blue" }, { label: "Huge" }]);
     const given = await answer;
-    expect(store.findCanvasItem(item.id)?.answer?.note).toBe("Keep it short");
+    expect(asAsk(store.findCanvasItem(item.id))?.answer?.note).toBe("Keep it short");
     expect(answerAsToolResult(given)).toBe(
       ["The user answered 2 questions:", "1. Color?", "   The user chose: Blue", "2. Size?", "   The user chose: Huge", "Their note on all the answers: Keep it short"].join("\n"),
     );
@@ -157,7 +168,7 @@ describe("CanvasService", () => {
     const item = askSeveral();
     canvas.answer(item.id, "", undefined, [{ label: "Red" }, { label: "Small", note: "tight fit" }]);
     expect(nextMessages).toEqual(['My answers to your questions:\n1. "Color?": Red\n2. "Size?": Small\n   Note: tight fit']);
-    expect(store.findCanvasItem(item.id)?.answer).toMatchObject({ label: "Red · Small", deliveredAs: "next-message" });
+    expect(asAsk(store.findCanvasItem(item.id))?.answer).toMatchObject({ label: "Red · Small", deliveredAs: "next-message" });
   });
 
   test("an answer to several questions must answer each, and one question takes one answer", () => {
@@ -195,7 +206,7 @@ describe("CanvasService", () => {
     const { store, canvas } = setUp();
     const finding = { id: "finding-1", body: "The agent's words.", decision: "keep" } as ReviewFinding;
     store.saveCanvasItem({ id: "r1", conversationId: "c1", kind: "review", title: "PR", review: { findings: [finding] } as Review, status: "shown", createdAt: 1 });
-    const stored = () => store.findCanvasItem("r1")!.review!.findings[0]!;
+    const stored = () => asReview(store.findCanvasItem("r1"))!.findings[0]!;
     canvas.updateFinding("r1", "finding-1", { body: " The user's words. " });
     canvas.updateFinding("r1", "finding-1", { body: "The user's second words." });
     canvas.updateFinding("r1", "finding-1", { decision: "drop" });
@@ -220,7 +231,7 @@ describe("CanvasService", () => {
     const review = { findings: [], answers: [answer("answer-1", true), answer("answer-2", false)] } as unknown as Review;
     store.saveCanvasItem({ id: "r1", conversationId: "c1", kind: "review", title: "PR", review, status: "shown", createdAt: 1 });
     canvas.updateAnswer("r1", "answer-1", { body: "The user's words.", resolve: true });
-    expect(store.findCanvasItem("r1")!.review!.answers![0]).toMatchObject({ body: "The user's words.", agentBody: "The agent's words.", resolve: true });
+    expect(asReview(store.findCanvasItem("r1"))!.answers![0]).toMatchObject({ body: "The user's words.", agentBody: "The agent's words.", resolve: true });
     expect(() => canvas.updateAnswer("r1", "answer-2", { resolve: true })).toThrow("does not let you resolve");
   });
 

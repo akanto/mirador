@@ -510,28 +510,56 @@ export interface CanvasAnswer {
   deliveredAs: "tool-result" | "next-message";
 }
 
-export interface CanvasItem {
+export type CanvasItemKind = "show" | "ask" | "review" | "tour" | "checklist";
+
+/** What every canvas item carries, whatever its kind. */
+export interface CanvasItemBase {
   id: string;
   conversationId: string;
-  kind: "show" | "ask" | "review" | "tour" | "checklist";
+  kind: CanvasItemKind;
   title: string;
+  status: CanvasItemStatus;
+  createdAt: number;
+  /** When the item last changed, so a client catching up after a reconnect gets only the items that changed since. */
+  updatedAt?: number;
+}
+
+export interface ShowItem extends CanvasItemBase {
+  kind: "show";
   html?: string;
+}
+
+/** A question the user answers from options: the one question in the item's own fields, or several in `questions`. */
+export interface AskItem extends CanvasItemBase {
+  kind: "ask";
   question?: string;
+  /** HTML shown above the options: the explanation or mockup the question is about. */
+  html?: string;
   options?: AskOption[];
   allowOther?: boolean;
   /** The least width, in CSS pixels, the agent asked for each answer box. */
   optionWidth?: number;
   /** An ask of several questions, one page each; then `title` and `question` say so and name the first, for readers that know one question. */
   questions?: AskQuestion[];
-  status: CanvasItemStatus;
   answer?: CanvasAnswer;
   /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */
   shownBefore?: string[];
-  review?: Review;
-  tour?: Tour;
-  /** The conversation's checklist is its newest one; it shows in its own tab, not among the pages. */
-  checklist?: Checklist;
-  createdAt: number;
-  /** When the item last changed, so a client catching up after a reconnect gets only the items that changed since. */
-  updatedAt?: number;
 }
+
+export interface ReviewItem extends CanvasItemBase {
+  kind: "review";
+  review: Review;
+}
+
+export interface TourItem extends CanvasItemBase {
+  kind: "tour";
+  tour: Tour;
+}
+
+/** The conversation's checklist is its newest one; it shows in its own tab, not among the pages. */
+export interface ChecklistCanvasItem extends CanvasItemBase {
+  kind: "checklist";
+  checklist: Checklist;
+}
+
+export type CanvasItem = ShowItem | AskItem | ReviewItem | TourItem | ChecklistCanvasItem;

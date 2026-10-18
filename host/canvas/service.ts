@@ -1,7 +1,17 @@
 import { answersSummary, questionsOf } from "../../shared/ask.ts";
-import { checklistItems, type Checklist } from "../../shared/checklist.ts";
-import type { AskAnswerEntry, AskQuestion, CanvasAnswer, CanvasItem } from "../../shared/model.ts";
-import { answersOf, type FindingDecision, type Review, type Tour } from "../../shared/review.ts";
+import { checklistItems } from "../../shared/checklist.ts";
+import type {
+  AskAnswerEntry,
+  AskItem,
+  AskQuestion,
+  CanvasAnswer,
+  CanvasItem,
+  CanvasItemBase,
+  ChecklistCanvasItem,
+  ReviewItem,
+  TourItem,
+} from "../../shared/model.ts";
+import { answersOf, type FindingDecision, type Review } from "../../shared/review.ts";
 import type { ConversationService } from "../conversations.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
@@ -45,10 +55,6 @@ export interface RenderReport {
 }
 
 export type RenderOutcome = RenderReport | "no-viewer";
-
-type ReviewItem = CanvasItem & { review: Review };
-type TourItem = CanvasItem & { tour: Tour };
-export type ChecklistCanvasItem = CanvasItem & { checklist: Checklist };
 
 const UNKNOWN_WALKTHROUGH = "Unknown review or tour.";
 
@@ -98,7 +104,7 @@ export class CanvasService {
     return { item, render: await this.waitForRenderReport(item) };
   }
 
-  openAsk(conversationId: string, request: AskRequest): CanvasItem {
+  openAsk(conversationId: string, request: AskRequest): AskItem {
     const shownBefore = this.pagesShownSinceUserSpoke(conversationId).map(({ id }) => id);
     const asked = "questions" in request ? severalQuestionsAsked(request.questions) : singleQuestionAsked(request);
     const item = this.save({
@@ -162,7 +168,7 @@ export class CanvasService {
       review,
       status: "shown",
       createdAt: Date.now(),
-    }) as ReviewItem;
+    });
   }
 
   async tour(conversationId: string, request: TourRequest): Promise<TourItem> {
@@ -175,7 +181,7 @@ export class CanvasService {
       tour,
       status: "shown",
       createdAt: Date.now(),
-    }) as TourItem;
+    });
   }
 
   /** Publishing again replaces the conversation's checklist; the result names what the user had ticked on the one it replaces. */
@@ -189,7 +195,7 @@ export class CanvasService {
       checklist: newChecklist(request, replaced?.checklist),
       status: "shown",
       createdAt: Date.now(),
-    }) as ChecklistCanvasItem;
+    });
     return { item, replaced: replaced && { title: replaced.title, ticks: unheardTicks(replaced.checklist) } };
   }
 
@@ -200,13 +206,13 @@ export class CanvasService {
     const { checklist, changed, added, removed } = applyChecklistEdit(current.checklist, edit);
     const ticks = unheardTicks(checklist);
     const agentEdit = { at: Date.now(), items: [...changed, ...added] };
-    const item = this.save({ ...current, checklist: { ...heardOf(checklist, ticks), agentEdit } }) as ChecklistCanvasItem;
+    const item = this.save({ ...current, checklist: { ...heardOf(checklist, ticks), agentEdit } });
     return { item, changed, added, removed, ticks };
   }
 
   tickChecklistItem(itemId: string, checklistItemId: string, done: boolean) {
     const item = this.store.findCanvasItem(itemId);
-    if (!item?.checklist) throw new Error("Unknown checklist.");
+    if (item?.kind !== "checklist") throw new Error("Unknown checklist.");
     if (!checklistItems(item.checklist).some(({ id }) => id === checklistItemId)) throw new Error("Unknown checklist item.");
     this.save({ ...item, checklist: tickedByUser(item.checklist, checklistItemId, done) });
   }
@@ -214,7 +220,7 @@ export class CanvasService {
   /** The user takes the checklist off the canvas for good; only publishing a new one brings a checklist back. */
   dismissChecklist(itemId: string) {
     const item = this.store.findCanvasItem(itemId);
-    if (!item?.checklist) throw new Error("Unknown checklist.");
+    if (item?.kind !== "checklist") throw new Error("Unknown checklist.");
     this.save({ ...item, checklist: dismissedByUser(item.checklist) });
   }
 
@@ -226,7 +232,7 @@ export class CanvasService {
       text: noteOfTicks(current.title, ticks),
       heard: () => {
         const latest = this.store.findCanvasItem(current.id);
-        if (latest?.checklist) this.save({ ...latest, checklist: heardOf(latest.checklist, ticks) });
+        if (latest?.kind === "checklist") this.save({ ...latest, checklist: heardOf(latest.checklist, ticks) });
       },
     };
   }
@@ -240,7 +246,7 @@ export class CanvasService {
     const anchors = await readEditAnchors(target.review, edit);
     const latest = this.reviewItem(target.id);
     const { review, changed, removed } = applyReviewEdit(latest.review, edit, anchors);
-    const item = this.save({ ...latest, review: { ...review, agentEdit: { at: Date.now(), parts: changed } } }) as ReviewItem;
+    const item = this.save({ ...latest, review: { ...review, agentEdit: { at: Date.now(), parts: changed } } });
     return { item, changed, removed };
   }
 
@@ -317,16 +323,16 @@ export class CanvasService {
   }
 
   openInEditor(itemId: string, path: string, line: number) {
-    const { review, tour } = this.store.findCanvasItem(itemId) ?? {};
-    const root = review?.repository ?? tour?.folder;
+    const item = this.store.findCanvasItem(itemId);
+    const root = item?.kind === "review" ? item.review.repository : item?.kind === "tour" ? item.tour.folder : undefined;
     if (!root) throw new Error(UNKNOWN_WALKTHROUGH);
     openInIdea(root, path, line);
   }
 
   async readReviewedFile(itemId: string, path: string) {
-    const { review, tour } = this.store.findCanvasItem(itemId) ?? {};
-    if (review) return reviewedFileLines(review, path);
-    if (tour) return touredFileLines(tour, path);
+    const item = this.store.findCanvasItem(itemId);
+    if (item?.kind === "review") return reviewedFileLines(item.review, path);
+    if (item?.kind === "tour") return touredFileLines(item.tour, path);
     throw new Error(UNKNOWN_WALKTHROUGH);
   }
 
@@ -369,26 +375,26 @@ export class CanvasService {
 
   private reviewItem(itemId: string): ReviewItem {
     const item = this.store.findCanvasItem(itemId);
-    if (!item?.review) throw new Error("Unknown review.");
-    return item as ReviewItem;
+    if (item?.kind !== "review") throw new Error("Unknown review.");
+    return item;
   }
 
-  private reviewToEdit(conversationId: string, itemId: string | undefined) {
-    const reviews = this.store.listCanvasItems(conversationId).filter((item) => item.review);
+  private reviewToEdit(conversationId: string, itemId: string | undefined): ReviewItem {
+    const reviews = this.store.listCanvasItems(conversationId).filter((item) => item.kind === "review");
     const item = itemId === undefined ? reviews.at(-1) : reviews.find(({ id }) => id === itemId);
-    if (item) return item as ReviewItem;
+    if (item) return item;
     const problem = itemId === undefined ? "This conversation has no review to change; publish one with the review tool." : `review: ${itemId} is not a review in this conversation.`;
     throw new ReviewProblems([problem], REVIEW_NOT_CHANGED);
   }
 
   /** The conversation's checklist is its newest published one; a dismissed one leaves the conversation without one until it is published again. */
-  private currentChecklist(conversationId: string) {
-    const newest = this.store.listCanvasItems(conversationId).findLast((item) => item.checklist) as ChecklistCanvasItem | undefined;
+  private currentChecklist(conversationId: string): ChecklistCanvasItem | undefined {
+    const newest = this.store.listCanvasItems(conversationId).findLast((item) => item.kind === "checklist");
     return newest && !newest.checklist.dismissed ? newest : undefined;
   }
 
   private latestReviewOf(conversationId: string, change: Review) {
-    const reviews = this.store.listCanvasItems(conversationId).flatMap((item) => (item.review ? [item.review] : []));
+    const reviews = this.store.listCanvasItems(conversationId).filter((item) => item.kind === "review").map(({ review }) => review);
     return reviewToCarryOverFrom(reviews, change);
   }
 
@@ -398,11 +404,11 @@ export class CanvasService {
 
   /** A host that stopped while posting a review left it marked as posting; a client may still hold it so. */
   private withoutInterruptedPost(item: CanvasItem): CanvasItem {
-    if (!item.review?.posting || this.reviewsBeingPosted.has(item.id)) return item;
+    if (item.kind !== "review" || !item.review.posting || this.reviewsBeingPosted.has(item.id)) return item;
     return { ...item, review: { ...item.review, posting: false }, updatedAt: Date.now() };
   }
 
-  private save(change: CanvasItem): CanvasItem {
+  private save<T extends CanvasItem>(change: T): T {
     const item = { ...change, updatedAt: Date.now() };
     this.store.saveCanvasItem(item);
     this.hub.publishToConversation(item.conversationId, { type: "canvas.upserted", item });
@@ -411,7 +417,9 @@ export class CanvasService {
   }
 }
 
-const singleQuestionAsked = ({ question, html, options, allowOther, optionWidth }: AskQuestion): Partial<CanvasItem> & Pick<CanvasItem, "title"> => ({
+type AskedFields = Pick<CanvasItemBase, "title"> & Partial<Omit<AskItem, keyof CanvasItemBase | "answer" | "shownBefore">>;
+
+const singleQuestionAsked = ({ question, html, options, allowOther, optionWidth }: AskQuestion): AskedFields => ({
   title: question,
   question,
   html,
@@ -420,7 +428,7 @@ const singleQuestionAsked = ({ question, html, options, allowOther, optionWidth 
   ...(optionWidth && { optionWidth }),
 });
 
-const severalQuestionsAsked = (questions: AskQuestion[]) => ({
+const severalQuestionsAsked = (questions: AskQuestion[]): AskedFields => ({
   title: `${questions.length} questions: ${questions[0]!.question}`,
   question: questions[0]!.question,
   questions,
@@ -429,7 +437,7 @@ const severalQuestionsAsked = (questions: AskQuestion[]) => ({
 type GivenAnswer = Pick<CanvasAnswer, "label" | "note" | "answers">;
 
 /** What the user sent, checked against what was asked: one answer for a question, one for each of several. */
-function answersFor(item: CanvasItem, label: string, note: string | undefined, answers: AskAnswerEntry[] | undefined): GivenAnswer {
+function answersFor(item: AskItem, label: string, note: string | undefined, answers: AskAnswerEntry[] | undefined): GivenAnswer {
   const questions = questionsOf(item);
   if (!item.questions) {
     if (answers) throw new Error("This question takes one answer.");
@@ -452,7 +460,7 @@ export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
   return [`The user chose: ${label}`, ...noteLine(note, "Their note: ")].join("\n");
 }
 
-function answerAsMessage(item: CanvasItem, { label, note, answers }: GivenAnswer) {
+function answerAsMessage(item: AskItem, { label, note, answers }: GivenAnswer) {
   if (answers) {
     const each = answers.flatMap((entry, index) => [`${index + 1}. "${entry.question}": ${entry.label}`, ...noteLine(entry.note, "   Note: ")]);
     return ["My answers to your questions:", ...each, ...noteLine(note, "Note on all the answers: ")].join("\n");

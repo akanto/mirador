@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type * as acp from "@agentclientprotocol/sdk";
-import type { CanvasItem } from "../shared/model.ts";
+import type { AskItem } from "../shared/model.ts";
 import { pendingAsk, pendingPermission } from "../host/pending-requests.ts";
 
 const options: acp.PermissionOption[] = [
@@ -8,7 +8,7 @@ const options: acp.PermissionOption[] = [
   { optionId: "reject", name: "Reject", kind: "reject_once" },
 ];
 
-const ask = (change: Partial<CanvasItem>): CanvasItem => ({ id: "a1", conversationId: "c1", kind: "ask", title: "Which layout?", status: "waiting", createdAt: 1, ...change });
+const ask = (change: Partial<AskItem>): AskItem => ({ id: "a1", conversationId: "c1", kind: "ask", title: "Which layout?", status: "waiting", createdAt: 1, ...change });
 
 describe("a pending permission request", () => {
   test("carries the shell command it would run, with the agent's description, and the answers", () => {

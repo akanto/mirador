@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from "react";
 import { markdownPagePath, suggestedPagePath, type MarkdownDelivery } from "../shared/canvas-export.ts";
-import type { CanvasItem } from "../shared/model.ts";
+import type { ShowItem } from "../shared/model.ts";
 import { placedBelow, useClosing, type BarMenuEntry } from "./BarMenu.tsx";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { AlreadyThere, askAgentForMarkdown, copyPageHtml, copyPageImage, downloadPage, savePageToProject } from "./canvas-export.ts";
@@ -33,7 +33,7 @@ const failureText = (error: unknown) => (error instanceof Error ? error.message 
  * Copy, download or save the page the agent showed: the menu entries, for whichever bar menu holds them, and what they
  * open, the Save form and a note of how it went, under the menu's button.
  */
-export function usePageExport(page: CanvasItem | undefined, frame: RefObject<HTMLIFrameElement | null>): { entries: BarMenuEntry[]; opened: ReactNode } {
+export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLIFrameElement | null>): { entries: BarMenuEntry[]; opened: ReactNode } {
   const [placement, setPlacement] = useState<CSSProperties>();
   const [saveFormOpen, setSaveFormOpen] = useState(false);
   const [status, setStatus] = useStatus();
@@ -97,7 +97,7 @@ export function usePageExport(page: CanvasItem | undefined, frame: RefObject<HTM
   return { entries, opened };
 }
 
-function SaveToProject({ page, style, onSaved, onCancel }: { page: CanvasItem; style?: CSSProperties; onSaved: (path: string) => void; onCancel: () => void }) {
+function SaveToProject({ page, style, onSaved, onCancel }: { page: ShowItem; style?: CSSProperties; onSaved: (path: string) => void; onCancel: () => void }) {
   const [path, setPath] = useState(() => suggestedPagePath(page.title));
   const [problem, setProblem] = useState<string | null>(null);
   const [alreadyThere, setAlreadyThere] = useState(false);

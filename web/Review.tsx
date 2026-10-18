@@ -1,6 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import { fenced } from "../shared/fenced.ts";
-import type { CanvasItem } from "../shared/model.ts";
+import type { ReviewItem, TourItem } from "../shared/model.ts";
 import { cutWithEllipsis } from "../shared/text-cut.ts";
 import {
   anchorLabel,
@@ -45,11 +45,9 @@ import { isMac, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
-export type ReviewItem = CanvasItem & { review: Review };
-export type TourItem = CanvasItem & { tour: Tour };
 type WalkthroughItem = ReviewItem | TourItem;
 
-const isReviewItem = (item: WalkthroughItem): item is ReviewItem => item.review !== undefined;
+const isReviewItem = (item: WalkthroughItem) => item.kind === "review";
 
 type Tab = "overview" | "flow" | "files" | "findings" | "conversations";
 

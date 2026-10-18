@@ -1,6 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { questionsOf } from "../shared/ask.ts";
-import type { CanvasItem, PendingAsk, PendingPermissionRequest } from "../shared/model.ts";
+import type { AskItem, PendingAsk, PendingPermissionRequest } from "../shared/model.ts";
 import { cutWithEllipsis } from "../shared/text-cut.ts";
 
 /** As much of a command as a list of waiting conversations shows; the conversation has all of it. */
@@ -33,7 +33,7 @@ export function pendingPermission(
   };
 }
 
-export function pendingAsk(item: CanvasItem): PendingAsk {
+export function pendingAsk(item: AskItem): PendingAsk {
   const questions = questionsOf(item);
   const first = questions[0];
   return {

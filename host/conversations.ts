@@ -5,6 +5,7 @@ import {
   harnessLabels,
   type Activity,
   type AdoptMode,
+  type AskItem,
   type AskMode,
   type ContextUsage,
   type Conversation,
@@ -214,7 +215,7 @@ export class ConversationService {
     this.contextUsage = new Map(store.listContextUsages());
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
     this.unseenTurnEnds.forEach((_, conversationId) => this.keepLastWords(conversationId));
-    const waitingAsksOldestLast = store.listCanvasItemsWithStatus("waiting").sort((a, b) => b.createdAt - a.createdAt);
+    const waitingAsksOldestLast = store.listCanvasItemsWithStatus("waiting").filter((item) => item.kind === "ask").sort((a, b) => b.createdAt - a.createdAt);
     this.asksWaitedOn = new Map(waitingAsksOldestLast.map((item) => [item.conversationId, pendingAsk(item)]));
     this.jobWaits = new JobWaits(store, {
       changed: (conversationId) => this.republish(conversationId),
@@ -778,7 +779,7 @@ export class ConversationService {
 
   /** The canvas reports each question it opens, has answered or withdraws. */
   questionsChanged(conversationId: string) {
-    const waiting = this.store.listCanvasItems(conversationId).find(({ status }) => status === "waiting");
+    const waiting = this.store.listCanvasItems(conversationId).find((item): item is AskItem => item.kind === "ask" && item.status === "waiting");
     if (waiting) this.asksWaitedOn.set(conversationId, pendingAsk(waiting));
     else this.asksWaitedOn.delete(conversationId);
     if (this.store.hasConversation(conversationId)) this.publish(this.get(conversationId));

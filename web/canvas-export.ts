@@ -1,6 +1,6 @@
 import { canvasCaptureMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { markdownRequest, pageFileName, type MarkdownDelivery } from "../shared/canvas-export.ts";
-import type { CanvasItem } from "../shared/model.ts";
+import type { ShowItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { currentPageLibraries } from "./page-libraries.ts";
 
@@ -71,7 +71,7 @@ export const copyPageHtml = (itemId: string) =>
   navigator.clipboard.write([new ClipboardItem({ "text/plain": exportedPage(itemId).then((html) => new Blob([html], { type: "text/plain" })) })]);
 
 /** Sends the request as the user's message to the conversation that showed the page. */
-export function askAgentForMarkdown(page: CanvasItem, delivery: MarkdownDelivery, afterTurn: boolean) {
+export function askAgentForMarkdown(page: ShowItem, delivery: MarkdownDelivery, afterTurn: boolean) {
   const text = markdownRequest({ title: page.title, html: page.html ?? "" }, delivery);
   if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds: [], afterTurn })) throw new Error("Not connected to the host.");
 }
