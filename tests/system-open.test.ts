@@ -51,6 +51,14 @@ test("on macOS and Linux a file is a program when it is executable or its type r
   expect(isProgram(join(directory, "launcher.desktop"), "linux")).toBe(true);
 });
 
+test("on Linux a Windows program is a program even without the executable bit, as Wine could run it", () => {
+  for (const name of ["setup.exe", "installer.msi", "run.bat", "run.cmd"]) {
+    expect(isProgram(join(directory, name), "linux")).toBe(true);
+  }
+  expect(openingOf(join(directory, "setup.exe"), "linux", {})).toBe("refused");
+  expect(isProgram(join(directory, "notes.md"), "linux")).toBe(false);
+});
+
 test("a script opens as text, executable or not; a program is still refused, and any other file opens with the default program", async () => {
   const script = join(directory, "build.sh");
   await writeFile(script, "#!/bin/sh\n");
