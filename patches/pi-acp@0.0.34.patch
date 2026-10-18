@@ -1,5 +1,5 @@
 diff --git a/dist/index.js b/dist/index.js
-index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460be894f03 100755
+index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..a98a1b2c5d7912d4919b98eab5aecf765ca5df34 100755
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -71,6 +71,8 @@ function shouldUseShellForPiCommand(cmd) {
@@ -84,7 +84,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    dispose(signal = "SIGTERM") {
      if (this.child.killed) return;
      try {
-@@ -206,6 +225,11 @@ var PiRpcProcess = class _PiRpcProcess {
+@@ -206,10 +225,21 @@ var PiRpcProcess = class _PiRpcProcess {
      const res = await this.request({ type: "prompt", message, images });
      if (!res.success) throw new Error(`pi prompt failed: ${res.error ?? JSON.stringify(res.data)}`);
    }
@@ -96,7 +96,17 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    async abort() {
      const res = await this.request({ type: "abort" });
      if (!res.success) throw new Error(`pi abort failed: ${res.error ?? JSON.stringify(res.data)}`);
-@@ -276,6 +300,23 @@ var PiRpcProcess = class _PiRpcProcess {
+   }
++  /** Takes the steering and follow-up messages pi has not read yet out of its queue, and returns their texts. */
++  async clearQueue() {
++    const res = await this.request({ type: "clear_queue" });
++    if (!res.success) throw new Error(`pi clear_queue failed: ${res.error ?? JSON.stringify(res.data)}`);
++    return res.data;
++  }
+   async getState() {
+     const res = await this.request({ type: "get_state" });
+     if (!res.success) throw new Error(`pi get_state failed: ${res.error ?? JSON.stringify(res.data)}`);
+@@ -276,6 +306,23 @@ var PiRpcProcess = class _PiRpcProcess {
      const res = await this.request({ type: "switch_session", sessionPath });
      if (!res.success) throw new Error(`pi switch_session failed: ${res.error ?? JSON.stringify(res.data)}`);
    }
@@ -120,7 +130,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    async getMessages() {
      const res = await this.request({ type: "get_messages" });
      if (!res.success) throw new Error(`pi get_messages failed: ${res.error ?? JSON.stringify(res.data)}`);
-@@ -291,6 +332,7 @@ var PiRpcProcess = class _PiRpcProcess {
+@@ -291,6 +338,7 @@ var PiRpcProcess = class _PiRpcProcess {
  `);
    }
    request(cmd, opts) {
@@ -128,7 +138,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      const id = crypto.randomUUID();
      const withId = { ...cmd, id };
      const timeoutMs = opts?.timeoutMs;
-@@ -590,7 +632,16 @@ function bashExitCode(result, isError) {
+@@ -590,7 +638,16 @@ function bashExitCode(result, isError) {
    return typeof exitCode === "number" ? exitCode : isError ? 1 : 0;
  }
  function bashOutputDelta(previous, next) {
@@ -146,7 +156,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
  }
  function bashTerminalContent(toolCallId) {
    return [{ type: "terminal", terminalId: toolCallId }];
-@@ -721,6 +772,8 @@ function toToolCallLocations(args, cwd, line) {
+@@ -721,6 +778,8 @@ function toToolCallLocations(args, cwd, line) {
  var SessionManager = class {
    sessions = /* @__PURE__ */ new Map();
    store = new SessionStore();
@@ -155,7 +165,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    /** Dispose all sessions and their underlying pi subprocesses. */
    disposeAll() {
      for (const [id] of this.sessions) this.close(id);
-@@ -734,6 +787,7 @@ var SessionManager = class {
+@@ -734,6 +793,7 @@ var SessionManager = class {
     * Used when clients explicitly reload a session and we want a fresh pi subprocess.
     */
    close(sessionId) {
@@ -163,7 +173,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      const s = this.sessions.get(sessionId);
      if (!s) return;
      try {
-@@ -742,6 +796,19 @@ var SessionManager = class {
+@@ -742,6 +802,19 @@ var SessionManager = class {
      }
      this.sessions.delete(sessionId);
    }
@@ -183,7 +193,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    /** Close all sessions except the one with `keepSessionId`. */
    closeAllExcept(keepSessionId) {
      for (const [id] of this.sessions) {
-@@ -754,6 +821,8 @@ var SessionManager = class {
+@@ -754,6 +827,8 @@ var SessionManager = class {
      try {
        proc = await PiRpcProcess.spawn({
          cwd: params.cwd,
@@ -192,7 +202,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
          piCommand: params.piCommand
        });
      } catch (e) {
-@@ -777,11 +846,12 @@ var SessionManager = class {
+@@ -777,11 +852,12 @@ var SessionManager = class {
        sessionId,
        cwd: params.cwd,
        mcpServers: params.mcpServers,
@@ -206,7 +216,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      return session;
    }
    get(sessionId) {
-@@ -800,11 +870,12 @@ var SessionManager = class {
+@@ -800,11 +876,12 @@ var SessionManager = class {
        sessionId,
        cwd: params.cwd,
        mcpServers: params.mcpServers,
@@ -220,7 +230,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      return session;
    }
  };
-@@ -812,6 +883,7 @@ var PiAcpSession = class {
+@@ -812,6 +889,7 @@ var PiAcpSession = class {
    sessionId;
    cwd;
    mcpServers;
@@ -228,16 +238,21 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    startupInfo = null;
    startupInfoSent = false;
    proc;
-@@ -823,6 +895,8 @@ var PiAcpSession = class {
+@@ -823,6 +901,13 @@ var PiAcpSession = class {
    // Current in-flight turn (if any). Additional prompts are queued.
    pendingTurn = null;
    turnQueue = [];
 +  // pi has settled the turn, which stays pending until its last updates are out.
 +  settlingTurn = false;
++  steersInFlight = /* @__PURE__ */ new Set();
++  /** How many of the running turn's last steered messages its cancel took back from pi unread. */
++  steersTakenBack = null;
++  /** How many of the last settled turn's steered messages pi never read. */
++  unansweredSteers = 0;
    // Track tool call statuses and ensure they are monotonic (pending -> in_progress -> completed).
    // Some pi events can arrive out of order (e.g. late toolcall_* deltas after execution starts),
    // and clients may hide progress if we ever downgrade back to `pending`.
-@@ -831,6 +905,8 @@ var PiAcpSession = class {
+@@ -831,6 +916,8 @@ var PiAcpSession = class {
    // when retry, compaction, or queued continuations run. The session-level prompt
    // completes only when `agent_settled` is emitted.
    inAgentLoop = false;
@@ -246,7 +261,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    // For ACP diff support: capture file contents before edit/write mutations,
    // then emit ToolCallContent {type:"diff"}. Compatible structured edit/write
    // events may need to be implemented in pi in the future.
-@@ -845,10 +921,25 @@ var PiAcpSession = class {
+@@ -845,10 +932,25 @@ var PiAcpSession = class {
      this.sessionId = opts.sessionId;
      this.cwd = opts.cwd;
      this.mcpServers = opts.mcpServers;
@@ -272,28 +287,63 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    }
    setStartupInfo(text) {
      this.startupInfo = text;
-@@ -890,6 +981,15 @@ var PiAcpSession = class {
+@@ -890,6 +992,40 @@ var PiAcpSession = class {
      });
      return turnPromise;
    }
 +  /**
 +   * Adds the message to the running turn, as pi's steer does. Sends nothing and returns false when no turn is running,
-+   * or when pi has already settled it.
++   * or when pi has already settled it or is being cancelled.
 +   */
 +  async steer(message, images = []) {
-+    if (!this.pendingTurn || this.settlingTurn) return false;
-+    await this.proc.steer(expandSlashCommand(message, this.fileCommands), images);
++    if (!this.pendingTurn || this.settlingTurn || this.cancelRequested) return false;
++    const steering = this.proc.steer(expandSlashCommand(message, this.fileCommands), images);
++    this.steersInFlight.add(steering);
++    try {
++      await steering;
++    } finally {
++      this.steersInFlight.delete(steering);
++    }
 +    return true;
++  }
++  /**
++   * pi keeps a steered message it has not read yet through an abort, and reads it at the start of its next run, after
++   * that run's own message, so a cancel takes such messages back first. pi reads its queue first in, first out: those
++   * it never read are the turn's last ones.
++   */
++  async takeBackUnreadSteers() {
++    await Promise.allSettled(this.steersInFlight);
++    try {
++      const { steering } = await this.proc.clearQueue();
++      return Array.isArray(steering) ? steering.length : 0;
++    } catch {
++      return 0;
++    }
++  }
++  takeUnansweredSteers() {
++    const unanswered = this.unansweredSteers;
++    this.unansweredSteers = 0;
++    return unanswered;
 +  }
    async cancel() {
      this.cancelRequested = true;
      if (this.turnQueue.length) {
-@@ -937,10 +1037,12 @@ var PiAcpSession = class {
+@@ -904,6 +1040,8 @@ var PiAcpSession = class {
+         _meta: { piAcp: { queueDepth: 0, running: Boolean(this.pendingTurn) } }
+       });
+     }
++    this.steersTakenBack ??= this.takeBackUnreadSteers();
++    await this.steersTakenBack;
+     await this.proc.abort();
+   }
+   wasCancelRequested() {
+@@ -937,10 +1075,13 @@ var PiAcpSession = class {
      await this.flushEmits();
    }
    async settleTurn() {
 +    this.settlingTurn = true;
      await this.publishContextUsage();
++    this.unansweredSteers = await this.steersTakenBack ?? 0;
      const reason = this.cancelRequested ? "cancelled" : "end_turn";
      this.pendingTurn?.resolve(reason);
      this.pendingTurn = null;
@@ -301,7 +351,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      this.inAgentLoop = false;
      const next = this.turnQueue.shift();
      if (next) {
-@@ -970,10 +1072,10 @@ var PiAcpSession = class {
+@@ -970,10 +1111,10 @@ var PiAcpSession = class {
      });
    }
    emitBashOutputUpdate(params) {
@@ -316,7 +366,15 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      this.emit({
        sessionUpdate: "tool_call_update",
        toolCallId: params.toolCallId,
-@@ -1021,12 +1123,19 @@ var PiAcpSession = class {
+@@ -993,6 +1134,7 @@ var PiAcpSession = class {
+   }
+   startTurn(t) {
+     this.cancelRequested = false;
++    this.steersTakenBack = null;
+     this.inAgentLoop = false;
+     this.pendingTurn = { resolve: t.resolve, reject: t.reject };
+     this.emit({
+@@ -1021,12 +1163,19 @@ var PiAcpSession = class {
    handlePiEvent(ev) {
      const type = String(ev.type ?? "");
      switch (type) {
@@ -337,7 +395,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
            });
            break;
          }
-@@ -1790,6 +1899,7 @@ function getEnableSkillCommands(cwd) {
+@@ -1790,6 +1939,7 @@ function getEnableSkillCommands(cwd) {
    return true;
  }
  function getQuietStartup(cwd) {
@@ -345,7 +403,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    const merged = getMergedSettings(cwd);
    const direct = merged.quietStartup;
    if (typeof direct === "boolean") return direct;
-@@ -1888,6 +1998,54 @@ function mergeCommands(a, b) {
+@@ -1888,6 +2038,54 @@ function mergeCommands(a, b) {
    return out;
  }
  var pkg = readNearestPackageJson(import.meta.url);
@@ -400,7 +458,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
  var PiAcpAgent = class {
    conn;
    sessions = new SessionManager();
-@@ -1940,12 +2098,15 @@ var PiAcpAgent = class {
+@@ -1940,12 +2138,15 @@ var PiAcpAgent = class {
        if (!stored) {
          throw RequestError3.invalidParams(`Unknown sessionId: ${sessionId}`);
        }
@@ -416,7 +474,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
            piCommand: process.env.PI_ACP_PI_COMMAND
          });
        } catch (e) {
-@@ -1958,6 +2119,7 @@ var PiAcpAgent = class {
+@@ -1958,6 +2159,7 @@ var PiAcpAgent = class {
        const session = this.sessions.getOrCreate(sessionId, {
          cwd,
          mcpServers: opts?.mcpServers ?? [],
@@ -424,7 +482,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
          conn: this.conn,
          proc,
          fileCommands
-@@ -1990,7 +2152,7 @@ var PiAcpAgent = class {
+@@ -1990,7 +2192,7 @@ var PiAcpAgent = class {
        }),
        agentCapabilities: {
          loadSession: true,
@@ -433,7 +491,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
          promptCapabilities: {
            image: true,
            audio: false,
-@@ -2000,11 +2162,33 @@ var PiAcpAgent = class {
+@@ -2000,11 +2202,33 @@ var PiAcpAgent = class {
            // **UNSTABLE** ACP capability used by Zed's codex-acp adapter.
            // Enables a native session picker in clients that support it.
            list: {},
@@ -469,7 +527,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
    async newSession(params) {
      if (!isAbsolute3(params.cwd)) {
        throw RequestError3.invalidParams(`cwd must be an absolute path: ${params.cwd}`);
-@@ -2015,6 +2199,7 @@ var PiAcpAgent = class {
+@@ -2015,6 +2239,7 @@ var PiAcpAgent = class {
      const session = await this.sessions.create({
        cwd: params.cwd,
        mcpServers: params.mcpServers,
@@ -477,7 +535,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
        conn: this.conn,
        fileCommands,
        piCommand: process.env.PI_ACP_PI_COMMAND
-@@ -2079,7 +2264,6 @@ var PiAcpAgent = class {
+@@ -2079,7 +2304,6 @@ var PiAcpAgent = class {
      });
      if (preludeText)
        session.setStartupInfo(preludeText);
@@ -485,7 +543,17 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      const response = {
        sessionId: session.sessionId,
        configOptions,
-@@ -2521,6 +2705,12 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2496,7 +2720,8 @@ ${JSON.stringify(stats, null, 2)}`;
+     }
+     const result = await session.prompt(message, images);
+     const stopReason = result === "error" ? session.wasCancelRequested() ? "cancelled" : "end_turn" : result;
+-    return { stopReason };
++    const unanswered = session.takeUnansweredSteers();
++    return { stopReason, ...unanswered > 0 && { _meta: { steering: { unanswered } } } };
+   }
+   async cancel(params) {
+     const session = this.sessions.maybeGet(params.sessionId);
+@@ -2521,6 +2746,12 @@ ${JSON.stringify(stats, null, 2)}`;
      return { sessions, nextCursor, _meta: {} };
    }
    async loadSession(params) {
@@ -498,7 +566,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      if (!isAbsolute3(params.cwd)) {
        throw RequestError3.invalidParams(`cwd must be an absolute path: ${params.cwd}`);
      }
-@@ -2533,7 +2723,8 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2533,7 +2764,8 @@ ${JSON.stringify(stats, null, 2)}`;
      const enableSkillCommands = getEnableSkillCommands(params.cwd);
      const session = await this.restoreSession(params.sessionId, {
        cwd: params.cwd,
@@ -508,7 +576,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      });
      const proc = session.proc;
      let configuration;
-@@ -2545,13 +2736,12 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2545,13 +2777,12 @@ ${JSON.stringify(stats, null, 2)}`;
      }
      const { configOptions, models, modes } = configuration;
      const fileCommands = loadSlashCommands(params.cwd);
@@ -523,7 +591,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
      const messages = Array.isArray(data?.messages) ? data.messages : [];
      for (const m of messages) {
        const role = String(m?.role ?? "");
-@@ -2569,12 +2759,14 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2569,12 +2800,14 @@ ${JSON.stringify(stats, null, 2)}`;
        }
        if (role === "assistant") {
          const text = normalizePiAssistantText(m?.content);
@@ -539,7 +607,7 @@ index 64758f027a38a7ecbe7d6e05e88edcc72ee9f193..140e4a9abd73aaf2d5ea61947f289460
              }
            });
          }
-@@ -2677,6 +2869,46 @@ ${JSON.stringify(stats, null, 2)}`;
+@@ -2677,6 +2910,46 @@ ${JSON.stringify(stats, null, 2)}`;
      }, 0);
      return response;
    }

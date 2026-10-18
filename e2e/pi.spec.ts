@@ -15,6 +15,7 @@ const SLOW_PROFILE = "slow scripted pi";
 const OTHER_PROFILE = "other scripted pi";
 const SLOW_PI_START_SECONDS = 3;
 const STEERED = "Also say which day it is";
+const STEERED_BEFORE_STOP = "Also say which month it is";
 const TERMINAL_MARKER = "pi-terminal-marker-17";
 const SLOWLY_CONTINUED_MARKER = "pi-slowly-continued-marker-23";
 let page: Page;
@@ -306,6 +307,29 @@ test("a pi that dies in the middle of a turn ends the turn with its error, and t
   expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "RUN sleep 45", "After pi died"]));
   expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
   await expect.poll(piSessionProcesses).toHaveLength(1);
+});
+
+test("a message that joined a pi turn goes out again after Stop if pi had not read it yet, as the next turn", async () => {
+  model.hold();
+  await sendMessage(page, "Before the stop");
+  await expect.poll(() => model.userMessagesInContext().at(-1), { timeout: 60_000 }).toBe("Before the stop");
+  const composer = page.locator(".composer:visible textarea");
+  await composer.fill(STEERED_BEFORE_STOP);
+  await composer.press("Enter");
+  const steeredMessages = page.locator(".timeline:visible .message.user", { hasText: STEERED_BEFORE_STOP });
+  await expect(steeredMessages).toHaveCount(1, { timeout: 60_000 });
+  const cancelledTurns = page.locator(".timeline:visible").getByText("Turn ended: cancelled");
+  const cancelledBefore = await cancelledTurns.count();
+  await composer.press("Escape");
+  await expect(cancelledTurns).toHaveCount(cancelledBefore + 1, { timeout: 30_000 });
+
+  model.answerHeld();
+  await expect(lastAgentMessage(page)).toContainText(`Echo: ${STEERED_BEFORE_STOP}`, { timeout: 60_000 });
+  await waitForTurnToEnd(page);
+  await expect(steeredMessages).toHaveCount(1);
+  const context = model.userMessagesInContext();
+  expect(context.slice(-2)).toEqual(["Before the stop", STEERED_BEFORE_STOP]);
+  expect(context.filter((text) => text === STEERED_BEFORE_STOP)).toHaveLength(1);
 });
 
 test("a pi session started in a terminal can be forked and continued, and each goes on from its own history", async () => {

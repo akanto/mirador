@@ -521,15 +521,14 @@ export class ConversationService {
     this.store.turnStarted(conversationId);
     this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, notes);
     let promptSent = false;
-    let answeredInFull = false;
+    let response: acp.PromptResponse | undefined;
     try {
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
       const prompt = await this.promptContent(conversationId, withNotes(notes, text), imageIds);
       const harness = this.harnessFor(this.get(conversationId));
       promptSent = true;
-      const response = await harness.prompt(sessionId, prompt);
-      answeredInFull = response.stopReason === "end_turn";
+      response = await harness.prompt(sessionId, prompt);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
       this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
@@ -542,8 +541,8 @@ export class ConversationService {
       }
     } finally {
       turn.ended = true;
-      if (!answeredInFull) {
-        await this.returnUnansweredSteers(conversationId, runtime, turn.steered).catch((error: unknown) =>
+      if (response?.stopReason !== "end_turn") {
+        await this.returnUnansweredSteers(conversationId, runtime, turn.steered, response).catch((error: unknown) =>
           console.error(`${new Date().toISOString()} could not tell whether the agent answered the messages that joined the turn of conversation ${conversationId}: ${errorMessage(error)}`),
         );
       }
@@ -1340,21 +1339,26 @@ export class ConversationService {
   }
 
   /**
-   * A turn stopped right after a steer can leave the steered messages unanswered, and only Claude Code's transcript
-   * tells which. They go back to the front of the queue, to go out as the next turn.
+   * A turn stopped right after a steer can leave the steered messages unanswered: pi says how many in its answer to the
+   * stopped turn, and for Claude Code its transcript tells which. They go back to the front of the queue, to go out as
+   * the next turn.
    */
-  private async returnUnansweredSteers(conversationId: string, runtime: Runtime, steered: SteeredMessages[]) {
+  private async returnUnansweredSteers(conversationId: string, runtime: Runtime, steered: SteeredMessages[], response?: acp.PromptResponse) {
     const conversation = this.store.findConversation(conversationId);
-    const sessionId = steered[0]?.sessionId;
-    if (!sessionId || conversation?.harness !== "claude") return;
-    const transcript = await claudeTranscript(this.claudeConfigDirOf(conversation), sessionId);
-    const events = this.store.listEvents(conversationId);
-    const unanswered = steered.filter((steer) => !steerAnswered(transcript, events, steer));
+    if (!conversation || steered.length === 0) return;
+    const unanswered = (response && steersLeftUnread(response, steered)) ?? (await this.steersUnansweredInTranscript(conversation, steered));
     if (unanswered.length === 0) return;
     const commandIds = unanswered.flatMap((steer) => steer.commandIds);
     this.append(conversationId, { type: "steered-messages-returned", seqs: unanswered.flatMap(({ seqs }) => seqs), ...(commandIds.length > 0 && { commandIds }) });
     this.setQueue(conversationId, runtime, [...unanswered.flatMap(({ messages }) => messages), ...runtime.queuedMessages]);
     this.publish(this.get(conversationId));
+  }
+
+  private async steersUnansweredInTranscript(conversation: Conversation, steered: SteeredMessages[]) {
+    if (conversation.harness !== "claude") return [];
+    const transcript = await claudeTranscript(this.claudeConfigDirOf(conversation), steered[0]!.sessionId);
+    const events = this.store.listEvents(conversation.id);
+    return steered.filter((steer) => !steerAnswered(transcript, events, steer));
   }
 
   /** What the user did since their last message that the agent should hear of with this one. */
@@ -1706,6 +1710,16 @@ export function openTurnTheAgentWorkedOn(events: StoredEvent[]): boolean {
 }
 
 const agentOutput = new Set<string>(["agent_message_chunk", "agent_thought_chunk", "tool_call"]);
+
+/**
+ * The steered messages an agent that says how many of them it never read, as pi does in its answer to a stopped turn,
+ * left unanswered: the last ones, as it reads them first in, first out. Null for an agent that does not say.
+ */
+export function steersLeftUnread(response: acp.PromptResponse, steered: SteeredMessages[]): SteeredMessages[] | null {
+  const unread = (response._meta?.steering as { unanswered?: unknown } | undefined)?.unanswered;
+  if (typeof unread !== "number" || !Number.isInteger(unread)) return null;
+  return steered.slice(Math.max(0, steered.length - unread));
+}
 
 /**
  * Whether the agent began answering messages steered into its turn: it took them in, which Claude Code records, and its

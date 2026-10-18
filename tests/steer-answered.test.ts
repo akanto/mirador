@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { steerAnswered } from "../host/conversations.ts";
+import { steerAnswered, steersLeftUnread } from "../host/conversations.ts";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 
 const takenInAt = Date.parse("2026-10-16T08:04:25.490Z");
@@ -25,4 +25,13 @@ test("a steered message the agent took in is answered once its output came after
 test("steered messages are found by the first with text, and with none they count as answered", () => {
   expect(steerAnswered("", [], steer(" "))).toBe(true);
   expect(steerAnswered("", [], steer("", "Also say which day it is"))).toBe(false);
+});
+
+test("pi's count of the steered messages it never read picks the last ones, and an agent that gives none leaves it to its transcript", () => {
+  const steered = ["first", "second", "third"].map((text, seq) => ({ sessionId: "s", steeredAt: seq, messages: [{ id: text, text, imageIds: [] }], seqs: [seq], commandIds: [] }));
+  const answer = (unanswered?: number) => ({ stopReason: "cancelled" as const, ...(unanswered !== undefined && { _meta: { steering: { unanswered } } }) });
+  expect(steersLeftUnread(answer(2), steered)?.flatMap(({ seqs }) => seqs)).toEqual([1, 2]);
+  expect(steersLeftUnread(answer(0), steered)).toEqual([]);
+  expect(steersLeftUnread(answer(5), steered)).toEqual(steered);
+  expect(steersLeftUnread(answer(), steered)).toBeNull();
 });
