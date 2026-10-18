@@ -385,6 +385,19 @@ describe("Store", () => {
     reopened.close();
   });
 
+  test("opens scripts in the system's text editor until Settings name a program, also after reopening", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    expect(store.scriptProgramSetting()).toBe("");
+    store.setScriptProgramSetting("code");
+    store.close();
+    const reopened = new Store(path);
+    expect(reopened.scriptProgramSetting()).toBe("code");
+    reopened.setScriptProgramSetting("");
+    expect(reopened.scriptProgramSetting()).toBe("");
+    reopened.close();
+  });
+
   test("tells Claude Code to use the canvas often until Settings say otherwise, also after reopening", () => {
     const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const store = new Store(path);

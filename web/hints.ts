@@ -178,7 +178,10 @@ export const hints = {
   steerMessage: "Adds the message to the running turn: Claude Code reads it at once, cutting off what it is writing, or, while it runs tools, as soon as they finish. pi reads it once it finishes writing or running its tools.",
   afterTurnMessage: "Keeps the message until the running turn ends (or you press Stop), then sends it as your next message.",
   enterWhileBusy: "What Enter does with a message while the agent works; ⌥Enter (Alt+Enter) does the other. With opencode, messages always wait for the turn to end.",
-  openFile: "Opens the file in the program the host's system uses for it, on the machine Mirador runs on.",
+  openFile:
+    "Opens the file in the program the host's system uses for it, on the machine Mirador runs on. A script opens as text, in the program Settings › Conversations choose. A program does not open.",
+  scriptProgram:
+    "Where a file link to a script opens, as text, on the host's computer. The program for its type could run it: Git for Windows runs .sh files, Python's launcher .py files.\n\nThe system's text editor: on macOS the one you chose for text, on Windows Notepad. Linux has none of its own, so there xdg-open picks the program for the script's type, and an executable script, which that program could run, does not open.\n\nA program you name: its name on the host's PATH, such as code or subl, or its full path. It gets the file's path. On Windows name an .exe, such as Code.exe: a .cmd or .bat would run through cmd.exe, which could take part of a file's name for a command.",
   blockedImage: "Opens the image in your browser. Mirador does not load images from other sites itself, so an agent cannot send them what it read; Settings → Conversations can change that.",
   scriptMessage:
     "A script the agent started sent this as your next message, so the agent picks up when the script is done. Scripts send with mirador message.",

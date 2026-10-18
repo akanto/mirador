@@ -532,6 +532,15 @@ export class Store {
     this.setSetting("claude_program", path || null);
   }
 
+  /** The program Settings name to open scripts in, as text; empty for the system's text editor. */
+  scriptProgramSetting(): string {
+    return this.setting("script_program") ?? "";
+  }
+
+  setScriptProgramSetting(program: string) {
+    this.setSetting("script_program", program || null);
+  }
+
   private setting(key: string) {
     return (this.db.query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null)?.value ?? null;
   }

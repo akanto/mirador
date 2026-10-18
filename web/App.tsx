@@ -586,6 +586,7 @@ export function App() {
           promptTemplates={state.promptTemplates}
           canvasUse={state.canvasUse}
           claudeProgram={state.claudeProgram}
+          scriptProgram={state.scriptProgram}
           version={state.version}
           newerVersion={state.newerVersion}
           layoutDefault={conversationLayouts.layoutDefault}

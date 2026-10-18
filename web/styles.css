@@ -4682,7 +4682,8 @@ button.arrangement.chosen {
   margin: 0;
 }
 
-input.claude-program {
+input.claude-program,
+input.script-program {
   width: 26em;
   max-width: 100%;
 }

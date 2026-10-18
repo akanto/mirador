@@ -87,6 +87,7 @@ export function SettingsDialog({
   promptTemplates,
   canvasUse,
   claudeProgram,
+  scriptProgram,
   version,
   newerVersion,
   layoutDefault,
@@ -98,6 +99,7 @@ export function SettingsDialog({
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
+  scriptProgram: string;
   version: string;
   newerVersion: NewerVersion | null;
   layoutDefault: LayoutDefault;
@@ -118,6 +120,7 @@ export function SettingsDialog({
         <SendingSettings />
         <PromptTemplateSettings templates={promptTemplates} />
         <ExternalImageSettings />
+        <FileLinkSettings scriptProgram={scriptProgram} />
         {isMac && <TypingSettings />}
       </>
     ),
@@ -655,6 +658,62 @@ function ExternalImageSettings() {
           </button>
         </p>
       )}
+    </>
+  );
+}
+
+type ScriptOpener = "text-editor" | "program";
+
+const scriptOpenerLabels: Record<ScriptOpener, string> = { "text-editor": "The system's text editor", program: "A program you name" };
+
+function FileLinkSettings({ scriptProgram }: { scriptProgram: string }) {
+  const [opener, setOpener] = useState<ScriptOpener>(scriptProgram ? "program" : "text-editor");
+  const [program, setProgram] = useState(scriptProgram);
+  useEffect(() => {
+    setOpener(scriptProgram ? "program" : "text-editor");
+    setProgram(scriptProgram);
+  }, [scriptProgram]);
+  const save = (named: string) => {
+    if (named.trim() !== scriptProgram) connection.send({ type: "settings.set-script-program", program: named.trim() });
+  };
+  const choose = (chosen: ScriptOpener) => {
+    setOpener(chosen);
+    if (chosen === "text-editor") save("");
+  };
+  return (
+    <>
+      <h3>File links</h3>
+      <p className="hint">
+        A file path in an agent's reply or tool card opens on the host's computer. A script opens as text, since the program for its type could run it.
+        Kept by the host for every browser.
+      </p>
+      <div className="sending-settings">
+        <label data-hint={hints.scriptProgram}>
+          Scripts open in
+          <select value={opener} onChange={(event) => choose(event.target.value as ScriptOpener)}>
+            {Object.entries(scriptOpenerLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {opener === "program" && (
+          <label>
+            Program
+            <input
+              type="text"
+              className="script-program"
+              value={program}
+              placeholder="Such as code or subl"
+              spellCheck={false}
+              onChange={(event) => setProgram(event.target.value)}
+              onBlur={() => save(program)}
+              onKeyDown={(event) => event.key === "Enter" && save(program)}
+            />
+          </label>
+        )}
+      </div>
     </>
   );
 }

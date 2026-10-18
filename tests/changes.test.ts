@@ -18,6 +18,7 @@ let store: Store;
 let checkpoints: Checkpoints;
 let opened: { file: string; line: number }[];
 let openedByDefault: string[];
+let openedAsText: string[];
 let changes: Changes;
 
 async function git(directory: string, args: string[]) {
@@ -73,7 +74,15 @@ beforeEach(async () => {
   checkpoints = new Checkpoints(root);
   opened = [];
   openedByDefault = [];
-  changes = new Changes(store, checkpoints, () => workspace(), (file, line) => opened.push({ file, line }), (file) => openedByDefault.push(file));
+  openedAsText = [];
+  changes = new Changes(
+    store,
+    checkpoints,
+    () => workspace(),
+    (file, line) => opened.push({ file, line }),
+    (file) => openedByDefault.push(file),
+    (file) => openedAsText.push(file),
+  );
 });
 
 afterEach(() => rm(root, { recursive: true, force: true }));
@@ -375,7 +384,7 @@ test("a file of the workspace opens with the system's default program, and a fil
 test("a file named by the workspace's real path opens, though the workspace was added through a link to it", async () => {
   const link = join(root, "link");
   await symlink(projectDir, link);
-  const linked = new Changes(store, checkpoints, () => ({ ...workspace(), path: link }), () => {}, (file) => openedByDefault.push(file));
+  const linked = new Changes(store, checkpoints, () => ({ ...workspace(), path: link }), () => {}, (file) => openedByDefault.push(file), () => {});
   await startTurn();
   await linked.openFile("c1", join(projectDir, "kept.txt"));
   await linked.openFile("c1", "kept.txt");
@@ -445,12 +454,25 @@ test("a link in the workspace that leads outside it opens only once the agent ch
 
 test("a program is refused rather than handed to the system's default program, which would run it", async () => {
   await startTurn();
-  const script = process.platform === "win32" ? "build.bat" : "build.sh";
-  await write(script, process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n");
-  await chmod(join(projectDir, script), 0o755);
+  const program = process.platform === "win32" ? "build.bat" : "build";
+  await write(program, process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n");
+  await chmod(join(projectDir, program), 0o755);
   await write("tool.jar", "");
-  await expect(changes.openFile("c1", script)).rejects.toThrow("would run as a program");
+  await expect(changes.openFile("c1", program)).rejects.toThrow("would run as a program");
   await expect(changes.openFile("c1", "tool.jar")).rejects.toThrow("would run as a program");
+  expect([...openedByDefault, ...openedAsText]).toEqual([]);
+});
+
+test("a script opens as text, executable or not, and through a link named like a document too, never with the system's default program", async () => {
+  await startTurn();
+  await write("run.sh", "#!/bin/sh\n");
+  await chmod(join(projectDir, "run.sh"), 0o755);
+  await write("tool.py", "print()\n");
+  await symlink(join(projectDir, "tool.py"), join(projectDir, "notes.md"));
+  await changes.openFile("c1", "run.sh");
+  await changes.openFile("c1", "tool.py");
+  await changes.openFile("c1", "notes.md");
+  expect(openedAsText).toEqual(["run.sh", "tool.py", "tool.py"].map((file) => realpathSync.native(join(projectDir, file))));
   expect(openedByDefault).toEqual([]);
 });
 

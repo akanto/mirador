@@ -38,7 +38,7 @@ import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
 import { pendingAsk, pendingPermission } from "./pending-requests.ts";
 import { launchIdea } from "./review/editor.ts";
-import { openWithSystemDefault } from "./system-open.ts";
+import { openAsText, openWithSystemDefault } from "./system-open.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
@@ -203,7 +203,9 @@ export class ConversationService {
     private readonly notifications: SystemNotifications,
   ) {
     this.checkpoints = new Checkpoints(config.dataDir);
-    this.changes = new Changes(store, this.checkpoints, (conversationId) => this.workspaceOf(conversationId), launchIdea, openWithSystemDefault);
+    this.changes = new Changes(store, this.checkpoints, (conversationId) => this.workspaceOf(conversationId), launchIdea, openWithSystemDefault, (file) =>
+      openAsText(file, store.scriptProgramSetting()),
+    );
     this.cancelPermissionsOrphanedByRestart();
     this.endTurnsOrphanedByRestart();
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());

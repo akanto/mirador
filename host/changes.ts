@@ -7,7 +7,7 @@ import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
-import { isProgram } from "./system-open.ts";
+import { openingOf } from "./system-open.ts";
 import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredPaths, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
@@ -128,6 +128,7 @@ export class Changes {
     private readonly workspaceOf: (conversationId: string) => Workspace,
     private readonly openInIdea: (file: string, line: number) => void,
     private readonly openWithDefault: (file: string) => void,
+    private readonly openAsText: (file: string) => void,
   ) {}
 
   async list(conversationId: string, scope: ChangeScope): Promise<ChangeList> {
@@ -191,8 +192,9 @@ export class Changes {
   }
 
   /**
-   * Opens a file of the project, or one the agent changed in this conversation, with the system's default program. A
-   * link is checked and opened as the file it leads to, as the system would open that file whatever the link's name.
+   * Opens a file of the project, or one the agent changed in this conversation, with the system's default program, or
+   * as text if it is a script. A link is checked and opened as the file it leads to, as the system would open that
+   * file whatever the link's name.
    */
   async openFile(conversationId: string, path: string) {
     const workspace = this.workspaceOf(conversationId);
@@ -204,7 +206,9 @@ export class Changes {
     const realFile = realPathOf(file);
     if (realFile === null) throw new Error(`${path} does not exist.`);
     if (!isWorkspaceOrAgentFile(realFile, workspace, edits)) throw new Error(`${path} leads to a file outside this workspace that the agent did not change, so Mirador does not open it.`);
-    if (isProgram(realFile)) throw new Error(`${path} would run as a program, so Mirador does not open it.`);
+    const opening = openingOf(realFile);
+    if (opening === "refused") throw new Error(`${path} would run as a program, so Mirador does not open it.`);
+    if (opening === "as-text") return this.openAsText(realFile);
     this.openWithDefault(realFile);
   }
 

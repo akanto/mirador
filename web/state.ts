@@ -41,6 +41,8 @@ export interface AppState {
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
+  /** The program the host opens scripts in, as text; empty for the system's text editor. */
+  scriptProgram: string;
   /** The agents the host's machine has a program for, which a new profile can run. */
   installedAgents: HarnessId[];
   /** The version of the host serving this page. */
@@ -85,6 +87,7 @@ export const initialState: AppState = {
   promptTemplates: [],
   canvasUse: "often",
   claudeProgram: { configured: "", found: null, version: null, installFolders: "", installCommand: "" },
+  scriptProgram: "",
   installedAgents: [],
   version: "",
   canvasAssetsOrigin: "",
@@ -163,6 +166,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
         claudeProgram: message.claudeProgram,
+        scriptProgram: message.scriptProgram,
         installedAgents: message.installedAgents,
         version: message.version,
         canvasAssetsOrigin: message.canvasAssetsOrigin,
@@ -234,6 +238,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, canvasUse: message.canvasUse };
     case "settings.claude-program":
       return { ...state, claudeProgram: message.claudeProgram };
+    case "settings.script-program":
+      return { ...state, scriptProgram: message.scriptProgram };
     case "prompt-template.deleted":
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":

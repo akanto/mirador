@@ -89,6 +89,8 @@ export type ClientMessage =
   | { type: "prompt-template.delete"; templateId: string }
   | { type: "settings.set-canvas-use"; canvasUse: CanvasUse }
   | { type: "settings.set-claude-program"; path: string }
+  /** Empty for the system's text editor. */
+  | { type: "settings.set-script-program"; program: string }
   /** Without a launch, the conversation starts on the workspace's default as the host has it when the message arrives. */
   | { type: "conversation.create"; workspaceId: string; launch?: Launch }
   /** Puts the conversation just before another of its workspace in the sidebar, or last. */
@@ -225,6 +227,8 @@ export type ServerMessage =
       promptTemplates: PromptTemplate[];
       canvasUse: CanvasUse;
       claudeProgram: ClaudeProgram;
+      /** The program the host opens scripts in, as text; empty for the system's text editor. */
+      scriptProgram: string;
       /** The agents this machine has a program for, which a new profile can run. */
       installedAgents: HarnessId[];
       /** Where this page loads canvas libraries from: the address it reached the host at may differ from the one agents were given. */
@@ -250,6 +254,7 @@ export type ServerMessage =
   | { type: "prompt-template.deleted"; templateId: string }
   | { type: "settings.canvas-use"; canvasUse: CanvasUse }
   | { type: "settings.claude-program"; claudeProgram: ClaudeProgram }
+  | { type: "settings.script-program"; scriptProgram: string }
   | { type: "workspace.upserted"; workspace: Workspace }
   | { type: "workspace.deleted"; workspaceId: string }
   | { type: "workspace-group.upserted"; group: WorkspaceGroup }

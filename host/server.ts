@@ -630,6 +630,11 @@ export function startServer(services: HostServices) {
     return lookUpClaudeProgram(store.claudeProgramSetting());
   }
 
+  function setScriptProgram(program: string) {
+    store.setScriptProgramSetting(program.trim());
+    hub.broadcast({ type: "settings.script-program", scriptProgram: store.scriptProgramSetting() });
+  }
+
   /** Conversations pick it up when their session next starts or resumes. */
   function setCanvasUse(canvasUse: CanvasUse) {
     if (!isCanvasUse(canvasUse)) throw new Error(`Unknown canvas use ${canvasUse}`);
@@ -700,6 +705,8 @@ export function startServer(services: HostServices) {
         return setCanvasUse(message.canvasUse);
       case "settings.set-claude-program":
         return setClaudeProgram(message.path);
+      case "settings.set-script-program":
+        return setScriptProgram(message.program);
       case "conversation.create":
         conversations.create(message.workspaceId, message.launch);
         return;
@@ -1010,6 +1017,7 @@ export function startServer(services: HostServices) {
       promptTemplates: store.listPromptTemplates(),
       canvasUse: store.canvasUse(),
       claudeProgram,
+      scriptProgram: store.scriptProgramSetting(),
       installedAgents: installedHarnesses(store.claudeProgramSetting()),
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
       agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,
