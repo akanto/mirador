@@ -144,3 +144,26 @@ test("a status line asked for just after its conversation was deleted brings no 
   }, deletedConversationId);
   expect(replies).not.toContain("error");
 });
+
+test("subagent usage asked for just after its conversation was deleted brings no error", async ({ page }) => {
+  await signIn(page, host);
+  const deletedConversationId = crypto.randomUUID();
+  const replies = await page.evaluate(async (conversationId) => {
+    const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
+    await new Promise((opened) => (socket.onopen = opened));
+    const received: string[] = [];
+    const answeredLater = new Promise((answered) => {
+      socket.onmessage = ({ data }) => {
+        const { type } = JSON.parse(data);
+        received.push(type);
+        if (type === "fs.completions") answered(null);
+      };
+    });
+    socket.send(JSON.stringify({ type: "subagent-usage.get", requestId: "usage", conversationId, toolCallIds: ["toolu_1"] }));
+    socket.send(JSON.stringify({ type: "fs.complete", requestId: "later", prefix: "/" }));
+    await answeredLater;
+    socket.close();
+    return received;
+  }, deletedConversationId);
+  expect(replies).not.toContain("error");
+});

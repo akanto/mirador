@@ -893,6 +893,8 @@ export function startServer(services: HostServices) {
           .then((render) => reply({ type: "statusline.rendered", requestId: message.requestId, statusline: render }))
           .catch((error) => reply({ type: "error", message: errorMessage(error) }));
       case "subagent-usage.get":
+        // A page asks every few seconds while subagents show, so the conversation may have been deleted meanwhile.
+        if (!store.findConversation(message.conversationId)) return;
         return conversations
           .subagentUsage(message.conversationId, message.toolCallIds)
           .then((usage) => reply({ type: "subagent-usage.got", requestId: message.requestId, usage }))
