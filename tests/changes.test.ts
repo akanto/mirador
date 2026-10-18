@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -364,11 +365,11 @@ test("a file of the workspace opens with the system's default program, and a fil
   await write("app.ts", "export {};\n");
   await startTurn();
   await changes.openFile("c1", "app.ts");
-  expect(openedByDefault).toEqual([join(projectDir, "app.ts")]);
+  expect(openedByDefault).toEqual([realpathSync.native(join(projectDir, "app.ts"))]);
   await expect(changes.openFile("c1", outside)).rejects.toThrow("neither a file of this workspace");
   agentEdits("t1", outside, null, "notes\n");
   await changes.openFile("c1", outside);
-  expect(openedByDefault.at(-1)).toBe(outside);
+  expect(openedByDefault.at(-1)).toBe(realpathSync.native(outside));
 });
 
 test("a file named by the workspace's real path opens, though the workspace was added through a link to it", async () => {
@@ -378,7 +379,8 @@ test("a file named by the workspace's real path opens, though the workspace was 
   await startTurn();
   await linked.openFile("c1", join(projectDir, "kept.txt"));
   await linked.openFile("c1", "kept.txt");
-  expect(openedByDefault).toEqual([join(projectDir, "kept.txt"), join(link, "kept.txt")]);
+  await linked.openFile("c1", join(link, "kept.txt"));
+  expect(openedByDefault).toEqual(Array(3).fill(realpathSync.native(join(projectDir, "kept.txt"))));
 });
 
 test("a relative path outside the workspace is refused even when the agent changed a file with that name", async () => {
@@ -402,8 +404,43 @@ test("the session scope lists every file the agent changed since the conversatio
 
 test("a file that is gone is refused rather than handed to the system's default program", async () => {
   await startTurn();
+  await symlink(join(projectDir, "missing.ts"), join(projectDir, "dangling.md"));
   await expect(changes.openFile("c1", "missing.ts")).rejects.toThrow("does not exist");
+  await expect(changes.openFile("c1", "dangling.md")).rejects.toThrow("does not exist");
   expect(openedByDefault).toEqual([]);
+});
+
+test("a link named like a document that leads to a program is refused, as the system would run what it leads to", async () => {
+  await startTurn();
+  await mkdir(join(projectDir, "tools"));
+  await mkdir(join(projectDir, "docs"));
+  await write("tools/run.jar", "");
+  await symlink(join(projectDir, "tools", "run.jar"), join(projectDir, "docs", "guide.md"));
+  await expect(changes.openFile("c1", "docs/guide.md")).rejects.toThrow("docs/guide.md would run as a program");
+  expect(openedByDefault).toEqual([]);
+});
+
+test.if(process.platform === "darwin")("on macOS a link named like a document that leads to an app or a Terminal file is refused", async () => {
+  await startTurn();
+  await mkdir(join(projectDir, "tools", "Evil.app", "Contents"), { recursive: true });
+  await write("tools/shell.terminal", "");
+  await symlink(join(projectDir, "tools", "Evil.app"), join(projectDir, "notes.md"));
+  await symlink(join(projectDir, "tools", "shell.terminal"), join(projectDir, "readme.txt"));
+  await expect(changes.openFile("c1", "notes.md")).rejects.toThrow("would run as a program");
+  await expect(changes.openFile("c1", "readme.txt")).rejects.toThrow("would run as a program");
+  expect(openedByDefault).toEqual([]);
+});
+
+test("a link in the workspace that leads outside it opens only once the agent changed the file it leads to", async () => {
+  const outside = join(outsideDir, "secret.txt");
+  await writeFile(outside, "secret\n");
+  await symlink(outside, join(projectDir, "notes.md"));
+  await startTurn();
+  await expect(changes.openFile("c1", "notes.md")).rejects.toThrow("notes.md leads to a file outside this workspace that the agent did not change");
+  expect(openedByDefault).toEqual([]);
+  agentEdits("t1", outside, null, "secret\n");
+  await changes.openFile("c1", "notes.md");
+  expect(openedByDefault).toEqual([realpathSync.native(outside)]);
 });
 
 test("a program is refused rather than handed to the system's default program, which would run it", async () => {

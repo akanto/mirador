@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
@@ -51,7 +51,7 @@ test("a file the agent wrote is a link in its tool card, and clicking it opens t
       const card = toolCardFor(page, path);
       await card.locator("summary").click();
       await card.locator(".locations button", { hasText: path }).click();
-      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "")).toContain(path);
+      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "")).toContain(realpathSync.native(path));
     });
   }
 });
@@ -68,13 +68,12 @@ test("a file path the agent writes in backticks in its reply is a link that open
     await test.step(`the path ${path} opens`, async () => {
       const before = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
       await page.locator(".markdown").getByRole("button", { name: path, exact: true }).click();
-      // The host logs the path as it opens it: absolute, with this system's separators.
-      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").slice(before.length)).toContain(resolve(host.projectDir, path));
+      // The host opens the file at its real path: absolute, every link followed, with this system's separators.
+      await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").slice(before.length)).toContain(realpathSync.native(resolve(host.projectDir, path)));
     });
   }
   await expect(page.locator(".markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
 });
-
 
 test("a link to a program says Mirador does not run it, and opens nothing", async ({ page }) => {
   const program = join(host.projectDir, "tools", "run.jar");
@@ -90,5 +89,23 @@ test("a link to a program says Mirador does not run it, and opens nothing", asyn
   const openedBefore = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
   await page.locator(".markdown").getByRole("button", { name: "tools/run.jar", exact: true }).click();
   await expect(page.locator(".notices .notice", { hasText: "tools/run.jar would run as a program, so Mirador does not open it." })).toBeVisible();
+  expect(existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").toBe(openedBefore);
+});
+
+test("a link named like a document that leads to a program says Mirador does not run it, and opens nothing", async ({ page }) => {
+  mkdirSync(join(host.projectDir, "tools"), { recursive: true });
+  mkdirSync(join(host.projectDir, "docs"), { recursive: true });
+  writeFileSync(join(host.projectDir, "tools", "build.jar"), "");
+  symlinkSync(join(host.projectDir, "tools", "build.jar"), join(host.projectDir, "docs", "guide.md"));
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  await sendMessage(page, "SAY Read `docs/guide.md` first.");
+  await waitForTurnToEnd(page);
+
+  const openedBefore = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
+  await page.locator(".markdown").getByRole("button", { name: "docs/guide.md", exact: true }).click();
+  await expect(page.locator(".notices .notice", { hasText: "docs/guide.md would run as a program, so Mirador does not open it." })).toBeVisible();
   expect(existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").toBe(openedBefore);
 });

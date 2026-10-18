@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join, normalize, posix, resolve, sep } from "node:path";
 import type { ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
@@ -78,6 +78,22 @@ const projectPathOf = (path: string, directories: string[]) => {
   const shown = shownPath(path, directories);
   return shown === path ? null : shown.split(sep).join(posix.sep);
 };
+
+/**
+ * The file a path leads to, every link followed, or null when it leads nowhere. Windows also gives the file's own
+ * name for a short 8.3 name, another letter case, trailing dots or spaces, or a ::$DATA stream.
+ */
+function realPathOf(path: string) {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return null;
+  }
+}
+
+/** Real paths on both sides, so a workspace added through a link to its folder still holds its files. */
+const isWorkspaceOrAgentFile = (realFile: string, workspace: Workspace, edits: AgentFileEdits[]) =>
+  shownPath(realFile, [realPathOf(workspace.path) ?? workspace.path]) !== realFile || edits.some((edit) => realPathOf(edit.path) === realFile);
 
 /** A path a page names as the project's: relative, and inside the workspace once resolved. */
 function withinWorkspace(workspace: Workspace, path: string) {
@@ -174,16 +190,22 @@ export class Changes {
     this.openInIdea(join(resolve(workspace.path), path), line);
   }
 
-  /** Opens a file of the project, or one the agent changed in this conversation, with the system's default program. */
+  /**
+   * Opens a file of the project, or one the agent changed in this conversation, with the system's default program. A
+   * link is checked and opened as the file it leads to, as the system would open that file whatever the link's name.
+   */
   async openFile(conversationId: string, path: string) {
     const workspace = this.workspaceOf(conversationId);
     const file = isAbsolute(path) ? normalize(path) : resolve(workspace.path, path);
+    const edits = this.agentEdits(conversationId, workspace, 0);
     const inWorkspace = shownPath(file, await projectDirectories(workspace)) !== file;
-    const changedByAgent = this.agentEdits(conversationId, workspace, 0).some((edit) => edit.path === file);
+    const changedByAgent = edits.some((edit) => edit.path === file);
     if (!inWorkspace && !changedByAgent) throw new Error(`${path} is neither a file of this workspace nor one the agent changed in this conversation.`);
-    if (!existsSync(file)) throw new Error(`${path} does not exist.`);
-    if (isProgram(file)) throw new Error(`${path} would run as a program, so Mirador does not open it.`);
-    this.openWithDefault(file);
+    const realFile = realPathOf(file);
+    if (realFile === null) throw new Error(`${path} does not exist.`);
+    if (!isWorkspaceOrAgentFile(realFile, workspace, edits)) throw new Error(`${path} leads to a file outside this workspace that the agent did not change, so Mirador does not open it.`);
+    if (isProgram(realFile)) throw new Error(`${path} would run as a program, so Mirador does not open it.`);
+    this.openWithDefault(realFile);
   }
 
   /** The agent's edits from `fromSeq` on, each at its absolute path, a path the agent gave relative to the workspace resolved against it. */
