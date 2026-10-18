@@ -12,8 +12,16 @@ const hangs = (seconds: number) => `setTimeout(() => {}, ${seconds * 1000});`;
 
 const scratch = () => mkdtempSync(join(tmpdir(), "claude-program-"));
 
+/** The state letter follows the last ") ": the program's name before it, in parentheses, may itself hold spaces and parentheses. */
+const isZombie = (pid: number) => {
+  const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+  return stat[stat.lastIndexOf(") ") + 2] === "Z";
+};
+
+/** A zombie has ended, and waits only for whatever adopted it to reap it, which nothing may do while the test runs. */
 const isRunning = (pid: number) => {
   try {
+    if (process.platform === "linux") return !isZombie(pid);
     process.kill(pid, 0);
     return true;
   } catch {
@@ -23,6 +31,8 @@ const isRunning = (pid: number) => {
 
 /** taskkill ends the program under a claude.cmd a moment after cmd.exe; a program sent SIGKILL is gone at once. */
 const KILL_GRACE_MS = process.platform === "win32" ? 3_000 : 0;
+/** SIGKILL reaches a whole process group asynchronously. */
+const GROUP_KILL_GRACE_MS = 3_000;
 
 async function runsOnAfter(pid: number, graceMs: number) {
   const deadline = Date.now() + graceMs;
@@ -97,7 +107,7 @@ test("a version check that times out on a wrapper ends the program the wrapper s
   const grandchild = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); ${hangs(30)}`;
   const wrapper = programIn(directory, "wrapper", `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" }); ${hangs(30)}`);
   expect(await versionOf(wrapper, 2000)).toBeNull();
-  expect(await runsOnAfter(Number(readFileSync(pidFile, "utf8")), KILL_GRACE_MS)).toBe(false);
+  expect(await runsOnAfter(Number(readFileSync(pidFile, "utf8")), GROUP_KILL_GRACE_MS)).toBe(false);
 }, 15_000);
 
 test("a version check is given up on within its timeout when the program ignores SIGTERM", async () => {
