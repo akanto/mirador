@@ -102,6 +102,20 @@ install_libraries() {
   fi
 }
 
+check_glibc() {
+  reported=$(getconf GNU_LIBC_VERSION 2>/dev/null </dev/null) || return 0
+  case $reported in
+    'glibc '[0-9]*.[0-9]*) ;;
+    *) return 0 ;;
+  esac
+  version=${reported#* }
+  major=${version%%.*}
+  minor=${version#*.}
+  if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 36 ]; }; then
+    fail "Mirador's Linux app needs glibc 2.36 or newer (Ubuntu 24.04, Debian 12, Fedora 37 or later); this system has glibc $version."
+  fi
+}
+
 install_linux() {
   case $(uname -m) in
     x86_64 | amd64) arch=x64 ;;
@@ -111,6 +125,7 @@ install_linux() {
   if runs_from "$LINUX_APP/bin/"; then
     fail "Mirador is running. Quit it from its tray icon, with Run host in the background off, then run this again."
   fi
+  check_glibc
 
   install_libraries
   download "Mirador-linux-$arch-Setup.tar.gz" "$work/setup.tar.gz"

@@ -80,6 +80,8 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     appleSilicon?: boolean;
     runningFrom?: string;
     libraries?: string[];
+    /** The glibc getconf reports, or null when it cannot read one. */
+    glibc?: string | null;
     packageManager?: "apt-get" | "dnf";
     display?: boolean;
     /** The agent on PATH, if any. */
@@ -98,6 +100,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     stub("stubs", "open");
     stub("stubs", "pgrep", 'case "$3" in *"$STUB_RUNNING_FROM"*) [ -n "$STUB_RUNNING_FROM" ] && exit 0 ;; esac\nexit 1');
     stub("stubs", "ldconfig", 'for library in $STUB_LIBRARIES; do printf "\\t%s (libc6) => /usr/lib/%s\\n" "$library" "$library"; done');
+    stub("stubs", "getconf", 'if [ -n "$STUB_GLIBC" ]; then echo "glibc $STUB_GLIBC"; else exit 1; fi');
     stub("stubs", "id", "echo 1000");
     stub("stubs", "sudo");
     stub("apt-get", "apt-get");
@@ -112,7 +115,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
 
   let machines = 0;
 
-  function machineOf({ os, arch = "arm64", appleSilicon = true, runningFrom = "", libraries = LINUX_LIBRARIES, packageManager, display = true, agent = "claude", appDir }: Machine) {
+  function machineOf({ os, arch = "arm64", appleSilicon = true, runningFrom = "", libraries = LINUX_LIBRARIES, glibc = "2.39", packageManager, display = true, agent = "claude", appDir }: Machine) {
     const folder = join(root, `machine-${++machines}`);
     const [home, temp] = ["home", "tmp"].map((name) => join(folder, name));
     const appDirectory = appDir === undefined ? join(home, "Applications") : appDir;
@@ -131,6 +134,7 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
       STUB_APPLE_SILICON: appleSilicon ? "1" : "0",
       STUB_RUNNING_FROM: runningFrom,
       STUB_LIBRARIES: libraries.join(" "),
+      STUB_GLIBC: glibc ?? "",
       ...(os === "Darwin" && appDirectory && { MIRADOR_APP_DIR: appDirectory }),
       ...(display && { DISPLAY: ":0" }),
     };
@@ -230,6 +234,28 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("Start Mirador from your applications menu.");
     expect(result.output).not.toContain("Mirador is starting.");
+  });
+
+  test("on Linux with glibc 2.35 it names the glibc 2.36 requirement and downloads nothing", async () => {
+    const result = await install(machineOf({ os: "Linux", arch: "x86_64", glibc: "2.35" }));
+    expect(result.exitCode).toBe(1);
+    expect(result.errors).toContain("glibc 2.36 or newer");
+    expect(result.errors).toContain("2.35");
+    expect(requested).toEqual([]);
+  });
+
+  test("on Linux with glibc 2.36 it runs the installer as today", async () => {
+    const machine = machineOf({ os: "Linux", arch: "x86_64", glibc: "2.36" });
+    const result = await install(machine);
+    expect(result.exitCode).toBe(0);
+    expect(requested).toEqual(["Mirador-linux-x64-Setup.tar.gz"]);
+  });
+
+  test("on Linux where getconf cannot read the glibc it runs the installer as today", async () => {
+    const machine = machineOf({ os: "Linux", arch: "x86_64", glibc: null });
+    const result = await install(machine);
+    expect(result.exitCode).toBe(0);
+    expect(requested).toEqual(["Mirador-linux-x64-Setup.tar.gz"]);
   });
 
   test("other systems and architectures are refused before downloading anything", async () => {

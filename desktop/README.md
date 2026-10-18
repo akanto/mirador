@@ -34,7 +34,7 @@ On first launch macOS asks whether Mirador may send notifications, and the first
 
 ## Install on Linux
 
-For x64 and arm64, on X11 or Wayland desktops (only X11 is tested so far).
+For x64 and arm64, on X11 or Wayland desktops (only X11 is tested so far), with glibc 2.36 or newer (Ubuntu 24.04, Debian 12, Fedora 37 or later).
 
 ```bash
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
