@@ -1,7 +1,26 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { agentEnvironment, miradorCommandEnvironment } from "../host/acp/environment.ts";
+
+const temporaryMiradorHolding = (files: string[]) => {
+  const checkout = mkdtempSync(join(tmpdir(), "mirador-checkout-"));
+  for (const file of ["bin/mirador", ...files]) {
+    mkdirSync(join(checkout, file, ".."), { recursive: true });
+    writeFileSync(join(checkout, file), "");
+  }
+  return checkout;
+};
+
+const outerCheckout = temporaryMiradorHolding(["host/cli.ts"]);
+const standaloneCommands = temporaryMiradorHolding([]);
+
+afterAll(() => {
+  rmSync(outerCheckout, { recursive: true, force: true });
+  rmSync(standaloneCommands, { recursive: true, force: true });
+});
 
 test("the variables of a session the host was started from stay out of its agents and terminals", () => {
   const inherited = {
@@ -28,6 +47,18 @@ test("the mirador command comes last on the agent's PATH, once", () => {
   const environment = miradorCommandEnvironment(["/usr/bin", "/bin"].join(delimiter));
   expect(environment.PATH).toBe(["/usr/bin", "/bin", join(import.meta.dir, "..", "bin")].join(delimiter));
   expect(miradorCommandEnvironment(environment.PATH).PATH).toBe(environment.PATH);
+});
+
+test("another Mirador's command folder comes off the agent's PATH", () => {
+  const environment = miradorCommandEnvironment(["/usr/bin", join(outerCheckout, "bin"), "/bin"].join(delimiter));
+  expect(environment.PATH).toBe(["/usr/bin", "/bin", join(import.meta.dir, "..", "bin")].join(delimiter));
+});
+
+test("a mirador with no host/cli.ts beside it keeps its place on the agent's PATH", () => {
+  const environment = miradorCommandEnvironment(["/usr/bin", join(standaloneCommands, "bin"), "/bin"].join(delimiter));
+  expect(environment.PATH).toBe(
+    ["/usr/bin", join(standaloneCommands, "bin"), "/bin", join(import.meta.dir, "..", "bin")].join(delimiter),
+  );
 });
 
 test("the mirador command runs on the host's Bun, also where no Bun is on the PATH", () => {

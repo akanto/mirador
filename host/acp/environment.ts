@@ -1,4 +1,5 @@
-import { delimiter } from "node:path";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountShell } from "../../shared/login-shell.ts";
 
@@ -54,9 +55,18 @@ export function agentEnvironment(base: NodeJS.ProcessEnv = process.env): Record<
 /** By URL rather than Bun's import.meta.dir, since e2e specs load this file in Node. */
 const miradorCommandDirectory = fileURLToPath(new URL("../../bin", import.meta.url));
 
-/** Last, so the agent's own commands keep their names. */
-const withMiradorCommand = (path: string | undefined) =>
-  path?.split(delimiter).includes(miradorCommandDirectory) ? path : [path, miradorCommandDirectory].filter(Boolean).join(delimiter);
+const isAnotherMiradorsCommandFolder = (entry: string) =>
+  entry !== miradorCommandDirectory && existsSync(join(entry, "..", "host", "cli.ts"));
+
+/**
+ * A host started inside another Mirador inherits its PATH, where the outer command folder would
+ * otherwise win over ours. Ours comes last, so the agent's own commands keep their names.
+ */
+const withMiradorCommand = (path: string | undefined) => {
+  const entries = path?.split(delimiter).filter((entry) => !isAnotherMiradorsCommandFolder(entry)) ?? [];
+  if (!entries.includes(miradorCommandDirectory)) entries.push(miradorCommandDirectory);
+  return entries.filter(Boolean).join(delimiter);
+};
 
 /** The mirador command on the agent's PATH, run on the host's own Bun: the desktop app's, where no other is installed. */
 export const miradorCommandEnvironment = (path: string | undefined) => ({ PATH: withMiradorCommand(path), MIRADOR_BUN: process.execPath });
