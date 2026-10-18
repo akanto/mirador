@@ -214,3 +214,39 @@ test("a question's page and previews keep space from the box's edge even when th
   await expect(shown.contentFrame().getByText("Edge to edge")).toBeVisible();
   expect(await listLeft(shown)).toBe(0);
 });
+
+test("all option previews are shown whole when columns widen, without right-edge cut-off", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const card = (text: string) => `<style>
+    body { margin: 0; padding: 10px; }
+    .card { width: 190px; margin: 0 auto; border: 4px solid #333; display: flex; justify-content: space-between; }
+  </style><div class="card"><span>LEFT</span><b>${text} END</b></div>`;
+
+  askInBackground(conversationId, {
+    question: "Which card?",
+    options: [
+      { label: "Alpha", html: card("Alpha") },
+      { label: "Beta", html: card("Beta") },
+      { label: "Gamma", html: card("Gamma") },
+    ],
+  });
+
+  const options = page.locator(".ask-option");
+  await expect(options).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    const frame = preview(options.nth(i));
+    await expect(frame).toHaveAttribute("style", /height/);
+    await expect(frame.contentFrame().getByText("END")).toBeInViewport({ ratio: WHOLLY_SHOWN_RATIO });
+    await expect(frame.contentFrame().locator(".card")).toBeInViewport({ ratio: WHOLLY_SHOWN_RATIO });
+  }
+
+  await page.setViewportSize({ width: 900, height: 800 });
+  for (let i = 0; i < 3; i++) {
+    const frame = preview(options.nth(i));
+    await expect(frame.contentFrame().getByText("END")).toBeInViewport({ ratio: WHOLLY_SHOWN_RATIO });
+  }
+
+  await answerCanvasQuestion(page, "Alpha");
+});

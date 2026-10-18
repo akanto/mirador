@@ -398,7 +398,13 @@ test("the README's screenshots", async ({ page }) => {
   await test.step("a question with previews", async () => {
     await openConversation(page, ids.settingsLayout);
     await expect(page.locator('[data-pane="canvas"]').getByText("Grouped list (recommended)")).toBeVisible();
-    await expect(page.locator('[data-pane="canvas"] iframe').last().contentFrame().locator(".phone")).toBeVisible();
+    const options = page.locator(".ask-option");
+    await expect(options).toHaveCount(3);
+    for (const option of await options.all()) {
+      const frame = option.locator("iframe");
+      await expect(frame).toHaveAttribute("style", /height/);
+      await expect(frame.contentFrame().locator(".phone")).toBeInViewport({ ratio: 0.99 });
+    }
     await save(page, "ask");
   });
 

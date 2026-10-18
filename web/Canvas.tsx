@@ -31,6 +31,13 @@ interface ContentSize {
 
 function useElementWidth(element: RefObject<HTMLElement | null>) {
   const [width, setWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const target = element.current;
+    if (!target) return;
+    if (target.clientWidth !== width) setWidth(target.clientWidth);
+  });
+
   useEffect(() => {
     const target = element.current;
     if (!target) return;
@@ -38,6 +45,7 @@ function useElementWidth(element: RefObject<HTMLElement | null>) {
     observer.observe(target);
     return () => observer.disconnect();
   }, []);
+
   return width;
 }
 
@@ -117,6 +125,7 @@ function CanvasFrame({
       if (message.kind === "size") {
         const askedWidth = message.overflowWidth && Math.min(message.overflowWidth, MAX_CONTENT_WIDTH);
         setContentSize((current) => ({ height: message.height, width: askedWidth || current?.width || null }));
+        if (askedWidth) onContentWidthRef.current?.(askedWidth);
       }
       if (message.kind === "wheel") scrollPanelBy(frame.current, message);
     };
