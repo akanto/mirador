@@ -26,6 +26,7 @@ export class DroppedFiles {
     const folder = join(this.conversationFolder(conversationId), crypto.randomUUID());
     const path = join(folder, copyName);
     if (dirname(path) !== folder) throw new Error(`Can't copy a file named ${name}.`);
+    if (contents.size > MAX_DROPPED_FILE_BYTES) throw new Error(`A dropped file can be at most ${MAX_DROPPED_FILE_BYTES / 1024 / 1024} MB.`);
     mkdirSync(folder, { recursive: true, mode: 0o700 });
     await Bun.write(path, contents);
     return path;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { copyNameOf, DroppedFiles } from "../host/dropped-files.ts";
+import { copyNameOf, DroppedFiles, MAX_DROPPED_FILE_BYTES } from "../host/dropped-files.ts";
 import { copyingPlaceholder, nonImagesDropped, pathToInsert, withPathOfCopy } from "../web/dropped-files.ts";
 
 const conversationId = "0b6f2c1e-58d4-4a8e-9a43-4d2b8c6f0e11";
@@ -32,6 +32,12 @@ test("a dropped file is copied under its own name, in a folder of its own, and g
   expect(await Bun.file(path).text()).toBe("line one\nline two\n");
 
   files.deleteConversation(conversationId);
+  expect(await readdir(directory)).toEqual([]);
+});
+
+test("a dropped file over the limit is refused and leaves nothing behind", async () => {
+  const oversized = new Blob([new Uint8Array(MAX_DROPPED_FILE_BYTES + 1)]);
+  await expect(files.save(conversationId, "huge.bin", oversized)).rejects.toThrow("A dropped file can be at most 100 MB.");
   expect(await readdir(directory)).toEqual([]);
 });
 
