@@ -54,6 +54,18 @@ test("another Mirador's command folder comes off the agent's PATH", () => {
   expect(environment.PATH).toBe(["/usr/bin", "/bin", join(import.meta.dir, "..", "bin")].join(delimiter));
 });
 
+test("an empty or relative entry keeps its place on the agent's PATH, whatever folder the host runs in", () => {
+  const hostFolder = process.cwd();
+  process.chdir(join(outerCheckout, "bin"));
+  try {
+    const environment = miradorCommandEnvironment(["", "/usr/bin", ".", "/bin"].join(delimiter));
+    expect(environment.PATH).toBe(["", "/usr/bin", ".", "/bin", join(import.meta.dir, "..", "bin")].join(delimiter));
+    expect(miradorCommandEnvironment("").PATH).toBe(join(import.meta.dir, "..", "bin"));
+  } finally {
+    process.chdir(hostFolder);
+  }
+});
+
 test("a mirador with no host/cli.ts beside it keeps its place on the agent's PATH", () => {
   const environment = miradorCommandEnvironment(["/usr/bin", join(standaloneCommands, "bin"), "/bin"].join(delimiter));
   expect(environment.PATH).toBe(

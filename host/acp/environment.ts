@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountShell } from "../../shared/login-shell.ts";
 
@@ -56,16 +56,18 @@ export function agentEnvironment(base: NodeJS.ProcessEnv = process.env): Record<
 const miradorCommandDirectory = fileURLToPath(new URL("../../bin", import.meta.url));
 
 const isAnotherMiradorsCommandFolder = (entry: string) =>
-  entry !== miradorCommandDirectory && existsSync(join(entry, "..", "host", "cli.ts"));
+  isAbsolute(entry) && entry !== miradorCommandDirectory && existsSync(join(entry, "..", "host", "cli.ts"));
 
 /**
  * A host started inside another Mirador inherits its PATH, where the outer command folder would
  * otherwise win over ours. Ours comes last, so the agent's own commands keep their names.
+ * A relative entry, an empty one too, names a folder in whatever folder the agent runs a command
+ * from, not in the host's, so it stays as it was.
  */
 const withMiradorCommand = (path: string | undefined) => {
-  const entries = path?.split(delimiter).filter((entry) => !isAnotherMiradorsCommandFolder(entry)) ?? [];
+  const entries = path ? path.split(delimiter).filter((entry) => !isAnotherMiradorsCommandFolder(entry)) : [];
   if (!entries.includes(miradorCommandDirectory)) entries.push(miradorCommandDirectory);
-  return entries.filter(Boolean).join(delimiter);
+  return entries.join(delimiter);
 };
 
 /** The mirador command on the agent's PATH, run on the host's own Bun: the desktop app's, where no other is installed. */
