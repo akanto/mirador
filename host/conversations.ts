@@ -46,7 +46,7 @@ import { hasBegun, updatesTheAgentRecords } from "../shared/conversation-begun.t
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { withChecklistNote, type ChecklistNote } from "./canvas/checklist.ts";
-import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, whyNoRewindTo, withRevertNotes, type Revert } from "../shared/reverts.ts";
+import { endsTurn, joinedRunningTurn, lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, whyNoRewindTo, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { returnedSteerSeqs } from "../shared/steered-messages.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
@@ -624,10 +624,11 @@ export class ConversationService {
     if (cannotRewind) throw new Error(cannotRewind);
     const runtime = this.runtime(conversationId);
     const conversation = this.get(conversationId);
-    const point = rewindPointBefore(this.store.listEvents(conversationId), seq);
+    const events = this.store.listEvents(conversationId);
+    const point = rewindPointBefore(events, seq);
     this.setStatus(conversationId, "starting", "Going back…");
     try {
-      const forked = point && conversation.acpSessionId ? await this.forkSessionAt(conversationId, point) : null;
+      const forked = point && conversation.acpSessionId ? await this.forkSessionAt(conversationId, point, joinedRunningTurn(events, seq)) : null;
       const checkpoint = this.checkpointAt(conversationId, seq);
       if (checkpoint && (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
       const released = this.releaseSession(runtime, conversation.acpSessionId);
@@ -645,9 +646,10 @@ export class ConversationService {
   /**
    * A copy of the agent's session that holds only what it had said up to `point`. The fork point is named the way
    * claude-agent-acp asks for it, in `_meta.jetbrains.air.fork`; an agent that ignores it forks the whole session, so
-   * `harnessRewinds` keeps those agents out of here.
+   * `harnessRewinds` keeps those agents out of here. `atSteeredMessage` tells pi, which keeps the rest of the point's
+   * turn, that the message gone back to joined that turn, so the copy ends where that message came in.
    */
-  private async forkSessionAt(conversationId: string, point: string) {
+  private async forkSessionAt(conversationId: string, point: string, atSteeredMessage: boolean) {
     const conversation = this.get(conversationId);
     const harness = this.harnessFor(conversation);
     this.runtime(conversationId).harness = harness;
@@ -656,7 +658,7 @@ export class ConversationService {
     const { sessionId } = await harness.forkSession({
       sessionId: conversation.acpSessionId!,
       cwd: await recordedDirectory(this.existingWorkspace(conversation.workspaceId)),
-      _meta: { jetbrains: { air: { fork: { version: 1, messageId: point } } } },
+      _meta: { jetbrains: { air: { fork: { version: 1, messageId: point } } }, ...(atSteeredMessage && { steering: { atSteeredMessage } }) },
     });
     return sessionId;
   }
@@ -1690,8 +1692,6 @@ interface TurnRequest {
   firstText: string;
   imageIds: string[];
 }
-
-const endsTurn = ({ event }: Pick<StoredEvent, "event">) => event.type === "turn-end" || event.type === "error";
 
 /** opencode 2 marks what a subagent does, reported through its conversation's session, with the subagent's own session. */
 export function opencodeSubagentSessionOf(update: acp.SessionUpdate): string | null {

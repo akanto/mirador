@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, whyNoRewindTo, withRevertNotes } from "../shared/reverts.ts";
+import { joinedRunningTurn, lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, whyNoRewindTo, withRevertNotes } from "../shared/reverts.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>
   ({ type: "user-message", text, ...extra }) as ConversationEvent;
@@ -104,6 +104,17 @@ test("with no reply marked, only a first turn can be taken back, by starting the
   expect(whyNoRewindTo("opencode", stored(said(), userMessage("first"), said()), 2)).toBeUndefined();
   const unmarkedTurns = stored(userMessage("first"), said(), userMessage("second"), said());
   for (const harness of ["claude", "opencode", "pi"] as const) expect(whyNoRewindTo(harness, unmarkedTurns, 3)).toContain("no mark");
+});
+
+test("a message sent while a turn ran joined it, and the next one after the turn ended or failed starts its own", () => {
+  const cancelled: ConversationEvent = { type: "turn-end", stopReason: "cancelled" };
+  const events = stored(userMessage("first"), said("msg_1"), userMessage("Also this"), cancelled, userMessage("third"), { type: "error", message: "boom" }, userMessage("fourth"));
+  expect([1, 3, 5, 7].map((seq) => joinedRunningTurn(events, seq))).toEqual([false, true, false, false]);
+});
+
+test("a message that went out again after its turn starts the next turn, as the agent never had it", () => {
+  const events = stored(userMessage("first"), userMessage("Also this"), { type: "turn-end", stopReason: "cancelled" }, { type: "steered-messages-returned", seqs: [2] }, userMessage("Also this"), userMessage("And that"));
+  expect([5, 6].map((seq) => joinedRunningTurn(events, seq))).toEqual([false, true]);
 });
 
 test("turns taken elsewhere pick up after the agent's latest message in the conversation", () => {

@@ -59,6 +59,19 @@ export function rewindPointBefore(events: StoredEvent[], seq: number): string | 
   return said.at(-1) ?? null;
 }
 
+export const endsTurn = ({ event }: Pick<StoredEvent, "event">) => event.type === "turn-end" || event.type === "error";
+
+/**
+ * Whether the message at `seq` joined a turn already running rather than starting one: another message of the user's
+ * came after the last turn's end and before it. A rewind there leaves the agent's session where that message came in,
+ * not where the next turn began.
+ */
+export function joinedRunningTurn(events: StoredEvent[], seq: number): boolean {
+  const before = events.filter(({ seq: at }) => at < seq);
+  const turnBegan = before.findLastIndex(endsTurn) + 1;
+  return before.slice(turnBegan).some(({ event }) => event.type === "user-message");
+}
+
 const cannotLeaveSessionBehind = (harness: HarnessId) => `Taking a conversation back needs the agent to leave part of its own session behind, which ${harnessLabels[harness]} can't do.`;
 const NO_MARK_TO_GO_BACK_TO = "The agent's replies before this turn carry no mark of where its session should go back to, so it can't be taken back there.";
 

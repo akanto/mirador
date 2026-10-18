@@ -16,6 +16,7 @@ const OTHER_PROFILE = "other scripted pi";
 const SLOW_PI_START_SECONDS = 3;
 const STEERED = "Also say which day it is";
 const STEERED_BEFORE_STOP = "Also say which month it is";
+const STEERED_INTO_STOPPED_TURN = "Also say which year it is";
 const TERMINAL_MARKER = "pi-terminal-marker-17";
 const SLOWLY_CONTINUED_MARKER = "pi-slowly-continued-marker-23";
 let page: Page;
@@ -72,6 +73,16 @@ function piSessionProcesses() {
 /** As a crash would: pi-acp gets no say in it. */
 function killPiSessionProcesses() {
   piSessionProcesses().forEach((pi) => process.kill(typeof pi === "string" ? Number(pi) : pi.pid, "SIGKILL"));
+}
+
+async function rewindTo(message: string) {
+  const turn = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(`.message.user:text-is("${message}")`) });
+  await turn.hover();
+  await turn.locator(".undo-files").click();
+  const dialog = page.getByRole("dialog", { name: "Rewind to here" });
+  await dialog.getByRole("button", { name: "Rewind", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(turn).toHaveCount(0);
 }
 
 test("a pi conversation replies, runs commands and uses the canvas tools", async () => {
@@ -330,6 +341,38 @@ test("a message that joined a pi turn goes out again after Stop if pi had not re
   const context = model.userMessagesInContext();
   expect(context.slice(-2)).toEqual(["Before the stop", STEERED_BEFORE_STOP]);
   expect(context.filter((text) => text === STEERED_BEFORE_STOP)).toHaveLength(1);
+});
+
+test("rewinding a pi conversation to a turn keeps a message pi read in the turn before it, though Stop came before pi answered it", async () => {
+  // The Stop of the test before leaves its force-stop timer running, which would swallow this test's Escape.
+  await page.reload();
+  await expect(page.locator(".chat-header:visible .harness")).toHaveText("pi");
+  const command = "RUN sleep 3; echo slept";
+  await sendMessage(page, command);
+  await expect(page.locator(".timeline:visible").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 60_000 });
+  model.hold();
+  await expect.poll(() => model.requests.findLast(({ tools }) => (tools ?? []).length > 0)?.messages.at(-1)?.role, { timeout: 60_000 }).toBe("tool");
+  const composer = page.locator(".composer:visible textarea");
+  await composer.fill(STEERED_INTO_STOPPED_TURN);
+  await composer.press("Enter");
+  await expect(page.locator(".timeline:visible .message.user").last()).toHaveText(STEERED_INTO_STOPPED_TURN, { timeout: 60_000 });
+  model.answerHeld();
+  model.hold();
+  await expect.poll(() => model.userMessagesInContext().at(-1), { timeout: 60_000 }).toBe(STEERED_INTO_STOPPED_TURN);
+  const cancelledTurns = page.locator(".timeline:visible").getByText("Turn ended: cancelled");
+  const cancelledBefore = await cancelledTurns.count();
+  await composer.press("Escape");
+  await expect(cancelledTurns).toHaveCount(cancelledBefore + 1, { timeout: 30_000 });
+  model.answerHeld();
+  await waitForTurnToEnd(page);
+  await sendMessage(page, "Rewound away");
+  await waitForTurnToEnd(page);
+
+  await rewindTo("Rewound away");
+  await sendMessage(page, "After rewinding to the turn");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Echo: After rewinding to the turn");
+  expect(model.userMessagesInContext().slice(-3)).toEqual([command, STEERED_INTO_STOPPED_TURN, "After rewinding to the turn"]);
 });
 
 test("a pi session started in a terminal can be forked and continued, and each goes on from its own history", async () => {
