@@ -91,6 +91,15 @@ test("a version check is given up on within its timeout when a wrapper's child h
   expect(Date.now() - started).toBeLessThan(4000);
 });
 
+test("a version check that times out on a wrapper ends the program the wrapper started", async () => {
+  const directory = scratch();
+  const pidFile = join(directory, "grandchild-pid");
+  const grandchild = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); ${hangs(30)}`;
+  const wrapper = programIn(directory, "wrapper", `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" }); ${hangs(30)}`);
+  expect(await versionOf(wrapper, 2000)).toBeNull();
+  expect(await runsOnAfter(Number(readFileSync(pidFile, "utf8")), KILL_GRACE_MS)).toBe(false);
+}, 15_000);
+
 test("a version check is given up on within its timeout when the program ignores SIGTERM", async () => {
   const ignoresTerm = programIn(scratch(), "ignores-term", `process.on("SIGTERM", () => {}); ${hangs(5)}`);
   const started = Date.now();

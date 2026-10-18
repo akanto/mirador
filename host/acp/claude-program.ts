@@ -34,12 +34,23 @@ export function findClaudeProgram(configured: string, path = currentPath()): str
 /** A broken install can hang on --version, e.g. one stuck on a terminal; its version stays unknown rather than holding up Settings. */
 const VERSION_TIMEOUT_MS = 10_000;
 
-/** On Windows claude is often a claude.cmd, whose cmd.exe runs the real program: ending cmd.exe alone would leave that running. */
-const endStuckRun = (run: Subprocess) => (process.platform === "win32" ? void killProcessTree(run.pid) : run.kill("SIGKILL"));
+/** Ends a stuck run with everything it started: on Windows claude is often a claude.cmd, whose cmd.exe runs the real program; elsewhere the run leads its own process group. */
+const endStuckRun = (run: Subprocess) => {
+  if (process.platform === "win32") return void killProcessTree(run.pid);
+  try {
+    process.kill(-run.pid, "SIGKILL");
+  } catch {}
+};
 
 export async function versionOf(program: string, timeout = VERSION_TIMEOUT_MS): Promise<string | null> {
   try {
-    const run = Bun.spawn([program, "--version"], { stdout: "pipe", stderr: "ignore", stdin: "ignore" });
+    const run = Bun.spawn([program, "--version"], {
+      stdout: "pipe",
+      stderr: "ignore",
+      stdin: "ignore",
+      // A wrapper script that runs claude without exec leaves it running when the wrapper alone is killed; detached on Windows would open a console window.
+      detached: process.platform !== "win32",
+    });
     const givingUp = setTimeout(() => endStuckRun(run), timeout);
     if ((await run.exited.finally(() => clearTimeout(givingUp))) !== 0) return null;
     return (await new Response(run.stdout).text()).trim().split("\n")[0]!;
