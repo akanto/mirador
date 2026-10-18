@@ -12,7 +12,7 @@ Mirador runs your coding agents (Claude Code, opencode and pi) and gives them a 
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
 ```
 
-That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. On Windows (x64), `irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex` in PowerShell does the same. It runs the Claude Code, opencode or pi you already have. [More ways to get it](#get-it).
+That installs the desktop app on a Mac with Apple Silicon, or on Linux (x64 or arm64), and starts it. On Windows (x64, experimental), `irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex` in PowerShell does the same. It runs the Claude Code, opencode or pi you already have. [More ways to get it](#get-it).
 
 *A mirador is a lookout: the place you climb to see the whole landscape at once.*
 
@@ -70,7 +70,7 @@ Keep or drop each finding, reword it, ask the agent about any lines, and open th
 
 ## Get it
 
-Mirador runs on **macOS** (Apple Silicon), **Linux** (x64 and arm64) and **Windows** (x64), and in any browser on your network. Android and iOS apps are coming.
+Mirador runs on **macOS** (Apple Silicon), **Linux** (x64 and arm64) and **Windows** (x64, experimental), and in any browser on your network. Android and iOS apps are coming.
 
 ### The desktop app
 
@@ -83,7 +83,7 @@ The script downloads the latest release for your computer, installs it and start
 - **macOS** (Apple Silicon): the app goes where it already is, else in `/Applications`, or in `~/Applications` when that isn't writable. Quit a Mirador running from there first.
 - **Linux** (x64 or arm64): the app needs glibc 2.36 or newer (Ubuntu 24.04, Debian 12, Fedora 37 or later), and the script says so on an older system. The libraries the app needs (GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg) are installed first, with `sudo apt-get` or `sudo dnf`; on other distributions the script names them. The app goes in `~/.local/share/com.sodre90.mirador`, with an entry in your applications menu.
 
-**Windows** (x64), in PowerShell:
+**Windows** (x64, experimental), in PowerShell:
 
 ```powershell
 irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex
@@ -134,6 +134,8 @@ bun start
 Open the `http://127.0.0.1:4600/auth?code=…` link the host prints; it signs one browser in with a cookie, works once, and expires after 10 minutes. `bin/mirador sign-in` makes a new link for the next browser. Ctrl+C stops the host, and the agents with it.
 
 ### On Windows
+
+Windows support is new and experimental: expect rough edges, and please report what breaks in an [issue](https://github.com/sodre90/mirador/issues).
 
 - **Shells**: as Claude Code does, Mirador runs `!` commands, the status line, the pre-launch command and the sign-in tab in Git Bash (`CLAUDE_CODE_GIT_BASH_PATH`, else where Git is installed), or in PowerShell when there is no Git Bash. Terminal tabs open PowerShell: PowerShell 7 when it is installed, else Windows PowerShell.
 - **The `mirador` command**: PowerShell and cmd run `bin\mirador.cmd`, and Git Bash runs the `bin/mirador` script beside it; to run `mirador` from a checkout, put its `bin` folder on your PATH. `mirador.cmd` goes through cmd, which reads `&`, `%…%` and `"` in its arguments as its own, so a PowerShell script the agent runs pipes such text in instead, as UTF-8 for accents and symbols:

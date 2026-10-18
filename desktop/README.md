@@ -61,7 +61,7 @@ Notifications go through `notify-send`: install `libnotify-bin` (Debian, Ubuntu)
 
 ## Install on Windows
 
-For x64. In PowerShell:
+For x64. Windows support is experimental: expect rough edges, and please report what breaks. In PowerShell:
 
 ```powershell
 irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex
