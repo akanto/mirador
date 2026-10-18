@@ -314,6 +314,15 @@ describe("snapshotReview", () => {
     ]);
     expect(await snapshotReview(request(tmpdir())).catch((error: ReviewProblems) => error.problems)).toEqual([expect.stringContaining("is not inside a git checkout")]);
   });
+
+  test("tells the agent when git cannot read the diff", async () => {
+    const { directory } = gitRepository();
+    const blob = (await git(directory, ["rev-parse", "HEAD:service.ts"])).trim();
+    rmSync(join(directory, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+    const error = await snapshotReview(request(directory, { base: "HEAD~1" })).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(ReviewProblems);
+    expect((error as ReviewProblems).problems).toEqual([expect.stringContaining("diff: git could not compare")]);
+  });
 });
 
 describe("posting to the pull request", () => {
