@@ -68,6 +68,11 @@ function piSessionProcesses() {
   return processes.filter(({ parentPid }) => piAcps.has(parentPid));
 }
 
+/** As a crash would: pi-acp gets no say in it. */
+function killPiSessionProcesses() {
+  piSessionProcesses().forEach((pi) => process.kill(typeof pi === "string" ? Number(pi) : pi.pid, "SIGKILL"));
+}
+
 test("a pi conversation replies, runs commands and uses the canvas tools", async () => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
@@ -285,6 +290,22 @@ test("an image pasted into a pi conversation reaches the model with its message"
   await expect(sent.locator(".message-images img")).toHaveJSProperty("naturalWidth", 64);
   const lastUserMessage = model.requests.at(-1)!.messages.findLast(({ role }) => role === "user");
   expect(JSON.stringify(lastUserMessage)).toContain("data:image/png;base64,");
+});
+
+test("a pi that dies in the middle of a turn ends the turn with its error, and the next message starts pi again in the same session", async () => {
+  await sendMessage(page, "RUN sleep 45");
+  await expect(page.locator(".timeline:visible").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 60_000 });
+  await expect.poll(piSessionProcesses).toHaveLength(1);
+  killPiSessionProcesses();
+  await expect(page.locator(".timeline:visible .error-line").last()).toContainText("pi process exited", { timeout: 30_000 });
+  await waitForTurnToEnd(page);
+
+  await sendMessage(page, "After pi died");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Echo: After pi died");
+  expect(model.userMessagesInContext()).toEqual(expect.arrayContaining(["Hello pi", "RUN sleep 45", "After pi died"]));
+  expect(model.systemPromptInContext()).toContain(CANVAS_RENDERING_RULES);
+  await expect.poll(piSessionProcesses).toHaveLength(1);
 });
 
 test("a pi session started in a terminal can be forked and continued, and each goes on from its own history", async () => {
