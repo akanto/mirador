@@ -44,7 +44,7 @@ import { useStoppedMessageEdit } from "./edit-stopped.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
-import { hookMessageIn, hookName } from "./hook-message.ts";
+import { hookMessageIn, hookName } from "../shared/hook-message.ts";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
@@ -73,6 +73,7 @@ import {
   subagentsIn,
   subagentState,
   toolCallsAwaitingPermission,
+  type AgentNoticeBlock,
   type Author,
   type PermissionBlock,
   type SubagentBlock,
@@ -640,6 +641,27 @@ function InfoLine({ text }: { text: string }) {
   );
 }
 
+/** What an agent's notice update said: one line, and when it brought detail, a line that folds the detail away and keeps its line breaks. */
+function AgentNoticeLine({ block }: { block: AgentNoticeBlock }) {
+  const loudness = block.severity === "warning" || block.severity === "error" ? block.severity : "info";
+  const lines = block.description ? block.description.split("\n") : [];
+  if (lines.length < 2)
+    return (
+      <div className={`agent-notice ${loudness}`}>
+        {block.title}
+        {block.description ? `: ${block.description}` : ""}
+      </div>
+    );
+  return (
+    <details className={`agent-notice ${loudness}`}>
+      <summary>
+        {block.title} · {lines.length} lines
+      </summary>
+      <div className="notice-lines">{block.description}</div>
+    </details>
+  );
+}
+
 function PermissionCard({ block, conversationId }: { block: PermissionBlock; conversationId: string }) {
   const editsInCanvas = useContext(CanvasShowsEdits) && block.edits?.length ? block.edits : null;
   const chosen = block.options.find(({ optionId }) => optionId === block.chosenOptionId);
@@ -819,6 +841,8 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
       return <div className="notice-line">{block.text}</div>;
     case "info":
       return <InfoLine text={block.text} />;
+    case "agent-notice":
+      return <AgentNoticeLine block={block} />;
     case "error":
       if (block.authRequired && !block.signedInSince) {
         return (

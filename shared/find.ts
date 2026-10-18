@@ -79,6 +79,8 @@ export function textsOf(block: TimelineBlock): string[] {
     case "notice":
     case "info":
       return [block.text];
+    case "agent-notice":
+      return [block.title, ...(block.description ? [block.description] : [])];
     case "error":
       return [block.message];
     case "plan":

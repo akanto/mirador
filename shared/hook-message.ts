@@ -21,3 +21,16 @@ export function hookMessageIn(text: string): HookMessage | null {
 
 /** A notice is what hooks usually say, so only a stronger level is worth naming. */
 export const hookName = ({ level, hook }: HookMessage) => (level && level !== "Notice" ? `${level}: ${hook} hook` : `${hook} hook`);
+
+/**
+ * The same hook output as a `notice` update: claude-agent-acp lets its first line stand as the title and keeps the rest
+ * as the description, every line still carrying the hook's prefix.
+ */
+export function hookNoticeIn(title: string, description: string | null | undefined): { hook: string; lines: string[] } | null {
+  const hook = FIRST_HOOK_PREFIX.exec(title)?.[1];
+  if (!hook) return null;
+  const prefix = `${hook} says:`;
+  const lines = [title, ...(description ? description.split(/\r?\n/) : [])];
+  if (!lines.every((line) => line.startsWith(prefix))) return null;
+  return { hook, lines: lines.map((line) => line.slice(prefix.length).replace(/^ /, "")) };
+}

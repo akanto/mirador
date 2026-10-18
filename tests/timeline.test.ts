@@ -126,6 +126,44 @@ describe("buildTimeline", () => {
   });
 });
 
+describe("an agent's notice update", () => {
+  const notice = (severity: string, title: string, description?: string): ConversationEvent =>
+    acp({ sessionUpdate: "notice", severity, title, ...(description ? { description } : {}) });
+
+  test("is a block of its own between the agent's messages, not text glued to the reply", () => {
+    const timeline = buildTimeline(stored([agentText("Working."), notice("info", "Task stopped by user", "the watcher did not end."), agentText("Done")]));
+    expect(timeline).toEqual([
+      { kind: "agent", key: "1", at: 1000, text: "Working." },
+      { kind: "agent-notice", key: "2", at: 2000, severity: "info", title: "Task stopped by user", description: "the watcher did not end." },
+      { kind: "agent", key: "3", at: 3000, text: "Done" },
+    ]);
+    expect(timeline.map(authorOf)).toEqual(["agent", null, "agent"]);
+  });
+
+  test("names the hook once and keeps each of its lines without the prefix", () => {
+    const timeline = buildTimeline(
+      stored([notice("info", "SessionStart:compact says: <persisted-output>", "SessionStart:compact says: Recent context, needle in it\nSessionStart:compact says: \nSessionStart:compact says: Mode: code")]),
+    );
+    expect(timeline[0]).toEqual({
+      kind: "agent-notice",
+      key: "1",
+      at: 1000,
+      severity: "info",
+      title: "SessionStart:compact hook",
+      description: "<persisted-output>\nRecent context, needle in it\n\nMode: code",
+    });
+  });
+
+  test("keeps a short notice whole: one line stands with its title, a bare title needs nothing", () => {
+    expect(buildTimeline(stored([notice("warning", "PreToolUse:Bash says: rm -rf was blocked")]))[0]).toMatchObject({
+      title: "PreToolUse:Bash hook",
+      severity: "warning",
+      description: "rm -rf was blocked",
+    });
+    expect(buildTimeline(stored([notice("info", "Fast mode turned off")]))[0]).toMatchObject({ kind: "agent-notice", title: "Fast mode turned off" });
+  });
+});
+
 const launch = (toolCallId: string, input: Record<string, unknown>) =>
   acp({ sessionUpdate: "tool_call", toolCallId, title: "Task", kind: "think", status: "pending", rawInput: input, _meta: { claudeCode: { toolName: "Agent" } } });
 const finish = (toolCallId: string, status: "completed" | "failed" = "completed") => acp({ sessionUpdate: "tool_call_update", toolCallId, status });

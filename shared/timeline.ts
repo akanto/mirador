@@ -1,6 +1,7 @@
 import type {
   ContentBlock,
   ImageContent,
+  Notice,
   PermissionOption,
   SessionUpdate,
   PlanEntry,
@@ -11,6 +12,7 @@ import type {
   ToolCallUpdate,
   ToolKind,
 } from "@agentclientprotocol/sdk";
+import { hookNoticeIn } from "./hook-message.ts";
 import { jobWaitEndedNotice } from "./job-waits.ts";
 import { harnessLabels, type HarnessId, type StoredEvent } from "./model.ts";
 import type { EditDiff } from "./review.ts";
@@ -142,9 +144,21 @@ type PlanBlock = Origin & { kind: "plan"; entries: PlanEntry[] };
 /** Images a message carried in the agent's own updates: ones the agent sent, or those of a session's replayed history. */
 type CarriedImages = { images?: ImageContent[] };
 
+/**
+ * What an agent's `notice` update said, shown as a line of its own rather than as the agent's reply: a title that
+ * stands alone, optional detail whose line breaks are its own, and how loudly to say it.
+ */
+export interface AgentNoticeBlock extends Origin {
+  kind: "agent-notice";
+  severity: string;
+  title: string;
+  description?: string;
+}
+
 export type TimelineBlock =
   | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string } & CarriedImages)
   | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; turnSeq?: number; filesKept?: true } & CarriedImages)
+  | AgentNoticeBlock
   | ToolBlock
   | PlanBlock
   | PermissionBlock
@@ -160,7 +174,7 @@ type ErrorBlock = Origin & { kind: "error"; message: string; usageLimit?: true; 
 export type Author = "user" | "script" | "agent";
 
 export function authorOf(block: TimelineBlock | undefined): Author | null {
-  if (!block || block.kind === "notice") return null;
+  if (!block || block.kind === "notice" || block.kind === "agent-notice") return null;
   if (block.kind === "user" && block.fromScript) return "script";
   return block.kind === "user" || block.kind === "command" ? "user" : "agent";
 }
@@ -450,6 +464,8 @@ class TimelineBuilder {
         return this.push(this.currentPlan);
       case "current_mode_update":
         return this.push({ kind: "notice", ...origin, text: `Mode: ${update.currentModeId}` });
+      case "notice":
+        return this.push(agentNoticeBlock(origin, update), into);
       default:
         return;
     }
@@ -597,6 +613,22 @@ class TimelineBuilder {
   private push(block: TimelineBlock, into = this.blocks) {
     into.push(block);
   }
+}
+
+/**
+ * A notice as a block of its own. Hook output arrives with its "<Hook> says:" prefix on every line, which the block
+ * says once, in its title, so the lines themselves read as the hook said them.
+ */
+function agentNoticeBlock(origin: Origin, update: Notice): AgentNoticeBlock {
+  const hook = hookNoticeIn(update.title, update.description);
+  const description = hook ? hook.lines.join("\n") : update.description;
+  return {
+    kind: "agent-notice",
+    ...origin,
+    severity: update.severity,
+    title: hook ? `${hook.hook} hook` : update.title,
+    ...(description ? { description } : {}),
+  };
 }
 
 const coalescedOrigin = (update: SessionUpdate): Origin | null => {

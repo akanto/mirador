@@ -16,6 +16,8 @@ import * as acp from "@agentclientprotocol/sdk";
  * `{"waitFor": path}` holds the turn until that file exists. `SAY ` followed by text answers with that text, as markdown,
  * and `FAIL ` followed by text fails the turn with that text as its error. `SUBAGENT ASKS ` followed by a title starts a
  * subagent whose step asks permission, and ends the turn with what the user answered.
+ * `NOTICE` sends the notices claude-agent-acp sends for hook output, a stopped task and a model fallback: a `notice`
+ * update when the client advertised `session.notices` at initialize, the bold-label transcript line when not, and then answers.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -62,6 +64,31 @@ const configOptions = (sessionId: string): acp.SessionConfigOption[] => [
     ],
   },
 ];
+
+/** Whether the client can present `notice` updates, taken from its initialize request the way claude-agent-acp takes it. */
+let noticesAdvertised = false;
+
+/** A hook's several lines, whose first claude-agent-acp lets stand as the notice's title, and two shorter notices. */
+const NOTICES = [
+  {
+    severity: "info",
+    title: "SessionStart:compact says: <persisted-output>",
+    description: ["Recent context, needle in it", "", "Mode: code"].map((line) => `SessionStart:compact says: ${line}`).join("\n"),
+  },
+  { severity: "warning", title: "PreToolUse:Bash says: rm -rf was blocked" },
+  { severity: "warning", title: "Fast mode turned off", description: "Claude could not serve it right now." },
+];
+
+/** Each notice as a `notice` update when the client advertised the capability, else as the bold-label transcript line claude-agent-acp falls back to. */
+async function sendNotices(client: acp.AgentContext, sessionId: string) {
+  for (const { severity, title, description } of NOTICES) {
+    const update: acp.SessionUpdate = noticesAdvertised
+      ? { sessionUpdate: "notice", severity, title, ...(description ? { description } : {}) }
+      : { sessionUpdate: "agent_message_chunk", content: { type: "text", text: description ? `**${title}:** ${description}` : `**${title}**` } };
+    await client.notify(acp.methods.client.session.update, { sessionId, update });
+  }
+  return sayText(client, sessionId, "Carrying on.");
+}
 
 let nextSession = 0;
 
@@ -174,10 +201,13 @@ if (process.env.FAKE_ACP_PID_FILE) writeFileSync(process.env.FAKE_ACP_PID_FILE, 
 log("started");
 acp
   .agent()
-  .onRequest(acp.methods.agent.initialize, () => ({
-    protocolVersion: acp.PROTOCOL_VERSION,
-    agentCapabilities: offersModes ? { sessionCapabilities: { close: {} } } : {},
-  }))
+  .onRequest(acp.methods.agent.initialize, (ctx) => {
+    noticesAdvertised = typeof ctx.params.clientCapabilities?.session?.notices === "object";
+    return {
+      protocolVersion: acp.PROTOCOL_VERSION,
+      agentCapabilities: offersModes ? { sessionCapabilities: { close: {} } } : {},
+    };
+  })
   .onRequest(acp.methods.agent.session.new, () => {
     const sessionId = `fake-session-${process.pid}-${++nextSession}`;
     return offersModes ? { sessionId, configOptions: configOptions(sessionId) } : { sessionId };
@@ -203,6 +233,7 @@ acp
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "SUBAGENT ASKS ")) return askFromSubagent(ctx.client, ctx.params.sessionId, text.slice("SUBAGENT ASKS ".length));
     if (startsWith(ctx.params.prompt, "SAY ")) return sayText(ctx.client, ctx.params.sessionId, text.slice("SAY ".length));
+    if (startsWith(ctx.params.prompt, "NOTICE")) return sendNotices(ctx.client, ctx.params.sessionId);
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));

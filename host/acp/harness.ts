@@ -240,7 +240,7 @@ export class HarnessProcess {
       return await this.failingWithExitReason((agent) =>
         agent.request(acp.methods.agent.initialize, {
           protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
+          clientCapabilities: { session: { notices: {} } },
           clientInfo: { name: "mirador", version: MIRADOR_VERSION },
         }),
       );

@@ -2286,6 +2286,29 @@ button.edits-waiting {
   overflow-wrap: anywhere;
 }
 
+.agent-notice {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.agent-notice.warning {
+  color: var(--warn);
+}
+
+.agent-notice.error {
+  color: var(--danger);
+}
+
+.agent-notice summary {
+  cursor: pointer;
+}
+
+.agent-notice .notice-lines {
+  margin: 4px 0 0 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .error-line {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 7%, transparent);
