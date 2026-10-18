@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { SelfUpdate, type PublishedBuild, type SelfUpdatePorts, type UpdateOffer } from "../desktop/src/core/self-update.ts";
 
 const RUNNING = "0.5.0";
+const RELEASE_060 = { kind: "release", version: "0.6.0", url: "https://github.com/sodre90/mirador/releases/tag/v0.6.0" } as const;
 
 class World {
   published: PublishedBuild | null = { version: "0.6.0", hash: "hash060" };
@@ -9,6 +10,7 @@ class World {
   trusted = true;
   downloadFails = false;
   skipped = new Set<string>();
+  lookups = 0;
   events: string[] = [];
   offers: (UpdateOffer | null)[] = [];
 
@@ -16,7 +18,10 @@ class World {
     const world = this;
     const ports: SelfUpdatePorts = {
       currentVersion: RUNNING,
-      published: async () => world.published,
+      published: async () => {
+        world.lookups += 1;
+        return world.published;
+      },
       blockedBy: () => world.blockedBy,
       async download({ hash }) {
         world.events.push(`download ${hash}`);
@@ -34,15 +39,18 @@ class World {
   }
 }
 
-test("a newer release is downloaded, checked and then offered", async () => {
+test("a newer release is downloaded, checked and then offered, and says so while it downloads", async () => {
   const world = new World();
   const selfUpdate = world.selfUpdate();
 
   await selfUpdate.look();
 
   expect(world.events).toEqual(["download hash060", "check hash060"]);
-  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", blockedBy: null });
-  expect(world.offers).toEqual([selfUpdate.offer]);
+  expect(world.offers).toEqual([
+    { version: "0.6.0", hash: "hash060", stage: "downloading" },
+    { version: "0.6.0", hash: "hash060", stage: "ready" },
+  ]);
+  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", stage: "ready" });
 });
 
 test("only a newer version is offered: the latest release may be older, or this version built again", async () => {
@@ -58,7 +66,7 @@ test("only a newer version is offered: the latest release may be older, or this 
   }
 });
 
-test("a download whose signature fails is deleted and never fetched again", async () => {
+test("a download whose signature fails is deleted, never fetched again, and told as one the app cannot install", async () => {
   const world = new World();
   world.trusted = false;
   const selfUpdate = world.selfUpdate();
@@ -68,7 +76,7 @@ test("a download whose signature fails is deleted and never fetched again", asyn
 
   expect(world.events).toEqual(["download hash060", "check hash060", "discard hash060"]);
   expect(world.skipped.has("hash060")).toBe(true);
-  expect(selfUpdate.offer).toBeNull();
+  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", stage: "blocked", blockedBy: "Mirador could not install it" });
 });
 
 test("where the app cannot replace itself, it says why and downloads nothing", async () => {
@@ -79,7 +87,7 @@ test("where the app cannot replace itself, it says why and downloads nothing", a
   await selfUpdate.look();
 
   expect(world.events).toEqual([]);
-  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", blockedBy: "move Mirador to Applications to update it" });
+  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", stage: "blocked", blockedBy: "move Mirador to Applications to update it" });
   await selfUpdate.install();
   expect(world.events).toEqual([]);
 });
@@ -94,7 +102,7 @@ test("once moved where it can replace itself, the next look downloads it", async
   await selfUpdate.look();
 
   expect(world.events).toEqual(["download hash060", "check hash060"]);
-  expect(selfUpdate.offer?.blockedBy).toBeNull();
+  expect(selfUpdate.offer?.stage).toBe("ready");
 });
 
 test("an update already offered is not downloaded again at the next look", async () => {
@@ -104,22 +112,22 @@ test("an update already offered is not downloaded again at the next look", async
   await selfUpdate.look();
 
   expect(world.events).toEqual(["download hash060", "check hash060"]);
-  expect(world.offers).toHaveLength(1);
+  expect(world.offers).toHaveLength(2);
 });
 
-test("a failed download offers nothing, and the next look tries again", async () => {
+test("a failed download offers nothing, no longer says it downloads, and the next look tries again", async () => {
   const world = new World();
   world.downloadFails = true;
   const selfUpdate = world.selfUpdate();
   await selfUpdate.look();
-  expect(selfUpdate.offer).toBeNull();
+  expect(world.offers).toEqual([{ version: "0.6.0", hash: "hash060", stage: "downloading" }, null]);
 
   world.downloadFails = false;
   await selfUpdate.look();
   expect(selfUpdate.offer?.version).toBe("0.6.0");
 });
 
-test("a build that failed to install is deleted, no longer offered, and skipped from then on", async () => {
+test("a build that failed to install is deleted, told as one the app cannot install, and skipped from then on", async () => {
   const world = new World();
   const selfUpdate = world.selfUpdate();
   await selfUpdate.look();
@@ -128,8 +136,9 @@ test("a build that failed to install is deleted, no longer offered, and skipped 
   await selfUpdate.look();
 
   expect(world.events).toEqual(["download hash060", "check hash060", "discard hash060"]);
-  expect(selfUpdate.offer).toBeNull();
-  expect(world.offers.at(-1)).toBeNull();
+  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", stage: "blocked", blockedBy: "Mirador could not install it" });
+  await selfUpdate.install();
+  expect(world.events.at(-1)).toBe("discard hash060");
 });
 
 test("installing restarts into the offered update, and only when there is one", async () => {
@@ -144,4 +153,31 @@ test("installing restarts into the offered update, and only when there is one", 
   await selfUpdate.look();
   await selfUpdate.install();
   expect(world.events.at(-1)).toBe("install");
+});
+
+test("a newer release the host found makes the app look, unless it is what the app has or is getting already", async () => {
+  const world = new World();
+  const selfUpdate = world.selfUpdate();
+
+  await selfUpdate.lookFor(null);
+  await selfUpdate.lookFor({ kind: "checkout", commits: 2, upstream: "origin/main", upstreamCommit: "abc" });
+  expect(world.lookups).toBe(0);
+
+  await selfUpdate.lookFor(RELEASE_060);
+  expect(world.events).toEqual(["download hash060", "check hash060"]);
+  expect(selfUpdate.offer?.stage).toBe("ready");
+
+  await selfUpdate.lookFor(RELEASE_060);
+  expect(world.lookups).toBe(1);
+});
+
+test("a release the app found but cannot install is not looked for again each time the host tells it", async () => {
+  const world = new World();
+  world.blockedBy = "move Mirador to Applications to update it";
+  const selfUpdate = world.selfUpdate();
+  await selfUpdate.look();
+
+  await selfUpdate.lookFor(RELEASE_060);
+
+  expect(world.lookups).toBe(1);
 });

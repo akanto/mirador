@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { DesktopUpdate } from "../shared/desktop-menu.ts";
 import { newerVersionKey, newerVersionLabel, type NewerVersion } from "../shared/newer-version.ts";
-import { restartToUpdate, useReadyUpdate } from "./desktop-bridge.ts";
+import { checkForUpdate, restartToUpdate, useDesktopUpdate } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
 
 const DISMISSED_KEY = "mirador-newer-version-dismissed";
@@ -26,18 +26,38 @@ function useDismissal(storageKey: string) {
   return [dismissed, dismiss] as const;
 }
 
-/** The desktop app's update ready to install is the release it was downloaded from, so it takes that sign's place. */
-const notReadyYet = (newerVersion: NewerVersion | null, readyUpdate: DesktopUpdate | null) => (readyUpdate && newerVersion?.kind === "release" ? null : newerVersion);
+type ReadyUpdate = Extract<DesktopUpdate, { stage: "ready" }>;
 
-/** A pulled checkout needs no word about restarting: the host offers that itself once its code changed. */
-function NextStep({ newerVersion }: { newerVersion: NewerVersion }) {
-  if (newerVersion.kind === "release")
+const readyIn = (desktopUpdate: DesktopUpdate | null) => (desktopUpdate?.stage === "ready" ? desktopUpdate : null);
+
+/** The desktop app's update ready to install is the release it was downloaded from, so it takes that sign's place. */
+const notReadyYet = (newerVersion: NewerVersion | null, desktopUpdate: DesktopUpdate | null) =>
+  readyIn(desktopUpdate) && newerVersion?.kind === "release" ? null : newerVersion;
+
+function newerVersionSentence(newerVersion: NewerVersion, desktopUpdate: DesktopUpdate | null) {
+  const blockedBy = newerVersion.kind === "release" && desktopUpdate?.stage === "blocked" ? `: ${desktopUpdate.blockedBy}` : "";
+  return `${newerVersionLabel(newerVersion)}${blockedBy}.`;
+}
+
+/**
+ * The desktop app that updates itself downloads a release, and is only asked to look again; until it has said whether it
+ * does, there is nothing to offer. A pulled checkout needs no word about restarting: the host offers that itself.
+ */
+function NextStep({ newerVersion, desktopUpdate }: { newerVersion: NewerVersion; desktopUpdate: DesktopUpdate | null }) {
+  if (newerVersion.kind === "checkout") return <span>Pull them to update.</span>;
+  if (!desktopUpdate) return null;
+  if (desktopUpdate.stage === "downloading") return <span>Downloading…</span>;
+  if (desktopUpdate.stage === "idle")
     return (
-      <a href={newerVersion.url} target="_blank" rel="noreferrer">
+      <button type="button" onClick={checkForUpdate}>
         Download
-      </a>
+      </button>
     );
-  return <span>Pull them to update.</span>;
+  return (
+    <a href={newerVersion.url} target="_blank" rel="noreferrer">
+      Download
+    </a>
+  );
 }
 
 function RestartToUpdate() {
@@ -48,7 +68,7 @@ function RestartToUpdate() {
   );
 }
 
-function ReadyUpdateBanner({ readyUpdate }: { readyUpdate: DesktopUpdate }) {
+function ReadyUpdateBanner({ readyUpdate }: { readyUpdate: ReadyUpdate }) {
   const [dismissed, dismiss] = useDismissal(READY_UPDATE_DISMISSED_KEY);
   if (dismissed === readyUpdate.version) return null;
   return (
@@ -62,13 +82,13 @@ function ReadyUpdateBanner({ readyUpdate }: { readyUpdate: DesktopUpdate }) {
   );
 }
 
-function NewerVersionSign({ newerVersion }: { newerVersion: NewerVersion }) {
+function NewerVersionSign({ newerVersion, desktopUpdate }: { newerVersion: NewerVersion; desktopUpdate: DesktopUpdate | null }) {
   const [dismissed, dismiss] = useDismissal(DISMISSED_KEY);
   if (dismissed === newerVersionKey(newerVersion)) return null;
   return (
     <div className="banner newer-version">
-      <span>{newerVersionLabel(newerVersion)}.</span>
-      <NextStep newerVersion={newerVersion} />
+      <span>{newerVersionSentence(newerVersion, desktopUpdate)}</span>
+      <NextStep newerVersion={newerVersion} desktopUpdate={desktopUpdate} />
       <button type="button" data-hint={hints.dismissNewerVersion} onClick={() => dismiss(newerVersionKey(newerVersion))}>
         Dismiss
       </button>
@@ -77,19 +97,21 @@ function NewerVersionSign({ newerVersion }: { newerVersion: NewerVersion }) {
 }
 
 export function NewerVersionBanner({ newerVersion }: { newerVersion: NewerVersion | null }) {
-  const readyUpdate = useReadyUpdate();
-  const outThere = notReadyYet(newerVersion, readyUpdate);
+  const desktopUpdate = useDesktopUpdate();
+  const readyUpdate = readyIn(desktopUpdate);
+  const outThere = notReadyYet(newerVersion, desktopUpdate);
   return (
     <>
       {readyUpdate && <ReadyUpdateBanner readyUpdate={readyUpdate} />}
-      {outThere && <NewerVersionSign newerVersion={outThere} />}
+      {outThere && <NewerVersionSign newerVersion={outThere} desktopUpdate={desktopUpdate} />}
     </>
   );
 }
 
 export function NewerVersionNote({ newerVersion }: { newerVersion: NewerVersion | null }) {
-  const readyUpdate = useReadyUpdate();
-  const outThere = notReadyYet(newerVersion, readyUpdate);
+  const desktopUpdate = useDesktopUpdate();
+  const readyUpdate = readyIn(desktopUpdate);
+  const outThere = notReadyYet(newerVersion, desktopUpdate);
   return (
     <>
       {readyUpdate && (
@@ -99,7 +121,7 @@ export function NewerVersionNote({ newerVersion }: { newerVersion: NewerVersion 
       )}
       {outThere && (
         <p className="hint newer-version">
-          {newerVersionLabel(outThere)}. <NextStep newerVersion={outThere} />
+          {newerVersionSentence(outThere, desktopUpdate)} <NextStep newerVersion={outThere} desktopUpdate={desktopUpdate} />
         </p>
       )}
     </>

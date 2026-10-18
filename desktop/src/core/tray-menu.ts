@@ -3,9 +3,9 @@ import { MIRADOR_VERSION } from "../../../shared/version.ts";
 import type { HostStatus } from "./host-supervisor.ts";
 import type { UpdateOffer } from "./self-update.ts";
 
-export type TrayAction = "open" | "download-newer-version" | "install-update" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
+export type TrayAction = "open" | "download-newer-version" | "check-for-update" | "install-update" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
 
-const trayActions: readonly string[] = ["open", "download-newer-version", "install-update", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
+const trayActions: readonly string[] = ["open", "download-newer-version", "check-for-update", "install-update", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
 export const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
 
 export type TrayItem =
@@ -17,6 +17,8 @@ export interface TrayState {
   hostRunsInBackground: boolean;
   openAtLogin: boolean;
   newerVersion: NewerVersion | null;
+  /** A release build that downloads and installs newer releases itself; any other only links to them. */
+  updatesItself: boolean;
   update: UpdateOffer | null;
 }
 
@@ -30,15 +32,21 @@ const statusLabels: Record<TrayState["status"], string> = {
 
 function updateItems(update: UpdateOffer | null): TrayItem[] {
   if (!update) return [];
-  if (update.blockedBy) return [{ type: "normal", label: `Mirador ${update.version} is out: ${update.blockedBy}`, enabled: false }];
+  if (update.stage === "blocked") return [{ type: "normal", label: `Mirador ${update.version} is out: ${update.blockedBy}`, enabled: false }];
+  if (update.stage === "downloading") return [{ type: "normal", label: `Downloading Mirador ${update.version}...`, enabled: false }];
   return [{ type: "normal", label: `Restart to update to Mirador ${update.version}`, action: "install-update" }];
 }
 
-/** A release links to its download page, unless the app updates itself to it; new commits on a checkout's upstream are only told. */
-function newerVersionItems(newerVersion: NewerVersion | null, update: UpdateOffer | null): TrayItem[] {
-  if (!newerVersion || (update && newerVersion.kind === "release")) return [];
-  if (newerVersion.kind === "release") return [{ type: "normal", label: `${newerVersionLabel(newerVersion)}: download`, action: "download-newer-version" }];
-  return [{ type: "normal", label: newerVersionLabel(newerVersion), enabled: false }];
+/**
+ * A release is downloaded by the app that updates itself, unless it is already, and otherwise links to its download page,
+ * as it does where the app cannot install it. New commits on a checkout's upstream are only told.
+ */
+function newerVersionItems({ newerVersion, updatesItself, update }: TrayState): TrayItem[] {
+  if (!newerVersion) return [];
+  if (newerVersion.kind === "checkout") return [{ type: "normal", label: newerVersionLabel(newerVersion), enabled: false }];
+  if (update && update.stage !== "blocked") return [];
+  const action = updatesItself && !update ? "check-for-update" : "download-newer-version";
+  return [{ type: "normal", label: `${newerVersionLabel(newerVersion)}: download`, action }];
 }
 
 export function trayMenu(state: TrayState): TrayItem[] {
@@ -47,7 +55,7 @@ export function trayMenu(state: TrayState): TrayItem[] {
     { type: "normal", label: statusLabels[state.status], enabled: false },
     { type: "normal", label: `Mirador ${MIRADOR_VERSION}`, enabled: false },
     ...updateItems(state.update),
-    ...newerVersionItems(state.newerVersion, state.update),
+    ...newerVersionItems(state),
     { type: "normal", label: "Open", action: "open" },
     { type: "separator" },
     { type: "normal", label: restartable ? "Restart host" : "Restart host (not started by this app)", action: "restart-host", enabled: restartable },

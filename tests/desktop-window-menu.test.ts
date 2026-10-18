@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { MIRADOR_VERSION } from "../shared/version.ts";
-import { closeWhatHasFocusScript, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../desktop/src/core/window-menu.ts";
+import { closeWhatHasFocusScript, desktopUpdate, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../desktop/src/core/window-menu.ts";
 
-const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null, update: null } as const;
+const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null, updatesItself: false, update: null } as const;
 
 describe("menu in the window", () => {
   test("is the tray's menu without Open", () => {
@@ -33,15 +33,24 @@ describe("menu in the window", () => {
     );
   });
 
-  test("tells the page an update is ready to install or clears it", () => {
-    expect(showUpdateScript({ version: "0.4.1" })).toBe('window.dispatchEvent(new CustomEvent("mirador:desktop-update", { detail: {"version":"0.4.1"} }))');
-    expect(showUpdateScript(null)).toBe('window.dispatchEvent(new CustomEvent("mirador:desktop-update", { detail: null }))');
+  test("tells the page how far the app is with updating itself", () => {
+    expect(showUpdateScript({ stage: "ready", version: "0.4.1" })).toBe('window.dispatchEvent(new CustomEvent("mirador:desktop-update", { detail: {"stage":"ready","version":"0.4.1"} }))');
+  });
+
+  test("tells the page what a build that updates itself has in hand, and that any other build leaves updating to the user", () => {
+    const build = { version: "0.4.1", hash: "abc" };
+    expect(desktopUpdate(false, null)).toEqual({ stage: "manual" });
+    expect(desktopUpdate(true, null)).toEqual({ stage: "idle" });
+    expect(desktopUpdate(true, { ...build, stage: "downloading" })).toEqual({ stage: "downloading", version: "0.4.1" });
+    expect(desktopUpdate(true, { ...build, stage: "ready" })).toEqual({ stage: "ready", version: "0.4.1" });
+    expect(desktopUpdate(true, { ...build, stage: "blocked", blockedBy: "Mirador could not install it" })).toEqual({ stage: "blocked", version: "0.4.1", blockedBy: "Mirador could not install it" });
   });
 
   test("acts only on an action that carries the nonce, while anyone may ask for the menu", () => {
     expect(pageRequest({ type: "desktop-menu-request" }, "n-1")).toEqual({ type: "menu" });
     expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "quit" }, "n-1")).toEqual({ type: "action", action: "quit" });
     expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "install-update" }, "n-1")).toEqual({ type: "action", action: "install-update" });
+    expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "check-for-update" }, "n-1")).toEqual({ type: "action", action: "check-for-update" });
     expect(pageRequest({ type: "desktop-action", nonce: "guess", action: "quit" }, "n-1")).toBeNull();
     expect(pageRequest({ type: "desktop-action", action: "quit" }, "n-1")).toBeNull();
     expect(pageRequest({ type: "desktop-action", nonce: "n-1", action: "rm -rf" }, "n-1")).toBeNull();
@@ -49,10 +58,11 @@ describe("menu in the window", () => {
     expect(pageRequest(null, "n-1")).toBeNull();
   });
 
-  test("runs any tray action the page asks for where the window shows the menu, and elsewhere only the restart into an update", () => {
+  test("runs any tray action the page asks for where the window shows the menu, and elsewhere only the update banner's", () => {
     expect(pageMayRun("quit", true)).toBe(true);
     expect(pageMayRun("install-update", true)).toBe(true);
     expect(pageMayRun("install-update", false)).toBe(true);
+    expect(pageMayRun("check-for-update", false)).toBe(true);
     for (const action of ["quit", "restart-host", "toggle-background", "toggle-open-at-login", "open", "download-newer-version"] as const) {
       expect(pageMayRun(action, false)).toBe(false);
     }

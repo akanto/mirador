@@ -12,7 +12,7 @@ import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from 
 import type { SettingsStore } from "../core/settings.ts";
 import { restartDetail, type TrayAction, type TrayState } from "../core/tray-menu.ts";
 import { hostRunsReplacedFiles, markUpdatePending, takePendingUpdate, updateRestartStopsTheHost } from "../core/update-checks.ts";
-import { closeWhatHasFocusScript, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../core/window-menu.ts";
+import { closeWhatHasFocusScript, desktopUpdate, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../core/window-menu.ts";
 import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
 import { selfUpdateFromReleases } from "./app-updates.ts";
@@ -45,6 +45,8 @@ export class DesktopApp {
   private status: TrayState["status"] = "starting";
   private newerVersion: NewerVersion | null = null;
   private selfUpdate: SelfUpdate | null = null;
+  /** Until then the page can't tell whether to download a release itself or link to it, so it does neither. */
+  private knowsWhetherItUpdatesItself = false;
   private update: UpdateOffer | null = null;
   private runningTurns = 0;
   private busy = false;
@@ -91,6 +93,7 @@ export class DesktopApp {
       showNewerVersion: (newerVersion) => {
         this.newerVersion = newerVersion;
         this.renderTray();
+        void this.selfUpdate?.lookFor(newerVersion);
       },
       builtFromCode: environment.builtFromCode,
     });
@@ -106,15 +109,19 @@ export class DesktopApp {
   }
 
   private async startSelfUpdate() {
-    if (!this.environment.isPackaged) return;
-    this.selfUpdate = await selfUpdateFromReleases(this.environment.appPath, {
-      offered: (update) => {
-        this.update = update;
-        this.renderTray();
-        this.showUpdateInWindow();
-      },
-      failedToInstall: (message) => Utils.showNotification({ title: `${this.environment.appName} could not update itself`, body: message }),
-    });
+    if (this.environment.isPackaged) {
+      this.selfUpdate = await selfUpdateFromReleases(this.environment.appPath, {
+        offered: (update) => {
+          this.update = update;
+          this.renderTray();
+          this.showUpdateInWindow();
+        },
+        failedToInstall: (message) => Utils.showNotification({ title: `${this.environment.appName} could not update itself`, body: message }),
+      });
+    }
+    this.knowsWhetherItUpdatesItself = true;
+    this.renderTray();
+    this.showUpdateInWindow();
     this.selfUpdate?.start();
   }
 
@@ -152,6 +159,7 @@ export class DesktopApp {
   private async handle(action: TrayAction) {
     if (action === "open") return this.openWindow();
     if (action === "download-newer-version") return this.openNewerVersionDownload();
+    if (action === "check-for-update") return this.selfUpdate?.look();
     if (action === "install-update") return this.installUpdate();
     if (action === "quit") return void Utils.quit();
     if (action === "restart-host") return this.busyWith("starting", () => this.supervisor.restart());
@@ -175,7 +183,7 @@ export class DesktopApp {
   }
 
   private async installUpdate() {
-    if (!this.update || this.update.blockedBy) return;
+    if (this.update?.stage !== "ready") return;
     const { response } = await Utils.showMessageBox({
       type: "question",
       title: this.environment.appName,
@@ -256,7 +264,7 @@ export class DesktopApp {
 
   private trayState(): TrayState {
     const { hostRunsInBackground, openAtLogin } = this.environment.settings.current();
-    return { status: this.status, hostRunsInBackground, openAtLogin, newerVersion: this.newerVersion, update: this.update };
+    return { status: this.status, hostRunsInBackground, openAtLogin, newerVersion: this.newerVersion, updatesItself: this.selfUpdate !== null, update: this.update };
   }
 
   private showMenuInWindow() {
@@ -265,9 +273,8 @@ export class DesktopApp {
   }
 
   private showUpdateInWindow() {
-    if (!this.window.isOpen) return;
-    const readyUpdate = this.update && !this.update.blockedBy ? { version: this.update.version } : null;
-    this.window.runInPage(showUpdateScript(readyUpdate));
+    if (!this.window.isOpen || !this.knowsWhetherItUpdatesItself) return;
+    this.window.runInPage(showUpdateScript(desktopUpdate(this.selfUpdate !== null, this.update)));
   }
 
   private answerPage(detail: unknown) {

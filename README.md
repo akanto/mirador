@@ -363,7 +363,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **Layout**: the default arrangement for new conversations, and whether the canvas and terminals start hidden.
 - **Devices** and **Notifications**, as above.
 - **About**: the Mirador version, and the Claude Code it runs.
-- **Newer versions**: the downloaded app checks GitHub's latest published release when the host starts and every 6 hours; a host running from a checkout fetches the branch it follows and counts the commits it lacks. A banner says so until you dismiss it, and *Settings › About* and the tray menu show it too, the tray with a link to the download.
+- **Newer versions**: the downloaded app checks GitHub's latest published release when the host starts and every 6 hours; a host running from a checkout fetches the branch it follows and counts the commits it lacks. A banner says so until you dismiss it, and *Settings › About* and the tray menu show it too. A release build of the desktop app then downloads the release itself, shows *Downloading…* and offers *Restart to update*. Elsewhere, or where the app cannot replace itself (it says why), they link to the download.
 
 Hovering almost any control explains what it does behind the scenes, together with its keyboard shortcut.
 

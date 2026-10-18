@@ -10,6 +10,7 @@ import {
   type DesktopUpdate,
 } from "../../../shared/desktop-menu.ts";
 import { webUrl } from "./navigation.ts";
+import type { UpdateOffer } from "./self-update.ts";
 import { isTrayAction, trayMenu, type TrayAction, type TrayState } from "./tray-menu.ts";
 
 /** The tray's menu, less Open, which the window it would show is already showing. */
@@ -19,15 +20,22 @@ export const windowMenu = (state: TrayState): DesktopMenuItem[] =>
 export const showMenuScript = (menu: DesktopMenu) =>
   `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_MENU_EVENT)}, { detail: ${JSON.stringify(menu)} }))`;
 
-export const showUpdateScript = (update: DesktopUpdate | null) =>
+export function desktopUpdate(updatesItself: boolean, offer: UpdateOffer | null): DesktopUpdate {
+  if (!updatesItself) return { stage: "manual" };
+  if (!offer) return { stage: "idle" };
+  if (offer.stage === "blocked") return { stage: "blocked", version: offer.version, blockedBy: offer.blockedBy };
+  return { stage: offer.stage, version: offer.version };
+}
+
+export const showUpdateScript = (update: DesktopUpdate) =>
   `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_UPDATE_EVENT)}, { detail: ${JSON.stringify(update)} }))`;
 
 export const giveNonceScript = (nonce: string) => `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_NONCE_EVENT)}, { detail: ${JSON.stringify(nonce)} }))`;
 
 export const closeWhatHasFocusScript = `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_CLOSE_EVENT)}))`;
 
-/** Where the window shows the tray's menu (Linux) the page runs any of its actions; elsewhere only the restart into an update. */
-export const pageMayRun = (action: TrayAction, menuInWindow: boolean) => menuInWindow || action === "install-update";
+/** Where the window shows the tray's menu (Linux) the page runs any of its actions; elsewhere only those of its update banner. */
+export const pageMayRun = (action: TrayAction, menuInWindow: boolean) => menuInWindow || action === "install-update" || action === "check-for-update";
 
 export type PageRequest =
   | { type: "menu" }

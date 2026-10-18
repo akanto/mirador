@@ -13,36 +13,41 @@ export const inDesktopApp = () => typeof window.__electrobunSendToHost === "func
 export const sendToDesktopApp = (message: DesktopMenuMessage) => window.__electrobunSendToHost?.(message);
 
 let nonce: string | null = null;
-let readyUpdate: DesktopUpdate | null = null;
-const readyUpdateListeners = new Set<() => void>();
+let desktopUpdate: DesktopUpdate | null = null;
+const desktopUpdateListeners = new Set<() => void>();
+const IN_A_BROWSER_TAB: DesktopUpdate = { stage: "manual" };
 
-function takeReadyUpdate(event: Event) {
-  readyUpdate = (event as CustomEvent<DesktopUpdate | null>).detail ?? null;
-  readyUpdateListeners.forEach((listener) => listener());
+function takeDesktopUpdate(event: Event) {
+  desktopUpdate = (event as CustomEvent<DesktopUpdate>).detail;
+  desktopUpdateListeners.forEach((listener) => listener());
 }
 
 /**
  * The app hands the nonce that makes it act to its window's own page only, never to a frame; an app built before that
- * hands none. With the nonce it tells the page of an update it has ready to install.
+ * hands none. With the nonce it tells the page how far it is with updating itself.
  */
 export function askDesktopAppForNonce() {
   if (!inDesktopApp() || window.parent !== window) return;
   window.addEventListener(DESKTOP_NONCE_EVENT, (event) => (nonce = (event as CustomEvent<string>).detail));
-  window.addEventListener(DESKTOP_UPDATE_EVENT, takeReadyUpdate);
+  window.addEventListener(DESKTOP_UPDATE_EVENT, takeDesktopUpdate);
   sendToDesktopApp({ type: "desktop-nonce-request" });
 }
 
 export const desktopNonce = () => nonce;
 
-export function restartToUpdate() {
+function askDesktopAppTo(action: "install-update" | "check-for-update") {
   const currentNonce = desktopNonce();
-  if (currentNonce) sendToDesktopApp({ type: "desktop-action", nonce: currentNonce, action: "install-update" });
+  if (currentNonce) sendToDesktopApp({ type: "desktop-action", nonce: currentNonce, action });
 }
 
-function subscribeToReadyUpdate(listener: () => void) {
-  readyUpdateListeners.add(listener);
-  return () => void readyUpdateListeners.delete(listener);
+export const restartToUpdate = () => askDesktopAppTo("install-update");
+
+export const checkForUpdate = () => askDesktopAppTo("check-for-update");
+
+function subscribeToDesktopUpdate(listener: () => void) {
+  desktopUpdateListeners.add(listener);
+  return () => void desktopUpdateListeners.delete(listener);
 }
 
-/** The update the desktop app downloaded and can restart into; always null in a browser tab. */
-export const useReadyUpdate = () => useSyncExternalStore(subscribeToReadyUpdate, () => readyUpdate);
+/** How far the desktop app is with updating itself; null until it has said. A browser tab leaves updating to the user. */
+export const useDesktopUpdate = () => useSyncExternalStore(subscribeToDesktopUpdate, () => (inDesktopApp() ? desktopUpdate : IN_A_BROWSER_TAB));

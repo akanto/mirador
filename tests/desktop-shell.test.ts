@@ -3,7 +3,8 @@ import { navigationRules, webUrl } from "../desktop/src/core/navigation.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { restartDetail, trayMenu, type TrayItem, type TrayState } from "../desktop/src/core/tray-menu.ts";
 
-const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true, newerVersion: null, update: null };
+const state: TrayState = { status: "owned", hostRunsInBackground: false, openAtLogin: true, newerVersion: null, updatesItself: false, update: null };
+const release = { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } as const;
 const item = (items: TrayItem[], label: string) => items.find((candidate) => candidate.type === "normal" && candidate.label.startsWith(label));
 
 describe("tray menu", () => {
@@ -41,29 +42,41 @@ describe("tray menu", () => {
   });
 
   test("offers a newer release's download page under the version, and tells new commits on a checkout's upstream", () => {
-    const withRelease = trayMenu({ ...state, newerVersion: { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } });
+    const withRelease = trayMenu({ ...state, newerVersion: release });
     expect(withRelease[2]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: download", action: "download-newer-version" });
     const withCommits = trayMenu({ ...state, newerVersion: { kind: "checkout", commits: 1, upstream: "origin/main", upstreamCommit: "abc" } });
     expect(withCommits[2]).toEqual({ type: "normal", label: "1 new commit on origin/main", enabled: false });
     expect(trayMenu(state)[2]).toMatchObject({ label: "Open" });
   });
 
+  test("an app that updates itself downloads a newer release when asked, rather than opening its download page", () => {
+    expect(trayMenu({ ...state, updatesItself: true, newerVersion: release })[2]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: download", action: "check-for-update" });
+  });
+
+  test("an update the app is downloading is told in place of the release's download page", () => {
+    const update = { version: "9.9.9", hash: "abc", stage: "downloading" } as const;
+    expect(trayMenu({ ...state, updatesItself: true, newerVersion: release, update }).slice(2, 4)).toEqual([
+      { type: "normal", label: "Downloading Mirador 9.9.9...", enabled: false },
+      { type: "normal", label: "Open", action: "open" },
+    ]);
+  });
+
   test("an update the app downloaded offers a restart into it, in place of the release's download page", () => {
-    const release = { kind: "release", version: "9.9.9", url: "https://github.com/sodre90/mirador/releases/tag/v9.9.9" } as const;
-    const update = { version: "9.9.9", hash: "abc", blockedBy: null };
-    expect(trayMenu({ ...state, newerVersion: release, update }).slice(2, 4)).toEqual([
+    const update = { version: "9.9.9", hash: "abc", stage: "ready" } as const;
+    expect(trayMenu({ ...state, updatesItself: true, newerVersion: release, update }).slice(2, 4)).toEqual([
       { type: "normal", label: "Restart to update to Mirador 9.9.9", action: "install-update" },
       { type: "normal", label: "Open", action: "open" },
     ]);
   });
 
-  test("an update the app cannot install where it is says what to do instead", () => {
-    const update = { version: "9.9.9", hash: "abc", blockedBy: "move Mirador to Applications to update it" };
-    expect(trayMenu({ ...state, update })[2]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: move Mirador to Applications to update it", enabled: false });
+  test("an update the app cannot install where it is says what to do instead, above the release's download page", () => {
+    const update = { version: "9.9.9", hash: "abc", stage: "blocked", blockedBy: "move Mirador to Applications to update it" } as const;
+    expect(trayMenu({ ...state, updatesItself: true, update })[2]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: move Mirador to Applications to update it", enabled: false });
+    expect(trayMenu({ ...state, updatesItself: true, newerVersion: release, update })[3]).toEqual({ type: "normal", label: "Mirador 9.9.9 is out: download", action: "download-newer-version" });
   });
 
   test("an app update and new commits on the host's checkout are both told", () => {
-    const update = { version: "9.9.9", hash: "abc", blockedBy: null };
+    const update = { version: "9.9.9", hash: "abc", stage: "ready" } as const;
     const labels = trayMenu({ ...state, update, newerVersion: { kind: "checkout", commits: 2, upstream: "origin/main", upstreamCommit: "abc" } }).map((entry) =>
       entry.type === "normal" ? entry.label : "-",
     );

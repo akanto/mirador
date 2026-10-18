@@ -78,14 +78,14 @@ async function actAsDesktopApp(page: Page) {
     window.__electrobunSendToHost = (message) => void sent.push(message);
   });
   const sent = () => page.evaluate(() => (window as unknown as { sentToDesktopApp: DesktopMenuMessage[] }).sentToDesktopApp);
-  /** As the app answers the page's nonce request: the nonce, then the update it has ready, if any. */
-  const answerNonceRequest = async (readyUpdate: DesktopUpdate | null) => {
+  const showUpdate = (update: DesktopUpdate) => page.evaluate(showUpdateScript(update));
+  /** As the app answers the page's nonce request: the nonce, then how far it is with updating itself. */
+  const answerNonceRequest = async (update: DesktopUpdate) => {
     await expect.poll(sent).toContainEqual({ type: "desktop-nonce-request" });
     await page.evaluate(giveNonceScript("nonce-1"));
-    await page.evaluate(showUpdateScript(readyUpdate));
+    await showUpdate(update);
   };
-  const withdrawUpdate = () => page.evaluate(showUpdateScript(null));
-  return { sent, answerNonceRequest, withdrawUpdate };
+  return { sent, answerNonceRequest, showUpdate };
 }
 
 test("a release shows a newer published release in a banner, in Settings › About and in the desktop app's menu, until the banner is dismissed", async ({ page }) => {
@@ -114,7 +114,7 @@ test("in a browser tab, an update the desktop app has ready never shows; the rel
   await signIn(page, releaseHost);
   const banner = page.locator(".banner.newer-version");
   await expect(banner).toContainText("Mirador 99.0.0 is out.");
-  await page.evaluate(showUpdateScript({ version: "99.0.0" }));
+  await page.evaluate(showUpdateScript({ stage: "ready", version: "99.0.0" }));
   await page.waitForTimeout(500);
   await expect(banner).toHaveCount(1);
   await expect(banner).toContainText("Mirador 99.0.0 is out.");
@@ -123,7 +123,7 @@ test("in a browser tab, an update the desktop app has ready never shows; the rel
 test("in the desktop app, an update it has ready takes the release's place, restarts the app into it, and gives the release's sign back once withdrawn", async ({ page }) => {
   const desktopApp = await actAsDesktopApp(page);
   await signIn(page, releaseHost);
-  await desktopApp.answerNonceRequest({ version: "99.0.0" });
+  await desktopApp.answerNonceRequest({ stage: "ready", version: "99.0.0" });
   const banner = page.locator(".banner.newer-version");
   await expect(banner).toHaveCount(1);
   await expect(banner).toContainText("Mirador 99.0.0 is ready.");
@@ -138,15 +138,56 @@ test("in the desktop app, an update it has ready takes the release's place, rest
   await expect(about.locator(".newer-version")).toHaveText("Mirador 99.0.0 is ready. Restart to update");
   await page.keyboard.press("Escape");
 
-  await desktopApp.withdrawUpdate();
+  await desktopApp.showUpdate({ stage: "idle" });
   await expect(banner).toHaveCount(1);
   await expect(banner).toContainText("Mirador 99.0.0 is out.");
+});
+
+test("in the desktop app that updates itself, a newer release is downloaded by the app and never linked to on GitHub", async ({ page }) => {
+  const desktopApp = await actAsDesktopApp(page);
+  await signIn(page, releaseHost);
+  const banner = page.locator(".banner.newer-version");
+  await expect(banner).toContainText("Mirador 99.0.0 is out.");
+  await expect(banner.getByRole("link")).toHaveCount(0);
+
+  await desktopApp.answerNonceRequest({ stage: "idle" });
+  await banner.getByRole("button", { name: "Download" }).click();
+  expect(await desktopApp.sent()).toContainEqual({ type: "desktop-action", nonce: "nonce-1", action: "check-for-update" });
+
+  await desktopApp.showUpdate({ stage: "downloading", version: "99.0.0" });
+  await expect(banner).toContainText("Mirador 99.0.0 is out.");
+  await expect(banner).toContainText("Downloading…");
+  await expect(banner.getByRole("button", { name: "Download" })).toHaveCount(0);
+  await expect(banner.getByRole("link")).toHaveCount(0);
+  const about = await openSettings(page, "About");
+  await expect(about.locator(".newer-version")).toHaveText("Mirador 99.0.0 is out. Downloading…");
+  await page.keyboard.press("Escape");
+
+  await desktopApp.showUpdate({ stage: "ready", version: "99.0.0" });
+  await expect(banner).toHaveCount(1);
+  await expect(banner).toContainText("Mirador 99.0.0 is ready.");
+  await expect(banner.getByRole("button", { name: "Restart to update" })).toBeVisible();
+});
+
+test("in the desktop app that cannot install a newer release, the banner says why and links to it, as it does in a build that doesn't update itself", async ({ page }) => {
+  const desktopApp = await actAsDesktopApp(page);
+  await signIn(page, releaseHost);
+  await desktopApp.answerNonceRequest({ stage: "blocked", version: "99.0.0", blockedBy: "Mirador cannot replace itself in /Applications" });
+  const banner = page.locator(".banner.newer-version");
+  await expect(banner).toContainText("Mirador 99.0.0 is out: Mirador cannot replace itself in /Applications.");
+  const download = banner.getByRole("link", { name: "Download" });
+  await expect(download).toHaveAttribute("href", "https://github.com/sodre90/mirador/releases/tag/v99.0.0");
+
+  await desktopApp.showUpdate({ stage: "manual" });
+  await expect(banner).not.toContainText("cannot replace itself");
+  await expect(banner).toContainText("Mirador 99.0.0 is out.");
+  await expect(download).toHaveAttribute("href", "https://github.com/sodre90/mirador/releases/tag/v99.0.0");
 });
 
 test("in the desktop app, an update it has ready shows next to the new commits on the host's checkout", async ({ page }) => {
   const desktopApp = await actAsDesktopApp(page);
   await signIn(page, checkoutHost);
-  await desktopApp.answerNonceRequest({ version: "99.0.0" });
+  await desktopApp.answerNonceRequest({ stage: "ready", version: "99.0.0" });
   const banner = page.locator(".banner.newer-version");
   await expect(banner).toHaveCount(2);
   await expect(banner.first()).toContainText("Mirador 99.0.0 is ready.");
