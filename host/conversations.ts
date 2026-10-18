@@ -68,7 +68,7 @@ import type { SystemNotifications } from "./system-notifications.ts";
 import type { TerminalProgram } from "./terminals.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
 import { TerminalWork, updatesAfter } from "./terminal-catch-up.ts";
-import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, steeredMessageTakenInAt } from "./claude-transcript.ts";
+import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, userMessageTakenInAt } from "./claude-transcript.ts";
 import { claudeTranscriptPaths, messageSnippetOf, openOpencodeDatabase, opencodeDatabasePath } from "./session-transcripts.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 import { ConversationSessions } from "./conversation-sessions.ts";
@@ -89,6 +89,8 @@ const AGENT_CANNOT_FORK = "The agent cannot be sent back to an earlier point in 
 const ONLY_GIT_REPOSITORIES = "Mirador keeps a turn's files only in a workspace that is a git repository.";
 const FILES_NO_LONGER_KEPT = `Mirador no longer keeps the files of that turn: it keeps those of a workspace's newest ${SNAPSHOTS_KEPT} turns.`;
 const TURN_STOP_TIMEOUT_MS = 10_000;
+/** How long a Stop waits for Claude Code to record the prompt it is stopping, bounded so a wedged agent can't hang it. */
+const PROMPT_RECORD_WAIT_MS = 3_000;
 /** Letting go of a session is a courtesy to its agent; one that doesn't answer must not hold up what comes next. */
 const SESSION_CLOSE_TIMEOUT_MS = 5_000;
 const OPTION_ANSWER_TIMEOUT_MS = 10_000;
@@ -137,6 +139,8 @@ interface TurnInProgress {
   /** Until the turn's end shows whether the agent answered them. */
   steered: SteeredMessages[];
   ended: boolean;
+  /** The turn's own prompt, once handed to the agent, with the moment it went out. */
+  promptSent?: { text: string; sentAt: number };
   /** The reply whose chunks last streamed, so the late chunks of a turn a stop cancelled can be recognised. */
   lastReplyMessageId: string | null;
   /** The turn waits on the user, so no reply of its own can still be on its way. */
@@ -596,14 +600,13 @@ export class ConversationService {
     const checkpoint = startsTurn ? await this.snapshotFiles(conversationId) : null;
     this.store.turnStarted(conversationId);
     this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, notes);
-    let promptSent = false;
     let response: acp.PromptResponse | undefined;
     try {
       const sessionId = await this.ensureSession(conversationId);
       this.setStatus(conversationId, "running");
       const prompt = await this.promptContent(conversationId, withNotes(notes, text), imageIds);
       const harness = this.harnessFor(this.get(conversationId));
-      promptSent = true;
+      turn.promptSent = { text, sentAt: Date.now() };
       response = await harness.prompt(sessionId, prompt);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
@@ -613,7 +616,7 @@ export class ConversationService {
         this.append(conversationId, { type: "turn-end", stopReason: "cancelled" });
         this.notifyTurnEnded(conversationId, { stopReason: "cancelled" });
       } else {
-        this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error, promptSent) });
+        this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error, turn.promptSent !== undefined) });
       }
     } finally {
       turn.ended = true;
@@ -934,7 +937,25 @@ export class ConversationService {
     runtime.pendingPermissions.forEach(({ settle }) => settle(null));
     const conversation = this.get(conversationId);
     if (runtime.running && conversation.acpSessionId) {
+      await this.awaitRecordedPrompt(conversation, runtime.turn);
       await this.harnessFor(conversation).cancel(conversation.acpSessionId);
+    }
+  }
+
+  /**
+   * A cancel that beats Claude Code's own record of the turn's prompt can lose that prompt from the agent's history,
+   * so the next message is answered as if the stopped one was never sent. The record lands shortly after the request
+   * goes out; wait only for it, up to a bound, so Stop stays instant in every case that is already safe.
+   */
+  private async awaitRecordedPrompt(conversation: Conversation, turn: TurnInProgress | undefined) {
+    const prompt = turn?.promptSent;
+    const sessionId = conversation.acpSessionId;
+    if (!prompt || !sessionId || conversation.harness !== "claude") return;
+    const deadline = Date.now() + PROMPT_RECORD_WAIT_MS;
+    while (Date.now() < deadline) {
+      const transcript = await claudeTranscript(this.claudeConfigDirOf(conversation), sessionId);
+      if (userMessageTakenInAt(transcript, prompt.text, prompt.sentAt) !== null) return;
+      await Bun.sleep(50);
     }
   }
 
@@ -1890,7 +1911,7 @@ export function steersLeftUnread(response: acp.PromptResponse, steered: SteeredM
 export function steerAnswered(transcript: string, events: StoredEvent[], { messages, steeredAt }: Pick<SteeredMessages, "messages" | "steeredAt">) {
   const withText = messages.find(({ text }) => text.trim());
   if (!withText) return true;
-  const takenInAt = steeredMessageTakenInAt(transcript, withText.text, steeredAt);
+  const takenInAt = userMessageTakenInAt(transcript, withText.text, steeredAt);
   return takenInAt !== null && events.some(({ at, event }) => at > takenInAt && event.type === "acp" && agentOutput.has(event.update.sessionUpdate));
 }
 

@@ -3,7 +3,7 @@ import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, steeredMessageTakenInAt } from "../host/claude-transcript.ts";
+import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, userMessageTakenInAt } from "../host/claude-transcript.ts";
 
 const record = (fields: Record<string, unknown>) => JSON.stringify(fields);
 const answer = (model: string, isSidechain = false) => record({ type: "assistant", isSidechain, message: { role: "assistant", model, content: [] } });
@@ -70,8 +70,8 @@ test("a steered message is taken in when Claude Code records it after the steer,
     record({ type: "attachment", timestamp: at("25.486"), attachment: { type: "total_tokens_reminder" } }),
   ];
   const interrupted = record({ type: "user", timestamp: at("25.736"), droppedPromptUuids: ["150aa4e7"], message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] } });
-  expect(steeredMessageTakenInAt([...queuedAndDequeued, interrupted].join("\n"), "yes", steeredAt)).toBeNull();
-  expect(steeredMessageTakenInAt([...queuedAndDequeued, typed("Ran git status.\n\nyes", "25.490"), interrupted].join("\n"), "yes", steeredAt)).toBe(Date.parse(at("25.490")));
+  expect(userMessageTakenInAt([...queuedAndDequeued, interrupted].join("\n"), "yes", steeredAt)).toBeNull();
+  expect(userMessageTakenInAt([...queuedAndDequeued, typed("Ran git status.\n\nyes", "25.490"), interrupted].join("\n"), "yes", steeredAt)).toBe(Date.parse(at("25.490")));
 });
 
 test("a session's transcript is found under whichever project directory Claude Code keeps it", async () => {

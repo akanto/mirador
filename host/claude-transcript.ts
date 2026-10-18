@@ -42,14 +42,14 @@ export function recordsUserMessage(transcript: string, text: string): boolean {
 }
 
 /**
- * When Claude Code took in a message steered into its turn at `steeredAt`, which it records the message at; null if it
- * dropped the message from its queue, as it does when the turn is stopped first. Records from before the steer don't
- * count, as a short message like "yes" may well have been sent before.
+ * When Claude Code took in the user message sent at `sentAt`, which it records the message at; null while the record
+ * hasn't landed yet, or never if it dropped the message, as it does to a steered one when the turn is stopped first.
+ * Records from before `sentAt` don't count, as a short message like "yes" may well have been sent before.
  */
-export function steeredMessageTakenInAt(transcript: string, text: string, steeredAt: number): number | null {
-  const steered = text.trim();
+export function userMessageTakenInAt(transcript: string, text: string, sentAt: number): number | null {
+  const wanted = text.trim();
   const takenIn = records(transcript).find(
-    (record) => record.type === "user" && Date.parse(record.timestamp) >= steeredAt && textOf(record.message?.content).includes(steered),
+    (record) => record.type === "user" && Date.parse(record.timestamp) >= sentAt && textOf(record.message?.content).includes(wanted),
   );
   return takenIn ? Date.parse(takenIn.timestamp) : null;
 }
