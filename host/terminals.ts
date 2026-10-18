@@ -58,11 +58,7 @@ interface Shell {
   program: string;
   programKey: string | undefined;
   saved: boolean;
-  spawnedAt: number;
 }
-
-/** How long a program's terminal keeps logging every output chunk: long enough to catch what a loaded runner takes to draw a follow tab. */
-const CHUNK_TIMING_MS = 30_000;
 
 /** A program to run in a terminal tab of its own instead of the login shell; without an environment, it gets the shell's. */
 export interface TerminalProgram {
@@ -356,7 +352,6 @@ export class TerminalService {
       program: command[0]!,
       programKey: program?.key,
       saved: tab.saved,
-      spawnedAt: Date.now(),
     };
     shell.child = Bun.spawn(command, {
       cwd,
@@ -374,7 +369,6 @@ export class TerminalService {
 
   private received(shell: Shell, text: string) {
     if (!text) return;
-    this.logProgramOutputTiming(shell, text);
     shell.scrollback.push(text);
     shell.scrollbackLength += text.length;
     while (shell.scrollbackLength > SCROLLBACK_CHARACTERS && shell.scrollback.length > 1) {
@@ -385,12 +379,6 @@ export class TerminalService {
     const read = readTitle(shell.titleCarry, text);
     shell.titleCarry = read.carry;
     this.retitle(shell, read.title);
-  }
-
-  private logProgramOutputTiming(shell: Shell, text: string) {
-    const sinceSpawn = Date.now() - shell.spawnedAt;
-    if (shell.programKey === undefined || sinceSpawn >= CHUNK_TIMING_MS) return;
-    console.log(`${shell.programKey}: ${text.length} chars ${sinceSpawn} ms after the terminal started.`);
   }
 
   private retitle(shell: Shell, title: string | undefined) {
