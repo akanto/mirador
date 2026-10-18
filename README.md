@@ -181,8 +181,11 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **Libraries built in**: three.js (with OrbitControls), D3 v7 and Mermaid load from Mirador itself, so pages work offline.
 - **Script errors come back**: the agent hears either "rendered without script errors" or the list of errors, and can fix its page.
 - **Pages follow the theme**: a page is light when Mirador is light and dark when it is dark, from its first paint, and changes with the theme without reloading. Agents are told to colour their pages with `light-dark()`.
-- **Changes**: *Changes* in the canvas bar lists the files this turn changed, or the workspace's uncommitted work (*This turn* or *Uncommitted*), and marks the ones the agent's edit tools changed. Files outside the project the agent edited are listed apart. Click a file for its line changes right under its row, Unified or Split, and *Open in IDEA* at its first change. The list shows at once when you come back to it, and refreshes as the agent works.
+- **Changes**: *Changes* in the canvas bar lists the files this turn changed, this conversation changed, or the workspace's uncommitted work (*This turn*, *This session* or *Uncommitted*), and marks the ones the agent's edit tools changed. Files outside the project the agent edited are listed apart. Click a file for its line changes right under its row, Unified or Split, and *Open in IDEA* at its first change. The list shows at once when you come back to it, and refreshes as the agent works.
+  - *This session* lists every file the agent's edit tools changed in this conversation, even where a later turn changed it back, and the git-ignored files written since its first message, such as build output.
   - In a folder that is not a git repository, *This turn* lists the files written since the turn began, a script's included, along with the agent's edits. Mirador checks up to 50,000 files there, and says when a folder holds more.
+  - Changes leaves out the folders beads, Dolt and IntelliJ IDEA keep their own state in.
+- **Export** (*Export ▾* in the canvas bar): copy the page as an image or as HTML, download it or save it to the project, or ask the agent to write it as Markdown, in the chat or as a file in the project.
 - **As you left it**: coming back to a conversation brings its canvas back as it was, with *Changes* still open or the page still shown.
 - **History**: everything shown or asked is kept per conversation, across reloads and restarts. *Older* and *Newer* step through it, and *History* lists it newest first, with each question's outcome. *Clear* empties the canvas without deleting anything.
 - **Hide, show and full screen**: the canvas keeps receiving pages while hidden.
@@ -193,7 +196,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **`ask`**: a question with 2 to 8 options, each with a description and an optional HTML preview, plus an optional page explaining the question.
 - **Several questions at once**: up to ten in one call, each with its own options. You answer them page by page, can change any answer on a review page, and send them together. Agents are told to ask this way rather than fold several questions into one.
 - **Previews are shown whole**: option columns widen to the widest preview, and a page wider than the canvas is scaled down to fit.
-- **Your own answer**: when the agent allows it, *Something else…* takes a typed answer, over several lines with Shift+Enter, and every answer can carry a note.
+- **Your own answer**: when the agent allows it, *Something else…* takes a typed answer, over several lines with Shift+Enter, and every answer can carry a note. With several questions, the review page before *Submit* also takes one note on all your answers.
 - **Context stays**: a page the agent showed just before asking stays above the question.
 - **Two ways to answer**, chosen per conversation: *Agent waits for my answer* returns your choice as the tool's result. *My answer is sent as the next message* lets the agent end its turn, and your choice arrives later as your message.
 - **Answered or withdrawn** questions leave a short note in place of the question.
@@ -280,6 +283,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 
 - **Grouped by author**, with avatars and times. Point at a line for its time, or switch on *Show timestamps* for every line.
 - **Markdown** with tables, links that open in a new tab, and code blocks with a *Copy* button.
+- **File links**: a file path the agent writes in backticks, and each file in a tool card, opens the file with the system's default program, on the machine Mirador runs on, if it is in the workspace or the agent changed it. A script opens as text, in the system's text editor or a program named in *Settings → Conversations → File links*, since the program for its type could run it. A program, or a link that leads to one, opens nothing.
 - **Thinking** (folded), the agent's **plan** as a checklist, mode changes, turn ends and errors.
 - **Permission requests** show the tool and its command, with the agent's own allow and reject options, and the outcome afterwards. Edits show on the canvas (see [Edit approvals](#edit-approvals)).
 - **Tool calls** with diffs for edits, raw input and output a click away, and readable MCP tool names.
@@ -323,7 +327,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **Closing**: `⌘W` closes the focused shell, and a middle click closes a tab. Either asks first while a command runs: Enter ends it, and so does `⌘W` again when `⌘W` asked; Esc keeps it.
 - **Line editing** as in a macOS terminal: `⌘←`, `⌘→`, `⌘⌫`, `⌥←`, `⌥→`, and `⌘K` clears for good.
 - **Find** with `⌘F` (`Ctrl+Shift+F` on Linux and Windows, where `Ctrl+F` stays the shell's) searches the focused split's scrollback. Every match is highlighted. Enter goes to the match further up, Shift+Enter further down. Match case, whole word and regular expression are toggles, as in VS Code. Esc, or `⌘W` in the desktop app, closes it and puts the cursor back in the shell.
-- **Copy on select** (*Settings → Terminal*). On Linux, `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste, and `Ctrl+C` stays the interrupt.
+- **Copy on select** (*Settings → Terminal*), also of a selection dragged past the terminal's edge, which scrolls the terminal as you drag. On Linux, `Ctrl+Shift+C` and `Ctrl+Shift+V` copy and paste, and `Ctrl+C` stays the interrupt.
 - **On a touch screen**, a finger scrolls the output, and a quick swipe keeps it going until a touch stops it. In a full-screen program such as less or vim it scrolls as a wheel does there.
 - **Nerd Font aware**, with a dark terminal in both themes.
 
@@ -352,7 +356,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 *Settings…* opens a dialog of pages (Up/Down switch between them). Each page says whether a setting is kept in this browser or on the host.
 
 - **Appearance**: text size, theme (Light, Dark, Match system), *Waiting for you* style, workspace colours, machine colours, shell commands, timestamps. The choices come with pictures.
-- **Conversations**: *Sending while the agent works* (Enter or ⌥Enter to steer), prompt templates, and macOS typing aids.
+- **Conversations**: *Sending while the agent works* (Enter or ⌥Enter to steer), prompt templates, macOS typing aids, and the program scripts open in from file links.
 - **Agents**: which Claude Code program the host runs, when not the one it finds.
 - **Terminal**: font size and copy on select.
 - **Canvas**: how often Claude Code uses it, where reviews open, and whether edits waiting for approval show on it.
