@@ -47,6 +47,7 @@ test("a picture set in Settings shows next to your messages on every page and re
   const picture = userPicture(page).locator("img");
   await expect(picture).toBeVisible();
   await expect(picture).toHaveJSProperty("naturalWidth", 128);
+  await expect(picture).toHaveCSS("border-radius", "7px");
   await expect(userPicture(page).locator("svg")).toHaveCount(0);
 
   await page.reload();

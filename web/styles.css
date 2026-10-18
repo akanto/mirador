@@ -1621,6 +1621,7 @@ input.picker-search {
   height: 100%;
   display: block;
   object-fit: cover;
+  border-radius: inherit;
 }
 
 .profile-picture {
