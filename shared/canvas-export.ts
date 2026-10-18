@@ -34,12 +34,14 @@ export const markdownPagePath = (title: string) => `docs/${pageName(title)}.md`;
 export type MarkdownDelivery = "reply" | "file";
 
 const MARKDOWN_SHAPE = "keep its headings, lists, tables and code, and put what a chart or diagram shows into a sentence or a table";
+/** A page with code samples has fences of its own, which would end a block fenced with as few backticks. */
+const COPYABLE_BLOCK = "in one code block, fenced with more backticks than any fence inside it, so it can be copied";
 
 /** The message that asks the agent for a page as Markdown. It carries the page's HTML, which the agent may no longer have after its context was compacted. */
 export function markdownRequest(page: { title: string; html: string }, delivery: MarkdownDelivery) {
   const where =
     delivery === "file"
-      ? `Save it as ${markdownPagePath(page.title)} in the project, and reply with the same Markdown in one code block, so it can be copied.`
-      : "Reply with the Markdown in one code block, so it can be copied, and write no file.";
+      ? `Save it as ${markdownPagePath(page.title)} in the project, but if a file is there already, ask me before replacing it. Reply with the same Markdown ${COPYABLE_BLOCK}.`
+      : `Reply with the Markdown ${COPYABLE_BLOCK}, and write no file.`;
   return `Write the canvas page "${page.title}" as Markdown: ${MARKDOWN_SHAPE}. ${where}\n\nThe page's HTML:\n\n${fenced(page.html, "html")}`;
 }

@@ -165,10 +165,11 @@ test("Export asks the agent for the page as Markdown, in the chat or also as a f
     await waitForTurnToEnd(page);
   });
 
-  await test.step("as a file: the request names the path beside where Save to project offers the HTML", async () => {
+  await test.step("as a file: the request names the path beside where Save to project offers the HTML, and asks before replacing a file there", async () => {
     await exportBy(page, "Ask agent to save Markdown file");
     await expect(exportStatus(page)).toHaveText("Asked the agent. The Markdown comes in the chat and in docs/release-plan.md.");
-    await expect(request).toContainText("Save it as docs/release-plan.md in the project, and reply with the same Markdown in one code block");
+    await expect(request).toContainText("Save it as docs/release-plan.md in the project, but if a file is there already, ask me before replacing it.");
+    await expect(request).toContainText("Reply with the same Markdown in one code block");
     await expect(request).toContainText("<td>May</td><td>Beta</td>");
   });
 });

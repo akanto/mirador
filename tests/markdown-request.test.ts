@@ -17,13 +17,14 @@ describe("asking the agent for a page as Markdown", () => {
 
   test("for the chat asks for a code block and no file", () => {
     const request = markdownRequest(page, "reply");
-    expect(request).toContain("Reply with the Markdown in one code block, so it can be copied, and write no file.");
+    expect(request).toContain("Reply with the Markdown in one code block, fenced with more backticks than any fence inside it, so it can be copied, and write no file.");
     expect(request).not.toContain("docs/");
   });
 
-  test("for a file names the path and still asks for the code block", () => {
+  test("for a file names the path, asks before replacing a file already there, and still asks for the code block", () => {
     const request = markdownRequest(page, "file");
-    expect(request).toContain("Save it as docs/release-plan-q3.md in the project, and reply with the same Markdown in one code block");
+    expect(request).toContain("Save it as docs/release-plan-q3.md in the project, but if a file is there already, ask me before replacing it.");
+    expect(request).toContain("Reply with the same Markdown in one code block, fenced with more backticks than any fence inside it");
     expect(request).not.toContain("write no file");
   });
 
