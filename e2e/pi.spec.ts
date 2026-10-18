@@ -16,6 +16,7 @@ const OTHER_PROFILE = "other scripted pi";
 const SLOW_PI_START_SECONDS = 3;
 const STEERED = "Also say which day it is";
 const TERMINAL_MARKER = "pi-terminal-marker-17";
+const SLOWLY_CONTINUED_MARKER = "pi-slowly-continued-marker-23";
 let page: Page;
 let firstConversationId: string;
 
@@ -175,6 +176,24 @@ test("deleting a pi conversation while its session opens ends the pi that sessio
   await deleteButton.click();
   await deleteButton.click();
   await expect(page.locator(".workspace li")).toHaveCount(1);
+  await expect.poll(piSessionProcesses, { timeout: (SLOW_PI_START_SECONDS + 20) * 1_000 }).toHaveLength(1);
+  await expect(page.locator(".notice")).toHaveCount(0);
+  await page.locator(".workspace li", { hasText: "Hello pi" }).click();
+});
+
+test("deleting a pi conversation while the session it continues loads ends the pi that session starts", async () => {
+  await runPiInTerminal(SLOWLY_CONTINUED_MARKER);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${SLOW_PROFILE} · pi` });
+  await page.getByRole("button", { name: "Continue a session…" }).click();
+  const session = page.getByRole("dialog", { name: "Continue a session" }).locator(".session-list li", { hasText: SLOWLY_CONTINUED_MARKER });
+  await session.getByRole("button", { name: "Continue" }).click();
+  await expect(page.locator(".workspace li.selected")).toContainText(SLOWLY_CONTINUED_MARKER);
+  await expect.poll(piSessionProcesses).toHaveLength(2);
+
+  const deleteButton = page.locator(".workspace li.selected").getByRole("button", { name: "Delete conversation" });
+  await deleteButton.click();
+  await deleteButton.click();
+  await expect(page.locator(".workspace li", { hasText: SLOWLY_CONTINUED_MARKER })).toHaveCount(0);
   await expect.poll(piSessionProcesses, { timeout: (SLOW_PI_START_SECONDS + 20) * 1_000 }).toHaveLength(1);
   await expect(page.locator(".notice")).toHaveCount(0);
   await page.locator(".workspace li", { hasText: "Hello pi" }).click();

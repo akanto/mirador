@@ -1080,7 +1080,11 @@ export class ConversationService {
     this.muteNotifier(conversation, loadedId);
     this.save({ ...this.get(conversationId), acpSessionId: loadedId });
     this.sessions.bind(conversationId, loadedId);
-    const loaded = await harness.loadSession({ ...sessionRequest, sessionId: loadedId });
+    const loaded = await harness.loadSession({ ...sessionRequest, sessionId: loadedId }).catch((error: unknown) => {
+      this.closeSessionIfConversationDeleted(conversationId, harness, loadedId);
+      throw error;
+    });
+    this.closeSessionIfConversationDeleted(conversationId, harness, loadedId);
     this.bindSession(conversationId, loadedId, loaded.configOptions);
     if (conversation.harness === "claude") await this.restoreTranscriptModel(conversationId, loadedId, sessionId);
     await this.applyProfileMode(conversationId, loadedId);
