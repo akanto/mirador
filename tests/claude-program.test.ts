@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeProgramLookUps, claudeProgramMissing, claudeProgramReport, findClaudeProgram, versionOf } from "../host/acp/claude-program.ts";
 import { launchEnvironment } from "../host/acp/harnesses.ts";
+import { claudeConfigDir } from "../host/terminal-sessions.ts";
 import type { ClaudeProgram, Profile } from "../shared/model.ts";
 import { fakeProgram } from "./fake-program.ts";
 
@@ -137,4 +138,27 @@ test("without Claude Code, the host names the folders it looked in and the insta
     "Claude Code is not installed: no claude on PATH or in %USERPROFILE%\\.local\\bin. Install it with `irm https://claude.ai/install.ps1 | iex`, or set its path in Settings › Agents.",
   );
   expect(claudeProgramReport("", null, null)).toMatchObject({ installCommand: process.platform === "win32" ? "irm https://claude.ai/install.ps1 | iex" : "curl -fsSL https://claude.ai/install.sh | bash" });
+});
+
+test("Claude Code's agent environment inherits CLAUDE_CONFIG_DIR from the host environment, and a profile may override it", () => {
+  const program = programIn(scratch(), "claude");
+  const isolatedDir = join(scratch(), "claude-config");
+  const original = process.env.CLAUDE_CONFIG_DIR;
+  try {
+    process.env.CLAUDE_CONFIG_DIR = isolatedDir;
+    expect(launchEnvironment("claude", null, program).CLAUDE_CONFIG_DIR).toBe(isolatedDir);
+
+    const defaultProfile = { name: "Default", environment: "CLAUDE_CODE_MAX_RETRIES=0" } as Profile;
+    const defaultEnv = launchEnvironment("claude", defaultProfile, program);
+    expect(defaultEnv.CLAUDE_CONFIG_DIR).toBe(isolatedDir);
+    expect(claudeConfigDir(defaultEnv)).toBe(isolatedDir);
+
+    const customProfile = { name: "Custom", environment: "CLAUDE_CONFIG_DIR=/custom/dir" } as Profile;
+    const customEnv = launchEnvironment("claude", customProfile, program);
+    expect(customEnv.CLAUDE_CONFIG_DIR).toBe("/custom/dir");
+    expect(claudeConfigDir(customEnv)).toBe("/custom/dir");
+  } finally {
+    if (original === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = original;
+  }
 });

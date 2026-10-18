@@ -19,7 +19,7 @@ const MARKER = "external-marker-42";
 let terminalSessionId = "";
 
 /** What a user does in a terminal: `claude -p` in the project directory, against the fake gateway unless told otherwise. */
-async function runClaudeInTerminal(cwd: string, prompt: string, environment = gatewayEnvironment(gateway)) {
+async function runClaudeInTerminal(cwd: string, prompt: string, environment = `${gatewayEnvironment(gateway)}\nCLAUDE_CONFIG_DIR=${host.claudeConfigDir}`) {
   const sessionId = crypto.randomUUID();
   host.muteNotifier(sessionId);
   const env = applyEnvironment(agentEnvironment(), parseEnvironment(environment));

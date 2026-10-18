@@ -139,6 +139,7 @@ export class TestHost {
   readonly root = join(tmpdir(), `mirador-e2e-${crypto.randomUUID().slice(0, 8)}`);
   readonly dataDir = join(this.root, "data");
   readonly projectDir = join(this.root, "project");
+  readonly claudeConfigDir = join(this.root, "claude-config");
   /**
    * The project directory as a terminal of the user's own is in it: under its long name, where a Windows runner's TEMP has
    * an 8.3 short one. Claude Code files a session under the spelling it started in, but looks sessions up under the long one.
@@ -230,6 +231,9 @@ export class TestHost {
       mkdirSync(this.projectDir, { recursive: true });
       writeFileSync(join(this.projectDir, "README.md"), "# e2e project\n");
     }
+    if (!existsSync(this.claudeConfigDir)) {
+      mkdirSync(this.claudeConfigDir, { recursive: true });
+    }
     if (this.options.copiesSource) this.copySource();
     if (this.starts === 0 && !this.options.withoutProfiles) {
       mkdirSync(this.dataDir, { recursive: true });
@@ -268,6 +272,7 @@ export class TestHost {
       MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
       MIRADOR_NEWER_VERSION_CHECK: "off",
       SHELL: this.options.shell ?? defaultShell,
+      CLAUDE_CONFIG_DIR: this.claudeConfigDir,
       ...(process.platform === "win32" && { [HOST_RELAUNCH.restartExitCode]: String(HOST_RESTART_EXIT_CODE) }),
       ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
       ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
