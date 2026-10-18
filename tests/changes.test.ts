@@ -7,7 +7,7 @@ import type { ToolKind } from "@agentclientprotocol/sdk";
 import { agentEditsIn, Changes } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
 import { Store } from "../host/store.ts";
-import { createdSince, filesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
+import { createdSince, filesWrittenSince, ignoredFilesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
 import type { StoredEvent } from "../shared/model.ts";
 import { changesRefreshPoint, firstChangedLine } from "../web/changes.ts";
 
@@ -348,6 +348,26 @@ test("a folder of more files than the limit is checked in part, and says so", as
   const part = await filesWrittenSince(projectDir, everythingSinceEver, 3);
   expect(part.truncated).toBe(true);
   expect(part.changes).toHaveLength(3);
+});
+
+test("ignored files written since a timestamp are found, while unignored and older ones are not", async () => {
+  await mkdir(join(projectDir, "build"));
+  await write("build/output.log", "line 1\nline 2\n");
+  await write("untracked.txt", "untracked\n");
+  const now = Date.now();
+  const past = now - 60_000;
+  const future = now + 60_000;
+
+  const found = await ignoredFilesWrittenSince(projectDir, past);
+  expect(found.changes).toEqual([{ path: "build/output.log", status: "added", added: 2, removed: 0 }]);
+  expect(found.truncated).toBe(false);
+
+  const none = await ignoredFilesWrittenSince(projectDir, future);
+  expect(none.changes).toEqual([]);
+
+  const part = await ignoredFilesWrittenSince(projectDir, past, 0);
+  expect(part.truncated).toBe(true);
+  expect(part.changes).toHaveLength(0);
 });
 
 test("a file written in the same clock tick as the turn's start still counts as written during the turn", async () => {

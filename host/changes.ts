@@ -9,7 +9,7 @@ import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.
 import type { FileBefore } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
 import { openingOf } from "./system-open.ts";
-import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredPaths, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
+import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredFilesWrittenSince, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
 
@@ -257,13 +257,10 @@ export class Changes {
     return { fromSeq: 0, revision: null, ...(firstMessageAt !== null && { since: firstMessageAt }), base: "session" };
   }
 
-  /** In a repository, git already lists what it tracks, so a session adds only what .gitignore hides. */
+  /** In a repository, git already lists what it tracks, so a session adds only what the excludes hide, and asks git for those too. */
   private async writtenSince(workspace: Workspace, scope: ChangeScope, since: number) {
-    const onlyIgnoredFiles = scope === "session" && (await isRepository(workspace.path));
-    const written = await filesWrittenSince(workspace.path, since, MAX_SCANNED_FILES, { skipOtherRepositories: onlyIgnoredFiles });
-    if (!onlyIgnoredFiles) return written;
-    const hidden = await ignoredPaths(workspace.path, written.changes.map(({ path }) => path));
-    return { ...written, changes: written.changes.filter(({ path }) => hidden.has(path)) };
+    if (scope === "session" && (await isRepository(workspace.path))) return ignoredFilesWrittenSince(workspace.path, since, MAX_SCANNED_FILES);
+    return filesWrittenSince(workspace.path, since, MAX_SCANNED_FILES);
   }
 
   private async treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<{ changes: TreeChange[] | null; truncated: boolean }> {

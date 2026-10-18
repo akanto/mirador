@@ -110,21 +110,20 @@ async function inLimitedParallel<T, R>(items: T[], work: (item: T) => Promise<R>
 const TOOL_STATE_FOLDERS = [".beads", ".dolt", ".idea"];
 const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store", ...TOOL_STATE_FOLDERS]);
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
+const isScannedName = (name: string) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name);
 export const MAX_SCANNED_FILES = 50_000;
 
 /**
  * The files under `directory`, relative to it with / as git writes them, skipping the folders nothing of the user's lives
- * in, and with `skipOtherRepositories` the folders with a .git of their own; it stops after `limit` of them, and says so.
+ * in; it stops after `limit` of them, and says so.
  */
-async function scannedFiles(directory: string, limit: number, skipOtherRepositories: boolean) {
+async function scannedFiles(directory: string, limit: number) {
   const files: string[] = [];
   const pending = [""];
   for (let folder = pending.pop(); folder !== undefined && files.length <= limit; folder = pending.pop()) {
     const entries = await readdir(join(directory, folder), { withFileTypes: true }).catch(() => []);
-    const holdsAnotherRepository = folder !== "" && entries.some(({ name }) => name === ".git");
-    if (skipOtherRepositories && holdsAnotherRepository) continue;
     entries
-      .filter(({ name }) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name))
+      .filter(({ name }) => isScannedName(name))
       .forEach((entry) => (entry.isDirectory() ? pending.push(posix.join(folder, entry.name)) : entry.isFile() && files.push(posix.join(folder, entry.name))));
   }
   return { files: files.slice(0, limit), truncated: files.length > limit };
@@ -136,36 +135,47 @@ const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(
 /** Linux and Windows round a file's times down to their clock's tick, up to ~16 ms, so a write landing in the tick of the turn's start reads as older than it. */
 const FILE_TIME_TICK_MS = 16;
 
+/** The times of a file decide which of the two it is: made at or after `since`, or written earlier and rewritten. */
+async function writtenChangesOf(directory: string, paths: string[], earliestWrite: number): Promise<TreeChange[]> {
+  const written = await inLimitedParallel(paths, async (path) => {
+    const stats = await lstat(join(directory, path)).catch(() => null);
+    return stats?.isFile() && writtenAt(stats) >= earliestWrite ? [{ path, createdSince: stats.birthtimeMs >= earliestWrite }] : [];
+  });
+  return inLimitedParallel(written.flat(), async ({ path, createdSince }) =>
+    createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null },
+  );
+}
+
 /**
  * The files of a folder that is not a git repository which were written at or after `since` (epoch ms), by their times
  * alone: a file made since then is added with its line counts, any other is modified. Nothing says what a file held
  * before, and a deleted file leaves nothing to find. A folder of more than `limit` files is checked only in part, which
- * `truncated` says. In a repository, a submodule's or a nested clone's files are its own repository's, and git refuses to
- * say whether it ignores a submodule's, so `skipOtherRepositories` leaves them out.
+ * `truncated` says.
  */
 export async function filesWrittenSince(
   directory: string,
   since: number,
   limit = MAX_SCANNED_FILES,
-  { skipOtherRepositories = false } = {},
 ): Promise<{ changes: TreeChange[]; truncated: boolean }> {
-  const { files, truncated } = await scannedFiles(directory, limit, skipOtherRepositories);
-  const earliestWrite = since - FILE_TIME_TICK_MS;
-  const written = await inLimitedParallel(files, async (path) => {
-    const stats = await stat(join(directory, path)).catch(() => null);
-    return stats && writtenAt(stats) >= earliestWrite ? [{ path, createdSince: stats.birthtimeMs >= earliestWrite }] : [];
-  });
-  const changes = await inLimitedParallel(written.flat(), async ({ path, createdSince }) =>
-    createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null },
-  );
-  return { changes, truncated };
+  const { files, truncated } = await scannedFiles(directory, limit);
+  return { changes: await writtenChangesOf(directory, files, since - FILE_TIME_TICK_MS), truncated };
 }
 
-/** The paths of the given ones that .gitignore hides, from git's own rules; tracked files are never hidden. */
-export async function ignoredPaths(directory: string, paths: string[]): Promise<Set<string>> {
-  if (paths.length === 0) return new Set();
-  const result = await git(directory, ["check-ignore", "--stdin", "-z"], paths.join("\0") + "\0");
-  return new Set(result.stdout.split("\0").filter(Boolean));
+/**
+ * The files a git repository hides behind its excludes which were written at or after `since` (epoch ms), which git
+ * lists by name so a walk never opens the tracked files. Their times tell them apart as in filesWrittenSince. The names
+ * a listing has no use for — node_modules and the folders tools keep their own state in — are left out, and git leaves
+ * a folder holding a git of its own to that repository, naming it in whole. A repository hiding more files than `limit`
+ * is checked only in part, which `truncated` says.
+ */
+export async function ignoredFilesWrittenSince(
+  directory: string,
+  since: number,
+  limit = MAX_SCANNED_FILES,
+): Promise<{ changes: TreeChange[]; truncated: boolean }> {
+  const listed = await mustGit(directory, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]);
+  const hidden = listed.split("\0").filter((path) => path !== "" && !path.endsWith("/") && path.split("/").every(isScannedName));
+  return { changes: await writtenChangesOf(directory, hidden.slice(0, limit), since - FILE_TIME_TICK_MS), truncated: hidden.length > limit };
 }
 
 /** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */
