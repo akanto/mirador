@@ -3,6 +3,7 @@ import type { AvailableCommand } from "@agentclientprotocol/sdk";
 import type {
   AskMode,
   CanvasItem,
+  ContextUsage,
   Conversation,
   Device,
   Machine,
@@ -115,6 +116,7 @@ const addedColumns = [
   { table: "workspaces", column: "color", definition: "TEXT" },
   { table: "workspaces", column: "group_id", definition: "TEXT" },
   { table: "conversations", column: "rewound_through_seq", definition: "INTEGER NOT NULL DEFAULT 0" },
+  { table: "conversations", column: "context_usage", definition: "TEXT" },
 ];
 
 /** A turn that ended while nobody looked at its conversation, until someone opens it. */
@@ -156,6 +158,7 @@ type ConversationRow = {
   bypass_permissions: number;
   config_options: string;
   queued_messages: string;
+  context_usage: string | null;
   position: number;
   created_at: number;
   updated_at: number;
@@ -213,7 +216,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   status: "idle",
   statusDetail: null,
   openInTerminal: null,
-  contextUsage: null,
+  contextUsage: row.context_usage ? (JSON.parse(row.context_usage) as ContextUsage) : null,
   queuedMessages: JSON.parse(row.queued_messages),
   usageLimit: null,
   jobWaits: [],
@@ -437,6 +440,17 @@ export class Store {
   listUnseenTurnEnds(): [conversationId: string, turnEnd: UnseenTurnEnd][] {
     return (this.db.query("SELECT id, unseen_turn_end FROM conversations WHERE unseen_turn_end IS NOT NULL").all() as { id: string; unseen_turn_end: UnseenTurnEnd }[]).map(
       ({ id, unseen_turn_end }) => [id, unseen_turn_end],
+    );
+  }
+
+  /** The agent's latest report of its context window, kept so the meter is not empty when the host comes back. */
+  setContextUsage(conversationId: string, usage: ContextUsage | null) {
+    this.db.query("UPDATE conversations SET context_usage = ? WHERE id = ?").run(usage ? JSON.stringify(usage) : null, conversationId);
+  }
+
+  listContextUsages(): [conversationId: string, usage: ContextUsage][] {
+    return (this.db.query("SELECT id, context_usage FROM conversations WHERE context_usage IS NOT NULL").all() as { id: string; context_usage: string }[]).map(
+      ({ id, context_usage }) => [id, JSON.parse(context_usage) as ContextUsage],
     );
   }
 

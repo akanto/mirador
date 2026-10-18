@@ -373,7 +373,7 @@ export interface Conversation {
   status: ConversationStatus;
   statusDetail: string | null;
   openInTerminal: TerminalActivity | null;
-  /** The agent's latest report of its context window; kept in memory only, so it is empty after a host restart until the next response. */
+  /** The agent's latest report of its context window; kept with the conversation, so it survives a host restart and empties when its context does. */
   contextUsage: ContextUsage | null;
   /** Messages sent while the agent was busy, oldest first: each joins the running turn at the agent's next step, or waits for the turn to end. */
   queuedMessages: QueuedMessage[];

@@ -179,7 +179,7 @@ export class ConversationService {
   private readonly catchingUpWithTerminal = new Set<string>();
   /** A session loaded again replays all of its history; it is held here, so only what the conversation lacks joins it. */
   private readonly replaysBeingRead = new Map<string, acp.SessionNotification[]>();
-  private readonly contextUsage = new Map<string, ContextUsage>();
+  private readonly contextUsage: Map<string, ContextUsage>;
   private readonly planQuotas = new PlanQuotasByProfile();
   private readonly unseenTurnEnds: Map<string, UnseenTurnEnd>;
   private readonly lastWords = new Map<string, string>();
@@ -208,6 +208,7 @@ export class ConversationService {
     );
     this.cancelPermissionsOrphanedByRestart();
     this.endTurnsOrphanedByRestart();
+    this.contextUsage = new Map(store.listContextUsages());
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
     this.unseenTurnEnds.forEach((_, conversationId) => this.keepLastWords(conversationId));
     const waitingAsksOldestLast = store.listCanvasItemsWithStatus("waiting").sort((a, b) => b.createdAt - a.createdAt);
@@ -417,7 +418,7 @@ export class ConversationService {
     if (interrupted) await this.stopTurnEvenIfIgnored(conversationId);
     const conversation = this.get(conversationId);
     const released = this.releaseSession(runtime, conversation.acpSessionId);
-    if (changesAgent) this.contextUsage.delete(conversationId);
+    if (changesAgent) this.forgetContextUsage(conversationId);
     this.save({
       ...conversation,
       harness,
@@ -453,12 +454,18 @@ export class ConversationService {
     throw new Error(`This conversation already runs on ${harnessLabels[harness]}. Start a new conversation to use “${target.name}” on ${harnessLabels[target.harness]}.`);
   }
 
+  /** The context its report measured is gone, so the meter starts empty again — in the store, so a restart does not bring it back. */
+  private forgetContextUsage(conversationId: string) {
+    this.contextUsage.delete(conversationId);
+    this.store.setContextUsage(conversationId, null);
+  }
+
   /** Like /clear in Claude Code: the agent goes on in a fresh session, while the conversation so far stays on screen. */
   private async clearContext(conversationId: string) {
     const runtime = this.runtime(conversationId);
     await runtime.sessionId?.catch(() => {});
     const released = this.releaseSession(runtime, this.get(conversationId).acpSessionId);
-    this.contextUsage.delete(conversationId);
+    this.forgetContextUsage(conversationId);
     this.save({ ...this.get(conversationId), acpSessionId: null });
     this.append(conversationId, { type: "context-cleared" });
     await this.ensureSession(conversationId, async () => {
@@ -633,7 +640,7 @@ export class ConversationService {
       if (checkpoint && (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
       const released = this.releaseSession(runtime, conversation.acpSessionId);
       this.store.deleteEventsFrom(conversationId, seq);
-      this.contextUsage.delete(conversationId);
+      this.forgetContextUsage(conversationId);
       this.save({ ...this.get(conversationId), acpSessionId: forked });
       this.hub.publishToConversation(conversationId, { type: "conversation.rewound", conversationId, fromSeq: seq });
       await released;
@@ -1273,7 +1280,9 @@ export class ConversationService {
     const subagentSession = opencodeSubagentSessionOf(update);
     if (subagentSession) this.subagentSessions.record(subagentSession, conversationId);
     if (update.sessionUpdate === "usage_update") {
-      this.contextUsage.set(conversationId, { used: update.used, size: update.size, cost: update.cost ? { amount: update.cost.amount, currency: update.cost.currency } : null });
+      const usage: ContextUsage = { used: update.used, size: update.size, cost: update.cost ? { amount: update.cost.amount, currency: update.cost.currency } : null };
+      this.contextUsage.set(conversationId, usage);
+      this.store.setContextUsage(conversationId, usage);
       const quotas = reportedQuotas(update._meta);
       if (quotas) this.planQuotas.record(this.get(conversationId).profileId, quotas);
       this.publish(this.get(conversationId));

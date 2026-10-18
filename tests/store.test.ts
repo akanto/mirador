@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import type { CanvasItem, Conversation, ConversationEvent, JobWait, Profile } from "../shared/model.ts";
+import type { CanvasItem, ContextUsage, Conversation, ConversationEvent, JobWait, Profile } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
@@ -344,6 +344,26 @@ describe("Store", () => {
     expect(reopened.findConversation("c1")?.queuedMessages).toEqual(queued);
     expect(reopened.findConversation("c2")?.queuedMessages).toEqual([]);
     expect(reopened.listUnseenTurnEnds()).toEqual([["c1", "finished"]]);
+    reopened.close();
+  });
+
+  test("keeps a conversation's last context usage across reopening the database, and forgets it when emptied", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    store.insertWorkspace({ id: "w1", name: "project", path: "/tmp/project", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+    store.insertConversation({ ...seededStore().conversation, id: "c1" });
+    store.insertConversation({ ...seededStore().conversation, id: "c2" });
+    const usage: ContextUsage = { used: 42_500, size: 100_000, cost: { amount: 1.25, currency: "USD" } };
+    store.setContextUsage("c1", usage);
+    store.setContextUsage("c2", usage);
+    store.setContextUsage("c2", null);
+    expect(store.findConversation("c1")?.contextUsage).toEqual(usage);
+    store.updateConversation(store.findConversation("c1")!);
+    store.close();
+    const reopened = new Store(path);
+    expect(reopened.findConversation("c1")?.contextUsage).toEqual(usage);
+    expect(reopened.findConversation("c2")?.contextUsage).toBeNull();
+    expect(reopened.listContextUsages()).toEqual([["c1", usage]]);
     reopened.close();
   });
 
