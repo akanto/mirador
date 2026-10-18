@@ -1,0 +1,84 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test } from "@playwright/test";
+import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
+
+const host = new TestHost({ fakePrograms: true });
+const logFile = join(host.root, "agent-log");
+
+const fakeOpencode = () =>
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), {
+    FAKE_ACP_PROMPTS: join(host.root, "prompts"),
+    FAKE_ACP_LOG: logFile,
+    FAKE_ACP_TASK_OUTPUT_DIR: host.root,
+  });
+
+test.beforeAll(async () => {
+  fakeOpencode();
+  await host.start();
+});
+test.afterAll(async () => {
+  await host.stop();
+  await host.cleanUp();
+});
+
+const stoppedLines = () => {
+  try {
+    return readFileSync(logFile, "utf8");
+  } catch {
+    return "";
+  }
+};
+
+test("a background task the agent started shows with its output and Stop above the message box", async ({ page }) => {
+  await signIn(page, host);
+  await addWorkspace(page, host.projectDir);
+  const profiles = await createProfile(page, "async", "", "", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "async · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  const tasks = page.getByRole("region", { name: "Background tasks" });
+  const row = tasks.locator("li");
+
+  await test.step("the spawn shows the task running, with its Stop", async () => {
+    await sendMessage(page, "ASYNC TASK");
+    await waitForTurnToEnd(page);
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("Running:");
+    await expect(row.getByRole("button", { name: "sleep 30" })).toBeVisible();
+    await expect(row).toContainText("for ");
+    await expect(row.getByRole("button", { name: "Stop" })).toBeVisible();
+  });
+
+  await test.step("a progress beat shows its summary, and its output file opens below", async () => {
+    await expect(row).toContainText("Still running after 10s");
+    await row.getByRole("button", { name: "sleep 30" }).click();
+    const output = row.locator(".async-task-output");
+    await expect(output).toBeVisible();
+    await expect(output).toContainText("the task started");
+    await expect(output, "the open output refreshes as the task writes").toContainText("still sleeping");
+  });
+
+  await test.step("Stop reaches the agent, which reports the task stopped and loses its Stop", async () => {
+    await row.getByRole("button", { name: "Stop" }).click();
+    await expect(row).toContainText("Stopped:");
+    await expect(row.getByRole("button", { name: "Stop" })).toHaveCount(0);
+    await expect(row.getByText("Task stopped by user")).toBeVisible();
+    await expect.poll(stoppedLines).toContain("stopped fake-task-");
+    await expect(page.locator(".timeline:visible"), "the task lives in the panel, not the transcript").not.toContainText("sleep 30");
+  });
+
+  await test.step("a task that ends on its own shows as completed and keeps its output readable", async () => {
+    await sendMessage(page, "ASYNC TASK DONE");
+    await waitForTurnToEnd(page);
+    await expect(row).toHaveCount(2);
+    const finished = tasks.locator("li", { hasText: "Completed:" });
+    await expect(finished).toHaveCount(1);
+    await expect(finished).toContainText("Task completed");
+    await expect(finished.getByRole("button", { name: "Stop" })).toHaveCount(0);
+    await finished.getByRole("button", { name: "sleep 30" }).click();
+    await expect(finished.locator(".async-task-output")).toContainText("done sleeping");
+  });
+});

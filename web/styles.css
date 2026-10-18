@@ -4008,6 +4008,60 @@ button.shell-more:hover {
   cursor: pointer;
 }
 
+.async-tasks ul {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: calc(12.5px * var(--font-scale));
+}
+
+.async-tasks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 10px;
+}
+
+.async-tasks li + li {
+  border-top: 1px solid var(--border);
+}
+
+.async-task-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.async-tasks button.link {
+  padding: 0;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.async-task-summary {
+  color: var(--muted);
+}
+
+.async-task-output {
+  margin: 0;
+  padding: 6px 8px;
+  max-height: 14em;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: calc(11.5px * var(--font-scale));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .job-wait-message[role="button"]:hover {
   color: var(--text);
 }

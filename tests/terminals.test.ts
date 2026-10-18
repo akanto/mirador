@@ -99,6 +99,7 @@ const conversationInWorkspace = (id: string): Omit<Conversation, "position"> => 
   queuedMessages: [],
   usageLimit: null,
   jobWaits: [],
+  asyncTasks: [],
   waitingFor: null,
   pendingRequest: null,
   lastWords: null,

@@ -33,6 +33,7 @@ const conversation: Conversation = {
   queuedMessages: [],
   usageLimit: null,
   jobWaits: [],
+  asyncTasks: [],
   waitingFor: null,
   pendingRequest: null,
   lastWords: null,

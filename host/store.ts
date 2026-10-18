@@ -220,6 +220,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   queuedMessages: JSON.parse(row.queued_messages),
   usageLimit: null,
   jobWaits: [],
+  asyncTasks: [],
   waitingFor: null,
   pendingRequest: null,
   lastWords: null,

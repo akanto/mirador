@@ -11,6 +11,8 @@ import {
   terminalActivityLabels,
   askModeLabels,
   type AskMode,
+  type AsyncTask,
+  type AsyncTaskState,
   type Conversation,
   type HarnessId,
   type JobWait,
@@ -1168,6 +1170,85 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
   );
 }
 
+const asyncTaskStateLabels: Record<AsyncTaskState, string> = {
+  running: "Running",
+  paused: "Paused",
+  completed: "Completed",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+function BackgroundTasks({ conversationId, tasks }: { conversationId: string; tasks: AsyncTask[] }) {
+  return (
+    <section className="async-tasks" aria-label="Background tasks">
+      <ul>
+        {tasks.map((task) => (
+          <li key={task.id}>
+            <AsyncTaskRow conversationId={conversationId} task={task} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function AsyncTaskRow({ conversationId, task }: { conversationId: string; task: AsyncTask }) {
+  const [open, setOpen] = useState(false);
+  const [output, setOutput] = useState<string | null>(null);
+  const ticking = task.state === "running" || task.state === "paused";
+  const now = useClock(ticking);
+  useEffect(() => {
+    if (!open) return;
+    let stale = false;
+    const load = () =>
+      connection
+        .sendAndAwait(
+          (requestId) => ({ type: "async-task.output.get", requestId, conversationId, asyncTaskId: task.id }),
+          (message, requestId) => (message.type === "async-task.output.got" && message.requestId === requestId ? message.text : undefined),
+        )
+        .then((text) => !stale && setOutput(text))
+        .catch(() => {});
+    load();
+    if (!ticking) return () => { stale = true; };
+    const timer = setInterval(load, 2000);
+    return () => {
+      stale = true;
+      clearInterval(timer);
+    };
+  }, [open, ticking, conversationId, task.id]);
+  return (
+    <>
+      <div className="async-task-text">
+        <span className="async-task-status" data-hint={hints.asyncTask}>
+          {asyncTaskStateLabels[task.state]}:{" "}
+          <button
+            type="button"
+            className="link"
+            data-hint={hints.asyncTaskOutput}
+            aria-expanded={open}
+            onClick={() => setOpen((wasOpen) => !wasOpen)}
+          >
+            {task.description}
+          </button>{" "}
+          for {formatDuration(now - task.since)}
+        </span>
+        {task.summary && task.summary !== task.description && <span className="async-task-summary">{task.summary}</span>}
+        {open && <pre className="async-task-output">{output ?? "No output yet."}</pre>}
+      </div>
+      {task.canStop && (
+        <button
+          type="button"
+          className="link"
+          data-hint={hints.stopAsyncTask}
+          onClick={() => connection.send({ type: "conversation.async-task.stop", conversationId, asyncTaskId: task.id })}
+        >
+          Stop
+        </button>
+      )}
+    </>
+  );
+}
+
 function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wait: UsageLimitWait }) {
   return (
     <section className="usage-limit" aria-label="Usage limit">
@@ -1496,6 +1577,7 @@ function Composer({
     <div className="composer-area">
       <ComposerGrip textarea={textarea} />
       {conversation.usageLimit && <UsageLimitNotice conversationId={conversation.id} wait={conversation.usageLimit} />}
+      {conversation.asyncTasks.length > 0 && <BackgroundTasks conversationId={conversation.id} tasks={conversation.asyncTasks} />}
       {conversation.jobWaits.length > 0 && <JobWaits conversationId={conversation.id} waits={conversation.jobWaits} />}
       {queued.length > 0 && <QueuedMessages conversationId={conversation.id} harness={conversation.harness} messages={queued} onEdit={pullBack} onRemove={remove} />}
       <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />

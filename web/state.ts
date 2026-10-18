@@ -263,6 +263,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "mentions.suggested":
     case "tool-output.got":
     case "tool-raw-output.got":
+    case "async-task.output.got":
     case "conversation.found":
     case "statusline.rendered":
     case "subagent-usage.got":

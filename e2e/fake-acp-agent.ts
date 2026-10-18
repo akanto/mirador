@@ -18,6 +18,9 @@ import * as acp from "@agentclientprotocol/sdk";
  * subagent whose step asks permission, and ends the turn with what the user answered.
  * `NOTICE` sends the notices claude-agent-acp sends for hook output, a stopped task and a model fallback: a `notice`
  * update when the client advertised `session.notices` at initialize, the bold-label transcript line when not, and then answers.
+ * `ASYNC TASK` starts a background task the way claude-agent-acp does with its `asyncTasks` capability: a spawn update,
+ * a progress beat shortly after, and output lines appended to a file under `FAKE_ACP_TASK_OUTPUT_DIR`; with ` DONE`
+ * after it the task completes on its own too. The `_session/async_task/stop` request stops one and says so, logging it.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -67,6 +70,49 @@ const configOptions = (sessionId: string): acp.SessionConfigOption[] => [
 
 /** Whether the client can present `notice` updates, taken from its initialize request the way claude-agent-acp takes it. */
 let noticesAdvertised = false;
+
+/** Whether the client shows background tasks, taken the same way from the advertised AIR capabilities. */
+let asyncTasksAdvertised = false;
+
+const taskOutputDir = process.env.FAKE_ACP_TASK_OUTPUT_DIR ?? process.cwd();
+const asyncTaskStates = new Map<string, string>();
+let nextAsyncTask = 0;
+
+const taskUpdate = (client: acp.AgentContext, sessionId: string, update: object) =>
+  client.notify(acp.methods.client.session.update, { sessionId, update: update as acp.SessionUpdate });
+
+/** The task updates one of these own background tasks carries: the spawn, a progress beat, and with `done` its end. */
+async function startAsyncTask(client: acp.AgentContext, sessionId: string, done: boolean) {
+  if (!asyncTasksAdvertised) return sayText(client, sessionId, "Nothing to run in the background here.");
+  const asyncTaskId = `fake-task-${process.pid}-${++nextAsyncTask}`;
+  const outputFilePath = `${taskOutputDir}/async-task-${asyncTaskId}.log`;
+  writeFileSync(outputFilePath, "the task started\n");
+  asyncTaskStates.set(asyncTaskId, "running");
+  await taskUpdate(client, sessionId, { sessionUpdate: "async_task_spawned", asyncTaskId, taskType: "shell", description: "sleep 30", canStop: true, outputFilePath });
+  setTimeout(() => {
+    if (asyncTaskStates.get(asyncTaskId) !== "running") return;
+    appendFileSync(outputFilePath, "still sleeping\n");
+    void taskUpdate(client, sessionId, { sessionUpdate: "async_task_progress", asyncTaskId, summary: "Still running after 10s", usage: { totalTokens: 120 }, outputFilePath });
+  }, 300);
+  if (done) {
+    setTimeout(() => {
+      if (asyncTaskStates.get(asyncTaskId) !== "running") return;
+      asyncTaskStates.set(asyncTaskId, "completed");
+      appendFileSync(outputFilePath, "done sleeping\n");
+      void taskUpdate(client, sessionId, { sessionUpdate: "async_task_state_update", asyncTaskId, state: "completed", summary: "Task completed", outputFilePath });
+    }, 900);
+  }
+  return { stopReason: "end_turn" as const };
+}
+
+/** Ends a running task, the way the adapter claims a stop and then reports the stopped state. */
+async function stopAsyncTask(client: acp.AgentContext, sessionId: string, asyncTaskId: string) {
+  log(`stopped ${asyncTaskId}`);
+  if (asyncTaskStates.get(asyncTaskId) !== "running") return { stopped: false };
+  asyncTaskStates.set(asyncTaskId, "stopped");
+  await taskUpdate(client, sessionId, { sessionUpdate: "async_task_state_update", asyncTaskId, state: "stopped", summary: "Task stopped by user" });
+  return { stopped: true };
+}
 
 /** A hook's several lines, whose first claude-agent-acp lets stand as the notice's title, and two shorter notices. */
 const NOTICES = [
@@ -203,6 +249,8 @@ acp
   .agent()
   .onRequest(acp.methods.agent.initialize, (ctx) => {
     noticesAdvertised = typeof ctx.params.clientCapabilities?.session?.notices === "object";
+    const air = (ctx.params.clientCapabilities?._meta?.jetbrains as { air?: { capabilities?: unknown } } | undefined)?.air;
+    asyncTasksAdvertised = Array.isArray(air?.capabilities) && (air.capabilities as unknown[]).includes("asyncTasks");
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: offersModes ? { sessionCapabilities: { close: {} } } : {},
@@ -234,6 +282,8 @@ acp
     if (startsWith(ctx.params.prompt, "SUBAGENT ASKS ")) return askFromSubagent(ctx.client, ctx.params.sessionId, text.slice("SUBAGENT ASKS ".length));
     if (startsWith(ctx.params.prompt, "SAY ")) return sayText(ctx.client, ctx.params.sessionId, text.slice("SAY ".length));
     if (startsWith(ctx.params.prompt, "NOTICE")) return sendNotices(ctx.client, ctx.params.sessionId);
+    if (startsWith(ctx.params.prompt, "ASYNC TASK DONE")) return startAsyncTask(ctx.client, ctx.params.sessionId, true);
+    if (startsWith(ctx.params.prompt, "ASYNC TASK")) return startAsyncTask(ctx.client, ctx.params.sessionId, false);
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
@@ -241,4 +291,7 @@ acp
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
   })
+  .onRequest("_session/async_task/stop", (params) => params as { sessionId: string; asyncTaskId: string }, (ctx) =>
+    stopAsyncTask(ctx.client, ctx.params.sessionId, ctx.params.asyncTaskId),
+  )
   .connect(acp.ndJsonStream(Writable.toWeb(process.stdout) as unknown as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as unknown as ReadableStream<Uint8Array>));

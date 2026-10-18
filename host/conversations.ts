@@ -57,6 +57,7 @@ import { agentLogsDirectory, type HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
 import type { DroppedFiles } from "./dropped-files.ts";
 import type { ImageStore } from "./images.ts";
+import { asyncTaskUpdateOf, AsyncTasks, tailTaskOutput } from "./async-tasks.ts";
 import { followJobProgram, JobWaits } from "./job-waits.ts";
 import type { NotifierMute } from "./notifier.ts";
 import { Changes } from "./changes.ts";
@@ -191,6 +192,7 @@ export class ConversationService {
   private readonly commands = new UserCommandRunner();
   private readonly subagentUsageReader = new SubagentUsageReader();
   private readonly jobWaits: JobWaits;
+  private readonly asyncTasks = new AsyncTasks();
   private readonly checkpoints: Checkpoints;
   readonly changes: Changes;
   /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
@@ -353,6 +355,7 @@ export class ConversationService {
       queuedMessages: [],
       usageLimit: null,
       jobWaits: [],
+      asyncTasks: [],
       waitingFor: null,
       pendingRequest: null,
       lastWords: null,
@@ -395,6 +398,7 @@ export class ConversationService {
       this.releaseSession(runtime, conversation.acpSessionId);
     }
     this.jobWaits.forget(conversationId);
+    this.asyncTasks.forget(conversationId);
     this.runtimes.delete(conversationId);
     this.statusOverrides.delete(conversationId);
     this.terminalActivity.delete(conversationId);
@@ -495,6 +499,8 @@ export class ConversationService {
     await runtime.sessionId?.catch(() => {});
     const released = this.releaseSession(runtime, this.get(conversationId).acpSessionId);
     this.forgetContextUsage(conversationId);
+    // The agent drops its background tasks with the session, so the panel loses them here too.
+    this.asyncTasks.forget(conversationId);
     this.save({ ...this.get(conversationId), acpSessionId: null });
     this.append(conversationId, { type: "context-cleared" });
     await this.ensureSession(conversationId, async () => {
@@ -756,6 +762,21 @@ export class ConversationService {
   stopWaitingForJob(conversationId: string, waitId: string) {
     const wait = this.jobWaits.stop(conversationId, waitId);
     if (wait) this.append(conversationId, { type: "job-wait-ended", wait, end: "stopped" });
+  }
+
+  /** Stops one of Claude Code's own background tasks; the turn that started it keeps running. */
+  async stopAsyncTask(conversationId: string, asyncTaskId: string) {
+    const harness = this.runtimes.get(conversationId)?.harness;
+    const sessionId = this.get(conversationId).acpSessionId;
+    const stopped = harness && sessionId ? await harness.stopAsyncTask(sessionId, asyncTaskId).catch(() => false) : false;
+    // A stopped state is coming with the agent's own update, unless it has no task to stop and none is coming.
+    if (!stopped && this.asyncTasks.markUnstoppable(conversationId, asyncTaskId)) this.publish(this.get(conversationId));
+  }
+
+  /** The last part of the file a background task writes its output to; null when there is none to read. */
+  asyncTaskOutput(conversationId: string, asyncTaskId: string): string | null {
+    const path = this.asyncTasks.outputFileOf(conversationId, asyncTaskId);
+    return path === null ? null : tailTaskOutput(path);
   }
 
   /** A terminal tab that shows what the job runs and follows its output. */
@@ -1314,6 +1335,12 @@ export class ConversationService {
     const update = notification.update;
     const subagentSession = opencodeSubagentSessionOf(update);
     if (subagentSession) this.subagentSessions.record(subagentSession, conversationId);
+    const asyncTaskUpdate = asyncTaskUpdateOf(update);
+    if (asyncTaskUpdate) {
+      // The panel state these carry goes with the conversation; they are no transcript line of their own, so they skip the events.
+      if (this.asyncTasks.apply(conversationId, asyncTaskUpdate)) this.publish(this.get(conversationId));
+      return;
+    }
     if (update.sessionUpdate === "usage_update") {
       const usage: ContextUsage = { used: update.used, size: update.size, cost: update.cost ? { amount: update.cost.amount, currency: update.cost.currency } : null };
       this.contextUsage.set(conversationId, usage);
@@ -1482,6 +1509,11 @@ export class ConversationService {
       runtime.harness = undefined;
       runtime.sessionId = undefined;
       runtime.pendingPermissions.forEach(({ settle }) => settle(null));
+      // The agent's background tasks ran inside its process and went away with it; no terminal update can arrive.
+      if (this.asyncTasks.in(conversationId).length > 0) {
+        this.asyncTasks.forget(conversationId);
+        this.republish(conversationId);
+      }
     });
   }
 
@@ -1689,6 +1721,7 @@ export class ConversationService {
       queuedMessages: this.runtimes.get(conversation.id)?.queuedMessages ?? conversation.queuedMessages,
       usageLimit: this.runtimes.get(conversation.id)?.usageLimit?.wait ?? null,
       jobWaits: this.jobWaits.in(conversation.id),
+      asyncTasks: this.asyncTasks.in(conversation.id),
       waitingFor: this.waitingFor(conversation.id),
       pendingRequest: this.pendingRequest(conversation.id),
       lastWords: this.lastWords.get(conversation.id) ?? null,

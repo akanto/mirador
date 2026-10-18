@@ -45,6 +45,7 @@ function setUp() {
     queuedMessages: [],
     usageLimit: null,
     jobWaits: [],
+    asyncTasks: [],
     waitingFor: null,
     pendingRequest: null,
     lastWords: null,

@@ -800,6 +800,16 @@ export function startServer(services: HostServices) {
         return conversations.stopWaitingForUsageLimit(message.conversationId);
       case "conversation.job-wait.stop":
         return conversations.stopWaitingForJob(message.conversationId, message.waitId);
+      case "conversation.async-task.stop":
+        return conversations.stopAsyncTask(message.conversationId, message.asyncTaskId).catch((error) =>
+          reply({ type: "error", message: errorMessage(error) }),
+        );
+      case "async-task.output.get":
+        return reply({
+          type: "async-task.output.got",
+          requestId: message.requestId,
+          text: conversations.asyncTaskOutput(message.conversationId, message.asyncTaskId),
+        });
       case "conversation.cancel":
         canvas.withdrawWaitingAsks(message.conversationId);
         return conversations.cancel(message.conversationId, { force: message.force });

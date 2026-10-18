@@ -5,6 +5,7 @@ import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import type { HarnessId } from "../../shared/model.ts";
 import { MIRADOR_VERSION } from "../../shared/version.ts";
+import { asyncTaskUpdateOf } from "../async-tasks.ts";
 import { commandLine, commandShell, withOutputAppendedTo } from "../command-shell.ts";
 import { killProcessTree } from "../windows-processes.ts";
 
@@ -23,6 +24,35 @@ const EXIT_WAIT_MS = FORCE_KILL_GRACE_MS + 2000;
 const LAST_OUTPUT_AFTER_EXIT_MS = 1000;
 /** claude-agent-acp's extension for adding a message to the running turn, advertised in `_meta.steering` at initialize. */
 const STEERING_METHOD = "_session/steering";
+/** claude-agent-acp's extension for stopping one of Claude Code's background tasks, answering `stopped: false` when it has none by that id. */
+const ASYNC_TASK_STOP_METHOD = "_session/async_task/stop";
+/**
+ * The background task's session update as this client's own method. The SDK parses every `session/update` against
+ * its schema's union of known updates before handlers see it, and its router throws on one whose tag is unknown, so
+ * a background task's update never reaches a handler registered on `session/update`; those ride on this method.
+ */
+const ASYNC_TASK_UPDATE_METHOD = "_session/async_task/update";
+
+const sessionUpdateOf = (message: acp.AnyMessage): unknown =>
+  "method" in message && message.method === acp.methods.client.session.update
+    ? (message.params as { update?: unknown }).update
+    : undefined;
+
+/** The agent's background task updates on their own method, every other message as it came. */
+function routeAsyncTaskUpdates(stream: acp.Stream): acp.Stream {
+  return {
+    writable: stream.writable,
+    readable: stream.readable.pipeThrough(
+      new TransformStream<acp.AnyMessage, acp.AnyMessage>({
+        transform(message, controller) {
+          const update = sessionUpdateOf(message);
+          const carried = typeof update === "object" && update !== null ? asyncTaskUpdateOf(update) : null;
+          controller.enqueue(carried ? ({ ...message, method: ASYNC_TASK_UPDATE_METHOD } as acp.AnyMessage) : message);
+        },
+      }),
+    ),
+  };
+}
 
 const latestStartByHarness = new Map<HarnessId, Promise<unknown>>();
 
@@ -128,6 +158,17 @@ export class HarnessProcess {
     return (capabilities?._meta?.steering as { supported?: unknown } | undefined)?.supported === true;
   }
 
+  /**
+   * Stops one of Claude Code's background tasks, leaving the turn that started it running. False when the agent has no
+   * task by that id it can stop, e.g. one that ended already.
+   */
+  async stopAsyncTask(sessionId: string, asyncTaskId: string): Promise<boolean> {
+    const { stopped } = await this.failingWithExitReason((agent) =>
+      agent.request<{ stopped: unknown }>(ASYNC_TASK_STOP_METHOD, { sessionId, asyncTaskId }),
+    );
+    return stopped === true;
+  }
+
   async cancel(sessionId: string) {
     await this.agent().notify(acp.methods.agent.session.cancel, { sessionId });
   }
@@ -211,13 +252,18 @@ export class HarnessProcess {
       child.stderr!.resume();
     });
     child.stderr!.pipe(log);
-    const stream = acp.ndJsonStream(
-      Writable.toWeb(child.stdin!),
-      Readable.toWeb(child.stdout!) as unknown as ReadableStream<Uint8Array>,
+    const stream = routeAsyncTaskUpdates(
+      acp.ndJsonStream(
+        Writable.toWeb(child.stdin!),
+        Readable.toWeb(child.stdout!) as unknown as ReadableStream<Uint8Array>,
+      ),
     );
     const connection = acp
       .client({ name: "mirador" })
       .onNotification(acp.methods.client.session.update, (ctx) => this.listener.onSessionUpdate(ctx.params))
+      .onNotification(ASYNC_TASK_UPDATE_METHOD, (params) => params as { sessionId: string; update: object }, (ctx) =>
+        this.listener.onSessionUpdate({ sessionId: ctx.params.sessionId, update: ctx.params.update as acp.SessionUpdate }),
+      )
       .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
         this.listener.onPermissionRequest(ctx.params, ctx.signal),
       )
@@ -240,7 +286,12 @@ export class HarnessProcess {
       return await this.failingWithExitReason((agent) =>
         agent.request(acp.methods.agent.initialize, {
           protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: { session: { notices: {} } },
+          clientCapabilities: {
+            session: { notices: {} },
+            // Claude Code's background tasks come as session updates only to a client that claims the AIR asyncTasks
+            // capability; an agent that knows no `_meta` ignores it.
+            _meta: { jetbrains: { air: { version: 1, capabilities: ["asyncTasks"] } } },
+          },
           clientInfo: { name: "mirador", version: MIRADOR_VERSION },
         }),
       );

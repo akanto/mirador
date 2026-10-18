@@ -213,6 +213,7 @@ const conversation = (id: string, workspaceId: string, createdAt: number, positi
     queuedMessages: [],
     usageLimit: null,
     jobWaits: [],
+    asyncTasks: [],
     waitingFor: null,
     pendingRequest: null,
     lastWords: null,

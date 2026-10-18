@@ -65,6 +65,7 @@ function hostAfterTurnsEndedUnseen(...turns: ConversationEvent[][]) {
     queuedMessages: [],
     usageLimit: null,
     jobWaits: [],
+    asyncTasks: [],
     waitingFor: null,
     pendingRequest: null,
     lastWords: null,

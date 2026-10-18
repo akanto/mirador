@@ -352,6 +352,28 @@ export interface JobWait {
 /** `gave-up`: the job could not be checked for too long, e.g. its machine stopped answering, so it may still run. */
 export type JobWaitEnd = "ended" | "gave-up" | "stopped";
 
+export type AsyncTaskState = "running" | "paused" | "completed" | "failed" | "stopped";
+
+/**
+ * One of Claude Code's own background tasks, its commands started with run_in_background and the like, as the agent
+ * reports them; they live and die with the agent process, so the host keeps them in memory only.
+ */
+export interface AsyncTask {
+  id: string;
+  /** What kind of task the agent says it is: "shell", "workflow", or another name. */
+  taskType: string;
+  description: string;
+  state: AsyncTaskState;
+  /** Whether the agent can still stop it; false once it ended. */
+  canStop: boolean;
+  /** The latest thing the agent said of the task, a progress beat or its end. */
+  summary: string | null;
+  /** The file the task writes its output to, once the agent names one. */
+  outputFilePath: string | null;
+  /** When the task appeared in Mirador; the agent's own start time does not reach us. */
+  since: number;
+}
+
 /** A tool the agent waits for permission to run, or the tool call it started last that has not finished, by its title. */
 export interface Activity {
   kind: "permission" | "tool";
@@ -379,6 +401,8 @@ export interface Conversation {
   queuedMessages: QueuedMessage[];
   usageLimit: UsageLimitWait | null;
   jobWaits: JobWait[];
+  /** Claude Code's own background tasks it reported this agent process; kept in memory only, as they die with it. */
+  asyncTasks: AsyncTask[];
   /** A question and a turn that ended unseen outlast a host restart; a permission request ends with its agent. */
   waitingFor: WaitingFor | null;
   /** The permission request or question it waits for, the oldest first; worked out from those, never stored. */

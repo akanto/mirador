@@ -153,6 +153,10 @@ export type ClientMessage =
   | { type: "conversation.try-again"; conversationId: string; errorSeq: number }
   | { type: "conversation.usage-limit.stop-waiting"; conversationId: string }
   | { type: "conversation.job-wait.stop"; conversationId: string; waitId: string }
+  /** Stops one of Claude Code's background tasks; the turn it started in keeps running. */
+  | { type: "conversation.async-task.stop"; conversationId: string; asyncTaskId: string }
+  /** The last part of the file a background task writes its output to; null when none is there to read. */
+  | { type: "async-task.output.get"; requestId: string; conversationId: string; asyncTaskId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }
   | { type: "conversation.set-bypass-permissions"; conversationId: string; bypassPermissions: boolean }
   | { type: "conversation.set-config"; conversationId: string; configId: string; value: string | boolean }
@@ -284,6 +288,7 @@ export type ServerMessage =
   | { type: "tool-output.got"; requestId: string; content: ToolCallContent[] }
   | { type: "conversation.found"; requestId: string; conversationId: string; entries: EntryMatchCount[] }
   | { type: "tool-raw-output.got"; requestId: string; rawOutput: unknown }
+  | { type: "async-task.output.got"; requestId: string; text: string | null }
   | { type: "conversation.event"; conversationId: string; event: StoredEvent }
   /** `cannotUndo` says why a turn cannot be undone, when it cannot; `plan` is absent then too. */
   | { type: "conversation.revert-previewed"; requestId: string; plan: RestorePlan | null; cannotUndo?: string }
