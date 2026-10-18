@@ -409,6 +409,7 @@ test("the README's screenshots", async ({ page }) => {
     await expect(view.locator(".verdict")).toBeVisible();
     await view.getByRole("tab", { name: /Flow/ }).click();
     await view.getByRole("navigation", { name: "Flow steps" }).getByText("The capture is retried").click();
+    await expect(view.locator(".flow-step-say")).toContainText("up to three attempts");
     await save(page, "review-flow");
     await view.getByRole("tab", { name: /Findings/ }).click();
     await save(page, "review-findings");
