@@ -143,3 +143,20 @@ test("with edits kept out of the canvas in Settings, or the canvas hidden, the c
   await expect(pendingCard(page)).toContainText("Shown in the canvas");
   await expect(pendingCard(page).locator(".diff")).toHaveCount(0);
 });
+
+test("a subagent's step waiting for your permission waits in its card instead of showing as running", async ({ page }) => {
+  await signInToWorkspace(page);
+  await startConversation(page);
+  await sendMessage(page, "SUBAGENT ASKS ls");
+
+  const card = page.locator(".timeline:visible .tool.subagent");
+  await expect(card).toBeVisible();
+  await card.locator("> summary").click();
+  await expect(pendingCard(page)).toBeVisible();
+  await expect(card.locator(".subagent-work .tool-status")).toHaveText("○");
+  await expect(card.locator(":scope > summary > .tool-status"), "the subagent itself is still running").toHaveText("◐");
+
+  await pendingCard(page).getByRole("button", { name: "Allow", exact: true }).click();
+  await expect(lastAgentMessage(page)).toHaveText("ls: allow");
+  await expect(page.locator(".timeline:visible .working")).toHaveCount(0);
+});

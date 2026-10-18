@@ -14,7 +14,8 @@ import * as acp from "@agentclientprotocol/sdk";
  * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
  * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, and
  * `{"waitFor": path}` holds the turn until that file exists. `SAY ` followed by text answers with that text, as markdown,
- * and `FAIL ` followed by text fails the turn with that text as its error.
+ * and `FAIL ` followed by text fails the turn with that text as its error. `SUBAGENT ASKS ` followed by a title starts a
+ * subagent whose step asks permission, and ends the turn with what the user answered.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -100,6 +101,22 @@ const askToEdit = (client: acp.AgentContext, sessionId: string, edits: ProposedE
 const askToUseTools = (client: acp.AgentContext, sessionId: string, tools: { kind: acp.ToolKind; title: string }[]) =>
   askPermissions(client, sessionId, tools.map(({ kind, title }, index) => ({ toolCallId: `tool-${index}`, title, kind, status: "pending" })));
 
+/** A subagent whose own step asks permission, as Claude Code does for a command a subagent wants to run. */
+async function askFromSubagent(client: acp.AgentContext, sessionId: string, title: string) {
+  const update = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  await update({
+    sessionUpdate: "tool_call",
+    toolCallId: "subagent-0",
+    title: "Task",
+    kind: "think",
+    status: "in_progress",
+    rawInput: { description: "look around", prompt: "look around" },
+    _meta: { claudeCode: { toolName: "Task" } },
+  });
+  await update({ sessionUpdate: "tool_call", toolCallId: "subagent-0-step", title, kind: "execute", status: "pending", _meta: { claudeCode: { parentToolUseId: "subagent-0" } } });
+  return askPermissions(client, sessionId, [{ toolCallId: "subagent-0-step", title, kind: "execute", status: "pending" }]);
+}
+
 type WriteStep = { edit: string; content: string } | { shell: string; content: string } | { waitFor: string };
 
 let nextToolCall = 0;
@@ -184,6 +201,7 @@ acp
     if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
     if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
+    if (startsWith(ctx.params.prompt, "SUBAGENT ASKS ")) return askFromSubagent(ctx.client, ctx.params.sessionId, text.slice("SUBAGENT ASKS ".length));
     if (startsWith(ctx.params.prompt, "SAY ")) return sayText(ctx.client, ctx.params.sessionId, text.slice("SAY ".length));
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));

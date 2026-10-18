@@ -524,7 +524,8 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
   const { subagent_type, model, prompt } = subagentInput(block);
   const calls = block.subagent.blocks.filter((child) => child.kind === "tool");
   const latestCall = calls.at(-1);
-  const atWork = useMemo(() => (state === "running" ? stepsAtWork(block.subagent.blocks) : new Set<string>()), [state, block.subagent.blocks]);
+  const awaitingPermission = useContext(ToolCallsAwaitingPermission);
+  const atWork = useMemo(() => (state === "running" ? stepsAtWork(block.subagent.blocks, awaitingPermission) : new Set<string>()), [state, block.subagent.blocks, awaitingPermission]);
   const facts = [
     typeof subagent_type === "string" && subagent_type,
     typeof model === "string" && model,

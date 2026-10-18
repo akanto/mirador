@@ -4,7 +4,7 @@ import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
 import { canTryAgain } from "../shared/try-again.ts";
-import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentEndedAt, subagentsIn, subagentState, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
+import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -268,6 +268,13 @@ describe("subagents", () => {
     expect(atWork([advisor("srvtoolu_1"), read("r1", "a1")])).toEqual(["r1"]);
     expect(atWork([advisor("srvtoolu_1"), finish("srvtoolu_1")])).toEqual([]);
     expect(atWork([read("r1", "a1"), { type: "turn-end", stopReason: "end_turn" }]), "a background subagent works on after its turn ends").toEqual(["r1"]);
+  });
+
+  test("a step of its own waiting for the user's permission is not at work", () => {
+    const ask = (toolCallId: string): ConversationEvent => ({ type: "permission", permissionId: `p-${toolCallId}`, toolCall: { toolCallId }, options: [] });
+    const timeline = buildTimeline(stored([launch("a1", {}), read("r1", "a1"), read("r2", "a1"), ask("r2")]));
+    const [subagent] = subagentsIn(timeline);
+    expect([...stepsAtWork(subagent!.subagent.blocks, toolCallsAwaitingPermission(timeline))]).toEqual(["r1"]);
   });
 
   test("ends when its call completes, or at its last activity when it ran in the background", () => {

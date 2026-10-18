@@ -101,9 +101,11 @@ const isServerToolCall = (block: ToolBlock) => block.toolCallId.startsWith("srvt
  * runs a server tool, such as the advisor, within its reply, so once anything follows one it has ended, even when
  * Claude Code never said so.
  */
-export function stepsAtWork(work: TimelineBlock[]): Set<string> {
+export function stepsAtWork(work: TimelineBlock[], waitingForPermission: ReadonlySet<string> = new Set()): Set<string> {
   const unfinished = work.flatMap((block, index) =>
-    block.kind === "tool" && block.endedAt === undefined && !(isServerToolCall(block) && index < work.length - 1) ? [block.toolCallId] : [],
+    block.kind === "tool" && block.endedAt === undefined && !waitingForPermission.has(block.toolCallId) && !(isServerToolCall(block) && index < work.length - 1)
+      ? [block.toolCallId]
+      : [],
   );
   return new Set(unfinished);
 }
@@ -116,9 +118,8 @@ export const toolCallsAwaitingPermission = (timeline: TimelineBlock[]) =>
  * permission. A background subagent works on after its turn ends, so its card keeps to stepsAtWork.
  */
 export function stepsRunning(timeline: TimelineBlock[]): Set<string> {
-  const waiting = toolCallsAwaitingPermission(timeline);
   const leftUnfinished = new Set(timeline.flatMap((block) => (block.kind === "tool" && block.leftUnfinished ? [block.toolCallId] : [])));
-  return new Set([...stepsAtWork(timeline)].filter((toolCallId) => !waiting.has(toolCallId) && !leftUnfinished.has(toolCallId)));
+  return new Set([...stepsAtWork(timeline, toolCallsAwaitingPermission(timeline))].filter((toolCallId) => !leftUnfinished.has(toolCallId)));
 }
 
 /** Every subagent in the timeline in the order they started, each followed by the ones it started. */
