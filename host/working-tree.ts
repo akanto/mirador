@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { lstat, readdir, stat } from "node:fs/promises";
 import { join, posix } from "node:path";
 import type { ChangeStatus } from "../shared/changes.ts";
 import type { FileBefore } from "./edit-diff.ts";
@@ -85,7 +85,7 @@ export async function uncommittedChanges(directory: string): Promise<TreeChange[
 
 async function untrackedChange(directory: string, path: string): Promise<TreeChange> {
   const fullPath = join(directory, path);
-  const stats = await stat(fullPath).catch(() => null);
+  const stats = await lstat(fullPath).catch(() => null);
   const added = stats?.isFile() ? await untrackedLineCounts.countOf(fullPath, stats, () => addedLinesOf(fullPath, stats.size)) : null;
   return { path, status: "added", added, removed: added === null ? null : 0 };
 }

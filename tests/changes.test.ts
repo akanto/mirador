@@ -452,6 +452,33 @@ test("a link in the workspace that leads outside it opens only once the agent ch
   expect(openedByDefault).toEqual([realpathSync.native(outside)]);
 });
 
+test("a link added in the turn to a file outside the workspace shows its target path in the diff, not that file's contents", async () => {
+  const outside = join(outsideDir, "secret.txt");
+  await writeFile(outside, "secret\n");
+  await startTurn();
+  await symlink(outside, join(projectDir, "notes.md"));
+
+  expect((await changes.list("c1", "turn")).project).toEqual([{ path: "notes.md", status: "added", added: 1, removed: 0, byAgent: false }]);
+  const diff = await changes.diff("c1", "turn", "notes.md");
+  expect(diff.source).toBe("files");
+  expect(diff.diffs[0]!.hunks.flatMap((hunk) => hunk.rows).filter(({ kind }) => kind !== "context")).toEqual([{ kind: "added", oldLine: null, newLine: 1, text: outside }]);
+});
+
+test("a file reached through a linked folder that leads outside the workspace is refused", async () => {
+  await writeFile(join(outsideDir, "secret.txt"), "secret\n");
+  await startTurn();
+  await symlink(outsideDir, join(projectDir, "linked"));
+
+  await expect(changes.diff("c1", "turn", "linked/secret.txt")).rejects.toThrow("linked/secret.txt leads outside this workspace, so Mirador does not show it.");
+});
+
+test("a new untracked link counts no lines of the file it leads to", async () => {
+  await writeFile(join(outsideDir, "many.txt"), "one\ntwo\nthree\n");
+  await symlink(join(outsideDir, "many.txt"), join(projectDir, "link.txt"));
+
+  expect((await changes.list("c1", "uncommitted")).project).toEqual([{ path: "link.txt", status: "added", added: null, removed: null, byAgent: false }]);
+});
+
 test("a program is refused rather than handed to the system's default program, which would run it", async () => {
   await startTurn();
   const program = process.platform === "win32" ? "build.bat" : "build";

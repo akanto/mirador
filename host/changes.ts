@@ -1,11 +1,12 @@
 import { realpathSync } from "node:fs";
-import { realpath } from "node:fs/promises";
-import { isAbsolute, join, normalize, posix, resolve, sep } from "node:path";
+import { lstat, readlink, realpath } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, normalize, posix, resolve, sep } from "node:path";
 import type { ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
 import type { ChangedFile, ChangeList, ChangeScope, ChangesBase, FileChanges } from "../shared/changes.ts";
 import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
+import type { FileBefore } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
 import { openingOf } from "./system-open.ts";
 import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredPaths, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
@@ -102,6 +103,24 @@ function withinWorkspace(workspace: Workspace, path: string) {
   return resolve(root, path).startsWith(root + sep);
 }
 
+/**
+ * The workspace's own side of a diff. A link shows as a link, the way git stores it: its target path is the text, so a
+ * committed link shows that path and not what it leads to. A file reached through a link that leads out of the workspace
+ * is refused, as its contents are not the project's to show. The file's real place is its parent folder with links
+ * resolved plus its own name, so a link at the end is not followed; real paths on both sides, so a workspace whose own
+ * path goes through a link still holds its files.
+ */
+async function workspaceFileAt(workspace: Workspace, path: string): Promise<FileBefore> {
+  const file = join(workspace.path, path);
+  const stats = await lstat(file).catch((error) => ((error as NodeJS.ErrnoException).code === "ENOENT" ? null : Promise.reject(error)));
+  if (stats === null) return { kind: "missing" };
+  const realPlace = join(realPathOf(dirname(file)) ?? dirname(file), basename(file));
+  if (shownPath(realPlace, [realPathOf(workspace.path) ?? workspace.path]) === realPlace)
+    throw new Error(`${path} leads outside this workspace, so Mirador does not show it.`);
+  if (stats.isSymbolicLink()) return { kind: "text", text: await readlink(file) };
+  return textFileAt(file);
+}
+
 const byPath = (a: ChangedFile, b: ChangedFile) => a.path.localeCompare(b.path);
 
 const agentOnly = (path: string, edits: AgentFileEdits): ChangedFile => ({ path, status: edits.deleted ? "deleted" : "modified", added: null, removed: null, byAgent: true });
@@ -162,7 +181,7 @@ export class Changes {
     }
     if (!withinWorkspace(workspace, path)) throw new Error(`${path} is not a file of this workspace.`);
     if (!start.revision) return start.since === undefined ? agentDiffs() : this.writtenSinceDiff(workspace, path, start.since, agentEdits ? agentDiffs() : null);
-    const [before, after] = await Promise.all([fileAtRevision(workspace.path, start.revision, path), textFileAt(join(workspace.path, path))]);
+    const [before, after] = await Promise.all([fileAtRevision(workspace.path, start.revision, path), workspaceFileAt(workspace, path)]);
     const unchanged = before.kind === after.kind && (before.kind !== "text" || (after.kind === "text" && before.text === after.text));
     if (unchanged && agentEdits) return agentDiffs();
     return { path, source: "files", diffs: unchanged ? [] : [fileChangeDiff(path, before, after)] };
@@ -172,7 +191,7 @@ export class Changes {
   private async writtenSinceDiff(workspace: Workspace, path: string, since: number, agentDiffs: FileChanges | null): Promise<FileChanges> {
     if (agentDiffs) return agentDiffs;
     if (await createdSince(workspace.path, path, since)) {
-      return { path, source: "files", diffs: [fileChangeDiff(path, { kind: "missing" }, await textFileAt(join(workspace.path, path)))] };
+      return { path, source: "files", diffs: [fileChangeDiff(path, { kind: "missing" }, await workspaceFileAt(workspace, path))] };
     }
     const noEarlierVersion = (await isRepository(workspace.path)) ? "git ignores this file, so there is no earlier version to compare with" : "this folder is not a git repository, so there is no earlier version to compare with";
     return { path, source: "files", diffs: [{ ...fileChangeDiff(path, { kind: "missing" }, { kind: "missing" }), change: "modified", hiddenBecause: noEarlierVersion }] };

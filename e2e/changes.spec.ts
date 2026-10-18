@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, literally, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
@@ -122,6 +122,24 @@ test("clicking a file opens its line changes under its row, with the file's line
     await fileRow(page, outsideFileShown).click();
     await expect(diff).toHaveCount(0);
   });
+});
+
+test("a link to a file outside the project shows as a link, with its target's path in its line changes and never the file's contents", async ({ page }) => {
+  const outside = join(host.root, "outside.txt");
+  writeFileSync(outside, "secret\n");
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  symlinkSync(outside, join(host.projectDir, "notes.md"));
+
+  await changes(page).getByRole("button", { name: "Refresh" }).click();
+  await expect(fileRow(page, "notes.md")).toBeVisible();
+  await fileRow(page, "notes.md").click();
+  await expect(changes(page).locator(".changes-diff")).toContainText(outside);
+  await expect(page.locator("body")).not.toContainText("secret");
+
+  rmSync(join(host.projectDir, "notes.md"));
+  await changes(page).getByRole("button", { name: "Refresh" }).click();
+  await expect(fileRow(page, "src/app.ts")).toBeVisible();
 });
 
 test("a new turn starts with an empty list, while Uncommitted keeps git status against HEAD", async ({ page }) => {
