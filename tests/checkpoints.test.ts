@@ -19,6 +19,15 @@ async function git(directory: string, args: string[]) {
 const write = (relative: string, content: string) => writeFile(join(projectDir, relative), content);
 const read = (relative: string) => readFile(join(projectDir, relative), "utf8");
 
+/** The exact bytes a snapshot holds for a path, untrimmed: line endings and filters are what these tests read. */
+async function stored(commit: string, path: string) {
+  const child = Bun.spawn(["git", "-C", projectDir, "cat-file", "blob", `${commit}:${path}`], { stdout: "pipe", stderr: "pipe" });
+  const [bytes, stderr, exitCode] = await Promise.all([new Response(child.stdout).arrayBuffer(), new Response(child.stderr).text(), child.exited]);
+  expect(exitCode).toBe(0);
+  expect(stderr).toBe("");
+  return new TextDecoder().decode(bytes);
+}
+
 beforeEach(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "mirador-checkpoints-"));
   projectDir = join(dataDir, "project");
@@ -66,6 +75,51 @@ test("a restore puts files back with the line endings they had, even where core.
   expect(await read("windows.txt")).toBe("crlf\r\n");
   expect(await read("mixed.txt")).toBe("lf\ncrlf\r\n");
   expect((await git(projectDir, ["status", "--porcelain"])).stdout).toBe(before.stdout);
+});
+
+test("a snapshot and its undo keep a file's CRLF bytes where text=auto would store LF", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "one\r\ntwo\r\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "attributes"]);
+
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("windows.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("windows.txt")).toBe("one\r\ntwo\r\n");
+  expect(await stored(snapshot, "windows.txt")).toBe("one\r\ntwo\r\n");
+});
+
+test("a snapshot and its undo keep a file's LF bytes where text eol=crlf would store CRLF", async () => {
+  await write(".gitattributes", "* text eol=crlf\n");
+  await write("unix.txt", "one\ntwo\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "attributes"]);
+
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("unix.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("unix.txt")).toBe("one\ntwo\n");
+  expect(await stored(snapshot, "unix.txt")).toBe("one\ntwo\n");
+});
+
+test("a snapshot holds a filtered file's raw bytes and its undo gives them back untouched", async () => {
+  await git(projectDir, ["config", "filter.shout.clean", "tr a-z A-Z"]);
+  await git(projectDir, ["config", "filter.shout.smudge", "tr A-Z a-z"]);
+  await write(".gitattributes", "*.shout filter=shout\n");
+  await write("loud.shout", "hello\n");
+  await git(projectDir, ["add", "-A"]);
+  await git(projectDir, ["commit", "-qm", "attributes"]);
+  expect(await stored((await git(projectDir, ["rev-parse", "HEAD"])).stdout, "loud.shout")).toBe("HELLO\n");
+
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("loud.shout", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await stored(snapshot, "loud.shout")).toBe("hello\n");
+  expect(await read("loud.shout")).toBe("hello\n");
 });
 
 test("a restored folder holds only what the snapshot had, and the folder a deleted file made is gone with it", async () => {
