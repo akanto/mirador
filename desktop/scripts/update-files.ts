@@ -151,9 +151,11 @@ const PATCHES_FOR = "--patches-for";
 
 /** bsdiff takes many times an archive's size in memory, so a build's patches are made one after another. */
 async function writePatchesForEachBuild(dist: string, manifests: string[]) {
-  const runs = manifests.map((name) => ({ name, patching: Bun.spawn([process.execPath, import.meta.path, dist, PATCHES_FOR, name], { stdio: ["ignore", "inherit", "inherit"] }) }));
-  const exits = await Promise.all(runs.map(async ({ name, patching }) => ({ name, code: await patching.exited })));
-  const failed = exits.filter(({ code }) => code !== 0).map(({ name }) => name);
+  const failed: string[] = [];
+  for (const name of manifests) {
+    const patching = Bun.spawn([process.execPath, import.meta.path, dist, PATCHES_FOR, name], { stdio: ["ignore", "inherit", "inherit"] });
+    if ((await patching.exited) !== 0) failed.push(name);
+  }
   if (failed.length > 0) throw new Error(`The patches for ${failed.join(", ")} failed.`);
 }
 
