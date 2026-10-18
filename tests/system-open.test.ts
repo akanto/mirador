@@ -59,6 +59,11 @@ test("on Linux a Windows program is a program even without the executable bit, a
   expect(isProgram(join(directory, "notes.md"), "linux")).toBe(false);
 });
 
+test("on Linux a file named after a domain is not a program", () => {
+  expect(isProgram(join(directory, "example.com"), "linux")).toBe(false);
+  expect(openingOf(join(directory, "example.com"), "linux", {})).toBe("default");
+});
+
 test("a script opens as text, executable or not; a program is still refused, and any other file opens with the default program", async () => {
   const script = join(directory, "build.sh");
   await writeFile(script, "#!/bin/sh\n");

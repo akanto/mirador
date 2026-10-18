@@ -6,7 +6,7 @@ import { currentPath } from "./current-path.ts";
 const programExtensions = {
   darwin: [".app", ".command", ".tool", ".terminal", ".workflow", ".action", ".pkg", ".mpkg", ".jar", ".webloc", ".inetloc", ".fileloc", ".pyc"],
   win32: [".lnk", ".url", ".scr", ".pif", ".msi", ".msp", ".hta", ".cpl", ".reg", ".inf", ".jar", ".appref-ms", ".application", ".scf", ".appx", ".msix", ".appinstaller", ".chm", ".pyc", ".pyz", ".pyzw"],
-  other: [".desktop", ".jar", ".appimage", ".exe", ".com", ".scr", ".pif", ".msi", ".msp", ".bat", ".cmd", ".lnk"],
+  other: [".desktop", ".jar", ".appimage", ".exe", ".scr", ".pif", ".msi", ".msp", ".bat", ".cmd", ".lnk"],
 };
 
 /**
