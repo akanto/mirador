@@ -56,5 +56,51 @@ test("Cmd+Shift+R while a turn's agent is still starting restarts the host, and 
     await sendMessage(page, "third");
     await expect.poll(prompts, { timeout: 60_000 }).toContain("third");
     await expect(page.locator(".queue:visible .queued-text")).toHaveCount(0);
+    // The turn Cmd+Shift+R stopped finished on its own during the wait, so the next host must not send its message again.
+    expect(prompts()).toEqual(["first", "second", "third"]);
   });
+});
+
+test("a turn the agent finished during the stop for a restart is not sent again after it", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "slow start · opencode" });
+  const previousUrl = page.url();
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page).not.toHaveURL(previousUrl);
+  await sendMessage(page, "STREAM 300");
+  await expect(page.locator(".timeline:visible .message.agent").last()).toContainText("word10", { timeout: 30_000 });
+
+  const startsBefore = hostStarts();
+  await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
+  await expect.poll(hostStarts, { timeout: 60_000 }).toBe(startsBefore + 1);
+
+  await sendMessage(page, "after-stream");
+  await expect.poll(prompts, { timeout: 60_000 }).toContain("after-stream");
+  expect(prompts().filter((text) => text === "STREAM 300")).toEqual(["STREAM 300"]);
+  await expect(page.locator(".timeline:visible .message.user", { hasText: "STREAM 300" })).toHaveCount(1);
+});
+
+test("a turn whose agent was still starting when the stop ran out waits for its own message to go again, not the previous turn's", async ({ page }) => {
+  await signIn(page, host);
+  const profiles = await createProfile(page, "very slow start", "", "sleep 15", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "very slow start · opencode" });
+  const previousUrl = page.url();
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page).not.toHaveURL(previousUrl);
+  await sendMessage(page, "slower first");
+  await expect.poll(prompts, { timeout: 60_000 }).toContain("slower first");
+  await waitForTurnToEnd(page);
+
+  await host.restart();
+  await sendMessage(page, "slower second");
+  await expect(page.locator(".chat-header:visible .badge")).toHaveText("starting");
+
+  const startsBefore = hostStarts();
+  await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
+  await expect.poll(hostStarts, { timeout: 90_000 }).toBe(startsBefore + 1);
+
+  await expect.poll(prompts, { timeout: 90_000 }).toContain("slower second");
+  expect(prompts().filter((text) => text === "slower second")).toEqual(["slower second"]);
+  expect(prompts().filter((text) => text === "slower first")).toEqual(["slower first"]);
 });

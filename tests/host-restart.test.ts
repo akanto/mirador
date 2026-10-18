@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../host/config.ts";
-import { ConversationService, lastTurnRequest, openTurnTheAgentWorkedOn } from "../host/conversations.ts";
+import { ConversationService, agentFinishedItsTurn, lastTurnRequest, openTurnTheAgentWorkedOn, unfinishedTurnRequest } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
 import { HostRestart, hostCommandLine, relaunchOf, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import { Store } from "../host/store.ts";
@@ -88,6 +88,87 @@ describe("prepareForRestart", () => {
   });
 });
 
+/** A next host whose store holds a conversation with these events already written, on a profile whose agent fails to start. */
+function hostWithEvents(events: ConversationEvent[]) {
+  const scratch = mkdtempSync(join(tmpdir(), "mirador-restart-resume-"));
+  const workspacePath = join(scratch, "project");
+  mkdirSync(workspacePath);
+  const store = new Store(":memory:");
+  store.saveProfile({ id: "p1", name: "failing", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
+  store.insertWorkspace({ id: "w1", name: "project", path: workspacePath, defaultLaunch: { harness: "claude", profileId: "p1" }, createdAt: 1 });
+  store.insertConversation({
+    id: "c1",
+    workspaceId: "w1",
+    harness: "claude",
+    profileId: "p1",
+    title: "t",
+    titleSetByUser: false,
+    acpSessionId: "session-of-an-earlier-turn",
+    askMode: "wait",
+    bypassPermissions: false,
+    status: "idle",
+    statusDetail: null,
+    openInTerminal: null,
+    contextUsage: null,
+    queuedMessages: [],
+    usageLimit: null,
+    jobWaits: [],
+    waitingFor: null,
+    pendingRequest: null,
+    lastWords: null,
+    activity: null,
+    configOptions: [],
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  events.forEach((event) => store.appendEvent("c1", event));
+  const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
+  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
+}
+
+describe("a host continuing turns the previous one stopped for a restart", () => {
+  const said = (text: string): ConversationEvent => ({ type: "user-message", text });
+  const worked: ConversationEvent = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "on it" } } };
+  const ended: ConversationEvent = { type: "turn-end", stopReason: "end_turn" };
+  const cancelled: ConversationEvent = { type: "turn-end", stopReason: "cancelled" };
+
+  test("leaves a turn the agent finished during the wait alone, rather than send its message a second time", () => {
+    const conversations = hostWithEvents([said("What colour is the sky?"), worked, ended]);
+    conversations.resumeAfterRestart(["c1"]);
+    expect(conversations.get("c1").status).toBe("idle");
+    void conversations.shutdown();
+  });
+
+  test("re-sends an open turn's own message, not the previous turn's", () => {
+    const events = [said("What colour is the sky?"), worked, ended, said("Fix the build")].map((event, index) => ({ seq: index + 1, at: index, event }));
+    expect(unfinishedTurnRequest(events)).toEqual({ text: "Fix the build", firstText: "Fix the build", imageIds: [] });
+  });
+
+  test("still continues a turn the stop really cut short", () => {
+    const conversations = hostWithEvents([said("What colour is the sky?"), worked, ended, said("Fix the build"), worked]);
+    conversations.resumeAfterRestart(["c1"]);
+    expect(conversations.get("c1").status).toBe("starting");
+    void conversations.shutdown();
+  });
+
+  test("continues a turn the stop cut short with its own request", () => {
+    const events = [said("What colour is the sky?"), worked, ended, said("Fix the build"), worked, cancelled].map((event, index) => ({ seq: index + 1, at: index, event }));
+    expect(unfinishedTurnRequest(events)?.firstText).toBe("Fix the build");
+  });
+
+  test("asks for nothing when the agent finished the turn itself", () => {
+    const events = [said("What colour is the sky?"), worked, ended].map((event, index) => ({ seq: index + 1, at: index, event }));
+    expect(unfinishedTurnRequest(events)).toBeNull();
+  });
+
+  test("goes idle when no turn asks for a resending, rather than continue some other turn", () => {
+    const conversations = hostWithEvents([said("What colour is the sky?"), worked, ended, cancelled]);
+    conversations.resumeAfterRestart(["c1"]);
+    expect(conversations.get("c1").status).toBe("idle");
+    void conversations.shutdown();
+  });
+});
+
 describe("HostRestart", () => {
   test("goes through with a restart whose turns could not be stopped, rather than leave the host holding every queue", async () => {
     const conversations = { prepareForRestart: () => Promise.reject(new Error("The agent is not running")) } as unknown as ConversationService;
@@ -157,6 +238,24 @@ describe("lastTurnRequest", () => {
     expect(lastTurnRequest(stored([said("lost"), { type: "error", message: "boom" }, said("Try again"), cancelled]))?.firstText).toBe("Try again");
     expect(lastTurnRequest(stored([said("done"), { type: "turn-end", stopReason: "end_turn" }, cancelled]))).toBeNull();
     expect(lastTurnRequest([])).toBeNull();
+  });
+});
+
+describe("agentFinishedItsTurn", () => {
+  const stored = (events: ConversationEvent[]) => events.map((event, index) => ({ seq: index + 1, at: index, event }));
+  const said = (text: string): ConversationEvent => ({ type: "user-message", text });
+  const worked: ConversationEvent = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "on it" } } };
+
+  test("is one the agent wrapped up itself, as a turn that finishes during the wait for a restart", () => {
+    expect(agentFinishedItsTurn(stored([said("Fix the build"), worked, { type: "turn-end", stopReason: "end_turn" }]))).toBe(true);
+  });
+
+  test("is none a stop cut short, one that failed, or one still open", () => {
+    expect(agentFinishedItsTurn(stored([said("go"), worked, { type: "turn-end", stopReason: "cancelled" }]))).toBe(false);
+    expect(agentFinishedItsTurn(stored([said("go"), worked, { type: "error", message: "boom" }]))).toBe(false);
+    expect(agentFinishedItsTurn(stored([said("go"), worked]))).toBe(false);
+    expect(agentFinishedItsTurn(stored([said("first"), worked, { type: "turn-end", stopReason: "end_turn" }, said("go"), worked]))).toBe(false);
+    expect(agentFinishedItsTurn(stored([]))).toBe(false);
   });
 });
 

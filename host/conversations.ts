@@ -989,12 +989,15 @@ export class ConversationService {
       });
   }
 
-  /** Stops running turns the way Stop does and holds every queue; returns the conversations whose turn was stopped. */
+  /**
+   * Stops running turns the way Stop does and holds every queue; returns the conversations whose turn the next host
+   * must continue — not one the agent finished during the wait, whose message was answered and must not go out twice.
+   */
   async prepareForRestart(): Promise<string[]> {
     this.stopping = true;
     const running = [...this.runtimes].filter(([, runtime]) => runtime.running).map(([conversationId]) => conversationId);
     await Promise.all(running.map((conversationId) => Promise.race([this.stopTurn(conversationId), Bun.sleep(TURN_STOP_TIMEOUT_MS)])));
-    return running;
+    return running.filter((conversationId) => this.runtime(conversationId).running || !agentFinishedItsTurn(this.store.listEvents(conversationId)));
   }
 
   /**
@@ -1042,19 +1045,22 @@ export class ConversationService {
    * the session the turn ran in and recorded the request there; otherwise, as in a fresh session, it gets the request again.
    */
   private async resumeStoppedTurn(conversationId: string, stoppedSessionId: string | null) {
-    const request = lastTurnRequest(this.store.listEvents(conversationId));
+    const request = unfinishedTurnRequest(this.store.listEvents(conversationId));
+    if (!request) {
+      this.setStatus(conversationId, "idle");
+      this.sendNextQueuedMessage(conversationId);
+      return;
+    }
     this.setStatus(conversationId, "starting");
     const sessionId = await this.ensureSession(conversationId);
     if (sessionId === stoppedSessionId && (await this.sessionRecorded(conversationId, sessionId, request))) return this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION);
-    if (request) return this.prompt(conversationId, request.text, { imageIds: request.imageIds });
-    this.setStatus(conversationId, "idle");
-    this.sendNextQueuedMessage(conversationId);
+    return this.prompt(conversationId, request.text, { imageIds: request.imageIds });
   }
 
   /** Only Claude Code's transcript tells whether the agent recorded the message that started a turn. */
-  private async sessionRecorded(conversationId: string, sessionId: string, request: TurnRequest | null) {
+  private async sessionRecorded(conversationId: string, sessionId: string, request: TurnRequest) {
     const conversation = this.get(conversationId);
-    if (conversation.harness !== "claude" || !request) return true;
+    if (conversation.harness !== "claude") return true;
     return recordsUserMessage(await claudeTranscript(this.claudeConfigDirOf(conversation), sessionId), request.firstText);
   }
 
@@ -1775,10 +1781,30 @@ export function steerAnswered(transcript: string, events: StoredEvent[], { messa
 export function lastTurnRequest(events: StoredEvent[]): TurnRequest | null {
   const lastEnd = events.findLastIndex(endsTurn);
   const start = events.slice(0, Math.max(lastEnd, 0)).findLastIndex(endsTurn) + 1;
-  const returned = returnedSteerSeqs(events);
-  const messages = events
-    .slice(start, lastEnd === -1 ? undefined : lastEnd)
-    .flatMap(({ seq, event }) => (event.type === "user-message" && !returned.has(seq) ? [event] : []));
+  return turnRequestWithin(events.slice(start, lastEnd === -1 ? undefined : lastEnd), events);
+}
+
+/**
+ * What the next host has to send again for the turn a stop left unfinished: the messages of the turn still open, or,
+ * if the stop ended the turn, of the turn it ended. Null when no turn waits unfinished — the agent finished its own,
+ * or the log holds no request — so a resume never sends another turn's message.
+ */
+export function unfinishedTurnRequest(events: StoredEvent[]): TurnRequest | null {
+  const open = turnRequestWithin(events.slice(events.findLastIndex(endsTurn) + 1), events);
+  if (open) return open;
+  return agentFinishedItsTurn(events) ? null : lastTurnRequest(events);
+}
+
+/** Whether the last turn in the log is over because the agent finished it, and not because a stop cut it short, it failed, or it is still open. */
+export function agentFinishedItsTurn(events: StoredEvent[]): boolean {
+  const began = events.findLastIndex(({ event }) => event.type === "user-message" || endsTurn({ event }));
+  const end = events[began]?.event;
+  return end?.type === "turn-end" && end.stopReason !== "cancelled";
+}
+
+function turnRequestWithin(events: StoredEvent[], wholeLog: StoredEvent[]): TurnRequest | null {
+  const returned = returnedSteerSeqs(wholeLog);
+  const messages = events.flatMap(({ seq, event }) => (event.type === "user-message" && !returned.has(seq) ? [event] : []));
   const [first] = messages;
   if (!first) return null;
   return { text: messages.map(({ text }) => text).join("\n\n"), firstText: first.text, imageIds: messages.flatMap(({ imageIds = [] }) => imageIds) };
