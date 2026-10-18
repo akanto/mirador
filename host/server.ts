@@ -716,6 +716,12 @@ export function startServer(services: HostServices) {
           .then((sessions) => reply({ type: "sessions.listed", requestId: message.requestId, sessions }))
           .catch((error) => reply({ type: "sessions.failed", requestId: message.requestId, message: errorMessage(error) }));
         return;
+      case "sessions.search":
+        conversations
+          .searchSessionsInWorkspace(message.workspaceId, message.launch, message.query)
+          .then((sessions) => reply({ type: "sessions.searched", requestId: message.requestId, sessions }))
+          .catch((error) => reply({ type: "sessions.failed", requestId: message.requestId, message: errorMessage(error) }));
+        return;
       case "mentions.suggest":
         return reply({ type: "mentions.suggested", requestId: message.requestId, suggestions: await conversations.mentionSuggestions(message.conversationId, message.query) });
       case "slash-commands.list":

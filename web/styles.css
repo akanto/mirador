@@ -1275,6 +1275,19 @@ button.icon.group-fold {
   color: var(--muted);
 }
 
+.session-match {
+  font-size: calc(11px * var(--font-scale));
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-search {
+  width: 100%;
+  margin-top: 10px;
+}
+
 /* Chat */
 
 .chat-column {

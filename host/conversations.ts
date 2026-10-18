@@ -20,6 +20,7 @@ import {
   type PendingRequest,
   type QueuedMessage,
   type RestorePlan,
+  type SessionSearchHit,
   type StoredEvent,
   type TerminalActivity,
   type UsageLimitWait,
@@ -66,6 +67,7 @@ import type { TerminalProgram } from "./terminals.ts";
 import { claudeConfigDir } from "./terminal-sessions.ts";
 import { TerminalWork, updatesAfter } from "./terminal-catch-up.ts";
 import { claudeTranscript, lastAnsweringModel, modelChoiceFor, recordsUserMessage, steeredMessageTakenInAt } from "./claude-transcript.ts";
+import { claudeTranscriptPaths, messageSnippetOf, openOpencodeDatabase, opencodeDatabasePath } from "./session-transcripts.ts";
 import { UserCommandRunner } from "./user-commands.ts";
 import { ConversationSessions } from "./conversation-sessions.ts";
 import { SubagentSessions } from "./subagent-sessions.ts";
@@ -75,6 +77,7 @@ import { UnknownSessionUpdates } from "./unknown-session-updates.ts";
 const UNTITLED = "New conversation";
 const MAX_TITLE_LENGTH = 200;
 const LISTED_SESSIONS = 30;
+const SEARCHED_SESSIONS = 50;
 const TITLE_LENGTH = 60;
 const CONTINUE_AFTER_INTERRUPTION = "Continue where you left off.";
 const NO_FILES_KEPT = "Mirador kept no files for that turn, so there is nothing to undo it to.";
@@ -274,22 +277,47 @@ export class ConversationService {
 
   /** The newest sessions the harness knows for the workspace directory, including ones started outside the app. */
   async listSessionsInWorkspace(workspaceId: string, launch: Launch): Promise<ExternalSession[]> {
+    const { sessions, conversationIdBySession } = await this.harnessSessions(workspaceId, launch);
+    return sessions.slice(0, LISTED_SESSIONS).map((session) => externalSession(session, conversationIdBySession));
+  }
+
+  /** Sessions in the workspace whose title or messages hold what the user is looking for, newest first. */
+  async searchSessionsInWorkspace(workspaceId: string, launch: Launch, query: string): Promise<SessionSearchHit[]> {
+    const lowerQuery = query.trim().toLowerCase();
+    if (!lowerQuery) return [];
+    const { profile, sessions, conversationIdBySession } = await this.harnessSessions(workspaceId, launch);
+    const harness = this.harnessFor(launch);
+    if (harness.spec.id !== "claude" && harness.spec.id !== "opencode") throw new Error(`${harness.spec.label} cannot search its sessions.`);
+    const environment = profileEnvironment(profile);
+    const transcriptPaths =
+      harness.spec.id === "claude"
+        ? await claudeTranscriptPaths(claudeConfigDir(environment), new Set(sessions.map(({ sessionId }) => sessionId)))
+        : null;
+    const database = harness.spec.id === "opencode" ? openOpencodeDatabase(opencodeDatabasePath(environment)) : null;
+    try {
+      const hits: SessionSearchHit[] = [];
+      for (const session of sessions) {
+        const titleMatch = (session.title ?? "").toLowerCase().includes(lowerQuery);
+        const match = titleMatch ? null : await messageSnippetOf(session.sessionId, lowerQuery, transcriptPaths, database);
+        if (titleMatch || match !== null) hits.push({ ...externalSession(session, conversationIdBySession), match });
+        if (hits.length >= SEARCHED_SESSIONS) break;
+      }
+      return hits;
+    } finally {
+      database?.close();
+    }
+  }
+
+  /** The harness's sessions for the workspace directory, newest first, with the app's conversation on each. */
+  private async harnessSessions(workspaceId: string, launch: Launch) {
     const directory = await recordedDirectory(this.existingWorkspace(workspaceId));
-    profileToLaunch(this.store, launch);
+    const profile = profileToLaunch(this.store, launch);
     const harness = this.harnessFor(launch);
     const capabilities = await harness.start();
     if (!capabilities.agentCapabilities?.sessionCapabilities?.list) throw new Error(`${harness.spec.label} cannot list its sessions.`);
     const { sessions } = await harness.listSessions(directory);
     const conversationIdBySession = new Map(this.store.listConversations().map(({ acpSessionId, id }) => [acpSessionId, id]));
-    return sessions
-      .filter(({ cwd }) => cwd === directory)
-      .slice(0, LISTED_SESSIONS)
-      .map(({ sessionId, title, updatedAt }) => ({
-        sessionId,
-        title: title ?? null,
-        updatedAt: updatedAt ?? null,
-        conversationId: conversationIdBySession.get(sessionId) ?? null,
-      }));
+    return { profile, sessions: sessions.filter(({ cwd }) => cwd === directory), conversationIdBySession };
   }
 
   /** Continues (or forks) a session started elsewhere, e.g. in a terminal, replaying its history into the conversation. */
@@ -1773,6 +1801,16 @@ export function optionThatAllows(options: acp.PermissionOption[]): string | null
  * long. Claude Code files a session under the spelling it started in, but looks sessions up only under the long one.
  */
 const recordedDirectory = (workspace: Workspace) => realpath(workspace.path).catch(() => workspace.path);
+
+const externalSession = (
+  { sessionId, title, updatedAt }: { sessionId: string; title?: string | null; updatedAt?: string | null },
+  conversationIdBySession: Map<string | null, string>,
+): ExternalSession => ({
+  sessionId,
+  title: title ?? null,
+  updatedAt: updatedAt ?? null,
+  conversationId: conversationIdBySession.get(sessionId) ?? null,
+});
 
 export function errorMessage(error: unknown): string {
   if (typeof error !== "object" || error === null) return String(error);

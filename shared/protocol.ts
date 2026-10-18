@@ -22,6 +22,7 @@ import type {
   PublicAddress,
   ReachabilitySettings,
   RestorePlan,
+  SessionSearchHit,
   StatuslineRender,
   StoredEvent,
   TerminalTab,
@@ -96,6 +97,8 @@ export type ClientMessage =
   /** Puts the conversation just before another of its workspace in the sidebar, or last. */
   | { type: "conversation.move"; conversationId: string; beforeConversationId: string | null }
   | { type: "sessions.list"; requestId: string; workspaceId: string; launch: Launch }
+  /** Sessions in the workspace whose title or messages contain the query, newest first. */
+  | { type: "sessions.search"; requestId: string; workspaceId: string; launch: Launch; query: string }
   /** The slash commands the conversation's agent takes, as it last listed them. */
   | { type: "slash-commands.list"; requestId: string; conversationId: string }
   /**
@@ -305,6 +308,7 @@ export type ServerMessage =
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }
   | { type: "subagent-usage.got"; requestId: string; usage: Record<string, SubagentUsage> }
   | { type: "sessions.listed"; requestId: string; sessions: ExternalSession[] }
+  | { type: "sessions.searched"; requestId: string; sessions: SessionSearchHit[] }
   | { type: "sessions.failed"; requestId: string; message: string }
   | { type: "review.file-read"; requestId: string; lines: string[] }
   | { type: "slash-commands.listed"; requestId: string; commands: SlashCommand[] }

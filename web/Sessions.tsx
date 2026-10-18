@@ -1,10 +1,15 @@
 import { useEffect, useState, type Dispatch } from "react";
-import { harnessLabels, launchLabel, type AdoptMode, type ExternalSession, type Profile, type Workspace } from "../shared/model.ts";
+import { harnessLabels, launchLabel, type AdoptMode, type ExternalSession, type Profile, type SessionSearchHit, type Workspace } from "../shared/model.ts";
+import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
 import { connection } from "./connection.ts";
 import { relativeTimeOf } from "../shared/relative-time.ts";
+import { hints } from "./hints.ts";
 import type { AppAction } from "./state.ts";
 
 type Listing = { state: "loading" } | { state: "failed"; message: string } | { state: "listed"; sessions: ExternalSession[] };
+type SearchAnswer = { query: string; sessions: SessionSearchHit[] } | { query: string; failed: string };
+
+const TYPING_PAUSE_MS = 150;
 
 function useWorkspaceSessions(workspace: Workspace) {
   const [listing, setListing] = useState<Listing>({ state: "loading" });
@@ -20,7 +25,63 @@ function useWorkspaceSessions(workspace: Workspace) {
   return listing;
 }
 
+/** Sessions in the workspace holding what the query says, answered after a pause in the typing; null while searching. */
+function useSessionSearch(workspace: Workspace, query: string, enabled: boolean) {
+  const [answered, setAnswered] = useState<SearchAnswer | null>(null);
+  useEffect(() => {
+    setAnswered(null);
+    const trimmed = query.trim();
+    if (!enabled || trimmed.length < MIN_SEARCH_LENGTH) return;
+    const requestId = crypto.randomUUID();
+    const unsubscribe = connection.onMessage((message) => {
+      if (message.type === "sessions.searched" && message.requestId === requestId) setAnswered({ query: trimmed, sessions: message.sessions });
+      if (message.type === "sessions.failed" && message.requestId === requestId) setAnswered({ query: trimmed, failed: message.message });
+    });
+    const timer = setTimeout(
+      () => connection.send({ type: "sessions.search", requestId, workspaceId: workspace.id, launch: workspace.defaultLaunch, query: trimmed }),
+      TYPING_PAUSE_MS,
+    );
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [query, enabled, workspace.id, workspace.defaultLaunch.harness, workspace.defaultLaunch.profileId]);
+  return answered;
+}
+
 const ago = (isoTime: string | null) => (isoTime ? relativeTimeOf(Date.parse(isoTime)) : "");
+
+function SessionRow({
+  session,
+  onAdopt,
+  onOpen,
+}: {
+  session: ExternalSession & { match?: string | null };
+  onAdopt: (session: ExternalSession, mode: AdoptMode) => void;
+  onOpen: (conversationId: string) => void;
+}) {
+  return (
+    <li>
+      <div className="session-summary">
+        <div className="session-title">{session.title || "(untitled)"}</div>
+        {session.match && <div className="session-match">{session.match}</div>}
+        <div className="session-meta">
+          {ago(session.updatedAt)} · <code>{session.sessionId.slice(0, 8)}</code>
+        </div>
+      </div>
+      {session.conversationId ? (
+        <button onClick={() => onOpen(session.conversationId!)}>Open</button>
+      ) : (
+        <>
+          <button className="primary" onClick={() => onAdopt(session, "continue")}>
+            Continue
+          </button>
+          <button onClick={() => onAdopt(session, "fork")}>Fork</button>
+        </>
+      )}
+    </li>
+  );
+}
 
 export function SessionsDialog({
   workspace,
@@ -34,6 +95,12 @@ export function SessionsDialog({
   onClose: () => void;
 }) {
   const listing = useWorkspaceSessions(workspace);
+  const [query, setQuery] = useState("");
+  const searchable = workspace.defaultLaunch.harness === "claude" || workspace.defaultLaunch.harness === "opencode";
+  const searching = query.trim().length >= MIN_SEARCH_LENGTH;
+  const answer = useSessionSearch(workspace, query, searchable && searching);
+  const failure = answer && "failed" in answer ? answer.failed : null;
+  const hits = answer && "sessions" in answer ? answer.sessions : null;
   const agent = harnessLabels[workspace.defaultLaunch.harness];
 
   useEffect(() => {
@@ -74,36 +141,49 @@ export function SessionsDialog({
         </p>
         <p className="warning">
           <strong>Continue</strong> keeps the same session. If it is still open in a terminal, both would write to it, so close
-          it there first. <strong>Fork</strong> copies the history into a new session and leaves the original alone.
+          it there first. <strong>Fork</strong> copies the history into a new conversation and leaves the original alone.
         </p>
-        {listing.state === "loading" && <div className="notice-line">Loading sessions…</div>}
-        {listing.state === "failed" && <div className="form-errors">{listing.message}</div>}
-        {listing.state === "listed" && listing.sessions.length === 0 && (
-          <div className="notice-line">No {agent} sessions in this directory yet.</div>
+        {searchable && (
+          <input
+            className="session-search"
+            type="search"
+            placeholder="Search sessions by what was said in them"
+            aria-label="Search sessions by what was said in them"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            autoFocus
+            data-hint={hints.sessionSearch}
+          />
         )}
-        {listing.state === "listed" && listing.sessions.length > 0 && (
-          <ul className="session-list">
-            {listing.sessions.map((session) => (
-              <li key={session.sessionId}>
-                <div className="session-summary">
-                  <div className="session-title">{session.title || "(untitled)"}</div>
-                  <div className="session-meta">
-                    {ago(session.updatedAt)} · <code>{session.sessionId.slice(0, 8)}</code>
-                  </div>
-                </div>
-                {session.conversationId ? (
-                  <button onClick={() => open(session.conversationId!)}>Open</button>
-                ) : (
-                  <>
-                    <button className="primary" onClick={() => adopt(session, "continue")}>
-                      Continue
-                    </button>
-                    <button onClick={() => adopt(session, "fork")}>Fork</button>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
+        {searching ? (
+          failure !== null ? (
+            <div className="form-errors">{failure}</div>
+          ) : hits === null ? (
+            <div className="notice-line">Searching…</div>
+          ) : hits.length === 0 ? (
+            <div className="notice-line">No sessions here say that.</div>
+          ) : (
+            <ul className="session-list">
+              {hits.map((session) => (
+                <SessionRow key={session.sessionId} session={session} onAdopt={adopt} onOpen={open} />
+              ))}
+            </ul>
+          )
+        ) : (
+          <>
+            {listing.state === "loading" && <div className="notice-line">Loading sessions…</div>}
+            {listing.state === "failed" && <div className="form-errors">{listing.message}</div>}
+            {listing.state === "listed" && listing.sessions.length === 0 && (
+              <div className="notice-line">No {agent} sessions in this directory yet.</div>
+            )}
+            {listing.state === "listed" && listing.sessions.length > 0 && (
+              <ul className="session-list">
+                {listing.sessions.map((session) => (
+                  <SessionRow key={session.sessionId} session={session} onAdopt={adopt} onOpen={open} />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </div>

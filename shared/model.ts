@@ -466,6 +466,11 @@ export interface ExternalSession {
 
 export type AdoptMode = "continue" | "fork";
 
+/** An external session found by a search, with the line of its messages that matched. */
+export interface SessionSearchHit extends ExternalSession {
+  match: string | null;
+}
+
 export interface StoredEvent {
   seq: number;
   at: number;

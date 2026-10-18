@@ -33,7 +33,7 @@ export function lastAnsweringModel(transcript: string): string | null {
   return answer?.message.model ?? null;
 }
 
-const textOf = (content: unknown): string =>
+export const textOf = (content: unknown): string =>
   typeof content === "string" ? content : Array.isArray(content) ? content.map((block) => (block?.type === "text" ? String(block.text) : "")).join("\n") : "";
 
 /** Whether Claude Code recorded a message the user sent, so that a resumed session knows it. */

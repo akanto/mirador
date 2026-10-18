@@ -247,6 +247,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "fs.completions":
     case "profile.saved":
     case "sessions.listed":
+    case "sessions.searched":
     case "sessions.failed":
     case "canvas.exported":
     case "canvas.saved-to-project":
