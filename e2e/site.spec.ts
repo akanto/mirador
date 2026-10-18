@@ -9,6 +9,7 @@ import { expect, test, type Page } from "@playwright/test";
 const PAGES_PATH = "/mirador/";
 const TRAILER = "VmlHwR-yV4I";
 const INSTALL = "curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh";
+const WINDOWS_INSTALL = "irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex";
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css",
@@ -66,13 +67,15 @@ async function openSite(page: Page) {
   return { youtubeRequests, problems };
 }
 
-test("the first screen says what Mirador is, with the install line, a download and the GitHub repository", async ({ page }) => {
+test("the first screen says what Mirador is, with the install line, the way to the Windows one, a download and the GitHub repository", async ({ page }) => {
   await openSite(page);
   await expect(page).toHaveTitle("Mirador: a canvas for your coding agent");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("See what your coding agent means.");
   const hero = page.locator(".hero");
   await expect(hero.locator(".command code")).toHaveText(INSTALL);
   await expect(hero.getByText("brew install --cask sodre90/tap/mirador")).toBeVisible();
+  await hero.getByRole("link", { name: "Windows" }).click();
+  await expect(page.locator("#install .command code").filter({ hasText: WINDOWS_INSTALL })).toBeInViewport();
   await expect(hero.getByRole("link", { name: "Download" })).toHaveAttribute("href", "https://github.com/sodre90/mirador/releases/latest");
   await expect(hero.getByRole("link", { name: "Star on GitHub" })).toHaveAttribute("href", "https://github.com/sodre90/mirador");
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", "https://sodre90.github.io/mirador/og.jpg");
@@ -82,7 +85,7 @@ test("Copy puts each command on the clipboard as it is shown", async ({ page, co
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await openSite(page);
   const commands = page.locator(".command");
-  await expect(commands).toHaveCount(3);
+  await expect(commands).toHaveCount(4);
   for (const command of await commands.all()) {
     const copy = command.getByRole("button", { name: "Copy" });
     await copy.click();
