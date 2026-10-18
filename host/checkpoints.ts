@@ -50,7 +50,7 @@ const WITHOUT_AUTOCRLF = ["-c", "core.autocrlf=false"];
  *
  * A workspace that is not a git repository has no snapshots, and so no undo.
  */
-type GitOptions = { input?: string; index?: string };
+type GitOptions = { input?: string; index?: string; pathspecMagic?: boolean };
 
 export class Checkpoints {
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -205,10 +205,29 @@ export class Checkpoints {
     return (await this.git(workspace, ["rev-parse", "--git-dir"])).exitCode === 0;
   }
 
-  /** Writes the working tree into our index, which git compares against the files it hashed last time. */
+  /**
+   * Writes the working tree into our index, which git compares against the files it hashed last time. A nested git
+   * repository with no commit yet makes git refuse the whole add, so those stay out of the snapshot.
+   */
   private async stageEverything(workspace: Workspace) {
-    await this.mustGit(workspace, ["add", "-A"]);
+    const withoutCommit = await this.nestedRepositoriesWithNoCommit(workspace);
+    const excludes = withoutCommit.map((entry) => `:(exclude,literal)${entry}`);
+    await this.mustGit(workspace, ["add", "-A", "--", ".", ...excludes], { pathspecMagic: true });
     return (await this.mustGit(workspace, ["write-tree"])).stdout;
+  }
+
+  /**
+   * The nested git repositories with no commit of their own: git lists each untracked repository as one folder entry,
+   * and one whose HEAD cannot be read has no commit to record as a gitlink, unlike a committed one.
+   */
+  private async nestedRepositoriesWithNoCommit(workspace: Workspace) {
+    const listed = await this.mustGit(workspace, ["ls-files", "-o", "--exclude-standard", "-z"]);
+    const repositories = listed.stdout.split("\0").filter((entry) => entry.endsWith("/"));
+    const withoutCommit: string[] = [];
+    for (const repository of repositories) {
+      if ((await this.git(workspace, ["-C", repository, "rev-parse", "--verify", "--quiet", "HEAD"])).exitCode !== 0) withoutCommit.push(repository);
+    }
+    return withoutCommit;
   }
 
   private async deleteFiles(workspace: Workspace, paths: string[]) {
@@ -237,14 +256,15 @@ export class Checkpoints {
   }
 
   /**
-   * On our own index unless told another; paths given to git are taken as they are, never as patterns. Files go into our
-   * own index and back out without core.autocrlf's conversion, while the user's index is compared with their own.
+   * On our own index unless told another; paths given to git are taken as they are, never as patterns, unless
+   * `pathspecMagic` asks for git's own matching, which an exclude pathspec needs. Files go into our own index and back
+   * out without core.autocrlf's conversion, while the user's index is compared with their own.
    */
-  private async git(workspace: Workspace, args: string[], { input, index }: GitOptions = {}) {
+  private async git(workspace: Workspace, args: string[], { input, index, pathspecMagic }: GitOptions = {}) {
     await mkdir(join(this.dataDir, "checkpoints"), { recursive: true });
     const conversion = index === undefined ? WITHOUT_AUTOCRLF : [];
     const child = Bun.spawn(["git", "-C", workspace.path, ...IDENTITY, ...conversion, ...args], {
-      env: { ...process.env, GIT_INDEX_FILE: index ?? join(this.dataDir, "checkpoints", `${workspace.id}.index`), GIT_LITERAL_PATHSPECS: "1" },
+      env: { ...process.env, GIT_INDEX_FILE: index ?? join(this.dataDir, "checkpoints", `${workspace.id}.index`), GIT_LITERAL_PATHSPECS: pathspecMagic ? "0" : "1" },
       stdin: input === undefined ? "ignore" : new Blob([input]),
       stdout: "pipe",
       stderr: "pipe",

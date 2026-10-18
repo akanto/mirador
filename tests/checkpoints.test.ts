@@ -266,6 +266,37 @@ test("a submodule that moved is left as it is, and counted apart from the files"
   expect(await readFile(join(projectDir, "library", "lib.txt"), "utf8")).toBe("v2\n");
 });
 
+test("a nested git repository with no commit yet is left out of the snapshot, and the rest is kept", async () => {
+  const nested = join(projectDir, "nested");
+  await mkdir(nested);
+  await git(nested, ["init", "-q"]);
+  await write(join("nested", "x.txt"), "nested\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("kept.txt", "changed\n");
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0 });
+  expect(await read("kept.txt")).toBe("one\n");
+  expect(await read(join("nested", "x.txt"))).toBe("nested\n");
+});
+
+test("a nested git repository the agent commits into after the snapshot is left as it is", async () => {
+  const nested = join(projectDir, "nested");
+  await mkdir(nested);
+  await git(nested, ["init", "-q"]);
+  await write(join("nested", "x.txt"), "nested\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await git(nested, ["add", "-A"]);
+  await git(nested, ["commit", "-qm", "the agent's first commit"]);
+  await write("kept.txt", "changed\n");
+
+  expect(await checkpoints.preview(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
+  expect(await read("kept.txt")).toBe("one\n");
+  expect(await read(join("nested", "x.txt"))).toBe("nested\n");
+  expect((await git(nested, ["log", "--format=%s"])).stdout).toBe("the agent's first commit");
+});
+
 test("a workspace that is not a git repository has no snapshots to restore", async () => {
   const plain = join(dataDir, "plain");
   await mkdir(plain);
