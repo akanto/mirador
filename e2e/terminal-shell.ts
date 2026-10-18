@@ -29,6 +29,10 @@ export const promptMark = onWindows ? "PS " : "$";
 
 export const countTo = (last: number) => (onWindows ? `1..${last}` : `seq 1 ${last}`);
 
+/** Prints `label-1` through `label-<count>` to the terminal, one on each line. */
+export const printLinesTo = (count: number, label: string) =>
+  onWindows ? `${countTo(count)} | ForEach-Object { echo "${label}-$_" }` : `for i in $(${countTo(count)}); do echo "${label}-$i"; done`;
+
 /** Prints `text`, control characters and all, with no line break after it. */
 export function printRaw(text: string) {
   if (!onWindows) return `printf '${[...text].map((character) => posixPrintfEscapes[character] ?? character).join("")}'`;
