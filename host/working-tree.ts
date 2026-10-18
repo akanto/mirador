@@ -112,12 +112,17 @@ const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store", ...TOOL_STATE_F
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
 export const MAX_SCANNED_FILES = 50_000;
 
-/** The files under `directory`, relative to it with / as git writes them, skipping the folders nothing of the user's lives in; it stops after `limit` of them, and says so. */
-async function scannedFiles(directory: string, limit: number) {
+/**
+ * The files under `directory`, relative to it with / as git writes them, skipping the folders nothing of the user's lives
+ * in, and with `skipOtherRepositories` the folders with a .git of their own; it stops after `limit` of them, and says so.
+ */
+async function scannedFiles(directory: string, limit: number, skipOtherRepositories: boolean) {
   const files: string[] = [];
   const pending = [""];
   for (let folder = pending.pop(); folder !== undefined && files.length <= limit; folder = pending.pop()) {
     const entries = await readdir(join(directory, folder), { withFileTypes: true }).catch(() => []);
+    const holdsAnotherRepository = folder !== "" && entries.some(({ name }) => name === ".git");
+    if (skipOtherRepositories && holdsAnotherRepository) continue;
     entries
       .filter(({ name }) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name))
       .forEach((entry) => (entry.isDirectory() ? pending.push(posix.join(folder, entry.name)) : entry.isFile() && files.push(posix.join(folder, entry.name))));
@@ -132,10 +137,16 @@ const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(
  * The files of a folder that is not a git repository which were written at or after `since` (epoch ms), by their times
  * alone: a file made since then is added with its line counts, any other is modified. Nothing says what a file held
  * before, and a deleted file leaves nothing to find. A folder of more than `limit` files is checked only in part, which
- * `truncated` says.
+ * `truncated` says. In a repository, a submodule's or a nested clone's files are its own repository's, and git refuses to
+ * say whether it ignores a submodule's, so `skipOtherRepositories` leaves them out.
  */
-export async function filesWrittenSince(directory: string, since: number, limit = MAX_SCANNED_FILES): Promise<{ changes: TreeChange[]; truncated: boolean }> {
-  const { files, truncated } = await scannedFiles(directory, limit);
+export async function filesWrittenSince(
+  directory: string,
+  since: number,
+  limit = MAX_SCANNED_FILES,
+  { skipOtherRepositories = false } = {},
+): Promise<{ changes: TreeChange[]; truncated: boolean }> {
+  const { files, truncated } = await scannedFiles(directory, limit, skipOtherRepositories);
   const written = await inLimitedParallel(files, async (path) => {
     const stats = await stat(join(directory, path)).catch(() => null);
     return stats && writtenAt(stats) >= since ? [{ path, createdSince: stats.birthtimeMs >= since }] : [];

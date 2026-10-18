@@ -214,8 +214,9 @@ export class Changes {
 
   /** In a repository, git already lists what it tracks, so a session adds only what .gitignore hides. */
   private async writtenSince(workspace: Workspace, scope: ChangeScope, since: number) {
-    const written = await filesWrittenSince(workspace.path, since);
-    if (scope !== "session" || !(await isRepository(workspace.path))) return written;
+    const onlyIgnoredFiles = scope === "session" && (await isRepository(workspace.path));
+    const written = await filesWrittenSince(workspace.path, since, MAX_SCANNED_FILES, { skipOtherRepositories: onlyIgnoredFiles });
+    if (!onlyIgnoredFiles) return written;
     const hidden = await ignoredPaths(workspace.path, written.changes.map(({ path }) => path));
     return { ...written, changes: written.changes.filter(({ path }) => hidden.has(path)) };
   }

@@ -483,6 +483,25 @@ test("the session lists the git-ignored files in ignored folders and by name, an
   expect((await changes.list("c1", "session")).project.map((file) => file.path)).toEqual(["build/deep/out.js", "src/debug.log"]);
 });
 
+test("a file written in a submodule or a nested clone leaves the session's other git-ignored files listed", async () => {
+  const library = join(projectDir, "..", "library");
+  await mkdir(library);
+  await git(library, ["init", "-q"]);
+  await git(library, ["commit", "-q", "--allow-empty", "-m", "library"]);
+  await write(".gitignore", "*.log\n");
+  await git(projectDir, ["add", ".gitignore"]);
+  await Promise.all(["a", "nested", "z"].map((folder) => mkdir(join(projectDir, folder))));
+  await git(projectDir, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", library, "m-submodule"]);
+  await git(projectDir, ["commit", "-qm", "add the submodule"]);
+  await git(join(projectDir, "nested"), ["init", "-q"]);
+  await git(join(projectDir, "nested"), ["commit", "-q", "--allow-empty", "-m", "nested"]);
+  await startTurn();
+  await Bun.sleep(20);
+  const written = ["a.log", "a/first.log", "m-submodule/inside.log", "nested/inside.log", "z/last.log", "z.log"];
+  await Promise.all(written.map((path) => write(path, "logged\n")));
+  expect((await changes.list("c1", "session")).project.map((file) => file.path).sort()).toEqual(["a.log", "a/first.log", "z.log", "z/last.log"]);
+});
+
 test("before the first message the session scope lists only the agent's edits, such as a continued session's replayed ones, and no file a script wrote", async () => {
   store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "current_mode_update", currentModeId: "default" } });
   await mkdir(join(projectDir, "build"));
