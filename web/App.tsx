@@ -459,6 +459,7 @@ export function App() {
                     conversation={keptConversation}
                     profiles={state.profiles}
                     promptTemplates={state.promptTemplates}
+                    userPicture={state.avatar}
                     onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", page: "conversations" } })}
                     open={kept}
                     canvasVisible={canvasInView}
@@ -587,6 +588,7 @@ export function App() {
           canvasUse={state.canvasUse}
           claudeProgram={state.claudeProgram}
           scriptProgram={state.scriptProgram}
+          avatar={state.avatar}
           version={state.version}
           newerVersion={state.newerVersion}
           layoutDefault={conversationLayouts.layoutDefault}

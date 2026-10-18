@@ -419,6 +419,19 @@ describe("Store", () => {
     reopened.close();
   });
 
+  test("keeps the profile picture until Settings remove it, also after reopening", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    expect(store.avatarSetting()).toBeNull();
+    store.setAvatarSetting("data:image/png;base64,cG5n");
+    store.close();
+    const reopened = new Store(path);
+    expect(reopened.avatarSetting()).toBe("data:image/png;base64,cG5n");
+    reopened.setAvatarSetting(null);
+    expect(reopened.avatarSetting()).toBeNull();
+    reopened.close();
+  });
+
   test("tells Claude Code to use the canvas often until Settings say otherwise, also after reopening", () => {
     const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const store = new Store(path);

@@ -92,6 +92,8 @@ export type ClientMessage =
   | { type: "settings.set-claude-program"; path: string }
   /** Empty for the system's text editor. */
   | { type: "settings.set-script-program"; program: string }
+  /** The user's picture as a small square PNG data URL the page drew; null takes it away, leaving the person icon. */
+  | { type: "settings.set-avatar"; image: string | null }
   /** Without a launch, the conversation starts on the workspace's default as the host has it when the message arrives. */
   | { type: "conversation.create"; workspaceId: string; launch?: Launch }
   /** Puts the conversation just before another of its workspace in the sidebar, or last. */
@@ -238,6 +240,8 @@ export type ServerMessage =
       claudeProgram: ClaudeProgram;
       /** The program the host opens scripts in, as text; empty for the system's text editor. */
       scriptProgram: string;
+      /** The user's profile picture as a small square PNG data URL; null when they set none. */
+      avatar: string | null;
       /** The agents this machine has a program for, which a new profile can run. */
       installedAgents: HarnessId[];
       /** Where this page loads canvas libraries from: the address it reached the host at may differ from the one agents were given. */
@@ -264,6 +268,8 @@ export type ServerMessage =
   | { type: "settings.canvas-use"; canvasUse: CanvasUse }
   | { type: "settings.claude-program"; claudeProgram: ClaudeProgram }
   | { type: "settings.script-program"; scriptProgram: string }
+  /** The user's picture next to every page; null when they set none, leaving the person icon. */
+  | { type: "settings.avatar"; image: string | null }
   | { type: "workspace.upserted"; workspace: Workspace }
   | { type: "workspace.deleted"; workspaceId: string }
   | { type: "workspace-group.upserted"; group: WorkspaceGroup }

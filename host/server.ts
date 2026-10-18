@@ -16,6 +16,7 @@ import {
   type Pastel,
 } from "../shared/model.ts";
 import { readJobWaitRequest } from "../shared/job-waits.ts";
+import { avatarProblem } from "../shared/avatar.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
 import { CANVAS_ASSETS_ORIGIN_HEADER, DESKTOP_APP_CODE_PARAMETER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
@@ -635,6 +636,14 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "settings.script-program", scriptProgram: store.scriptProgramSetting() });
   }
 
+  /** The picture every page shows next to the user's messages; null leaves the person icon. */
+  function setAvatar(image: string | null) {
+    const problem = image === null ? null : avatarProblem(image);
+    if (problem) throw new Error(problem);
+    store.setAvatarSetting(image);
+    hub.broadcast({ type: "settings.avatar", image });
+  }
+
   /** Conversations pick it up when their session next starts or resumes. */
   function setCanvasUse(canvasUse: CanvasUse) {
     if (!isCanvasUse(canvasUse)) throw new Error(`Unknown canvas use ${canvasUse}`);
@@ -707,6 +716,8 @@ export function startServer(services: HostServices) {
         return setClaudeProgram(message.path);
       case "settings.set-script-program":
         return setScriptProgram(message.program);
+      case "settings.set-avatar":
+        return setAvatar(message.image);
       case "conversation.create":
         conversations.create(message.workspaceId, message.launch);
         return;
@@ -1038,6 +1049,7 @@ export function startServer(services: HostServices) {
       canvasUse: store.canvasUse(),
       claudeProgram,
       scriptProgram: store.scriptProgramSetting(),
+      avatar: store.avatarSetting(),
       installedAgents: installedHarnesses(store.claudeProgramSetting()),
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,
       agentsCanvasAssetsOrigin: config.canvasAssetsOrigin,

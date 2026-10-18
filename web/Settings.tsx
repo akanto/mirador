@@ -16,6 +16,7 @@ import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type Rev
 import { hints } from "./hints.ts";
 import { NewerVersionNote } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
+import { profilePictureDataUrl } from "./profile-picture.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
 import { arrangements, paneLabels, sameSlots, type HideablePane, type LayoutDefault, type PaneId, type Slots } from "./layout.ts";
 import {
@@ -88,6 +89,7 @@ export function SettingsDialog({
   canvasUse,
   claudeProgram,
   scriptProgram,
+  avatar,
   version,
   newerVersion,
   layoutDefault,
@@ -100,6 +102,7 @@ export function SettingsDialog({
   canvasUse: CanvasUse;
   claudeProgram: ClaudeProgram;
   scriptProgram: string;
+  avatar: string | null;
   version: string;
   newerVersion: NewerVersion | null;
   layoutDefault: LayoutDefault;
@@ -114,7 +117,12 @@ export function SettingsDialog({
   }, [onClose]);
 
   const pages: Record<SettingsPage, () => ReactNode> = {
-    appearance: () => <AppearanceSettings />,
+    appearance: () => (
+      <>
+        <ProfilePictureSettings picture={avatar} />
+        <AppearanceSettings />
+      </>
+    ),
     conversations: () => (
       <>
         <SendingSettings />
@@ -273,6 +281,43 @@ function PictureChoice<Option extends string>({
         ))}
       </div>
     </div>
+  );
+}
+
+function ProfilePictureSettings({ picture }: { picture: string | null }) {
+  const [refusal, setRefusal] = useState("");
+  const chooseFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      connection.send({ type: "settings.set-avatar", image: await profilePictureDataUrl(file) });
+      setRefusal("");
+    } catch (error) {
+      setRefusal(error instanceof Error ? error.message : String(error));
+    }
+  };
+  return (
+    <section data-hint={hints.profilePicture}>
+      <h3>Profile picture</h3>
+      <p className="hint">Next to your messages, kept by the host for every browser and device that joins it.</p>
+      <div className="profile-picture">
+        {picture && <img className="profile-picture-preview" src={picture} alt="" />}
+        <input
+          type="file"
+          accept="image/*"
+          aria-label="Profile picture"
+          onChange={(event) => {
+            void chooseFile(event.target.files?.[0]);
+            event.target.value = "";
+          }}
+        />
+        {picture && <button type="button" onClick={() => connection.send({ type: "settings.set-avatar", image: null })}>Remove</button>}
+        {refusal && (
+          <p className="hint profile-picture-refused" role="alert">
+            {refusal}
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 

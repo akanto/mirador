@@ -556,6 +556,15 @@ export class Store {
     this.setSetting("script_program", program || null);
   }
 
+  /** The user's profile picture as a PNG data URL; null when they set none. */
+  avatarSetting(): string | null {
+    return this.setting("avatar");
+  }
+
+  setAvatarSetting(image: string | null) {
+    this.setSetting("avatar", image);
+  }
+
   private setting(key: string) {
     return (this.db.query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null)?.value ?? null;
   }

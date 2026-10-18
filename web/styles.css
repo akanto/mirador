@@ -1616,6 +1616,33 @@ input.picker-search {
   height: 16px;
 }
 
+.avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.profile-picture {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.profile-picture-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-picture-refused {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
 .author {
   display: flex;
   align-items: baseline;

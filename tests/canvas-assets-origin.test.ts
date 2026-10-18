@@ -18,6 +18,7 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
     canvasUse: "often",
     claudeProgram: { configured: "", found: null, version: null, installFolders: "", installCommand: "" },
     scriptProgram: "",
+    avatar: null,
     canvasAssetsOrigin,
     agentsCanvasAssetsOrigin: agentsOrigin,
     installedAgents: ["claude"],
