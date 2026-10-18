@@ -4036,6 +4036,13 @@ button.shell-more:hover {
   cursor: pointer;
 }
 
+.async-tasks-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 2px 4px;
+  font-size: calc(11.5px * var(--font-scale));
+}
+
 .async-tasks ul {
   margin: 0 0 6px;
   padding: 0;

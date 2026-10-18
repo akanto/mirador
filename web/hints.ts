@@ -179,6 +179,8 @@ export const hints = {
     "Claude Code itself runs this in the background, so the agent need not wait for it: a command it started with run_in_background, or a workflow. Claude Code tells the agent when it ends.\n\nThe task lives and dies with the agent's process.",
   asyncTaskOutput: "Show what the task has written so far: the end of the file Claude Code keeps its output in, refreshed while this stays open. Click again to hide it.",
   stopAsyncTask: "Stop this task: Claude Code ends it and the agent hears of it. The turn that started it keeps running.",
+  dismissAsyncTask: "Dismiss this task: remove it from above the message box.",
+  clearFinishedAsyncTasks: "Clear all finished tasks from above the message box.",
   claudeProgram: (installFolders: string) =>
     `The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ${installFolders}.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.`,
   canvasUse:

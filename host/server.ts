@@ -815,6 +815,10 @@ export function startServer(services: HostServices) {
         return conversations.stopAsyncTask(message.conversationId, message.asyncTaskId).catch((error) =>
           reply({ type: "error", message: errorMessage(error) }),
         );
+      case "conversation.async-task.dismiss":
+        return conversations.dismissAsyncTask(message.conversationId, message.asyncTaskId);
+      case "conversation.async-task.clear-finished":
+        return conversations.clearFinishedAsyncTasks(message.conversationId);
       case "async-task.output.get":
         return reply({
           type: "async-task.output.got",

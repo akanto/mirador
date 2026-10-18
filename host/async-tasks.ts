@@ -70,6 +70,32 @@ export class AsyncTasks {
     return true;
   }
 
+  /** Removes a finished task from the conversation's tasks; returns whether a task was removed. */
+  dismiss(conversationId: string, asyncTaskId: string): boolean {
+    const tasks = this.byConversation.get(conversationId);
+    if (!tasks) return false;
+    const task = tasks.get(asyncTaskId);
+    if (!task || (!isTerminal(task.state) && task.canStop)) return false;
+    tasks.delete(asyncTaskId);
+    if (tasks.size === 0) this.byConversation.delete(conversationId);
+    return true;
+  }
+
+  /** Removes all finished tasks from the conversation; returns whether any were removed. */
+  clearFinished(conversationId: string): boolean {
+    const tasks = this.byConversation.get(conversationId);
+    if (!tasks) return false;
+    let changed = false;
+    for (const [id, task] of tasks) {
+      if (isTerminal(task.state) || !task.canStop) {
+        tasks.delete(id);
+        changed = true;
+      }
+    }
+    if (tasks.size === 0) this.byConversation.delete(conversationId);
+    return changed;
+  }
+
   in(conversationId: string): AsyncTask[] {
     return [...(this.byConversation.get(conversationId)?.values() ?? [])];
   }

@@ -80,5 +80,28 @@ test("a background task the agent started shows with its output and Stop above t
     await expect(finished.getByRole("button", { name: "Stop" })).toHaveCount(0);
     await finished.getByRole("button", { name: "sleep 30" }).click();
     await expect(finished.locator(".async-task-output")).toContainText("done sleeping");
+    await expect(finished.getByRole("button", { name: "Dismiss" })).toBeVisible();
+    await finished.getByRole("button", { name: "Dismiss" }).click();
+    await expect(finished).toHaveCount(0);
+    await expect(row).toHaveCount(1);
+  });
+
+  await test.step("the remaining finished task can also be dismissed, removing the background tasks section", async () => {
+    const remaining = tasks.locator("li", { hasText: "Stopped:" });
+    await expect(remaining.getByRole("button", { name: "Dismiss" })).toBeVisible();
+    await remaining.getByRole("button", { name: "Dismiss" }).click();
+    await expect(tasks).toHaveCount(0);
+  });
+
+  await test.step("Clear finished dismisses all finished tasks at once", async () => {
+    await sendMessage(page, "ASYNC TASK DONE");
+    await waitForTurnToEnd(page);
+    await sendMessage(page, "ASYNC TASK DONE");
+    await waitForTurnToEnd(page);
+    await expect(row).toHaveCount(2);
+    const clearButton = tasks.getByRole("button", { name: "Clear finished" });
+    await expect(clearButton).toBeVisible();
+    await clearButton.click();
+    await expect(tasks).toHaveCount(0);
   });
 });

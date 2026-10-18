@@ -1181,9 +1181,24 @@ const asyncTaskStateLabels: Record<AsyncTaskState, string> = {
   stopped: "Stopped",
 };
 
+const isFinishedTask = (task: AsyncTask) => task.state === "completed" || task.state === "failed" || task.state === "stopped" || !task.canStop;
+
 function BackgroundTasks({ conversationId, tasks }: { conversationId: string; tasks: AsyncTask[] }) {
+  const finishedTasks = tasks.filter(isFinishedTask);
   return (
     <section className="async-tasks" aria-label="Background tasks">
+      {finishedTasks.length >= 2 && (
+        <header className="async-tasks-header">
+          <button
+            type="button"
+            className="link"
+            data-hint={hints.clearFinishedAsyncTasks}
+            onClick={() => connection.send({ type: "conversation.async-task.clear-finished", conversationId })}
+          >
+            Clear finished
+          </button>
+        </header>
+      )}
       <ul>
         {tasks.map((task) => (
           <li key={task.id}>
@@ -1246,6 +1261,16 @@ function AsyncTaskRow({ conversationId, task }: { conversationId: string; task: 
           onClick={() => connection.send({ type: "conversation.async-task.stop", conversationId, asyncTaskId: task.id })}
         >
           Stop
+        </button>
+      )}
+      {isFinishedTask(task) && (
+        <button
+          type="button"
+          className="link"
+          data-hint={hints.dismissAsyncTask}
+          onClick={() => connection.send({ type: "conversation.async-task.dismiss", conversationId, asyncTaskId: task.id })}
+        >
+          Dismiss
         </button>
       )}
     </>

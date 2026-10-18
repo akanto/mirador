@@ -117,6 +117,60 @@ describe("AsyncTasks", () => {
     expect(ids.filter((id) => id.startsWith("ended"))).toEqual(["ended-5", "ended-6", "ended-7", "ended-8", "ended-9", "ended-10", "ended-11", "ended-12", "ended-13", "ended-14"]);
   });
 
+  test("dismiss removes a completed task and returns true", () => {
+    const tasks = new AsyncTasks();
+    tasks.apply("c1", spawned("t1"));
+    tasks.apply("c1", { sessionUpdate: "async_task_state_update", asyncTaskId: "t1", state: "completed" });
+    tasks.apply("c1", spawned("t2"));
+
+    expect(tasks.dismiss("c1", "t1")).toBe(true);
+    expect(tasksOf(tasks).map(({ id }) => id)).toEqual(["t2"]);
+  });
+
+  test("a running task cannot be dismissed", () => {
+    const tasks = new AsyncTasks();
+    tasks.apply("c1", spawned("t1"));
+    expect(tasks.dismiss("c1", "t1")).toBe(false);
+    expect(tasksOf(tasks).map(({ id }) => id)).toEqual(["t1"]);
+  });
+
+  test("dismissing a non-existent task returns false", () => {
+    const tasks = new AsyncTasks();
+    expect(tasks.dismiss("c1", "non-existent")).toBe(false);
+    tasks.apply("c1", spawned("t1"));
+    expect(tasks.dismiss("c1", "non-existent")).toBe(false);
+  });
+
+  test("dismiss removes a stopped or failed task or an unstoppable one", () => {
+    const tasks = new AsyncTasks();
+    tasks.apply("c1", spawned("t1"));
+    tasks.apply("c1", { sessionUpdate: "async_task_state_update", asyncTaskId: "t1", state: "stopped" });
+    expect(tasks.dismiss("c1", "t1")).toBe(true);
+
+    tasks.apply("c1", spawned("t2"));
+    tasks.apply("c1", { sessionUpdate: "async_task_state_update", asyncTaskId: "t2", state: "failed" });
+    expect(tasks.dismiss("c1", "t2")).toBe(true);
+
+    tasks.apply("c1", spawned("t3"));
+    tasks.markUnstoppable("c1", "t3");
+    expect(tasks.dismiss("c1", "t3")).toBe(true);
+    expect(tasksOf(tasks)).toEqual([]);
+  });
+
+  test("clearFinished removes all finished tasks and keeps running ones", () => {
+    const tasks = new AsyncTasks();
+    tasks.apply("c1", spawned("t1"));
+    tasks.apply("c1", { sessionUpdate: "async_task_state_update", asyncTaskId: "t1", state: "completed" });
+    tasks.apply("c1", spawned("t2"));
+    tasks.apply("c1", { sessionUpdate: "async_task_state_update", asyncTaskId: "t2", state: "failed" });
+    tasks.apply("c1", spawned("t3")); // running
+
+    expect(tasks.clearFinished("c1")).toBe(true);
+    expect(tasksOf(tasks).map(({ id }) => id)).toEqual(["t3"]);
+    expect(tasks.clearFinished("c1")).toBe(false);
+    expect(tasks.clearFinished("c2")).toBe(false);
+  });
+
   test("forget takes a conversation's tasks with it", () => {
     const tasks = new AsyncTasks();
     tasks.apply("c1", spawned("t1"));

@@ -157,6 +157,10 @@ export type ClientMessage =
   | { type: "conversation.job-wait.stop"; conversationId: string; waitId: string }
   /** Stops one of Claude Code's background tasks; the turn it started in keeps running. */
   | { type: "conversation.async-task.stop"; conversationId: string; asyncTaskId: string }
+  /** Dismisses one finished background task from above the composer. */
+  | { type: "conversation.async-task.dismiss"; conversationId: string; asyncTaskId: string }
+  /** Dismisses all finished background tasks from above the composer. */
+  | { type: "conversation.async-task.clear-finished"; conversationId: string }
   /** The last part of the file a background task writes its output to; null when none is there to read. */
   | { type: "async-task.output.get"; requestId: string; conversationId: string; asyncTaskId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }

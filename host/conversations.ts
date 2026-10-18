@@ -823,6 +823,14 @@ export class ConversationService {
     if (!stopped && this.asyncTasks.markUnstoppable(conversationId, asyncTaskId)) this.publish(this.get(conversationId));
   }
 
+  dismissAsyncTask(conversationId: string, asyncTaskId: string) {
+    if (this.asyncTasks.dismiss(conversationId, asyncTaskId)) this.republish(conversationId);
+  }
+
+  clearFinishedAsyncTasks(conversationId: string) {
+    if (this.asyncTasks.clearFinished(conversationId)) this.republish(conversationId);
+  }
+
   /** The last part of the file a background task writes its output to; null when there is none to read. */
   asyncTaskOutput(conversationId: string, asyncTaskId: string): string | null {
     const path = this.asyncTasks.outputFileOf(conversationId, asyncTaskId);
