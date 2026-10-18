@@ -13,6 +13,8 @@ import { TestHost } from "./test-host.ts";
 const host = new TestHost();
 const gateway = new FakeGateway();
 const bundledClaude = join(dirname(createRequire(import.meta.url).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/package.json`)), "claude");
+/** A user's terminal and Mirador's agent are one Claude Code installation; profiles name it, so model aliases resolve the same on both sides of a fork. */
+const sameClaudeCode = `CLAUDE_CODE_EXECUTABLE=${bundledClaude}`;
 const MARKER = "external-marker-42";
 let terminalSessionId = "";
 
@@ -51,7 +53,7 @@ const terminalSessionRow = (dialog: ReturnType<Page["getByRole"]>) => sessionRow
 test("forking a terminal session replays its history into a new conversation and leaves the original alone", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const profiles = await createProfile(page, "fake gateway", gatewayEnvironment(gateway));
+  const profiles = await createProfile(page, "fake gateway", [gatewayEnvironment(gateway), sameClaudeCode].join("\n"));
   await profiles.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "fake gateway · Claude Code" });
 
@@ -91,7 +93,7 @@ test("continuing a terminal session in place gives the agent its earlier context
 });
 
 test("a terminal session continues and forks on the model that answered in it, not on the one Claude's settings name", async ({ page }) => {
-  // `claude -p --model haiku` can answer on an older Haiku than the picker's haiku alias, which the picker then lists by its own id.
+  // The profile names the Claude Code the terminal runs, so `--model haiku` resolves to one model on both sides; settings.json names opus to show what must not win.
   const api = new FakeClaudeApi();
   api.limited = false;
   await api.start();
@@ -103,7 +105,7 @@ test("a terminal session continues and forks on the model that answered in it, n
   const model = page.getByLabel("Model", { exact: true }).filter({ visible: true });
 
   await signIn(page, host);
-  const profiles = await createProfile(page, "answering api", environment);
+  const profiles = await createProfile(page, "answering api", [environment, sameClaudeCode].join("\n"));
   await profiles.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "answering api · Claude Code" });
   await sessionRow(await openSessionsDialog(page), sessionId).getByRole("button", { name: "Fork" }).click();

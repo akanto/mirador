@@ -13,6 +13,7 @@ results=$(mktemp -d "${TMPDIR:-/tmp}/mirador-spec-results-$arch-XXXXXX")
 
 build_image linux-test
 
+[[ ${ANTHROPIC_API_KEY:-} ]] || echo "ANTHROPIC_API_KEY is not set: the specs that wait for a real Claude reply will fail on 'Authentication required'."
 echo "failure artifacts (if any): $results"
 run_in_container \
   ${ANTHROPIC_API_KEY:+--env ANTHROPIC_API_KEY} \

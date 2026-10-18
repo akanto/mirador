@@ -12,6 +12,7 @@ rm -rf "$results" && mkdir -p "$results"
 
 build_image linux-test
 
+[[ ${ANTHROPIC_API_KEY:-} ]] || echo "ANTHROPIC_API_KEY is not set: the specs that wait for a real Claude reply will fail on 'Authentication required'."
 run_in_container \
   ${ANTHROPIC_API_KEY:+--env ANTHROPIC_API_KEY} \
   --volume "$results:/results" \
