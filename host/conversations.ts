@@ -137,6 +137,38 @@ interface TurnInProgress {
   /** Until the turn's end shows whether the agent answered them. */
   steered: SteeredMessages[];
   ended: boolean;
+  /** The reply whose chunks last streamed, so the late chunks of a turn a stop cancelled can be recognised. */
+  lastReplyMessageId: string | null;
+  /** The turn waits on the user, so no reply of its own can still be on its way. */
+  awaitedUser: boolean;
+}
+
+/**
+ * What a stop can still hear from the turn it cancelled: the chunks of the reply the agent is
+ * streaming, or will start streaming when the API answers the request it had already sent. Until a
+ * reply shows its id, everything arriving is held back: after a stop that interrupted the request,
+ * the first reply is the next turn's answer, not an orphan — only another reply's id proves the
+ * first one was the cancelled turn's own.
+ */
+export interface CancelledReplyChunks {
+  messageId: string | null;
+  /** The chunks held back while the reply they began is not known yet; shown at the next turn's end if no other reply disproves them. */
+  held?: acp.SessionUpdate[];
+}
+
+/**
+ * Whether these chunks belong to the reply a cancelled turn still owes: dropped at once when they
+ * continue the reply it was already streaming; held back while the first reply after the stop has
+ * no id to tell it by. A reply with another id ends the claim: the held-back one was the orphan.
+ */
+export function cancelledReplyChunks(
+  pending: CancelledReplyChunks,
+  update: acp.SessionUpdate,
+): { drop: boolean; pending: CancelledReplyChunks | null } {
+  const messageId = isAgentReplyChunk(update) && typeof update.messageId === "string" ? update.messageId : null;
+  if (pending.messageId === null) return { drop: true, pending: { messageId, held: [...(pending.held ?? []), update] } };
+  if (pending.messageId !== messageId) return { drop: false, pending: null };
+  return pending.held ? { drop: true, pending: { ...pending, held: [...pending.held, update] } } : { drop: true, pending };
 }
 
 interface Runtime {
@@ -162,6 +194,8 @@ interface Runtime {
   automaticContinues: number;
   /** The host kills the agent process this turn runs on on purpose, so the turn ends as a stop, not as a failure. */
   killedOnPurpose?: boolean;
+  /** The reply the last stopped turn still owes: its late chunks are dropped, or held back until another reply's id or the next turn's end tells whether they were the orphan or that turn's answer. */
+  cancelledReply?: CancelledReplyChunks;
 }
 
 interface StoppedTurn {
@@ -552,7 +586,7 @@ export class ConversationService {
     this.endUsageLimitWait(runtime);
     let endTurn = () => {};
     runtime.turnEnded = new Promise((resolve) => (endTurn = resolve));
-    const turn: TurnInProgress = { steered: [], ended: false };
+    const turn: TurnInProgress = { steered: [], ended: false, lastReplyMessageId: null, awaitedUser: false };
     runtime.turn = turn;
     runtime.openToolCalls.clear();
     this.forgetUnseenTurnEnd(conversationId);
@@ -583,6 +617,19 @@ export class ConversationService {
       }
     } finally {
       turn.ended = true;
+      const heldBackReply = runtime.cancelledReply?.held;
+      runtime.cancelledReply = undefined;
+      heldBackReply?.forEach((update) => this.append(conversationId, { type: "acp", update }));
+      // Claude Code keeps streaming the reply of a turn its cancel cut short, when the stop found
+      // its first request merged with a steer: a reply already streaming, or one the API has yet
+      // to answer. A stop that interrupted the request owes no reply — so a reply not yet begun is
+      // only proved the cancelled turn's once another one starts with another id; it shows at this
+      // turn's end when none ever does. A stop the agent waited on the user for owes no reply, nor
+      // does one its tools were busy with, nor a killed process.
+      runtime.cancelledReply =
+        response?.stopReason === "cancelled" && !turn.awaitedUser && (turn.lastReplyMessageId !== null || runtime.openToolCalls.size === 0)
+          ? { messageId: turn.lastReplyMessageId, ...(turn.lastReplyMessageId === null ? { held: [] } : {}) }
+          : undefined;
       if (response?.stopReason !== "end_turn") {
         await this.returnUnansweredSteers(conversationId, runtime, turn.steered, response).catch((error: unknown) =>
           console.error(`${new Date().toISOString()} could not tell whether the agent answered the messages that joined the turn of conversation ${conversationId}: ${errorMessage(error)}`),
@@ -1199,6 +1246,7 @@ export class ConversationService {
 
   private bindSession(conversationId: string, sessionId: string, configOptions: acp.SessionConfigOption[] | null | undefined) {
     this.sessions.bind(conversationId, sessionId);
+    this.runtime(conversationId).cancelledReply = undefined;
     this.save({ ...this.get(conversationId), acpSessionId: sessionId, configOptions: configOptions ?? [] });
     this.updatesForUnknownSessions.take(sessionId).forEach((notification) => this.handleSessionUpdate(notification));
   }
@@ -1356,8 +1404,35 @@ export class ConversationService {
     if (update.sessionUpdate === "session_info_update" && update.title && !this.get(conversationId).titleSetByUser) {
       this.save({ ...this.get(conversationId), title: update.title });
     }
+    if (this.dropsCancelledReplyChunk(conversationId, update)) return;
+    this.trackReplyProgress(conversationId, update);
     this.append(conversationId, { type: "acp", update });
     this.followToolCalls(conversationId, update);
+  }
+
+  /**
+   * The late chunks of a reply a stop cancelled: the agent streams the API's answer after
+   * 'Turn ended: cancelled', where it would look as if Stop did not stop. Chunks of a reply whose
+   * id is not yet told are held back rather than shown, until another reply's id proves them the
+   * orphan or the running turn's end proves them its answer. A subagent's own reports carry on
+   * arriving as usual.
+   */
+  private dropsCancelledReplyChunk(conversationId: string, update: acp.SessionUpdate) {
+    if (!isAgentReplyChunk(update) || isSubagentReport(update)) return false;
+    const runtime = this.runtime(conversationId);
+    const pending = runtime.cancelledReply;
+    if (!pending) return false;
+    const { drop, pending: stillPending } = cancelledReplyChunks(pending, update);
+    runtime.cancelledReply = stillPending ?? undefined;
+    return drop;
+  }
+
+  /** Which reply the running turn has streamed, so its stop can tell a late chunk of it from the next turn's. */
+  private trackReplyProgress(conversationId: string, update: acp.SessionUpdate) {
+    const turn = this.runtime(conversationId).turn;
+    if (!turn || turn.ended || !isAgentReplyChunk(update) || isSubagentReport(update)) return;
+    turn.awaitedUser = false;
+    if (typeof update.messageId === "string") turn.lastReplyMessageId = update.messageId;
   }
 
   private followToolCalls(conversationId: string, update: acp.SessionUpdate) {
@@ -1469,6 +1544,7 @@ export class ConversationService {
     // YOLO switched on while the files were read approves only the requests already waiting.
     if (allowOptionId && this.get(conversationId).bypassPermissions) return { outcome: { outcome: "selected", optionId: allowOptionId } };
     const permissionId = crypto.randomUUID();
+    if (runtime.turn && !runtime.turn.ended) runtime.turn.awaitedUser = true;
     this.append(conversationId, {
       type: "permission",
       permissionId,
@@ -1775,6 +1851,14 @@ export function opencodeSubagentSessionOf(update: acp.SessionUpdate): string | n
   const { id } = (update._meta?.["opencode/child-session"] ?? {}) as { id?: unknown };
   return typeof id === "string" ? id : null;
 }
+
+const isAgentReplyChunk = (update: acp.SessionUpdate) =>
+  update.sessionUpdate === "agent_message_chunk" || update.sessionUpdate === "agent_thought_chunk";
+
+/** Text an agent's subagent wrote, reported through the conversation's session: not the turn's own reply. */
+const isSubagentReport = (update: acp.SessionUpdate) =>
+  opencodeSubagentSessionOf(update) !== null ||
+  ((update._meta?.claudeCode ?? {}) as { parentToolUseId?: unknown }).parentToolUseId !== undefined;
 
 /**
  * A turn left open: it began, the agent worked on it, and nothing ended it. A turn the agent never worked on is not one,

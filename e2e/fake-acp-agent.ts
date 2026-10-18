@@ -18,6 +18,9 @@ import * as acp from "@agentclientprotocol/sdk";
  * subagent whose step asks permission, and ends the turn with what the user answered.
  * `NOTICE` sends the notices claude-agent-acp sends for hook output, a stopped task and a model fallback: a `notice`
  * update when the client advertised `session.notices` at initialize, the bold-label transcript line when not, and then answers.
+ * `STOPPED REPLY ` streams half of a reply and `STOPPED BEFORE ` streams none of it: either ends its turn as cancelled
+ * once `session/cancel` arrives, and a moment after the stop streams the reply's rest under the id it streamed under
+ * before, together with a subagent's report — the late chunks claude-agent-acp sends for a turn its cancel cut short.
  * `ASYNC TASK` starts a background task the way claude-agent-acp does with its `asyncTasks` capability: a spawn update,
  * a progress beat shortly after, and output lines appended to a file under `FAKE_ACP_TASK_OUTPUT_DIR`; with ` DONE`
  * after it the task completes on its own too. The `_session/async_task/stop` request stops one and says so, logging it.
@@ -230,6 +233,34 @@ async function sayText(client: acp.AgentContext, sessionId: string, text: string
   return { stopReason: "end_turn" as const };
 }
 
+/** The turns waiting for the user's stop, by session. */
+const stopWaiters = new Map<string, () => void>();
+let nextStoppedReply = 0;
+
+/** A turn the user stops: half a reply streamed, or none yet, ends as cancelled on the stop; the reply's rest and a subagent's report follow it, as claude-agent-acp's late chunks do. */
+async function stoppedReply(client: acp.AgentContext, sessionId: string, text: string, streamedHalf: boolean) {
+  const notify = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  const messageId = `msg-stopped-${process.pid}-${++nextStoppedReply}`;
+  const subagentCallId = `subagent-${++nextToolCall}`;
+  if (streamedHalf) await notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Half a reply about ${text}` }, messageId });
+  await new Promise<void>((resolve) => stopWaiters.set(sessionId, resolve));
+  setTimeout(() => {
+    void notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `The rest about ${text}` }, messageId });
+    void notify({
+      sessionUpdate: "tool_call",
+      toolCallId: subagentCallId,
+      title: "Task",
+      kind: "think",
+      status: "in_progress",
+      rawInput: { description: "look around", prompt: "look around" },
+      _meta: { claudeCode: { toolName: "Task" } },
+    });
+    void notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `A subagent reports on ${text}` }, messageId, _meta: { claudeCode: { parentToolUseId: subagentCallId } } });
+    void notify({ sessionUpdate: "tool_call_update", toolCallId: subagentCallId, status: "completed" });
+  }, 300);
+  return { stopReason: "cancelled" as const };
+}
+
 async function streamWords(client: acp.AgentContext, sessionId: string, count: number) {
   for (const word of Array.from({ length: count }, (_, position) => `word${position + 1} `)) {
     await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: word } } });
@@ -287,9 +318,15 @@ acp
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
+    if (startsWith(ctx.params.prompt, "STOPPED REPLY ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED REPLY ".length), true);
+    if (startsWith(ctx.params.prompt, "STOPPED BEFORE ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED BEFORE ".length), false);
     if (startsWith(ctx.params.prompt, "CRASH LEAVING A CHILD")) spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: ["ignore", "inherit", "ignore"] });
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
+  })
+  .onNotification(acp.methods.agent.session.cancel, (ctx) => {
+    stopWaiters.get(ctx.params.sessionId)?.();
+    stopWaiters.delete(ctx.params.sessionId);
   })
   .onRequest("_session/async_task/stop", (params) => params as { sessionId: string; asyncTaskId: string }, (ctx) =>
     stopAsyncTask(ctx.client, ctx.params.sessionId, ctx.params.asyncTaskId),
