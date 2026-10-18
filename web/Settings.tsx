@@ -35,9 +35,21 @@ import { setShellOutputStyle, useShellOutputStyle } from "./shell-output.ts";
 import { isMac } from "./shortcuts.ts";
 import type { DevicesListed, SettingsPage } from "./state.ts";
 import { notifies, setNotificationsWanted, useNotificationSetting, type NotificationSetting } from "./system-notifications.ts";
-import { TERMINAL_FONT_SIZES, useTerminalFontSize } from "./terminal-font.ts";
+import {
+  cursorStyleLabels,
+  resetTerminalSettings,
+  setCopyOnSelect,
+  setTerminalSettings,
+  TERMINAL_FONT_SIZES,
+  TERMINAL_FONT_WEIGHTS_BOLD,
+  TERMINAL_LETTER_SPACINGS,
+  TERMINAL_LINE_HEIGHTS,
+  TERMINAL_SCROLLBACKS,
+  terminalFontList,
+  useTerminalSettings,
+  type TerminalCursorStyle,
+} from "./terminal-settings.ts";
 import { themeLabels, useTheme } from "./theme.ts";
-import { setCopyOnSelect, useCopyOnSelect } from "./terminal-settings.ts";
 import { usePulsesOn } from "./pulses.ts";
 import { useTimestampsShown } from "./timestamps.ts";
 import { setTypingAids, useTypingAids, type TypingAids } from "./typing-aids.ts";
@@ -477,17 +489,54 @@ function SendingSettings() {
   );
 }
 
+const TERMINAL_FONT_PREVIEW = "Sample text — 0O 1l {} () <>";
+
+const trimmed = (value: number) => value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+
 function TerminalSettings() {
-  const copyOnSelect = useCopyOnSelect();
-  const [fontSize, setFontSize] = useTerminalFontSize();
+  const settings = useTerminalSettings();
+  const [fontTyped, setFontTyped] = useState(settings.fontFamily);
+  useEffect(() => setFontTyped(settings.fontFamily), [settings.fontFamily]);
+  const fontRefused = fontTyped.trim() !== "" && !isFontFamily(fontTyped);
+  const typeFont = (typed: string) => {
+    setFontTyped(typed);
+    if (typed.trim() === "" || isFontFamily(typed)) setTerminalSettings({ fontFamily: typed });
+  };
   return (
     <>
       <h3>Terminal</h3>
       <p className="hint">Remembered in this browser.</p>
       <div className="terminal-settings">
+        <label data-hint={hints.terminalFontFamily}>
+          Font
+          <input
+            type="text"
+            className="terminal-font"
+            value={fontTyped}
+            placeholder="The usual Nerd Fonts"
+            spellCheck={false}
+            aria-invalid={fontRefused}
+            onChange={(event) => typeFont(event.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="link"
+          disabled={settings.fontFamily === ""}
+          onClick={() => {
+            setFontTyped("");
+            setTerminalSettings({ fontFamily: "" });
+          }}
+        >
+          Reset font
+        </button>
+        <div className="terminal-font-preview" aria-hidden="true" style={{ fontFamily: terminalFontList(settings.fontFamily) }}>
+          {TERMINAL_FONT_PREVIEW}
+        </div>
+        {fontRefused && <p className="hint terminal-font-refused">A font name takes letters, digits, spaces, quotes, commas, dots and hyphens.</p>}
         <label data-hint={hints.terminalFontSize}>
           Font size
-          <select value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))}>
+          <select value={settings.fontSize} onChange={(event) => setTerminalSettings({ fontSize: Number(event.target.value) })}>
             {TERMINAL_FONT_SIZES.map((size) => (
               <option key={size} value={size}>
                 {size} px
@@ -495,10 +544,71 @@ function TerminalSettings() {
             ))}
           </select>
         </label>
+        <label data-hint={hints.terminalLineHeight}>
+          Line height
+          <input
+            type="range"
+            min={TERMINAL_LINE_HEIGHTS.min}
+            max={TERMINAL_LINE_HEIGHTS.max}
+            step={TERMINAL_LINE_HEIGHTS.step}
+            value={settings.lineHeight}
+            onChange={(event) => setTerminalSettings({ lineHeight: Number(event.target.value) })}
+          />
+          <span className="terminal-setting-value" aria-hidden="true">{trimmed(settings.lineHeight)}×</span>
+        </label>
+        <label data-hint={hints.terminalLetterSpacing}>
+          Letter spacing
+          <input
+            type="range"
+            min={TERMINAL_LETTER_SPACINGS.min}
+            max={TERMINAL_LETTER_SPACINGS.max}
+            step={TERMINAL_LETTER_SPACINGS.step}
+            value={settings.letterSpacing}
+            onChange={(event) => setTerminalSettings({ letterSpacing: Number(event.target.value) })}
+          />
+          <span className="terminal-setting-value" aria-hidden="true">{trimmed(settings.letterSpacing)} px</span>
+        </label>
+        <label data-hint={hints.terminalCursorStyle}>
+          Cursor style
+          <select value={settings.cursorStyle} onChange={(event) => setTerminalSettings({ cursorStyle: event.target.value as TerminalCursorStyle })}>
+            {Object.entries(cursorStyleLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label data-hint={hints.terminalCursorBlink}>
+          <input type="checkbox" checked={settings.cursorBlink} onChange={(event) => setTerminalSettings({ cursorBlink: event.target.checked })} />
+          Cursor blink
+        </label>
+        <label data-hint={hints.terminalFontWeightBold}>
+          Bold weight
+          <select value={settings.fontWeightBold} onChange={(event) => setTerminalSettings({ fontWeightBold: Number(event.target.value) })}>
+            {TERMINAL_FONT_WEIGHTS_BOLD.map((weight) => (
+              <option key={weight} value={weight}>
+                {weight}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label data-hint={hints.terminalScrollback}>
+          Scrollback
+          <select value={settings.scrollback} onChange={(event) => setTerminalSettings({ scrollback: Number(event.target.value) })}>
+            {TERMINAL_SCROLLBACKS.map((lines) => (
+              <option key={lines} value={lines}>
+                {lines.toLocaleString("en-US")} lines
+              </option>
+            ))}
+          </select>
+        </label>
         <label data-hint={hints.copyOnSelect}>
-          <input type="checkbox" checked={copyOnSelect} onChange={(event) => setCopyOnSelect(event.target.checked)} />
+          <input type="checkbox" checked={settings.copyOnSelect} onChange={(event) => setCopyOnSelect(event.target.checked)} />
           Copy on select
         </label>
+        <button type="button" className="link" onClick={resetTerminalSettings}>
+          Reset to defaults
+        </button>
       </div>
     </>
   );

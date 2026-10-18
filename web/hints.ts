@@ -44,6 +44,14 @@ export const hints = {
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",
   terminalLink: (click: string) => `${click} to open the link in your browser.`,
   terminalFontSize: "Font size in terminal splits and tabs (11 to 24 px). ⌘+ and ⌘− step it when a terminal is focused.",
+  terminalFontFamily:
+    "Any font installed on this machine, by name, e.g. JetBrains Mono. Terminals and the statusline switch to it at once, with the usual fonts as fallback. Empty, or a font this machine lacks, shows the usual font.",
+  terminalLineHeight: "Height of a terminal line, as a multiple of the font size.",
+  terminalLetterSpacing: "Extra space between terminal characters, in pixels.",
+  terminalCursorStyle: "The shape of the terminal cursor.",
+  terminalCursorBlink: "Whether the terminal cursor blinks.",
+  terminalFontWeightBold: "How heavy bold text in terminals is.",
+  terminalScrollback: "How many lines a terminal keeps after they scroll off the top.",
   connectedDevicesInSidebar: "While devices are connected, a line at the bottom of the sidebar says how many; click it to see which. Remembered in this browser.",
   connectedDevices: (names: string[]) => `Connected now: ${names.join(", ")}. Click to see all devices in Settings → Devices.`,
   askAndUpdateReview:

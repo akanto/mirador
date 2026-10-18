@@ -17,10 +17,9 @@ import { HIGHLIGHT_LIMIT } from "./terminal-find.ts";
 import { TerminalFind } from "./TerminalFind.tsx";
 import { terminalCopyKey, terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { openLinksIn } from "./terminal-links.ts";
-import { TERMINAL_FONT, terminalTheme } from "./terminal-look.ts";
-import { subscribeTerminalFontSize, terminalFontSize } from "./terminal-font.ts";
+import { terminalTheme } from "./terminal-look.ts";
 import { useClosesWhileFocused } from "./desktop-close.ts";
-import { copiesOnSelect } from "./terminal-settings.ts";
+import { copiesOnSelect, subscribeTerminalSettings, terminalFontList, terminalSettings } from "./terminal-settings.ts";
 import { scrollWithAFinger } from "./terminal-touch.ts";
 import { wheelPastTheScrollAreaInFullScreenPrograms } from "./terminal-wheel.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
@@ -191,7 +190,19 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
 
   useEffect(() => {
     // Find highlights its matches with decorations, which xterm.js 6 still counts as proposed API.
-    const view = new Terminal({ fontFamily: TERMINAL_FONT, fontSize: terminalFontSize(), cursorBlink: true, scrollback: 5_000, theme: terminalTheme, allowProposedApi: true });
+    const { fontFamily, fontSize, lineHeight, letterSpacing, cursorStyle, cursorBlink, fontWeightBold, scrollback } = terminalSettings();
+    const view = new Terminal({
+      fontFamily: terminalFontList(fontFamily),
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      cursorStyle,
+      cursorBlink,
+      fontWeightBold,
+      scrollback,
+      theme: terminalTheme,
+      allowProposedApi: true,
+    });
     const fit = new FitAddon();
     const searcher = new SearchAddon({ highlightLimit: HIGHLIGHT_LIMIT });
     const screenElement = screen.current!;
@@ -201,9 +212,21 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       cancelAnimationFrame(pendingFit);
       pendingFit = requestAnimationFrame(fitIfShown);
     };
-    const applyFontSize = () => {
-      view.options.fontSize = terminalFontSize();
-      fitIfShown();
+    const refitOnceFontsAreReady = () => {
+      const font = `${view.options.fontSize}px ${view.options.fontFamily}`;
+      void document.fonts.load(font, "M").then(fitIfShown, fitIfShown);
+    };
+    const applyTerminalSettings = () => {
+      const next = terminalSettings();
+      view.options.fontFamily = terminalFontList(next.fontFamily);
+      view.options.fontSize = next.fontSize;
+      view.options.lineHeight = next.lineHeight;
+      view.options.letterSpacing = next.letterSpacing;
+      view.options.cursorStyle = next.cursorStyle;
+      view.options.cursorBlink = next.cursorBlink;
+      view.options.fontWeightBold = next.fontWeightBold;
+      view.options.scrollback = next.scrollback;
+      refitOnceFontsAreReady();
     };
     view.loadAddon(fit);
     view.loadAddon(searcher);
@@ -243,9 +266,10 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     const resized = view.onResize(({ cols, rows }) => connection.send({ type: "terminal.resize", terminalId, columns: cols, rows }));
     const observer = new ResizeObserver(fitNextFrame);
     observer.observe(screenElement);
-    const stopFontListening = subscribeTerminalFontSize(applyFontSize);
+    const stopSettingsListening = subscribeTerminalSettings(applyTerminalSettings);
 
     fitIfShown();
+    refitOnceFontsAreReady();
     connection.send({ type: "terminal.resize", terminalId, columns: view.cols, rows: view.rows });
     connection.send({ type: "terminal.replay", terminalId });
     terminal.current = view;
@@ -258,7 +282,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       stopWheelingPastTheScrollArea();
       cancelAnimationFrame(pendingFit);
       observer.disconnect();
-      stopFontListening();
+      stopSettingsListening();
       typed.dispose();
       resized.dispose();
       stopListening();

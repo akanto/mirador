@@ -15,7 +15,8 @@ test.afterAll(async () => {
 
 const fontScale = (page: Page) => page.evaluate(() => document.documentElement.style.getPropertyValue("--font-scale"));
 const storedScale = (page: Page) => page.evaluate(() => localStorage.getItem("mirador-font-scale"));
-const storedTerminalFontSize = (page: Page) => page.evaluate(() => localStorage.getItem("mirador-terminal-font-size"));
+const storedTerminalFontSize = (page: Page) =>
+  page.evaluate(() => String(JSON.parse(localStorage.getItem("mirador-terminal-settings") ?? "{}").fontSize));
 const headingFontSize = (page: Page) =>
   page.locator(".modal.settings h3").first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
 

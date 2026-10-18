@@ -33,7 +33,7 @@ import { SessionsDialog } from "./Sessions.tsx";
 import { SettingsDialog } from "./Settings.tsx";
 import { shortcutKeys, typingStateOf, type ShortcutCommand } from "./shortcuts.ts";
 import { setFontScale, stepFontScale } from "./font-scale.ts";
-import { resetTerminalFontSize, stepTerminalFontSize } from "./terminal-font.ts";
+import { resetTerminalFontSize, stepTerminalFontSize } from "./terminal-settings.ts";
 import { Sidebar } from "./Sidebar.tsx";
 import { Splitter } from "./Splitter.tsx";
 import { initialStateFor, reducer, selectedOpen, type AppAction, type AppState, type OpenConversation } from "./state.ts";

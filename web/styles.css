@@ -4779,6 +4779,34 @@ button.arrangement.chosen {
   align-items: center;
 }
 
+.terminal-settings input[type="text"] {
+  width: 18em;
+  max-width: 100%;
+}
+
+.terminal-settings input[type="text"][aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.terminal-settings input[type="range"] {
+  width: 120px;
+}
+
+.terminal-setting-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+.terminal-font-preview {
+  flex-basis: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
 .shell-colours {
   display: flex;
   flex-basis: 100%;
@@ -4799,7 +4827,8 @@ button.arrangement.chosen {
   border-color: var(--danger);
 }
 
-.shell-font-refused {
+.shell-font-refused,
+.terminal-font-refused {
   flex-basis: 100%;
   margin: 0;
 }

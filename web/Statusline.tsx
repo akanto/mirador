@@ -5,7 +5,8 @@ import { parseAnsi, plainTextOf, type AnsiRun } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { readableOn } from "./readable-color.ts";
-import { drawsShapesOnly, statuslineLooks, TERMINAL_FONT, type StatuslineLook } from "./terminal-look.ts";
+import { drawsShapesOnly, statuslineLooks, type StatuslineLook } from "./terminal-look.ts";
+import { terminalFontList, useTerminalSettings } from "./terminal-settings.ts";
 import { useShownTheme } from "./theme.ts";
 import {
   compactTokenCount,
@@ -85,24 +86,26 @@ function usePrefersCommand() {
   return [prefersCommand, choose] as const;
 }
 
-function terminalCellWidth() {
+function terminalCellWidth(fontFamily: string) {
   const context = document.createElement("canvas").getContext("2d");
   if (!context) return 7.2;
-  context.font = `${TERMINAL_FONT_SIZE}px ${TERMINAL_FONT}`;
+  context.font = `${TERMINAL_FONT_SIZE}px ${fontFamily}`;
   return context.measureText("M".repeat(100)).width / 100;
 }
 
 /** How many terminal columns fit the element, one short so that rounding in the terminal never wraps the last glyph. */
-function useColumns(element: RefObject<HTMLElement | null>) {
+function useColumns(element: RefObject<HTMLElement | null>, fontFamily: string) {
   const [columns, setColumns] = useState<number | null>(null);
   useEffect(() => {
     const target = element.current;
     if (!target) return;
-    const cellWidth = terminalCellWidth();
-    const observer = new ResizeObserver(() => setColumns(Math.max(1, Math.floor((target.clientWidth - 2 * TERMINAL_PADDING_X) / cellWidth) - 1)));
+    const measure = () => setColumns(Math.max(1, Math.floor((target.clientWidth - 2 * TERMINAL_PADDING_X) / terminalCellWidth(fontFamily)) - 1));
+    measure();
+    void document.fonts.load(`${TERMINAL_FONT_SIZE}px ${fontFamily}`, "M").then(measure, () => {});
+    const observer = new ResizeObserver(measure);
     observer.observe(target);
     return () => observer.disconnect();
-  }, []);
+  }, [fontFamily]);
   return columns;
 }
 
@@ -149,7 +152,7 @@ function cssOf({ text, style }: AnsiRun, look: StatuslineLook): CSSProperties {
 }
 
 /** The command's output drawn as a terminal would, in the app's theme. */
-function TerminalText({ text }: { text: string }) {
+function TerminalText({ text, fontFamily }: { text: string; fontFamily: string }) {
   const lines = useMemo(() => parseAnsi(text), [text]);
   const look = statuslineLooks[useShownTheme()];
   const terminalColors = { "--terminal-background": look.background, "--terminal-foreground": look.foreground } as CSSProperties;
@@ -158,7 +161,7 @@ function TerminalText({ text }: { text: string }) {
       className="statusline-terminal"
       role="img"
       aria-label={plainTextOf(lines).trim()}
-      style={{ fontFamily: TERMINAL_FONT, fontSize: TERMINAL_FONT_SIZE, paddingInline: TERMINAL_PADDING_X, ...terminalColors }}
+      style={{ fontFamily, fontSize: TERMINAL_FONT_SIZE, paddingInline: TERMINAL_PADDING_X, ...terminalColors }}
     >
       {lines.map((runs, lineIndex) => (
         <div key={lineIndex} className="statusline-line">
@@ -219,8 +222,10 @@ function BuiltInStatusline({
 
 export function Statusline({ conversation, profiles }: { conversation: Conversation; profiles: Profile[] }) {
   const [prefersCommand, setPrefersCommand] = usePrefersCommand();
+  const { fontFamily } = useTerminalSettings();
+  const terminalFont = terminalFontList(fontFamily);
   const content = useRef<HTMLDivElement>(null);
-  const columns = useColumns(content);
+  const columns = useColumns(content, terminalFont);
   const render = useStatuslineRender(conversation, columns, prefersCommand);
   const commandOutput = prefersCommand ? (render?.output ?? null) : null;
 
@@ -228,7 +233,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
     <section className="statusline" aria-label="Statusline">
       <div className="statusline-content" ref={content}>
         {commandOutput !== null ? (
-          <TerminalText text={commandOutput} />
+          <TerminalText text={commandOutput} fontFamily={terminalFont} />
         ) : (
           <BuiltInStatusline conversation={conversation} profiles={profiles} gitBranch={render?.gitBranch ?? null} quotas={render?.quotas ?? null} />
         )}
