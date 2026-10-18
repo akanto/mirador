@@ -206,6 +206,7 @@ export const hints = {
   canvasChecklist:
     "The steps of the agent's work, ticked as it finishes them. You can tick any of them too: the agent hears of your ticks with your next message.",
   checklistClose: "Back to what the canvas showed. The Checklist button opens it again.",
+  checklistDismiss: "Take the checklist off the canvas for good. It stays gone until the agent publishes a new one.",
   checklistOwner: { user: "Yours to do.", both: "For you and the agent to do together." },
   checklistPlan: "The agent's own to-do list, as it last updated it. Only the agent ticks these.",
   changesScope: {

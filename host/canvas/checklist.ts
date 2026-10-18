@@ -136,6 +136,9 @@ const withItems = (checklist: Checklist, change: (item: ChecklistItem) => Checkl
 
 export const tickedByUser = (checklist: Checklist, itemId: string, done: boolean) => withItems(checklist, (item) => (item.id === itemId ? { ...item, done } : item));
 
+/** The user's dismissal of the checklist: its items and ticks stand, but it no longer shows on the canvas on its own. */
+export const dismissedByUser = (checklist: Checklist): Checklist => ({ ...checklist, dismissed: true });
+
 export const unheardTicks = (checklist: Checklist): UserTick[] =>
   checklistItems(checklist)
     .filter((item) => item.done !== item.heardDone)

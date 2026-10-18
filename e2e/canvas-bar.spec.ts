@@ -104,6 +104,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
     await expect(bar(page).locator(".canvas-title")).toHaveText("Release");
     await more(page).click();
     await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Checklist 0/1" })).toHaveAttribute("aria-checked", "true");
+    await expect(moreMenu(page).getByRole("menuitem", { name: "Dismiss" }), "with no room for the header's Dismiss button, More holds it").toBeVisible();
     await page.keyboard.press("Escape");
     await expect(bar(page).getByRole("button", { name: "Close the checklist" }), "the checklist's own close button never folds").toBeVisible();
     expect(await barState(page)).toMatchObject({ fold: 3, fits: true });

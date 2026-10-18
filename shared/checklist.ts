@@ -23,6 +23,8 @@ export interface Checklist {
   sections: ChecklistSection[];
   /** The agent's latest change in place: the items it ticked, reworded or added, which flash once. */
   agentEdit?: { at: number; items: string[] };
+  /** The user took it off the canvas: it is no longer the conversation's checklist, and only a new publishing brings one back. */
+  dismissed?: boolean;
 }
 
 export const checklistItems = (checklist: Checklist) => checklist.sections.flatMap((section) => section.items);

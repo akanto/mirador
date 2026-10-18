@@ -158,6 +158,8 @@ export type ClientMessage =
   | { type: "canvas.report"; itemId: string; errors: string[] }
   /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
   | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
+  /** The user takes the checklist off the canvas; it stays gone until the agent publishes a new one. */
+  | { type: "checklist.dismiss"; itemId: string }
   /** A page the agent showed, as a file of its own, for the user to copy or download. */
   | { type: "canvas.export"; requestId: string; itemId: string; libraries: PageLibraries }
   | { type: "canvas.save-to-project"; requestId: string; itemId: string; path: string; libraries: PageLibraries; replace: boolean }

@@ -12,9 +12,11 @@ const AGENT_EDIT_FLASH_MS = 2000;
 
 const ownerLabels = { user: "you", both: "both" };
 
-/** The conversation's checklist is the newest the agent published; the ones before it were replaced. */
-export const currentChecklist = (items: CanvasItem[]): ChecklistCanvasItem | undefined =>
-  items.filter((item): item is ChecklistCanvasItem => item.checklist !== undefined).sort((a, b) => b.createdAt - a.createdAt)[0];
+/** The conversation's checklist is the newest the agent published and has not dismissed; a new publishing brings one back. */
+export const currentChecklist = (items: CanvasItem[]): ChecklistCanvasItem | undefined => {
+  const newest = items.filter((item): item is ChecklistCanvasItem => item.checklist !== undefined).sort((a, b) => b.createdAt - a.createdAt)[0];
+  return newest && !newest.checklist.dismissed ? newest : undefined;
+};
 
 const planAsItems = (plan: PlanEntry[]) => plan.map((entry) => ({ done: entry.status === "completed" }));
 

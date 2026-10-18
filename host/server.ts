@@ -833,6 +833,8 @@ export function startServer(services: HostServices) {
         return canvas.reportRender(message.itemId, { errors: message.errors });
       case "checklist.tick":
         return canvas.tickChecklistItem(message.itemId, message.checklistItemId, message.done);
+      case "checklist.dismiss":
+        return canvas.dismissChecklist(message.itemId);
       case "canvas.export":
         canvas
           .exportPage(message.itemId, message.libraries)

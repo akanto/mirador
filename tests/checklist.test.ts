@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   applyChecklistEdit,
   carriedOverDone,
+  dismissedByUser,
   heardOf,
   newChecklist,
   noteOfTicks,
@@ -149,6 +150,16 @@ describe("the user's ticks", () => {
     const told = unheardTicks(ticked);
     const tickedSince = tickedByUser(ticked, "build", true);
     expect(unheardTicks(heardOf(tickedSince, told))).toEqual([{ id: "build", text: "Build the app", done: true }]);
+  });
+});
+
+describe("dismissedByUser", () => {
+  test("marks the checklist dismissed, keeping its sections and ticks; a checklist published after it is a fresh one", () => {
+    const ticked = tickedByUser(published(), "publish", true);
+    const dismissed = dismissedByUser(ticked);
+    expect(dismissed.dismissed).toBe(true);
+    expect(states(dismissed)).toEqual(states(ticked));
+    expect(newChecklist(release, dismissed).dismissed).toBeUndefined();
   });
 });
 

@@ -12,6 +12,7 @@ import { saveIntoWorkspace } from "./save-to-project.ts";
 import {
   applyChecklistEdit,
   CHECKLIST_NOT_CHANGED,
+  dismissedByUser,
   heardOf,
   newChecklist,
   noteOfTicks,
@@ -210,6 +211,13 @@ export class CanvasService {
     this.save({ ...item, checklist: tickedByUser(item.checklist, checklistItemId, done) });
   }
 
+  /** The user takes the checklist off the canvas for good; only publishing a new one brings a checklist back. */
+  dismissChecklist(itemId: string) {
+    const item = this.store.findCanvasItem(itemId);
+    if (!item?.checklist) throw new Error("Unknown checklist.");
+    this.save({ ...item, checklist: dismissedByUser(item.checklist) });
+  }
+
   checklistNote(conversationId: string): ChecklistNote | null {
     const current = this.currentChecklist(conversationId);
     const ticks = current ? unheardTicks(current.checklist) : [];
@@ -373,8 +381,10 @@ export class CanvasService {
     throw new ReviewProblems([problem], REVIEW_NOT_CHANGED);
   }
 
+  /** The conversation's checklist is its newest published one; a dismissed one leaves the conversation without one until it is published again. */
   private currentChecklist(conversationId: string) {
-    return this.store.listCanvasItems(conversationId).findLast((item) => item.checklist) as ChecklistCanvasItem | undefined;
+    const newest = this.store.listCanvasItems(conversationId).findLast((item) => item.checklist) as ChecklistCanvasItem | undefined;
+    return newest && !newest.checklist.dismissed ? newest : undefined;
   }
 
   private latestReviewOf(conversationId: string, change: Review) {

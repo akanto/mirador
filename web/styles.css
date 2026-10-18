@@ -2734,8 +2734,13 @@ button.edits-waiting {
   padding: 2px 6px;
 }
 
-.canvas-header button.checklist-close {
+.canvas-header button.checklist-close,
+.canvas-header button.checklist-dismiss {
   flex-shrink: 0;
+}
+
+.canvas-header button.checklist-dismiss {
+  font-size: calc(12px * var(--font-scale));
 }
 
 .changes-toggle,
@@ -2771,7 +2776,7 @@ button.edits-waiting {
 .canvas-header[data-fold="0"] .canvas-more,
 .canvas-header:not([data-fold="0"]) :is(.history-toggle, .canvas-clear, .page-export),
 .canvas-header:is([data-fold="2"], [data-fold="3"]) :is(.canvas-nav, .changes-toggle),
-.canvas-header[data-fold="3"] .checklist-toggle {
+.canvas-header[data-fold="3"] :is(.checklist-toggle, .checklist-dismiss) {
   display: none;
 }
 

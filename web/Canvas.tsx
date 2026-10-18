@@ -680,6 +680,10 @@ export function CanvasPanel({
     edit.setAside();
     placeForReview(undefined);
   };
+  const dismissChecklist = () => {
+    setTab(null);
+    if (checklist) connection.send({ type: "checklist.dismiss", itemId: checklist.id });
+  };
   const toggleHistory = () => setHistoryOpen((open) => !open);
   const shownPage = !tab && selected?.kind === "show" ? selected : undefined;
   const pageExport = usePageExport(shownPage, shownPageFrame);
@@ -695,6 +699,7 @@ export function CanvasPanel({
         ]
       : []),
     ...(foldLevel >= FOLDS.checklist && checklistCountText ? [{ label: checklistCountText, checked: checklistOpen, onChoose: () => toggleTab("checklist") }] : []),
+    ...(foldLevel >= FOLDS.checklist && checklistOpen && checklist ? [{ label: "Dismiss", onChoose: dismissChecklist }] : []),
     ...(foldLevel >= FOLDS.leastUsed
       ? [
           { label: `History (${pages.length})`, checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
@@ -722,6 +727,11 @@ export function CanvasPanel({
             <button type="button" className="icon checklist-close" aria-label="Close the checklist" data-hint={hints.checklistClose} onClick={() => setTab(null)}>
               ×
             </button>
+            {checklist && (
+              <button type="button" className="icon checklist-dismiss" aria-label="Dismiss the checklist" data-hint={hints.checklistDismiss} onClick={dismissChecklist}>
+                Dismiss
+              </button>
+            )}
           </>
         ) : edit.shown ? (
           <>
