@@ -4447,7 +4447,7 @@ button.shell-more:hover {
   display: flex;
   flex: 1;
   min-height: 0;
-  background: #1b1c22;
+  background: var(--terminal-background, #1b1c22);
 }
 
 .terminal-tab-layouts {
@@ -4539,7 +4539,7 @@ button.shell-more:hover {
   min-width: 0;
   min-height: 0;
   padding: 6px 4px 4px 10px;
-  background: #1b1c22;
+  background: var(--terminal-background, #1b1c22);
 }
 
 .terminal-copy-note {

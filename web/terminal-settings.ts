@@ -1,11 +1,14 @@
 import { useSyncExternalStore } from "react";
-import { TERMINAL_FONT } from "./terminal-look.ts";
+import { TERMINAL_FONT, terminalPresetLabels, terminalPresetTheme, type TerminalPreset } from "./terminal-look.ts";
 import { isFontFamily } from "./shell-look.ts";
+
+export { type TerminalPreset, terminalPresetLabels, terminalPresetTheme } from "./terminal-look.ts";
 
 export type TerminalCursorStyle = "block" | "underline" | "bar";
 
 export const cursorStyleLabels: Record<TerminalCursorStyle, string> = { block: "Block", underline: "Underline", bar: "Bar" };
 
+export const TERMINAL_PRESETS: readonly TerminalPreset[] = ["default", "dracula", "solarized-dark", "nord", "monokai"];
 export const TERMINAL_FONT_SIZES = Array.from({ length: 14 }, (_, index) => 11 + index);
 export const TERMINAL_LINE_HEIGHTS = { min: 1, max: 2, step: 0.05 };
 export const TERMINAL_LETTER_SPACINGS = { min: 0, max: 5, step: 0.5 };
@@ -13,6 +16,7 @@ export const TERMINAL_FONT_WEIGHTS_BOLD = [400, 500, 600, 700, 800, 900];
 export const TERMINAL_SCROLLBACKS = [1_000, 5_000, 10_000, 50_000, 100_000];
 
 export interface TerminalSettings {
+  preset: TerminalPreset;
   /** A font named by the user, empty for the usual Nerd Font list. */
   fontFamily: string;
   fontSize: number;
@@ -28,6 +32,7 @@ export interface TerminalSettings {
 }
 
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
+  preset: "default",
   fontFamily: "",
   fontSize: 12,
   lineHeight: 1,
@@ -51,9 +56,12 @@ const booleanOf = (value: unknown, fallback: boolean) => (typeof value === "bool
 
 const oneOf = <T>(allowed: readonly T[], value: unknown, fallback: T) => (allowed.includes(value as T) ? (value as T) : fallback);
 
+const presetOf = (value: unknown): TerminalPreset => (value === "mirador" ? "default" : oneOf(TERMINAL_PRESETS, value, DEFAULT_TERMINAL_SETTINGS.preset));
+
 const fontOf = (value: unknown) => (isFontFamily(value) ? value.trim() : DEFAULT_TERMINAL_SETTINGS.fontFamily);
 
 const normalise = (part: Partial<TerminalSettings>): TerminalSettings => ({
+  preset: presetOf(part.preset),
   fontFamily: fontOf(part.fontFamily),
   fontSize: numberWithin(part.fontSize, { min: 11, max: 24 }, DEFAULT_TERMINAL_SETTINGS.fontSize, true),
   lineHeight: numberWithin(part.lineHeight, TERMINAL_LINE_HEIGHTS, DEFAULT_TERMINAL_SETTINGS.lineHeight, false),

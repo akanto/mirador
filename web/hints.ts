@@ -43,6 +43,7 @@ export const hints = {
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",
   terminalLink: (click: string) => `${click} to open the link in your browser.`,
+  terminalPreset: "Built-in colours for terminals: background, foreground and ANSI palette.",
   terminalFontSize: "Font size in terminal splits and tabs (11 to 24 px). ⌘+ and ⌘− step it when a terminal is focused.",
   terminalFontFamily:
     "Any font installed on this machine, by name, e.g. JetBrains Mono. Terminals and the statusline switch to it at once, with the usual fonts as fallback. Empty, or a font this machine lacks, shows the usual font.",

@@ -10,9 +10,13 @@ import {
   stepTerminalFontSize,
   subscribeTerminalSettings,
   TERMINAL_FONT_SIZES,
+  TERMINAL_PRESETS,
   terminalFontList,
+  terminalPresetLabels,
+  terminalPresetTheme,
   terminalSettings,
   type TerminalCursorStyle,
+  type TerminalPreset,
 } from "../web/terminal-settings.ts";
 import { TERMINAL_FONT } from "../web/terminal-look.ts";
 
@@ -43,9 +47,10 @@ describe("terminal-settings", () => {
     expect(TERMINAL_FONT_SIZES).toEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
   });
 
-  test("defaults to the usual font at 12 px with the stock xterm look", () => {
+  test("defaults to the usual font at 12 px with the stock xterm look and mirador preset", () => {
     expect(terminalSettings()).toEqual(DEFAULT_TERMINAL_SETTINGS);
     expect(DEFAULT_TERMINAL_SETTINGS).toEqual({
+      preset: "default",
       fontFamily: "",
       fontSize: 12,
       lineHeight: 1,
@@ -57,6 +62,41 @@ describe("terminal-settings", () => {
       copyOnSelect: false,
     });
     expect(JSON.parse(storage.get(STORAGE_KEY)!)).toEqual(DEFAULT_TERMINAL_SETTINGS);
+  });
+
+  test("built-in presets list well-known color themes with labels and full themes", () => {
+    expect(TERMINAL_PRESETS).toEqual(["default", "dracula", "solarized-dark", "nord", "monokai"]);
+    expect(terminalPresetLabels).toEqual({
+      default: "Mirador",
+      dracula: "Dracula",
+      "solarized-dark": "Solarized Dark",
+      nord: "Nord",
+      monokai: "Monokai",
+    });
+
+    for (const preset of TERMINAL_PRESETS) {
+      const theme = terminalPresetTheme(preset);
+      expect(theme.background).toBeTruthy();
+      expect(theme.foreground).toBeTruthy();
+      expect(theme.cursor).toBeTruthy();
+      expect(theme.black).toBeTruthy();
+      expect(theme.red).toBeTruthy();
+      expect(theme.green).toBeTruthy();
+      expect(theme.yellow).toBeTruthy();
+      expect(theme.blue).toBeTruthy();
+      expect(theme.magenta).toBeTruthy();
+      expect(theme.cyan).toBeTruthy();
+      expect(theme.white).toBeTruthy();
+      expect(theme.brightBlack).toBeTruthy();
+      expect(theme.brightRed).toBeTruthy();
+      expect(theme.brightGreen).toBeTruthy();
+      expect(theme.brightYellow).toBeTruthy();
+      expect(theme.brightBlue).toBeTruthy();
+      expect(theme.brightMagenta).toBeTruthy();
+      expect(theme.brightCyan).toBeTruthy();
+      expect(theme.brightWhite).toBeTruthy();
+    }
+    expect(terminalPresetTheme("unknown" as TerminalPreset)).toBe(terminalPresetTheme("default"));
   });
 
   test("parseTerminalSettings falls back to the defaults for nothing saved, junk and partial objects", () => {
@@ -119,6 +159,26 @@ describe("terminal-settings", () => {
     expect(terminalSettings()).toMatchObject({ cursorStyle: "block", fontWeightBold: 700, scrollback: 5_000 });
   });
 
+  test("preset only takes the offered values and normalises mirador to default", () => {
+    setTerminalSettings({ preset: "dracula" });
+    expect(terminalSettings().preset).toBe("dracula");
+
+    setTerminalSettings({ preset: "mirador" as TerminalPreset });
+    expect(terminalSettings().preset).toBe("default");
+
+    setTerminalSettings({ preset: "nord" });
+    expect(terminalSettings().preset).toBe("nord");
+
+    setTerminalSettings({ preset: "solarized-dark" });
+    expect(terminalSettings().preset).toBe("solarized-dark");
+
+    setTerminalSettings({ preset: "monokai" });
+    expect(terminalSettings().preset).toBe("monokai");
+
+    setTerminalSettings({ preset: "rainbow" as TerminalPreset });
+    expect(terminalSettings().preset).toBe("default");
+  });
+
   test("stepTerminalFontSize steps single pixels and stays clamped", () => {
     setTerminalSettings({ fontSize: 12 });
     stepTerminalFontSize(1);
@@ -143,7 +203,7 @@ describe("terminal-settings", () => {
   });
 
   test("resetTerminalSettings restores every option", () => {
-    setTerminalSettings({ fontFamily: "Fira Code", cursorBlink: false, scrollback: 100_000, copyOnSelect: true });
+    setTerminalSettings({ preset: "dracula", fontFamily: "Fira Code", cursorBlink: false, scrollback: 100_000, copyOnSelect: true });
     resetTerminalSettings();
     expect(terminalSettings()).toEqual(DEFAULT_TERMINAL_SETTINGS);
   });

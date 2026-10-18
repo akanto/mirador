@@ -46,8 +46,10 @@ import {
   TERMINAL_LINE_HEIGHTS,
   TERMINAL_SCROLLBACKS,
   terminalFontList,
+  terminalPresetLabels,
   useTerminalSettings,
   type TerminalCursorStyle,
+  type TerminalPreset,
 } from "./terminal-settings.ts";
 import { themeLabels, useTheme } from "./theme.ts";
 import { usePulsesOn } from "./pulses.ts";
@@ -507,6 +509,16 @@ function TerminalSettings() {
       <h3>Terminal</h3>
       <p className="hint">Remembered in this browser.</p>
       <div className="terminal-settings">
+        <label data-hint={hints.terminalPreset}>
+          Colour preset
+          <select value={settings.preset} onChange={(event) => setTerminalSettings({ preset: event.target.value as TerminalPreset })}>
+            {Object.entries(terminalPresetLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label data-hint={hints.terminalFontFamily}>
           Font
           <input

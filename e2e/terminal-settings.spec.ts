@@ -22,6 +22,9 @@ const letterSpacingOf = async (page: Page) => parseFloat(await rowsStyle(page, "
 const lineHeightOf = async (page: Page) =>
   parseFloat(await page.locator(".terminal-pane .xterm-rows > div").first().evaluate((row) => getComputedStyle(row).lineHeight));
 
+const terminalBackgroundOf = async (page: Page) =>
+  page.locator(".terminal-pane .terminal-view").first().evaluate((view) => getComputedStyle(view).backgroundColor);
+
 const showTerminal = async (page: Page) => {
   const toggle = page.locator(".chat-header:visible").getByRole("button", { name: "Show terminal" });
   if (await toggle.count()) await toggle.click();
@@ -29,6 +32,7 @@ const showTerminal = async (page: Page) => {
 };
 
 const DEFAULTS = {
+  preset: "default",
   fontFamily: "",
   fontSize: 12,
   lineHeight: 1,
@@ -50,6 +54,8 @@ test("terminal settings change open terminals at once, survive a reload, and res
 
   await expect.poll(() => rowsStyle(page, "font-size")).toBe("12px");
   await expect.poll(() => rowsStyle(page, "font-family")).toContain("MesloLGS NF");
+  await expect.poll(() => terminalBackgroundOf(page)).toBe("rgb(27, 28, 34)");
+  await expect.poll(() => rowsStyle(page, "color")).toBe("rgb(212, 214, 222)");
 
   let spacingWithoutExtra = 0;
 
@@ -57,6 +63,14 @@ test("terminal settings change open terminals at once, survive a reload, and res
     const settings = await openSettings(page, "Terminal");
     const preview = settings.locator(".terminal-font-preview");
     await expect(preview).toHaveCSS("font-family", /MesloLGS NF/);
+
+    await settings.getByLabel("Colour preset").selectOption("nord");
+    await expect.poll(() => terminalBackgroundOf(page)).toBe("rgb(46, 52, 64)");
+    await expect.poll(() => rowsStyle(page, "color")).toBe("rgb(216, 222, 233)");
+
+    await settings.getByLabel("Colour preset").selectOption("dracula");
+    await expect.poll(() => terminalBackgroundOf(page)).toBe("rgb(40, 42, 54)");
+    await expect.poll(() => rowsStyle(page, "color")).toBe("rgb(248, 248, 242)");
 
     await settings.getByLabel("Font", { exact: true }).fill("JetBrains Mono");
     await expect(preview).toHaveCSS("font-family", /^"?JetBrains Mono/);
@@ -85,6 +99,7 @@ test("terminal settings change open terminals at once, survive a reload, and res
     await settings.getByRole("button", { name: "Close" }).click();
 
     await expect.poll(() => storedSettings(page)).toEqual({
+      preset: "dracula",
       fontFamily: "JetBrains Mono",
       fontSize: 16,
       lineHeight: 1.5,
@@ -115,6 +130,7 @@ test("terminal settings change open terminals at once, survive a reload, and res
     await page.reload();
     await showTerminal(page);
     const settings = await openSettings(page, "Terminal");
+    await expect(settings.getByLabel("Colour preset")).toHaveValue("dracula");
     await expect(settings.getByLabel("Font", { exact: true })).toHaveValue("JetBrains Mono");
     await expect(settings.getByLabel("Font size")).toHaveValue("16");
     await expect(settings.getByLabel("Line height")).toHaveValue("1.5");
@@ -128,12 +144,15 @@ test("terminal settings change open terminals at once, survive a reload, and res
     await expect.poll(() => rowsStyle(page, "font-family")).toContain("JetBrains Mono");
     await expect.poll(() => rowsStyle(page, "font-size")).toBe("16px");
     await expect.poll(() => letterSpacingOf(page)).toBeGreaterThan(spacingWithoutExtra + 1.5);
+    await expect.poll(() => terminalBackgroundOf(page)).toBe("rgb(40, 42, 54)");
+    await expect.poll(() => rowsStyle(page, "color")).toBe("rgb(248, 248, 242)");
   });
 
   await test.step("Reset to defaults puts every option, the saved object and the open terminal back", async () => {
     const spacingBeforeReset = await letterSpacingOf(page);
     const settings = await openSettings(page, "Terminal");
     await settings.getByRole("button", { name: "Reset to defaults" }).click();
+    await expect(settings.getByLabel("Colour preset")).toHaveValue("default");
     await expect(settings.getByLabel("Font", { exact: true })).toHaveValue("");
     await expect(settings.getByLabel("Font size")).toHaveValue("12");
     await expect(settings.getByLabel("Line height")).toHaveValue("1");
@@ -148,5 +167,7 @@ test("terminal settings change open terminals at once, survive a reload, and res
     await expect.poll(() => rowsStyle(page, "font-family")).toContain("MesloLGS NF");
     await expect.poll(() => rowsStyle(page, "font-size")).toBe("12px");
     await expect.poll(() => letterSpacingOf(page)).toBeLessThan(spacingBeforeReset - 1.5);
+    await expect.poll(() => terminalBackgroundOf(page)).toBe("rgb(27, 28, 34)");
+    await expect.poll(() => rowsStyle(page, "color")).toBe("rgb(212, 214, 222)");
   });
 });

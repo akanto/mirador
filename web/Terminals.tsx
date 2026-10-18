@@ -17,9 +17,15 @@ import { HIGHLIGHT_LIMIT } from "./terminal-find.ts";
 import { TerminalFind } from "./TerminalFind.tsx";
 import { terminalCopyKey, terminalKeyAction, type PaneCommand } from "./terminal-keys.ts";
 import { openLinksIn } from "./terminal-links.ts";
-import { terminalTheme } from "./terminal-look.ts";
 import { useClosesWhileFocused } from "./desktop-close.ts";
-import { copiesOnSelect, subscribeTerminalSettings, terminalFontList, terminalSettings } from "./terminal-settings.ts";
+import {
+  copiesOnSelect,
+  subscribeTerminalSettings,
+  terminalFontList,
+  terminalPresetTheme,
+  terminalSettings,
+  useTerminalSettings,
+} from "./terminal-settings.ts";
 import { scrollWithAFinger } from "./terminal-touch.ts";
 import { wheelPastTheScrollAreaInFullScreenPrograms } from "./terminal-wheel.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
@@ -190,7 +196,8 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
 
   useEffect(() => {
     // Find highlights its matches with decorations, which xterm.js 6 still counts as proposed API.
-    const { fontFamily, fontSize, lineHeight, letterSpacing, cursorStyle, cursorBlink, fontWeightBold, scrollback } = terminalSettings();
+    const { fontFamily, fontSize, lineHeight, letterSpacing, cursorStyle, cursorBlink, fontWeightBold, scrollback, preset } = terminalSettings();
+    const theme = terminalPresetTheme(preset);
     const view = new Terminal({
       fontFamily: terminalFontList(fontFamily),
       fontSize,
@@ -200,7 +207,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       cursorBlink,
       fontWeightBold,
       scrollback,
-      theme: terminalTheme,
+      theme,
       allowProposedApi: true,
     });
     const fit = new FitAddon();
@@ -218,6 +225,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
     };
     const applyTerminalSettings = () => {
       const next = terminalSettings();
+      const nextTheme = terminalPresetTheme(next.preset);
       view.options.fontFamily = terminalFontList(next.fontFamily);
       view.options.fontSize = next.fontSize;
       view.options.lineHeight = next.lineHeight;
@@ -226,6 +234,8 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       view.options.cursorBlink = next.cursorBlink;
       view.options.fontWeightBold = next.fontWeightBold;
       view.options.scrollback = next.scrollback;
+      view.options.theme = nextTheme;
+      if (viewElement.current) viewElement.current.style.backgroundColor = nextTheme.background ?? "";
       refitOnceFontsAreReady();
     };
     view.loadAddon(fit);
@@ -449,6 +459,8 @@ interface TerminalPaneProps {
 }
 
 export function TerminalPane({ conversationId, workspace, status, onHide }: TerminalPaneProps) {
+  const { preset } = useTerminalSettings();
+  const theme = terminalPresetTheme(preset);
   const { tabs, opened, open, busy, opening } = useConversationTerminals(conversationId, status);
   const [activeTabId, setActiveTabId] = useState(() => lastActiveTabs.get(conversationId) ?? null);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
@@ -570,7 +582,11 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
   const canSplit = focused !== undefined && terminalIds.length < MAX_TERMINALS_PER_TAB;
 
   return (
-    <section className="terminal-pane" aria-label={`Terminals in ${workspace.name}`}>
+    <section
+      className="terminal-pane"
+      aria-label={`Terminals in ${workspace.name}`}
+      style={{ "--terminal-background": theme.background } as CSSProperties}
+    >
       <header className="terminal-bar" data-pane-bar>
         <PaneGrip pane="terminals" />
         <div className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
