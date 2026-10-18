@@ -4,7 +4,7 @@
  * Electrobun's <prefix>-update.json, the app's archive, and a patch from each of the last releases that carry update
  * files. Usage: update-files.ts <dist>
  * On a Mac it packs the signed, stapled dist/signing/Mirador.app again, as Electrobun packs its archive before signing.
- * Each build's patches, one build to an update.json, are made in a process of its own, all at once.
+ * Each build's patches, one build to an update.json, are made in a process of its own, one build after another.
  * The Linux and Windows archives are Electrobun's own, which `make linux` and `make release` copy into dist/.
  */
 import { execFileSync, spawnSync } from "node:child_process";

@@ -98,7 +98,7 @@ Then start *Mirador* from your applications menu once, so *Open at login* regist
 
 | | macOS | Linux |
 | --- | --- | --- |
-| The app's menu | A menu bar item, with the number of conversations waiting for you next to it | A tray icon, and *Desktop app…* in Mirador's sidebar |
+| The app's menu | A menu bar item, with the number of conversations waiting for you next to it and as a badge on the Dock icon | A tray icon, and *Desktop app…* in Mirador's sidebar |
 | Closing the window | The app stays in the menu bar; its Dock icon hides until the window comes back | The app keeps running; *Open* in the tray, or launching it again, brings the window back |
 | Launching it again | Brings the window back | Hands over to the running app (through `<data dir>/desktop-<port>.sock`) and quits |
 | Quit | The menu, or ⌘Q while the window is focused | The tray menu or *Desktop app…* |
@@ -257,7 +257,6 @@ bun run test            # includes tests/desktop-*.test.ts
 
 - **macOS file access prompts**: macOS attributes file access to the app, not to Terminal. As the host starts through your interactive login shell, anything your `~/.zshrc` touches under `~/Downloads`, `~/Documents` or `~/Desktop` brings a one-time permission prompt for Mirador, and the host waits on it until you answer. Approve it once.
 - **Clicking a notification** doesn't open its conversation: Electrobun 2.0.2 does not report clicks.
-- **No Dock badge**: Electrobun 2.0.2 has no call for it; the count shows next to the menu bar item instead.
 - **The macOS theme** is set through the Objective-C runtime (`src/bun/app-appearance.ts`), as Electrobun 2.0.2 has no call for it. Whether WebKitGTK renders canvas pages in the app's appearance on Linux is untested, so the Linux app is left as it is.
 - **Linux** is checked only under X11 (Xvfb with openbox); the tray icon and Wayland sessions are untested.
 - **Sign-in**: `host.log` holds no sign-in link, as the host prints one only to a terminal. The window signs in with `<data dir>/browser-token`, which the app never logs. The window is sandboxed, and links to other sites open in your default browser.

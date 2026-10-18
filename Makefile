@@ -63,7 +63,7 @@ linux-remote: ## From a Mac: make linux on LINUX_HOST=user@host, both architectu
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/Mirador-linux-*-Setup.tar.gz' $(DIST)/
 	rsync -a '$(LINUX_HOST):$(REMOTE_DIR)/dist/stable-linux-*' $(DIST)/
 
-update-files: ## What the apps fetch to update themselves, with patches from the last 5 releases, into dist/, each build's at once (on a Mac, after the builds)
+update-files: ## What the apps fetch to update themselves, with patches from the last 5 releases, into dist/, one build after another (on a Mac, after the builds)
 	bun desktop/scripts/update-files.ts $(DIST)
 
 checksums: $(DIST)/install.sh $(DIST)/install.ps1 ## install.sh and install.ps1 copied into dist/, and the SHA-256 of what dist/ holds, for the release notes
