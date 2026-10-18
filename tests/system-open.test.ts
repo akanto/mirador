@@ -27,6 +27,7 @@ test("a file Windows would run is a program, by PATHEXT or by the other extensio
   expect(isProgram("C:\\a\\setup.EXE", "win32", { PATHEXT: ".COM;.EXE;.BAT" })).toBe(true);
   expect(isProgram("C:\\a\\run.bat", "win32", { PATHEXT: ".COM;.EXE;.BAT" })).toBe(true);
   expect(isProgram("C:\\a\\tool.js", "win32", {})).toBe(true);
+  expect(isProgram("C:\\a\\setup.EXE", "win32", { PATHEXT: "" })).toBe(true);
   expect(isProgram("C:\\a\\shortcut.lnk", "win32", {})).toBe(true);
   expect(isProgram("C:\\a\\notes.md", "win32", {})).toBe(false);
   expect(isProgram("C:\\a\\diagram.png", "win32", {})).toBe(false);

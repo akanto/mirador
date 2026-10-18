@@ -13,7 +13,7 @@ const WINDOWS_DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WS
 export function isProgram(file: string, platform: NodeJS.Platform = process.platform, environment: Record<string, string | undefined> = process.env) {
   const extension = extname(file).toLowerCase();
   if (platform === "win32") {
-    const pathext = (environment.PATHEXT ?? WINDOWS_DEFAULT_PATHEXT).toLowerCase().split(";").filter(Boolean);
+    const pathext = (environment.PATHEXT || WINDOWS_DEFAULT_PATHEXT).toLowerCase().split(";").filter(Boolean);
     return pathext.includes(extension) || programExtensions.win32.includes(extension);
   }
   if (programExtensions[platform === "darwin" ? "darwin" : "other"].includes(extension)) return true;
