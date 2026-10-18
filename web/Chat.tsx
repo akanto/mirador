@@ -1317,7 +1317,9 @@ function Composer({
     return () => clearTimeout(stopTimer.current);
   }, [conversation.id]);
   useEffect(() => {
-    if (!busy) setStopStage("idle");
+    if (busy) return;
+    clearTimeout(stopTimer.current);
+    setStopStage("idle");
   }, [busy]);
   const queued = conversation.queuedMessages;
   const command = commandIn(text);

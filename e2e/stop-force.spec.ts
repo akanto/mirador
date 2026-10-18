@@ -95,6 +95,35 @@ async function signInToWorkspace(page: Page) {
   await page.locator(".workspace li").first().click();
 }
 
+/** A turn that runs until the file it waits for exists. */
+async function sendTurnWaitingFor(page: Page, file: string) {
+  await sendMessage(page, `WRITE ${JSON.stringify([{ waitFor: file }])}`);
+  await expect(status(page)).toHaveText("running", { timeout: 30_000 });
+}
+
+/** Stop turns into Force stop when the agent has not answered it 3 s on. */
+const PAST_FORCE_STOP_GRACE_MS = 3_500;
+
+test("A turn that ends soon after Stop leaves the next turn's button as Stop, not Force stop", async ({ page }) => {
+  await signInToWorkspace(page);
+  await startConversationWithoutModel(page);
+  const stop = page.locator(".composer:visible .stop");
+  const firstTurnDone = join(host.root, "first-turn-done");
+  const secondTurnDone = join(host.root, "second-turn-done");
+
+  await sendTurnWaitingFor(page, firstTurnDone);
+  await stop.click();
+  await expect(stop).toHaveText("Stopping…");
+  writeFileSync(firstTurnDone, "");
+  await expect(status(page)).toHaveText("idle", { timeout: 30_000 });
+  await page.waitForTimeout(PAST_FORCE_STOP_GRACE_MS);
+
+  await sendTurnWaitingFor(page, secondTurnDone);
+  await expect(stop).toHaveText("Stop");
+  writeFileSync(secondTurnDone, "");
+  await expect(status(page)).toHaveText("idle", { timeout: 30_000 });
+});
+
 test("A profile switch that the agent ignores the cancel of kills the agent after a while and continues the turn on the new profile", async ({ page }) => {
   await signInToWorkspace(page);
   const profiles = await createProfile(page, "spare", "", "", "opencode");
