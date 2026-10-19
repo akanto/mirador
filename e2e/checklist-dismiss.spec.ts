@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn } from "./helpers.ts";
@@ -7,6 +7,7 @@ import { TestHost, writeBunProgram } from "./test-host.ts";
 const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
 const profileName = "dismissable";
+const agentSaw = () => readFileSync(promptsFile, "utf8");
 
 /** An opencode stand-in that is an agent of its own, taking prompts and ending its turns at once. */
 function fakeOpencode() {
@@ -82,9 +83,18 @@ test("a finished checklist is dismissed from the canvas and stays gone, while a 
     await expect(canvasTitle(page)).toHaveText("Canvas");
   });
 
-  await test.step("the dismissed checklist is no longer the conversation's one; publishing afresh brings a checklist back", async () => {
+  await test.step("the ticks made before dismissing reach the agent once, with the next message", async () => {
+    await sendAndWait(page, "Carry on");
+    const note = 'On your checklist "Release 0.4.2", the user ticked "tests" (Run the tests), "build" (Build the app), "publish" (Publish the release), "announce" (Post the announcement).';
+    expect(agentSaw()).toContain(`${note}\n\nCarry on\n`);
+    await sendAndWait(page, "And again");
+    expect(agentSaw().endsWith("Carry on\nAnd again\n")).toBe(true);
+  });
+
+  await test.step("the agent is told the user dismissed the checklist when it tries to change it, and not to publish it again unless asked; publishing afresh brings a checklist back", async () => {
     const update = await callCanvasTool(host, conversationId, "update_checklist", { items: [{ id: "tests", done: true }] });
-    expect(update).toContain("This conversation has no checklist");
+    expect(update).toContain("The user dismissed this conversation's checklist; don't publish it again unless they ask for one.");
+    expect(update).not.toContain("publish one with the checklist tool");
     const published = await callCanvasTool(host, conversationId, "checklist", release);
     expect(published).toContain("4 items, 0 of 4 done");
     expect(published).not.toContain("Done as on the checklist it replaces");

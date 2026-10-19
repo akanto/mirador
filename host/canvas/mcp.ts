@@ -410,7 +410,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
     "checklist",
     {
       description:
-        "Publish a checklist of the steps of your work in a tab beside the user's canvas, and tick its items with update_checklist as you finish them. The user sees how far along you are, and can tick items too: you hear of their ticks with their next message or in update_checklist's result. Each item is yours, the user's or both of yours to do. A conversation has one checklist: publishing again replaces it, and items with the same ids keep their ticks unless you pass done.",
+        "Publish a checklist of the steps of your work in a tab beside the user's canvas, and tick its items with update_checklist as you finish them. The user sees how far along you are, and can tick items too: you hear of their ticks with their next message or in update_checklist's result. Each item is yours, the user's or both of yours to do. A conversation has one checklist: publishing again replaces it, and items with the same ids keep their ticks unless you pass done. If the user dismisses the checklist, don't publish it again unless they ask for one.",
       inputSchema: checklistSchema,
       _meta: loadedUpFront,
     },

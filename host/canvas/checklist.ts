@@ -41,6 +41,8 @@ export interface ChecklistNote {
 
 const CHECKLIST_NOT_SHOWN = "The checklist was not shown. Fix these and call checklist again";
 export const CHECKLIST_NOT_CHANGED = "The checklist was not changed. Fix these and call update_checklist again";
+export const CHECKLIST_NOT_CHANGED_LEAD = "The checklist was not changed";
+export const CHECKLIST_DISMISSED_BY_USER = "The user dismissed this conversation's checklist; don't publish it again unless they ask for one.";
 
 const fromRequest = ({ id, text, detail, owner }: NewChecklistItem, done: boolean): ChecklistItem => ({
   id,

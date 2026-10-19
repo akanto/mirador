@@ -281,6 +281,64 @@ describe("CanvasService", () => {
   });
 });
 
+describe("CanvasService checklist dismissed by the user", () => {
+  const release = { title: "Release", sections: [{ items: [{ id: "tests", text: "Run the tests" }, { id: "build", text: "Build the app" }] }] };
+
+  function dismissedAfterTicking(...tickedIds: string[]) {
+    const setUpService = setUp();
+    const { canvas } = setUpService;
+    const { item } = canvas.publishChecklist("c1", release);
+    tickedIds.forEach((id) => canvas.tickChecklistItem(item.id, id, true));
+    canvas.dismissChecklist(item.id);
+    return { ...setUpService, item };
+  }
+
+  test("ticks made before dismissing reach the agent once, with the next message", () => {
+    const { canvas } = dismissedAfterTicking("tests", "build");
+    const note = canvas.checklistNote("c1");
+    expect(note?.text).toBe('On your checklist "Release", the user ticked "tests" (Run the tests), "build" (Build the app).');
+    note?.heard();
+    expect(canvas.checklistNote("c1")).toBeNull();
+  });
+
+  test("a dismissed checklist with nothing unheard has no note", () => {
+    const { canvas } = dismissedAfterTicking();
+    expect(canvas.checklistNote("c1")).toBeNull();
+  });
+
+  test("update_checklist after the dismissal says the user dismissed it, and does not invite publishing again", () => {
+    const { canvas } = dismissedAfterTicking("tests");
+    const error = (() => {
+      try {
+        canvas.editChecklist("c1", { items: [{ id: "tests", done: true }] });
+      } catch (thrown) {
+        return thrown as ReviewProblems;
+      }
+    })();
+    expect(error?.message).toBe("The checklist was not changed:\n- The user dismissed this conversation's checklist; don't publish it again unless they ask for one.");
+    expect(error?.message).not.toContain("call update_checklist again");
+  });
+
+  test("update_checklist in a conversation that never had a checklist still says there is none", () => {
+    const { canvas } = setUp();
+    expect(() => canvas.editChecklist("c1", { items: [{ id: "tests", done: true }] })).toThrow("This conversation has no checklist");
+  });
+
+  test("publishing after the dismissal starts afresh and reports the ticks the agent had not heard", () => {
+    const { canvas } = dismissedAfterTicking("tests");
+    const { item, replaced } = canvas.publishChecklist("c1", release);
+    expect(replaced).toEqual({ title: "Release", ticks: [{ id: "tests", text: "Run the tests", done: true }] });
+    expect(item.checklist.sections[0]?.items.map(({ done }) => done)).toEqual([false, false]);
+    expect(canvas.checklistNote("c1")).toBeNull();
+  });
+
+  test("publishing after the dismissal reports nothing more once the note delivered the ticks", () => {
+    const { canvas } = dismissedAfterTicking("tests");
+    canvas.checklistNote("c1")?.heard();
+    expect(canvas.publishChecklist("c1", release).replaced?.ticks).toEqual([]);
+  });
+});
+
 describe("completeDirectories", () => {
   test("lists matching subdirectories and hides dotfiles unless asked", async () => {
     const root = mkdtempSync(join(tmpdir(), "mirador-paths-"));
