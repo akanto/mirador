@@ -30,6 +30,7 @@ const BUILD_LINE = "== release of ";
 const WINDOWS_WORKFLOW = "windows-release.yml";
 const WINDOWS_ARTIFACT = "mirador-windows-x64";
 const WINDOWS_FILE = /^(Mirador-windows-|stable-win-)/;
+const WINDOWS_RUN_FILE = "windows-run.json";
 const isWindowsOnly = (file: string) => WINDOWS_FILE.test(file) || file === "install.ps1";
 
 export interface Release {
@@ -82,6 +83,30 @@ export function caskMismatches(cask: string, uploaded: Record<string, string>) {
     const sha256 = uploaded[asset]?.replace(/^sha256:/, "");
     return !sha256 || !cask.includes(`"${sha256}"`);
   });
+}
+
+/** The Windows run a release started, kept in dist/ so that going on from the windows step takes it up again. */
+export interface WindowsRun {
+  id: string;
+  commit: string;
+}
+
+export interface RunState {
+  status: string;
+  conclusion: string;
+}
+
+export type WindowsRunStep = "start a run" | "wait for it" | "take its files" | "run its failed jobs again";
+
+/**
+ * What the windows step does with the run an earlier try of the release started: it starts a run when there is none of
+ * this commit, waits for one still going, takes the files of one that passed, and runs only the failed jobs of one that
+ * failed again, as the build and the shards that passed keep their artifacts.
+ */
+export function windowsRunStep(earlier: WindowsRun | null, head: string, state: RunState | null): WindowsRunStep {
+  if (!earlier || earlier.commit !== head || !state) return "start a run";
+  if (state.status !== "completed") return "wait for it";
+  return state.conclusion === "success" ? "take its files" : "run its failed jobs again";
 }
 
 /** The run `gh workflow run` started, from the URL it prints. */
@@ -315,14 +340,66 @@ async function linux(release: Release, shell: Shell) {
   if (built.length === 0 || !built.every((line) => isBuildOf(line, head))) throw new Error(`The Linux builds are not of ${head}: ${built.join("; ")}`);
 }
 
-/** Built on GitHub's Windows runner from the release's commit, as Electrobun does not cross-compile. */
-export async function windows(release: Release, shell: Shell) {
-  const head = headOf(release);
+const runUrl = (runId: string) => `https://github.com/${RELEASES_REPOSITORY}/actions/runs/${runId}`;
+
+function earlierWindowsRun(release: Release) {
+  const file = join(release.dist, WINDOWS_RUN_FILE);
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as WindowsRun) : null;
+}
+
+/** None when GitHub no longer has the run. */
+function windowsRunState(runId: string) {
+  try {
+    return JSON.parse(read(["gh", "run", "view", runId, "--repo", RELEASES_REPOSITORY, "--json", "status,conclusion"])) as RunState;
+  } catch {
+    return null;
+  }
+}
+
+function startWindowsRun(release: Release, head: string) {
   const started = readBoth(["gh", "workflow", "run", WINDOWS_WORKFLOW, "--repo", RELEASES_REPOSITORY, "--ref", "main", "-f", `commit=${head}`]);
   const runId = runIdIn(started);
   if (!runId) throw new Error(`gh started the Windows build without naming its run; find "Windows release of ${head}" with gh run list --workflow ${WINDOWS_WORKFLOW}`);
-  shell.say(`Waiting for https://github.com/${RELEASES_REPOSITORY}/actions/runs/${runId}`);
-  await shell.run(["gh", "run", "watch", runId, "--repo", RELEASES_REPOSITORY, "--exit-status", "--compact", "--interval", "30"], release.worktree, true);
+  writeFileSync(join(release.dist, WINDOWS_RUN_FILE), JSON.stringify({ id: runId, commit: head } satisfies WindowsRun));
+  return runId;
+}
+
+/** gh run rerun can return before GitHub has the run going again, and a watch then would end at once on the failed try. */
+async function runFailedJobsAgain(runId: string, release: Release, shell: Shell) {
+  await shell.run(["gh", "run", "rerun", runId, "--repo", RELEASES_REPOSITORY, "--failed"], release.worktree);
+  const deadline = Date.now() + 120_000;
+  while (windowsRunState(runId)?.status === "completed") {
+    if (Date.now() > deadline) throw new Error(`GitHub has not started the failed jobs of ${runUrl(runId)} again after two minutes`);
+    await Bun.sleep(5_000);
+  }
+}
+
+const unfinishedJobsOf = (runId: string) =>
+  read(["gh", "run", "view", runId, "--repo", RELEASES_REPOSITORY, "--json", "jobs", "--jq", '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | .name'])
+    .split("\n")
+    .filter(Boolean);
+
+async function waitForWindowsRun(runId: string, release: Release, shell: Shell) {
+  shell.say(`Waiting for ${runUrl(runId)}`);
+  try {
+    await shell.run(["gh", "run", "watch", runId, "--repo", RELEASES_REPOSITORY, "--exit-status", "--compact", "--interval", "30"], release.worktree, true);
+  } catch (error) {
+    const failed = unfinishedJobsOf(runId);
+    if (failed.length === 0) throw error;
+    throw new Error(
+      `The Windows run failed in ${failed.join(", ")}: ${runUrl(runId)}. Going on from the windows step runs only those jobs again; once the shards' artifacts are over 7 days old, delete ${join(release.dist, WINDOWS_RUN_FILE)} for a new run.`,
+    );
+  }
+}
+
+/** Built on GitHub's Windows runner from the release's commit, as Electrobun does not cross-compile. */
+export async function windows(release: Release, shell: Shell) {
+  const head = headOf(release);
+  const earlierRun = earlierWindowsRun(release);
+  const step = windowsRunStep(earlierRun, head, earlierRun && windowsRunState(earlierRun.id));
+  const runId = step === "start a run" ? startWindowsRun(release, head) : earlierRun!.id;
+  if (step === "run its failed jobs again") await runFailedJobsAgain(runId, release, shell);
+  if (step !== "take its files") await waitForWindowsRun(runId, release, shell);
   for (const earlier of readdirSync(release.dist).filter((file) => WINDOWS_FILE.test(file))) rmSync(join(release.dist, earlier));
   await shell.run(["gh", "run", "download", runId, "--repo", RELEASES_REPOSITORY, "--name", WINDOWS_ARTIFACT, "--dir", release.dist], release.worktree);
   const { version } = JSON.parse(readFileSync(join(release.dist, "stable-win-x64-update.json"), "utf8")) as { version: string };

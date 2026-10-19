@@ -80,12 +80,15 @@ const failsWith = (message: string, issue: KnownIssue) => withSpacesCollapsed(me
 export const explains = (issue: KnownIssue, failure: Failure) =>
   sameSpec(issue)(failure) && failure.messages.length > 0 && failure.messages.every((message) => failsWith(message, issue));
 
-/** Sorting the suite's failures against the stated reasons: what the release may go out over, and what holds it. */
-export function verdictAgainstKnownIssues(failing: Failure[], stated: KnownIssue[]): Verdict {
+/**
+ * Sorting the suite's failures against the stated reasons: what the release may go out over, and what holds it. A shard
+ * runs only some of the specs, so only a stated spec it ran and saw pass is offered for removal.
+ */
+export function verdictAgainstKnownIssues(failing: Failure[], stated: KnownIssue[], seen: Spec[]): Verdict {
   return {
     tolerated: stated.filter((issue) => failing.some((failure) => explains(issue, failure))),
     uncovered: failing.filter((failure) => !stated.some((issue) => explains(issue, failure))),
-    statedButPassing: stated.filter((issue) => !failing.some(sameSpec(issue))),
+    statedButPassing: stated.filter((issue) => seen.some(sameSpec(issue)) && !failing.some(sameSpec(issue))),
   };
 }
 
@@ -120,7 +123,7 @@ if (import.meta.main) {
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
   const stated = JSON.parse(readFileSync(statedPath, "utf8")) as KnownIssue[];
   const { seen, failing, flaky, interrupted, didNotRun } = specsThatFailed(report);
-  const { tolerated, uncovered, statedButPassing } = verdictAgainstKnownIssues(failing, stated);
+  const { tolerated, uncovered, statedButPassing } = verdictAgainstKnownIssues(failing, stated, seen);
   const { afterAFailure, unexplained } = specsLeftOut(didNotRun, failing);
   const errors = reportErrors(report);
 

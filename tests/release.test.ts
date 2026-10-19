@@ -18,6 +18,7 @@ import {
   shellOf,
   Stopped,
   stepsFrom,
+  windowsRunStep,
   type Plan,
   type Step,
 } from "../scripts/release.ts";
@@ -264,6 +265,19 @@ test("a release without Windows needs every other installer, install.sh and the 
 test("follows the Windows build gh started, by the run its URL names", () => {
   expect(runIdIn("https://github.com/sodre90/mirador/actions/runs/38818040351\n")).toBe("38818040351");
   expect(runIdIn("✓ Created workflow_dispatch event for windows-release.yml at main\n")).toBeNull();
+});
+
+test("going on from the windows step takes up the run of this commit: waits for it, takes its files, or runs only its failed jobs again", () => {
+  const head = "6c6453d0123456789abcdef0123456789abcdef0";
+  const earlier = { id: "39248803467", commit: head };
+  expect(windowsRunStep(null, head, null)).toBe("start a run");
+  expect(windowsRunStep({ ...earlier, commit: "1cecc45" }, head, { status: "completed", conclusion: "failure" })).toBe("start a run");
+  expect(windowsRunStep(earlier, head, null)).toBe("start a run");
+  expect(windowsRunStep(earlier, head, { status: "in_progress", conclusion: "" })).toBe("wait for it");
+  expect(windowsRunStep(earlier, head, { status: "queued", conclusion: "" })).toBe("wait for it");
+  expect(windowsRunStep(earlier, head, { status: "completed", conclusion: "success" })).toBe("take its files");
+  expect(windowsRunStep(earlier, head, { status: "completed", conclusion: "failure" })).toBe("run its failed jobs again");
+  expect(windowsRunStep(earlier, head, { status: "completed", conclusion: "cancelled" })).toBe("run its failed jobs again");
 });
 
 test("a build line names the commit however many digits its clone shortens it to", () => {

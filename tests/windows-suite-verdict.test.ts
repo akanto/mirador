@@ -84,14 +84,14 @@ test("specs nested in a folder suit take the folder's file", () => {
 
 test("a stated reason lets its failure through, an unstated one holds the release", () => {
   const stated: KnownIssue[] = [{ file: "b.spec.ts", title: "breaks", failure: "Locator: locator('.it')", reason: "windows has no such shell", bead: "vcs-one" }];
-  const { failing } = specsThatFailed(
+  const { failing, seen } = specsThatFailed(
     report(
       { file: "e2e/b.spec.ts", title: "breaks", status: "unexpected" },
       { file: "b.spec.ts", title: "breaks", status: "unexpected" },
       { file: "z.spec.ts", title: "newly broken", status: "unexpected" },
     ),
   );
-  const { tolerated, uncovered, statedButPassing } = verdictAgainstKnownIssues(failing, stated);
+  const { tolerated, uncovered, statedButPassing } = verdictAgainstKnownIssues(failing, stated, seen);
   expect(tolerated).toEqual(stated);
   expect(uncovered).toEqual([{ file: "z.spec.ts", title: "newly broken", messages: [IT_BROKE, IT_BROKE] }]);
   expect(statedButPassing).toEqual([]);
@@ -100,12 +100,12 @@ test("a stated reason lets its failure through, an unstated one holds the releas
 test("a stated spec that fails some other way on any try holds the release, as its reason does not explain that failure", () => {
   const stated: KnownIssue[] = [{ file: "a.spec.ts", title: "breaks", failure: "Locator: locator('.it') Expected: visible", reason: "the model skips the tool" }];
   const otherwise = "Error: expect(locator).toHaveText(expected) failed\n\nLocator: locator('.other')";
-  const { failing } = specsThatFailed(
+  const { failing, seen } = specsThatFailed(
     report(
       { file: "a.spec.ts", title: "breaks", status: "unexpected", results: [failedWith(IT_BROKE), failedWith(otherwise)] },
     ),
   );
-  const { tolerated, uncovered } = verdictAgainstKnownIssues(failing, stated);
+  const { tolerated, uncovered } = verdictAgainstKnownIssues(failing, stated, seen);
   expect(tolerated).toEqual([]);
   expect(uncovered.map(({ title }) => title)).toEqual(["breaks"]);
 });
@@ -113,8 +113,8 @@ test("a stated spec that fails some other way on any try holds the release, as i
 test("a stated failure matches through the report's colours and line breaks", () => {
   const stated: KnownIssue[] = [{ file: "a.spec.ts", title: "breaks", failure: "Locator: locator('.badge') Expected: \"idle\" Received: \"running\"", reason: "the turn never ends" }];
   const coloured = 'Error: \x1b[2mexpect(\x1b[22m\x1b[31mlocator\x1b[39m).toHaveText()\n\nLocator:  locator(\'.badge\')\nExpected: \x1b[32m"idle"\x1b[39m\nReceived: \x1b[31m"running"\x1b[39m';
-  const { failing } = specsThatFailed(report({ file: "a.spec.ts", title: "breaks", status: "unexpected", results: [failedWith(coloured)] }));
-  expect(verdictAgainstKnownIssues(failing, stated).tolerated).toEqual(stated);
+  const { failing, seen } = specsThatFailed(report({ file: "a.spec.ts", title: "breaks", status: "unexpected", results: [failedWith(coloured)] }));
+  expect(verdictAgainstKnownIssues(failing, stated, seen).tolerated).toEqual(stated);
 });
 
 test("a reason whose spec passes again is offered for removal from the list", () => {
@@ -122,13 +122,19 @@ test("a reason whose spec passes again is offered for removal from the list", ()
     { file: "a.spec.ts", title: "works", failure: "Locator: locator('.it')", reason: "fixed but not yet trimmed" },
     { file: "b.spec.ts", title: "breaks", failure: "Locator: locator('.it')", reason: "still broken" },
   ];
-  const { failing } = specsThatFailed(
+  const { failing, seen } = specsThatFailed(
     report(
       { file: "a.spec.ts", title: "works", status: "expected" },
       { file: "b.spec.ts", title: "breaks", status: "unexpected" },
     ),
   );
-  expect(verdictAgainstKnownIssues(failing, stated).statedButPassing).toEqual([stated[0]]);
+  expect(verdictAgainstKnownIssues(failing, stated, seen).statedButPassing).toEqual([stated[0]]);
+});
+
+test("a reason whose spec another shard ran is not offered for removal by this one", () => {
+  const stated: KnownIssue[] = [{ file: "elsewhere.spec.ts", title: "breaks", failure: "Locator: locator('.it')", reason: "still broken" }];
+  const { failing, seen } = specsThatFailed(report({ file: "a.spec.ts", title: "works", status: "expected" }));
+  expect(verdictAgainstKnownIssues(failing, stated, seen).statedButPassing).toEqual([]);
 });
 
 const repoRoot = join(import.meta.dir, "..");

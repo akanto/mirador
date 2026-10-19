@@ -15,10 +15,18 @@ permissions:
   contents: read
 
 jobs:
-  # Runs the whole suite as it stands on Windows and reports which specs pass and fail, and how long it all takes.
-  survey:
+  # Runs the whole suite as it stands on Windows, a third on each of three runners at once, and reports which specs pass
+  # and fail, and how long it all takes. A shard is red only for its own specs, so gh run rerun --failed runs just that one.
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        # The survey job joins as many reports as there are shards here.
+        shard: [1, 2, 3]
     runs-on: windows-latest
     timeout-minutes: 120
+    env:
+      SURVEY: survey-${{ matrix.shard }}.json
     steps:
       - uses: actions/checkout@v7
         with:
@@ -81,7 +89,7 @@ jobs:
           where.exe git bun node pwsh powershell bash claude opencode
           claude --version
           "::endgroup::"
-          $env:PLAYWRIGHT_JSON_OUTPUT_NAME = "survey.json"
+          $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $env:SURVEY
           $env:MIRADOR_E2E_KEEP = "1"
           $started = Get-Date
           # A loaded runner makes some specs fail once and pass when tried again. One try again tells those apart from a spec that
@@ -91,10 +99,10 @@ jobs:
           # The 75-minute suite budget stays inside the job's 120 even after a slow setup, so an overrun ends as a reported
           # interrupted suite rather than a cancelled job whose JSON reporter wrote nothing for the Verdict to read.
           # Only a release passes a commit. A called workflow's github.event_name is its caller's, never workflow_call.
-          cmd /c "bunx playwright test --global-timeout=4500000 --retries=${{ inputs.commit && 2 || 1 }} --reporter=list,json > survey-output.txt 2>&1"
+          cmd /c "bunx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --global-timeout=4500000 --retries=${{ inputs.commit && 2 || 1 }} --reporter=list,json > survey-output.txt 2>&1"
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
-          if (Test-Path survey.json) { (Get-Content -Raw survey.json) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content survey.json }
+          if (Test-Path $env:SURVEY) { (Get-Content -Raw $env:SURVEY) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content $env:SURVEY }
           # GitHub's pwsh wrapper would end the step with Playwright's exit code, failing a release on a known issue; the Verdict gates.
           exit 0
       # The gate: a spec that fails other than as e2e/windows-known-issues.json states, or a suite cut short, turns this job
@@ -102,7 +110,7 @@ jobs:
       - name: Verdict
         if: always()
         shell: bash
-        run: bun e2e/windows-suite-verdict.ts survey.json e2e/windows-known-issues.json
+        run: bun e2e/windows-suite-verdict.ts "$SURVEY" e2e/windows-known-issues.json
       # Traces and the kept host folders are left out: they hold the sign-in link, browser tokens and databases. Only their
       # logs go, and each failed test's page as error-context.md writes it, with auth links and the model server's address
       # and key taken out.
@@ -129,10 +137,58 @@ jobs:
             $target = Join-Path e2e-pages ($_.Directory.Name + ".md")
             Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Hide-ModelServer | Set-Content -LiteralPath $target
           }
+      # A shard run again replaces the artifact its earlier try left.
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-e2e-shard-${{ matrix.shard }}
+          path: |
+            ${{ env.SURVEY }}
+            e2e-logs/
+            e2e-pages/
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
+  # The shards' reports joined into the one survey.json a single run would have written, judged as a whole, with every
+  # shard's logs and pages beside it. A shard that is not run again keeps the artifact of its earlier try.
+  survey:
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit || github.ref }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: windows-e2e-shard-*
+          merge-multiple: true
+      # As many as the shard job's matrix has.
+      - name: Join the shards' reports
+        run: bun e2e/windows-survey-merge.ts 3 survey.json
+      - name: Verdict
+        if: always()
+        run: bun e2e/windows-suite-verdict.ts survey.json e2e/windows-known-issues.json
       - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: windows-e2e-survey
+          path: |
+            survey.json
+            e2e-logs/
+            e2e-pages/
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
+      # The survey of each try stays too, so a red try's report outlives a rerun that passes.
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-e2e-survey-attempt-${{ github.run_attempt }}
           path: |
             survey.json
             e2e-logs/

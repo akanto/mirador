@@ -1,6 +1,7 @@
 name: Windows release
 
 # make release starts this for the release's commit and waits for the whole run, so a job added here holds the release.
+# Going on from its windows step after a red run runs only the failed jobs again (gh run rerun --failed).
 run-name: Windows release of ${{ inputs.commit }}
 
 on:
