@@ -16,10 +16,16 @@ const temporaryMiradorHolding = (files: string[]) => {
 
 const outerCheckout = temporaryMiradorHolding(["host/cli.ts"]);
 const standaloneCommands = temporaryMiradorHolding([]);
+const projectLaidOutLikeMirador = mkdtempSync(join(tmpdir(), "project-"));
+for (const file of ["bin/tool", "host/cli.ts"]) {
+  mkdirSync(join(projectLaidOutLikeMirador, file, ".."), { recursive: true });
+  writeFileSync(join(projectLaidOutLikeMirador, file), "");
+}
 
 afterAll(() => {
   rmSync(outerCheckout, { recursive: true, force: true });
   rmSync(standaloneCommands, { recursive: true, force: true });
+  rmSync(projectLaidOutLikeMirador, { recursive: true, force: true });
 });
 
 test("the variables of a session the host was started from stay out of its agents and terminals", () => {
@@ -78,4 +84,11 @@ test("the mirador command runs on the host's Bun, also where no Bun is on the PA
   const help = spawnSync("mirador", ["--help"], { env: { ...environment, HOME: "/nonexistent" }, encoding: "utf8" });
   expect(help.stderr).not.toContain("Bun not found");
   expect(help.status).toBe(0);
+});
+
+test("a folder of the user's own beside a host/cli.ts, with no mirador in it, keeps its place on the agent's PATH", () => {
+  const environment = miradorCommandEnvironment(["/usr/bin", join(projectLaidOutLikeMirador, "bin"), "/bin"].join(delimiter));
+  expect(environment.PATH).toBe(
+    ["/usr/bin", join(projectLaidOutLikeMirador, "bin"), "/bin", join(import.meta.dir, "..", "bin")].join(delimiter),
+  );
 });

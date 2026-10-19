@@ -56,7 +56,7 @@ export function agentEnvironment(base: NodeJS.ProcessEnv = process.env): Record<
 const miradorCommandDirectory = fileURLToPath(new URL("../../bin", import.meta.url));
 
 const isAnotherMiradorsCommandFolder = (entry: string) =>
-  isAbsolute(entry) && entry !== miradorCommandDirectory && existsSync(join(entry, "..", "host", "cli.ts"));
+  isAbsolute(entry) && entry !== miradorCommandDirectory && existsSync(join(entry, "mirador")) && existsSync(join(entry, "..", "host", "cli.ts"));
 
 /**
  * A host started inside another Mirador inherits its PATH, where the outer command folder would
