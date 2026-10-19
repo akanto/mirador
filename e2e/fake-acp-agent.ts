@@ -14,6 +14,7 @@ import * as acp from "@agentclientprotocol/sdk";
  * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
  * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, and
  * `{"waitFor": path}` holds the turn until that file exists. `SAY ` followed by text answers with that text, as markdown,
+ * `USAGE ` followed by the tokens used and the window's size reports that context usage,
  * and `FAIL ` followed by text fails the turn with that text as its error. `SUBAGENT ASKS ` followed by a title starts a
  * subagent whose step asks permission, and ends the turn with what the user answered.
  * `NOTICE` sends the notices claude-agent-acp sends for hook output, a stopped task and a model fallback: a `notice`
@@ -45,6 +46,8 @@ const offersModes = process.env.FAKE_ACP_MODES === "1";
 const answersAfterMs = Number(process.env.FAKE_ACP_ANSWERS_AFTER_MS ?? 0);
 const ignoresSigterm = process.env.FAKE_ACP_IGNORES_SIGTERM === "1";
 const offersSteering = process.env.FAKE_ACP_STEERS === "1";
+/** Offers to resume a session, and cannot: as an agent whose record of the session is gone. */
+const resumeFails = process.env.FAKE_ACP_RESUME_FAILS === "1";
 const startsWith = (prompt: acp.ContentBlock[], word: string) => prompt.every((block) => block.type === "text" && block.text.startsWith(word));
 
 const log = (entry: string) => process.env.FAKE_ACP_LOG && appendFileSync(process.env.FAKE_ACP_LOG, `${process.env.FAKE_ACP_NAME ?? "agent"} ${entry}\n`);
@@ -241,6 +244,11 @@ async function makePlan(client: acp.AgentContext, sessionId: string, steps: { co
   return { stopReason: "end_turn" as const };
 }
 
+async function reportUsage(client: acp.AgentContext, sessionId: string, used: number, size: number) {
+  await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "usage_update", used, size } });
+  return { stopReason: "end_turn" as const };
+}
+
 async function sayText(client: acp.AgentContext, sessionId: string, text: string) {
   await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
   return { stopReason: "end_turn" as const };
@@ -344,13 +352,16 @@ acp
     asyncTasksAdvertised = Array.isArray(air?.capabilities) && (air.capabilities as unknown[]).includes("asyncTasks");
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
-      agentCapabilities: offersModes ? { sessionCapabilities: { close: {} } } : {},
+      agentCapabilities: offersModes || resumeFails ? { sessionCapabilities: { ...(offersModes && { close: {} }), ...(resumeFails && { resume: {} }) } } : {},
       ...(offersSteering ? { _meta: { steering: { supported: true } } } : {}),
     };
   })
   .onRequest(acp.methods.agent.session.new, () => {
     const sessionId = `fake-session-${process.pid}-${++nextSession}`;
     return offersModes ? { sessionId, configOptions: configOptions(sessionId) } : { sessionId };
+  })
+  .onRequest(acp.methods.agent.session.resume, () => {
+    throw acp.RequestError.internalError(undefined, "No such session");
   })
   .onRequest(acp.methods.agent.session.setConfigOption, (ctx) =>
     answerLate(() => {
@@ -372,6 +383,10 @@ acp
     if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "SUBAGENT ASKS ")) return askFromSubagent(ctx.client, ctx.params.sessionId, text.slice("SUBAGENT ASKS ".length));
+    if (startsWith(ctx.params.prompt, "USAGE ")) {
+      const [used = 0, size = 0] = text.slice("USAGE ".length).split(" ").map(Number);
+      return reportUsage(ctx.client, ctx.params.sessionId, used, size);
+    }
     if (startsWith(ctx.params.prompt, "SAY ")) return sayText(ctx.client, ctx.params.sessionId, text.slice("SAY ".length));
     if (startsWith(ctx.params.prompt, "NOTICE")) return sendNotices(ctx.client, ctx.params.sessionId);
     if (startsWith(ctx.params.prompt, "ASYNC TASK DONE")) return startAsyncTask(ctx.client, ctx.params.sessionId, true);

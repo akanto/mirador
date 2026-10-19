@@ -1217,6 +1217,7 @@ export class ConversationService {
       }
     }
 
+    this.forgetContextUsage(conversationId);
     const created = await harness.newSession(sessionRequest);
     this.closeSessionIfConversationDeleted(conversationId, harness, created.sessionId);
     this.muteNotifier(conversation, created.sessionId);
