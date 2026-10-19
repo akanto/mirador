@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, primaryModifier, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, primaryModifier, reloadFromRestartedHost, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -77,7 +77,7 @@ test("a turn the agent finished during the stop for a restart is not sent again 
   await expect.poll(hostStarts, { timeout: 60_000 }).toBe(startsBefore + 1);
   // The next host decides at its start whether to send the turn again; a message sent while it opens the session would
   // take the turn's place, so the page reloads to show what it decided first.
-  await page.reload();
+  await reloadFromRestartedHost(page);
   await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle");
 
   await sendMessage(page, "after-stream");
