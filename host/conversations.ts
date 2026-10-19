@@ -149,31 +149,38 @@ interface TurnInProgress {
 
 /**
  * What a stop can still hear from the turn it cancelled: the chunks of the reply the agent is
- * streaming, or will start streaming when the API answers the request it had already sent. Until a
- * reply shows its id, everything arriving is held back: after a stop that interrupted the request,
- * the first reply is the next turn's answer, not an orphan — only another reply's id proves the
- * first one was the cancelled turn's own.
+ * streaming, or will start streaming when the API answers the request it had already sent. After a
+ * stop that interrupted the request, a reply that begins while the next turn runs may be that turn's
+ * own, so it is held back until the turn tells: a tool call of the turn proves it the turn's, and a
+ * reply with another id before any proves it the orphan. A message steered into the turn shows it
+ * too, as the agent's answer to that message would start another id and tell nothing.
  */
 export interface CancelledReplyChunks {
   messageId: string | null;
-  /** The chunks held back while the reply they began is not known yet; shown at the next turn's end if no other reply disproves them. */
+  /** The chunks of a reply the running turn began, held back while it may still be the cancelled turn's. */
   held?: acp.SessionUpdate[];
 }
 
 /**
  * Whether these chunks belong to the reply a cancelled turn still owes: dropped at once when they
- * continue the reply it was already streaming; held back while the first reply after the stop has
- * no id to tell it by. A reply with another id ends the claim: the held-back one was the orphan.
+ * continue the reply it was already streaming, or begin one while no turn runs; held back when a
+ * reply begins in the running turn. A reply with another id ends the claim, as does one with no id
+ * at all, which nothing could tell apart.
  */
 export function cancelledReplyChunks(
   pending: CancelledReplyChunks,
   update: acp.SessionUpdate,
+  turnRunning: boolean,
 ): { drop: boolean; pending: CancelledReplyChunks | null } {
   const messageId = isAgentReplyChunk(update) && typeof update.messageId === "string" ? update.messageId : null;
-  if (pending.messageId === null) return { drop: true, pending: { messageId, held: [...(pending.held ?? []), update] } };
-  if (pending.messageId !== messageId) return { drop: false, pending: null };
-  return pending.held ? { drop: true, pending: { ...pending, held: [...pending.held, update] } } : { drop: true, pending };
+  if (messageId === null || (pending.messageId !== null && pending.messageId !== messageId)) return { drop: false, pending: null };
+  if (pending.messageId === null) return { drop: true, pending: turnRunning ? { messageId, held: [update] } : { messageId } };
+  pending.held?.push(update);
+  return { drop: true, pending };
 }
+
+/** A tool call the running turn makes, not one of its subagents': the reply streaming before it is the turn's own. */
+const isTurnsOwnToolCall = (update: acp.SessionUpdate) => update.sessionUpdate === "tool_call" && !isSubagentReport(update);
 
 interface Runtime {
   sessionId?: Promise<string>;
@@ -608,6 +615,7 @@ export class ConversationService {
       const harness = this.harnessFor(this.get(conversationId));
       turn.promptSent = { text, sentAt: Date.now() };
       response = await harness.prompt(sessionId, prompt);
+      this.showHeldBackReply(conversationId);
       this.append(conversationId, { type: "turn-end", stopReason: response.stopReason });
       runtime.automaticContinues = 0;
       this.notifyTurnEnded(conversationId, { stopReason: response.stopReason });
@@ -619,19 +627,16 @@ export class ConversationService {
         this.notifyTurnEnded(conversationId, { error: this.recordTurnFailure(conversationId, error, turn.promptSent !== undefined) });
       }
     } finally {
+      this.showHeldBackReply(conversationId);
       turn.ended = true;
-      const heldBackReply = runtime.cancelledReply?.held;
-      runtime.cancelledReply = undefined;
-      heldBackReply?.forEach((update) => this.append(conversationId, { type: "acp", update }));
       // Claude Code keeps streaming the reply of a turn its cancel cut short, when the stop found
       // its first request merged with a steer: a reply already streaming, or one the API has yet
-      // to answer. A stop that interrupted the request owes no reply — so a reply not yet begun is
-      // only proved the cancelled turn's once another one starts with another id; it shows at this
-      // turn's end when none ever does. A stop the agent waited on the user for owes no reply, nor
-      // does one its tools were busy with, nor a killed process.
+      // to answer. A stop that interrupted the request may owe no reply, so a reply beginning in the
+      // next turn waits for that turn to tell whose it is. A stop the agent waited on the user for
+      // owes no reply, nor does one its tools were busy with, nor a killed process.
       runtime.cancelledReply =
         response?.stopReason === "cancelled" && !turn.awaitedUser && (turn.lastReplyMessageId !== null || runtime.openToolCalls.size === 0)
-          ? { messageId: turn.lastReplyMessageId, ...(turn.lastReplyMessageId === null ? { held: [] } : {}) }
+          ? { messageId: turn.lastReplyMessageId }
           : undefined;
       if (response?.stopReason !== "end_turn") {
         await this.returnUnansweredSteers(conversationId, runtime, turn.steered, response).catch((error: unknown) =>
@@ -1434,24 +1439,38 @@ export class ConversationService {
       this.save({ ...this.get(conversationId), title: update.title });
     }
     if (this.dropsCancelledReplyChunk(conversationId, update)) return;
+    if (isTurnsOwnToolCall(update)) this.showHeldBackReply(conversationId);
     this.trackReplyProgress(conversationId, update);
     this.append(conversationId, { type: "acp", update });
     this.followToolCalls(conversationId, update);
   }
 
+  /** The reply held back since a stop, once the running turn proves it its own or a steer leaves that untold: it shows where it streamed, before what came next. */
+  private showHeldBackReply(conversationId: string) {
+    const runtime = this.runtime(conversationId);
+    const held = runtime.cancelledReply?.held;
+    if (!held) return;
+    runtime.cancelledReply = undefined;
+    held.forEach((update) => {
+      this.trackReplyProgress(conversationId, update);
+      this.append(conversationId, { type: "acp", update });
+    });
+  }
+
   /**
    * The late chunks of a reply a stop cancelled: the agent streams the API's answer after
-   * 'Turn ended: cancelled', where it would look as if Stop did not stop. Chunks of a reply whose
-   * id is not yet told are held back rather than shown, until another reply's id proves them the
-   * orphan or the running turn's end proves them its answer. A subagent's own reports carry on
-   * arriving as usual.
+   * 'Turn ended: cancelled', where it would look as if Stop did not stop. A reply beginning in the
+   * running turn is held back rather than shown, until another reply's id proves it the orphan, or
+   * a tool call of the turn, a message steered into it or the turn's end shows it as the turn's own.
+   * A subagent's own reports carry on arriving as usual.
    */
   private dropsCancelledReplyChunk(conversationId: string, update: acp.SessionUpdate) {
     if (!isAgentReplyChunk(update) || isSubagentReport(update)) return false;
     const runtime = this.runtime(conversationId);
     const pending = runtime.cancelledReply;
     if (!pending) return false;
-    const { drop, pending: stillPending } = cancelledReplyChunks(pending, update);
+    const turn = runtime.turn;
+    const { drop, pending: stillPending } = cancelledReplyChunks(pending, update, runtime.running && turn !== undefined && !turn.ended);
     runtime.cancelledReply = stillPending ?? undefined;
     return drop;
   }
@@ -1499,6 +1518,7 @@ export class ConversationService {
     const imageIds = messages.flatMap((message) => message.imageIds);
     const { turn } = runtime;
     const steeredAt = Date.now();
+    this.showHeldBackReply(conversationId);
     const outcome = await this.promptContent(conversationId, withNotes(notes, text), imageIds)
       .then((prompt) => harness.steer(sessionId, prompt))
       .catch((error: unknown) => `failed: ${errorMessage(error)}`);

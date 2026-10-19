@@ -21,6 +21,10 @@ import * as acp from "@agentclientprotocol/sdk";
  * `STOPPED REPLY ` streams half of a reply and `STOPPED BEFORE ` streams none of it: either ends its turn as cancelled
  * once `session/cancel` arrives, and a moment after the stop streams the reply's rest under the id it streamed under
  * before, together with a subagent's report — the late chunks claude-agent-acp sends for a turn its cancel cut short.
+ * `STOPPED QUIET ` streams nothing, ends as cancelled on the stop and sends nothing after it, as a stop that interrupted
+ * the request leaves things. `REPLY TOOL REPLY ` answers as Claude Code does around a tool: a reply under one id, a tool
+ * call, and a reply under the next id. `REPLY STEERED ` begins a reply, waits for a message steered into the turn and
+ * answers it under the next id.
  * `ASYNC TASK` starts a background task the way claude-agent-acp does with its `asyncTasks` capability: a spawn update,
  * a progress beat shortly after, and output lines appended to a file under `FAKE_ACP_TASK_OUTPUT_DIR`; with ` DONE`
  * after it the task completes on its own too. The `_session/async_task/stop` request stops one and says so, logging it.
@@ -30,12 +34,14 @@ import * as acp from "@agentclientprotocol/sdk";
  * `FAKE_ACP_ANSWERS_AFTER_MS` answers option changes and closes that late, as Claude Code does while its first
  * request waits for a model server to load the model. Starts, changes and closes go to the file in `FAKE_ACP_LOG`,
  * each with the name in `FAKE_ACP_NAME`. FAKE_ACP_IGNORES_SIGTERM=1 makes it survive SIGTERM, and FAKE_ACP_PID_FILE
- * names a file it writes its pid to.
+ * names a file it writes its pid to. `FAKE_ACP_STEERS=1` offers claude-agent-acp's `_session/steering`: a message
+ * steered into a `REPLY STEERED ` turn joins it, any other is refused as needing a prompt of its own.
  */
 const promptsFile = process.env.FAKE_ACP_PROMPTS;
 const offersModes = process.env.FAKE_ACP_MODES === "1";
 const answersAfterMs = Number(process.env.FAKE_ACP_ANSWERS_AFTER_MS ?? 0);
 const ignoresSigterm = process.env.FAKE_ACP_IGNORES_SIGTERM === "1";
+const offersSteering = process.env.FAKE_ACP_STEERS === "1";
 const startsWith = (prompt: acp.ContentBlock[], word: string) => prompt.every((block) => block.type === "text" && block.text.startsWith(word));
 
 const log = (entry: string) => process.env.FAKE_ACP_LOG && appendFileSync(process.env.FAKE_ACP_LOG, `${process.env.FAKE_ACP_NAME ?? "agent"} ${entry}\n`);
@@ -261,6 +267,45 @@ async function stoppedReply(client: acp.AgentContext, sessionId: string, text: s
   return { stopReason: "cancelled" as const };
 }
 
+/** A turn the user stops before any reply, whose request the stop interrupted, so no late reply follows. */
+async function stoppedQuietly(sessionId: string) {
+  await new Promise<void>((resolve) => stopWaiters.set(sessionId, resolve));
+  return { stopReason: "cancelled" as const };
+}
+
+/** A reply, a tool call and another reply, each reply under its own id, as Claude Code starts a message after each tool result. */
+async function replyAroundATool(client: acp.AgentContext, sessionId: string, text: string) {
+  const notify = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  const toolCallId = `tool-${++nextToolCall}`;
+  await notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Looking into ${text}` }, messageId: `msg-before-${toolCallId}` });
+  await notify({ sessionUpdate: "tool_call", toolCallId, title: `Read ${text}`, kind: "read", status: "in_progress" });
+  await notify({ sessionUpdate: "tool_call_update", toolCallId, status: "completed" });
+  await notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Found ${text}` }, messageId: `msg-after-${toolCallId}` });
+  return { stopReason: "end_turn" as const };
+}
+
+const steerWaiters = new Map<string, (text: string) => void>();
+let nextSteeredTurn = 0;
+
+/** A reply the turn begins, then, under the next id, its answer to the message the user steered into it. */
+async function replyThenSteered(client: acp.AgentContext, sessionId: string, text: string) {
+  const notify = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  const turn = ++nextSteeredTurn;
+  const steered = new Promise<string>((resolve) => steerWaiters.set(sessionId, resolve));
+  await notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Starting on ${text}` }, messageId: `msg-begun-${turn}` });
+  await notify({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: `Also ${await steered}` }, messageId: `msg-steered-${turn}` });
+  return { stopReason: "end_turn" as const };
+}
+
+function steerInto(sessionId: string, prompt: acp.ContentBlock[]) {
+  const joinsTurn = steerWaiters.get(sessionId);
+  if (!joinsTurn) return { outcome: "promptRequired" };
+  steerWaiters.delete(sessionId);
+  const answerAfterTakingIt = () => joinsTurn(prompt.map((block) => (block.type === "text" ? block.text : "")).join(""));
+  setTimeout(answerAfterTakingIt, 100);
+  return { outcome: "injected" };
+}
+
 async function streamWords(client: acp.AgentContext, sessionId: string, count: number) {
   for (const word of Array.from({ length: count }, (_, position) => `word${position + 1} `)) {
     await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: word } } });
@@ -285,6 +330,7 @@ acp
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: offersModes ? { sessionCapabilities: { close: {} } } : {},
+      ...(offersSteering ? { _meta: { steering: { supported: true } } } : {}),
     };
   })
   .onRequest(acp.methods.agent.session.new, () => {
@@ -320,6 +366,9 @@ acp
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
     if (startsWith(ctx.params.prompt, "STOPPED REPLY ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED REPLY ".length), true);
     if (startsWith(ctx.params.prompt, "STOPPED BEFORE ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED BEFORE ".length), false);
+    if (startsWith(ctx.params.prompt, "STOPPED QUIET ")) return stoppedQuietly(ctx.params.sessionId);
+    if (startsWith(ctx.params.prompt, "REPLY TOOL REPLY ")) return replyAroundATool(ctx.client, ctx.params.sessionId, text.slice("REPLY TOOL REPLY ".length));
+    if (startsWith(ctx.params.prompt, "REPLY STEERED ")) return replyThenSteered(ctx.client, ctx.params.sessionId, text.slice("REPLY STEERED ".length));
     if (startsWith(ctx.params.prompt, "CRASH LEAVING A CHILD")) spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: ["ignore", "inherit", "ignore"] });
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);
     return startsWith(ctx.params.prompt, "WEDGE") || startsWith(ctx.params.prompt, "CRASH") ? new Promise(() => {}) : { stopReason: "end_turn" as const };
@@ -328,6 +377,7 @@ acp
     stopWaiters.get(ctx.params.sessionId)?.();
     stopWaiters.delete(ctx.params.sessionId);
   })
+  .onRequest("_session/steering", (params) => params as { sessionId: string; prompt: acp.ContentBlock[] }, (ctx) => steerInto(ctx.params.sessionId, ctx.params.prompt))
   .onRequest("_session/async_task/stop", (params) => params as { sessionId: string; asyncTaskId: string }, (ctx) =>
     stopAsyncTask(ctx.client, ctx.params.sessionId, ctx.params.asyncTaskId),
   )

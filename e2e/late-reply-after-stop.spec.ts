@@ -14,7 +14,7 @@ const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
 
 test.beforeAll(async () => {
-  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: promptsFile });
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: promptsFile, FAKE_ACP_STEERS: "1" });
   await host.start();
 });
 test.afterAll(async () => {
@@ -70,5 +70,34 @@ test("the reply a stopped turn keeps streaming after 'Turn ended: cancelled' sta
     await sendMessage(page, "SAY Carrying on after the stops");
     await waitForTurnToEnd(page);
     await expect(agentBubbles(page).filter({ hasText: "Carrying on after the stops" })).toHaveCount(1);
+  });
+
+  await test.step("after a stop no late reply follows, the next turn keeps the reply it began with, before its tool call", async () => {
+    await sendMessage(page, "STOPPED QUIET nothing comes");
+    await waitsForStop("STOPPED QUIET nothing comes");
+    await stop();
+    await waitTurnCancelled(2);
+    await sendMessage(page, "REPLY TOOL REPLY the file");
+    await waitForTurnToEnd(page);
+    await expect(agentBubbles(page).filter({ hasText: /Looking into the file|Found the file/ })).toHaveText(["Looking into the file", "Found the file"]);
+    const shown = await page.locator(".timeline:visible").innerText();
+    expect(shown.indexOf("Looking into the file")).toBeLessThan(shown.indexOf("Read the file"));
+    expect(shown.indexOf("Read the file")).toBeLessThan(shown.indexOf("Found the file"));
+  });
+
+  await test.step("after a stop, a message steered into the next turn shows the reply that turn began, before it", async () => {
+    await sendMessage(page, "STOPPED QUIET nor here");
+    await waitsForStop("STOPPED QUIET nor here");
+    await stop();
+    await waitTurnCancelled(3);
+    await sendMessage(page, "REPLY STEERED the plan");
+    await waitsForStop("REPLY STEERED the plan");
+    await page.locator(".composer:visible textarea").fill("Steered in");
+    await page.locator(".composer:visible textarea").press("Enter");
+    await waitForTurnToEnd(page);
+    await expect(agentBubbles(page).filter({ hasText: /Starting on the plan|Also Steered in/ })).toHaveText(["Starting on the plan", /Also Steered in/]);
+    const shown = await page.locator(".timeline:visible").innerText();
+    expect(shown.indexOf("Starting on the plan")).toBeLessThan(shown.indexOf("Steered in"));
+    expect(shown.indexOf("Steered in")).toBeLessThan(shown.indexOf("Also Steered in"));
   });
 });
