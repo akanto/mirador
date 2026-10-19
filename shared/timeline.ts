@@ -119,6 +119,12 @@ export function stepsAtWork(work: TimelineBlock[], waitingForPermission: Readonl
 export const toolCallsAwaitingPermission = (timeline: TimelineBlock[]) =>
   new Set(timeline.flatMap((block) => (block.kind === "permission" && !block.resolved ? [block.toolCall.toolCallId] : [])));
 
+export const approvalsWaiting = (timeline: TimelineBlock[]) => timeline.filter((block): block is PermissionBlock => block.kind === "permission" && !block.resolved);
+
+/** The subagent whose tool call the approval is for; none when the agent asks for its own. */
+export const subagentAsking = (timeline: TimelineBlock[], approval: PermissionBlock) =>
+  subagentsIn(timeline).find((block) => block.subagent.blocks.some((child) => child.kind === "tool" && child.toolCallId === approval.toolCall.toolCallId));
+
 /**
  * The calls at work in the conversation's own timeline: those of the turn still open, not waiting for the user's
  * permission. A background subagent works on after its turn ends, so its card keeps to stepsAtWork.

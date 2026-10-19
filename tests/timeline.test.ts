@@ -4,7 +4,7 @@ import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
 import { canTryAgain } from "../shared/try-again.ts";
-import { authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
+import { approvalsWaiting, authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentAsking, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -325,6 +325,15 @@ describe("subagents", () => {
     const timeline = buildTimeline(stored([launch("a1", {}), read("r1", "a1"), read("r2", "a1"), ask("r2")]));
     const [subagent] = subagentsIn(timeline);
     expect([...stepsAtWork(subagent!.subagent.blocks, toolCallsAwaitingPermission(timeline))]).toEqual(["r1"]);
+  });
+
+  test("an approval waits until it is answered, and names the subagent whose call it is for", () => {
+    const ask = (toolCallId: string): ConversationEvent => ({ type: "permission", permissionId: `p-${toolCallId}`, toolCall: { toolCallId }, options: [] });
+    const answered: ConversationEvent = { type: "permission-resolved", permissionId: "p-answered", optionId: "allow" };
+    const timeline = buildTimeline(stored([launch("a1", {}), read("r1", "a1"), ask("r1"), ask("own"), ask("answered"), answered]));
+    const waiting = approvalsWaiting(timeline);
+    expect(waiting.map(({ permissionId }) => permissionId)).toEqual(["p-r1", "p-own"]);
+    expect(waiting.map((approval) => subagentAsking(timeline, approval)?.toolCallId)).toEqual(["a1", undefined]);
   });
 
   test("ends when its call completes, or at its last activity when it ran in the background", () => {

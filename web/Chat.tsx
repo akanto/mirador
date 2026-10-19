@@ -63,6 +63,7 @@ import { Statusline } from "./Statusline.tsx";
 import type { OpenConversation } from "./state.ts";
 import { useSubagentUsage } from "./subagent-usage.ts";
 import {
+  approvalsWaiting,
   authorOf,
   buildTimeline,
   contentText,
@@ -72,6 +73,7 @@ import {
   stepsRunning,
   subagentEndedAt,
   subagentInput,
+  subagentAsking,
   subagentsIn,
   subagentState,
   toolCallsAwaitingPermission,
@@ -614,6 +616,52 @@ function RunningSubagents({ conversationId, subagents, onShow }: { conversationI
   );
 }
 
+/** The approvals the conversation waits for whose cards are out of the timeline's view: scrolled away, or not loaded. */
+function useApprovalsOutOfView(timelineRef: RefObject<HTMLDivElement | null>, waiting: PermissionBlock[], firstLoaded: number) {
+  const [inView, setInView] = useState<ReadonlySet<string>>(new Set());
+  const waitingIds = waiting.map(({ permissionId }) => permissionId).join(" ");
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!timeline || !waitingIds) return;
+    const cards = timeline.querySelectorAll<HTMLElement>(".permission.pending[data-permission-id]");
+    const visible = new Set<string>();
+    if (cards.length === 0) setInView(visible);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const { target, isIntersecting } of entries) {
+          const { permissionId } = (target as HTMLElement).dataset;
+          if (!permissionId) continue;
+          if (isIntersecting) visible.add(permissionId);
+          else visible.delete(permissionId);
+        }
+        setInView(new Set(visible));
+      },
+      { root: timeline },
+    );
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
+  }, [timelineRef, waitingIds, firstLoaded]);
+  return waiting.filter(({ permissionId }) => !inView.has(permissionId));
+}
+
+function ApprovalsWaiting({ approvals, timeline, onShow }: { approvals: PermissionBlock[]; timeline: TimelineBlock[]; onShow: (approval: PermissionBlock) => void }) {
+  const now = useClock(true);
+  return (
+    <div className="approvals-waiting" role="status" aria-label="Approvals waiting">
+      {approvals.map((approval) => {
+        const asker = subagentAsking(timeline, approval);
+        const facts = [asker && `asked by ${subagentTask(asker)}`, `waiting ${formatDuration(now - approval.at)}`];
+        return (
+          <button key={approval.permissionId} type="button" className="approval-waiting" data-hint={hints.approvalWaiting} onClick={() => onShow(approval)}>
+            <span className="approval-subject">Permission needed: {permissionSubject(approval.toolCall)}</span>
+            <span className="approval-facts">{facts.filter(Boolean).join(" · ")}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function permissionSubject(toolCall: PermissionBlock["toolCall"]) {
   if (toolCall.kind !== "execute") return toolCall.title ?? "tool call";
   const description = (toolCall.rawInput as { description?: unknown } | null | undefined)?.description;
@@ -670,7 +718,7 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
   const editsInCanvas = useContext(CanvasShowsEdits) && block.edits?.length ? block.edits : null;
   const chosen = block.options.find(({ optionId }) => optionId === block.chosenOptionId);
   return (
-    <div className={`permission ${block.resolved ? "resolved" : "pending"}`}>
+    <div className={`permission ${block.resolved ? "resolved" : "pending"}`} data-permission-id={block.permissionId}>
       <div className="permission-title">
         {block.resolved ? "Permission" : "Permission needed"}: {permissionSubject(block.toolCall)}
       </div>
@@ -1773,6 +1821,18 @@ export function ChatPanel({
   const showRunningSubagent = () => {
     if (runningSubagents[0]) showSubagent(runningSubagents[0]);
   };
+  const waitingApprovals = useMemo(() => approvalsWaiting(timeline), [timeline]);
+  const approvalsOutOfView = useApprovalsOutOfView(ref, waitingApprovals, firstLoaded);
+  const [approvalToShow, setApprovalToShow] = useState<string | null>(null);
+  useEffect(() => {
+    if (!approvalToShow) return;
+    ref.current?.querySelector(`[data-permission-id="${CSS.escape(approvalToShow)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setApprovalToShow(null);
+  }, [approvalToShow]);
+  const showApproval = (approval: PermissionBlock) => {
+    loadFrom(timeline.indexOf(approval));
+    setApprovalToShow(approval.permissionId);
+  };
   const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom, earlier, firstHeldSeq: open.events[0]?.seq });
   const editsInCanvas = useEditsInCanvas();
   const canvasShowsEdits = canvasVisible && editsInCanvas;
@@ -1817,6 +1877,7 @@ export function ChatPanel({
                     {conversation.status === "running" && <div className="working">Working…</div>}
                   </div>
                 </MatchesFind.Provider>
+                {approvalsOutOfView.length > 0 && <ApprovalsWaiting approvals={approvalsOutOfView} timeline={timeline} onShow={showApproval} />}
                 {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
                 {conversation.openInTerminal && (
                   <div className="terminal-warning" role="status">

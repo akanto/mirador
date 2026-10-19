@@ -12,6 +12,7 @@ const claudeConfigDir = join(host.root, "claude-config");
 const SUBAGENT_COMMAND = "sleep 15; echo slept";
 const STEERED = "How is it going?";
 const WHILE_WAITING = "Anything I can do meanwhile?";
+const LONG_ENOUGH_TO_SCROLL = Array.from({ length: 30 }, (_, line) => `Detail ${line + 1} of what I want to know.`).join("\n\n");
 const COMMAND_TO_APPROVE = "rm -rf scratch; sleep 1; echo removed";
 
 test.describe.configure({ mode: "serial" });
@@ -72,7 +73,7 @@ test("while only a background subagent works, a message joins the turn and the a
   expect(eventsInOrder).toEqual([`SUBAGENT RUN ${SUBAGENT_COMMAND}`, STEERED, "turn-end"]);
 });
 
-test("a message joins the turn also while a background subagent waits for permission, and the subagent goes on once it gets it", async ({ page }) => {
+test("a message joins the turn also while a background subagent waits for permission, its request shows above the message box once scrolled away, and the subagent goes on once it gets it", async ({ page }) => {
   await signIn(page, host);
   await page.goto(host.origin);
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${PROFILE} · Claude Code` });
@@ -82,11 +83,24 @@ test("a message joins the turn also while a background subagent waits for permis
   await sendMessage(page, `SUBAGENT RUN ${COMMAND_TO_APPROVE}`);
   await expect(permission).toBeVisible({ timeout: 60_000 });
 
+  const dock = page.getByRole("status", { name: "Approvals waiting" });
+  await expect(dock, "nothing above the message box while the request is in sight").toHaveCount(0);
+
   const composer = page.locator(".composer textarea");
-  await composer.fill(WHILE_WAITING);
+  await composer.fill(`${WHILE_WAITING}\n\n${LONG_ENOUGH_TO_SCROLL}`);
   await composer.press("Enter");
   await expect(page.locator(".timeline .message.agent", { hasText: `Answered: ${WHILE_WAITING}` })).toBeVisible({ timeout: 10_000 });
   await expect(permission, "the subagent still waits for its answer").toBeVisible();
+
+  await test.step("the request scrolled away shows above the message box, and leads back to it", async () => {
+    await expect(permission).not.toBeInViewport();
+    await expect(dock.getByRole("button")).toHaveCount(1);
+    await expect(dock.locator(".approval-subject")).toHaveText("Permission needed: rm -rf scratch; sleep 1; echo removed");
+    await expect(dock.locator(".approval-facts")).toHaveText(/^asked by Scripted subagent · waiting \d+ s$/);
+    await dock.getByRole("button").click();
+    await expect(permission).toBeInViewport();
+    await expect(dock).toHaveCount(0);
+  });
 
   await permission.locator("button.option-allow_once").click();
   await expect(command).toHaveClass(/tool-completed/, { timeout: 60_000 });

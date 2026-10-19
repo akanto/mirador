@@ -1965,6 +1965,48 @@ button.running-subagent:hover {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.approvals-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 9.5em;
+  overflow-y: auto;
+  margin: 0 16px 8px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  border-radius: 8px;
+  background: var(--warn-soft);
+}
+
+button.approval-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(13px * var(--font-scale));
+  text-align: left;
+  cursor: pointer;
+}
+
+button.approval-waiting:hover {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.approval-subject {
+  font-weight: 600;
+}
+
+.approval-facts {
+  color: var(--muted);
+}
+
 .running-subagent .subagent-now {
   padding-left: 16px;
 }
