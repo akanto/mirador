@@ -74,7 +74,9 @@ export class SelfUpdate {
 
   private async lookOnce() {
     const { ports } = this;
-    const build = await ports.published().catch(() => null);
+    // A check that could not reach the latest release tells nothing new, so what it offered stays, a downloaded update too.
+    const build = await ports.published().catch(() => undefined);
+    if (build === undefined) return;
     if (!build || !isNewerVersion(build.version, ports.currentVersion)) return this.show(null);
     if (ports.skipped.has(build.hash)) return this.show(refused(build));
     if (this.offer?.hash === build.hash && this.offer.stage === "ready") return;

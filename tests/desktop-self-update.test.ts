@@ -9,6 +9,7 @@ class World {
   blockedBy: string | null = null;
   trusted = true;
   downloadFails = false;
+  lookupFails = false;
   skipped = new Set<string>();
   lookups = 0;
   events: string[] = [];
@@ -20,6 +21,7 @@ class World {
       currentVersion: RUNNING,
       published: async () => {
         world.lookups += 1;
+        if (world.lookupFails) throw new Error("offline");
         return world.published;
       },
       blockedBy: () => world.blockedBy,
@@ -51,6 +53,19 @@ test("a newer release is downloaded, checked and then offered, and says so while
     { version: "0.6.0", hash: "hash060", stage: "ready" },
   ]);
   expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", stage: "ready" });
+});
+
+test("a check that cannot reach the latest release keeps the update it downloaded, ready to restart into", async () => {
+  const world = new World();
+  const selfUpdate = world.selfUpdate();
+  await selfUpdate.look();
+
+  world.lookupFails = true;
+  await selfUpdate.look();
+
+  expect(selfUpdate.offer).toEqual({ version: "0.6.0", hash: "hash060", stage: "ready" });
+  expect(world.offers.at(-1)).toEqual({ version: "0.6.0", hash: "hash060", stage: "ready" });
+  expect(world.events).toEqual(["download hash060", "check hash060"]);
 });
 
 test("only a newer version is offered: the latest release may be older, or this version built again", async () => {

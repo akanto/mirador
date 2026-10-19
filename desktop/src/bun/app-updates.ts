@@ -23,7 +23,8 @@ export async function selfUpdateFromReleases(appPath: string | null, events: Upd
       currentVersion: MIRADOR_VERSION,
       published: async () => {
         const { updateAvailable, version, hash, error } = await Updater.checkForUpdate();
-        return updateAvailable && !error ? { version, hash } : null;
+        if (error) throw new Error(error);
+        return updateAvailable ? { version, hash } : null;
       },
       blockedBy: () => updateBlockedBy(replacedFolder(appPath, process.platform), process.platform),
       download: async () => {
