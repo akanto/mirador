@@ -299,6 +299,17 @@ async function replyAroundATool(client: acp.AgentContext, sessionId: string, tex
   return { stopReason: "end_turn" as const };
 }
 
+/** Tool calls that run and finish at once, each with the input given, as Claude Code sends `{}` for a tool that takes no parameters. */
+async function runTools(client: acp.AgentContext, sessionId: string, tools: { title: string; kind: acp.ToolKind; rawInput: unknown }[]) {
+  const notify = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  for (const { title, kind, rawInput } of tools) {
+    const toolCallId = `tool-${++nextToolCall}`;
+    await notify({ sessionUpdate: "tool_call", toolCallId, title, kind, status: "in_progress", rawInput });
+    await notify({ sessionUpdate: "tool_call_update", toolCallId, status: "completed" });
+  }
+  return { stopReason: "end_turn" as const };
+}
+
 const steerWaiters = new Map<string, (text: string) => void>();
 let nextSteeredTurn = 0;
 
@@ -380,6 +391,7 @@ acp
     const text = ctx.params.prompt.map((block) => (block.type === "text" ? block.text : "")).join("");
     appendFileSync(promptsFile!, `${text}\n`);
     if (startsWith(ctx.params.prompt, "EDIT ")) return askToEdit(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("EDIT ".length)));
+    if (startsWith(ctx.params.prompt, "RUN TOOLS ")) return runTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("RUN TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "TOOLS ")) return askToUseTools(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("TOOLS ".length)));
     if (startsWith(ctx.params.prompt, "WRITE ")) return writeFiles(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("WRITE ".length)));
     if (startsWith(ctx.params.prompt, "SUBAGENT ASKS ")) return askFromSubagent(ctx.client, ctx.params.sessionId, text.slice("SUBAGENT ASKS ".length));

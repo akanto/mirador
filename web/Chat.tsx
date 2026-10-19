@@ -313,8 +313,11 @@ function ToolContent({ content }: { content: ToolCallContent }) {
 
 const rawJsonText = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value, null, 2));
 
+/** No value at all, or an empty one, as `{}` for a tool that takes no parameters. */
+const holdsNothing = (value: unknown) => value === undefined || value === null || value === "" || (typeof value === "object" && Object.keys(value).length === 0);
+
 function RawJson({ label, value }: { label: string; value: unknown }) {
-  if (value === undefined || value === null) return null;
+  if (holdsNothing(value)) return null;
   return (
     <details className="raw">
       <summary>{label}</summary>
