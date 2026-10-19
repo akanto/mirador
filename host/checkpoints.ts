@@ -1,4 +1,4 @@
-import { chmod, copyFile, lstat, mkdir, readdir, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, rmdir } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { RestorePlan, Workspace } from "../shared/model.ts";
 import { treeChangesIn, type TreeChange } from "./working-tree.ts";
@@ -12,9 +12,6 @@ const snapshotRefOf = (workspaceId: string, commit: string, takenAt: number) => 
 export const SNAPSHOTS_KEPT = 100;
 
 const SUBMODULE_MODE = "160000";
-const SYMLINK_MODE = "120000";
-const FILE_MODE = "100644";
-const EXECUTABLE_MODE = "100755";
 
 /**
  * git's `-z --raw` output: each change's modes, objects and status (":100644 100644 <old> <new> M"), then its path, each
@@ -47,14 +44,9 @@ const WITHOUT_AUTOCRLF = ["-c", "core.autocrlf=false"];
  * The workspace's own repository does the storing, through an index of our own (`GIT_INDEX_FILE`), so nothing of the
  * user's branch, HEAD or reflog is touched: a snapshot writes the file contents it does not already have as objects,
  * plus one commit with a ref of its own under `refs/mirador/turns/<workspace>/`, whose parent holds what the user had
- * staged. Only the newest `keep` refs stay; git's own gc drops what the others alone held. Files are stored as their
- * bytes are, with the conversions and filters git's attributes would apply skipped, and come back from those same
- * bytes, so undo gives a file back exactly as it was whatever .gitattributes says. Restoring writes the working
+ * staged. Only the newest `keep` refs stay; git's own gc drops what the others alone held. Restoring writes the working
  * tree and puts back the staging of the files it writes, so a file the agent staged is not left queued for the user's
  * next commit. A submodule's own files are its repository's, so a restore leaves a submodule as it is and says so.
- *
- * A snapshot taken while files were stored with git's conversion applied holds converted bytes, so restoring one can
- * rewrite files whose only difference is line endings or filters.
  *
  * A workspace that is not a git repository has no snapshots, and so no undo.
  */
@@ -114,68 +106,11 @@ export class Checkpoints {
     return this.inOrder(workspace.id, async () => {
       const { restored, removed, added, written, submodulesLeft } = await this.diffToNow(workspace, commit);
       await this.deleteFiles(workspace, added);
-      const gone = new Set(added);
-      await this.writeFromSnapshot(workspace, commit, written.filter((path) => !gone.has(path)));
+      await this.mustGit(workspace, ["read-tree", commit]);
+      await this.mustGit(workspace, ["checkout-index", "-a", "-f"]);
       await this.restoreStaging(workspace, commit, written);
       return { restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }) };
     });
-  }
-
-  /**
-   * Puts the files the restore rewrites back from the snapshot's own blobs, so nothing git's attributes would convert
-   * or filter stands between the snapshot and the working tree. The snapshot's modes come with them; a submodule's
-   * files stay its own repository's, and a file already holding the snapshot's bytes is left alone.
-   */
-  private async writeFromSnapshot(workspace: Workspace, commit: string, paths: string[]) {
-    const listed = await this.mustGit(workspace, ["ls-tree", "-r", "-z", commit]);
-    const wanted = new Set(paths);
-    const entries = listed.stdout.split("\0").filter(Boolean).flatMap((line) => {
-      const [meta = "", path = ""] = line.split("\t");
-      const [mode = "", type = "", blob = ""] = meta.split(" ");
-      return type === "blob" && wanted.has(path) && withinWorkspace(workspace, path) ? [{ mode, blob, path }] : [];
-    });
-    if (entries.length === 0) return;
-    const contents = await this.rawContentsOf(workspace, entries.map(({ blob }) => blob));
-    for (const { mode, blob, path } of entries) {
-      const bytes = contents.get(blob);
-      if (bytes === undefined) throw new Error(`the snapshot does not hold ${path} of ${workspace.path} any more`);
-      const full = join(workspace.path, path);
-      await rm(full, { force: true });
-      await mkdir(dirname(full), { recursive: true });
-      if (mode === SYMLINK_MODE) await symlink(new TextDecoder().decode(bytes), full);
-      else {
-        await writeFile(full, bytes);
-        await chmod(full, mode === EXECUTABLE_MODE ? 0o755 : 0o644);
-      }
-    }
-  }
-
-  /**
-   * The blobs' bytes from one `git cat-file` call, keyed by blob; each answer is a header line naming the blob's size,
-   * the bytes themselves, and a newline.
-   */
-  private async rawContentsOf(workspace: Workspace, blobs: string[]) {
-    const child = Bun.spawn(["git", "-C", workspace.path, ...IDENTITY, "cat-file", "--batch"], {
-      env: { ...process.env, GIT_INDEX_FILE: join(this.dataDir, "checkpoints", `${workspace.id}.index`) },
-      stdin: new Blob([`${blobs.join("\n")}\n`]),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [bytes, stderr, exitCode] = await Promise.all([new Response(child.stdout).arrayBuffer(), new Response(child.stderr).text(), child.exited]);
-    if (exitCode !== 0) throw new Error(`git cat-file failed in ${workspace.path}: ${stderr.trim()}`);
-    const decoder = new TextDecoder();
-    const view = new Uint8Array(bytes);
-    const contents = new Map<string, Uint8Array>();
-    let at = 0;
-    for (const blob of blobs) {
-      const headerEnd = view.indexOf(0x0a, at);
-      const [, type = "", size = ""] = decoder.decode(view.subarray(at, headerEnd === -1 ? bytes.byteLength : headerEnd)).split(" ");
-      if (headerEnd === -1 || type !== "blob") throw new Error(`git lost the snapshot's copy of ${blob} in ${workspace.path}`);
-      const from = headerEnd + 1;
-      contents.set(blob, view.subarray(from, from + Number(size)));
-      at = from + Number(size) + 1;
-    }
-    return contents;
   }
 
   /** The chain the snapshots made before each got a ref: its newest snapshot holds the rest, and ages out like any. */
@@ -275,62 +210,10 @@ export class Checkpoints {
    * repository with no commit yet makes git refuse the whole add, so those stay out of the snapshot.
    */
   private async stageEverything(workspace: Workspace) {
-    const before = await this.mustGit(workspace, ["write-tree"]);
     const withoutCommit = await this.nestedRepositoriesWithNoCommit(workspace);
     const excludes = withoutCommit.map((entry) => `:(exclude,literal)${entry}`);
     await this.mustGit(workspace, ["add", "-A", "--", ".", ...excludes], { pathspecMagic: true });
-    const after = (await this.mustGit(workspace, ["write-tree"])).stdout;
-    const stored = await this.replaceWithRawFiles(workspace, before.stdout, after);
-    return stored ?? after;
-  }
-
-  /**
-   * git add stores files the way git's attributes ask it to — line endings converted, filters like LFS run — while a
-   * snapshot must hold the bytes as they are. So every file the add changed is hashed again with filters skipped, and
-   * the ones whose stored form differs from their bytes get that raw blob in the index, under the mode the add
-   * worked out. Once a file holds raw bytes here the add leaves them alone afterwards, so the extra hashing is paid
-   * once per file. Returns the tree that holds them, or null when nothing needed replacing.
-   */
-  private async replaceWithRawFiles(workspace: Workspace, before: string, after: string) {
-    const top = (await this.mustGit(workspace, ["rev-parse", "--show-toplevel"])).stdout;
-    const from = { ...workspace, path: top };
-    const changed = changesIn((await this.mustGit(from, ["diff-tree", "-r", "-z", "--raw", "--no-renames", before, after])).stdout);
-    const paths = new Set(changed.filter(({ submodule }) => !submodule).map(({ path }) => path));
-    if (paths.size === 0) return null;
-    const listed = await this.mustGit(from, ["ls-files", "-s", "-z", "--full-name"]);
-    const rewrites = listed.stdout.split("\0").filter(Boolean).flatMap((line) => {
-      const [meta = "", path = ""] = line.split("\t");
-      const [mode = "", blob = ""] = meta.split(" ");
-      return paths.has(path) && (mode === FILE_MODE || mode === EXECUTABLE_MODE) ? [{ mode, blob, path }] : [];
-    });
-    const raw = await this.rawBlobsOf(from, rewrites.map(({ path }) => path));
-    const input = rewrites
-      .flatMap(({ mode, blob, path }) => {
-        const sha = raw.get(path) ?? "";
-        return sha !== "" && sha !== blob ? [`${mode} ${sha} 0\t${path}\0`] : [];
-      })
-      .join("");
-    if (input === "") return null;
-    await this.mustGit(from, ["update-index", "-z", "--index-info"], { input });
-    return (await this.mustGit(from, ["write-tree"])).stdout;
-  }
-
-  /**
-   * The blob holding each file's bytes as they are, keyed by path. git hashes a whole batch at once, and a file whose
-   * name carries a newline on its own; a file that vanished since the add keeps the blob the add gave it.
-   */
-  private async rawBlobsOf(workspace: Workspace, paths: string[]) {
-    const onDisk = (await Promise.all(paths.map(async (path) => ((await lstat(join(workspace.path, path)).catch(() => null)) ? path : null)))).filter(
-      (path): path is string => path !== null,
-    );
-    const batchable = onDisk.filter((path) => !path.includes("\n"));
-    const shas = new Map<string, string>();
-    const batch = batchable.length > 0 ? await this.git(workspace, ["hash-object", "-w", "--no-filters", "--stdin-paths"], { input: `${batchable.join("\n")}\n` }) : undefined;
-    if (batch && batch.exitCode === 0) batchable.forEach((path, index) => shas.set(path, batch.stdout.split("\n")[index] ?? ""));
-    for (const path of onDisk) {
-      if (!shas.has(path)) shas.set(path, (await this.git(workspace, ["hash-object", "-w", "--no-filters", "--", path])).stdout);
-    }
-    return shas;
+    return (await this.mustGit(workspace, ["write-tree"])).stdout;
   }
 
   /**
