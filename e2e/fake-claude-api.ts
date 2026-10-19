@@ -24,6 +24,7 @@ const lastTypedText = ({ messages }: MessagesRequest) =>
     .trim();
 
 const BACKGROUND = "BACKGROUND ";
+const RUN = "RUN ";
 const SUBAGENT = "SUBAGENT ";
 const ADVISOR_AFTER_BASH = "ADVISOR AFTER BASH ";
 
@@ -41,14 +42,15 @@ const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
  * Claude's Messages API for a subscription that Claude Code believes it signs in to (CLAUDE_CODE_OAUTH_TOKEN): while
  * `limited`, every request is refused the way the API refuses once a usage limit is reached; while `failing`, it fails
  * the way a gateway in front of the API does when it cannot reach it, with a 502; otherwise each reply
- * quotes the user's newest message. A message starting with `BACKGROUND ` runs the rest as a Bash command in the
- * background; once it ends, the reply to Claude Code's notification of it waits until `answerEndedCommands`, then
- * runs `true` in Bash, so the turn Claude Code started on its own asks for one more reply after it. A message starting
- * with `ADVISOR AFTER BASH ` runs the rest in Bash and calls the advisor after it in the same reply, which the real
- * API never runs, so that call gets no result. A message starting with `SUBAGENT ` has a subagent do the rest, on the
- * model Claude Code picks for it. While `contextTokens` is set, answers report it as their input usage, so Claude Code
- * compacts its context on the next request; a message equal to `refuseAfterCompaction` is answered with a Bash call so
- * the turn keeps going after the compaction, and every request after it runs into the usage limit.
+ * quotes the user's newest message. A message starting with `RUN ` runs the rest as a Bash command, and one starting
+ * with `BACKGROUND ` runs it in the background; once a background command or subagent ends, the reply to Claude Code's
+ * notification of it waits until `answerEndedCommands`, then runs `true` in Bash, so the turn Claude Code started on its
+ * own asks for one more reply after it. A message starting with `ADVISOR AFTER BASH ` runs the rest in Bash and calls
+ * the advisor after it in the same reply, which the real API never runs, so that call gets no result. A message
+ * starting with `SUBAGENT ` has a subagent do the rest, on the model Claude Code picks for it. While `contextTokens` is
+ * set, answers report it as their input usage, so Claude Code compacts its context on the next request; a message equal
+ * to `refuseAfterCompaction` is answered with a Bash call so the turn keeps going after the compaction, and every
+ * request after it runs into the usage limit.
  */
 export class FakeClaudeApi {
   limited = true;
@@ -156,6 +158,7 @@ export class FakeClaudeApi {
   }
 
   private answerTo(typed: string, bashOffered: boolean): Answer[] {
+    if (bashOffered && typed.startsWith(RUN)) return [this.bashCall(typed.slice(RUN.length), false)];
     if (bashOffered && typed.startsWith(BACKGROUND)) return [this.bashCall(typed.slice(BACKGROUND.length), true)];
     if (bashOffered && typed.startsWith(ADVISOR_AFTER_BASH)) return [this.bashCall(typed.slice(ADVISOR_AFTER_BASH.length), false), this.advisorCall()];
     return [{ type: "text", text: `Answered: ${typed}` }];

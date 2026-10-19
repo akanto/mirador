@@ -1468,7 +1468,7 @@ export class ConversationService {
     const runtime = this.runtime(conversationId);
     if (!runtime.running) return;
     const activityBefore = this.activity(conversationId);
-    const finishedOne = runtime.openToolCalls.follow(update);
+    const finishedOne = runtime.openToolCalls.follow(update, isSubagentReport(update));
     if (!isDeepStrictEqual(this.activity(conversationId), activityBefore)) this.publish(this.get(conversationId));
     if (finishedOne) this.steerQueuedMessages(conversationId);
   }
@@ -1479,15 +1479,16 @@ export class ConversationService {
   }
 
   /**
-   * Messages that join the running turn. Not while a tool call is open: Claude Code would move a running command to the
-   * background, and a question or permission prompt the agent waits on with it. Those the agent cannot take go back to
-   * the front of the queue, to go out when the turn ends.
+   * Messages that join the running turn. Not while a tool call of the agent's own is open: Claude Code would move a
+   * running command to the background, and a question or permission prompt the agent waits on with it. Its background
+   * subagents' calls don't count, as they keep running, and claude-agent-acp holds the turn open for those subagents.
+   * Those the agent cannot take go back to the front of the queue, to go out when the turn ends.
    */
   private async steerWhileNoToolRuns(conversationId: string) {
     const runtime = this.runtime(conversationId);
     const { harness } = runtime;
     const sessionId = this.get(conversationId).acpSessionId;
-    if (!harness || !sessionId || !runtime.running || runtime.openToolCalls.size > 0 || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
+    if (!harness || !sessionId || !runtime.running || runtime.openToolCalls.mainAgentSize > 0 || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
     const messages = queuedBeforeClear(runtime.queuedMessages).filter((message) => !message.afterTurn);
     const [first, ...rest] = messages;
     if (!first) return;
@@ -1884,7 +1885,7 @@ export function opencodeSubagentSessionOf(update: acp.SessionUpdate): string | n
 const isAgentReplyChunk = (update: acp.SessionUpdate) =>
   update.sessionUpdate === "agent_message_chunk" || update.sessionUpdate === "agent_thought_chunk";
 
-/** Text an agent's subagent wrote, reported through the conversation's session: not the turn's own reply. */
+/** What an agent's subagent wrote or ran, reported through the conversation's session: not the turn's own reply or tool call. */
 const isSubagentReport = (update: acp.SessionUpdate) =>
   opencodeSubagentSessionOf(update) !== null ||
   ((update._meta?.claudeCode ?? {}) as { parentToolUseId?: unknown }).parentToolUseId !== undefined;

@@ -7,27 +7,37 @@ const hasFinished = (status: acp.ToolCallStatus | null | undefined) => status ==
 export class OpenToolCalls {
   private readonly titles = new Map<string, string>();
   private readonly kinds = new Map<string, acp.ToolKind>();
+  /** Known from the call's start only: a later update of a subagent's call can come without the mark of its subagent. */
+  private readonly subagentCalls = new Set<string>();
 
   get size() {
     return this.titles.size;
   }
 
+  /** The open calls the agent made itself, leaving out those of its subagents. */
+  get mainAgentSize() {
+    return [...this.titles.keys()].filter((toolCallId) => !this.subagentCalls.has(toolCallId)).length;
+  }
+
   clear() {
     this.titles.clear();
     this.kinds.clear();
+    this.subagentCalls.clear();
   }
 
   /** Whether the update finished a tool call. */
-  follow(update: acp.SessionUpdate) {
+  follow(update: acp.SessionUpdate, madeBySubagent = false) {
     if (update.sessionUpdate === "tool_call" && !hasFinished(update.status)) {
       this.titles.set(update.toolCallId, update.title);
       if (update.kind) this.kinds.set(update.toolCallId, update.kind);
+      if (madeBySubagent) this.subagentCalls.add(update.toolCallId);
       return false;
     }
     if (update.sessionUpdate !== "tool_call_update") return false;
     if (hasFinished(update.status)) {
       this.titles.delete(update.toolCallId);
       this.kinds.delete(update.toolCallId);
+      this.subagentCalls.delete(update.toolCallId);
       return true;
     }
     if (!this.titles.has(update.toolCallId)) return false;

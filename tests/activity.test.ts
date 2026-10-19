@@ -43,6 +43,24 @@ describe("OpenToolCalls", () => {
     open.follow(updated("unknown", { title: "Never started" }));
     expect(open.latest()).toBe("bun test");
   });
+
+  test("tells the agent's own open calls from its subagents', also once a subagent's call updates without the subagent's mark", () => {
+    const open = new OpenToolCalls();
+    open.follow(started("launch", "Review the diff"));
+    open.follow(started("subagent-run", "sleep 45"), true);
+    open.follow(updated("subagent-run", { status: "in_progress" }));
+    expect([open.size, open.mainAgentSize]).toEqual([2, 1]);
+    open.follow(updated("launch", { status: "completed" }));
+    expect([open.size, open.mainAgentSize]).toEqual([1, 0]);
+    open.follow(updated("subagent-run", { status: "completed" }));
+    open.follow(started("subagent-run", "sleep 45 again"));
+    expect([open.size, open.mainAgentSize]).toEqual([1, 1]);
+    open.clear();
+    open.follow(started("subagent-read", "Read a.ts"), true);
+    open.clear();
+    open.follow(started("subagent-read", "Read a.ts"));
+    expect(open.mainAgentSize).toBe(1);
+  });
 });
 
 describe("currentActivity", () => {
