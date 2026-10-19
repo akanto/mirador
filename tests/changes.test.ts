@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
 import { agentEditsIn, Changes } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
@@ -368,6 +368,64 @@ test("ignored files written since a timestamp are found, while unignored and old
   const part = await ignoredFilesWrittenSince(projectDir, past, 0);
   expect(part.truncated).toBe(true);
   expect(part.changes).toHaveLength(0);
+});
+
+const aMomentAgo = () => Date.now() - 60_000;
+
+async function writeIgnored(...paths: string[]) {
+  await write(".gitignore", "build\ndist\nnode_modules\n*.log\n");
+  await Promise.all(
+    paths.map(async (path) => {
+      await mkdir(dirname(join(projectDir, path)), { recursive: true });
+      await write(path, `${path}\n`);
+    }),
+  );
+}
+
+test("ignored files deep in a hidden folder and beside tracked ones are found, but not under node_modules or tool folders", async () => {
+  await writeIgnored("build/deep/er/output.js", "build/node_modules/pkg/index.js", "build/.beads/state.json", "node_modules/pkg/index.js", "src/trace.log");
+
+  const found = await ignoredFilesWrittenSince(projectDir, aMomentAgo());
+
+  expect(found.changes.map(({ path }) => path).sort()).toEqual(["build/deep/er/output.js", "src/trace.log"]);
+  expect(found.truncated).toBe(false);
+});
+
+test("a repository of its own inside a hidden folder is left to that repository", async () => {
+  await writeIgnored("build/output.js", "build/vendored/lib.js");
+  await git(join(projectDir, "build/vendored"), ["init", "-q"]);
+
+  const found = await ignoredFilesWrittenSince(projectDir, aMomentAgo());
+
+  expect(found.changes.map(({ path }) => path)).toEqual(["build/output.js"]);
+});
+
+test("the limit counts the files of every hidden folder together", async () => {
+  await writeIgnored("build/a.js", "build/b.js", "dist/c.js", "dist/d.js", "e.log");
+
+  expect((await ignoredFilesWrittenSince(projectDir, aMomentAgo(), 5)).truncated).toBe(false);
+
+  const part = await ignoredFilesWrittenSince(projectDir, aMomentAgo(), 3);
+  expect(part.truncated).toBe(true);
+  expect(part.changes).toHaveLength(3);
+});
+
+test("git is asked to name a hidden folder in whole, so a folder like node_modules is never listed file by file", async () => {
+  await writeIgnored("node_modules/pkg/index.js", "build/output.js");
+  const gitCalls: string[][] = [];
+  const realSpawn = Bun.spawn;
+  Bun.spawn = ((command: string[], options: object) => {
+    gitCalls.push(command);
+    return (realSpawn as (...args: unknown[]) => unknown)(command, options);
+  }) as typeof Bun.spawn;
+
+  try {
+    await ignoredFilesWrittenSince(projectDir, aMomentAgo());
+  } finally {
+    Bun.spawn = realSpawn;
+  }
+
+  expect(gitCalls.flat()).toContain("--directory");
 });
 
 test("a file written in the same clock tick as the turn's start still counts as written during the turn", async () => {

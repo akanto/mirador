@@ -111,17 +111,21 @@ const TOOL_STATE_FOLDERS = [".beads", ".dolt", ".idea"];
 const SCAN_SKIPS = new Set([".git", "node_modules", ".DS_Store", ...TOOL_STATE_FOLDERS]);
 const isOfficeLockFile = (name: string) => name.startsWith("~$");
 const isScannedName = (name: string) => !SCAN_SKIPS.has(name) && !isOfficeLockFile(name);
+const isScannedPath = (path: string) => path.split("/").every(isScannedName);
 export const MAX_SCANNED_FILES = 50_000;
 
 /**
- * The files under `directory`, relative to it with / as git writes them, skipping the folders nothing of the user's lives
- * in; it stops after `limit` of them, and says so.
+ * The files under the `folders` of `directory` (all of it by default), relative to `directory` with / as git writes
+ * them, skipping the folders nothing of the user's lives in, and with `skipOtherRepositories` the folders with a .git
+ * of their own; it stops after `limit` of them, and says so.
  */
-async function scannedFiles(directory: string, limit: number) {
+async function scannedFiles(directory: string, limit: number, { folders = [""], skipOtherRepositories = false } = {}) {
   const files: string[] = [];
-  const pending = [""];
+  const pending = [...folders];
   for (let folder = pending.pop(); folder !== undefined && files.length <= limit; folder = pending.pop()) {
     const entries = await readdir(join(directory, folder), { withFileTypes: true }).catch(() => []);
+    const holdsAnotherRepository = folder !== "" && entries.some(({ name }) => name === ".git");
+    if (skipOtherRepositories && holdsAnotherRepository) continue;
     entries
       .filter(({ name }) => isScannedName(name))
       .forEach((entry) => (entry.isDirectory() ? pending.push(posix.join(folder, entry.name)) : entry.isFile() && files.push(posix.join(folder, entry.name))));
@@ -163,19 +167,23 @@ export async function filesWrittenSince(
 
 /**
  * The files a git repository hides behind its excludes which were written at or after `since` (epoch ms), which git
- * lists by name so a walk never opens the tracked files. Their times tell them apart as in filesWrittenSince. The names
- * a listing has no use for — node_modules and the folders tools keep their own state in — are left out, and git leaves
- * a folder holding a git of its own to that repository, naming it in whole. A repository hiding more files than `limit`
- * is checked only in part, which `truncated` says.
+ * lists by name so a walk never opens the tracked files. Their times tell them apart as in filesWrittenSince. Git names
+ * a hidden folder in whole instead of listing what is in it, and only those folders are walked, leaving out
+ * node_modules and the folders tools keep their own state in, and any folder holding a git of its own, which is that
+ * repository's. Git also names the hidden files of an untracked folder one by one, so a file can come twice. A
+ * repository hiding more files than `limit` is checked only in part, which `truncated` says.
  */
 export async function ignoredFilesWrittenSince(
   directory: string,
   since: number,
   limit = MAX_SCANNED_FILES,
 ): Promise<{ changes: TreeChange[]; truncated: boolean }> {
-  const listed = await mustGit(directory, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]);
-  const hidden = listed.split("\0").filter((path) => path !== "" && !path.endsWith("/") && path.split("/").every(isScannedName));
-  return { changes: await writtenChangesOf(directory, hidden.slice(0, limit), since - FILE_TIME_TICK_MS), truncated: hidden.length > limit };
+  const listed = (await mustGit(directory, ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])).split("\0").filter(Boolean);
+  const hiddenFiles = listed.filter((path) => !path.endsWith("/") && isScannedPath(path));
+  const hiddenFolders = listed.filter((path) => path.endsWith("/")).map((folder) => folder.slice(0, -1)).filter(isScannedPath);
+  const walked = await scannedFiles(directory, limit, { folders: hiddenFolders, skipOtherRepositories: true });
+  const hidden = [...new Set([...hiddenFiles, ...walked.files])];
+  return { changes: await writtenChangesOf(directory, hidden.slice(0, limit), since - FILE_TIME_TICK_MS), truncated: walked.truncated || hidden.length > limit };
 }
 
 /** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */
