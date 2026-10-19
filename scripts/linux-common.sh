@@ -24,3 +24,21 @@ run_in_container() {
     --volume "mirador-linux-bun-cache-$arch:/home/ubuntu/.bun/install/cache" \
     "$@"
 }
+
+# The specs that wait for a real Claude reply get it from the owner's model server, as e2e/model-server.ts says. This
+# fills model_server with the arguments that hand the container the server's address and key by name, taken from your
+# environment or the file you keep them in.
+find_model_server() {
+  local file="$HOME/.config/mirador/e2e-model-server.env"
+  if [[ -z ${LLM_SERVER_URL:-} && -r $file ]]; then
+    set -a
+    source "$file"
+    set +a
+  fi
+  model_server=()
+  if [[ ${LLM_SERVER_URL:-} && ${LLM_SERVER_KEY:-} ]]; then
+    model_server=(--env LLM_SERVER_URL --env LLM_SERVER_KEY)
+  else
+    echo "No e2e model server: set LLM_SERVER_URL and LLM_SERVER_KEY, or write them to $file. The specs that wait for a real Claude reply will fail."
+  fi
+}

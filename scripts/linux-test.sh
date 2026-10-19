@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs the type check, the unit tests and the browser tests on Linux, against this working tree, in a container.
 # Usage: [MIRADOR_LINUX_ARCH=x64|arm64] scripts/linux-test.sh [extra Playwright arguments, e.g. e2e/terminal-keys.spec.ts]
-# The browser tests that wait for a real Claude reply need a login: export ANTHROPIC_API_KEY first, and the container
-# gets it by name. Playwright's results (screenshots of failures) are copied to $results.
+# The browser tests that wait for a real Claude reply get it from your model server, as scripts/linux-common.sh says.
+# Playwright's results (screenshots of failures) are copied to $results.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -11,10 +11,9 @@ results="${TMPDIR:-/tmp}/mirador-linux-test-results-$arch"
 rm -rf "$results" && mkdir -p "$results"
 
 build_image linux-test
-
-[[ ${ANTHROPIC_API_KEY:-} ]] || echo "ANTHROPIC_API_KEY is not set: the specs that wait for a real Claude reply will fail on 'Authentication required'."
+find_model_server
 run_in_container \
-  ${ANTHROPIC_API_KEY:+--env ANTHROPIC_API_KEY} \
+  ${model_server[@]+"${model_server[@]}"} \
   --volume "$results:/results" \
   "mirador-linux-test-$arch" bash -c '
     mkdir /tmp/mirador && tar -X /src/scripts/linux-copy.exclude -C /src -cf - . | tar -xf - -C /tmp/mirador

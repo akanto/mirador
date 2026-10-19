@@ -17,6 +17,7 @@ test.skip(!process.env.MIRADOR_SCREENSHOTS, "set MIRADOR_SCREENSHOTS=1 to retake
 const zdotdir = join(tmpdir(), "mirador-readme-zdotdir");
 const host = new TestHost({
   shell: "/bin/zsh",
+  usesClaudeLogin: true,
   environment: { ZDOTDIR: zdotdir, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default" },
 });
 const screenshots = join(import.meta.dirname, "..", "docs", "screenshots");

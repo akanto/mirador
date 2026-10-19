@@ -3,7 +3,7 @@
 # so the checkout can keep being edited while a run is in flight, and concurrent runs share nothing: each gets its own
 # ports, test-results and results dir. Unlike scripts/linux-test.sh this skips the type check and the unit suite.
 # Usage: scripts/test-spec.sh e2e/<spec>.spec.ts [more specs...]
-# Specs that wait for a real Claude reply need a login: export ANTHROPIC_API_KEY first, and the container gets it by name.
+# Specs that wait for a real Claude reply get it from your model server, as scripts/linux-common.sh says.
 # Failure artifacts are copied to a fresh dir under $TMPDIR, printed at the start.
 set -euo pipefail
 
@@ -12,11 +12,10 @@ source "$repo/scripts/linux-common.sh"
 results=$(mktemp -d "${TMPDIR:-/tmp}/mirador-spec-results-$arch-XXXXXX")
 
 build_image linux-test
-
-[[ ${ANTHROPIC_API_KEY:-} ]] || echo "ANTHROPIC_API_KEY is not set: the specs that wait for a real Claude reply will fail on 'Authentication required'."
+find_model_server
 echo "failure artifacts (if any): $results"
 run_in_container \
-  ${ANTHROPIC_API_KEY:+--env ANTHROPIC_API_KEY} \
+  ${model_server[@]+"${model_server[@]}"} \
   --volume "$results:/results" \
   "mirador-linux-test-$arch" bash -c '
     mkdir /tmp/mirador && tar -X /src/scripts/linux-copy.exclude -C /src -cf - . | tar -xf - -C /tmp/mirador

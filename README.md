@@ -422,16 +422,18 @@ A native window around Mirador, for macOS, Linux and Windows ([full details](des
 ```bash
 bun run typecheck
 bun run test            # unit tests
-bunx playwright test    # e2e: a real Claude Code on haiku, opencode and pi against a scripted fake model (installed Google Chrome on macOS, Playwright's Chromium elsewhere)
+bunx playwright test    # e2e: a real Claude Code on haiku against your model server, opencode and pi against a scripted fake model (installed Google Chrome on macOS, Playwright's Chromium elsewhere)
 MIRADOR_E2E_MINIMAL_ENV=1 bunx playwright test e2e/agent-flow.spec.ts   # host started with a bare environment
 MIRADOR_EXPERIMENT=1 MIRADOR_TEST_MODEL=default MIRADOR_TEST_EFFORT=default bunx playwright test e2e/experiment-unprompted.spec.ts
 MIRADOR_SCREENSHOTS=1 bunx playwright test e2e/readme-screenshots.spec.ts   # retakes this README's screenshots from a demo
 ```
 
+The e2e specs' Claude Code never uses your Claude login. Specs that wait for a real reply need a model server that speaks the Anthropic API: export `LLM_SERVER_URL` and `LLM_SERVER_KEY`, or write them to `~/.config/mirador/e2e-model-server.env`. Without one, those specs fail. The experiment and the screenshots above are the exceptions: they run on your login.
+
 On Linux, from any machine with Docker (`MIRADOR_LINUX_ARCH=x64` or `arm64`, default this machine's; the other one runs emulated and slowly):
 
 ```bash
-scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu 24.04; export ANTHROPIC_API_KEY for the tests that need a real Claude reply
+scripts/linux-test.sh      # type check, unit and e2e tests in Ubuntu 24.04
 scripts/linux-desktop.sh   # builds the desktop app's installer, installs it and checks it starts, opens at login and stays single-instance
 MIRADOR_LINUX_RELEASE=1 scripts/linux-desktop.sh   # the same for the release installer, which carries Mirador
 ```

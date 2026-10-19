@@ -17,7 +17,7 @@ test.skip(!process.env.MIRADOR_EXPERIMENT, "set MIRADOR_EXPERIMENT=1 to run the 
 test.setTimeout(30 * 60_000);
 
 test("records whether the agent uses show/ask when nobody asks it to", async ({ page }) => {
-  const host = new TestHost();
+  const host = new TestHost({ usesClaudeLogin: true });
   await host.start();
   const results: { prompt: string; toolCalls: string[]; canvasItems: string[]; errors: string[] }[] = [];
   page.on("websocket", (socket) => socket.on("close", () => console.log(`${new Date().toISOString()} browser saw close of ${socket.url()}`)));

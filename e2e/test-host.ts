@@ -5,6 +5,7 @@ import { basename, delimiter, dirname, join } from "node:path";
 import { muteMarkerName, MUTED_LIST_FILE, mutedListAt } from "../host/notifier.ts";
 import { HOST_RELAUNCH, HOST_RESTART_EXIT_CODE } from "../shared/host-relaunch.ts";
 import { freePorts } from "./free-ports.ts";
+import { ownersModelServer } from "./model-server.ts";
 import { processTreeOf, waitForProcessesToEnd } from "./process-tree.ts";
 
 const repoRoot = join(import.meta.dirname, "..");
@@ -120,6 +121,8 @@ interface TestHostOptions {
   environment?: Record<string, string> | ((port: number) => Record<string, string>);
   /** Starts with no profile, as a first run does; otherwise the host has the profile a user sets up first. */
   withoutProfiles?: boolean;
+  /** Runs Claude Code on the owner's own login, for an opt-in run about Claude itself: real turns, or screenshots of its model picker. Other hosts' Claude Code talks to the owner's model server. */
+  usesClaudeLogin?: boolean;
 }
 
 /** The host's own port, the canvas assets port after it, and the two after those, on which it serves the network. */
@@ -260,8 +263,10 @@ export class TestHost {
   }
 
   private environmentFor(port: number): NodeJS.ProcessEnv {
+    const specsOwn = typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment;
     return {
       ...this.baseEnvironment(),
+      ...(!this.options.usesClaudeLogin && !specsOwn?.ANTHROPIC_BASE_URL && ownersModelServer()),
       MIRADOR_PORT: String(port),
       MIRADOR_DATA_DIR: this.dataDir,
       MIRADOR_MCP_TOKEN: this.mcpToken,
@@ -274,7 +279,7 @@ export class TestHost {
       SHELL: this.options.shell ?? defaultShell,
       ...(process.platform === "win32" && { [HOST_RELAUNCH.restartExitCode]: String(HOST_RESTART_EXIT_CODE) }),
       ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
-      ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
+      ...specsOwn,
     };
   }
 
