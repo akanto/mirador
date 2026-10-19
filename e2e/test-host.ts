@@ -121,7 +121,11 @@ interface TestHostOptions {
   environment?: Record<string, string> | ((port: number) => Record<string, string>);
   /** Starts with no profile, as a first run does; otherwise the host has the profile a user sets up first. */
   withoutProfiles?: boolean;
-  /** Runs Claude Code on the owner's own login, for an opt-in run about Claude itself: real turns, or screenshots of its model picker. Other hosts' Claude Code talks to the owner's model server. */
+  /**
+   * Runs Claude Code on the owner's own login and `~/.claude`, for an opt-in run about Claude itself: real turns, or
+   * screenshots of its model picker. Other hosts' Claude Code talks to the owner's model server and keeps its settings
+   * and sessions in the host's `claudeConfigDir`.
+   */
   usesClaudeLogin?: boolean;
 }
 
@@ -267,6 +271,7 @@ export class TestHost {
     return {
       ...this.baseEnvironment(),
       ...(!this.options.usesClaudeLogin && !specsOwn?.ANTHROPIC_BASE_URL && ownersModelServer()),
+      ...(!this.options.usesClaudeLogin && { CLAUDE_CONFIG_DIR: this.claudeConfigDir }),
       MIRADOR_PORT: String(port),
       MIRADOR_DATA_DIR: this.dataDir,
       MIRADOR_MCP_TOKEN: this.mcpToken,
@@ -377,10 +382,11 @@ export class TestHost {
     rmSync(this.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     this.removeClaudeTranscripts();
     await new Promise((resolve) => setTimeout(resolve, TRANSCRIPT_WRITERS_GRACE_MS));
+    rmSync(this.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     this.removeClaudeTranscripts();
   }
 
-  /** Claude Code processes outlive the host briefly and write a last "interrupted" entry while they stop. */
+  /** Claude Code processes outlive the host briefly and write a last "interrupted" entry while they stop, in `~/.claude` for a host on the owner's login. */
   private removeClaudeTranscripts() {
     this.claudeTranscriptDirs().forEach((dir) => rmSync(dir, { recursive: true, force: true }));
   }

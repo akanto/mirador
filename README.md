@@ -428,7 +428,7 @@ MIRADOR_EXPERIMENT=1 MIRADOR_TEST_MODEL=default MIRADOR_TEST_EFFORT=default bunx
 MIRADOR_SCREENSHOTS=1 bunx playwright test e2e/readme-screenshots.spec.ts   # retakes this README's screenshots from a demo
 ```
 
-The e2e specs' Claude Code never uses your Claude login. Specs that wait for a real reply need a model server that speaks the Anthropic API: export `LLM_SERVER_URL` and `LLM_SERVER_KEY`, or write them to `~/.config/mirador/e2e-model-server.env`. Without one, those specs fail. The experiment and the screenshots above are the exceptions: they run on your login.
+The e2e specs' Claude Code never uses your Claude login, and keeps its settings and sessions in each test host's own folder, out of your `~/.claude`. Specs that wait for a real reply need a model server that speaks the Anthropic API: export `LLM_SERVER_URL` and `LLM_SERVER_KEY`, or write them to `~/.config/mirador/e2e-model-server.env`. Without one, those specs fail. The experiment and the screenshots above are the exceptions: they run on your login and `~/.claude`.
 
 On Linux, from any machine with Docker (`MIRADOR_LINUX_ARCH=x64` or `arm64`, default this machine's; the other one runs emulated and slowly):
 

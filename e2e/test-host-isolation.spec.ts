@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
@@ -29,7 +29,7 @@ test.afterAll(async () => {
   rmSync(home, { recursive: true, force: true });
 });
 
-test("a test host's own Claude Code works without the CLAUDE.md of the user who runs the tests", async ({ page }) => {
+test("a test host's own Claude Code works without the CLAUDE.md of the user who runs the tests, and keeps its sessions out of their ~/.claude", async ({ page }) => {
   const typed = "Which instructions do you follow?";
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
@@ -37,6 +37,8 @@ test("a test host's own Claude Code works without the CLAUDE.md of the user who 
   await sendMessage(page, typed);
   await expect.poll(() => api.userMessages.has(typed), { timeout: 30_000 }).toBe(true);
   expect(api.userMessages.get(typed)).not.toContain(USERS_OWN_INSTRUCTION);
+  await expect.poll(() => existsSync(join(host.claudeConfigDir, "projects")), { timeout: 30_000 }).toBe(true);
+  expect(existsSync(join(home, ".claude", "projects"))).toBe(false);
 });
 
 test("a fake-API profile reads the settings in its isolated config dir and ignores the user's own", async ({ page }) => {
