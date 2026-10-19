@@ -495,7 +495,12 @@ export class ConversationService {
     const profile = profileToLaunch(this.store, { harness, profileId });
     const interrupted = runtime.running;
     runtime.holdingQueue = interrupted;
-    if (interrupted) await this.stopTurnEvenIfIgnored(conversationId);
+    if (interrupted) {
+      await this.stopTurnEvenIfIgnored(conversationId).catch((error: unknown) => {
+        runtime.holdingQueue = false;
+        throw error;
+      });
+    }
     const conversation = this.get(conversationId);
     const released = this.releaseSession(conversationId, runtime, conversation.acpSessionId);
     if (changesAgent) this.forgetContextUsage(conversationId);
@@ -523,7 +528,7 @@ export class ConversationService {
         if (interrupted) return this.resumeStoppedTurn(conversationId, conversation.acpSessionId);
         this.sendNextQueuedMessage(conversationId);
       })
-      .catch(() => {});
+      .catch(() => this.sendNextQueuedMessage(conversationId));
   }
 
   /** The profile's own agent, which only a conversation that has not begun may move to. */
@@ -661,7 +666,7 @@ export class ConversationService {
    */
   async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, afterTurn = false } = {}) {
     const runtime = this.runtime(conversationId);
-    const sendsAtOnce = !runtime.running && !this.stopping && !runtime.usageLimit && runtime.queuedMessages.length === 0;
+    const sendsAtOnce = !runtime.running && !this.holdsQueue(runtime) && runtime.queuedMessages.length === 0;
     if (sendsAtOnce) return this.prompt(conversationId, text, { imageIds, fromScript, startsTurn: true });
     const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(afterTurn && { afterTurn }) };
     this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
@@ -1145,8 +1150,8 @@ export class ConversationService {
   }
 
   /**
-   * Picks up a turn stopped for a restart or a profile switch: the agent continues where it left off if it is still in
-   * the session the turn ran in and recorded the request there; otherwise, as in a fresh session, it gets the request again.
+   * Picks up a turn stopped for a restart or a profile switch. Messages sent while the session reopens wait behind the
+   * turn, as they would have behind it before the stop.
    */
   private async resumeStoppedTurn(conversationId: string, stoppedSessionId: string | null) {
     const request = unfinishedTurnRequest(this.store.listEvents(conversationId));
@@ -1155,10 +1160,26 @@ export class ConversationService {
       this.sendNextQueuedMessage(conversationId);
       return;
     }
+    const runtime = this.runtime(conversationId);
     this.setStatus(conversationId, "starting");
+    runtime.holdingQueue = true;
+    const continuation = await this.continuationOf(conversationId, stoppedSessionId, request).catch((error: unknown) => {
+      runtime.holdingQueue = false;
+      this.sendNextQueuedMessage(conversationId);
+      throw error;
+    });
+    runtime.holdingQueue = false;
+    return this.prompt(conversationId, continuation.text, { imageIds: continuation.imageIds });
+  }
+
+  /**
+   * The agent continues where it left off if it is still in the session the turn ran in and recorded the request there;
+   * otherwise, as in a fresh session, it gets the request again.
+   */
+  private async continuationOf(conversationId: string, stoppedSessionId: string | null, request: TurnRequest) {
     const sessionId = await this.ensureSession(conversationId);
-    if (sessionId === stoppedSessionId && (await this.sessionRecorded(conversationId, sessionId, request))) return this.prompt(conversationId, CONTINUE_AFTER_INTERRUPTION);
-    return this.prompt(conversationId, request.text, { imageIds: request.imageIds });
+    if (sessionId === stoppedSessionId && (await this.sessionRecorded(conversationId, sessionId, request))) return { text: CONTINUE_AFTER_INTERRUPTION, imageIds: [] };
+    return { text: request.text, imageIds: request.imageIds };
   }
 
   /** Only Claude Code's transcript tells whether the agent recorded the message that started a turn. */

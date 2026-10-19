@@ -90,11 +90,10 @@ describe("prepareForRestart", () => {
 });
 
 /** A next host whose store holds a conversation with these events already written, on a profile whose agent fails to start. */
-function hostWithEvents(events: ConversationEvent[]) {
+function hostWithEvents(events: ConversationEvent[], store = new Store(":memory:")) {
   const scratch = mkdtempSync(join(tmpdir(), "mirador-restart-resume-"));
   const workspacePath = join(scratch, "project");
   mkdirSync(workspacePath);
-  const store = new Store(":memory:");
   store.saveProfile({ id: "p1", name: "failing", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
   store.insertWorkspace({ id: "w1", name: "project", path: workspacePath, defaultLaunch: { harness: "claude", profileId: "p1" }, createdAt: 1 });
   store.insertConversation({
@@ -150,6 +149,25 @@ describe("a host continuing turns the previous one stopped for a restart", () =>
     const conversations = hostWithEvents([said("What colour is the sky?"), worked, ended, said("Fix the build"), worked]);
     conversations.resumeAfterRestart(["c1"]);
     expect(conversations.get("c1").status).toBe("starting");
+    void conversations.shutdown();
+  });
+
+  test("holds a message sent while it reopens the session behind the turn it continues", async () => {
+    const conversations = hostWithEvents([said("Fix the build"), worked]);
+    conversations.resumeAfterRestart(["c1"]);
+    await conversations.send("c1", "And run the tests");
+    expect(conversations.get("c1").queuedMessages.map(({ text }) => text)).toEqual(["And run the tests"]);
+    void conversations.shutdown();
+  });
+
+  test("sends the message it held once the session fails to reopen, rather than keep it waiting", async () => {
+    const store = new Store(":memory:");
+    const conversations = hostWithEvents([said("Fix the build"), worked], store);
+    const userMessages = () => store.listEvents("c1").flatMap(({ event }) => (event.type === "user-message" ? [event.text] : []));
+    conversations.resumeAfterRestart(["c1"]);
+    await conversations.send("c1", "And run the tests");
+    while (!userMessages().includes("And run the tests")) await Bun.sleep(20);
+    expect(conversations.get("c1").queuedMessages).toEqual([]);
     void conversations.shutdown();
   });
 

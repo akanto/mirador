@@ -75,8 +75,7 @@ test("a turn the agent finished during the stop for a restart is not sent again 
   const startsBefore = hostStarts();
   await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
   await expect.poll(hostStarts, { timeout: 60_000 }).toBe(startsBefore + 1);
-  // The next host decides at its start whether to send the turn again; a message sent while it opens the session would
-  // take the turn's place, so the page reloads to show what it decided first.
+  // The next host decides at its start whether to send the turn again; the page reloads to show what it decided.
   await reloadFromRestartedHost(page);
   await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle");
 
@@ -111,4 +110,29 @@ test("a turn whose agent was still starting when the stop ran out waits for its 
   await expect.poll(prompts, { timeout: 90_000 }).toContain("slower second");
   expect(prompts().filter((text) => text === "slower second")).toEqual(["slower second"]);
   expect(prompts().filter((text) => text === "slower first")).toEqual(["slower first"]);
+});
+
+test("a message sent while the next host reopens a stopped turn's session waits behind the turn", async ({ page }) => {
+  await host.restart();
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "very slow start · opencode" });
+  const previousUrl = page.url();
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page).not.toHaveURL(previousUrl);
+  await sendMessage(page, "stopped while starting");
+  await expect(page.locator(".chat-header:visible .badge")).toHaveText("starting");
+
+  const startsBefore = hostStarts();
+  await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
+  await expect.poll(hostStarts, { timeout: 90_000 }).toBe(startsBefore + 1);
+  await reloadFromRestartedHost(page);
+  await expect(page.locator(".chat-header:visible .badge")).toHaveText("starting");
+  const composer = page.locator(".composer:visible textarea");
+  await composer.fill("sent meanwhile");
+  await composer.press("Enter");
+  await expect(page.locator(".queue:visible .queued-text")).toHaveText("sent meanwhile");
+
+  await expect.poll(prompts, { timeout: 90_000 }).toContain("sent meanwhile");
+  const sent = prompts();
+  expect(sent.slice(sent.indexOf("stopped while starting"))).toEqual(["stopped while starting", "sent meanwhile"]);
 });

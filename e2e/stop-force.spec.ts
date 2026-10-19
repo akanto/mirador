@@ -138,6 +138,25 @@ test("A profile switch that the agent ignores the cancel of kills the agent afte
   await expect(timeline(page).locator(".error-line")).toHaveCount(0);
 });
 
+test("A message sent while a profile switch opens the session on the new profile waits behind the turn it continues", async ({ page }) => {
+  await signInToWorkspace(page);
+  const profiles = await createProfile(page, "slow spare", "", "sleep 5", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  await wedgedConversation(page, "WEDGE before the slow switch");
+
+  await profilePicker(page).selectOption({ label: "slow spare" });
+  await expect(status(page)).toHaveText("starting", { timeout: 30_000 });
+  const composer = page.locator(".composer:visible textarea");
+  await composer.fill("sent during the switch");
+  await composer.press("Enter");
+  await expect(page.locator(".queue:visible .queued-text")).toHaveText("sent during the switch");
+
+  await expect.poll(() => sentTimes("WEDGE before the slow switch"), { timeout: 30_000 }).toBe(2);
+  await expect(status(page)).toHaveText("running");
+  expect(sentTimes("sent during the switch")).toBe(0);
+});
+
 test("An agent process that dies in the middle of a turn ends it with one error that says so", async ({ page }) => {
   await signInToWorkspace(page);
   await startConversationWithoutModel(page);
