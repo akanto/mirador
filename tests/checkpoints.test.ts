@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Workspace } from "../shared/model.ts";
@@ -304,4 +304,355 @@ test("a workspace that is not a git repository has no snapshots to restore", asy
 
   expect(await checkpoints.snapshot(elsewhere)).toBeNull();
   expect(await checkpoints.preview(elsewhere, "0".repeat(40))).toBeNull();
+});
+
+const onWindows = process.platform === "win32";
+const ourIndex = () => join(dataDir, "checkpoints", "ws-1.index");
+
+async function inOurIndex(args: string[]) {
+  const child = Bun.spawn(["git", "-C", projectDir, "-c", "core.autocrlf=false", ...args], { env: { ...process.env, GIT_INDEX_FILE: ourIndex() }, stdout: "pipe", stderr: "ignore" });
+  const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  expect(exitCode).toBe(0);
+  return stdout;
+}
+const outOfDateInOurIndex = async () => (await inOurIndex(["diff-files", "--name-only"])).split("\n").filter(Boolean);
+const stageAsTheEarlierCodeDid = async () => {
+  await mkdir(join(dataDir, "checkpoints"), { recursive: true });
+  await inOurIndex(["add", "-A"]);
+};
+const lineEndingConversions = [
+  { name: "* text=auto stores CRLF as LF", attributes: "* text=auto\n", content: "crlf\r\nline\r\n" },
+  { name: "* text eol=crlf writes LF as CRLF", attributes: "* text eol=crlf\n", content: "lf\nline\n" },
+  { name: "core.eol=crlf with * text=auto writes LF as CRLF", attributes: "* text=auto\n", eol: "crlf", content: "lf\n" },
+  { name: "* ident collapses $Id$", attributes: "* ident\n", content: "$Id: kept as it was $\n" },
+];
+
+for (const { name, attributes, eol, content } of lineEndingConversions) {
+  test(`a restore gives a file back byte for byte where ${name}`, async () => {
+    if (eol) await git(projectDir, ["config", "core.eol", eol]);
+    await write(".gitattributes", attributes);
+    await write("converted.txt", content);
+    const snapshot = (await checkpoints.snapshot(workspace))!;
+
+    await write("converted.txt", "changed by the agent\n");
+    await checkpoints.restore(workspace, snapshot);
+
+    expect(await read("converted.txt")).toBe(content);
+  });
+}
+
+async function shoutingFilter() {
+  await git(projectDir, ["config", "filter.shout.clean", "tr a-z A-Z"]);
+  await git(projectDir, ["config", "filter.shout.smudge", "tr A-Z a-z"]);
+}
+const storedInRepository = async (blob: string) => (await git(projectDir, ["cat-file", "-e", blob])).exitCode === 0;
+
+test("a file a filter cleans is kept as the filter cleans it, never as its own bytes, and comes back through the filter", async () => {
+  await shoutingFilter();
+  await write(".gitattributes", "*.big filter=shout\n");
+  await write("asset.big", "whisper\n");
+  const ownBytes = (await git(projectDir, ["hash-object", "--no-filters", "asset.big"])).stdout;
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("asset.big", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("asset.big")).toBe("whisper\n");
+  expect((await git(projectDir, ["cat-file", "blob", `${snapshot}:asset.big`])).stdout).toBe("WHISPER");
+  expect(await storedInRepository(ownBytes)).toBe(false);
+});
+
+test("a file kept as its own bytes comes back as them even when the turn puts a filter on it", async () => {
+  await shoutingFilter();
+  await write("asset.big", "Whisper\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write(".gitattributes", "*.big filter=shout\n");
+  await write("asset.big", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("asset.big")).toBe("Whisper\n");
+});
+
+async function makeOld(relative: string) {
+  const longAgo = new Date("2020-01-01T00:00:00Z");
+  await utimes(join(projectDir, relative), longAgo, longAgo);
+  const { ino, mtimeMs } = await stat(join(projectDir, relative));
+  return { ino, mtimeMs };
+}
+const inodeAndTime = async (relative: string) => {
+  const { ino, mtimeMs } = await stat(join(projectDir, relative));
+  return { ino, mtimeMs };
+};
+
+test("a restore leaves the files the turn did not change as they are, even ones git would convert", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("untouched.txt", "crlf\r\n");
+  const untouched = await makeOld("untouched.txt");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("kept.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("kept.txt")).toBe("one\n");
+  expect(await inodeAndTime("untouched.txt")).toEqual(untouched);
+});
+
+/** A snapshot as Mirador took them before it kept files as their own bytes: git add's tree, conversions applied. */
+async function snapshotFromBeforeOwnBytes() {
+  await git(projectDir, ["add", "-A"]);
+  const tree = (await git(projectDir, ["write-tree"])).stdout;
+  const snapshot = (await git(projectDir, ["commit-tree", tree, "-m", "mirador: the files at the start of a turn"])).stdout;
+  await git(projectDir, ["reset", "-q"]);
+  return snapshot;
+}
+
+test("a snapshot from before files were kept as their own bytes puts back only the files the turn changed", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("untouched.txt", "crlf\r\n");
+  const snapshot = await snapshotFromBeforeOwnBytes();
+  const untouched = await makeOld("untouched.txt");
+
+  await write("kept.txt", "changed by the agent\n");
+  await write("added.txt", "new\n");
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 1 });
+
+  expect(await read("kept.txt")).toBe("one\n");
+  await expect(read("added.txt")).rejects.toThrow();
+  expect(await inodeAndTime("untouched.txt")).toEqual(untouched);
+});
+
+test("in a folder below the repository's top, a snapshot from before files were kept as their own bytes puts back only the folder's changed files", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await mkdir(join(projectDir, "sub"));
+  await write("sub/inner.txt", "inner\n");
+  await write("sub/untouched.txt", "crlf\r\n");
+  const snapshot = await snapshotFromBeforeOwnBytes();
+  const untouched = await makeOld("sub/untouched.txt");
+  const folder = { ...workspace, path: join(projectDir, "sub") };
+
+  await write("sub/inner.txt", "changed by the agent\n");
+  await write("sub/added.txt", "new\n");
+  expect(await checkpoints.restore(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
+
+  expect(await read("sub/inner.txt")).toBe("inner\n");
+  await expect(read("sub/added.txt")).rejects.toThrow();
+  expect(await inodeAndTime("sub/untouched.txt")).toEqual(untouched);
+});
+
+test("files the earlier code staged into our index with git's conversion still come back as their own bytes", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  await stageAsTheEarlierCodeDid();
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("windows.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("windows.txt")).toBe("crlf\r\n");
+});
+
+test("files the earlier code staged into our index after a snapshot of ours still come back as their own bytes", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  await checkpoints.snapshot(workspace);
+  await write("windows.txt", "crlf\n");
+  await stageAsTheEarlierCodeDid();
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("windows.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("windows.txt")).toBe("crlf\n");
+});
+
+test("a file created after a snapshot is kept as its own bytes by the next one", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  await checkpoints.snapshot(workspace);
+  await write("created.txt", "created\r\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("created.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("created.txt")).toBe("created\r\n");
+});
+
+test("a file's own bytes stay in the snapshots taken after one that found them, while other files change", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  await write("other.txt", "other\r\n");
+  await checkpoints.snapshot(workspace);
+  await write("other.txt", "other, edited\r\n");
+  await checkpoints.snapshot(workspace);
+  await write("kept.txt", "edited too\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("windows.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("windows.txt")).toBe("crlf\r\n");
+});
+
+test("an edit that changes only a file's line endings is kept by the next snapshot", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("notes.txt", "lf\n");
+  await checkpoints.snapshot(workspace);
+  await write("notes.txt", "lf\r\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("notes.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("notes.txt")).toBe("lf\r\n");
+});
+
+test.skipIf(onWindows)("a snapshot of files nothing changed since the last one runs no filter again, and leaves our index up to date", async () => {
+  await git(projectDir, ["config", "filter.count.clean", "echo run >> ../clean-runs; cat"]);
+  await write(".gitattributes", "* text=auto\n*.counted filter=count\n");
+  await write("a.counted", "counted\r\n");
+  await write("windows.txt", "crlf\r\n");
+  await Promise.all([".gitattributes", "a.counted", "windows.txt"].map(makeOld));
+  const runs = async () => (await readFile(join(dataDir, "clean-runs"), "utf8")).split("\n").filter(Boolean).length;
+  await checkpoints.snapshot(workspace);
+  const runsOfTheFirst = await runs();
+  expect(await outOfDateInOurIndex()).toEqual([]);
+
+  await checkpoints.snapshot(workspace);
+  await checkpoints.changesSince(workspace, (await checkpoints.snapshot(workspace))!);
+
+  expect(await runs()).toBe(runsOfTheFirst);
+  expect(await outOfDateInOurIndex()).toEqual([]);
+});
+
+test.skipIf(onWindows)("files named with a tab, a newline, a carriage return or a leading double quote each get their own bytes back", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  const names = ["tab\there.txt", "new\nline.txt", "carriage\r", "carriage\r.txt", '"a"', "a"];
+  await Promise.all(names.map((name) => write(name, `${JSON.stringify(name)}\r\n`)));
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await Promise.all(names.map((name) => write(name, "changed by the agent\n")));
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: names.length, removed: 0 });
+
+  expect(await Promise.all(names.map(read))).toEqual(names.map((name) => `${JSON.stringify(name)}\r\n`));
+});
+
+test("a file the turn turned into a folder holding an ignored file is a file again", async () => {
+  await write("out", "a file\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await rm(join(projectDir, "out"));
+  await mkdir(join(projectDir, "out"));
+  await write("out/build", "ignored\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("out")).toBe("a file\n");
+});
+
+test("a restore that cannot read a file of the snapshot fails before it deletes or writes any file", async () => {
+  await write("fresh.txt", "fresh\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  const blob = (await git(projectDir, ["rev-parse", `${snapshot}:fresh.txt`])).stdout;
+  await rm(join(projectDir, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+
+  await write("fresh.txt", "changed by the agent\n");
+  await write("kept.txt", "changed by the agent\n");
+  await write("added.txt", "new\n");
+  await expect(checkpoints.restore(workspace, snapshot)).rejects.toThrow();
+
+  expect(await read("added.txt")).toBe("new\n");
+  expect(await read("kept.txt")).toBe("changed by the agent\n");
+});
+
+test.skipIf(onWindows)("files come back with the permissions git gives a file it writes, under the user's umask", async () => {
+  const previous = process.umask(0o077);
+  try {
+    await write("secret.env", "KEY=1\n");
+    await write("run.sh", "#!/bin/sh\n");
+    await chmod(join(projectDir, "run.sh"), 0o755);
+    const snapshot = (await checkpoints.snapshot(workspace))!;
+
+    await rm(join(projectDir, "secret.env"));
+    await rm(join(projectDir, "run.sh"));
+    await checkpoints.restore(workspace, snapshot);
+
+    expect((await stat(join(projectDir, "secret.env"))).mode & 0o777).toBe(0o600);
+    expect((await stat(join(projectDir, "run.sh"))).mode & 0o777).toBe(0o700);
+  } finally {
+    process.umask(previous);
+  }
+});
+
+test.skipIf(onWindows)("a link the turn replaced comes back as the link it was", async () => {
+  await symlink("kept.txt", join(projectDir, "link"));
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await rm(join(projectDir, "link"));
+  await write("link", "a file now\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await readlink(join(projectDir, "link"))).toBe("kept.txt");
+});
+
+test.skipIf(onWindows)("a folder the turn replaced with an ignored link to elsewhere is a folder again, and elsewhere is left as it was", async () => {
+  const elsewhere = join(dataDir, "elsewhere");
+  await mkdir(elsewhere);
+  await mkdir(join(projectDir, "linked"));
+  await write("linked/file.txt", "inside\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await rm(join(projectDir, "linked"), { recursive: true });
+  await symlink(elsewhere, join(projectDir, "linked"));
+  await appendFile(join(projectDir, ".git", "info", "exclude"), "linked\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect((await lstat(join(projectDir, "linked"))).isDirectory()).toBe(true);
+  expect(await read("linked/file.txt")).toBe("inside\n");
+  expect(await readdir(elsewhere)).toEqual([]);
+});
+
+test.skipIf(onWindows)("a file the turn replaced with a link to a folder elsewhere is a file again, and the folder keeps its files", async () => {
+  const elsewhere = join(dataDir, "elsewhere");
+  await mkdir(elsewhere);
+  await writeFile(join(elsewhere, "theirs.txt"), "theirs\n");
+  await write("out", "a file\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await rm(join(projectDir, "out"));
+  await symlink(elsewhere, join(projectDir, "out"));
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("out")).toBe("a file\n");
+  expect(await readdir(elsewhere)).toEqual(["theirs.txt"]);
+});
+
+test("a state of the files' own bytes that cannot be read is built again from the files", async () => {
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  await checkpoints.snapshot(workspace);
+  await writeFile(join(dataDir, "checkpoints", "ws-1.own-bytes.json"), "{ not json");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("windows.txt", "changed by the agent\n");
+  await checkpoints.restore(workspace, snapshot);
+
+  expect(await read("windows.txt")).toBe("crlf\r\n");
+});
+
+test("in a folder below the repository's top, files come back byte for byte, and through their filter where one cleans them", async () => {
+  await shoutingFilter();
+  await write(".gitattributes", "* text=auto\n*.big filter=shout\n");
+  await mkdir(join(projectDir, "sub"));
+  await write("sub/windows.txt", "crlf\r\n");
+  await write("sub/asset.big", "whisper\r\n");
+  const folder = { ...workspace, path: join(projectDir, "sub") };
+  const snapshot = (await checkpoints.snapshot(folder))!;
+
+  await write("sub/windows.txt", "changed by the agent\n");
+  await write("sub/asset.big", "changed by the agent\n");
+  expect(await checkpoints.restore(folder, snapshot)).toEqual({ restored: 2, removed: 0 });
+
+  expect(await read("sub/windows.txt")).toBe("crlf\r\n");
+  expect(await read("sub/asset.big")).toBe("whisper\n");
 });
