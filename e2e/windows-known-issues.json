@@ -5,40 +5,5 @@
     "failure": "Locator: locator('.canvas-panel .changes').getByRole('region', { name: 'Project', exact: true }).locator('.changed-path')",
     "reason": "The loaded shared runner shows the Project region empty although the commit is there, on both tries, while a Windows VM and the Mac pass this file every run at the same commit. It wobbled once in survey 18, where it was listed at its old line.",
     "bead": "vcs-16yb"
-  },
-  {
-    "file": "host-reload.spec.ts",
-    "title": "Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, and a working agent continues afterwards",
-    "failure": "Locator: locator('.timeline').locator('.tool-pending, .tool-in_progress').first() Expected: visible",
-    "reason": "The agent never starts a tool, so the turn is not still running across the restart.",
-    "bead": "vcs-vuuj"
-  },
-  {
-    "file": "host-reload.spec.ts",
-    "title": "a host stopped from outside, like the tray's Restart, keeps the queued messages and sends them once it is back",
-    "failure": "QUEUED",
-    "reason": "The restart/queue carry-over chain is fragile on Windows: one try queued nothing although its tool was running, the other carried the message across the restart but never got a reply. Which of this file's two real-model tests dies swaps between machines and runs, so the fragment is the loosest text both tries share.",
-    "bead": "vcs-b25o"
-  },
-  {
-    "file": "queue-steering.spec.ts",
-    "title": "a message sent with Enter while Claude Code runs a tool joins the turn once the tool finishes, with its image; one sent the other way waits for the turn to end",
-    "failure": "Locator: locator('.queue",
-    "reason": "The queue's own text is what never arrives or never settles on its badge, so the fragment is the locator prefix both shapes share: at fb82a27 both tries lost the .queued-delivery badge of the LATER message, and at 99dc176 (survey 24) both tries left .queue .queued-text empty although the image message was sent. The page keeps its own chip while missing the updates that would say how the message is delivered — the vcs-c337 shape of a page left without its host connection.",
-    "bead": "vcs-c337"
-  },
-  {
-    "file": "steer-then-stop.spec.ts",
-    "title": "a message that joined the turn goes out again after Stop if the agent had not answered it yet",
-    "failure": "locator('.timeline:visible .message.agent').filter({ hasText: 'Also say which day it is' })",
-    "reason": "The steered message is answered twice: the agent answered it within the turn that Stop cancelled, so the going-out-again after Stop added a second answer, the count reads 2 where the test wants 1. Survey 22 (7e2c7b1) first held this on the runner, both tries the same, the vcs-6dzt shape the Windows VM has shown.",
-    "bead": "vcs-6dzt"
-  },
-  {
-    "file": "user-commands.spec.ts",
-    "title": "! runs a command in the workspace folder, and its output goes to the agent with the next message unless dropped",
-    "failure": "locator('.user-command').filter({ hasText: 'sleep 30; echo never' })",
-    "reason": "Stop misses Git Bash children that carry a stale parent pid, so the stopped command's row never settles: one shape leaves .shell-exit never reading \"stopped\", since survey 22 the tries instead lose .shell-quiet's \"(no output)\". It fails every time on a Windows VM, and on the runner it failed in survey 10 and went over in survey 11.",
-    "bead": "vcs-ikkx"
   }
 ]
