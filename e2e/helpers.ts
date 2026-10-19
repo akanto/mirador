@@ -40,6 +40,9 @@ export async function signIn(page: Page, host: TestHost) {
   await expect(page.getByText("No conversation selected").or(page.getByRole("heading", { name: "Set up a profile to start" }))).toBeVisible();
 }
 
+/** How Chromium fails a reload another one cut short: as an aborted load, or with the page it ran on already replaced. */
+const RELOAD_CUT_SHORT = ["net::ERR_ABORTED", "Not attached to an active page"];
+
 /**
  * Loads the page again from a host the spec just restarted. The page also loads again by itself once it reaches a
  * restarted host, which may serve newer code, and that cuts a reload in flight short; one more reload then lands.
@@ -48,7 +51,7 @@ export async function reloadFromRestartedHost(page: Page) {
   try {
     await page.reload();
   } catch (error) {
-    if (!String(error).includes("net::ERR_ABORTED")) throw error;
+    if (!RELOAD_CUT_SHORT.some((message) => String(error).includes(message))) throw error;
     test.info().annotations.push({ type: "reload cut short", description: "the page's own reload, on reaching the restarted host, cut the spec's short" });
     await page.reload();
   }
