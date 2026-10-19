@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync, statSync }
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { ReviewFile, Tour, TourChanges } from "../../shared/review.ts";
-import { IDENTITY } from "../checkpoints.ts";
+import { IDENTITY } from "../checkpoints/git.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "./diff.ts";
 import { AnchorReader, diskLines, git, gitOrProblem, linesAt, mapInOrder, pathInside, ReviewProblems, type LineSource } from "./snapshot.ts";
 
