@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   writeFileSync(join(home, ".claude", "CLAUDE.md"), `${USERS_OWN_INSTRUCTION}.\n`);
   host = new TestHost({ environment: { HOME: home, ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_OAUTH_TOKEN: "e2e-subscription-token", CLAUDE_CODE_MAX_RETRIES: "0" } });
   await host.start();
-  writeFileSync(join(host.claudeConfigDir, "CLAUDE.md"), `${ISOLATED_PROFILE_INSTRUCTION}.\n`);
+  writeFileSync(join(api.claudeConfigDir, "CLAUDE.md"), `${ISOLATED_PROFILE_INSTRUCTION}.\n`);
 });
 test.afterAll(async () => {
   await host.stop();
@@ -39,7 +39,7 @@ test("a test host's own Claude Code works without the CLAUDE.md of the user who 
   expect(api.userMessages.get(typed)).not.toContain(USERS_OWN_INSTRUCTION);
 });
 
-test("a profile created without CLAUDE_CONFIG_DIR uses the test host's isolated config dir and ignores user settings in HOME", async ({ page }) => {
+test("a fake-API profile reads the settings in its isolated config dir and ignores the user's own", async ({ page }) => {
   const profileName = "isolated profile";
   await signIn(page, host);
   const dialog = await createProfile(page, profileName, subscriptionEnvironment(api));

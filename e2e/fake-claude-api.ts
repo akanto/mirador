@@ -1,5 +1,7 @@
+import { mkdirSync, rmSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { scratchPath } from "./test-host.ts";
 
 type MessagesRequest = {
   model: string;
@@ -64,6 +66,8 @@ export class FakeClaudeApi {
   /** The plan's usage limits each answer reports, as shares of 0 to 1, and when they start over, in epoch seconds. */
   planUsage: { fiveHour: number; fiveHourResetsAt: number; sevenDay: number; sevenDayResetsAt: number } | null = null;
   readonly answered: string[] = [];
+  /** The settings folder of a profile built with `subscriptionEnvironment`: empty, so the user's own ~/.claude stays out of the run. */
+  readonly claudeConfigDir = scratchPath("claude-config");
   /** The system prompt each request carried, by the text the user typed last. */
   readonly systemPrompts = new Map<string, string>();
   /** The user's newest message as Claude Code sent it, with the context it adds, by the text the user typed. */
@@ -83,6 +87,7 @@ export class FakeClaudeApi {
   private replies = 0;
 
   async start() {
+    mkdirSync(this.claudeConfigDir, { recursive: true });
     this.server = createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -99,6 +104,7 @@ export class FakeClaudeApi {
   }
 
   stop() {
+    rmSync(this.claudeConfigDir, { recursive: true, force: true });
     this.server?.close();
   }
 
@@ -237,4 +243,5 @@ export const subscriptionEnvironment = (api: FakeClaudeApi) =>
     `ANTHROPIC_BASE_URL=${api.url}`,
     "CLAUDE_CODE_OAUTH_TOKEN=e2e-subscription-token",
     "CLAUDE_CODE_MAX_RETRIES=0",
+    `CLAUDE_CONFIG_DIR=${api.claudeConfigDir}`,
   ].join("\n");

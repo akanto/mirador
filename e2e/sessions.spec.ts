@@ -53,7 +53,7 @@ const terminalSessionRow = (dialog: ReturnType<Page["getByRole"]>) => sessionRow
 test("forking a terminal session replays its history into a new conversation and leaves the original alone", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const profiles = await createProfile(page, "fake gateway", [gatewayEnvironment(gateway), sameClaudeCode].join("\n"));
+  const profiles = await createProfile(page, "fake gateway", [gatewayEnvironment(gateway), `CLAUDE_CONFIG_DIR=${host.claudeConfigDir}`, sameClaudeCode].join("\n"));
   await profiles.getByRole("button", { name: "Close" }).click();
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "fake gateway · Claude Code" });
 

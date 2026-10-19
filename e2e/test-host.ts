@@ -272,7 +272,6 @@ export class TestHost {
       MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
       MIRADOR_NEWER_VERSION_CHECK: "off",
       SHELL: this.options.shell ?? defaultShell,
-      CLAUDE_CONFIG_DIR: this.claudeConfigDir,
       ...(process.platform === "win32" && { [HOST_RELAUNCH.restartExitCode]: String(HOST_RESTART_EXIT_CODE) }),
       ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
       ...(typeof this.options.environment === "function" ? this.options.environment(port) : this.options.environment),
