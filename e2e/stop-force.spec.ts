@@ -70,7 +70,7 @@ test("Stop offers to kill the agent process, and killing it leaves the other con
     await page.locator(".composer:visible textarea").focus();
     await page.keyboard.press("Escape");
     await expect(status(page)).toHaveText("running");
-    expect(prompts()).toHaveLength(2);
+    await expect.poll(prompts, "the agent got both wedged messages, and no other").toHaveLength(2);
   });
 
   await expect(stop).toHaveText("Force stop", { timeout: 10_000 });
