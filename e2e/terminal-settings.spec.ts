@@ -171,3 +171,17 @@ test("terminal settings change open terminals at once, survive a reload, and res
     await expect.poll(() => rowsStyle(page, "color")).toBe("rgb(212, 214, 222)");
   });
 });
+
+test("the terminal font size and copy on select set in 0.5.0 carry over to the terminal settings", async ({ page }) => {
+  await signIn(page, host);
+  await page.evaluate(() => {
+    localStorage.removeItem("mirador-terminal-settings");
+    localStorage.setItem("mirador-terminal-font-size", "16");
+    localStorage.setItem("mirador-terminal-copy-on-select", "on");
+  });
+  await page.reload();
+  const settings = await openSettings(page, "Terminal");
+  await expect(settings.getByLabel("Font size")).toHaveValue("16");
+  await expect(settings.getByLabel("Copy on select")).toBeChecked();
+  await expect(settings.getByLabel("Cursor style")).toHaveValue("block");
+});

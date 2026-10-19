@@ -5,6 +5,7 @@ import {
   parseTerminalSettings,
   resetTerminalFontSize,
   resetTerminalSettings,
+  savedTerminalSettings,
   setCopyOnSelect,
   setTerminalSettings,
   stepTerminalFontSize,
@@ -97,6 +98,17 @@ describe("terminal-settings", () => {
       expect(theme.brightWhite).toBeTruthy();
     }
     expect(terminalPresetTheme("unknown" as TerminalPreset)).toBe(terminalPresetTheme("default"));
+  });
+
+  test("until settings are saved, the font size and copy on select 0.5.0 saved under keys of their own carry over", () => {
+    const saved = (entries: Record<string, string>) => savedTerminalSettings({ getItem: (key) => entries[key] ?? null });
+    expect(saved({ "mirador-terminal-font-size": "16", "mirador-terminal-copy-on-select": "on" })).toEqual({ ...DEFAULT_TERMINAL_SETTINGS, fontSize: 16, copyOnSelect: true });
+    expect(saved({ "mirador-terminal-font-size": "junk", "mirador-terminal-copy-on-select": "off" })).toEqual(DEFAULT_TERMINAL_SETTINGS);
+    expect(saved({})).toEqual(DEFAULT_TERMINAL_SETTINGS);
+    expect(saved({ [STORAGE_KEY]: JSON.stringify({ fontSize: 14 }), "mirador-terminal-font-size": "20", "mirador-terminal-copy-on-select": "on" })).toEqual({
+      ...DEFAULT_TERMINAL_SETTINGS,
+      fontSize: 14,
+    });
   });
 
   test("parseTerminalSettings falls back to the defaults for nothing saved, junk and partial objects", () => {

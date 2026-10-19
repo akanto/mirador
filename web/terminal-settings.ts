@@ -84,15 +84,28 @@ export function parseTerminalSettings(saved: string | null): TerminalSettings {
   }
 }
 
-function readStored(): string | null {
+/** 0.5.0 kept these two under keys of their own. */
+const FONT_SIZE_KEY_OF_0_5 = "mirador-terminal-font-size";
+const COPY_ON_SELECT_KEY_OF_0_5 = "mirador-terminal-copy-on-select";
+
+/** The settings saved in `storage`; until any are, the font size and copy on select 0.5.0 saved, so an upgrade keeps them. */
+export function savedTerminalSettings(storage: Pick<Storage, "getItem">): TerminalSettings {
+  const saved = storage.getItem(STORAGE_KEY);
+  if (saved !== null) return parseTerminalSettings(saved);
+  const fontSize = storage.getItem(FONT_SIZE_KEY_OF_0_5);
+  const copyOnSelect = storage.getItem(COPY_ON_SELECT_KEY_OF_0_5);
+  return normalise({ ...(fontSize !== null && { fontSize: Number(fontSize) }), ...(copyOnSelect !== null && { copyOnSelect: copyOnSelect === "on" }) });
+}
+
+function storedTerminalSettings(): TerminalSettings {
   try {
-    return localStorage.getItem(STORAGE_KEY);
+    return savedTerminalSettings(localStorage);
   } catch {
-    return null;
+    return DEFAULT_TERMINAL_SETTINGS;
   }
 }
 
-let current = parseTerminalSettings(readStored());
+let current = storedTerminalSettings();
 const listeners = new Set<() => void>();
 
 /** Merges the change into the saved settings; each part is checked, so a bad one falls back alone. */
