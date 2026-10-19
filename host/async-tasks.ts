@@ -149,12 +149,17 @@ export class AsyncTasks {
 /** As much of a task's output as the panel asks the host for: its last bytes, on whole lines. */
 const TAIL_BYTES = 64 * 1024;
 
-/** The last lines of the file a background task writes to; null when it is missing or cannot be read — its writer may not have created it yet. */
+/**
+ * The last lines of the file a background task writes to; null when it is missing, is no file, or cannot be read — its
+ * writer may not have created it yet. Windows opens a folder like a file, and reads it as empty.
+ */
 export function tailTaskOutput(path: string): string | null {
   let file: number | undefined;
   try {
     file = openSync(path, "r");
-    const size = fstatSync(file).size;
+    const stats = fstatSync(file);
+    if (!stats.isFile()) return null;
+    const size = stats.size;
     const start = Math.max(0, size - TAIL_BYTES);
     const bytes = Buffer.alloc(size - start);
     readSync(file, bytes, 0, bytes.length, start);
