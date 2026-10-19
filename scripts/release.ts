@@ -7,7 +7,8 @@
  *   publish <version>              publishes that draft as the latest release
  *   tap <version>                  pushes the Homebrew cask of the published release to the tap
  * The release is made in a worktree of its own at origin/main, so nothing uncommitted in this checkout reaches it, and
- * into dist/<version>/. A step that fails names the step to go on from once it is fixed.
+ * into dist/<version>/. After the gate the Linux, Windows and macOS builds run at once, each making its patches once it is
+ * in, and the draft waits for all three. A step that fails names the steps to go on from once it is fixed.
  */
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -15,6 +16,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { CASK_ASSETS } from "../desktop/scripts/homebrew-cask.ts";
 import { buildMachineBun, definedBunVersion, requireDefinedBun } from "../desktop/scripts/ship-build-bun.ts";
+import type { Platform } from "../desktop/scripts/update-files.ts";
 import { isNewerVersion, RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 
 const CHECKOUT = join(import.meta.dir, "..");
@@ -92,25 +94,159 @@ export function stepsFrom<Step extends { name: string }>(steps: Step[], from: st
   return steps.slice(start);
 }
 
+export interface Step {
+  name: string;
+  /** A step of another build that must end well first, when this run makes it. */
+  waitsFor?: string;
+}
+
+/** The steps before the builds run one after another, then the builds at once, each its steps in order, then the steps after. */
+export interface Plan<S extends Step> {
+  before: S[];
+  builds: S[][];
+  after: S[];
+}
+
+/**
+ * What a run that goes on from the named steps makes: from a step before or after the builds, everything from there on;
+ * from steps of the builds, at most one of each, those builds from those steps and then the steps after the builds.
+ */
+export function planFrom<S extends Step>(steps: Plan<S>, from: string | undefined): Plan<S> {
+  if (!from) return steps;
+  const names = from.split(",");
+  const everyStep = [...steps.before, ...steps.builds.flat(), ...steps.after];
+  const unknown = names.find((name) => !everyStep.some((step) => step.name === name));
+  if (unknown !== undefined) throw new Error(`There is no step "${unknown}"; the steps are ${everyStep.map((step) => step.name).join(", ")}`);
+  const isIn = (list: S[]) => names.length === 1 && list.some((step) => step.name === from);
+  if (isIn(steps.before)) return { ...steps, before: stepsFrom(steps.before, from) };
+  if (isIn(steps.after)) return { before: [], builds: [], after: stepsFrom(steps.after, from) };
+  const outsideTheBuilds = names.find((name) => !steps.builds.flat().some((step) => step.name === name));
+  if (outsideTheBuilds !== undefined) throw new Error(`Only steps of the builds go on together; go on from ${outsideTheBuilds} alone`);
+  return { before: [], builds: steps.builds.flatMap((build) => buildFrom(build, names)), after: steps.after };
+}
+
+function buildFrom<S extends Step>(build: S[], names: string[]) {
+  const named = build.filter((step) => names.includes(step.name));
+  if (named.length > 1) throw new Error(`${named.map((step) => step.name).join(" and ")} are steps of one build; go on from the one that failed`);
+  return named.map((step) => stepsFrom(build, step.name));
+}
+
+/** Where a run stopped: the step before or after the builds that failed, or the step each failed build failed at. */
+export class Stopped extends Error {
+  constructor(readonly at: string[]) {
+    super(`Stopped at ${at.join(", ")}`);
+  }
+}
+
+/** Runs the plan and tells of each step that fails as it fails; the steps after the builds run only once every build ended well. */
+export async function runPlan<S extends Step>(plan: Plan<S>, perform: (step: S) => void | Promise<void>, failed: (step: S, error: unknown) => void) {
+  const inOrder = async (steps: S[]) => {
+    for (const step of steps) {
+      try {
+        await perform(step);
+      } catch (error) {
+        failed(step, error);
+        throw new Stopped([step.name]);
+      }
+    }
+  };
+  await inOrder(plan.before);
+  const failedBuildSteps = await runBuilds(plan.builds, perform, failed);
+  if (failedBuildSteps.length > 0) throw new Stopped(failedBuildSteps);
+  await inOrder(plan.after);
+}
+
+async function runBuilds<S extends Step>(builds: S[][], perform: (step: S) => void | Promise<void>, failed: (step: S, error: unknown) => void) {
+  const endedWell = new Map(builds.flat().map((step) => [step.name, Promise.withResolvers<boolean>()]));
+  const waitedForEndedWell = (name: string) => endedWell.get(name)?.promise ?? Promise.resolve(true);
+  const runBuild = async (build: S[]) => {
+    for (const [index, step] of build.entries()) {
+      try {
+        if (step.waitsFor && !(await waitedForEndedWell(step.waitsFor))) throw new Error(`The ${step.waitsFor} step it waits for failed`);
+        await perform(step);
+        endedWell.get(step.name)!.resolve(true);
+      } catch (error) {
+        failed(step, error);
+        for (const unreached of build.slice(index)) endedWell.get(unreached.name)!.resolve(false);
+        return [step.name];
+      }
+    }
+    return [];
+  };
+  return (await Promise.all(builds.map(runBuild))).flat();
+}
+
+/** Work handed in runs one piece at a time, in the order handed in, whether the piece before ended well or not. */
+export function inTurn() {
+  let previous: Promise<unknown> = Promise.resolve();
+  return <T>(work: () => Promise<T>) => {
+    const turn = previous.then(work);
+    previous = turn.catch(() => undefined);
+    return turn;
+  };
+}
+
+/** The whole lines of text that comes in pieces, and the last line once the text has ended without a newline. */
+export function linesOf() {
+  let partial = "";
+  return {
+    add(text: string) {
+      const lines = (partial + text).split("\n");
+      partial = lines.pop()!;
+      return lines;
+    },
+    end() {
+      const last = partial;
+      partial = "";
+      return last === "" ? [] : [last];
+    },
+  };
+}
+
+/** Each line of the stream as it comes, and the whole text once the stream ends. */
+async function readLines(stream: ReadableStream<Uint8Array>, eachLine: (line: string) => void) {
+  const decoder = new TextDecoder();
+  const lines = linesOf();
+  let text = "";
+  for await (const chunk of stream) {
+    const piece = decoder.decode(chunk, { stream: true });
+    text += piece;
+    lines.add(piece).forEach(eachLine);
+  }
+  const rest = decoder.decode();
+  [...lines.add(rest), ...lines.end()].forEach(eachLine);
+  return text + rest;
+}
+
+/** The builds print at once, so each line a build step prints is marked with the step. */
+interface Shell {
+  /** Shows what the command prints as it goes, unless quietly, and gives back what it printed on stdout. */
+  run(command: string[], cwd: string, quietly?: boolean): Promise<string>;
+  say(line: string): void;
+}
+
+export function shellOf(step: string): Shell {
+  const mark = `[${step}] `;
+  const shown = (output: NodeJS.WriteStream, quietly: boolean) => (line: string) => {
+    if (!quietly) output.write(`${mark}${line}\n`);
+  };
+  return {
+    say: (line) => console.log(`${mark}${line}`),
+    async run(command, cwd, quietly = false) {
+      console.log(`${mark}$ ${command.join(" ")}`);
+      const child = Bun.spawn(command, { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+      const [stdout] = await Promise.all([readLines(child.stdout, shown(process.stdout, quietly)), readLines(child.stderr, shown(process.stderr, quietly))]);
+      const exitCode = await child.exited;
+      if (exitCode !== 0) throw new Error(`${command.join(" ")} failed with exit code ${exitCode}`);
+      return stdout;
+    },
+  };
+}
+
 function run(command: string[], cwd: string, env: Record<string, string | undefined> = process.env) {
   console.log(`$ ${command.join(" ")}`);
   const { exitCode } = Bun.spawnSync(command, { cwd, env, stdio: ["inherit", "inherit", "inherit"] });
   if (exitCode !== 0) throw new Error(`${command.join(" ")} failed with exit code ${exitCode}`);
-}
-
-/** Shows what the command prints as it goes, and gives it back. */
-async function runAndRead(command: string[], cwd: string) {
-  console.log(`$ ${command.join(" ")}`);
-  const child = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "inherit" });
-  const chunks: string[] = [];
-  const decoder = new TextDecoder();
-  for await (const chunk of child.stdout) {
-    process.stdout.write(chunk);
-    chunks.push(decoder.decode(chunk, { stream: true }));
-  }
-  const exitCode = await child.exited;
-  if (exitCode !== 0) throw new Error(`${command.join(" ")} failed with exit code ${exitCode}`);
-  return chunks.join("");
 }
 
 /** What the command printed on both its outputs. */
@@ -172,64 +308,64 @@ function requireLinuxHost() {
 }
 
 /** Both installers build on that machine, as Electrobun's toolchain crashes in Docker on Apple Silicon. */
-async function linux(release: Release) {
-  const log = await runAndRead(["make", "linux-remote", `LINUX_HOST=${requireLinuxHost()}`, `DIST=${release.dist}`], release.worktree);
+async function linux(release: Release, shell: Shell) {
+  const log = await shell.run(["make", "linux-remote", `LINUX_HOST=${requireLinuxHost()}`, `DIST=${release.dist}`], release.worktree);
   const head = headOf(release);
   const built = log.split("\n").filter((line) => line.startsWith(BUILD_LINE));
   if (built.length === 0 || !built.every((line) => isBuildOf(line, head))) throw new Error(`The Linux builds are not of ${head}: ${built.join("; ")}`);
 }
 
 /** Built on GitHub's Windows runner from the release's commit, as Electrobun does not cross-compile. */
-export function windows(release: Release) {
+export async function windows(release: Release, shell: Shell) {
   const head = headOf(release);
   const started = readBoth(["gh", "workflow", "run", WINDOWS_WORKFLOW, "--repo", RELEASES_REPOSITORY, "--ref", "main", "-f", `commit=${head}`]);
   const runId = runIdIn(started);
   if (!runId) throw new Error(`gh started the Windows build without naming its run; find "Windows release of ${head}" with gh run list --workflow ${WINDOWS_WORKFLOW}`);
-  run(["gh", "run", "watch", runId, "--repo", RELEASES_REPOSITORY, "--exit-status", "--compact", "--interval", "30"], release.worktree);
+  shell.say(`Waiting for https://github.com/${RELEASES_REPOSITORY}/actions/runs/${runId}`);
+  await shell.run(["gh", "run", "watch", runId, "--repo", RELEASES_REPOSITORY, "--exit-status", "--compact", "--interval", "30"], release.worktree, true);
   for (const earlier of readdirSync(release.dist).filter((file) => WINDOWS_FILE.test(file))) rmSync(join(release.dist, earlier));
-  run(["gh", "run", "download", runId, "--repo", RELEASES_REPOSITORY, "--name", WINDOWS_ARTIFACT, "--dir", release.dist], release.worktree);
+  await shell.run(["gh", "run", "download", runId, "--repo", RELEASES_REPOSITORY, "--name", WINDOWS_ARTIFACT, "--dir", release.dist], release.worktree);
   const { version } = JSON.parse(readFileSync(join(release.dist, "stable-win-x64-update.json"), "utf8")) as { version: string };
   if (version !== release.version) throw new Error(`The Windows build says ${version}, not ${release.version}`);
 }
 
-function macos(release: Release) {
-  try {
-    run(["make", "macos-signed", `DIST=${release.dist}`], release.worktree);
-  } catch (error) {
-    console.error(`If Apple's notarization outlasted the wait, once it says Accepted: cd ${release.worktree} && make macos-staple DIST=${release.dist}, then go on from the verify step.`);
-    throw error;
-  }
+async function macos(release: Release, shell: Shell) {
+  await shell.run(["make", "macos-signed", `DIST=${release.dist}`], release.worktree);
 }
 
-function assessSignature(app: string) {
-  const { stderr } = Bun.spawnSync(["spctl", "--assess", "--type", "execute", "-v", app], { stderr: "pipe" });
-  const verdict = stderr.toString();
+async function assessSignature(app: string) {
+  const assessment = Bun.spawn(["spctl", "--assess", "--type", "execute", "-v", app], { stdout: "ignore", stderr: "pipe" });
+  const verdict = await new Response(assessment.stderr).text();
+  await assessment.exited;
   if (!verdict.includes("accepted") || !verdict.includes("source=Notarized Developer ID")) throw new Error(`macOS does not let ${app} open as notarized: ${verdict.trim()}`);
 }
 
 /** The zip is what users get, so the app unzipped from it is checked too. */
-function verifyMacos(release: Release) {
+async function verifyMacos(release: Release, shell: Shell) {
   const signed = join(release.dist, "signing", "Mirador.app");
   const bundleVersion = read(["plutil", "-extract", "CFBundleVersion", "raw", join(signed, "Contents", "Info.plist")]);
   if (bundleVersion !== release.version) throw new Error(`The macOS app says ${bundleVersion}, not ${release.version}`);
-  assessSignature(signed);
+  await assessSignature(signed);
   const unzipped = mkdtempSync(join(tmpdir(), "mirador-release-unzipped-"));
   try {
     const zip = readdirSync(release.dist).find((file) => /^Mirador-macos-.+\.zip$/.test(file));
     if (!zip) throw new Error(`No macOS zip in ${release.dist}`);
-    run(["ditto", "-x", "-k", join(release.dist, zip), unzipped], release.worktree);
-    assessSignature(join(unzipped, "Mirador.app"));
+    await shell.run(["ditto", "-x", "-k", join(release.dist, zip), unzipped], release.worktree);
+    await assessSignature(join(unzipped, "Mirador.app"));
   } finally {
     rmSync(unzipped, { recursive: true, force: true });
   }
 }
 
-function updateFiles(release: Release) {
-  run(["make", "update-files", `DIST=${release.dist}`], release.worktree);
-  run(["make", "checksums", `DIST=${release.dist}`], release.worktree);
-}
+/** bsdiff takes many times an archive's size in memory, so one platform's patches are made at a time. */
+const oneAtATime = inTurn();
+
+const patchesFor = (platform: Platform) => async (release: Release, shell: Shell) => {
+  await oneAtATime(() => shell.run(["bun", join("desktop", "scripts", "update-files.ts"), release.dist, "--platform", platform], release.worktree));
+};
 
 function draft(release: Release) {
+  run(["make", "checksums", `DIST=${release.dist}`], release.worktree);
   if (releasesNamed(release) !== "") throw new Error(`GitHub has a release ${release.tag} already, maybe a draft an earlier run left; delete it with gh release delete ${release.tag} --yes`);
   const assets = releaseAssets(readdirSync(release.dist), release.windows);
   const missing = missingAssets(assets, release.windows);
@@ -244,32 +380,62 @@ function draft(release: Release) {
   console.log(`\nThe draft of Mirador ${release.version} holds ${assets.length} files, each as built. Publish it with: make publish VERSION=${release.version}`);
 }
 
-const RELEASE_STEPS = [
-  { name: "worktree", run: makeWorktree },
-  { name: "bump", run: bump },
-  { name: "gate", run: gate },
-  { name: "linux", run: linux },
-  { name: "windows", run: windows },
-  { name: "macos", run: macos },
-  { name: "verify", run: verifyMacos },
-  { name: "update-files", run: updateFiles },
-  { name: "draft", run: draft },
-];
+interface ReleaseStep extends Step {
+  run(release: Release, shell: Shell): void | Promise<void>;
+}
+
+/** Electrobun's tools, which make the patches, come with the macOS build. */
+const MACOS_BUILD = "macos";
+
+export function releaseSteps(windowsToo: boolean): Plan<ReleaseStep> {
+  const windowsBuild = [
+    { name: "windows", run: windows },
+    { name: "windows-patches", run: patchesFor("win"), waitsFor: MACOS_BUILD },
+  ];
+  return {
+    before: [
+      { name: "worktree", run: makeWorktree },
+      { name: "bump", run: bump },
+      { name: "gate", run: gate },
+    ],
+    builds: [
+      [
+        { name: "linux", run: linux },
+        { name: "linux-patches", run: patchesFor("linux"), waitsFor: MACOS_BUILD },
+      ],
+      ...(windowsToo ? [windowsBuild] : []),
+      [
+        { name: MACOS_BUILD, run: macos },
+        { name: "verify", run: verifyMacos },
+        { name: "macos-patches", run: patchesFor("macos") },
+      ],
+    ],
+    after: [{ name: "draft", run: draft }],
+  };
+}
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 async function makeRelease(release: Release, from: string | undefined) {
   if (!existsSync(release.notes)) throw new Error(`Write the release notes into ${release.notes} first; the checksums are added to them`);
-  const steps = stepsFrom(RELEASE_STEPS.filter((step) => release.windows || step.run !== windows), from);
+  const plan = planFrom(releaseSteps(release.windows), from);
+  const steps = [...plan.before, ...plan.builds.flat(), ...plan.after];
   if (steps.some((step) => step.run === linux)) requireLinuxHost();
   if (steps[0]?.run !== makeWorktree && !existsSync(release.worktree)) throw new Error(`There is no release worktree at ${release.worktree} to go on in; start from the beginning`);
-  const goOn = (step: string) => `make release VERSION=${release.version}${process.env.LINUX_HOST ? ` LINUX_HOST=${process.env.LINUX_HOST}` : ""}${release.windows ? "" : " WINDOWS=no"} FROM=${step}`;
-  for (const step of steps) {
+  const goOn = (from: string[]) => `make release VERSION=${release.version}${process.env.LINUX_HOST ? ` LINUX_HOST=${process.env.LINUX_HOST}` : ""}${release.windows ? "" : " WINDOWS=no"} FROM=${from.join(",")}`;
+  const perform = (step: ReleaseStep) => {
     console.log(`\n== ${step.name} at ${new Date().toTimeString().slice(0, 8)}`);
-    try {
-      await step.run(release);
-    } catch (error) {
-      console.error(`\nThe ${step.name} step failed. Once it is fixed, go on with: ${goOn(step.name)}`);
-      throw error;
+    return step.run(release, shellOf(step.name));
+  };
+  try {
+    await runPlan(plan, perform, (step, error) => console.error(`\nThe ${step.name} step failed: ${messageOf(error)}`));
+  } catch (error) {
+    if (!(error instanceof Stopped)) throw error;
+    if (error.at.includes(MACOS_BUILD)) {
+      const stapled = error.at.map((step) => (step === MACOS_BUILD ? "verify" : step));
+      console.error(`\nIf Apple's notarization outlasted the wait, once it says Accepted: cd ${release.worktree} && make macos-staple DIST=${release.dist}, then go on with: ${goOn(stapled)}`);
     }
+    throw new Error(`\nOnce ${error.at.length === 1 ? "it is" : "they are"} fixed, go on with: ${goOn(error.at)}`);
   }
 }
 

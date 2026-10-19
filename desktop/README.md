@@ -224,6 +224,8 @@ A release build updates itself from the latest release, on macOS only when it is
 - The Linux archives are Electrobun's own, which `make linux` brings back with the installers.
 - For each platform, it makes a patch from each of the last 5 releases that carry update files, with Electrobun's `bsdiff`, against the archive that release published: an installed app keeps that archive, and only a patch made from those exact bytes applies to it. Each patch is checked by rebuilding this build's archive from it.
 
+`make release` makes each platform's as soon as its build is in (`update-files.ts <dist> --platform macos|linux|win`), one platform at a time, as `bsdiff` takes many times an archive's size in memory.
+
 Upload every file it writes with the release, under the same names, in this order: `releases/latest/download` follows the newest published release, so installed apps see a release the moment it is published.
 
 1. Run `make update-files` before the new release exists. A release already published would take one of the five places.

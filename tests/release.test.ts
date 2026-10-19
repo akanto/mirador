@@ -1,6 +1,26 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { caskMismatches, digestMismatches, isBuildOf, missingAssets, notesWithChecksums, releaseAssets, releaseOf, runIdIn, stepsFrom } from "../scripts/release.ts";
+import {
+  caskMismatches,
+  digestMismatches,
+  inTurn,
+  isBuildOf,
+  linesOf,
+  missingAssets,
+  notesWithChecksums,
+  planFrom,
+  releaseAssets,
+  releaseOf,
+  releaseSteps,
+  runIdIn,
+  runPlan,
+  shellOf,
+  Stopped,
+  stepsFrom,
+  type Plan,
+  type Step,
+} from "../scripts/release.ts";
 
 test("a release is made in a worktree of its own, into dist/ of the checkout, from the notes there", () => {
   expect(releaseOf("0.5.0", "/checkout", "/tmp")).toEqual({
@@ -52,6 +72,160 @@ test("goes on from the step named, or runs them all", () => {
   expect(stepsFrom(steps, undefined)).toEqual(steps);
   expect(stepsFrom(steps, "gate")).toEqual([{ name: "gate" }, { name: "draft" }]);
   expect(() => stepsFrom(steps, "linx")).toThrow('There is no step "linx"; the steps are bump, gate, draft');
+});
+
+const namesIn = ({ before, builds, after }: Plan<Step>) => ({
+  before: before.map((step) => step.name),
+  builds: builds.map((build) => build.map((step) => step.name)),
+  after: after.map((step) => step.name),
+});
+
+const EVERY_BUILD = [
+  ["linux", "linux-patches"],
+  ["windows", "windows-patches"],
+  ["macos", "verify", "macos-patches"],
+];
+
+test("a release makes its worktree, bumps and gates, then the three builds at once, each with its patches, then the draft", () => {
+  expect(namesIn(releaseSteps(true))).toEqual({ before: ["worktree", "bump", "gate"], builds: EVERY_BUILD, after: ["draft"] });
+  expect(namesIn(releaseSteps(false)).builds).toEqual([EVERY_BUILD[0], EVERY_BUILD[2]]);
+});
+
+test("goes on from a step before the builds with all that follows it, or from the draft alone", () => {
+  expect(namesIn(planFrom(releaseSteps(true), undefined))).toEqual(namesIn(releaseSteps(true)));
+  expect(namesIn(planFrom(releaseSteps(true), "gate"))).toEqual({ before: ["gate"], builds: EVERY_BUILD, after: ["draft"] });
+  expect(namesIn(planFrom(releaseSteps(true), "draft"))).toEqual({ before: [], builds: [], after: ["draft"] });
+});
+
+test("goes on from the failed step of each build named, then makes the draft", () => {
+  expect(namesIn(planFrom(releaseSteps(true), "linux-patches,macos"))).toEqual({ before: [], builds: [["linux-patches"], ["macos", "verify", "macos-patches"]], after: ["draft"] });
+  expect(namesIn(planFrom(releaseSteps(true), "windows,verify"))).toEqual({ before: [], builds: [["windows", "windows-patches"], ["verify", "macos-patches"]], after: ["draft"] });
+});
+
+test("names the steps there are, and takes only steps of the builds together, one of each", () => {
+  const steps = "worktree, bump, gate, linux, linux-patches, windows, windows-patches, macos, verify, macos-patches, draft";
+  expect(() => planFrom(releaseSteps(true), "update-files")).toThrow(`There is no step "update-files"; the steps are ${steps}`);
+  expect(() => planFrom(releaseSteps(false), "windows")).toThrow('There is no step "windows"');
+  expect(() => planFrom(releaseSteps(true), "gate,linux")).toThrow("Only steps of the builds go on together; go on from gate alone");
+  expect(() => planFrom(releaseSteps(true), "linux,linux-patches")).toThrow("linux and linux-patches are steps of one build; go on from the one that failed");
+});
+
+/** Stands in for each step: it takes a moment, or as long as `slow` says, and fails when `failing` names it. */
+function rehearsal({ failing = [], slow = {} }: { failing?: string[]; slow?: Record<string, number> } = {}) {
+  const events: string[] = [];
+  const perform = async (step: Step) => {
+    events.push(`start ${step.name}`);
+    await Bun.sleep(slow[step.name] ?? 1);
+    if (failing.includes(step.name)) throw new Error(`${step.name} broke`);
+    events.push(`end ${step.name}`);
+  };
+  const failed = (step: Step, error: unknown) => events.push(`failed ${step.name}: ${(error as Error).message}`);
+  const stoppedAt = (plan: Plan<Step>) =>
+    runPlan(plan, perform, failed).then(
+      () => null,
+      (error: unknown) => (error instanceof Stopped ? error.at : Promise.reject(error)),
+    );
+  return { events, stoppedAt };
+}
+
+test("the builds start at once once the gate passed, and a failed build stops neither of the others but the draft", async () => {
+  const { events, stoppedAt } = rehearsal({ failing: ["linux"] });
+  expect(await stoppedAt(releaseSteps(true))).toEqual(["linux"]);
+  expect(events.slice(0, 9)).toEqual(["start worktree", "end worktree", "start bump", "end bump", "start gate", "end gate", "start linux", "start windows", "start macos"]);
+  expect(events).toContain("end windows-patches");
+  expect(events).toContain("end macos-patches");
+  expect(events).not.toContain("start linux-patches");
+  expect(events).not.toContain("start draft");
+});
+
+test("a step before the builds that fails stops the run there", async () => {
+  const { events, stoppedAt } = rehearsal({ failing: ["gate"] });
+  expect(await stoppedAt(releaseSteps(true))).toEqual(["gate"]);
+  expect(events.at(-1)).toBe("failed gate: gate broke");
+});
+
+test("a build that fails is told of at once, while the others go on", async () => {
+  const { events, stoppedAt } = rehearsal({ failing: ["windows"], slow: { macos: 200 } });
+  expect(await stoppedAt(releaseSteps(true))).toEqual(["windows"]);
+  expect(events.indexOf("failed windows: windows broke")).toBeLessThan(events.indexOf("end macos"));
+});
+
+test("the Linux and Windows patches wait for the macOS build, and fail when it fails", async () => {
+  const waited = rehearsal({ slow: { macos: 200 } });
+  expect(await waited.stoppedAt(releaseSteps(true))).toBeNull();
+  expect(waited.events.indexOf("start linux-patches")).toBeGreaterThan(waited.events.indexOf("end macos"));
+  expect(waited.events.indexOf("start windows-patches")).toBeGreaterThan(waited.events.indexOf("end macos"));
+  expect(waited.events.at(-1)).toBe("end draft");
+
+  const macosFailed = rehearsal({ failing: ["macos"] });
+  expect(await macosFailed.stoppedAt(releaseSteps(true))).toEqual(["linux-patches", "windows-patches", "macos"]);
+  expect(macosFailed.events).toContain("failed linux-patches: The macos step it waits for failed");
+});
+
+test("a run that goes on from where the last one stopped makes only what that one did not", async () => {
+  const first = rehearsal({ failing: ["linux", "macos"] });
+  const stoppedAt = await first.stoppedAt(releaseSteps(true));
+  expect(stoppedAt).toEqual(["linux", "windows-patches", "macos"]);
+  const next = rehearsal();
+  expect(await next.stoppedAt(planFrom(releaseSteps(true), stoppedAt!.join(",")))).toBeNull();
+  const made = next.events.filter((event) => event.startsWith("end ")).map((event) => event.slice("end ".length));
+  expect(made.sort()).toEqual(["draft", "linux", "linux-patches", "macos", "macos-patches", "verify", "windows-patches"]);
+});
+
+test("work handed in turn runs one piece at a time, and a piece that fails lets the next one run", async () => {
+  const oneAtATime = inTurn();
+  const events: string[] = [];
+  const piece = (name: string, fails = false) => async () => {
+    events.push(`start ${name}`);
+    await Bun.sleep(5);
+    events.push(`end ${name}`);
+    if (fails) throw new Error(`${name} broke`);
+    return name;
+  };
+  const outcomes = await Promise.allSettled([oneAtATime(piece("a", true)), oneAtATime(piece("b")), oneAtATime(piece("c"))]);
+  expect(events).toEqual(["start a", "end a", "start b", "end b", "start c", "end c"]);
+  expect(outcomes.map((outcome) => outcome.status)).toEqual(["rejected", "fulfilled", "fulfilled"]);
+});
+
+test("text that comes in pieces is told in whole lines, the last one once the text ends", () => {
+  const lines = linesOf();
+  expect(lines.add("one\ntw")).toEqual(["one"]);
+  expect(lines.add("o\n")).toEqual(["two"]);
+  expect(lines.add("thr")).toEqual([]);
+  expect(lines.add("ee")).toEqual([]);
+  expect(lines.end()).toEqual(["three"]);
+  expect(lines.end()).toEqual([]);
+});
+
+/** What console.log and the two outputs print, kept from the terminal until restored. */
+function capturePrinting() {
+  const printed: string[] = [];
+  const keep = (text: unknown) => {
+    printed.push(String(text));
+    return true;
+  };
+  const spies = [spyOn(console, "log").mockImplementation((text) => void keep(`${text}\n`)), spyOn(process.stdout, "write").mockImplementation(keep), spyOn(process.stderr, "write").mockImplementation(keep)];
+  return { printed, restore: () => spies.forEach((spy) => spy.mockRestore()) };
+}
+
+/** A command that runs the same on every platform: Bun, running the script. */
+const bunRunning = (script: string) => [process.execPath, "-e", script];
+
+test("a build step's commands print each line marked with the step, and give back what they printed on stdout", async () => {
+  const { printed, restore } = capturePrinting();
+  try {
+    const printing = bunRunning("process.stdout.write('one\\ntwo'); process.stderr.write('oops')");
+    expect(await shellOf("linux").run(printing, tmpdir())).toBe("one\ntwo");
+    expect(printed.join("").split("\n").filter(Boolean).sort()).toEqual([`[linux] $ ${printing.join(" ")}`, "[linux] one", "[linux] oops", "[linux] two"]);
+    printed.length = 0;
+    const quiet = bunRunning("process.stdout.write('quiet\\n')");
+    expect(await shellOf("windows").run(quiet, tmpdir(), true)).toBe("quiet\n");
+    expect(printed.join("")).toBe(`[windows] $ ${quiet.join(" ")}\n`);
+    const failing = bunRunning("process.exit(3)");
+    await expect(shellOf("macos").run(failing, tmpdir())).rejects.toThrow(`${failing.join(" ")} failed with exit code 3`);
+  } finally {
+    restore();
+  }
 });
 
 test("the release must hold every installer, both install scripts and each platform's update file", () => {

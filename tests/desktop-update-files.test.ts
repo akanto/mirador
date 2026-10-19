@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { patchFile, writePatches, type Releases, type Tools, type UpdateManifest } from "../desktop/scripts/update-files.ts";
+import { manifestsOf, patchFile, writePatches, type Releases, type Tools, type UpdateManifest } from "../desktop/scripts/update-files.ts";
 
 const manifest = (version: string, hash: string): UpdateManifest => ({
   channel: "stable",
@@ -94,6 +94,22 @@ test("a release that is this very build, published again, gets no patch", () => 
   writePatches(dist, THIS_BUILD, releases(["v0.6.0"]), tools(), () => {});
 
   expect(patchesIn(dist)).toEqual([]);
+});
+
+test("the update files of one platform's builds, or of every build", () => {
+  const dist = [
+    "stable-macos-arm64-update.json",
+    "stable-linux-x64-update.json",
+    "stable-linux-arm64-update.json",
+    "stable-win-x64-update.json",
+    "stable-linux-x64-abc.patch",
+    "Mirador-linux-x64-Setup.tar.gz",
+    "install.sh",
+  ];
+  expect(manifestsOf(dist)).toEqual(["stable-macos-arm64-update.json", "stable-linux-x64-update.json", "stable-linux-arm64-update.json", "stable-win-x64-update.json"]);
+  expect(manifestsOf(dist, "linux")).toEqual(["stable-linux-x64-update.json", "stable-linux-arm64-update.json"]);
+  expect(manifestsOf(dist, "win")).toEqual(["stable-win-x64-update.json"]);
+  expect(manifestsOf(dist, "macos")).toEqual(["stable-macos-arm64-update.json"]);
 });
 
 test("patches left from an earlier run for this platform go, other platforms' stay", () => {

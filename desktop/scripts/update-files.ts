@@ -2,7 +2,8 @@
 /**
  * Writes into dist/ the files a self-updating Mirador fetches from the latest release, for each platform built there:
  * Electrobun's <prefix>-update.json, the app's archive, and a patch from each of the last releases that carry update
- * files. Usage: update-files.ts <dist>
+ * files. Usage: update-files.ts <dist> [--platform macos|linux|win]
+ * With --platform, only that platform's builds; make release makes each platform's once its build is in.
  * On a Mac it packs the signed, stapled dist/signing/Mirador.app again, as Electrobun packs its archive before signing.
  * Each build's patches, one build to an update.json, are made in a process of its own, one build after another.
  * The Linux and Windows archives are Electrobun's own, which `make linux` and `make release` copy into dist/.
@@ -28,7 +29,18 @@ export interface UpdateManifest {
 export const updatePrefix = ({ channel, platform, arch }: UpdateManifest) => `${channel}-${platform}-${arch}`;
 export const manifestFile = (prefix: string) => `${prefix}-update.json`;
 export const patchFile = (prefix: string, fromHash: string) => `${prefix}-${fromHash}.patch`;
-const isManifestFile = (name: string) => /^[a-z]+-(macos|linux|win)-[a-z0-9]+-update\.json$/.test(name);
+const MANIFEST_FILE = /^[a-z]+-(macos|linux|win)-[a-z0-9]+-update\.json$/;
+const isManifestFile = (name: string) => MANIFEST_FILE.test(name);
+export const PLATFORMS = ["macos", "linux", "win"] as const;
+export type Platform = (typeof PLATFORMS)[number];
+
+/** The update files in dist/ of the builds for the platform, or of every build. */
+export function manifestsOf(files: string[], platform?: Platform) {
+  return files.filter((name) => {
+    const builtFor = name.match(MANIFEST_FILE)?.[1];
+    return builtFor !== undefined && (platform === undefined || builtFor === platform);
+  });
+}
 
 export interface Releases {
   /** The newest first, drafts and prereleases left out. */
@@ -148,6 +160,13 @@ export const githubReleases: Releases = {
 };
 
 const PATCHES_FOR = "--patches-for";
+const PLATFORM = "--platform";
+
+function platformOf(option: string | undefined, value: string | undefined) {
+  if (option === undefined) return undefined;
+  if (option !== PLATFORM || !PLATFORMS.includes(value as Platform)) throw new Error(`Usage: update-files.ts <dist> [${PLATFORM} ${PLATFORMS.join("|")}]`);
+  return value as Platform;
+}
 
 /** bsdiff takes many times an archive's size in memory, so a build's patches are made one after another. */
 async function writePatchesForEachBuild(dist: string, manifests: string[]) {
@@ -160,20 +179,23 @@ async function writePatchesForEachBuild(dist: string, manifests: string[]) {
 }
 
 if (import.meta.main) {
-  const [dist, option, manifestName] = process.argv.slice(2);
-  if (!dist) throw new Error("Usage: update-files.ts <dist>");
+  const [dist, option, value] = process.argv.slice(2);
+  if (!dist) throw new Error(`Usage: update-files.ts <dist> [${PLATFORM} ${PLATFORMS.join("|")}]`);
   const tools = electrobunTools();
   if (option === PATCHES_FOR) {
-    writePatches(dist, readManifest(join(dist, manifestName!)), githubReleases, tools);
+    writePatches(dist, readManifest(join(dist, value!)), githubReleases, tools);
   } else {
-    if (existsSync(join(dist, "signing", "Mirador.app"))) {
+    const platform = platformOf(option, value);
+    const signedApp = existsSync(join(dist, "signing", "Mirador.app"));
+    if (platform === "macos" && !signedApp) throw new Error(`No signed app in ${join(dist, "signing")}: run make macos-signed first.`);
+    if (signedApp && (platform === undefined || platform === "macos")) {
       const artifacts = join(DESKTOP, "artifacts");
       const built = readdirSync(artifacts).filter((name) => isManifestFile(name) && name.includes("-macos-"));
       if (built.length !== 1) throw new Error(`Expected one macOS update.json in ${artifacts}, found ${built.length}.`);
       packSignedMacApp(dist, readManifest(join(artifacts, built[0]!)), tools);
     }
-    const manifests = readdirSync(dist).filter(isManifestFile);
-    if (manifests.length === 0) throw new Error(`No update files in ${dist}: run make macos-signed or make linux-remote first.`);
+    const manifests = manifestsOf(readdirSync(dist), platform);
+    if (manifests.length === 0) throw new Error(`No ${platform ? `${platform} ` : ""}update files in ${dist}: build the apps first.`);
     await writePatchesForEachBuild(dist, manifests);
   }
 }
