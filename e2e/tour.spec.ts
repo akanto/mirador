@@ -203,4 +203,17 @@ test("a tour walks through the code as it is, or through what the task changed w
     await expect(asked).toContainText("+  const user = authenticate(request) ?? anonymous();");
     await expect(asked).not.toContainText("update_review");
   });
+
+  await test.step("with since, a checkout where core.safecrlf=true refuses to store a file with other line endings still gets its tour", async () => {
+    git("config", "core.safecrlf", "true");
+    writeFileSync(join(host.projectDir, ".gitattributes"), "* text=auto\n");
+    writeFileSync(join(host.projectDir, "windows.ts"), "export const crlf = true;\r\n");
+
+    const result = await callCanvasTool(host, conversationId, "tour", tour({ since: "HEAD", flow: [{ title: "Windows file", at: "windows.ts:1", say: "New, with CRLF." }] }));
+
+    expect(result).toMatch(/, 4 files changed since HEAD\.$/);
+    await expect(view.locator(".review-stats")).toContainText("4 files changed");
+    await page.keyboard.press("3");
+    await expect(view.locator(".review-list .file-name")).toContainText(["windows.ts"]);
+  });
 });

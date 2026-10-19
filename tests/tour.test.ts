@@ -219,6 +219,21 @@ describe("snapshotTour", () => {
     expect(await problemsOf(snapshotTour(request("app")))).toEqual(["folder: app is not an absolute path of a folder."]);
   });
 
+  test("with since, a checkout where core.safecrlf=true refuses to store a file with other line endings still shows what changed", async () => {
+    const { directory, git } = checkoutWithUncommittedWork();
+    git("config", "core.safecrlf", "true");
+    writeFileSync(join(directory, ".gitattributes"), "* text=auto\n");
+    writeFileSync(join(directory, "app/windows.ts"), "export const crlf = true;\r\n");
+
+    const tour = await snapshotTour(request(join(directory, "app"), { since: "HEAD" }));
+
+    expect(tour.files.map(({ path, change }) => [path, change])).toEqual([
+      ["new.ts", "added"],
+      ["service.ts", "modified"],
+      ["windows.ts", "added"],
+    ]);
+  });
+
   test("with since, git failing to write while taking the snapshot of the current files says what to fix instead of failing with git's own error", async () => {
     const { directory, git } = checkoutWithUncommittedWork();
     const allowWrites = withoutNewObjects(git, directory);

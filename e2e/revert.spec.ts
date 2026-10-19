@@ -244,3 +244,26 @@ test("an undo puts back a file's own line endings where .gitattributes has git s
   await expect(dialog).toHaveCount(0);
   expect(readFileSync(windows, "utf8")).toBe("crlf\r\n");
 });
+
+test("a turn can be undone where core.safecrlf=true refuses to store a file with other line endings, and the file comes back as it was", async ({ page }) => {
+  const refused = join(host.projectDir, "refused.txt");
+  git("config", "core.safecrlf", "true");
+  writeFileSync(join(host.projectDir, ".gitattributes"), "* text=auto\n");
+  writeFileSync(refused, "crlf\r\n");
+
+  await signIn(page, host);
+  await workspaceCard(page, host.projectDir).getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  await startConversationWithoutModel(page);
+  await sendMessage(page, "Rewrite the refused file");
+  await expect(status(page)).toHaveText("idle", { timeout: 60_000 });
+  writeFileSync(refused, "changed by the turn\n");
+
+  await userMessage(page).hover();
+  await undoFiles(page).click();
+  const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+  await expect(dialog).toContainText("1 file put back as they were");
+  await dialog.getByRole("button", { name: "Put the files back" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(readFileSync(refused, "utf8")).toBe("crlf\r\n");
+  git("config", "--unset", "core.safecrlf");
+});

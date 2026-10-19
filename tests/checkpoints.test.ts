@@ -404,6 +404,18 @@ test("a restore leaves the files the turn did not change as they are, even ones 
   expect(await inodeAndTime("untouched.txt")).toEqual(untouched);
 });
 
+test("where core.safecrlf=true refuses to store a file with other line endings, a turn still gets its undo, and the file comes back as it was", async () => {
+  await git(projectDir, ["config", "core.safecrlf", "true"]);
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("windows.txt", "changed by the agent\n");
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0 });
+
+  expect(await read("windows.txt")).toBe("crlf\r\n");
+});
+
 /** A snapshot as Mirador took them before it kept files as their own bytes: git add's tree, conversions applied. */
 async function snapshotFromBeforeOwnBytes() {
   await git(projectDir, ["add", "-A"]);

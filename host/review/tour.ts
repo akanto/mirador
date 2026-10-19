@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync, statSync }
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { ReviewFile, Tour, TourChanges } from "../../shared/review.ts";
-import { IDENTITY } from "../checkpoints/git.ts";
+import { IDENTITY, WITHOUT_SAFECRLF } from "../checkpoints/git.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "./diff.ts";
 import { AnchorReader, diskLines, git, gitOrProblem, linesAt, mapInOrder, pathInside, ReviewProblems, type LineSource } from "./snapshot.ts";
 
@@ -40,7 +40,7 @@ async function workingTree(folder: string) {
   try {
     const usersIndex = (await git(folder, ["rev-parse", "--path-format=absolute", "--git-path", "index"])).trim();
     if (existsSync(usersIndex)) copyFileSync(usersIndex, index);
-    await git(folder, ["add", "--all", "--", "."], { GIT_INDEX_FILE: index });
+    await git(folder, [...WITHOUT_SAFECRLF, "add", "--all", "--", "."], { GIT_INDEX_FILE: index });
     const tree = (await git(folder, ["write-tree"], { GIT_INDEX_FILE: index })).trim();
     const commit = (await git(folder, [...IDENTITY, "commit-tree", tree, "-m", TOUR_SNAPSHOT_MESSAGE])).trim();
     return { tree, commit };

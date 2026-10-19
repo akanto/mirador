@@ -1,7 +1,7 @@
 import { copyFile, lstat, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Workspace } from "../../shared/model.ts";
-import { changesIn, EXECUTABLE_MODE, type Change, type CheckpointGit, type Entry, type Location } from "./git.ts";
+import { changesIn, EXECUTABLE_MODE, WITHOUT_SAFECRLF, type Change, type CheckpointGit, type Entry, type Location } from "./git.ts";
 
 const FILE_MODES = new Set(["100644", EXECUTABLE_MODE]);
 const CONVERTING_ATTRIBUTES = ["text", "eol", "crlf", "ident", "working-tree-encoding"];
@@ -95,7 +95,7 @@ export class OwnBytesStaging {
   private async addEverything(workspace: Workspace) {
     const withoutCommit = await this.nestedRepositoriesWithNoCommit(workspace);
     const excludes = withoutCommit.map((entry) => `:(exclude,literal)${entry}`);
-    return this.git.run(workspace, ["add", "-A", "--", ".", ...excludes], { pathspecMagic: true });
+    return this.git.run(workspace, [...WITHOUT_SAFECRLF, "add", "-A", "--", ".", ...excludes], { pathspecMagic: true });
   }
 
   /**

@@ -5,6 +5,12 @@ import type { Workspace } from "../../shared/model.ts";
 /** Mirador's own commits need no identity or signing setup from the user's git config. */
 export const IDENTITY = ["-c", "user.name=mirador", "-c", "user.email=mirador@localhost", "-c", "commit.gpgsign=false"];
 const WITHOUT_AUTOCRLF = ["-c", "core.autocrlf=false"];
+/**
+ * core.safecrlf=true makes git add refuse a file whose line endings it would not check out as they are. Undo keeps each
+ * file's own bytes beside what git stores and a tour only shows the diff, so neither needs that check. A file a filter
+ * cleans is the one undo checks out, through the filter, with git's line endings, as it does without the setting.
+ */
+export const WITHOUT_SAFECRLF = ["-c", "core.safecrlf=false"];
 
 const SUBMODULE_MODE = "160000";
 export const SYMLINK_MODE = "120000";
