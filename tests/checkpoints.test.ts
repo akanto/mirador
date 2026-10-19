@@ -345,6 +345,12 @@ async function shoutingFilter() {
   await git(projectDir, ["config", "filter.shout.clean", "tr a-z A-Z"]);
   await git(projectDir, ["config", "filter.shout.smudge", "tr A-Z a-z"]);
 }
+
+/** For files that come back as git checks them out, whose line endings would otherwise follow this machine's defaults. */
+async function checkOutTextWithLF() {
+  await git(projectDir, ["config", "core.autocrlf", "false"]);
+  await git(projectDir, ["config", "core.eol", "lf"]);
+}
 const storedInRepository = async (blob: string) => (await git(projectDir, ["cat-file", "-e", blob])).exitCode === 0;
 
 test("a file a filter cleans is kept as the filter cleans it, never as its own bytes, and comes back through the filter", async () => {
@@ -408,6 +414,7 @@ async function snapshotFromBeforeOwnBytes() {
 }
 
 test("a snapshot from before files were kept as their own bytes puts back only the files the turn changed", async () => {
+  await checkOutTextWithLF();
   await write(".gitattributes", "* text=auto\n");
   await write("untouched.txt", "crlf\r\n");
   const snapshot = await snapshotFromBeforeOwnBytes();
@@ -423,6 +430,7 @@ test("a snapshot from before files were kept as their own bytes puts back only t
 });
 
 test("in a folder below the repository's top, a snapshot from before files were kept as their own bytes puts back only the folder's changed files", async () => {
+  await checkOutTextWithLF();
   await write(".gitattributes", "* text=auto\n");
   await mkdir(join(projectDir, "sub"));
   await write("sub/inner.txt", "inner\n");
@@ -642,6 +650,7 @@ test("a state of the files' own bytes that cannot be read is built again from th
 
 test("in a folder below the repository's top, files come back byte for byte, and through their filter where one cleans them", async () => {
   await shoutingFilter();
+  await checkOutTextWithLF();
   await write(".gitattributes", "* text=auto\n*.big filter=shout\n");
   await mkdir(join(projectDir, "sub"));
   await write("sub/windows.txt", "crlf\r\n");
