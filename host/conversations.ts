@@ -28,6 +28,7 @@ import {
   type WaitingFor,
   type Workspace,
 } from "../shared/model.ts";
+import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
 import { messageAtEnd, type JobWaitRequest } from "../shared/job-waits.ts";
 import { panelCommandRun } from "../shared/panel-commands.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
@@ -329,10 +330,10 @@ export class ConversationService {
     return sessions.slice(0, LISTED_SESSIONS).map((session) => externalSession(session, conversationIdBySession));
   }
 
-  /** Sessions in the workspace whose title or messages hold what the user is looking for, newest first. */
-  async searchSessionsInWorkspace(workspaceId: string, launch: Launch, query: string): Promise<SessionSearchHit[]> {
+  /** Sessions in the workspace whose title or messages hold what the user is looking for, newest first; a search the user has moved on from stops. */
+  async searchSessionsInWorkspace(workspaceId: string, launch: Launch, query: string, outdated?: AbortSignal): Promise<SessionSearchHit[]> {
     const lowerQuery = query.trim().toLowerCase();
-    if (!lowerQuery) return [];
+    if (lowerQuery.length < MIN_SEARCH_LENGTH) return [];
     const { profile, sessions, conversationIdBySession } = await this.harnessSessions(workspaceId, launch);
     const harness = this.harnessFor(launch);
     if (harness.spec.id !== "claude" && harness.spec.id !== "opencode") throw new Error(`${harness.spec.label} cannot search its sessions.`);
@@ -345,6 +346,7 @@ export class ConversationService {
     try {
       const hits: SessionSearchHit[] = [];
       for (const session of sessions) {
+        outdated?.throwIfAborted();
         const titleMatch = (session.title ?? "").toLowerCase().includes(lowerQuery);
         const match = titleMatch ? null : await messageSnippetOf(session.sessionId, lowerQuery, transcriptPaths, database);
         if (titleMatch || match !== null) hits.push({ ...externalSession(session, conversationIdBySession), match });

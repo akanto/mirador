@@ -50,10 +50,18 @@ export async function claudeTranscriptPaths(configDir: string, sessionIds: Set<s
   return paths;
 }
 
+/**
+ * The query as a transcript line spells it: JSON-escaped, matched with the case folding of `u` regexes, which finds
+ * every text whose lower case holds the query. A line without it is passed over without being parsed.
+ */
+export const queryAsWritten = (lowerQuery: string) => new RegExp(JSON.stringify(lowerQuery).slice(1, -1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "iu");
+
 /** The first message in a Claude Code transcript holding the lower-cased query, as a snippet; null if none does. */
 export async function claudeMessageSnippet(path: string, lowerQuery: string): Promise<string | null> {
+  const written = queryAsWritten(lowerQuery);
   try {
-    for await (const line of jsonlLines(path)) {
+    for await (const line of linesOf(Bun.file(path).stream())) {
+      if (!written.test(line)) continue;
       const snippet = matchingSnippet(transcriptTexts(line), lowerQuery);
       if (snippet !== null) return snippet;
     }
@@ -63,26 +71,26 @@ export async function claudeMessageSnippet(path: string, lowerQuery: string): Pr
   return null;
 }
 
-/** The lines of a JSONL file, read in chunks so that a transcript bigger than memory still scans. */
-async function* jsonlLines(path: string): AsyncGenerator<string> {
-  const reader = Bun.file(path).stream().getReader();
+/**
+ * The lines of a file's UTF-8 chunks, read chunk by chunk so that a transcript bigger than memory still scans. Only the
+ * newest chunk is searched for line ends, so a line spanning many chunks costs no more than its length.
+ */
+export async function* linesOf(chunks: AsyncIterable<Uint8Array>): AsyncGenerator<string> {
   const decoder = new TextDecoder();
-  try {
-    let pending = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      pending += value ? decoder.decode(value, { stream: true }) : decoder.decode();
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      for (const line of lines) yield line;
-      if (done) {
-        if (pending) yield pending;
-        return;
-      }
+  let pending = "";
+  for await (const chunk of chunks) {
+    const text = decoder.decode(chunk, { stream: true });
+    const lastBreak = text.lastIndexOf("\n");
+    if (lastBreak < 0) {
+      pending += text;
+      continue;
     }
-  } finally {
-    await reader.cancel().catch(() => {});
+    const lines = (pending + text.slice(0, lastBreak)).split("\n");
+    pending = text.slice(lastBreak + 1);
+    yield* lines;
   }
+  pending += decoder.decode();
+  if (pending) yield pending;
 }
 
 /** Where opencode keeps its database, following XDG_DATA_HOME the way opencode does. */

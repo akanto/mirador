@@ -41,6 +41,7 @@ import type { ConversationSearch } from "./search.ts";
 import { machineAddress } from "../shared/machines.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { socketData, webSocketCompression, type BrowserSocket, type Hub, type SocketData } from "./hub.ts";
+import { newestOnly } from "./newest-only.ts";
 import type { MachineRelays } from "./machine-relays.ts";
 import type { MachineWatch } from "./machine-watch.ts";
 import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
@@ -676,6 +677,8 @@ export function startServer(services: HostServices) {
     });
   }
 
+  const newestSessionSearch = newestOnly<BrowserSocket>();
+
   async function dispatch(socket: BrowserSocket, message: ClientMessage) {
     const reply = (response: ServerMessage) => hub.send(socket, response);
     switch (message.type) {
@@ -729,7 +732,7 @@ export function startServer(services: HostServices) {
         return;
       case "sessions.search":
         conversations
-          .searchSessionsInWorkspace(message.workspaceId, message.launch, message.query)
+          .searchSessionsInWorkspace(message.workspaceId, message.launch, message.query, newestSessionSearch(socket))
           .then((sessions) => reply({ type: "sessions.searched", requestId: message.requestId, sessions }))
           .catch((error) => reply({ type: "sessions.failed", requestId: message.requestId, message: errorMessage(error) }));
         return;

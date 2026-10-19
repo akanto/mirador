@@ -6,11 +6,13 @@ import { Database } from "bun:sqlite";
 import {
   claudeMessageSnippet,
   claudeTranscriptPaths,
+  linesOf,
   matchingSnippet,
   messageSnippetOf,
   openOpencodeDatabase,
   opencodeDatabasePath,
   opencodeMessageTexts,
+  queryAsWritten,
   transcriptTexts,
 } from "../host/session-transcripts.ts";
 
@@ -96,6 +98,35 @@ test("a transcript's search skips records that are not messages and stops at the
   expect(snippet).not.toContain("again");
   expect(await claudeMessageSnippet(path, "nothere")).toBeNull();
   expect(await claudeMessageSnippet(join(dir, "gone.jsonl"), "zebra")).toBeNull();
+});
+
+test("a line is passed over unparsed only when no message in it could hold the query", () => {
+  const found = [
+    ["She said \"Hello World\" twice", 'said "hello'],
+    ["The path C:\\Users\\Me\\notes.txt", "c:\\users\\me"],
+    ["Measured in \u212Aelvin, not Celsius", "kelvin"],
+    ["Die Straße nach Ünterberg", "straße nach ün"],
+    ["A tab\there and (brackets) [too] {all} $5.00 a+b?", "(brackets) [too] {all} $5.00 a+b?"],
+  ];
+  for (const [text, query] of found) {
+    const lowerQuery = query.toLowerCase();
+    expect(matchingSnippet([text], lowerQuery)).not.toBeNull();
+    expect(queryAsWritten(lowerQuery).test(spoken("user", text))).toBe(true);
+  }
+  expect(queryAsWritten("zebra").test(spoken("user", "A giraffe"))).toBe(false);
+});
+
+const chunked = async function* (...chunks: (string | number[])[]) {
+  for (const chunk of chunks) yield typeof chunk === "string" ? new TextEncoder().encode(chunk) : new Uint8Array(chunk);
+};
+const linesFrom = async (...chunks: (string | number[])[]) => Array.fromAsync(linesOf(chunked(...chunks)));
+
+test("lines come whole however the chunks cut them, a line longer than many chunks too", async () => {
+  expect(await linesFrom("first li", "ne goes o", "n and on", "\nsecond")).toEqual(["first line goes on and on", "second"]);
+  expect(await linesFrom("one\n", "two\n")).toEqual(["one", "two"]);
+  expect(await linesFrom("a\nb", "\n\nc\n")).toEqual(["a", "b", "", "c"]);
+  expect(await linesFrom("caf", [0xc3], [0xa9, 0x0a], "next")).toEqual(["café", "next"]);
+  expect(await linesFrom()).toEqual([]);
 });
 
 test("opencode's database follows XDG_DATA_HOME and there is none until opencode runs", () => {
