@@ -1,9 +1,1 @@
-[
-  {
-    "file": "changes.spec.ts",
-    "title": "Changes opens over a page, and a new page takes the canvas back",
-    "failure": "Locator: locator('.canvas-panel .changes').getByRole('region', { name: 'Project', exact: true }).locator('.changed-path')",
-    "reason": "The loaded shared runner shows the Project region empty although the commit is there, on both tries, while a Windows VM and the Mac pass this file every run at the same commit. It wobbled once in survey 18, where it was listed at its old line.",
-    "bead": "vcs-16yb"
-  }
-]
+[]

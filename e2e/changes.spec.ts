@@ -280,6 +280,43 @@ test("Changes shows the files it listed last as soon as it opens again, and stil
   await changes(page).getByRole("button", { name: "This turn" }).click();
 });
 
+test("Changes closed and opened again while its list is on the way shows the list once it comes", async ({ page }) => {
+  const heldLists: string[] = [];
+  let listsAnswered = 0;
+  let sendToHost = (_message: string) => {};
+  await page.routeWebSocket(/\/ws\?/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      if (/"type":"changes\.list"/.test(String(message))) heldLists.push(String(message));
+      else server.send(message);
+    });
+    server.onMessage((message) => {
+      if (/"type":"changes\.listed"/.test(String(message))) listsAnswered++;
+      socket.send(message);
+    });
+    sendToHost = (message) => server.send(message);
+  });
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  const canvas = page.locator(".canvas-panel");
+  const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
+  await callCanvasTool(host, conversationId, "show", { title: "Fifth page", html: "<p>fifth</p>" });
+  await expect(canvas.locator(".canvas-title")).toHaveText("Fifth page");
+
+  await changesButton.click();
+  await expect(changes(page)).toContainText("Loading…");
+  await changesButton.click();
+  await expect(canvas.locator(".canvas-title")).toHaveText("Fifth page");
+  await changesButton.click();
+  await expect(changes(page)).toContainText("Loading…");
+
+  for (const [index, message] of heldLists.entries()) {
+    sendToHost(message);
+    await expect.poll(() => listsAnswered, "the lists are answered in the order they were asked for").toBe(index + 1);
+  }
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["later.txt", "while-away.txt"]);
+});
+
 test("This session lists the agent's edits and the git-ignored files written since the conversation's first message, and no older ones", async ({ page }) => {
   const builtBefore = join(host.projectDir, "build", "old.js");
   const builtInSession = join(host.projectDir, "build", "new.js");
