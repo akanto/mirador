@@ -88,3 +88,31 @@ export function useSidebarWidth() {
   useEffect(() => writeJson(SIDEBAR_WIDTH_KEY, width), [width]);
   return [width, (next: number) => setWidth(sidebarWidthWithinLimits(next))] as const;
 }
+
+export const DEFAULT_REVIEW_LIST_SHARE = 0.22;
+export const DEFAULT_FLOW_BAND_SHARE = 0.5;
+const REVIEW_LIST_SHARE_KEY = "mirador-review-list-share";
+const FLOW_BAND_SHARE_KEY = "mirador-review-flow-band-share";
+
+function storedShare(key: string, fallback: number) {
+  const stored = readJson(key);
+  return typeof stored === "number" && stored > 0 && stored < 1 ? stored : fallback;
+}
+
+function useStoredShare(key: string, fallback: number) {
+  const [share, setShare] = useState(() => storedShare(key, fallback));
+  useEffect(() => writeJson(key, share), [key, share]);
+  return [share, setShare] as const;
+}
+
+/**
+ * A review's list beside its Flow and Files tabs, as a part of the review's width, and the Flow tab's steps and
+ * explanation above its code, as a part of its height: the same for every review and tour, and kept per browser.
+ */
+export function useReviewPaneShares() {
+  const [listShare, setListShare] = useStoredShare(REVIEW_LIST_SHARE_KEY, DEFAULT_REVIEW_LIST_SHARE);
+  const [bandShare, setBandShare] = useStoredShare(FLOW_BAND_SHARE_KEY, DEFAULT_FLOW_BAND_SHARE);
+  return { listShare, setListShare, bandShare, setBandShare };
+}
+
+export type ReviewPaneShares = ReturnType<typeof useReviewPaneShares>;

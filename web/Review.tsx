@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react";
 import { fenced } from "../shared/fenced.ts";
 import type { ReviewItem, TourItem } from "../shared/model.ts";
 import { cutWithEllipsis } from "../shared/text-cut.ts";
@@ -40,8 +40,10 @@ import {
   type RevealChange,
   type ShownContext,
 } from "./review-context.ts";
+import { DEFAULT_FLOW_BAND_SHARE, DEFAULT_REVIEW_LIST_SHARE, useReviewPaneShares, type ReviewPaneShares } from "./paneLayouts.ts";
 import { ReviewFindBar, useReviewFind } from "./ReviewFind.tsx";
 import { isMac, keyLabels, shortcutKeys } from "./shortcuts.ts";
+import { Splitter, type SplitAxis } from "./Splitter.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
@@ -683,9 +685,74 @@ function Overview({
   );
 }
 
+const MIN_LIST_WIDTH = 160;
+const MIN_MAIN_WIDTH = 320;
+const MIN_BAND_HEIGHT = 100;
+const MIN_CODE_HEIGHT = 120;
+
+const paneSharesStyle = (listShare: number, bandShare: number): Record<string, string> => ({
+  "--review-list-share": String(listShare),
+  "--flow-band": `${bandShare}fr`,
+  "--flow-code": `${1 - bandShare}fr`,
+});
+
+/**
+ * A tab's list and its main pane, with a divider that resizes the list and, in the Flow tab, one that resizes the
+ * steps and explanation above the code. A drag only restyles the split, and the shares are kept once it ends.
+ */
+function ReviewSplit({
+  className,
+  shares,
+  resizesBand = false,
+  children: [list, main],
+}: {
+  className: string;
+  shares: ReviewPaneShares;
+  resizesBand?: boolean;
+  children: [ReactNode, ReactNode];
+}) {
+  const split = useRef<HTMLDivElement>(null);
+  const areaAlong = (axis: SplitAxis) => () => {
+    const rect = split.current!.getBoundingClientRect();
+    return axis === "columns" ? { start: rect.left, size: rect.width } : { start: rect.top, size: rect.height };
+  };
+  const showShares = (listShare: number, bandShare: number) =>
+    Object.entries(paneSharesStyle(listShare, bandShare)).forEach(([name, value]) => split.current?.style.setProperty(name, value));
+  return (
+    <div ref={split} className={`review-split ${className}`} style={paneSharesStyle(shares.listShare, shares.bandShare) as CSSProperties}>
+      {list}
+      <Splitter
+        label="Resize the list"
+        share={shares.listShare}
+        resetShare={DEFAULT_REVIEW_LIST_SHARE}
+        minimumSize={MIN_LIST_WIDTH}
+        secondMinimumSize={MIN_MAIN_WIDTH}
+        area={areaAlong("columns")}
+        onDrag={(listShare) => showShares(listShare, shares.bandShare)}
+        onChange={shares.setListShare}
+      />
+      {main}
+      {resizesBand && (
+        <Splitter
+          axis="rows"
+          label="Resize the steps and the code"
+          share={shares.bandShare}
+          resetShare={DEFAULT_FLOW_BAND_SHARE}
+          minimumSize={MIN_BAND_HEIGHT}
+          secondMinimumSize={MIN_CODE_HEIGHT}
+          area={areaAlong("rows")}
+          onDrag={(bandShare) => showShares(shares.listShare, bandShare)}
+          onChange={shares.setBandShare}
+        />
+      )}
+    </div>
+  );
+}
+
 function FlowTour({
   itemId,
   walk,
+  shares,
   agentEdit,
   stepIndex,
   onStep,
@@ -695,6 +762,7 @@ function FlowTour({
 }: {
   itemId: string;
   walk: Walkthrough;
+  shares: ReviewPaneShares;
   agentEdit: Review["agentEdit"];
   stepIndex: number;
   onStep: (index: number) => void;
@@ -706,7 +774,7 @@ function FlowTour({
   const tourEdited = useAgentEdited(agentEdit, "flow");
   if (!step) return <p className="review-empty">The agent described no code flow.</p>;
   return (
-    <div className={`review-split flow-tour ${tourEdited ? "agent-edited" : ""}`}>
+    <ReviewSplit className={`flow-tour ${tourEdited ? "agent-edited" : ""}`} shares={shares} resizesBand>
       <nav className="review-list" aria-label="Flow steps">
         <ol>
           {walk.flow.map((each, index) => (
@@ -721,27 +789,29 @@ function FlowTour({
         </ol>
       </nav>
       <section className="review-main flow-step">
-        <header className="flow-step-header">
-          <span className="step-count">
-            Step {stepIndex + 1} of {walk.flow.length}
-          </span>
-          <h3>{step.title}</h3>
-          <button type="button" className="link anchor" onClick={() => onGoToCode(step.at)}>
-            {anchorLabel(step.at)}
-          </button>
-          <button type="button" className="link" onClick={() => openInEditor(itemId, step.at.path, step.at.line)}>
-            Open in IDEA
-          </button>
-        </header>
-        <div className="flow-step-say">
-          <MarkdownText text={step.say} />
-          <div className="flow-step-nav">
-            <button type="button" disabled={stepIndex === 0} onClick={() => onStep(stepIndex - 1)}>
-              ← Previous
+        <div className="flow-step-text">
+          <header className="flow-step-header">
+            <span className="step-count">
+              Step {stepIndex + 1} of {walk.flow.length}
+            </span>
+            <h3>{step.title}</h3>
+            <button type="button" className="link anchor" onClick={() => onGoToCode(step.at)}>
+              {anchorLabel(step.at)}
             </button>
-            <button type="button" disabled={stepIndex === walk.flow.length - 1} onClick={() => onStep(stepIndex + 1)}>
-              Next →
+            <button type="button" className="link" onClick={() => openInEditor(itemId, step.at.path, step.at.line)}>
+              Open in IDEA
             </button>
+          </header>
+          <div className="flow-step-say">
+            <MarkdownText text={step.say} />
+            <div className="flow-step-nav">
+              <button type="button" disabled={stepIndex === 0} onClick={() => onStep(stepIndex - 1)}>
+                ← Previous
+              </button>
+              <button type="button" disabled={stepIndex === walk.flow.length - 1} onClick={() => onStep(stepIndex + 1)}>
+                Next →
+              </button>
+            </div>
           </div>
         </div>
         <CodeBlock
@@ -753,7 +823,7 @@ function FlowTour({
           onSelect={onSelect}
         />
       </section>
-    </div>
+    </ReviewSplit>
   );
 }
 
@@ -1143,6 +1213,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   const [scrolled] = useState(() => placeLeft?.scrolled ?? {});
   const [tab, setTab] = useState<Tab>(placeLeft?.tab ?? "overview");
   const [chosenStep, setStepIndex] = useState(placeLeft?.stepIndex ?? 0);
+  const paneShares = useReviewPaneShares();
   const stepIndex = Math.min(chosenStep, Math.max(walk.flow.length - 1, 0));
   const [path, setPath] = useState<string | null>(placeLeft?.path ?? files[0]?.path ?? null);
   const [hunkIndex, setHunkIndex] = useState(placeLeft?.hunkIndex ?? 0);
@@ -1394,6 +1465,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
             <FlowTour
               itemId={item.id}
               walk={walk}
+              shares={paneShares}
               agentEdit={review?.agentEdit}
               stepIndex={stepIndex}
               onStep={setStepIndex}
@@ -1403,7 +1475,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
             />
           )}
           {tab === "files" && (
-            <div className="review-split files-view">
+            <ReviewSplit className="files-view" shares={paneShares}>
               <FileList
                 files={files}
                 walk={walk}
@@ -1442,7 +1514,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
               ) : (
                 <p className="review-empty">No files changed.</p>
               )}
-            </div>
+            </ReviewSplit>
           )}
           {tab === "findings" && reviewItem && (
             <div className="findings-view">

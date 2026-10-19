@@ -5320,13 +5320,12 @@ button.picture-option.chosen {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(200px, 300px) minmax(0, 1fr);
+  grid-template-columns: clamp(160px, calc(var(--review-list-share) * 100%), calc(100% - 320px)) var(--splitter-width) minmax(0, 1fr);
 }
 
 .review-list {
   overflow: auto;
   min-height: 0;
-  border-right: 1px solid var(--border);
   padding: 6px;
 }
 
@@ -5473,40 +5472,48 @@ button.picture-option.chosen {
 /* The steps and the step's explanation side by side on top, the code below them across the whole width, so its lines wrap less. */
 @container review (min-width: 900px) {
   .review-split.flow-tour {
-    grid-template-rows: auto fit-content(40%) minmax(0, 1fr);
+    grid-template-rows: minmax(0, var(--flow-band)) var(--splitter-width) minmax(0, var(--flow-code));
   }
 
   .flow-tour > .flow-step {
     display: contents;
   }
 
-  /* contain: size keeps a long list of steps from stretching the band; it scrolls instead. */
   .flow-tour > .review-list {
-    grid-row: 1 / 3;
-    contain: size;
+    grid-area: 1 / 1;
+  }
+
+  .flow-tour > .splitter.columns {
+    grid-area: 1 / 2;
+  }
+
+  .flow-tour .flow-step-text {
+    grid-area: 1 / 3;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .flow-tour > .splitter.rows {
+    grid-area: 2 / 1 / 3 / -1;
   }
 
   .flow-tour .flow-step-header {
-    grid-column: 2;
     margin: 0;
     padding: 10px 14px 0;
   }
 
   .flow-tour .flow-step-say {
-    grid-column: 2;
-    overflow: auto;
-    min-height: 0;
     margin: 0;
     padding: 8px 14px 10px;
   }
 
   .flow-tour .code-block {
-    grid-column: 1 / -1;
+    grid-area: 3 / 1 / 4 / -1;
     align-self: start;
     overflow: auto;
     min-height: 0;
-    max-height: 100%;
-    margin: 0 14px 14px;
+    max-height: calc(100% - 18px);
+    margin: 4px 14px 14px;
   }
 }
 
@@ -5516,9 +5523,12 @@ button.picture-option.chosen {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
+  .review-split > .splitter {
+    display: none;
+  }
+
   .review-list {
     max-height: 9.5em;
-    border-right: none;
     border-bottom: 1px solid var(--border);
   }
 }

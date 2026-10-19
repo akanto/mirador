@@ -57,6 +57,15 @@ const tour = (change: Record<string, unknown> = {}) => ({
 });
 
 const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
+
+async function dragBy(page: Page, handle: Locator, deltaX: number, deltaY: number) {
+  const box = (await handle.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + deltaX, y + deltaY, { steps: 10 });
+  await page.mouse.up();
+}
 const logLines = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim().split("\n") : []);
 
 test.beforeAll(async () => {
@@ -111,6 +120,39 @@ test("a tour walks through the code as it is, or through what the task changed w
     expect(code.x, "the code starts under the steps").toBeLessThan(steps.x + 20);
     expect(code.width).toBeGreaterThan(whole.width - 40);
     expect(code.height, "a short excerpt keeps its own height").toBeGreaterThan(100);
+    const split = await boxOf(view.locator(".review-split"));
+    expect(steps.height, "the steps take the top half, however short the explanation").toBeGreaterThan(split.height * 0.45);
+  });
+
+  await test.step("the dividers resize the steps' width and the height above the code, which stay after a reload, and a double click resets one", async () => {
+    const steps = view.locator(".review-list");
+    const before = (await steps.boundingBox())!;
+    await dragBy(page, view.getByRole("separator", { name: "Resize the list" }), 150, 0);
+    await dragBy(page, view.getByRole("separator", { name: "Resize the steps and the code" }), 0, 100);
+    const dragged = (await steps.boundingBox())!;
+    expect(dragged.width).toBeGreaterThan(before.width + 130);
+    expect(dragged.height).toBeGreaterThan(before.height + 80);
+
+    await page.reload();
+    await view.getByRole("tab", { name: /Flow/ }).click();
+    await expect.poll(async () => Math.abs((await steps.boundingBox())!.width - dragged.width)).toBeLessThan(3);
+    await expect.poll(async () => Math.abs((await steps.boundingBox())!.height - dragged.height)).toBeLessThan(3);
+
+    await view.getByRole("separator", { name: "Resize the steps and the code" }).dblclick();
+    await expect.poll(async () => Math.abs((await steps.boundingBox())!.height - before.height)).toBeLessThan(3);
+  });
+
+  await test.step("a long list of steps scrolls within its half, and the code keeps its place below", async () => {
+    const manySteps = Array.from({ length: 15 }, (_, index) => ({ title: `Step ${index + 1}`, at: "service.ts:1-4", say: "Short." }));
+    await callCanvasTool(host, conversationId, "tour", tour({ flow: manySteps }));
+    await view.getByRole("tab", { name: /Flow/ }).click();
+    const steps = view.locator(".review-list");
+    await expect(steps.getByRole("button")).toHaveCount(15);
+    const [split, list, code] = await Promise.all([view.locator(".review-split"), steps, view.locator(".flow-step .code-block")].map(async (locator) => (await locator.boundingBox())!));
+    expect(list.height / split.height).toBeGreaterThan(0.45);
+    expect(list.height / split.height).toBeLessThan(0.55);
+    expect(await steps.evaluate((element) => element.scrollHeight > element.clientHeight), "the steps scroll").toBe(true);
+    expect((code.y - split.y) / split.height, "the code starts halfway down").toBeLessThan(0.56);
     await view.getByRole("button", { name: "Beside the chat" }).click();
   });
 
@@ -135,6 +177,16 @@ test("a tour walks through the code as it is, or through what the task changed w
     await view.getByRole("button", { name: "Show the rest of the file" }).click();
     await expect(view.locator(".code-block")).toContainText("return { user, items: [] };");
     await expect(view.locator(".code-block")).not.toContainText("rewritten after the tour");
+  });
+
+  await test.step("in a wide view the Files tab's list has the same divider, and the width the Flow tab's list was given", async () => {
+    await view.getByRole("button", { name: "Full screen" }).click();
+    await expect(view.getByRole("separator", { name: "Resize the list" })).toBeVisible();
+    const files = (await view.locator(".review-list").boundingBox())!;
+    await view.getByRole("tab", { name: /Flow/ }).click();
+    const steps = (await view.locator(".review-list").boundingBox())!;
+    expect(Math.abs(files.width - steps.width)).toBeLessThan(2);
+    await view.getByRole("button", { name: "Beside the chat" }).click();
   });
 
   await test.step("selected lines go to the agent as a question about the tour, with no review to update", async () => {
