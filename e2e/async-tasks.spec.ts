@@ -104,4 +104,21 @@ test("a background task the agent started shows with its output and Stop above t
     await clearButton.click();
     await expect(tasks).toHaveCount(0);
   });
+
+  await test.step("a Stop the agent fails on says why, and the task keeps running with its Stop", async () => {
+    await sendMessage(page, "ASYNC TASK STUCK");
+    await waitForTurnToEnd(page);
+    await row.getByRole("button", { name: "Stop" }).click();
+    await expect(page.locator(".notice")).toContainText("The task would not stop");
+    await expect(row).toContainText("Running:");
+    await expect(row.getByRole("button", { name: "Stop" })).toBeVisible();
+  });
+
+  await test.step("moving the conversation to another profile closes its session, and the tasks running in it go with it", async () => {
+    const profiles = await createProfile(page, "async elsewhere", "", "", "opencode");
+    await profiles.getByRole("button", { name: "Close" }).click();
+    await page.getByLabel("Profile", { exact: true }).selectOption({ label: "async elsewhere" });
+    await expect(page.locator(".timeline:visible")).toContainText("Now using the profile “async elsewhere”");
+    await expect(tasks).toHaveCount(0);
+  });
 });

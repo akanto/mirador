@@ -438,12 +438,12 @@ export class ConversationService {
     this.subagentSessions.forget(conversationId);
     const runtime = this.runtimes.get(conversationId);
     const wasRunning = runtime?.running ?? false;
+    this.asyncTasks.forget(conversationId);
     if (runtime) {
       this.endUsageLimitWait(runtime);
-      this.releaseSession(runtime, conversation.acpSessionId);
+      this.releaseSession(conversationId, runtime, conversation.acpSessionId);
     }
     this.jobWaits.forget(conversationId);
-    this.asyncTasks.forget(conversationId);
     this.runtimes.delete(conversationId);
     this.statusOverrides.delete(conversationId);
     this.terminalActivity.delete(conversationId);
@@ -495,7 +495,7 @@ export class ConversationService {
     runtime.holdingQueue = interrupted;
     if (interrupted) await this.stopTurnEvenIfIgnored(conversationId);
     const conversation = this.get(conversationId);
-    const released = this.releaseSession(runtime, conversation.acpSessionId);
+    const released = this.releaseSession(conversationId, runtime, conversation.acpSessionId);
     if (changesAgent) this.forgetContextUsage(conversationId);
     this.save({
       ...conversation,
@@ -542,10 +542,8 @@ export class ConversationService {
   private async clearContext(conversationId: string) {
     const runtime = this.runtime(conversationId);
     await runtime.sessionId?.catch(() => {});
-    const released = this.releaseSession(runtime, this.get(conversationId).acpSessionId);
+    const released = this.releaseSession(conversationId, runtime, this.get(conversationId).acpSessionId);
     this.forgetContextUsage(conversationId);
-    // The agent drops its background tasks with the session, so the panel loses them here too.
-    this.asyncTasks.forget(conversationId);
     this.save({ ...this.get(conversationId), acpSessionId: null });
     this.append(conversationId, { type: "context-cleared" });
     await this.ensureSession(conversationId, async () => {
@@ -728,7 +726,7 @@ export class ConversationService {
       const forked = point && conversation.acpSessionId ? await this.forkSessionAt(conversationId, point, joinedRunningTurn(events, seq)) : null;
       const checkpoint = this.checkpointAt(conversationId, seq);
       if (checkpoint && (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
-      const released = this.releaseSession(runtime, conversation.acpSessionId);
+      const released = this.releaseSession(conversationId, runtime, conversation.acpSessionId);
       this.store.deleteEventsFrom(conversationId, seq);
       this.forgetContextUsage(conversationId);
       this.save({ ...this.get(conversationId), acpSessionId: forked });
@@ -823,7 +821,7 @@ export class ConversationService {
   async stopAsyncTask(conversationId: string, asyncTaskId: string) {
     const harness = this.runtimes.get(conversationId)?.harness;
     const sessionId = this.get(conversationId).acpSessionId;
-    const stopped = harness && sessionId ? await harness.stopAsyncTask(sessionId, asyncTaskId).catch(() => false) : false;
+    const stopped = harness && sessionId ? await harness.stopAsyncTask(sessionId, asyncTaskId) : false;
     // A stopped state is coming with the agent's own update, unless it has no task to stop and none is coming.
     if (!stopped && this.asyncTasks.markUnstoppable(conversationId, asyncTaskId)) this.publish(this.get(conversationId));
   }
@@ -1058,7 +1056,7 @@ export class ConversationService {
       this.terminalWork.caughtUp(conversationId);
       const { acpSessionId } = this.get(conversationId);
       if (!acpSessionId) return;
-      const released = this.releaseSession(runtime, acpSessionId);
+      const released = this.releaseSession(conversationId, runtime, acpSessionId);
       await this.ensureSession(conversationId, async () => {
         await released;
         return this.loadWithTerminalTurns(conversationId, acpSessionId);
@@ -1134,11 +1132,13 @@ export class ConversationService {
     return opening;
   }
 
-  private releaseSession(runtime: Runtime, sessionId: string | null) {
+  private releaseSession(conversationId: string, runtime: Runtime, sessionId: string | null) {
     const harness = runtime.harness;
     runtime.harness = undefined;
     runtime.sessionId = undefined;
     if (!harness || !sessionId) return Promise.resolve();
+    // Once the session is released, nothing can stop or report its background tasks through this conversation.
+    this.forgetAsyncTasks(conversationId);
     return Promise.race([harness.closeSession(sessionId).catch(() => {}), Bun.sleep(SESSION_CLOSE_TIMEOUT_MS)]);
   }
 
@@ -1636,10 +1636,7 @@ export class ConversationService {
       runtime.sessionId = undefined;
       runtime.pendingPermissions.forEach(({ settle }) => settle(null));
       // The agent's background tasks ran inside its process and went away with it; no terminal update can arrive.
-      if (this.asyncTasks.in(conversationId).length > 0) {
-        this.asyncTasks.forget(conversationId);
-        this.republish(conversationId);
-      }
+      this.forgetAsyncTasks(conversationId);
     });
   }
 
@@ -1859,6 +1856,12 @@ export class ConversationService {
     const updated = { ...conversation, updatedAt: Date.now() };
     this.store.updateConversation(updated);
     this.publish(updated);
+  }
+
+  private forgetAsyncTasks(conversationId: string) {
+    if (this.asyncTasks.in(conversationId).length === 0) return;
+    this.asyncTasks.forget(conversationId);
+    this.republish(conversationId);
   }
 
   private republish(conversationId: string) {

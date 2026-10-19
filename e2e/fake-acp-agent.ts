@@ -27,7 +27,8 @@ import * as acp from "@agentclientprotocol/sdk";
  * answers it under the next id.
  * `ASYNC TASK` starts a background task the way claude-agent-acp does with its `asyncTasks` capability: a spawn update,
  * a progress beat shortly after, and output lines appended to a file under `FAKE_ACP_TASK_OUTPUT_DIR`; with ` DONE`
- * after it the task completes on its own too. The `_session/async_task/stop` request stops one and says so, logging it.
+ * after it the task completes on its own too, and with ` STUCK` a Stop fails on it with an error. The
+ * `_session/async_task/stop` request stops one and says so, logging it.
  * Prompts are appended to the file in `FAKE_ACP_PROMPTS`, so a test can see a turn was sent again after the kill.
  *
  * Its profile can give it more: `FAKE_ACP_MODES=1` offers Mode and Effort options and lets sessions be closed, and
@@ -91,12 +92,15 @@ const taskUpdate = (client: acp.AgentContext, sessionId: string, update: object)
   client.notify(acp.methods.client.session.update, { sessionId, update: update as acp.SessionUpdate });
 
 /** The task updates one of these own background tasks carries: the spawn, a progress beat, and with `done` its end. */
-async function startAsyncTask(client: acp.AgentContext, sessionId: string, done: boolean) {
+const tasksThatWillNotStop = new Set<string>();
+
+async function startAsyncTask(client: acp.AgentContext, sessionId: string, done: boolean, willNotStop = false) {
   if (!asyncTasksAdvertised) return sayText(client, sessionId, "Nothing to run in the background here.");
   const asyncTaskId = `fake-task-${process.pid}-${++nextAsyncTask}`;
   const outputFilePath = `${taskOutputDir}/async-task-${asyncTaskId}.log`;
   writeFileSync(outputFilePath, "the task started\n");
   asyncTaskStates.set(asyncTaskId, "running");
+  if (willNotStop) tasksThatWillNotStop.add(asyncTaskId);
   await taskUpdate(client, sessionId, { sessionUpdate: "async_task_spawned", asyncTaskId, taskType: "shell", description: "sleep 30", canStop: true, outputFilePath });
   setTimeout(() => {
     if (asyncTaskStates.get(asyncTaskId) !== "running") return;
@@ -117,6 +121,7 @@ async function startAsyncTask(client: acp.AgentContext, sessionId: string, done:
 /** Ends a running task, the way the adapter claims a stop and then reports the stopped state. */
 async function stopAsyncTask(client: acp.AgentContext, sessionId: string, asyncTaskId: string) {
   log(`stopped ${asyncTaskId}`);
+  if (tasksThatWillNotStop.has(asyncTaskId)) throw acp.RequestError.internalError(undefined, "The task would not stop");
   if (asyncTaskStates.get(asyncTaskId) !== "running") return { stopped: false };
   asyncTaskStates.set(asyncTaskId, "stopped");
   await taskUpdate(client, sessionId, { sessionUpdate: "async_task_state_update", asyncTaskId, state: "stopped", summary: "Task stopped by user" });
@@ -360,6 +365,7 @@ acp
     if (startsWith(ctx.params.prompt, "SAY ")) return sayText(ctx.client, ctx.params.sessionId, text.slice("SAY ".length));
     if (startsWith(ctx.params.prompt, "NOTICE")) return sendNotices(ctx.client, ctx.params.sessionId);
     if (startsWith(ctx.params.prompt, "ASYNC TASK DONE")) return startAsyncTask(ctx.client, ctx.params.sessionId, true);
+    if (startsWith(ctx.params.prompt, "ASYNC TASK STUCK")) return startAsyncTask(ctx.client, ctx.params.sessionId, false, true);
     if (startsWith(ctx.params.prompt, "ASYNC TASK")) return startAsyncTask(ctx.client, ctx.params.sessionId, false);
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
