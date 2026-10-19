@@ -55,7 +55,7 @@ Instead of a long summary in text, the agent walks you through the code on the c
 
 ### Review: a guided tour of the change
 
-![A code review open on its flow tour: the steps on the left, the diff with the current step's lines marked on the right](docs/screenshots/review-flow.png)
+![A code review open on its flow tour: the steps beside the current step's explanation, and the diff below them with the step's lines marked](docs/screenshots/review-flow.png)
 
 The agent publishes its code review as a page you work through, not a wall of comments:
 
