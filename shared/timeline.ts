@@ -60,6 +60,8 @@ export interface Subagent {
   lastActivityAt: number;
   /** How the turn that started it ended, once it has. */
   turnEnded: StopReason | null;
+  /** How it ended, when claude-agent-acp said: one in the background can end before the turn that started it. */
+  ended?: Exclude<SubagentState, "running">;
 }
 
 export type SubagentBlock = ToolBlock & { subagent: Subagent };
@@ -82,12 +84,14 @@ export const runsInBackground = (block: ToolBlock) => block.launchedInBackground
 
 /**
  * A subagent works until its tool call completes; one started in the background, whose call completes at once, works
- * until the turn that started it ends, since claude-agent-acp holds the turn open for it.
+ * until claude-agent-acp says it ended, or else until the turn that started it ends, since claude-agent-acp holds the
+ * turn open for it.
  */
 export function subagentState(block: SubagentBlock, conversationBusy: boolean): SubagentState {
   if (block.status === "failed") return "failed";
   if (!runsInBackground(block) && block.status === "completed") return "done";
-  const { turnEnded } = block.subagent;
+  const { ended, turnEnded } = block.subagent;
+  if (ended) return ended;
   if (turnEnded) return turnEnded === "end_turn" ? "done" : "stopped";
   return conversationBusy ? "running" : "stopped";
 }
@@ -239,12 +243,27 @@ class StreamedMessages {
 }
 
 function claudeCodeMeta(update: { _meta?: { [key: string]: unknown } | null }) {
-  const claudeCode = (update._meta?.claudeCode ?? {}) as { toolName?: unknown; parentToolUseId?: unknown; toolResponse?: { isAsync?: unknown } | null };
+  const claudeCode = (update._meta?.claudeCode ?? {}) as { toolName?: unknown; parentToolUseId?: unknown; toolResponse?: { isAsync?: unknown } | null; subagentTaskStatus?: unknown };
   return {
     toolName: typeof claudeCode.toolName === "string" ? claudeCode.toolName : undefined,
     parentToolUseId: typeof claudeCode.parentToolUseId === "string" ? claudeCode.parentToolUseId : undefined,
     launchedInBackground: claudeCode.toolResponse?.isAsync === true,
+    subagentTaskStatus: typeof claudeCode.subagentTaskStatus === "string" ? claudeCode.subagentTaskStatus : undefined,
   };
+}
+
+/** How a subagent ended, by the status claude-agent-acp's patch gives its task; none for one still at work, or resumed. */
+const subagentEnds = new Map<string, Exclude<SubagentState, "running">>([
+  ["completed", "done"],
+  ["failed", "failed"],
+  ["stopped", "stopped"],
+  ["killed", "stopped"],
+]);
+
+function followSubagentTask(subagent: Subagent, status: string) {
+  const ended = subagentEnds.get(status);
+  if (ended) subagent.ended = ended;
+  else delete subagent.ended;
 }
 
 interface OpencodeChild {
@@ -560,7 +579,7 @@ class TimelineBuilder {
   private upsertTool(origin: Origin, update: ToolUpdate, into: TimelineBlock[]) {
     const existing = this.toolBlocks.get(update.toolCallId);
     const ends = update.status === "completed" || update.status === "failed";
-    const { toolName, launchedInBackground } = claudeCodeMeta(update);
+    const { toolName, launchedInBackground, subagentTaskStatus } = claudeCodeMeta(update);
     const title = ownTitle(update);
     const name = toolName ?? toolNameIn(update, title);
     const background = launchedInBackground || (update.rawInput as { background?: unknown } | undefined)?.background === true;
@@ -578,6 +597,7 @@ class TimelineBuilder {
       if (update.rawOutput !== undefined) existing.rawOutput = update.rawOutput;
       if (terminal.output) existing.terminalOutput = (existing.terminalOutput ?? "") + terminal.output;
       if (terminal.exitCode !== undefined) existing.terminalExitCode = terminal.exitCode;
+      if (existing.subagent && subagentTaskStatus) followSubagentTask(existing.subagent, subagentTaskStatus);
       return;
     }
     const block: ToolBlock = {

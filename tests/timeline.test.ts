@@ -290,6 +290,18 @@ describe("subagents", () => {
     expect(states([{ type: "turn-end", stopReason: "end_turn" }, launch("s2", {})])).toEqual(["running"]);
   });
 
+  test("one in the background ends when claude-agent-acp says its task ended, though its turn still runs, and works again once resumed", () => {
+    const states = (events: ConversationEvent[]) => subagentsIn(buildTimeline(stored(events))).map((block) => subagentState(block, true));
+    const taskIs = (toolCallId: string, subagentTaskStatus: string) => acp({ sessionUpdate: "tool_call_update", toolCallId, _meta: { claudeCode: { subagentTaskStatus } } });
+    const background = (toolCallId: string) => [launch(toolCallId, {}), answeredAtOnce(toolCallId), finish(toolCallId)];
+    expect(states([...background("b1"), ...background("b2"), taskIs("b1", "completed")])).toEqual(["done", "running"]);
+    expect(states([...background("b1"), taskIs("b1", "failed")])).toEqual(["failed"]);
+    expect(states([...background("b1"), taskIs("b1", "killed")])).toEqual(["stopped"]);
+    expect(states([...background("b1"), taskIs("b1", "completed"), taskIs("b1", "running")])).toEqual(["running"]);
+    expect(states([...background("b1"), taskIs("b1", "completed"), { type: "turn-end", stopReason: "cancelled" }]), "it ended before the turn was stopped").toEqual(["done"]);
+    expect(states([...background("b1"), taskIs("b1", "constructor")])).toEqual(["running"]);
+  });
+
   test("an error ends the turn as a stop does, so a subagent it leaves behind stops working with it", () => {
     const states = (events: ConversationEvent[], busy = true) => subagentsIn(buildTimeline(stored(events))).map((block) => subagentState(block, busy));
     const background = [launch("b1", { description: "Watch the build" }), answeredAtOnce("b1"), finish("b1")];

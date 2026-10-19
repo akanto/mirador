@@ -28,7 +28,7 @@ test.afterAll(async () => {
   api.stop();
 });
 
-test("while only a background subagent works, a message joins the turn and the agent answers it, and the subagent's command runs on", async ({ page }) => {
+test("while only a background subagent works, a message joins the turn and the agent answers it, and the subagent shows done once it ends, before its turn does", async ({ page }) => {
   const eventsInOrder = eventsInOrderOn(page);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
@@ -59,7 +59,13 @@ test("while only a background subagent works, a message joins the turn and the a
     await expect(command, "the command ran to its end, not moved to the background by the message").toContainText("slept");
   });
 
-  await expect.poll(() => api.endedCommandsWaiting, { timeout: 30_000 }).toBe(1);
+  await test.step("the subagent is done once it ends, while the turn still runs", async () => {
+    await expect.poll(() => api.endedCommandsWaiting, { timeout: 30_000 }).toBe(1);
+    await expect(card).toHaveClass(/subagent-done/);
+    await expect(chip).toHaveCount(0);
+    await expect(badge).toHaveText("running");
+  });
+
   api.answerEndedCommands();
   await waitForTurnToEnd(page);
   await expect(card).toHaveClass(/subagent-done/);
