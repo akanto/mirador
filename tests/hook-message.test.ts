@@ -36,6 +36,12 @@ describe("hookNoticeIn", () => {
     expect(hookNoticeIn(title, description)).toEqual({ hook: "SessionStart:compact", lines: ["<persisted-output>", "Recent context, needle in it", "", "Mode: code"] });
   });
 
+  test("takes a description ending in the newline hook output ends in", () => {
+    expect(hookNoticeIn("Stop says: one", "Stop says: two\n")).toEqual({ hook: "Stop", lines: ["one", "two"] });
+    expect(hookNoticeIn("Stop says: one", "Stop says: two\r\n")).toEqual({ hook: "Stop", lines: ["one", "two"] });
+    expect(hookNoticeIn("Stop says: one", "\n")).toEqual({ hook: "Stop", lines: ["one"] });
+  });
+
   test("takes a one-line notice with no description", () => {
     expect(hookNoticeIn("Stop says: all checks passed", null)).toEqual({ hook: "Stop", lines: ["all checks passed"] });
   });

@@ -117,12 +117,12 @@ async function stopAsyncTask(client: acp.AgentContext, sessionId: string, asyncT
   return { stopped: true };
 }
 
-/** A hook's several lines, whose first claude-agent-acp lets stand as the notice's title, and two shorter notices. */
+/** A hook's several lines, whose first claude-agent-acp lets stand as the notice's title, ending in the newline hook output ends in, and two shorter notices. */
 const NOTICES = [
   {
     severity: "info",
     title: "SessionStart:compact says: <persisted-output>",
-    description: ["Recent context, needle in it", "", "Mode: code"].map((line) => `SessionStart:compact says: ${line}`).join("\n"),
+    description: ["Recent context, needle in it", "", "Mode: code"].map((line) => `SessionStart:compact says: ${line}\n`).join(""),
   },
   { severity: "warning", title: "PreToolUse:Bash says: rm -rf was blocked" },
   { severity: "warning", title: "Fast mode turned off", description: "Claude could not serve it right now." },

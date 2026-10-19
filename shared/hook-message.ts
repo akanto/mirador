@@ -30,7 +30,8 @@ export function hookNoticeIn(title: string, description: string | null | undefin
   const hook = FIRST_HOOK_PREFIX.exec(title)?.[1];
   if (!hook) return null;
   const prefix = `${hook} says:`;
-  const lines = [title, ...(description ? description.split(/\r?\n/) : [])];
+  const rest = description?.trimEnd();
+  const lines = [title, ...(rest ? rest.split(/\r?\n/) : [])];
   if (!lines.every((line) => line.startsWith(prefix))) return null;
   return { hook, lines: lines.map((line) => line.slice(prefix.length).replace(/^ /, "")) };
 }
