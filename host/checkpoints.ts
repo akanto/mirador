@@ -13,6 +13,10 @@ const snapshotRefsOf = (workspaceId: string) => `refs/mirador/turns/${workspaceI
 const snapshotRefOf = (workspaceId: string, commit: string, takenAt: number) => `${snapshotRefsOf(workspaceId)}${String(takenAt).padStart(16, "0")}-${commit}`;
 
 export const SNAPSHOTS_KEPT = 100;
+/** How many commit messages stay remembered; one forgotten is read from git again. */
+const MESSAGES_REMEMBERED = 1000;
+/** rev-parse's exit code when it found the repository but `--verify --quiet HEAD` found no commit, as before the first. */
+const NO_COMMIT_YET = 1;
 
 const SNAPSHOT_MESSAGE = "mirador: the files at the start of a turn";
 /** Marks a snapshot that holds each file's own bytes: one without it holds them as git's attributes converted them. */
@@ -42,6 +46,10 @@ type RestoreDiff = PutBackPlan & { restored: number; removed: number; written: s
  */
 export class Checkpoints {
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** By revision, a snapshot's commit or `<commit>^` for its parent: a commit never changes. */
+  private readonly messages = new Map<string, string>();
+  /** The chain refs looked for, by repository: only a Mirador from before snapshots had refs of their own made one. */
+  private readonly chainsLookedFor = new Set<string>();
   private readonly git: CheckpointGit;
   private readonly ownBytesStaging: OwnBytesStaging;
   private readonly putBack: PutBack;
@@ -61,10 +69,13 @@ export class Checkpoints {
       const location = await this.locate(workspace);
       if (!location) return null;
       const { ownBytes, cleaned } = await this.ownBytesStaging.stageEverything(workspace, location);
-      const staging = await this.commitOfStaging(workspace);
-      const commit = (await this.git.mustRun(workspace, ["commit-tree", ownBytes, ...(staging ? ["-p", staging] : []), "-F", "-"], { input: snapshotMessageOf(cleaned) })).stdout;
+      const staging = await this.commitOfStaging(workspace, location);
+      const message = snapshotMessageOf(cleaned);
+      const commit = (await this.git.mustRun(workspace, ["commit-tree", ownBytes, ...(staging ? ["-p", staging] : []), "-F", "-"], { input: message })).stdout;
+      this.remember(commit, message);
+      if (staging) this.remember(`${commit}^`, stagingMessageOn(location.head));
       await this.git.mustRun(workspace, ["update-ref", snapshotRefOf(workspace.id, commit, Date.now()), commit]);
-      await this.moveChainToItsOwnRef(workspace);
+      await this.moveChainToItsOwnRef(workspace, location);
       await this.dropAllButNewest(workspace);
       return commit;
     });
@@ -109,16 +120,33 @@ export class Checkpoints {
       const plan = await this.diffToNow(workspace, location, commit, keptAs);
       if (keptAs.ownBytes) await this.putBack.ownBytes(workspace, location, plan, keptAs.cleaned);
       else await this.putBack.asGitChecksOut(workspace, commit, plan);
-      await this.restoreStaging(workspace, commit, plan.written);
+      await this.restoreStaging(workspace, location, commit, plan.written);
       return { restored: plan.restored, removed: plan.removed, ...(plan.submodulesLeft > 0 && { submodulesLeft: plan.submodulesLeft }) };
     });
   }
 
   /** Whether the snapshot holds the files' own bytes, and which of them, by their path from the repository's top, a filter cleaned. */
   private async keptAs(workspace: Workspace, commit: string) {
-    const lines = (await this.git.run(workspace, ["show", "-s", "--format=%B", commit])).stdout.split("\n");
+    const lines = ((await this.messageOf(workspace, commit)) ?? "").split("\n");
     const cleanedLine = lines.find((line) => line.startsWith(CLEANED_PREFIX));
     return { ownBytes: lines.includes(OWN_BYTES_NOTE), cleaned: new Set<string>(cleanedLine ? JSON.parse(cleanedLine.slice(CLEANED_PREFIX.length)) : []) };
+  }
+
+  /** The commit's message, or null when there is no such commit. */
+  private async messageOf(workspace: Workspace, revision: string) {
+    const remembered = this.messages.get(revision);
+    if (remembered !== undefined) return remembered;
+    const shown = await this.git.run(workspace, ["show", "-s", "--format=%B", revision]);
+    if (shown.exitCode !== 0) return null;
+    this.remember(revision, shown.stdout);
+    return shown.stdout;
+  }
+
+  private remember(revision: string, message: string) {
+    this.messages.set(revision, message);
+    if (this.messages.size <= MESSAGES_REMEMBERED) return;
+    const oldest = this.messages.keys().next().value;
+    if (oldest !== undefined) this.messages.delete(oldest);
   }
 
   private treeLike(keptAs: { ownBytes: boolean }, staged: Staged) {
@@ -126,11 +154,15 @@ export class Checkpoints {
   }
 
   /** The chain the snapshots made before each got a ref: its newest snapshot holds the rest, and ages out like any. */
-  private async moveChainToItsOwnRef(workspace: Workspace) {
+  private async moveChainToItsOwnRef(workspace: Workspace, { atTop }: Location) {
+    const lookedFor = `${atTop.path}\0${chainRefOf(workspace.id)}`;
+    if (this.chainsLookedFor.has(lookedFor)) return;
     const chain = await this.git.run(workspace, ["rev-parse", "--verify", "--quiet", chainRefOf(workspace.id)]);
-    if (chain.exitCode !== 0) return;
-    await this.git.mustRun(workspace, ["update-ref", snapshotRefOf(workspace.id, chain.stdout, 0), chain.stdout]);
-    await this.git.mustRun(workspace, ["update-ref", "-d", chainRefOf(workspace.id)]);
+    if (chain.exitCode === 0) {
+      await this.git.mustRun(workspace, ["update-ref", snapshotRefOf(workspace.id, chain.stdout, 0), chain.stdout]);
+      await this.git.mustRun(workspace, ["update-ref", "-d", chainRefOf(workspace.id)]);
+    }
+    this.chainsLookedFor.add(lookedFor);
   }
 
   private async dropAllButNewest(workspace: Workspace) {
@@ -169,13 +201,13 @@ export class Checkpoints {
    * What the user has staged, as a commit of its own, written from a copy of their index so theirs is never locked; null
    * when git cannot write it, as during a merge conflict.
    */
-  private async commitOfStaging(workspace: Workspace) {
+  private async commitOfStaging(workspace: Workspace, { usersIndex, head }: Location) {
     const copy = this.git.fileOf(workspace, ".staging.index");
     try {
-      if (!(await copyFile(await this.usersIndexOf(workspace), copy).then(() => true, () => false))) return null;
+      if (!(await copyFile(usersIndex, copy).then(() => true, () => false))) return null;
       const tree = await this.git.run(workspace, ["write-tree"], { index: copy });
       if (tree.exitCode !== 0) return null;
-      return (await this.git.mustRun(workspace, ["commit-tree", tree.stdout, "-m", stagingMessageOn(await this.headOf(workspace))])).stdout;
+      return (await this.git.mustRun(workspace, ["commit-tree", tree.stdout, "-m", stagingMessageOn(head)])).stdout;
     } finally {
       await rm(copy, { force: true });
     }
@@ -186,23 +218,18 @@ export class Checkpoints {
    * older or taken during a merge conflict, or one taken on a HEAD that has since moved, unstages those whose staged
    * version is not the restored file instead.
    */
-  private async restoreStaging(workspace: Workspace, commit: string, written: string[]) {
-    const index = await this.usersIndexOf(workspace);
-    const keptStaging = await this.keepsStagingOnHead(workspace, commit);
-    const unstaged = keptStaging ? written : await this.stagedOtherwise(workspace, index, written);
+  private async restoreStaging(workspace: Workspace, location: Location, commit: string, written: string[]) {
+    const { usersIndex } = location;
+    const keptStaging = await this.keepsStagingOnHead(workspace, location, commit);
+    const unstaged = keptStaging ? written : await this.stagedOtherwise(workspace, usersIndex, written);
     if (unstaged.length === 0) return;
     const resetTo = keptStaging ? [`${commit}^`] : [];
-    await this.git.mustRun(workspace, ["reset", "-q", "--pathspec-from-file=-", "--pathspec-file-nul", ...resetTo], { input: unstaged.map((path) => `${path}\0`).join(""), index });
+    await this.git.mustRun(workspace, ["reset", "-q", "--pathspec-from-file=-", "--pathspec-file-nul", ...resetTo], { input: unstaged.map((path) => `${path}\0`).join(""), index: usersIndex });
   }
 
   /** An older snapshot's parent, if it has one, is the snapshot before it rather than any staging. */
-  private async keepsStagingOnHead(workspace: Workspace, commit: string) {
-    const parent = await this.git.run(workspace, ["show", "-s", "--format=%B", `${commit}^`]);
-    return parent.exitCode === 0 && parent.stdout === stagingMessageOn(await this.headOf(workspace));
-  }
-
-  private async headOf(workspace: Workspace) {
-    return (await this.git.run(workspace, ["rev-parse", "--verify", "--quiet", "HEAD"])).stdout;
+  private async keepsStagingOnHead(workspace: Workspace, { head }: Location, commit: string) {
+    return (await this.messageOf(workspace, `${commit}^`)) === stagingMessageOn(head);
   }
 
   private async stagedOtherwise(workspace: Workspace, index: string, paths: string[]) {
@@ -210,15 +237,14 @@ export class Checkpoints {
     return paths.filter((path) => differing.has(path));
   }
 
-  private async usersIndexOf(workspace: Workspace) {
-    return resolve(workspace.path, (await this.git.mustRun(workspace, ["rev-parse", "--git-dir"])).stdout, "index");
-  }
-
-  /** Where the workspace's repository has its top, or null when the workspace is not in a git repository's working tree. */
+  /**
+   * Where the workspace's repository has its top, its user's index and its HEAD, or null when the workspace is not in a
+   * git repository's working tree. Before the first commit, rev-parse still prints the rest.
+   */
   private async locate(workspace: Workspace): Promise<Location | null> {
-    const located = await this.git.run(workspace, ["rev-parse", "--show-toplevel", "--show-prefix"]);
-    if (located.exitCode !== 0) return null;
-    const [top = "", prefix = ""] = located.stdout.split("\n");
-    return { atTop: { ...workspace, path: top }, prefix };
+    const located = await this.git.run(workspace, ["rev-parse", "--show-toplevel", "--show-prefix", "--git-dir", "--verify", "--quiet", "HEAD"]);
+    if (located.exitCode !== 0 && located.exitCode !== NO_COMMIT_YET) return null;
+    const [top = "", prefix = "", gitDir = "", head = ""] = located.stdout.split("\n");
+    return { atTop: { ...workspace, path: top }, prefix, usersIndex: resolve(workspace.path, gitDir, "index"), head };
   }
 }

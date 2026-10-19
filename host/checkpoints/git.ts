@@ -18,8 +18,11 @@ export const EXECUTABLE_MODE = "100755";
 /** The mode git gives the side of a change that has no file; given to update-index, it takes the path out. */
 export const NO_FILE_MODE = "000000";
 
-/** Where git runs on paths from the repository's top, and the workspace folder's own path from there. */
-export type Location = { atTop: Workspace; prefix: string };
+/**
+ * Where git runs on paths from the repository's top, the workspace folder's own path from there, the user's index, and
+ * HEAD, which is "" before the first commit.
+ */
+export type Location = { atTop: Workspace; prefix: string; usersIndex: string; head: string };
 
 export type Entry = { mode: string; blob: string; path: string };
 export type Change = ReturnType<typeof changesIn>[number];

@@ -306,6 +306,25 @@ test("a workspace that is not a git repository has no snapshots to restore", asy
   expect(await checkpoints.preview(elsewhere, "0".repeat(40))).toBeNull();
 });
 
+test("in a repository with no commit yet, a restore puts back the files and what the user had staged", async () => {
+  const fresh = join(dataDir, "fresh");
+  await mkdir(fresh);
+  await git(fresh, ["init", "-q"]);
+  await writeFile(join(fresh, "staged.txt"), "staged by the user\n");
+  await git(fresh, ["add", "staged.txt"]);
+  const unborn = { ...workspace, id: "ws-3", path: fresh };
+  const snapshot = (await checkpoints.snapshot(unborn))!;
+
+  await writeFile(join(fresh, "staged.txt"), "staged by the agent\n");
+  await writeFile(join(fresh, "added.txt"), "new, staged by the agent\n");
+  await git(fresh, ["add", "-A"]);
+  expect(await checkpoints.restore(unborn, snapshot)).toEqual({ restored: 1, removed: 1 });
+
+  expect(await readFile(join(fresh, "staged.txt"), "utf8")).toBe("staged by the user\n");
+  expect((await git(fresh, ["diff", "--cached", "--name-only"])).stdout).toBe("staged.txt");
+  expect((await git(fresh, ["show", ":staged.txt"])).stdout).toBe("staged by the user");
+});
+
 const onWindows = process.platform === "win32";
 const ourIndex = () => join(dataDir, "checkpoints", "ws-1.index");
 
@@ -677,3 +696,62 @@ test("in a folder below the repository's top, files come back byte for byte, and
   expect(await read("sub/windows.txt")).toBe("crlf\r\n");
   expect(await read("sub/asset.big")).toBe("whisper\n");
 });
+
+test("after a restart, a restore still gives files back as their own bytes and puts back what the user had staged", async () => {
+  await checkOutTextWithLF();
+  await write(".gitattributes", "* text=auto\n");
+  await write("windows.txt", "crlf\r\n");
+  await write("kept.txt", "staged by the user\n");
+  await git(projectDir, ["add", "kept.txt"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+
+  await write("windows.txt", "changed by the agent\n");
+  await write("kept.txt", "staged by the agent\n");
+  await git(projectDir, ["add", "kept.txt"]);
+  await new Checkpoints(dataDir).restore(workspace, snapshot);
+
+  expect(await read("windows.txt")).toBe("crlf\r\n");
+  expect(await stagedPaths()).toEqual(["kept.txt"]);
+  expect(await stagedVersionOf("kept.txt")).toBe("staged by the user");
+});
+
+async function gitProcessesStartedBy(work: () => Promise<unknown>) {
+  const spawn = Bun.spawn;
+  let started = 0;
+  (Bun as unknown as { spawn: unknown }).spawn = (command: string[], options: unknown) => {
+    if (command[0] === "git") started++;
+    return spawn(command as never, options as never);
+  };
+  try {
+    await work();
+  } finally {
+    (Bun as unknown as { spawn: unknown }).spawn = spawn;
+  }
+  return started;
+}
+
+test("a turn's snapshots, list of changes, preview and restore start no more git processes than they need, at about 30 ms each on Windows", async () => {
+  const started: Record<string, number> = {};
+  const count = async (step: string, work: () => Promise<unknown>) => (started[step] = await gitProcessesStartedBy(work));
+  let first = "";
+  let second = "";
+  await count("first snapshot", async () => (first = (await checkpoints.snapshot(workspace))!));
+  await write("kept.txt", "changed\n");
+  await count("snapshot after an edit", async () => (second = (await checkpoints.snapshot(workspace))!));
+  await count("changes since it", () => checkpoints.changesSince(workspace, second));
+  await write("kept.txt", "changed again\n");
+  await count("preview", () => checkpoints.preview(workspace, first));
+  await count("restore", () => checkpoints.restore(workspace, first));
+  await count("snapshot after the restore", () => checkpoints.snapshot(workspace));
+  await count("snapshot of no change", () => checkpoints.snapshot(workspace));
+
+  expect(started).toEqual({
+    "first snapshot": 12,
+    "snapshot after an edit": 12,
+    "changes since it": 7,
+    preview: 8,
+    restore: 8,
+    "snapshot after the restore": 12,
+    "snapshot of no change": 10,
+  });
+}, 15_000);
