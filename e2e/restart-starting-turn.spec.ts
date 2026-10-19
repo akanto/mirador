@@ -7,6 +7,7 @@ import { TestHost, writeBunProgram } from "./test-host.ts";
 const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
 const PRELAUNCH_SECONDS = 5;
+const FINISHED_TURN = "the report";
 
 /** An opencode that is an agent of its own, which answers every prompt at once. */
 function fakeOpencode() {
@@ -20,6 +21,7 @@ const prompts = () =>
 
 const hostStarts = () => host.log.match(/Mirador is running/g)?.length ?? 0;
 
+test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fakeOpencode();
   writeFileSync(promptsFile, "");
@@ -67,17 +69,23 @@ test("a turn the agent finished during the stop for a restart is not sent again 
   const previousUrl = page.url();
   await page.getByRole("button", { name: "+ New conversation" }).click();
   await expect(page).not.toHaveURL(previousUrl);
-  await sendMessage(page, "STREAM 300");
-  await expect(page.locator(".timeline:visible .message.agent").last()).toContainText("word10", { timeout: 30_000 });
+  await sendMessage(page, `FINISHED ON STOP ${FINISHED_TURN}`);
+  await expect(page.locator(".timeline:visible .message.agent").last()).toContainText(`Begun on ${FINISHED_TURN}`, { timeout: 30_000 });
 
   const startsBefore = hostStarts();
   await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
   await expect.poll(hostStarts, { timeout: 60_000 }).toBe(startsBefore + 1);
+  // The next host decides at its start whether to send the turn again; a message sent while it opens the session would
+  // take the turn's place, so the page reloads to show what it decided first.
+  await page.reload();
+  await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle");
 
   await sendMessage(page, "after-stream");
   await expect.poll(prompts, { timeout: 60_000 }).toContain("after-stream");
-  expect(prompts().filter((text) => text === "STREAM 300")).toEqual(["STREAM 300"]);
-  await expect(page.locator(".timeline:visible .message.user", { hasText: "STREAM 300" })).toHaveCount(1);
+  const sent = prompts();
+  expect(sent.slice(sent.indexOf(`FINISHED ON STOP ${FINISHED_TURN}`))).toEqual([`FINISHED ON STOP ${FINISHED_TURN}`, "after-stream"]);
+  await expect(page.locator(".timeline:visible .message.user", { hasText: FINISHED_TURN })).toHaveCount(1);
+  await expect(page.locator(".timeline:visible .message.agent", { hasText: `Finished ${FINISHED_TURN}` })).toHaveCount(1);
 });
 
 test("a turn whose agent was still starting when the stop ran out waits for its own message to go again, not the previous turn's", async ({ page }) => {

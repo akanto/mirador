@@ -22,8 +22,10 @@ import * as acp from "@agentclientprotocol/sdk";
  * once `session/cancel` arrives, and a moment after the stop streams the reply's rest under the id it streamed under
  * before, together with a subagent's report — the late chunks claude-agent-acp sends for a turn its cancel cut short.
  * `STOPPED QUIET ` streams nothing, ends as cancelled on the stop and sends nothing after it, as a stop that interrupted
- * the request leaves things. `REPLY TOOL REPLY ` answers as Claude Code does around a tool: a reply under one id, a tool
- * call, and a reply under the next id. `REPLY STEERED ` begins a reply, waits for a message steered into the turn and
+ * the request leaves things. `FINISHED ON STOP ` begins a reply, and once `session/cancel` arrives finishes it and
+ * ends the turn as done, as Claude Code does when its answer was already complete as the stop came.
+ * `REPLY TOOL REPLY ` answers as Claude Code does around a tool: a reply under one id, a tool call, and a reply under
+ * the next id. `REPLY STEERED ` begins a reply, waits for a message steered into the turn and
  * answers it under the next id.
  * `ASYNC TASK` starts a background task the way claude-agent-acp does with its `asyncTasks` capability: a spawn update,
  * a progress beat shortly after, and output lines appended to a file under `FAKE_ACP_TASK_OUTPUT_DIR`; with ` DONE`
@@ -319,6 +321,14 @@ async function streamWords(client: acp.AgentContext, sessionId: string, count: n
   return { stopReason: "end_turn" as const };
 }
 
+async function finishedOnStop(client: acp.AgentContext, sessionId: string, text: string) {
+  const notify = (chunk: string) => client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: chunk } } });
+  await notify(`Begun on ${text}. `);
+  await new Promise<void>((resolve) => stopWaiters.set(sessionId, resolve));
+  await notify(`Finished ${text}.`);
+  return { stopReason: "end_turn" as const };
+}
+
 if (ignoresSigterm) {
   process.on("SIGTERM", () => {});
   setInterval(() => {}, 60_000);
@@ -370,6 +380,7 @@ acp
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
+    if (startsWith(ctx.params.prompt, "FINISHED ON STOP ")) return finishedOnStop(ctx.client, ctx.params.sessionId, text.slice("FINISHED ON STOP ".length));
     if (startsWith(ctx.params.prompt, "STOPPED REPLY ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED REPLY ".length), true);
     if (startsWith(ctx.params.prompt, "STOPPED BEFORE ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED BEFORE ".length), false);
     if (startsWith(ctx.params.prompt, "STOPPED QUIET ")) return stoppedQuietly(ctx.params.sessionId);
