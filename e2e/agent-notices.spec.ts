@@ -47,11 +47,18 @@ test("an agent's notice shows as a notice of its own, keeping its lines, not as 
   });
 
   await test.step("a short notice shows whole, told apart by its severity", async () => {
-    await expect(notices.nth(1)).toHaveText("PreToolUse:Bash hook: rm -rf was blocked");
+    await expect(notices.nth(1)).toHaveText("Warning: PreToolUse:Bash hook: rm -rf was blocked");
     await expect(notices.nth(1)).toHaveClass(/warning/);
-    await expect(notices.nth(2)).toHaveText("Fast mode turned off: Claude could not serve it right now.");
+    await expect(notices.nth(2)).toHaveText("Warning: Fast mode turned off: Claude could not serve it right now.");
     await expect(notices).toHaveCount(3);
     await expect(page.locator(".timeline:visible")).not.toContainText("**");
+  });
+
+  await test.step("a warning's severity, shown by its colour, is a word only a screen reader says, and an info notice has none", async () => {
+    const spoken = notices.nth(1).locator(".visually-hidden");
+    await expect(spoken).toHaveText("Warning: ");
+    expect((await spoken.boundingBox())!.width).toBeLessThanOrEqual(1);
+    await expect(notices.first().locator(".visually-hidden")).toHaveCount(0);
   });
 
   await test.step("find unfolds the notice it matches, as it does a hook message", async () => {

@@ -165,6 +165,9 @@ export interface AgentNoticeBlock extends Origin {
   description?: string;
 }
 
+/** The word a screen reader says before a notice that stands out, which the page shows by its colour alone. */
+export const spokenSeverity = ({ severity }: Pick<AgentNoticeBlock, "severity">) => (severity === "error" ? "Error" : severity === "warning" ? "Warning" : null);
+
 export type TimelineBlock =
   | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string } & CarriedImages)
   | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; turnSeq?: number; filesKept?: true } & CarriedImages)

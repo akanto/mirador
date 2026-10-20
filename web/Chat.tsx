@@ -67,6 +67,7 @@ import {
   buildTimeline,
   contentText,
   runsInBackground,
+  spokenSeverity,
   startsAuthorGroup,
   stepsAtWork,
   stepsRunning,
@@ -682,9 +683,12 @@ function InfoLine({ text }: { text: string }) {
 function AgentNoticeLine({ block }: { block: AgentNoticeBlock }) {
   const loudness = block.severity === "warning" || block.severity === "error" ? block.severity : "info";
   const lines = block.description ? block.description.split("\n") : [];
+  const spoken = spokenSeverity(block);
+  const severityForScreenReaders = spoken && <span className="visually-hidden">{spoken}: </span>;
   if (lines.length < 2)
     return (
       <div className={`agent-notice ${loudness}`}>
+        {severityForScreenReaders}
         {block.title}
         {block.description ? `: ${block.description}` : ""}
       </div>
@@ -692,6 +696,7 @@ function AgentNoticeLine({ block }: { block: AgentNoticeBlock }) {
   return (
     <details className={`agent-notice ${loudness}`}>
       <summary>
+        {severityForScreenReaders}
         {block.title} · {lines.length} lines
       </summary>
       <div className="notice-lines">{block.description}</div>

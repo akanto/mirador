@@ -4,7 +4,7 @@ import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
 import { canTryAgain } from "../shared/try-again.ts";
-import { approvalsWaiting, authorOf, buildTimeline, startsAuthorGroup, stepsAtWork, stepsRunning, subagentAsking, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
+import { approvalsWaiting, authorOf, buildTimeline, spokenSeverity, startsAuthorGroup, stepsAtWork, stepsRunning, subagentAsking, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -161,6 +161,12 @@ describe("an agent's notice update", () => {
       description: "rm -rf was blocked",
     });
     expect(buildTimeline(stored([notice("info", "Fast mode turned off")]))[0]).toMatchObject({ kind: "agent-notice", title: "Fast mode turned off" });
+  });
+
+  test("says a warning's and an error's severity in words for screen readers, and nothing for a quieter one", () => {
+    expect(spokenSeverity({ severity: "warning" })).toBe("Warning");
+    expect(spokenSeverity({ severity: "error" })).toBe("Error");
+    expect(spokenSeverity({ severity: "info" })).toBeNull();
   });
 });
 
