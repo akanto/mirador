@@ -28,7 +28,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { canMarkUnread, markRead, markUnread } from "./unread.ts";
-import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
+import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, waitingTones } from "./waiting.ts";
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
@@ -161,7 +161,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
 
 function statusDot(conversation: Conversation) {
   const { waitingFor } = conversation;
-  if (waitingFor) return <span className={`dot waiting tone-${waitingTones[waitingFor]}`} data-hint={waitingHints[waitingFor]} />;
+  if (waitingFor && waitingShowsOnDot(conversation)) return <span className={`dot waiting tone-${waitingTones[waitingFor]}`} data-hint={waitingHints[waitingFor]} />;
   if (conversation.status === "idle" && conversation.jobWaits.length > 0) {
     return <span className="dot waiting-on-job" data-hint={waitingOnJobsHint(conversation.jobWaits)} />;
   }

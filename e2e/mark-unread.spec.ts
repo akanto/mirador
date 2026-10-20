@@ -1,13 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { addWorkspace, callCanvasTool, primaryModifier, reloadFromRestartedHost, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, primaryModifier, reloadFromRestartedHost, sendMessage, signIn, startConversation } from "./helpers.ts";
 import type { Demo } from "./seed-demo.ts";
-import { TestHost } from "./test-host.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
-const host = new TestHost();
+const host = new TestHost({ fakePrograms: true });
 
-test.beforeAll(() => host.start());
+test.describe.configure({ mode: "serial" });
+
+test.beforeAll(async () => {
+  // An opencode that holds a WRITE turn until the file it waits for exists.
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts") });
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
@@ -103,4 +110,32 @@ test("Mark as unread keeps a conversation to come back to, until it is opened ag
     await expect(pill(third)).toHaveText("Needs you");
     await expect(page).toHaveURL(new RegExp(`#/c/${third}$`));
   });
+});
+
+test("a conversation marked unread while its turn runs keeps its running dot, its pill and the count showing the mark until the turn ends", async ({ page }) => {
+  const release = join(host.root, "release-held-turn");
+  await signIn(page, host);
+  const profiles = await createProfile(page, "held turns", "", "", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "held turns · opencode" });
+  const previousUrl = page.url();
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page).not.toHaveURL(previousUrl);
+  await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 30_000 });
+  const conversationId = page.url().match(/#\/c\/(.+)$/)![1]!;
+  const row = page.locator(`.workspace li[data-reorder-id="${conversationId}"]`);
+  const count = page.locator(".workspace .waiting-count");
+  const countBefore = Number(await count.textContent());
+
+  await sendMessage(page, `WRITE ${JSON.stringify([{ waitFor: release }])}`);
+  await expect(row.locator(".dot")).toHaveClass(/status-running/);
+  await row.click({ button: "right" });
+  await page.getByRole("menu").getByRole("menuitem", { name: "Mark as unread" }).click();
+  await expect(row.locator(".waiting-pill")).toHaveText("Unread");
+  await expect(row.locator(".dot")).toHaveClass(/status-running/);
+  await expect(count).toHaveText(String(countBefore + 1));
+
+  writeFileSync(release, "");
+  await expect(row.locator(".waiting-pill")).toHaveText("Done");
+  await expect(row.locator(".dot")).toHaveClass(/dot waiting tone-done/);
 });

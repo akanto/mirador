@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Hub, socketData, type BrowserSocket, type SocketData } from "../host/hub.ts";
 import type { Conversation } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
-import { countWaiting, lastsUntilOpened, waitingByUrgency } from "../shared/waiting.ts";
+import { countWaiting, lastsUntilOpened, waitingByUrgency, waitingShowsOnDot } from "../shared/waiting.ts";
 import { tabTitle } from "../web/tab-title.ts";
 
 const c = (waitingFor: Conversation["waitingFor"]) => ({ waitingFor }) as Conversation;
@@ -64,4 +64,14 @@ test("only the desktop app hears the running turns count, and only when it chang
     { type: "running-turns.counted", count: 0 },
   ]);
   expect(page).toEqual([]);
+});
+
+test("a running turn takes the dot from a Done, Failed or Unread mark, but not from a decision, which needs you now", () => {
+  const on = (waitingFor: Conversation["waitingFor"], status: Conversation["status"]) => waitingShowsOnDot({ waitingFor, status } as Conversation);
+  expect([on("permission", "running"), on("question", "running")]).toEqual([true, true]);
+  expect([on("finished", "running"), on("error", "running"), on("unread", "running"), on(null, "running")]).toEqual([false, false, false, false]);
+  // Starting also covers switching a profile or loading a session's history, which no mark gives way to.
+  for (const status of ["starting", "idle", "error"] as const) {
+    expect([on("permission", status), on("finished", status), on("error", status), on("unread", status), on(null, status)]).toEqual([true, true, true, true, false]);
+  }
 });

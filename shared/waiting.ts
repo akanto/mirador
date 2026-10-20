@@ -29,6 +29,9 @@ export const isWaiting = ({ waitingFor }: Conversation) => waitingFor !== null;
 /** Done, Failed and Unread last until you open the conversation or mark it read; a decision lasts until you make it. */
 export const lastsUntilOpened = (waitingFor: WaitingFor | null) => waitingFor !== null && waitingTones[waitingFor] !== "decision";
 
+/** A running turn takes the dot from a mark that lasts until opened, which the pill still shows; a decision keeps the dot, as it needs you now. */
+export const waitingShowsOnDot = ({ waitingFor, status }: Conversation) => waitingFor !== null && !(lastsUntilOpened(waitingFor) && status === "running");
+
 export const countWaiting = (conversations: Conversation[]) => conversations.filter(isWaiting).length;
 
 /** Decisions first, since those agents are stuck until you answer; otherwise in the order given. */

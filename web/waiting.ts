@@ -5,6 +5,7 @@ export {
   tonesByUrgency,
   waitingByUrgency,
   waitingLabels,
+  waitingShowsOnDot,
   waitingTones,
   type WaitingTone,
 } from "../shared/waiting.ts";
