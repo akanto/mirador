@@ -46,7 +46,6 @@ import { useStoppedMessageEdit } from "./edit-stopped.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
-import { hookMessageIn, hookName } from "../shared/hook-message.ts";
 import { MarkdownText } from "./Markdown.tsx";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
@@ -672,27 +671,10 @@ function permissionSubject(toolCall: PermissionBlock["toolCall"]) {
 }
 
 function InfoLine({ text }: { text: string }) {
-  const hookMessage = hookMessageIn(text);
-  if (!hookMessage)
-    return (
-      <div className="info-line">
-        <MarkdownText text={text} />
-      </div>
-    );
-  const { lines } = hookMessage;
-  if (lines.length === 1)
-    return (
-      <div className="info-line hook-message">
-        <b>{hookName(hookMessage)}:</b> {lines[0]}
-      </div>
-    );
   return (
-    <details className="info-line hook-message">
-      <summary>
-        <b>{hookName(hookMessage)}</b> · {lines.length} lines
-      </summary>
-      <div className="hook-lines">{lines.join("\n")}</div>
-    </details>
+    <div className="info-line">
+      <MarkdownText text={text} />
+    </div>
   );
 }
 

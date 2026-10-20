@@ -2407,16 +2407,6 @@ button.edits-waiting {
   font-size: calc(12px * var(--font-scale));
 }
 
-.hook-message summary {
-  cursor: pointer;
-}
-
-.hook-lines {
-  margin: 4px 0 0 14px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .agent-notice {
   color: var(--muted);
   font-size: calc(12px * var(--font-scale));
