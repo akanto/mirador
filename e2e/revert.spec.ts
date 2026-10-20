@@ -267,3 +267,32 @@ test("a turn can be undone where core.safecrlf=true refuses to store a file with
   expect(readFileSync(refused, "utf8")).toBe("crlf\r\n");
   git("config", "--unset", "core.safecrlf");
 });
+
+test("an undo after a commit leaves the commit's files as committed, says so, and tells the agent", async ({ page }) => {
+  const pulled = join(host.projectDir, "pulled.txt");
+  const readmeAtStart = readFileSync(readme, "utf8");
+  const leftAsCommitted = "1 commit came in since then, and the 1 file it changed stays as committed.";
+
+  await signIn(page, host);
+  await workspaceCard(page, host.projectDir).getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  await startConversationWithoutModel(page);
+  await sendMessage(page, "Edit while a pull comes in");
+  await expect(status(page)).toHaveText("idle", { timeout: 60_000 });
+  writeFileSync(readme, "changed by the turn\n");
+  writeFileSync(pulled, "from a pull\n");
+  git("add", "pulled.txt");
+  git("commit", "-qm", "a pull");
+
+  await userMessage(page).hover();
+  await undoFiles(page).click();
+  const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+  await expect(dialog).toContainText(`1 file put back as they were since this turn began. ${leftAsCommitted}`);
+  await dialog.getByRole("button", { name: "Put the files back" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(readFileSync(readme, "utf8")).toBe(readmeAtStart);
+  expect(readFileSync(pulled, "utf8")).toBe("from a pull\n");
+  expect(git("status", "--porcelain", "--", "pulled.txt")).toBe("");
+
+  await sendMessage(page, "Carry on after the pull");
+  await expect.poll(agentSaw).toContain(leftAsCommitted);
+});

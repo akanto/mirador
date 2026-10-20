@@ -719,9 +719,10 @@ export class ConversationService {
    * Takes the conversation, the workspace's files and the agent's session back to how they were before the turn that
    * began with the message at `seq`. The agent goes on in a session forked so that it holds only what came before —
    * the prefix is the same bytes it was, so the agent's cached context still counts — and the events from there on are
-   * dropped, which leaves what the agent has and what the user sees the same.
+   * dropped, which leaves what the agent has and what the user sees the same. `keepFiles` leaves the files as they are
+   * now, without telling the agent, as Claude Code's own restore of the conversation alone does.
    */
-  async rewind(conversationId: string, seq: number): Promise<{ fromSeq: number }> {
+  async rewind(conversationId: string, seq: number, { keepFiles = false } = {}): Promise<{ fromSeq: number }> {
     const cannotRewind = this.rewindProblem(conversationId, seq);
     if (cannotRewind) throw new Error(cannotRewind);
     const runtime = this.runtime(conversationId);
@@ -732,7 +733,7 @@ export class ConversationService {
     try {
       const forked = point && conversation.acpSessionId ? await this.forkSessionAt(conversationId, point, joinedRunningTurn(events, seq)) : null;
       const checkpoint = this.checkpointAt(conversationId, seq);
-      if (checkpoint && (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
+      if (!keepFiles && checkpoint && (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint))) await this.checkpoints.restore(this.workspaceOf(conversationId), checkpoint);
       const released = this.releaseSession(conversationId, runtime, conversation.acpSessionId);
       this.store.deleteEventsFrom(conversationId, seq);
       this.forgetContextUsage(conversationId);

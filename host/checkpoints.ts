@@ -1,6 +1,6 @@
 import { copyFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { RestorePlan, Workspace } from "../shared/model.ts";
+import type { CommittedFiles, RestorePlan, Workspace } from "../shared/model.ts";
 import { CheckpointGit, changesIn, NO_FILE_MODE, type Location } from "./checkpoints/git.ts";
 import { OwnBytesStaging, type Staged } from "./checkpoints/own-bytes.ts";
 import { PutBack, type PutBackPlan } from "./checkpoints/put-back.ts";
@@ -22,11 +22,28 @@ const SNAPSHOT_MESSAGE = "mirador: the files at the start of a turn";
 /** Marks a snapshot that holds each file's own bytes: one without it holds them as git's attributes converted them. */
 const OWN_BYTES_NOTE = "Each file is kept as its own bytes, but those a filter cleans, which are kept as git stores them.";
 const CLEANED_PREFIX = "Cleaned by a filter: ";
-const snapshotMessageOf = (cleaned: string[]) => [SNAPSHOT_MESSAGE, "", OWN_BYTES_NOTE, ...(cleaned.length > 0 ? [`${CLEANED_PREFIX}${JSON.stringify(cleaned)}`] : [])].join("\n");
+const HEAD_PREFIX = "HEAD ";
+const UNBORN = "unborn";
+const headLineOf = (head: string) => `${HEAD_PREFIX}${head || UNBORN}`;
+/** Names the HEAD the snapshot was taken on, so a restore can leave alone what commits changed since. */
+const snapshotMessageOf = (cleaned: string[], head: string) =>
+  [SNAPSHOT_MESSAGE, "", OWN_BYTES_NOTE, ...(cleaned.length > 0 ? [`${CLEANED_PREFIX}${JSON.stringify(cleaned)}`] : []), headLineOf(head)].join("\n");
+const STAGING_MESSAGE = "mirador: the staged files at the start of a turn";
 /** Names the HEAD the staging was taken on: staging put back onto another HEAD would stage a revert of what was committed since. */
-const stagingMessageOn = (head: string) => `mirador: the staged files at the start of a turn\n\nHEAD ${head || "unborn"}`;
+const stagingMessageOn = (head: string) => `${STAGING_MESSAGE}\n\n${headLineOf(head)}`;
+/** The HEAD a message names, "" for none yet, or null when it names none. */
+function headNamedIn(message: string | null) {
+  const line = message?.split("\n").find((each) => each.startsWith(HEAD_PREFIX));
+  if (line === undefined) return null;
+  const head = line.slice(HEAD_PREFIX.length);
+  return head === UNBORN ? "" : head;
+}
 
-type RestoreDiff = PutBackPlan & { restored: number; removed: number; written: string[]; submodulesLeft: number };
+/** What commits changed since a snapshot: the paths, and how many commits, unless HEAD went somewhere not ahead of where it was. */
+type CommittedSince = { paths: Set<string>; commits: number | null };
+type RestoreDiff = PutBackPlan & { restored: number; removed: number; written: string[]; submodulesLeft: number; committed?: CommittedFiles };
+
+const planOf = ({ restored, removed, submodulesLeft, committed }: RestoreDiff): RestorePlan => ({ restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }), ...(committed && { committed }) });
 
 /**
  * The files of a workspace, kept per turn so a turn can be undone.
@@ -70,7 +87,7 @@ export class Checkpoints {
       if (!location) return null;
       const { ownBytes, cleaned } = await this.ownBytesStaging.stageEverything(workspace, location);
       const staging = await this.commitOfStaging(workspace, location);
-      const message = snapshotMessageOf(cleaned);
+      const message = snapshotMessageOf(cleaned, location.head);
       const commit = (await this.git.mustRun(workspace, ["commit-tree", ownBytes, ...(staging ? ["-p", staging] : []), "-F", "-"], { input: message })).stdout;
       this.remember(commit, message);
       if (staging) this.remember(`${commit}^`, stagingMessageOn(location.head));
@@ -106,8 +123,7 @@ export class Checkpoints {
     return this.inOrder(workspace.id, async () => {
       const location = await this.locate(workspace);
       if (!location) return null;
-      const { restored, removed, submodulesLeft } = await this.diffToNow(workspace, location, commit, await this.keptAs(workspace, commit));
-      return { restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }) };
+      return planOf(await this.diffToNow(workspace, location, commit, await this.keptAs(workspace, commit)));
     });
   }
 
@@ -121,7 +137,7 @@ export class Checkpoints {
       if (keptAs.ownBytes) await this.putBack.ownBytes(workspace, location, plan, keptAs.cleaned);
       else await this.putBack.asGitChecksOut(workspace, commit, plan);
       await this.restoreStaging(workspace, location, commit, plan.written);
-      return { restored: plan.restored, removed: plan.removed, ...(plan.submodulesLeft > 0 && { submodulesLeft: plan.submodulesLeft }) };
+      return planOf(plan);
     });
   }
 
@@ -183,18 +199,68 @@ export class Checkpoints {
 
   /**
    * What a restore would change: what to put back or rewrite, what to delete, the paths to delete, every path it writes or
-   * deletes, the snapshot's entries for the paths it writes, and the submodules it leaves.
+   * deletes, the snapshot's entries for the paths it writes, the submodules it leaves, and the files it leaves because
+   * commits since changed them.
    */
   private async diffToNow(workspace: Workspace, location: Location, commit: string, keptAs: { ownBytes: boolean }): Promise<RestoreDiff> {
     const staged = await this.ownBytesStaging.stageEverything(workspace, location);
     const diff = await this.git.run(workspace, ["diff-tree", "-r", "-z", "--raw", "--relative", "--no-renames", commit, this.treeLike(keptAs, staged)]);
     const changes = changesIn(diff.stdout);
-    const files = changes.filter(({ submodule }) => !submodule);
+    const differing = changes.filter(({ submodule }) => !submodule);
+    const committedSince = await this.committedSince(workspace, location, commit);
+    const committedPaths = differing.filter(({ path }) => committedSince?.paths.has(path)).map(({ path }) => path);
+    const files = differing.filter(({ path }) => !committedSince?.paths.has(path));
     const withStatus = (letters: string[]) => files.filter(({ status }) => letters.includes(status)).length;
     const added = files.filter(({ status }) => status === "A").map(({ path }) => path);
     const written = files.map(({ path }) => path);
     const kept = files.filter(({ fromMode }) => fromMode !== NO_FILE_MODE).map(({ fromMode, fromBlob, path }) => ({ mode: fromMode, blob: fromBlob, path }));
-    return { restored: withStatus(["M", "D"]), removed: added.length, added, written, kept, submodulesLeft: changes.length - files.length };
+    const committed =
+      committedSince && committedPaths.length > 0
+        ? { files: committedPaths.length, editedSince: await this.editedSinceHead(workspace, location, staged.converted, committedPaths), commits: committedSince.commits }
+        : undefined;
+    return { restored: withStatus(["M", "D"]), removed: added.length, added, written, kept, submodulesLeft: changes.length - differing.length, ...(committed && { committed }) };
+  }
+
+  /**
+   * What commits changed since the snapshot was taken; null when HEAD is where it was, or when the snapshot does not
+   * name its HEAD or that commit is gone, which leaves a restore putting every file back.
+   */
+  private async committedSince(workspace: Workspace, { head }: Location, commit: string): Promise<CommittedSince | null> {
+    const then = await this.headAt(workspace, commit);
+    if (then === null || then === head) return null;
+    if (then && (await this.git.run(workspace, ["cat-file", "-e", `${then}^{commit}`])).exitCode !== 0) return null;
+    const changed = await this.git.mustRun(workspace, ["diff-tree", "-r", "-z", "--name-only", "--relative", "--no-renames", await this.treeOf(workspace, then), await this.treeOf(workspace, head)]);
+    return { paths: new Set(changed.stdout.split("\0").filter(Boolean)), commits: await this.commitsFrom(workspace, then, head) };
+  }
+
+  /**
+   * The HEAD the snapshot was taken on, "" before the first commit. A snapshot names it; one from before that, through
+   * its staging; null for one older still.
+   */
+  private async headAt(workspace: Workspace, commit: string) {
+    const named = headNamedIn(await this.messageOf(workspace, commit));
+    if (named !== null) return named;
+    const staging = await this.messageOf(workspace, `${commit}^`);
+    return staging?.startsWith(STAGING_MESSAGE) ? headNamedIn(staging) : null;
+  }
+
+  /** How many commits HEAD moved ahead by, from `then` to `now`; null when `now` is not ahead of `then`. */
+  private async commitsFrom(workspace: Workspace, then: string, now: string) {
+    if (!now) return null;
+    if (then && (await this.git.run(workspace, ["merge-base", "--is-ancestor", then, now])).exitCode !== 0) return null;
+    return Number((await this.git.mustRun(workspace, ["rev-list", "--count", then ? `${then}..${now}` : now])).stdout);
+  }
+
+  /** How many of `paths` the files now hold otherwise than HEAD does, compared as git stores them. */
+  private async editedSinceHead(workspace: Workspace, { head }: Location, converted: string, paths: string[]) {
+    const differing = await this.git.mustRun(workspace, ["diff-tree", "-r", "-z", "--name-only", "--relative", "--no-renames", await this.treeOf(workspace, head), converted]);
+    const edited = new Set(differing.stdout.split("\0"));
+    return paths.filter((path) => edited.has(path)).length;
+  }
+
+  /** The commit itself, or the empty tree for none yet. */
+  private async treeOf(workspace: Workspace, commit: string) {
+    return commit || (await this.git.mustRun(workspace, ["hash-object", "-t", "tree", "--stdin"], { input: "" })).stdout;
   }
 
   /**

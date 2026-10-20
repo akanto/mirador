@@ -850,7 +850,7 @@ export function startServer(services: HostServices) {
           .catch((error) => reply({ type: "conversation.rewind-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.rewind":
         return conversations
-          .rewind(message.conversationId, message.seq)
+          .rewind(message.conversationId, message.seq, { keepFiles: message.keepFiles === true })
           .then(({ fromSeq }) => reply({ type: "conversation.rewind-done", requestId: message.requestId, conversationId: message.conversationId, fromSeq }))
           .catch((error) => reply({ type: "conversation.rewind-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.set-ask-mode":

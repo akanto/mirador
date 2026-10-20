@@ -64,9 +64,9 @@ const putFilesBack = (conversationId: string, seq: number) =>
     },
   );
 
-export const rewindTo = (conversationId: string, seq: number) =>
+export const rewindTo = (conversationId: string, seq: number, keepFiles = false) =>
   connection.sendAndAwait(
-    (requestId) => ({ type: "conversation.rewind", requestId, conversationId, seq }),
+    (requestId) => ({ type: "conversation.rewind", requestId, conversationId, seq, ...(keepFiles && { keepFiles }) }),
     (message, requestId) => {
       if (message.type === "conversation.rewind-done" && message.requestId === requestId) return message.fromSeq;
       if (message.type === "conversation.rewind-failed" && message.requestId === requestId) throw new Error(message.message);
@@ -100,10 +100,13 @@ function whatLeaves({ turnsLeaving = 1, keptFrom }: Preview) {
     : "Every turn leaves the conversation, and the agent starts over with nothing of it.";
 }
 
+const putsAnyFileBack = (plan: RestorePlan | null) => plan !== null && plan.restored + plan.removed > 0;
+
 /** What the files do: they go back too, or they stay as they are and this says why. */
-function whatFiles(preview: Preview, rewind: boolean) {
+function whatFiles(preview: Preview, rewind: boolean, keepFiles: boolean) {
   if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
   if (!preview.plan) return "";
+  if (keepFiles) return "The files stay as they are now, with what the turns that leave did to them.";
   const changed = [`${whatChanged(preview.plan)} since this turn began.`, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
   return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
 }
@@ -111,10 +114,11 @@ function whatFiles(preview: Preview, rewind: boolean) {
 export function RevertDialog({ conversationId, turn, rewind, onClose }: { conversationId: string; turn: Turn; rewind: boolean; onClose: () => void }) {
   const { preview, problem, setProblem } = usePreview(conversationId, turn.seq, rewind);
   const [working, setWorking] = useState(false);
+  const [keepFiles, setKeepFiles] = useState(false);
   const go = async () => {
     setWorking(true);
     try {
-      await (rewind ? rewindTo(conversationId, turn.seq) : putFilesBack(conversationId, turn.seq));
+      await (rewind ? rewindTo(conversationId, turn.seq, keepFiles) : putFilesBack(conversationId, turn.seq));
       onClose();
     } catch (error) {
       setWorking(false);
@@ -122,7 +126,8 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
     }
   };
   const blocked = problem ?? preview?.cannotRewind ?? (rewind ? undefined : preview?.filesNote);
-  const files = preview && !blocked ? whatFiles(preview, rewind) : "";
+  const files = preview && !blocked ? whatFiles(preview, rewind, keepFiles) : "";
+  const offersToKeepFiles = rewind && preview && !blocked && !preview.filesNote && putsAnyFileBack(preview.plan);
   return (
     <Modal label={rewind ? "Rewind to here" : "Undo the files of a turn"} className="revert" onClose={onClose}>
       <h2>{rewind ? "Rewind to here" : "Undo the files"}</h2>
@@ -133,6 +138,12 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
         <>
           {rewind && <p className="revert-summary">{whatLeaves(preview)}</p>}
           {files && <p className="revert-summary">{files}</p>}
+          {offersToKeepFiles && (
+            <label className="revert-files-choice" data-hint={hints.rewindPutFilesBack}>
+              <input type="checkbox" checked={!keepFiles} onChange={(event) => setKeepFiles(!event.target.checked)} />
+              Put the files back too
+            </label>
+          )}
         </>
       ) : (
         <p className="revert-summary">Checking what would change…</p>

@@ -141,8 +141,11 @@ export type ClientMessage =
   | { type: "conversation.revert"; requestId: string; conversationId: string; seq: number }
   /** What taking the conversation and the files back to before the turn that began with the message at `seq` would do. */
   | { type: "conversation.rewind-preview"; requestId: string; conversationId: string; seq: number }
-  /** Takes the conversation and the workspace's files back to how they were before the turn at `seq`, and the agent with them. */
-  | { type: "conversation.rewind"; requestId: string; conversationId: string; seq: number }
+  /**
+   * Takes the conversation and the workspace's files back to how they were before the turn at `seq`, and the agent with
+   * them; with `keepFiles`, the conversation alone, leaving every file as it is now.
+   */
+  | { type: "conversation.rewind"; requestId: string; conversationId: string; seq: number; keepFiles?: boolean }
   | { type: "conversation.run-command"; conversationId: string; command: string }
   | { type: "conversation.stop-command"; conversationId: string; commandId: string }
   | { type: "conversation.drop-command-outputs"; conversationId: string; commandIds: string[] }

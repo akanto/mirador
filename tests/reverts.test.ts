@@ -51,9 +51,31 @@ test("a revert that left submodules as they are tells the agent so", () => {
   expect(whatWasLeft({})).toBe("");
 });
 
+test("a restore that left the files commits changed says how many, and which of them were edited after", () => {
+  expect(whatWasLeft({ committed: { files: 230, editedSince: 0, commits: 3 } })).toBe("3 commits came in since then, and the 230 files they changed stay as committed.");
+  expect(whatWasLeft({ committed: { files: 1, editedSince: 1, commits: 1 } })).toBe("1 commit came in since then, and the 1 file it changed stays as committed. It was also edited after that, and keeps those edits.");
+  expect(whatWasLeft({ committed: { files: 4, editedSince: 1, commits: null } })).toBe(
+    "HEAD moved to another commit since then, and the 4 files that differ there stay as they are. 1 of them was also edited after that, and keeps those edits.",
+  );
+  expect(whatWasLeft({ committed: { files: 3, editedSince: 2, commits: 2 }, submodulesLeft: 1 })).toBe(
+    "2 commits came in since then, and the 3 files they changed stay as committed. 2 of them were also edited after that, and keep those edits. 1 submodule that changed stays as it is now: a submodule's files are its own repository's, so Mirador does not put them back.",
+  );
+});
+
+test("a revert that left the files commits changed tells the agent so", () => {
+  const committed = { files: 2, editedSince: 0, commits: 1 };
+  const events = stored(userMessage("do the thing"), { type: "revert", revertId: "r1", toSeq: 1, restored: 1, removed: 0, committed });
+  const [revert] = pendingReverts(events);
+  expect(revert).toEqual({ revertId: "r1", toSeq: 1, restored: 1, removed: 0, committed, toMessage: "do the thing" });
+  expect(withRevertNotes([revert!], "carry on")).toContain(
+    ': 1 file put back as they were. 1 commit came in since then, and the 2 files it changed stay as committed. The conversation above is unchanged',
+  );
+});
+
 test("one file is not called files, and an unchanged tree says so", () => {
   expect(whatChanged({ restored: 1, removed: 0 })).toBe("1 file put back as they were");
   expect(whatChanged({ restored: 0, removed: 0 })).toBe("no file was different");
+  expect(whatChanged({ restored: 0, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } })).toBe("no other file was different");
 });
 
 test("a turn is named by its message's first line, shortened when long", () => {

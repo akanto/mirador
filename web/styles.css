@@ -1725,6 +1725,13 @@ input.picker-search {
   margin: 0;
 }
 
+.revert-files-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 .markdown > :first-child {
   margin-top: 0;
 }

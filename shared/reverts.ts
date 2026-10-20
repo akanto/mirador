@@ -1,4 +1,4 @@
-import { harnessLabels, harnessRewinds, type ConversationEvent, type HarnessId, type StoredEvent } from "./model.ts";
+import { harnessLabels, harnessRewinds, type CommittedFiles, type ConversationEvent, type HarnessId, type StoredEvent } from "./model.ts";
 import { returnedSteerSeqs } from "./steered-messages.ts";
 import { cutWithEllipsis } from "./text-cut.ts";
 
@@ -11,6 +11,7 @@ export interface Revert {
   restored: number;
   removed: number;
   submodulesLeft?: number;
+  committed?: CommittedFiles;
 }
 
 const messageOf = (events: StoredEvent[], seq: number) => {
@@ -26,7 +27,15 @@ export function pendingReverts(events: StoredEvent[]): Revert[] {
     .filter(({ event }) => event.type === "revert")
     .map(({ event }) => event as Extract<ConversationEvent, { type: "revert" }>)
     .filter(({ revertId }) => !sent.has(revertId))
-    .map(({ revertId, toSeq, restored, removed, submodulesLeft }) => ({ revertId, toSeq, restored, removed, ...(submodulesLeft && { submodulesLeft }), toMessage: messageOf(events, toSeq) }));
+    .map(({ revertId, toSeq, restored, removed, submodulesLeft, committed }) => ({
+      revertId,
+      toSeq,
+      restored,
+      removed,
+      ...(submodulesLeft && { submodulesLeft }),
+      ...(committed && { committed }),
+      toMessage: messageOf(events, toSeq),
+    }));
 }
 
 /** A turn of the conversation, named by the message that began it. */
@@ -93,17 +102,32 @@ export function turnTitle(text: string) {
   return cutWithEllipsis(first, 60) || "an earlier turn";
 }
 
-export const whatChanged = ({ restored, removed }: Pick<Revert, "restored" | "removed">) => {
+export const whatChanged = ({ restored, removed, committed }: Pick<Revert, "restored" | "removed" | "committed">) => {
   const files = (count: number, what: string) => `${count} ${count === 1 ? "file" : "files"} ${what}`;
   const parts = [restored > 0 && files(restored, "put back as they were"), removed > 0 && files(removed, "created since deleted")].filter(Boolean);
-  return parts.length > 0 ? parts.join(" and ") : "no file was different";
+  return parts.length > 0 ? parts.join(" and ") : committed ? "no other file was different" : "no file was different";
 };
 
+const counted = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/** The files commits changed since the turn began, which a restore leaves as the commits have them. */
+function whatCommitsLeft({ files, editedSince, commits }: CommittedFiles) {
+  const oneFile = files === 1;
+  const left =
+    commits === null
+      ? `HEAD moved to another commit since then, and the ${counted(files, "file that differs there stays", "files that differ there stay")} as ${oneFile ? "it is" : "they are"}.`
+      : `${counted(commits, "commit", "commits")} came in since then, and the ${counted(files, "file", "files")} ${commits === 1 ? "it" : "they"} changed ${oneFile ? "stays" : "stay"} as committed.`;
+  if (editedSince === 0) return left;
+  const edited = oneFile ? "It was also edited after that, and keeps those edits." : `${editedSince} of them ${editedSince === 1 ? "was" : "were"} also edited after that, and ${editedSince === 1 ? "keeps" : "keep"} those edits.`;
+  return `${left} ${edited}`;
+}
+
+const whatSubmodulesLeft = (submodulesLeft: number) =>
+  `${submodulesLeft === 1 ? "1 submodule that changed stays as it is" : `${submodulesLeft} submodules that changed stay as they are`} now: a submodule's files are its own repository's, so Mirador does not put them back.`;
+
 /** What a restore does not put back, said after what it does; empty when nothing was left. */
-export const whatWasLeft = ({ submodulesLeft = 0 }: Pick<Revert, "submodulesLeft">) =>
-  submodulesLeft === 0
-    ? ""
-    : `${submodulesLeft === 1 ? "1 submodule that changed stays as it is" : `${submodulesLeft} submodules that changed stay as they are`} now: a submodule's files are its own repository's, so Mirador does not put them back.`;
+export const whatWasLeft = ({ submodulesLeft = 0, committed }: Pick<Revert, "submodulesLeft" | "committed">) =>
+  [committed && whatCommitsLeft(committed), submodulesLeft > 0 && whatSubmodulesLeft(submodulesLeft)].filter(Boolean).join(" ");
 
 /** How the agent is told its changes are no longer in the files, ahead of the message it is being sent. */
 export function withRevertNotes(reverts: Revert[], message: string) {

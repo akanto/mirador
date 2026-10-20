@@ -119,15 +119,95 @@ test("what the agent staged during the turn is unstaged by a restore, and what t
   expect(await stagedVersionOf("kept.txt")).toBe("staged by the user");
 });
 
-test("after a commit since the snapshot, a restore unstages what differs rather than stage a revert of the commit", async () => {
+test("after a commit since the snapshot, its files stay as committed, and a restore unstages what it puts back rather than stage a revert of the commit", async () => {
   const snapshot = (await checkpoints.snapshot(workspace))!;
   await write("kept.txt", "committed by the agent\n");
   await git(projectDir, ["commit", "-qam", "the agent's commit"]);
+  await write("doomed.txt", "staged by the agent\n");
+  await git(projectDir, ["add", "doomed.txt"]);
 
-  await checkpoints.restore(workspace, snapshot);
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0, committed: { files: 1, editedSince: 0, commits: 1 } });
+
+  expect(await read("kept.txt")).toBe("committed by the agent\n");
+  expect(await read("doomed.txt")).toBe("doomed\n");
+  expect(await status()).toBe("");
+});
+
+test("a restore leaves the files that commits since the snapshot changed as committed, and puts back the rest", async () => {
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("kept.txt", "changed by the agent\n");
+  await write("pulled.txt", "pulled\n");
+  await write("doomed.txt", "changed by a pull\n");
+  await git(projectDir, ["add", "pulled.txt", "doomed.txt"]);
+  await git(projectDir, ["commit", "-qm", "a pull"]);
+  const plan = { restored: 1, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } };
+
+  expect(await checkpoints.preview(workspace, snapshot)).toEqual(plan);
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual(plan);
 
   expect(await read("kept.txt")).toBe("one\n");
-  expect(await stagedPaths()).toEqual([]);
+  expect(await read("pulled.txt")).toBe("pulled\n");
+  expect(await read("doomed.txt")).toBe("changed by a pull\n");
+  expect(await status()).toBe("");
+});
+
+test("a file a commit since the snapshot changed and that was edited after it stays as it is, and is counted apart", async () => {
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("kept.txt", "pulled\n");
+  await git(projectDir, ["commit", "-qam", "a pull"]);
+  await write("kept.txt", "pulled, then edited by the agent\n");
+
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 0, removed: 0, committed: { files: 1, editedSince: 1, commits: 1 } });
+
+  expect(await read("kept.txt")).toBe("pulled, then edited by the agent\n");
+});
+
+test("after a switch to a branch that is not ahead of the snapshot's, the files that differ there stay as they are, with no count of commits", async () => {
+  await git(projectDir, ["checkout", "-qb", "other"]);
+  await write("kept.txt", "on the other branch\n");
+  await git(projectDir, ["commit", "-qam", "other"]);
+  await git(projectDir, ["checkout", "-q", "main"]);
+  await write("doomed.txt", "main's own\n");
+  await git(projectDir, ["commit", "-qam", "main"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("added.txt", "new, by the agent\n");
+  await git(projectDir, ["checkout", "-q", "other"]);
+
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 0, removed: 1, committed: { files: 2, editedSince: 0, commits: null } });
+
+  expect(await read("kept.txt")).toBe("on the other branch\n");
+  expect(await read("doomed.txt")).toBe("doomed\n");
+  await expect(read("added.txt")).rejects.toThrow();
+});
+
+test("a snapshot taken during a merge conflict knows its HEAD, so the merge committed since stays", async () => {
+  await git(projectDir, ["checkout", "-qb", "theirs"]);
+  await write("doomed.txt", "theirs\n");
+  await git(projectDir, ["commit", "-qam", "theirs"]);
+  await git(projectDir, ["checkout", "-q", "main"]);
+  await write("doomed.txt", "ours\n");
+  await git(projectDir, ["commit", "-qam", "ours"]);
+  await git(projectDir, ["merge", "-q", "theirs"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("doomed.txt", "resolved\n");
+  await git(projectDir, ["commit", "-qam", "the merge"]);
+
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 0, removed: 0, committed: { files: 1, editedSince: 0, commits: 2 } });
+
+  expect(await read("doomed.txt")).toBe("resolved\n");
+  expect(await status()).toBe("");
+});
+
+test("a snapshot from before it noted its HEAD puts back every file, commits since or not, as it did then", async () => {
+  await git(projectDir, ["add", "-A"]);
+  const tree = (await git(projectDir, ["write-tree"])).stdout;
+  const snapshot = (await git(projectDir, ["commit-tree", tree, "-m", "mirador: the files at the start of a turn"])).stdout;
+  await write("kept.txt", "pulled\n");
+  await git(projectDir, ["commit", "-qam", "a pull"]);
+
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0 });
+
+  expect(await read("kept.txt")).toBe("one\n");
 });
 
 test("a restore that writes no file leaves the staging as it is", async () => {
@@ -323,6 +403,24 @@ test("in a repository with no commit yet, a restore puts back the files and what
   expect(await readFile(join(fresh, "staged.txt"), "utf8")).toBe("staged by the user\n");
   expect((await git(fresh, ["diff", "--cached", "--name-only"])).stdout).toBe("staged.txt");
   expect((await git(fresh, ["show", ":staged.txt"])).stdout).toBe("staged by the user");
+});
+
+test("in a repository with no commit yet at the snapshot, the files its first commit holds stay as committed", async () => {
+  const fresh = join(dataDir, "fresh");
+  await mkdir(fresh);
+  await git(fresh, ["init", "-q"]);
+  await writeFile(join(fresh, "first.txt"), "before the first commit\n");
+  const unborn = { ...workspace, id: "ws-3", path: fresh };
+  const snapshot = (await checkpoints.snapshot(unborn))!;
+  await writeFile(join(fresh, "first.txt"), "the first commit\n");
+  await git(fresh, ["add", "first.txt"]);
+  await git(fresh, ["commit", "-qm", "first"]);
+  await writeFile(join(fresh, "added.txt"), "new, by the agent\n");
+
+  expect(await checkpoints.restore(unborn, snapshot)).toEqual({ restored: 0, removed: 1, committed: { files: 1, editedSince: 0, commits: 1 } });
+
+  expect(await readFile(join(fresh, "first.txt"), "utf8")).toBe("the first commit\n");
+  expect((await git(fresh, ["status", "--porcelain"])).stdout).toBe("");
 });
 
 const onWindows = process.platform === "win32";

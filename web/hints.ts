@@ -79,11 +79,13 @@ export const hints = {
   undoFiles:
     "Puts this workspace's files back to how they were before this turn began: what the turn changed is restored, what it created is deleted. Mirador kept them because this workspace is a git repository; your own commits, branches and history are untouched.\n\nThe conversation stays as it is. The agent is told with your next message that the files no longer hold that turn.",
   undoFilesConfirm:
-    "Writes the files of the workspace back to how they were when the turn began. What the turn and everything after it did to the files is lost; the conversation keeps its record of it. Use the terminal if you want the files as they are now.",
+    "Writes the files of the workspace back to how they were when the turn began. What the turn and everything after it did to the files is lost; the conversation keeps its record of it. Files that commits changed since, such as a pull's, stay as committed. Use the terminal if you want the files as they are now.",
   rewind:
     "Takes the conversation and this workspace's files back to how they were before this turn began: the turn and every turn after it leave the conversation, and the agent goes on in a session that holds only what came before them.\n\nThe turns that leave are not offered back, in the timeline or anywhere else. The agent's own session file stays on disk, where its own resume (Claude Code's --resume, pi's /resume) can still reach it. Your commits, branches and history are untouched.",
   rewindConfirm:
-    "The conversation loses this turn and every turn after it, and the agent's own history with them; the files go back to how they were when it began. Neither comes back from here. Use the terminal if you want the files as they are now.",
+    "The conversation loses this turn and every turn after it, and the agent's own history with them; the files go back to how they were when it began, unless you keep them as they are. Files that commits changed since, such as a pull's, stay as committed. Neither comes back from here.",
+  rewindPutFilesBack:
+    "On: the files go back to how they were when this turn began, but for those commits changed since. Off: only the conversation goes back, and every file stays as it is now, with what the turns that leave did to it. The agent is not told; it finds the files as they are.",
   commandDelivery: "Commands you run with ! go to the agent with your next message, in the tags Claude Code uses for its own ! commands.",
   commandOutputsAttached: "These outputs of commands you ran with ! go ahead of your next message to the agent. ✕ keeps them out of it.",
   terminalToggle: "Hide or show this conversation's terminals, which run in its workspace's folder. Their shells keep running while the pane is hidden or another conversation is shown, and reloading the page reattaches to them.",

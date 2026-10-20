@@ -248,6 +248,18 @@ export interface RestorePlan {
   removed: number;
   /** Submodules that moved since: a restore leaves them as they are, since their files are their own repository's. */
   submodulesLeft?: number;
+  /** Files that commits since changed, which a restore leaves as committed. */
+  committed?: CommittedFiles;
+}
+
+/**
+ * The files that differ from the turn's start because commits came in since, such as a pull's: how many, how many of
+ * them were edited after the commits too, and how many commits, unless HEAD went to a commit not ahead of where it was.
+ */
+export interface CommittedFiles {
+  files: number;
+  editedSince: number;
+  commits: number | null;
 }
 
 export interface QueuedMessage {
@@ -476,7 +488,7 @@ export type ConversationEvent =
   | { type: "login-ended"; signedIn: boolean }
   | { type: "usage-limit-wait-stopped" }
   /** The user put the workspace's files back to how they were before one of its turns. */
-  | { type: "revert"; revertId: string; toSeq: number; restored: number; removed: number; submodulesLeft?: number }
+  | { type: "revert"; revertId: string; toSeq: number; restored: number; removed: number; submodulesLeft?: number; committed?: CommittedFiles }
   | { type: "job-wait-ended"; wait: JobWait; end: JobWaitEnd };
 
 /** A harness session in a workspace directory, possibly started outside the app. */
