@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { resolveAsset, serveCanvasAssets } from "../host/canvas/assets.ts";
-import { buildCanvasDocument, CANVAS_SHELL_PAGE, CANVAS_SHELL_PATH, TEXT_CONTRAST_SCRIPT } from "../shared/canvas-document.ts";
+import { buildCanvasDocument, CANVAS_SHELL_PAGE, CANVAS_SHELL_PATH, HIDDEN_ERROR_SCRIPT, TEXT_CONTRAST_SCRIPT } from "../shared/canvas-document.ts";
 
 const assetsOrigin = "http://127.0.0.1:4601";
 
@@ -30,6 +30,40 @@ describe("buildCanvasDocument", () => {
   test("embeds the item id safely in the error reporter", () => {
     const document = buildCanvasDocument("<p>", '"; alert(1); "', assetsOrigin, "light");
     expect(document).toContain(JSON.stringify('"; alert(1); "'));
+  });
+});
+
+interface PageScript {
+  text: string;
+  src: string;
+  type: string;
+}
+type HiddenErrorMessage = (pageScripts: PageScript[], freshScripts: PageScript[]) => string;
+const hiddenErrorMessage = new Function(`${HIDDEN_ERROR_SCRIPT}; return hiddenErrorMessage;`)() as HiddenErrorMessage;
+const pageScript = (text: string, { src = "", type = "" } = {}): PageScript => ({ text, src, type });
+const HIDDEN_THROW = "A script on the page threw an error; this browser hides its message.";
+
+describe("hiddenErrorMessage", () => {
+  test("names the syntax error WebKit hid, as WebKit's own parser words it, and the script it is in", () => {
+    const fine = pageScript("const ok = 1;");
+    const broken = pageScript('draw("c1", [[[p32, "l32"]], [[p8, "l8"]]]], 200);', { type: "text/javascript" });
+    expect(hiddenErrorMessage([fine, broken], [broken])).toBe(
+      "SyntaxError: Unexpected token ']'. Expected ')' to end an argument list. (script 2 on the page)",
+    );
+  });
+
+  test("a script that parses threw as it ran, which WebKit does not tell", () => {
+    const thrower = pageScript("undefinedFunction();");
+    expect(hiddenErrorMessage([thrower], [thrower])).toBe(HIDDEN_THROW);
+  });
+
+  test("only the page's own classic scripts are parsed again: not one loaded from elsewhere, a module or data", () => {
+    const scripts = [
+      pageScript("", { src: "https://assets/d3.min.js" }),
+      pageScript("import { x } from 'y'; x(", { type: "module" }),
+      pageScript("{ not js", { type: "application/json" }),
+    ];
+    expect(hiddenErrorMessage(scripts, scripts)).toBe(HIDDEN_THROW);
   });
 });
 

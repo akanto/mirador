@@ -98,6 +98,30 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
 export const CANVAS_SHELL_POLICY = `${canvasContentSecurityPolicy("'self'")}; sandbox allow-scripts`;
 
 /**
+ * WebKit tells a frame of an opaque origin only "Script error." of what its own classic scripts throw. A syntax error
+ * can still be found by parsing the scripts again, as plain JS for the frame: `hiddenErrorMessage(pageScripts, freshScripts)`
+ * takes the page's scripts in order and those not yet accounted for by an earlier error, and says what the hidden one was.
+ */
+export const HIDDEN_ERROR_SCRIPT = `
+  const isClassicInline = (script) => !script.src && /^((text|application)\\/javascript)?$/i.test(script.type.trim());
+  const syntaxErrorOf = (script) => {
+    try {
+      new Function(script.text);
+      return null;
+    } catch (error) {
+      return error instanceof SyntaxError ? error : null;
+    }
+  };
+  const hiddenErrorMessage = (pageScripts, freshScripts) => {
+    for (const script of freshScripts.filter(isClassicInline)) {
+      const error = syntaxErrorOf(script);
+      if (error) return error.name + ": " + error.message + " (script " + (pageScripts.indexOf(script) + 1) + " on the page)";
+    }
+    return "A script on the page threw an error; this browser hides its message.";
+  };
+`;
+
+/**
  * Whether text reads on what is behind it, as plain JS for the frame. `readableTextColor(color, backgrounds, scheme)`
  * takes computed colours, the backgrounds from the text's element outwards, and gives the theme text colour to show
  * the text in instead, or null when it reads as it is or cannot be judged.
@@ -241,10 +265,25 @@ ${TEXT_CONTRAST_SCRIPT}
     errors.push(message);
     post({ kind: "error", message });
   };
+  const miradorScripts = new Set(document.scripts);
+  const pageScripts = () => [...document.scripts].filter((script) => !miradorScripts.has(script));
+  // A script's error is reported while it runs, so the scripts in the page by then are the ones it can have come from.
+  const accountedFor = new WeakSet();
+  const scriptsNotAccountedFor = () => {
+    const fresh = pageScripts().filter((script) => !accountedFor.has(script));
+    fresh.forEach((script) => accountedFor.add(script));
+    return fresh;
+  };
+  const isHidden = (event) => !event.error && /^Script error\\.?$/.test(event.message);
+${HIDDEN_ERROR_SCRIPT}
   addEventListener("error", (event) => {
     const element = event.target;
     if (element && element !== window && (element.src || element.href)) record("Failed to load " + (element.src || element.href));
-    else record(event.message + (event.lineno ? " (line " + event.lineno + ")" : ""));
+    else if (isHidden(event)) record(hiddenErrorMessage(pageScripts(), scriptsNotAccountedFor()));
+    else {
+      scriptsNotAccountedFor();
+      record(event.message + (event.lineno ? " (line " + event.lineno + ")" : ""));
+    }
   }, true);
   addEventListener("unhandledrejection", (event) => record("Unhandled promise rejection: " + ((event.reason && event.reason.message) || event.reason)));
   addEventListener("securitypolicyviolation", (event) => record("Blocked by the canvas sandbox: " + event.effectiveDirective + " " + event.blockedURI));
