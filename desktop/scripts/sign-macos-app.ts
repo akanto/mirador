@@ -12,7 +12,7 @@ import { join, sep } from "node:path";
 
 /** codesign takes any identity whose name contains this, and refuses when two do. */
 const SIGNING_IDENTITY = "Developer ID Application";
-const NOTARY_PROFILE = "mirador-notary";
+export const NOTARY_PROFILE = "mirador-notary";
 const ENTITLEMENTS = join(import.meta.dir, "..", "entitlements.plist");
 /** Apple can take more than an hour, most of all with a new team's first submissions. */
 const NOTARY_TIMEOUT = "2h";

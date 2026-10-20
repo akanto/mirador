@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +14,7 @@ import {
   releaseAssets,
   releaseOf,
   releaseSteps,
+  requireReadableNotaryProfile,
   runIdIn,
   runPlan,
   shellOf,
@@ -22,6 +24,7 @@ import {
   type Plan,
   type Step,
 } from "../scripts/release.ts";
+import { fakeProgram } from "./fake-program.ts";
 
 test("a release is made in a worktree of its own, into dist/ of the checkout, from the notes there", () => {
   expect(releaseOf("0.5.0", "/checkout", "/tmp")).toEqual({
@@ -296,4 +299,17 @@ test("the cask must name the published SHA-256 of each file it installs", () => 
   expect(caskMismatches(cask, published)).toEqual([]);
   expect(caskMismatches(cask, { ...published, "Mirador-linux-x64-Setup.tar.gz": `sha256:${"d".repeat(64)}` })).toEqual(["Mirador-linux-x64-Setup.tar.gz"]);
   expect(caskMismatches(cask, { "Mirador-macos-arm64.zip": `sha256:${arm}` })).toEqual(["Mirador-linux-x64-Setup.tar.gz", "Mirador-linux-arm64-Setup.tar.gz"]);
+});
+
+test("a notary profile that cannot be read, as while the screen is locked, stops the release with a word to unlock the Mac", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "release-notary-"));
+  const recorded = join(scratch, "arguments.txt");
+  const refusingXcrun = fakeProgram(scratch, "xcrun", `require("node:fs").writeFileSync(${JSON.stringify(recorded)}, process.argv.slice(2).join(" ")); process.exit(1);`);
+  expect(() => requireReadableNotaryProfile(refusingXcrun)).toThrow("unlock the Mac");
+  expect(readFileSync(recorded, "utf8")).toBe("notarytool history --keychain-profile mirador-notary");
+});
+
+test("a notary profile that can be read lets the release go on", () => {
+  const workingXcrun = fakeProgram(mkdtempSync(join(tmpdir(), "release-notary-")), "xcrun", "process.exit(0);");
+  expect(() => requireReadableNotaryProfile(workingXcrun)).not.toThrow();
 });

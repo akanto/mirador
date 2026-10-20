@@ -15,6 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { CASK_ASSETS } from "../desktop/scripts/homebrew-cask.ts";
+import { NOTARY_PROFILE } from "../desktop/scripts/sign-macos-app.ts";
 import { buildMachineBun, definedBunVersion, requireDefinedBun } from "../desktop/scripts/ship-build-bun.ts";
 import type { Platform } from "../desktop/scripts/update-files.ts";
 import { isNewerVersion, RELEASES_REPOSITORY } from "../shared/newer-version.ts";
@@ -406,7 +407,16 @@ export async function windows(release: Release, shell: Shell) {
   if (version !== release.version) throw new Error(`The Windows build says ${version}, not ${release.version}`);
 }
 
+/** The profile sits in the data-protection keychain, which nothing can read while the Mac's screen is locked. */
+export function requireReadableNotaryProfile(xcrun = "xcrun") {
+  const { exitCode, stderr } = Bun.spawnSync([xcrun, "notarytool", "history", "--keychain-profile", NOTARY_PROFILE], { stdout: "pipe", stderr: "pipe" });
+  if (exitCode === 0) return;
+  const reason = stderr.toString().split("\n")[0].trim();
+  throw new Error(`The notary profile ${NOTARY_PROFILE} cannot be read, as happens while the Mac's screen is locked: unlock the Mac and go on.${reason ? ` ${reason}` : ""}`);
+}
+
 async function macos(release: Release, shell: Shell) {
+  requireReadableNotaryProfile();
   await shell.run(["make", "macos-signed", `DIST=${release.dist}`], release.worktree);
 }
 
@@ -498,6 +508,7 @@ async function makeRelease(release: Release, from: string | undefined) {
   const plan = planFrom(releaseSteps(release.windows), from);
   const steps = [...plan.before, ...plan.builds.flat(), ...plan.after];
   if (steps.some((step) => step.run === linux)) requireLinuxHost();
+  if (steps.some((step) => step.run === macos)) requireReadableNotaryProfile();
   if (steps[0]?.run !== makeWorktree && !existsSync(release.worktree)) throw new Error(`There is no release worktree at ${release.worktree} to go on in; start from the beginning`);
   const goOn = (from: string[]) => `make release VERSION=${release.version}${process.env.LINUX_HOST ? ` LINUX_HOST=${process.env.LINUX_HOST}` : ""}${release.windows ? "" : " WINDOWS=no"} FROM=${from.join(",")}`;
   const perform = (step: ReleaseStep) => {
