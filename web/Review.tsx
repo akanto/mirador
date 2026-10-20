@@ -5,15 +5,20 @@ import { cutWithEllipsis } from "../shared/text-cut.ts";
 import {
   anchorLabel,
   answersOf,
+  ASKED_TO_REVIEW_AGAIN,
+  compareUrl,
   excerptRows,
   findingNumber,
   findingSeverities,
   isCommentable,
+  pullRequestMovedOnNote,
   severityLabels,
   type CodeAnchor,
   type DiffRow,
   type FindingDecision,
   type GitHubCliProblem,
+  type PullRequestMovedOn,
+  type PullRequestRef,
   type Review,
   type ReviewAnswer,
   type ReviewFile,
@@ -551,7 +556,9 @@ function PostPanel({ item }: { item: ReviewItem }) {
       {gitHubCli.problem && (
         <GitHubCliHint problem={gitHubCli.problem} host={review.pullRequest.host} checking={gitHubCli.checking} onCheckAgain={gitHubCli.checkAgain} />
       )}
-      {toPost.length + answersToPost.length > 0 || review.posting ? (
+      {review.pullRequestMovedOn ? (
+        <PullRequestMovedOnNote item={item} pullRequest={review.pullRequest} movedOn={review.pullRequestMovedOn} />
+      ) : toPost.length + answersToPost.length > 0 || review.posting ? (
         <button type="button" className="primary" disabled={review.posting || gitHubCli.problem !== null} onClick={() => connection.send({ type: "review.post", itemId: item.id })}>
           {review.posting ? "Posting…" : `Post ${findingsAndAnswers(toPost.length, answersToPost.length)} to the pull request`}
         </button>
@@ -568,6 +575,27 @@ function PostPanel({ item }: { item: ReviewItem }) {
         </p>
       )}
     </section>
+  );
+}
+
+/** In place of Post, which GitHub would refuse: the agent can review the head the pull request moved on to. */
+function PullRequestMovedOnNote({ item, pullRequest, movedOn }: { item: ReviewItem; pullRequest: PullRequestRef; movedOn: PullRequestMovedOn }) {
+  return (
+    <>
+      <p className="hint">
+        {pullRequestMovedOnNote(item.review, movedOn.headCommit)}{" "}
+        <a href={compareUrl(pullRequest, item.review.headCommit, movedOn.headCommit)} target="_blank" rel="noreferrer">
+          See what changed
+        </a>
+      </p>
+      {movedOn.askedToReviewAgain ? (
+        <p className="posted-note">{ASKED_TO_REVIEW_AGAIN}</p>
+      ) : (
+        <button type="button" className="primary" onClick={() => connection.send({ type: "review.review-again", itemId: item.id })}>
+          Review again
+        </button>
+      )}
+    </>
   );
 }
 

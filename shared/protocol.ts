@@ -184,6 +184,8 @@ export type ClientMessage =
   | { type: "review.update-answer"; itemId: string; answerId: string; decision?: FindingDecision; body?: string; resolve?: boolean }
   /** Adds the kept findings to the user's pending review on the pull request; the user submits it on GitHub. */
   | { type: "review.post"; itemId: string }
+  /** Once posting found the pull request moved on: asks the agent, after its turn, to review the new head. */
+  | { type: "review.review-again"; itemId: string }
   | { type: "review.open-in-editor"; itemId: string; path: string; line: number }
   /** The reviewed version of a changed file, for showing the lines around the diff's hunks. */
   | { type: "review.read-file"; requestId: string; itemId: string; path: string }

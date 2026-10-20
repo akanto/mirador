@@ -134,6 +134,11 @@ export interface PullRequestRef {
   number: number;
 }
 
+export interface PullRequestMovedOn {
+  headCommit: string;
+  askedToReviewAgain: boolean;
+}
+
 /** What a review and a tour both show: the agent's summary, its tour of the code flow, and the files that changed. */
 export interface Walkthrough {
   summary: string;
@@ -154,6 +159,8 @@ export interface Review extends Walkthrough {
   answers?: ReviewAnswer[];
   posting: boolean;
   pendingReviewUrl: string | null;
+  /** Set once posting found the pull request's head moved on from the commit reviewed, until a post goes through. */
+  pullRequestMovedOn?: PullRequestMovedOn;
   /** The agent's latest change to parts of the review in place: finding and answer ids, "summary", "verdict" or "flow". */
   agentEdit?: { at: number; parts: string[] };
   /** The highest finding number handed out so far, so a removed finding's id never names another one; missing until the agent changes the review. */
@@ -176,6 +183,17 @@ export interface TourChanges {
 }
 
 export const answersOf = (review: Review) => review.answers ?? [];
+
+const shortCommit = (commit: string) => commit.slice(0, 10);
+
+/** Why the review cannot be posted once its pull request moved on to another head. */
+export const pullRequestMovedOnNote = ({ headCommit }: Pick<Review, "headCommit">, newHead: string) =>
+  `The pull request has changed since the review: its head is ${shortCommit(newHead)}, the review is of ${shortCommit(headCommit)}.`;
+
+export const ASKED_TO_REVIEW_AGAIN = "The agent is asked to review it again.";
+
+/** GitHub's page of what changed between two commits of the pull request's repository. */
+export const compareUrl = ({ host, owner, repo }: PullRequestRef, from: string, to: string) => `https://${host}/${owner}/${repo}/compare/${from}...${to}`;
 
 /** The N of a finding's id, finding-N, by which the agent names it; 0 for an id of another shape. */
 export const findingNumber = (findingId: string) => Number(/^finding-(\d+)$/.exec(findingId)?.[1] ?? 0);

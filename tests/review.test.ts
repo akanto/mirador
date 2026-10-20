@@ -3,9 +3,9 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { excerptRows, findingNumber, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
+import { compareUrl, excerptRows, findingNumber, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "../host/review/diff.ts";
-import { parsePullRequestUrl, postPendingReview, type GitHubCli } from "../host/review/github.ts";
+import { parsePullRequestUrl, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../host/review/github.ts";
 import { AnchorReader, git, ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
 import { gitRepository, reviewRequest as request } from "./review-repository.ts";
 
@@ -417,9 +417,20 @@ describe("posting to the pull request", () => {
     expect(outcome.pendingReviewUrl).toBe("https://ghe.example.com/review/mine");
   });
 
-  test("refuses when the pull request moved on since the review", async () => {
-    const { gh } = fakeGitHub({ head: "newer", reviews: [] });
-    expect(postPendingReview(reviewOf("abc"), gh)).rejects.toThrow("The pull request has changed since the review");
+  test("refuses when the pull request moved on since the review, naming the head it moved on to", async () => {
+    const { gh } = fakeGitHub({ head: "0123456789abcdef", reviews: [] });
+    const refusal = await postPendingReview(reviewOf("fedcba9876543210"), gh).catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(PullRequestMovedOn);
+    expect((refusal as PullRequestMovedOn).headCommit).toBe("0123456789abcdef");
+    expect((refusal as PullRequestMovedOn).message).toBe("The pull request has changed since the review: its head is 0123456789, the review is of fedcba9876.");
+  });
+});
+
+describe("compareUrl", () => {
+  test("is GitHub's compare page on the pull request's own host, from the reviewed commit to the new head", () => {
+    expect(compareUrl({ url: "https://ghe.example.com/team/repo/pull/5", host: "ghe.example.com", owner: "team", repo: "repo", number: 5 }, "abc", "def")).toBe(
+      "https://ghe.example.com/team/repo/compare/abc...def",
+    );
   });
 });
 

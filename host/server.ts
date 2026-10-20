@@ -889,6 +889,8 @@ export function startServer(services: HostServices) {
         return canvas.updateAnswer(message.itemId, message.answerId, { decision: message.decision, body: message.body, resolve: message.resolve });
       case "review.post":
         return canvas.postReview(message.itemId);
+      case "review.review-again":
+        return canvas.reviewAgain(message.itemId);
       case "review.open-in-editor":
         return canvas.openInEditor(message.itemId, message.path, message.line);
       case "review.read-file":

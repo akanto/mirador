@@ -618,3 +618,41 @@ test("with no gh on the machine, the Post panel says to install it, and Post wai
   await expect(hint).toHaveCount(0);
   await expect(post).toBeEnabled();
 });
+
+test("once the pull request moved on, every page showing the review says so in place of Post, and Review again asks the agent once", async ({ page }) => {
+  rmSync(ghLoggedOut, { force: true });
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "review", review());
+  const otherPage = await page.context().newPage();
+  await otherPage.goto(page.url());
+  const reviewed = git("rev-parse", "HEAD");
+  const pushed = "5c14edd6b1a2b3c4d5e6f708192a3b4c5d6e7f80";
+  const postPanel = (showing: Page) => showing.locator(".review .post-panel");
+
+  writeFakePrograms(pushed);
+  try {
+    await postPanel(page).getByRole("button", { name: "Post 2 findings to the pull request" }).click();
+    for (const showing of [page, otherPage]) {
+      await expect(postPanel(showing)).toContainText(`The pull request has changed since the review: its head is 5c14edd6b1, the review is of ${reviewed.slice(0, 10)}.`);
+      await expect(postPanel(showing).getByRole("link", { name: "See what changed" })).toHaveAttribute("href", `https://ghe.example.com/team/shop/compare/${reviewed}...${pushed}`);
+      await expect(postPanel(showing).getByRole("button", { name: /^Post / })).toHaveCount(0);
+    }
+
+    await postPanel(otherPage).getByRole("button", { name: "Review again" }).click();
+    for (const showing of [page, otherPage]) {
+      await expect(postPanel(showing)).toContainText("The agent is asked to review it again.");
+      await expect(postPanel(showing).getByRole("button", { name: "Review again" })).toHaveCount(0);
+    }
+    await expect(page.locator(".message.user").last()).toContainText(
+      `The pull request ${PULL_REQUEST} changed since your review: its head is ${pushed}, your review is of ${reviewed}.`,
+      { timeout: AGENT_START_TIMEOUT_MS },
+    );
+  } finally {
+    writeFakePrograms(reviewed);
+    await otherPage.close();
+  }
+});

@@ -39,7 +39,7 @@ import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
 import { openInIdea } from "../review/editor.ts";
-import { ghCli, gitHubCliProblemOn, postPendingReview, type GitHubCli } from "../review/github.ts";
+import { ghCli, gitHubCliProblemOn, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../review/github.ts";
 import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
 import { snapshotTour, touredFileLines, type TourRequest } from "../review/tour.ts";
 
@@ -312,10 +312,33 @@ export class CanvasService {
         const resolved = answer.resolved || outcome.resolvedAnswerIds.has(answer.id);
         return url ? { ...answer, postedAs: { url }, resolved, postError } : postError ? { ...answer, postError } : answer;
       });
-      this.saveReview(latest, { findings, answers, pendingReviewUrl: outcome.pendingReviewUrl });
+      this.saveReview(latest, { findings, answers, pendingReviewUrl: outcome.pendingReviewUrl, pullRequestMovedOn: undefined });
+    } catch (error) {
+      if (!(error instanceof PullRequestMovedOn)) throw error;
+      this.notePullRequestMovedOn(this.reviewItem(itemId), error.headCommit);
     } finally {
       this.reviewsBeingPosted.delete(itemId);
       this.saveReview(this.reviewItem(itemId), { posting: false });
+    }
+  }
+
+  /** The review says so where Post was, for every page showing it; a head it already knew of keeps whether the agent was asked. */
+  private notePullRequestMovedOn(item: ReviewItem, headCommit: string) {
+    if (item.review.pullRequestMovedOn?.headCommit === headCommit) return;
+    this.saveReview(item, { pullRequestMovedOn: { headCommit, askedToReviewAgain: false } });
+  }
+
+  /** Asks the agent, once its turn is over, to review the pull request again from the head it moved on to; once per head. */
+  async reviewAgain(itemId: string) {
+    const item = this.reviewItem(itemId);
+    const movedOn = item.review.pullRequestMovedOn;
+    if (!movedOn || movedOn.askedToReviewAgain) return;
+    this.saveReview(item, { pullRequestMovedOn: { ...movedOn, askedToReviewAgain: true } });
+    try {
+      await this.conversations.send(item.conversationId, reviewAgainRequest(item.review, movedOn.headCommit), [], { afterTurn: true });
+    } catch (error) {
+      this.saveReview(this.reviewItem(itemId), { pullRequestMovedOn: movedOn });
+      throw error;
     }
   }
 
@@ -498,6 +521,14 @@ export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
     return [`The user answered ${answers.length} questions:`, ...each, ...noteLine(note, "Their note on all the answers: ")].join("\n");
   }
   return [`The user chose: ${label}`, ...noteLine(note, "Their note: ")].join("\n");
+}
+
+/** The pull request's url tells which review it is; the full head is what the agent fetches and reviews, as a stale checkout would make the same review again. */
+export function reviewAgainRequest({ pullRequest, headCommit }: Review, newHead: string) {
+  return [
+    `The pull request ${pullRequest?.url} changed since your review: its head is ${newHead}, your review is of ${headCommit}.`,
+    `Fetch the new head and review it again with ${newHead} as the review's head: keep the findings that still apply, drop the ones it fixed, and add new ones.`,
+  ].join(" ");
 }
 
 function answerAsMessage(item: AskItem, { label, note, answers }: GivenAnswer) {

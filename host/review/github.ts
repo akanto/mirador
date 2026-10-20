@@ -1,6 +1,6 @@
 import { delimiter } from "node:path";
 import { currentPath } from "../current-path.ts";
-import { answersOf, isCommentable, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
+import { answersOf, isCommentable, pullRequestMovedOnNote, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 
 const PULL_REQUEST_URL = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#]\S*)?$/;
 
@@ -161,6 +161,16 @@ function threadInput(reviewId: string, { at, body }: ReviewFinding) {
   return { pullRequestReviewId: reviewId, path: at.path, line: at.endLine, side: "RIGHT", ...range, body };
 }
 
+/** Posting refuses a review of a commit the pull request has moved on from: its comments would land on the wrong lines. */
+export class PullRequestMovedOn extends Error {
+  constructor(
+    review: Review,
+    readonly headCommit: string,
+  ) {
+    super(pullRequestMovedOnNote(review, headCommit));
+  }
+}
+
 /**
  * Adds the findings, and the answers as replies, to the user's pending review on the pull request, starting one if they
  * have none, and leaves it pending: the user reads it on GitHub and submits it. Conversations the user chose to resolve
@@ -175,11 +185,7 @@ export async function postPendingReview(review: Review, gh: GitHubCli): Promise<
   const graphql = (query: string, input: object) => graphQl(query, { input });
 
   const pullRequest = (await rest("")) as PullRequestResponse;
-  if (pullRequest.head.sha !== review.headCommit) {
-    throw new Error(
-      `The pull request has changed since the review: its head is ${pullRequest.head.sha.slice(0, 10)}, the review is of ${review.headCommit.slice(0, 10)}. Ask the agent to review it again, so the comments land on the right lines.`,
-    );
-  }
+  if (pullRequest.head.sha !== review.headCommit) throw new PullRequestMovedOn(review, pullRequest.head.sha);
   const pending = (await graphQl(PENDING_REVIEW, { owner: pr.owner, repo: pr.repo, number: pr.number })) as unknown as PendingReviewResponse;
   const pendingReview =
     pending.repository?.pullRequest?.reviews.nodes[0] ??
