@@ -12,8 +12,9 @@ import * as acp from "@agentclientprotocol/sdk";
  * array of edits asks permission for each edit at once, and ends the turn with what the user answered to each; `TOOLS `
  * and a JSON array of `{"kind": toolKind, "title": text}` does the same for tools of any kind.
  * `WRITE ` and a JSON array of steps changes files as it goes: `{"edit": path, "content": text}` writes the file with
- * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, and
- * `{"waitFor": path}` holds the turn until that file exists. `SAY ` followed by text answers with that text, as markdown,
+ * an edit tool call and its diff, `{"shell": path, "content": text}` writes it from a shell command, `{"read": path}`
+ * reads it with a tool call that names it, and `{"waitFor": path}` holds the turn until that file exists. `SAY `
+ * followed by text answers with that text, as markdown,
  * `USAGE ` followed by the tokens used and the window's size reports that context usage,
  * and `FAIL ` followed by text fails the turn with that text as its error. `SUBAGENT ASKS ` followed by a title starts a
  * subagent whose step asks permission, and ends the turn with what the user answered.
@@ -209,7 +210,7 @@ async function askFromSubagent(client: acp.AgentContext, sessionId: string, titl
   return askPermissions(client, sessionId, [{ toolCallId: "subagent-0-step", title, kind: "execute", status: "pending" }]);
 }
 
-type WriteStep = { edit: string; content: string } | { shell: string; content: string } | { waitFor: string };
+type WriteStep = { edit: string; content: string } | { shell: string; content: string } | { read: string } | { waitFor: string };
 
 let nextToolCall = 0;
 
@@ -221,6 +222,10 @@ async function writeFiles(client: acp.AgentContext, sessionId: string, steps: Wr
       continue;
     }
     const toolCallId = `write-${++nextToolCall}`;
+    if ("read" in step) {
+      await update({ sessionUpdate: "tool_call", toolCallId, title: `Read ${step.read}`, kind: "read", status: "completed", locations: [{ path: step.read }] });
+      continue;
+    }
     const path = "edit" in step ? step.edit : step.shell;
     await update({ sessionUpdate: "tool_call", toolCallId, title: "edit" in step ? `Write ${path}` : `echo > ${path}`, kind: "edit" in step ? "edit" : "execute", status: "pending" });
     const oldText = existsSync(path) ? readFileSync(path, "utf8") : null;

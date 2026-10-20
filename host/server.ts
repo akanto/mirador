@@ -25,6 +25,7 @@ import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
+import { OutsideWorkspace } from "./changes.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
 import { canvasChangedSince, DEFLATED_MESSAGES_HEADER, type LowDataSubscription } from "../shared/low-data.ts";
 import { sidebarIdsAfterMove } from "../shared/sidebar-order.ts";
@@ -920,7 +921,11 @@ export function startServer(services: HostServices) {
       case "changes.open-in-editor":
         return conversations.changes.openInEditor(message.conversationId, message.path, message.line);
       case "files.open":
-        return conversations.changes.openFile(message.conversationId, message.path).catch((error) => reply({ type: "error", message: errorMessage(error) }));
+        return conversations.changes
+          .openFile(message.conversationId, message.path, message.ownerAgreed === true)
+          .catch((error) =>
+            reply(error instanceof OutsideWorkspace ? { type: "files.ask-to-open", conversationId: message.conversationId, file: error.file } : { type: "error", message: errorMessage(error) }),
+          );
       case "fs.complete":
         return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
       case "statusline.render":

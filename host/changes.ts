@@ -134,6 +134,13 @@ interface ScopeStart {
   base: ChangesBase;
 }
 
+/** A file link leads to a file outside the workspace that the agent did not change, which opens only once the owner agrees. */
+export class OutsideWorkspace extends Error {
+  constructor(readonly file: string) {
+    super(`${file} is neither a file of this workspace nor one the agent changed in this conversation.`);
+  }
+}
+
 /**
  * The files a conversation's turn, or the workspace's uncommitted work, changed: the project's files as git sees
  * them, marked where the agent's edit tools changed them, and apart from them the files outside the project the agent
@@ -220,19 +227,14 @@ export class Changes {
 
   /**
    * Opens a file of the project, or one the agent changed in this conversation, with the system's default program, or
-   * as text if it is a script. A link is checked and opened as the file it leads to, as the system would open that
-   * file whatever the link's name.
+   * as text if it is a script; any other file only once the owner agreed. A link is checked and opened as the file it
+   * leads to, as the system would open that file whatever the link's name.
    */
-  async openFile(conversationId: string, path: string) {
+  async openFile(conversationId: string, path: string, ownerAgreed = false) {
     const workspace = this.workspaceOf(conversationId);
-    const file = isAbsolute(path) ? normalize(path) : resolve(workspace.path, path);
-    const edits = this.agentEdits(conversationId, workspace, 0);
-    const inWorkspace = shownPath(file, await projectDirectories(workspace)) !== file;
-    const changedByAgent = edits.some((edit) => edit.path === file);
-    if (!inWorkspace && !changedByAgent) throw new Error(`${path} is neither a file of this workspace nor one the agent changed in this conversation.`);
-    const realFile = realPathOf(file);
-    if (realFile === null) throw new Error(`${path} does not exist.`);
-    if (!isWorkspaceOrAgentFile(realFile, workspace, edits)) throw new Error(`${path} leads to a file outside this workspace that the agent did not change, so Mirador does not open it.`);
+    const realFile = realPathOf(isAbsolute(path) ? normalize(path) : resolve(workspace.path, path));
+    if (realFile === null) throw new Error(isAbsolute(path) ? `${path} does not exist.` : `${path} does not exist in ${workspace.path}.`);
+    if (!ownerAgreed && !isWorkspaceOrAgentFile(realFile, workspace, this.agentEdits(conversationId, workspace, 0))) throw new OutsideWorkspace(realFile);
     const opening = openingOf(realFile);
     if (opening === "refused") throw new Error(`${path} would run as a program, so Mirador does not open it.`);
     if (opening === "as-text") return this.openAsText(realFile);

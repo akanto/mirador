@@ -99,6 +99,48 @@ test("a file path the agent writes in backticks in its reply is a link that open
   });
 });
 
+test("a link to a file outside the workspace that the agent did not change asks first, naming the file, and opens it only once agreed", async ({ page }) => {
+  const writtenFromShell = join(host.root, "elsewhere", "description.md");
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  await sendMessage(page, `WRITE ${JSON.stringify([{ shell: writtenFromShell, content: "draft\n" }, { read: writtenFromShell }])}`);
+  await waitForTurnToEnd(page);
+  await sendMessage(page, `SAY The description is in \`${writtenFromShell}\`, and \`missing/notes.md\` is not.`);
+  await waitForTurnToEnd(page);
+  const prompt = page.getByRole("alertdialog", { name: "Open a file outside this workspace?" });
+  const openedBefore = openedSoFar();
+
+  await test.step("the reply's link asks, naming the file, and Cancel or Esc opens nothing", async () => {
+    await page.locator(".markdown").getByRole("button", { name: writtenFromShell, exact: true }).click();
+    await expect(prompt).toContainText(`${realpathSync.native(writtenFromShell)} is outside this workspace, and the agent did not change it in this conversation.`);
+    await expect(prompt.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await prompt.getByRole("button", { name: "Cancel" }).click();
+    await expect(prompt).toBeHidden();
+    await page.locator(".markdown").getByRole("button", { name: writtenFromShell, exact: true }).click();
+    await expect(prompt).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(prompt).toBeHidden();
+    expect(openedSoFar()).toBe(openedBefore);
+  });
+
+  await test.step("the tool card's link asks too, and Open opens the file", async () => {
+    const card = toolCardFor(page, writtenFromShell);
+    await card.locator("summary").click();
+    await card.locator(".locations button", { hasText: writtenFromShell }).click();
+    await prompt.getByRole("button", { name: "Open" }).click();
+    await expect(prompt).toBeHidden();
+    await expect.poll(() => openedSoFar().slice(openedBefore.length)).toContain(realpathSync.native(writtenFromShell));
+  });
+
+  await test.step("a path that is not in the workspace says which folder it looked in", async () => {
+    await page.locator(".markdown").getByRole("button", { name: "missing/notes.md", exact: true }).click();
+    await expect(page.locator(".notices .notice", { hasText: `missing/notes.md does not exist in ${host.projectDir}.` })).toBeVisible();
+    await expect(prompt).toBeHidden();
+  });
+});
+
 test("a link to a program says Mirador does not run it, and opens nothing", async ({ page }) => {
   const program = join(host.projectDir, "tools", "run.jar");
   mkdirSync(join(host.projectDir, "tools"), { recursive: true });

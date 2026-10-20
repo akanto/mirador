@@ -6646,7 +6646,8 @@ body.reordering * {
   transform: translateX(-50%);
 }
 
-.join-request {
+.join-request,
+.file-to-open {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -6654,18 +6655,34 @@ body.reordering * {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
 }
 
-.join-request h2 {
+.join-request h2,
+.file-to-open h2 {
   margin: 0 0 4px;
   font-size: calc(14px * var(--font-scale));
 }
 
-.join-request p {
+.join-request p,
+.file-to-open p {
   margin: 0 0 10px;
   color: var(--muted);
   font-size: calc(12.5px * var(--font-scale));
 }
 
-.join-request form {
+.file-to-open {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 30;
+  width: min(460px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+
+.file-to-open p {
+  overflow-wrap: anywhere;
+}
+
+.join-request form,
+.file-to-open .actions {
   display: flex;
   gap: 8px;
 }

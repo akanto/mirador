@@ -65,6 +65,8 @@ export interface AppState {
   overlay: Overlay | null;
   notices: { id: number; text: string }[];
   noticesEverShown: number;
+  /** A file outside the workspace that the agent did not change, which a link of a conversation leads to and opens once the owner agrees. */
+  fileToOpen: { conversationId: string; file: string } | null;
   /** The host process run this page last heard from; another one means the host restarted, maybe with new code. */
   hostRunId: string | null;
   hostCodeChanged: boolean;
@@ -79,7 +81,8 @@ export type AppAction =
   | { type: "awaiting-conversation"; workspaceId: string }
   | { type: "open-overlay"; overlay: Overlay }
   | { type: "close-overlay" }
-  | { type: "dismiss-notice"; id: number };
+  | { type: "dismiss-notice"; id: number }
+  | { type: "dismiss-file-to-open" };
 
 export const initialState: AppState = {
   workspaces: [],
@@ -111,6 +114,7 @@ export const initialState: AppState = {
   newerVersion: null,
   notices: [],
   noticesEverShown: 0,
+  fileToOpen: null,
 };
 
 export function initialStateFor(conversationId: string | null): AppState {
@@ -250,6 +254,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":
       return withNotice(state, message.message);
+    case "files.ask-to-open":
+      return { ...state, fileToOpen: { conversationId: message.conversationId, file: message.file } };
     case "fs.completions":
     case "profile.saved":
     case "sessions.listed":
@@ -330,5 +336,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, overlay: null };
     case "dismiss-notice":
       return { ...state, notices: state.notices.filter(({ id }) => id !== action.id) };
+    case "dismiss-file-to-open":
+      return { ...state, fileToOpen: null };
   }
 }

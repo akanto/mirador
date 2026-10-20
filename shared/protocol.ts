@@ -194,8 +194,11 @@ export type ClientMessage =
   | { type: "changes.list"; requestId: string; conversationId: string; scope: ChangeScope }
   | { type: "changes.diff"; requestId: string; conversationId: string; scope: ChangeScope; path: string }
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
-  /** Opens a file in the program the host's system uses for it, when it is in the workspace or the agent changed it. */
-  | { type: "files.open"; conversationId: string; path: string }
+  /**
+   * Opens a file in the program the host's system uses for it, when it is in the workspace or the agent changed it, or
+   * when the owner agreed to open it although it is neither.
+   */
+  | { type: "files.open"; conversationId: string; path: string; ownerAgreed?: boolean }
   | { type: "fs.complete"; requestId: string; prefix: string }
   | { type: "statusline.render"; requestId: string; conversationId: string; columns: number; runCommand: boolean }
   | { type: "subagent-usage.get"; requestId: string; conversationId: string; toolCallIds: string[] }
@@ -370,6 +373,8 @@ export type ServerMessage =
   /** The host is stopping to start again in place; pages reload once they reconnect. */
   | { type: "host.restarting" }
   | { type: "error"; message: string }
+  /** A file link leads to a file outside the workspace that the agent did not change: the page asks before it opens `file`, the real file. */
+  | { type: "files.ask-to-open"; conversationId: string; file: string }
   /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
   | { type: "devices.listed"; devices: ListedDevice[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }

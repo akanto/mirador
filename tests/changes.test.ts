@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile }
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
-import { agentEditsIn, Changes } from "../host/changes.ts";
+import { agentEditsIn, Changes, OutsideWorkspace } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
 import { Store } from "../host/store.ts";
 import { createdSince, filesWrittenSince, ignoredFilesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
@@ -480,17 +480,47 @@ test("many untracked files are all counted, in the order git lists them", async 
   expect(found).toEqual(names.map((path, index) => ({ path, status: "added", added: (index % 7) + 1, removed: 0 })));
 });
 
-test("a file of the workspace opens with the system's default program, and a file outside it only once the agent changed it", async () => {
+/** What openFile asks the owner about, or null when it opened the file without asking. */
+async function askedAbout(path: string) {
+  try {
+    await changes.openFile("c1", path);
+    return null;
+  } catch (error) {
+    if (error instanceof OutsideWorkspace) return error.file;
+    throw error;
+  }
+}
+
+test("a file of the workspace, or one outside it that the agent changed, opens with the system's default program without asking", async () => {
   const outside = join(outsideDir, "notes.md");
   await writeFile(outside, "notes\n");
   await write("app.ts", "export {};\n");
   await startTurn();
-  await changes.openFile("c1", "app.ts");
-  expect(openedByDefault).toEqual([realpathSync.native(join(projectDir, "app.ts"))]);
-  await expect(changes.openFile("c1", outside)).rejects.toThrow("neither a file of this workspace");
+  expect(await askedAbout("app.ts")).toBeNull();
   agentEdits("t1", outside, null, "notes\n");
-  await changes.openFile("c1", outside);
-  expect(openedByDefault.at(-1)).toBe(realpathSync.native(outside));
+  expect(await askedAbout(outside)).toBeNull();
+  expect(openedByDefault).toEqual([realpathSync.native(join(projectDir, "app.ts")), realpathSync.native(outside)]);
+});
+
+test("a file outside the workspace that the agent did not change asks first, naming its real path, and opens once the owner agrees", async () => {
+  const outside = join(outsideDir, "notes.md");
+  await writeFile(outside, "notes\n");
+  await startTurn();
+  expect(await askedAbout(outside)).toBe(realpathSync.native(outside));
+  expect(await askedAbout(join("..", "elsewhere", "notes.md"))).toBe(realpathSync.native(outside));
+  expect(openedByDefault).toEqual([]);
+  await changes.openFile("c1", realpathSync.native(outside), true);
+  expect(openedByDefault).toEqual([realpathSync.native(outside)]);
+});
+
+test("a program outside the workspace stays refused once the owner agrees, and a script there opens as text", async () => {
+  await writeFile(join(outsideDir, "tool.jar"), "");
+  await writeFile(join(outsideDir, "run.sh"), "#!/bin/sh\n");
+  await startTurn();
+  await expect(changes.openFile("c1", join(outsideDir, "tool.jar"), true)).rejects.toThrow("would run as a program");
+  await changes.openFile("c1", join(outsideDir, "run.sh"), true);
+  expect(openedAsText).toEqual([realpathSync.native(join(outsideDir, "run.sh"))]);
+  expect(openedByDefault).toEqual([]);
 });
 
 test("a file named by the workspace's real path opens, though the workspace was added through a link to it", async () => {
@@ -502,11 +532,6 @@ test("a file named by the workspace's real path opens, though the workspace was 
   await linked.openFile("c1", "kept.txt");
   await linked.openFile("c1", join(link, "kept.txt"));
   expect(openedByDefault).toEqual(Array(3).fill(realpathSync.native(join(projectDir, "kept.txt"))));
-});
-
-test("a relative path outside the workspace is refused even when the agent changed a file with that name", async () => {
-  await expect(changes.openFile("c1", "../etc/passwd")).rejects.toThrow("neither a file of this workspace");
-  expect(openedByDefault).toEqual([]);
 });
 
 test("the session scope lists every file the agent changed since the conversation began, even when a later turn changed it back", async () => {
@@ -526,8 +551,9 @@ test("the session scope lists every file the agent changed since the conversatio
 test("a file that is gone is refused rather than handed to the system's default program", async () => {
   await startTurn();
   await symlink(join(projectDir, "missing.ts"), join(projectDir, "dangling.md"));
-  await expect(changes.openFile("c1", "missing.ts")).rejects.toThrow("does not exist");
-  await expect(changes.openFile("c1", "dangling.md")).rejects.toThrow("does not exist");
+  await expect(changes.openFile("c1", "missing.ts")).rejects.toThrow(`missing.ts does not exist in ${projectDir}.`);
+  await expect(changes.openFile("c1", "dangling.md")).rejects.toThrow(`dangling.md does not exist in ${projectDir}.`);
+  await expect(changes.openFile("c1", join(outsideDir, "gone.md"))).rejects.toThrow(`${join(outsideDir, "gone.md")} does not exist.`);
   expect(openedByDefault).toEqual([]);
 });
 
@@ -552,15 +578,15 @@ test.if(process.platform === "darwin")("on macOS a link named like a document th
   expect(openedByDefault).toEqual([]);
 });
 
-test("a link in the workspace that leads outside it opens only once the agent changed the file it leads to", async () => {
+test("a link in the workspace that leads outside it asks first, naming the file it leads to, until the agent changed that file", async () => {
   const outside = join(outsideDir, "secret.txt");
   await writeFile(outside, "secret\n");
   await symlink(outside, join(projectDir, "notes.md"));
   await startTurn();
-  await expect(changes.openFile("c1", "notes.md")).rejects.toThrow("notes.md leads to a file outside this workspace that the agent did not change");
+  expect(await askedAbout("notes.md")).toBe(realpathSync.native(outside));
   expect(openedByDefault).toEqual([]);
   agentEdits("t1", outside, null, "secret\n");
-  await changes.openFile("c1", "notes.md");
+  expect(await askedAbout("notes.md")).toBeNull();
   expect(openedByDefault).toEqual([realpathSync.native(outside)]);
 });
 

@@ -14,6 +14,7 @@ import { connection, type ConnectionStatus } from "./connection.ts";
 import { useClosesAsDialog } from "./desktop-close.ts";
 import { JoinMachine } from "./Devices.tsx";
 import { JoinRequestPrompts } from "./JoinRequests.tsx";
+import { FileToOpenPrompt } from "./FileToOpenPrompt.tsx";
 import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
 import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { NewerVersionBanner } from "./NewerVersion.tsx";
@@ -534,6 +535,7 @@ export function App() {
       {railShown && <MachineFrames machines={state.machines} shownId={shownMachine?.id ?? null} visited={machines.visited} opening={machines.opening} />}
       <HintLayer />
       <JoinRequestPrompts joinRequests={state.joinRequests} />
+      <FileToOpenPrompt fileToOpen={state.fileToOpen} dispatch={dispatch} />
       <div className="notices">
         {state.notices.map((notice) => (
           <div key={notice.id} className="notice" onClick={() => dispatch({ type: "dismiss-notice", id: notice.id })}>
