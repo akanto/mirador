@@ -80,7 +80,7 @@ test("a turn's files go back to how they were, the agent hears about it, and you
     await userMessage(page).hover();
     await undoFiles(page).click();
     const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-    await expect(dialog).toContainText("1 file put back as they were and 2 files created since deleted");
+    await expect(dialog).toContainText("The files go back to how they were when this turn began: 1 file put back as it was and 2 files deleted that were created since.");
     await dialog.getByRole("button", { name: "Put the files back" }).click();
     await expect(dialog).toHaveCount(0);
     expect(readFileSync(readme, "utf8")).toBe("# e2e project\n");
@@ -145,7 +145,7 @@ test("an undo leaves a submodule that moved as it is and says so, and a turn who
     await userMessage(page).hover();
     await undoFiles(page).click();
     const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-    await expect(dialog).toContainText("1 file put back as they were since this turn began. 1 submodule that changed stays as it is now");
+    await expect(dialog).toContainText("The files go back to how they were when this turn began: 1 file put back as it was. 1 submodule that changed stays as it is now");
     await dialog.getByRole("button", { name: "Put the files back" }).click();
     await expect(dialog).toHaveCount(0);
     expect(readFileSync(readme, "utf8")).toBe("# e2e project\n");
@@ -188,7 +188,7 @@ test("in a workspace below the repository's top, an undo puts back that folder's
   await userMessage(page).hover();
   await undoFiles(page).click();
   const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-  await expect(dialog).toContainText("1 file put back as they were and 1 file created since deleted");
+  await expect(dialog).toContainText("The files go back to how they were when this turn began: 1 file put back as it was and 1 file deleted that was created since.");
   await dialog.getByRole("button", { name: "Put the files back" }).click();
   await expect(dialog).toHaveCount(0);
   expect(readFileSync(appFile, "utf8")).toBe("the app as it was\n");
@@ -215,7 +215,7 @@ test("an undo puts files back with the line endings they had, even where core.au
   await userMessage(page).hover();
   await undoFiles(page).click();
   const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-  await expect(dialog).toContainText("2 files put back as they were");
+  await expect(dialog).toContainText("The files go back to how they were when this turn began: 2 files put back as they were.");
   await dialog.getByRole("button", { name: "Put the files back" }).click();
   await expect(dialog).toHaveCount(0);
   expect(readFileSync(unix, "utf8")).toBe("lf\n");
@@ -239,7 +239,7 @@ test("an undo puts back a file's own line endings where .gitattributes has git s
   await userMessage(page).hover();
   await undoFiles(page).click();
   const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-  await expect(dialog).toContainText("1 file put back as they were");
+  await expect(dialog).toContainText("The files go back to how they were when this turn began: 1 file put back as it was.");
   await dialog.getByRole("button", { name: "Put the files back" }).click();
   await expect(dialog).toHaveCount(0);
   expect(readFileSync(windows, "utf8")).toBe("crlf\r\n");
@@ -261,7 +261,7 @@ test("a turn can be undone where core.safecrlf=true refuses to store a file with
   await userMessage(page).hover();
   await undoFiles(page).click();
   const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-  await expect(dialog).toContainText("1 file put back as they were");
+  await expect(dialog).toContainText("The files go back to how they were when this turn began: 1 file put back as it was.");
   await dialog.getByRole("button", { name: "Put the files back" }).click();
   await expect(dialog).toHaveCount(0);
   expect(readFileSync(refused, "utf8")).toBe("crlf\r\n");
@@ -286,7 +286,7 @@ test("an undo after a commit leaves the commit's files as committed, says so, an
   await userMessage(page).hover();
   await undoFiles(page).click();
   const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
-  await expect(dialog).toContainText(`1 file put back as they were since this turn began. ${leftAsCommitted}`);
+  await expect(dialog).toContainText(`The files go back to how they were when this turn began: 1 file put back as it was. ${leftAsCommitted}`);
   await dialog.getByRole("button", { name: "Show the files" }).click();
   await expect(dialog.getByRole("region", { name: "Put back as they were" }).getByRole("listitem")).toHaveText(["README.md"]);
   await expect(dialog.getByRole("region", { name: "Stay as committed" }).getByRole("listitem")).toHaveText(["pulled.txt"]);

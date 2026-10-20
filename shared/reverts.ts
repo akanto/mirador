@@ -102,13 +102,15 @@ export function turnTitle(text: string) {
   return cutWithEllipsis(first, 60) || "an earlier turn";
 }
 
+const counted = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
 export const whatChanged = ({ restored, removed, committed }: Pick<Revert, "restored" | "removed" | "committed">) => {
-  const files = (count: number, what: string) => `${count} ${count === 1 ? "file" : "files"} ${what}`;
-  const parts = [restored > 0 && files(restored, "put back as they were"), removed > 0 && files(removed, "created since deleted")].filter(Boolean);
+  const parts = [
+    restored > 0 && counted(restored, "file put back as it was", "files put back as they were"),
+    removed > 0 && counted(removed, "file deleted that was created since", "files deleted that were created since"),
+  ].filter(Boolean);
   return parts.length > 0 ? parts.join(" and ") : committed ? "no other file was different" : "no file was different";
 };
-
-const counted = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** The files commits changed since the turn began, which a restore leaves as the commits have them. */
 function whatCommitsLeft({ files, editedSince, commits }: CommittedFiles) {
@@ -158,8 +160,11 @@ export function whatFiles(preview: UndoPreview, rewind: boolean, keepFiles: bool
   if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
   if (!preview.plan) return "";
   if (keepFiles) return "The files stay as they are now, with what the turns that leave did to them.";
-  const changed = [`${whatChanged(preview.plan)} since this turn began.`, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
-  return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
+  const putBack = putsAnyFileBack(preview.plan)
+    ? `${rewind ? "The files go back too," : "The files go back"} to how they were when this turn began: ${whatChanged(preview.plan)}.`
+    : `${preview.plan.committed ? "No other file" : "No file"} changed since this turn began.`;
+  const changed = [putBack, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
+  return rewind ? changed : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
 }
 
 export const listsAnyFile = ({ deleted, putBack, committed }: RestoreFiles) => [deleted, putBack, committed].some(({ paths }) => paths.length > 0);

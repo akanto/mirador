@@ -77,7 +77,7 @@ test("taking a conversation back leaves the turns after it, and the files as the
     await rewindButton(page, "Second task").click();
     const dialog = page.getByRole("dialog", { name: "Rewind to here" });
     await expect(dialog).toContainText("2 turns leave the conversation, and the agent's own history goes back with them, to before “First task”.");
-    await expect(dialog).toContainText("The files go back too: 1 file put back as they were and 2 files created since deleted since this turn began.");
+    await expect(dialog).toContainText("The files go back too, to how they were when this turn began: 1 file put back as it was and 2 files deleted that were created since.");
     await dialog.getByRole("button", { name: "Rewind", exact: true }).click();
     await expect(dialog).toHaveCount(0);
   });
@@ -102,6 +102,16 @@ test("taking a conversation back leaves the turns after it, and the files as the
     expect(historyOf("Fourth task")).toContain("First task");
     expect(historyOf("Fourth task")).not.toContain("Second task");
     expect(historyOf("Fourth task")).not.toContain("Third task");
+  });
+
+  await test.step("going back to a turn that changed no file says so, and offers no choice about the files", async () => {
+    await turn(page, "Fourth task").hover();
+    await rewindButton(page, "Fourth task").click();
+    const dialog = page.getByRole("dialog", { name: "Rewind to here" });
+    await expect(dialog).toContainText("No file changed since this turn began.");
+    await expect(dialog.getByRole("checkbox", { name: "Put the files back too" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
   });
 
   await test.step("the palette goes back to the first turn, which leaves the agent with nothing of the conversation", async () => {

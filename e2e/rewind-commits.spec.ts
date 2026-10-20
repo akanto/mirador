@@ -71,7 +71,7 @@ test("a rewind leaves what commits since the turn changed as committed, lists th
     const dialog = await openRewind(page, "Second task");
     await expect(dialog).toContainText("1 turn leaves the conversation, and the agent's own history goes back with it, to before “First task”.");
     await expect(dialog).toContainText(
-      "The files go back too: 1 file put back as they were and 1 file created since deleted since this turn began. 1 commit came in since then, and the 1 file it changed stays as committed.",
+      "The files go back too, to how they were when this turn began: 1 file put back as it was and 1 file deleted that was created since. 1 commit came in since then, and the 1 file it changed stays as committed.",
     );
     await expect(dialog.getByRole("region", { name: "Deleted" })).toHaveCount(0);
     await dialog.getByRole("button", { name: "Show the files" }).click();
@@ -94,7 +94,7 @@ test("a rewind leaves what commits since the turn changed as committed, lists th
     await answer(page, "Third task");
     writeFileSync(notes, "edited in the third turn\n");
     const dialog = await openRewind(page, "Third task");
-    await expect(dialog).toContainText("The files go back too: 1 file put back as they were since this turn began.");
+    await expect(dialog).toContainText("The files go back too, to how they were when this turn began: 1 file put back as it was.");
     await dialog.getByRole("checkbox", { name: "Put the files back too" }).uncheck();
     await expect(dialog).toContainText("The files stay as they are now, with what the turns that leave did to them.");
     await expect(dialog.getByRole("button", { name: "Show the files" })).toHaveCount(0);

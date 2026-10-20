@@ -53,7 +53,7 @@ test("a revert note that went with a message the agent never answered is pending
 test("a revert's note names the turn it went back to, and says what changed", () => {
   const revert = { revertId: "r1", toSeq: 1, toMessage: "do the thing", restored: 3, removed: 1 };
   const note = withRevertNotes([revert], "carry on");
-  expect(note).toContain('before the turn that began with "do the thing": 3 files put back as they were and 1 file created since deleted.');
+  expect(note).toContain('before the turn that began with "do the thing": 3 files put back as they were and 1 file deleted that was created since.');
   expect(note.endsWith("carry on")).toBe(true);
   expect(withRevertNotes([], "carry on")).toBe("carry on");
 });
@@ -61,7 +61,7 @@ test("a revert's note names the turn it went back to, and says what changed", ()
 test("a revert that left submodules as they are tells the agent so", () => {
   const revert = { revertId: "r1", toSeq: 1, toMessage: "do the thing", restored: 1, removed: 0, submodulesLeft: 2 };
   expect(withRevertNotes([revert], "carry on")).toContain(
-    "1 file put back as they were. 2 submodules that changed stay as they are now: a submodule's files are its own repository's, so Mirador does not put them back. The conversation above is unchanged",
+    "1 file put back as it was. 2 submodules that changed stay as they are now: a submodule's files are its own repository's, so Mirador does not put them back. The conversation above is unchanged",
   );
   expect(whatWasLeft({ submodulesLeft: 1 })).toStartWith("1 submodule that changed stays as it is now");
   expect(whatWasLeft({})).toBe("");
@@ -84,12 +84,13 @@ test("a revert that left the files commits changed tells the agent so", () => {
   const [revert] = pendingReverts(events);
   expect(revert).toEqual({ revertId: "r1", toSeq: 1, restored: 1, removed: 0, committed, toMessage: "do the thing" });
   expect(withRevertNotes([revert!], "carry on")).toContain(
-    ': 1 file put back as they were. 1 commit came in since then, and the 2 files it changed stay as committed. The conversation above is unchanged',
+    ': 1 file put back as it was. 1 commit came in since then, and the 2 files it changed stay as committed. The conversation above is unchanged',
   );
 });
 
 test("one file is not called files, and an unchanged tree says so", () => {
-  expect(whatChanged({ restored: 1, removed: 0 })).toBe("1 file put back as they were");
+  expect(whatChanged({ restored: 1, removed: 1 })).toBe("1 file put back as it was and 1 file deleted that was created since");
+  expect(whatChanged({ restored: 2, removed: 3 })).toBe("2 files put back as they were and 3 files deleted that were created since");
   expect(whatChanged({ restored: 0, removed: 0 })).toBe("no file was different");
   expect(whatChanged({ restored: 0, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } })).toBe("no other file was different");
 });
@@ -166,12 +167,14 @@ test("a rewind says how many turns leave, one turn as one, and every turn when i
   expect(whatLeaves({ plan: null, turnsLeaving: 3, keptFrom: null })).toBe("Every turn leaves the conversation, and the agent starts over with nothing of it.");
 });
 
-test("what the files do: they go back with a rewind, stay with an undo's turn, stay as they are when kept, or say why they cannot go back", () => {
+test("what the files do: they go back with a rewind, stay with an undo's turn, say when none changed, stay as they are when kept, or say why they cannot go back", () => {
   const plan = { restored: 1, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } };
-  expect(whatFiles({ plan }, true, false)).toBe("The files go back too: 1 file put back as they were since this turn began. 1 commit came in since then, and the 2 files it changed stay as committed.");
+  expect(whatFiles({ plan }, true, false)).toBe("The files go back too, to how they were when this turn began: 1 file put back as it was. 1 commit came in since then, and the 2 files it changed stay as committed.");
   expect(whatFiles({ plan }, false, false)).toBe(
-    "1 file put back as they were since this turn began. 1 commit came in since then, and the 2 files it changed stay as committed. The turn above stays in the conversation, and the agent is told the files no longer hold it.",
+    "The files go back to how they were when this turn began: 1 file put back as it was. 1 commit came in since then, and the 2 files it changed stay as committed. The turn above stays in the conversation, and the agent is told the files no longer hold it.",
   );
+  expect(whatFiles({ plan: { restored: 0, removed: 0 } }, true, false)).toBe("No file changed since this turn began.");
+  expect(whatFiles({ plan: { ...plan, restored: 0 } }, true, false)).toBe("No other file changed since this turn began. 1 commit came in since then, and the 2 files it changed stay as committed.");
   expect(whatFiles({ plan }, true, true)).toBe("The files stay as they are now, with what the turns that leave did to them.");
   expect(whatFiles({ plan: null, filesNote: "this workspace is not a git repository" }, true, false)).toBe("The files stay as they are: this workspace is not a git repository");
   expect(whatFiles({ plan: null, filesNote: "this workspace is not a git repository" }, false, false)).toBe("this workspace is not a git repository");
