@@ -19,7 +19,15 @@ let checkpoints: Checkpoints;
 let opened: { file: string; line: number }[];
 let openedByDefault: string[];
 let openedAsText: string[];
+let defaultProgramOpens: boolean;
+let textEditorOpens: boolean;
 let changes: Changes;
+
+/** Notes each file it is given, and opens it when the program it stands for would. */
+const openerNoting = (openedFiles: string[], programOpens: () => boolean) => async (file: string) => {
+  openedFiles.push(file);
+  return programOpens();
+};
 
 async function git(directory: string, args: string[]) {
   const child = Bun.spawn(["git", "-C", directory, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
@@ -76,13 +84,15 @@ beforeEach(async () => {
   opened = [];
   openedByDefault = [];
   openedAsText = [];
+  defaultProgramOpens = true;
+  textEditorOpens = true;
   changes = new Changes(
     store,
     checkpoints,
     () => workspace(),
     (file, line) => opened.push({ file, line }),
-    (file) => openedByDefault.push(file),
-    (file) => openedAsText.push(file),
+    openerNoting(openedByDefault, () => defaultProgramOpens),
+    openerNoting(openedAsText, () => textEditorOpens),
   );
 });
 
@@ -523,10 +533,31 @@ test("a program outside the workspace stays refused once the owner agrees, and a
   expect(openedByDefault).toEqual([]);
 });
 
+test("a file no program is set to open opens as text when it is text, and otherwise says no program opens it", async () => {
+  defaultProgramOpens = false;
+  await write("beads.jsonl", '{"id":1}\n');
+  await writeFile(join(projectDir, "photo.raw"), new Uint8Array([0x49, 0x49, 0x2a, 0x00, 0x08]));
+  await startTurn();
+  await changes.openFile("c1", "beads.jsonl");
+  await expect(changes.openFile("c1", "photo.raw")).rejects.toThrow("No program is set to open photo.raw, and it is not text, so Mirador cannot open it.");
+  expect(openedByDefault).toEqual(["beads.jsonl", "photo.raw"].map((name) => realpathSync.native(join(projectDir, name))));
+  expect(openedAsText).toEqual([realpathSync.native(join(projectDir, "beads.jsonl"))]);
+});
+
+test("a file the text editor does not open says so, whether a script or a file no program is set for", async () => {
+  defaultProgramOpens = false;
+  textEditorOpens = false;
+  await write("run.sh", "echo hi\n");
+  await write("beads.jsonl", '{"id":1}\n');
+  await startTurn();
+  await expect(changes.openFile("c1", "run.sh")).rejects.toThrow("Mirador could not open run.sh as text.");
+  await expect(changes.openFile("c1", "beads.jsonl")).rejects.toThrow("Mirador could not open beads.jsonl as text.");
+});
+
 test("a file named by the workspace's real path opens, though the workspace was added through a link to it", async () => {
   const link = join(root, "link");
   await symlink(projectDir, link);
-  const linked = new Changes(store, checkpoints, () => ({ ...workspace(), path: link }), () => {}, (file) => openedByDefault.push(file), () => {});
+  const linked = new Changes(store, checkpoints, () => ({ ...workspace(), path: link }), () => {}, openerNoting(openedByDefault, () => true), openerNoting([], () => true));
   await startTurn();
   await linked.openFile("c1", join(projectDir, "kept.txt"));
   await linked.openFile("c1", "kept.txt");

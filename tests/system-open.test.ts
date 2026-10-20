@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isProgram, openingOf, scriptOpeningCommand, systemOpenCommand } from "../host/system-open.ts";
+import { isProgram, looksLikeText, openingOf, scriptOpeningCommand, systemOpenCommand } from "../host/system-open.ts";
 
 let directory: string;
 beforeEach(async () => {
@@ -115,4 +115,15 @@ test("on Windows a script's name never reaches a cmd.exe command line: Notepad o
   for (const batch of ["C:\\VS Code\\bin\\code.cmd", "C:\\tools\\editor.bat", "C:\\tools\\EDIT.CMD"]) {
     expect(() => scriptOpeningCommand(file, "code", "win32", () => batch)).toThrow("runs through cmd.exe");
   }
+});
+
+test("a file looks like text when its start has no zero byte, as nearly every other kind of file has one there", async () => {
+  const fileOf = async (name: string, content: string | Uint8Array) => {
+    await writeFile(join(directory, name), content);
+    return join(directory, name);
+  };
+  expect(await looksLikeText(await fileOf("beads.jsonl", '{"id":1,"title":"Grüße"}\n'))).toBe(true);
+  expect(await looksLikeText(await fileOf("empty.log", ""))).toBe(true);
+  expect(await looksLikeText(await fileOf("photo.raw", new Uint8Array([0x49, 0x49, 0x2a, 0x00, 0x08])))).toBe(false);
+  expect(await looksLikeText(await fileOf("long.log", `${"x".repeat(9000)}\0`))).toBe(true);
 });

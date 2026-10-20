@@ -12,11 +12,15 @@ const SCRIPT_EDITOR = "script-editor";
 
 const openedSoFar = () => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "");
 
-/** Each stand-in notes its own name and what it was given, so a spec tells the text editor from the default program. */
+/**
+ * Each stand-in notes its own name and what it was given, so a spec tells the text editor from the default program.
+ * The system's opener fails for an .unclaimed file, as macOS's open does for a type no app claims.
+ */
 function fakeAgentAndOpeners() {
   writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts") });
   for (const opener of ["open", "xdg-open", ...(process.platform === "win32" ? [] : [SCRIPT_EDITOR])]) {
-    writeFileSync(join(host.fakeProgramsDir, opener), `#!/bin/sh\necho "${opener} $*" >> '${openedLog}'\n`);
+    const failsForUnclaimed = opener === SCRIPT_EDITOR ? "" : `case "$*" in *.unclaimed) exit 1 ;; esac\n`;
+    writeFileSync(join(host.fakeProgramsDir, opener), `#!/bin/sh\necho "${opener} $*" >> '${openedLog}'\n${failsForUnclaimed}`);
     chmodSync(join(host.fakeProgramsDir, opener), 0o755);
   }
   // Windows opens a file by running Invoke-Item on powershell.exe, so a stand-in powershell notes the opening there.
@@ -197,7 +201,7 @@ test("a link to a script opens it as text in the system's text editor, which wou
   }
 });
 
-// Last, as the host keeps the program for the specs after it.
+// The host keeps the program for the specs after this one.
 test("Settings can name the program scripts open in, which every window shows and a script link then opens in", async ({ page }) => {
   await signIn(page, host);
   const settings = await openSettings(page, "Conversations");
@@ -222,4 +226,39 @@ test("Settings can name the program scripts open in, which every window shows an
   const before = openedSoFar();
   await page.locator(".markdown").getByRole("button", { name: SCRIPTS[0], exact: true }).click();
   await expect.poll(() => openedSoFar().slice(before.length)).toContain(`${SCRIPT_EDITOR} ${realpathSync.native(join(host.projectDir, SCRIPTS[0]!))}`);
+});
+
+test("a link to a file no program is set to open opens it as text in the program scripts open in, or says why not when it is not text", async ({ page }) => {
+  const [text, binary] = ["notes/beads.unclaimed", "notes/photo.unclaimed"];
+  const textOutside = join(host.root, "elsewhere", "beads-export.unclaimed");
+  mkdirSync(join(host.projectDir, "notes"), { recursive: true });
+  writeFileSync(join(host.projectDir, text), '{"id":1}\n');
+  writeFileSync(textOutside, '{"id":2}\n');
+  writeFileSync(join(host.projectDir, binary), new Uint8Array([0x49, 0x49, 0x2a, 0x00, 0x08]));
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  await sendMessage(page, `SAY Look at \`${text}\`, \`${textOutside}\` and \`${binary}\`.`);
+  await waitForTurnToEnd(page);
+
+  await test.step("the text file opens as text", async () => {
+    const before = openedSoFar();
+    await page.locator(".markdown").getByRole("button", { name: text, exact: true }).click();
+    await expect.poll(() => openedSoFar().slice(before.length)).toContain(`${SCRIPT_EDITOR} ${realpathSync.native(join(host.projectDir, text))}`);
+  });
+
+  await test.step("a text file outside the workspace opens as text once the owner agrees", async () => {
+    const before = openedSoFar();
+    await page.locator(".markdown").getByRole("button", { name: textOutside, exact: true }).click();
+    await page.getByRole("alertdialog", { name: "Open a file outside this workspace?" }).getByRole("button", { name: "Open" }).click();
+    await expect.poll(() => openedSoFar().slice(before.length)).toContain(`${SCRIPT_EDITOR} ${realpathSync.native(textOutside)}`);
+  });
+
+  await test.step("the other file says no program is set to open it, and does not open as text", async () => {
+    const before = openedSoFar();
+    await page.locator(".markdown").getByRole("button", { name: binary, exact: true }).click();
+    await expect(page.locator(".notices .notice", { hasText: `No program is set to open ${binary}, and it is not text, so Mirador cannot open it.` })).toBeVisible();
+    expect(openedSoFar().slice(before.length)).not.toContain(SCRIPT_EDITOR);
+  });
 });

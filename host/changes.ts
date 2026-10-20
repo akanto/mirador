@@ -8,7 +8,7 @@ import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { FileBefore } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
-import { openingOf } from "./system-open.ts";
+import { looksLikeText, openingOf } from "./system-open.ts";
 import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredFilesWrittenSince, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
@@ -153,8 +153,8 @@ export class Changes {
     private readonly checkpoints: Checkpoints,
     private readonly workspaceOf: (conversationId: string) => Workspace,
     private readonly openInIdea: (file: string, line: number) => void,
-    private readonly openWithDefault: (file: string) => void,
-    private readonly openAsText: (file: string) => void,
+    private readonly openWithDefault: (file: string) => Promise<boolean>,
+    private readonly openAsText: (file: string) => Promise<boolean>,
   ) {}
 
   async list(conversationId: string, scope: ChangeScope): Promise<ChangeList> {
@@ -227,8 +227,8 @@ export class Changes {
 
   /**
    * Opens a file of the project, or one the agent changed in this conversation, with the system's default program, or
-   * as text if it is a script; any other file only once the owner agreed. A link is checked and opened as the file it
-   * leads to, as the system would open that file whatever the link's name.
+   * as text if it is a script or no program is set for it; any other file only once the owner agreed. A link is checked
+   * and opened as the file it leads to, as the system would open that file whatever the link's name.
    */
   async openFile(conversationId: string, path: string, ownerAgreed = false) {
     const workspace = this.workspaceOf(conversationId);
@@ -237,8 +237,11 @@ export class Changes {
     if (!ownerAgreed && !isWorkspaceOrAgentFile(realFile, workspace, this.agentEdits(conversationId, workspace, 0))) throw new OutsideWorkspace(realFile);
     const opening = openingOf(realFile);
     if (opening === "refused") throw new Error(`${path} would run as a program, so Mirador does not open it.`);
-    if (opening === "as-text") return this.openAsText(realFile);
-    this.openWithDefault(realFile);
+    if (opening === "default") {
+      if (await this.openWithDefault(realFile)) return;
+      if (!(await looksLikeText(realFile))) throw new Error(`No program is set to open ${path}, and it is not text, so Mirador cannot open it.`);
+    }
+    if (!(await this.openAsText(realFile))) throw new Error(`Mirador could not open ${path} as text.`);
   }
 
   /** The agent's edits from `fromSeq` on, each at its absolute path, a path the agent gave relative to the workspace resolved against it. */

@@ -87,10 +87,21 @@ function namedProgramCommand(file: string, scriptProgram: string, platform: Node
   return { command: [program, file], environment: {} };
 }
 
-function spawnDetached({ command, environment }: OpeningCommand) {
-  Bun.spawn(command, { env: { ...process.env, ...environment }, stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
+/** Whether the file opened: macOS's open ends at once, failing when no app claims the file; xdg-open may wait for the program it started. */
+function opens({ command, environment }: OpeningCommand) {
+  const opener = Bun.spawn(command, { env: { ...process.env, ...environment }, stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+  opener.unref();
+  return opener.exited.then((exitCode) => exitCode === 0);
 }
 
-export const openWithSystemDefault = (file: string) => spawnDetached(systemOpenCommand(file));
+export const openWithSystemDefault = (file: string) => opens(systemOpenCommand(file));
 
-export const openAsText = (file: string, scriptProgram: string) => spawnDetached(scriptOpeningCommand(file, scriptProgram));
+export const openAsText = (file: string, scriptProgram: string) => opens(scriptOpeningCommand(file, scriptProgram));
+
+const TEXT_SNIFF_BYTES = 8192;
+
+/** Text has no zero byte, which nearly every other kind of file has near its start. */
+export async function looksLikeText(file: string) {
+  const start = await Bun.file(file).slice(0, TEXT_SNIFF_BYTES).bytes();
+  return !start.includes(0);
+}
