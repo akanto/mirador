@@ -1,6 +1,6 @@
 import { createContext, useEffect, useState } from "react";
 import type { ListedPaths, RestoreFiles } from "../shared/model.ts";
-import { listsAnyFile, putsAnyFileBack, whatFiles, whatLeaves, type Turn, type UndoPreview } from "../shared/reverts.ts";
+import { anythingToUndo, listsAnyFile, putsAnyFileBack, whatFiles, whatLeaves, type Turn, type UndoPreview } from "../shared/reverts.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { Modal } from "./Palette.tsx";
@@ -157,7 +157,7 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
         <button type="button" className="link" onClick={onClose}>
           Cancel
         </button>
-        {preview && !blocked && (
+        {preview && !blocked && anythingToUndo(preview, rewind) && (
           <button type="button" className="primary" data-hint={rewind ? hints.rewindConfirm : hints.undoFilesConfirm} disabled={working} onClick={go}>
             {working ? (rewind ? "Going back…" : "Putting the files back…") : rewind ? "Rewind" : "Put the files back"}
           </button>

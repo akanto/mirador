@@ -113,6 +113,16 @@ test("a turn's files go back to how they were, the agent hears about it, and you
     expect(() => readFileSync(made, "utf8")).toThrow();
   });
 
+  await test.step("a turn whose files are as they were when it began has nothing to undo: the dialog says no file changed and offers no undo", async () => {
+    await userMessage(page).hover();
+    await undoFiles(page).click();
+    const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
+    await expect(dialog.locator(".revert-summary")).toHaveText(["No file changed since this turn began."]);
+    await expect(dialog.getByRole("button", { name: "Put the files back" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+
   await test.step("the user's own history is untouched, and nothing the turns changed is left staged", async () => {
     expect(await git("rev-parse", "HEAD")).toBe(headAtStart);
     expect(await git("log", "--format=%s")).toBe("the project as it was");

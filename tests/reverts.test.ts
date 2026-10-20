@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import {
+  anythingToUndo,
   joinedRunningTurn,
   lastAgentMessageId,
   listsAnyFile,
@@ -175,16 +176,20 @@ test("what the files do: they go back with a rewind, stay with an undo's turn, s
   );
   expect(whatFiles({ plan: { restored: 0, removed: 0 } }, true, false)).toBe("No file changed since this turn began.");
   expect(whatFiles({ plan: { ...plan, restored: 0 } }, true, false)).toBe("No other file changed since this turn began. 1 commit came in since then, and the 2 files it changed stay as committed.");
+  expect(whatFiles({ plan: { restored: 0, removed: 0 } }, false, false)).toBe("No file changed since this turn began.");
   expect(whatFiles({ plan }, true, true)).toBe("The files stay as they are now, with what the turns that leave did to them.");
   expect(whatFiles({ plan: null, filesNote: "this workspace is not a git repository" }, true, false)).toBe("The files stay as they are: this workspace is not a git repository");
   expect(whatFiles({ plan: null, filesNote: "this workspace is not a git repository" }, false, false)).toBe("this workspace is not a git repository");
   expect(whatFiles({ plan: null }, true, false)).toBe("");
 });
 
-test("keeping the files is offered only when going back would put any back, and the file list only when it names any", () => {
+test("keeping the files and undoing a turn's files are offered only when going back would put any back, and the file list only when it names any", () => {
   expect(putsAnyFileBack({ restored: 0, removed: 1 })).toBe(true);
   expect(putsAnyFileBack({ restored: 0, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } })).toBe(false);
   expect(putsAnyFileBack(null)).toBe(false);
+  expect(anythingToUndo({ plan: { restored: 0, removed: 0 } }, false)).toBe(false);
+  expect(anythingToUndo({ plan: { restored: 1, removed: 0 } }, false)).toBe(true);
+  expect(anythingToUndo({ plan: { restored: 0, removed: 0 } }, true)).toBe(true);
   const none = { paths: [], more: 0 };
   expect(listsAnyFile({ deleted: none, putBack: none, committed: { paths: ["pulled.txt"], more: 0 } })).toBe(true);
   expect(listsAnyFile({ deleted: none, putBack: none, committed: none })).toBe(false);
