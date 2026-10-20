@@ -39,7 +39,7 @@ import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
 import { openInIdea } from "../review/editor.ts";
-import { ghCli, gitHubCliProblemOn, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../review/github.ts";
+import { ghCli, gitHubCliProblemOn, PendingReviewOfOtherCommit, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../review/github.ts";
 import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
 import { snapshotTour, touredFileLines, type TourRequest } from "../review/tour.ts";
 
@@ -312,10 +312,11 @@ export class CanvasService {
         const resolved = answer.resolved || outcome.resolvedAnswerIds.has(answer.id);
         return url ? { ...answer, postedAs: { url }, resolved, postError } : postError ? { ...answer, postError } : answer;
       });
-      this.saveReview(latest, { findings, answers, pendingReviewUrl: outcome.pendingReviewUrl, pullRequestMovedOn: undefined });
+      this.saveReview(latest, { findings, answers, pendingReviewUrl: outcome.pendingReviewUrl, pullRequestMovedOn: undefined, pendingReviewOfOtherCommit: undefined });
     } catch (error) {
-      if (!(error instanceof PullRequestMovedOn)) throw error;
-      this.notePullRequestMovedOn(this.reviewItem(itemId), error.headCommit);
+      if (error instanceof PullRequestMovedOn) this.notePullRequestMovedOn(this.reviewItem(itemId), error.headCommit);
+      else if (error instanceof PendingReviewOfOtherCommit) this.saveReview(this.reviewItem(itemId), { pendingReviewOfOtherCommit: error.pendingReview });
+      else throw error;
     } finally {
       this.reviewsBeingPosted.delete(itemId);
       this.saveReview(this.reviewItem(itemId), { posting: false });

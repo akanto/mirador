@@ -11,6 +11,7 @@ import {
   findingNumber,
   findingSeverities,
   isCommentable,
+  pendingReviewOfOtherCommitNote,
   pullRequestMovedOnNote,
   severityLabels,
   type CodeAnchor,
@@ -555,6 +556,14 @@ function PostPanel({ item }: { item: ReviewItem }) {
       )}
       {gitHubCli.problem && (
         <GitHubCliHint problem={gitHubCli.problem} host={review.pullRequest.host} checking={gitHubCli.checking} onCheckAgain={gitHubCli.checkAgain} />
+      )}
+      {review.pendingReviewOfOtherCommit && !review.pullRequestMovedOn && (
+        <p className="hint">
+          {pendingReviewOfOtherCommitNote(review, review.pendingReviewOfOtherCommit)}{" "}
+          <a href={review.pendingReviewOfOtherCommit.url} target="_blank" rel="noreferrer">
+            Open your pending review
+          </a>
+        </p>
       )}
       {review.pullRequestMovedOn ? (
         <PullRequestMovedOnNote item={item} pullRequest={review.pullRequest} movedOn={review.pullRequestMovedOn} />

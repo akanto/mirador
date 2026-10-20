@@ -265,12 +265,16 @@ describe("CanvasService", () => {
   });
 
   describe("a pull request that moved on since the review", () => {
-    /** GitHub, with the pull request's head where the test puts it and every comment taken. */
+    /** GitHub, with the pull request's head, and the commit of the user's pending review if they have one, where the test puts them; every comment taken. */
     function movingPullRequest() {
-      const pullRequest = { head: "" };
+      const pullRequest = { head: "", pendingReviewCommit: null as string | null };
       const gh: GitHubCli = async (args, body: any) => {
         if (args[3] === "repos/team/shop/pulls/7") return { node_id: "PR_7", head: { sha: pullRequest.head } };
-        if (body.query.includes("states: PENDING")) return { data: { repository: { pullRequest: { reviews: { nodes: [{ id: "PRR_1", url: "https://github.com/review/1" }] } } } } };
+        if (body.query.includes("states: PENDING")) {
+          const nodes = pullRequest.pendingReviewCommit === null ? [] : [{ id: "PRR_1", url: "https://github.com/review/1", commit: { oid: pullRequest.pendingReviewCommit } }];
+          return { data: { repository: { pullRequest: { reviews: { nodes } } } } };
+        }
+        if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_2", url: "https://github.com/review/2" } } } };
         return { data: { addPullRequestReviewThread: { thread: { id: "thread-1" } } } };
       };
       return { pullRequest, gh };
@@ -283,6 +287,23 @@ describe("CanvasService", () => {
       const item = await setup.canvas.review("c1", reviewRequest(directory, { pullRequest: "https://github.com/team/shop/pull/7" }));
       return { ...setup, pullRequest, item, movedOn: () => asReview(setup.store.findCanvasItem(item.id))?.pullRequestMovedOn };
     }
+
+    test("a pending review the user started on another commit is named on the review, until a post goes through once it is gone", async () => {
+      const { canvas, store, pullRequest, item } = await reviewOfPullRequest();
+      const posted = () => asReview(store.findCanvasItem(item.id));
+      pullRequest.head = item.review.headCommit;
+      pullRequest.pendingReviewCommit = "d".repeat(40);
+      await canvas.postReview(item.id);
+      expect(posted()?.pendingReviewOfOtherCommit).toEqual({ url: "https://github.com/review/1", commit: "d".repeat(40) });
+      expect(posted()?.findings[0]?.postedAs).toBeUndefined();
+      expect(posted()?.posting).toBe(false);
+
+      pullRequest.pendingReviewCommit = null;
+      await canvas.postReview(item.id);
+      expect(posted()?.pendingReviewOfOtherCommit).toBeUndefined();
+      expect(posted()?.pendingReviewUrl).toBe("https://github.com/review/2");
+      expect(posted()?.findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
+    });
 
     test("posting says so on the review, with the new head, rather than failing", async () => {
       const { canvas, pullRequest, item, movedOn, nextMessages } = await reviewOfPullRequest();

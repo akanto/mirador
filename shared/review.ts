@@ -139,6 +139,12 @@ export interface PullRequestMovedOn {
   askedToReviewAgain: boolean;
 }
 
+/** The user's pending review on the pull request, started on another commit than the one reviewed. */
+export interface PendingReviewOfOtherCommit {
+  url: string;
+  commit: string;
+}
+
 /** What a review and a tour both show: the agent's summary, its tour of the code flow, and the files that changed. */
 export interface Walkthrough {
   summary: string;
@@ -161,6 +167,8 @@ export interface Review extends Walkthrough {
   pendingReviewUrl: string | null;
   /** Set once posting found the pull request's head moved on from the commit reviewed, until a post goes through. */
   pullRequestMovedOn?: PullRequestMovedOn;
+  /** Set once posting found the user's pending review on the pull request started on another commit, until a post goes through. */
+  pendingReviewOfOtherCommit?: PendingReviewOfOtherCommit;
   /** The agent's latest change to parts of the review in place: finding and answer ids, "summary", "verdict" or "flow". */
   agentEdit?: { at: number; parts: string[] };
   /** The highest finding number handed out so far, so a removed finding's id never names another one; missing until the agent changes the review. */
@@ -191,6 +199,10 @@ export const pullRequestMovedOnNote = ({ headCommit }: Pick<Review, "headCommit"
   `The pull request has changed since the review: its head is ${shortCommit(newHead)}, the review is of ${shortCommit(headCommit)}.`;
 
 export const ASKED_TO_REVIEW_AGAIN = "The agent is asked to review it again.";
+
+/** Why the review is not added to a pending review started on another commit: its comments would land on that commit's lines. */
+export const pendingReviewOfOtherCommitNote = ({ headCommit }: Pick<Review, "headCommit">, { commit }: Pick<PendingReviewOfOtherCommit, "commit">) =>
+  `Your pending review on the pull request was started on ${shortCommit(commit)}, not on ${shortCommit(headCommit)}, the commit this review is of. Submit or discard it on GitHub, then post again.`;
 
 /** GitHub's page of what changed between two commits of the pull request's repository. */
 export const compareUrl = ({ host, owner, repo }: PullRequestRef, from: string, to: string) => `https://${host}/${owner}/${repo}/compare/${from}...${to}`;

@@ -1,6 +1,6 @@
 import { delimiter } from "node:path";
 import { currentPath } from "../current-path.ts";
-import { answersOf, isCommentable, pullRequestMovedOnNote, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
+import { answersOf, isCommentable, pendingReviewOfOtherCommitNote, pullRequestMovedOnNote, type ConversationComment, type GitHubCliProblem, type PullRequestRef, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 
 const PULL_REQUEST_URL = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#]\S*)?$/;
 
@@ -49,7 +49,7 @@ const ADD_THREAD = `mutation($input: AddPullRequestReviewThreadInput!) { addPull
 const ADD_REPLY = `mutation($input: AddPullRequestReviewThreadReplyInput!) { addPullRequestReviewThreadReply(input: $input) { comment { url } } }`;
 const RESOLVE_THREAD = `mutation($input: ResolveReviewThreadInput!) { resolveReviewThread(input: $input) { thread { isResolved } } }`;
 const PENDING_REVIEW = `query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviews(states: PENDING, first: 1) { nodes { id url } } } }
+  repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviews(states: PENDING, first: 1) { nodes { id url commit { oid } } } } }
 }`;
 const REVIEW_THREADS = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100, after: $after) {
@@ -65,7 +65,7 @@ interface PullRequestResponse {
 }
 
 interface PendingReviewResponse {
-  repository: { pullRequest: { reviews: { nodes: { id: string; url: string }[] } } | null } | null;
+  repository: { pullRequest: { reviews: { nodes: { id: string; url: string; commit: { oid: string } | null }[] } } | null } | null;
 }
 
 interface GraphQlResponse {
@@ -171,6 +171,16 @@ export class PullRequestMovedOn extends Error {
   }
 }
 
+/** Posting refuses to add to the user's pending review when it was started on another commit: its comments would land on that commit's lines. */
+export class PendingReviewOfOtherCommit extends Error {
+  constructor(
+    review: Review,
+    readonly pendingReview: { url: string; commit: string },
+  ) {
+    super(pendingReviewOfOtherCommitNote(review, pendingReview));
+  }
+}
+
 /**
  * Adds the findings, and the answers as replies, to the user's pending review on the pull request, starting one if they
  * have none, and leaves it pending: the user reads it on GitHub and submits it. Conversations the user chose to resolve
@@ -187,8 +197,12 @@ export async function postPendingReview(review: Review, gh: GitHubCli): Promise<
   const pullRequest = (await rest("")) as PullRequestResponse;
   if (pullRequest.head.sha !== review.headCommit) throw new PullRequestMovedOn(review, pullRequest.head.sha);
   const pending = (await graphQl(PENDING_REVIEW, { owner: pr.owner, repo: pr.repo, number: pr.number })) as unknown as PendingReviewResponse;
+  const usersPendingReview = pending.repository?.pullRequest?.reviews.nodes[0];
+  if (usersPendingReview?.commit && usersPendingReview.commit.oid !== review.headCommit) {
+    throw new PendingReviewOfOtherCommit(review, { url: usersPendingReview.url, commit: usersPendingReview.commit.oid });
+  }
   const pendingReview =
-    pending.repository?.pullRequest?.reviews.nodes[0] ??
+    usersPendingReview ??
     ((await graphql(ADD_REVIEW, { pullRequestId: pullRequest.node_id, commitOID: review.headCommit })) as { addPullRequestReview: { pullRequestReview: { id: string; url: string } } })
         .addPullRequestReview.pullRequestReview;
 

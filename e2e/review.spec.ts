@@ -95,14 +95,15 @@ const conversations = {
   },
 };
 
-/** gh and idea stand-ins that log how they were called; gh answers like GitHub for pull 7 of team/shop. */
-function writeFakePrograms(head: string) {
+/** gh and idea stand-ins that log how they were called; gh answers like GitHub for pull 7 of team/shop, where the user has a pending review on pendingReviewCommit, if given. */
+function writeFakePrograms(head: string, pendingReviewCommit = "") {
   writeFileSync(ghThreads, JSON.stringify(conversations));
   writeBunProgram(fakeProgramsDir, "gh", join(import.meta.dirname, "fake-gh.ts"), {
     FAKE_GH_LOG: ghLog,
     FAKE_GH_AUTH_LOG: ghAuthLog,
     FAKE_GH_LOGGED_OUT: ghLoggedOut,
     FAKE_GH_HEAD: head,
+    FAKE_GH_PENDING_REVIEW_COMMIT: pendingReviewCommit,
     FAKE_GH_THREADS: ghThreads,
     FAKE_GH_PULL_REQUEST: PULL_REQUEST,
   });
@@ -655,4 +656,36 @@ test("once the pull request moved on, every page showing the review says so in p
     writeFakePrograms(reviewed);
     await otherPage.close();
   }
+});
+
+test("a pending review the user started on another commit is named above Post with a link to it, and nothing is added to it", async ({ page }) => {
+  rmSync(ghLoggedOut, { force: true });
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "review", review());
+  const reviewed = git("rev-parse", "HEAD");
+  const postPanel = page.locator(".review .post-panel");
+  const post = postPanel.getByRole("button", { name: "Post 2 findings to the pull request" });
+  const note = `Your pending review on the pull request was started on 0a1b2c3d4e, not on ${reviewed.slice(0, 10)}, the commit this review is of. Submit or discard it on GitHub, then post again.`;
+
+  writeFakePrograms(reviewed, "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567");
+  try {
+    const calledBefore = logLines(ghLog).length;
+    await post.click();
+    await expect(postPanel).toContainText(note);
+    await expect(postPanel.getByRole("link", { name: "Open your pending review" })).toHaveAttribute("href", `${PULL_REQUEST}#pullrequestreview-0`);
+    await expect(post).toBeEnabled();
+    expect(logLines(ghLog).slice(calledBefore).filter((line) => line.includes("addPullRequestReview"))).toEqual([]);
+  } finally {
+    writeFakePrograms(reviewed);
+  }
+
+  await test.step("once the user submitted or discarded it on GitHub, Post goes through and the note goes away", async () => {
+    await post.click();
+    await expect(postPanel.locator(".posted-note")).toContainText("2 findings are on your pending review");
+    await expect(postPanel).not.toContainText(note);
+  });
 });

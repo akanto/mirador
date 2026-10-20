@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compareUrl, excerptRows, findingNumber, isCommentable, parseAnchor, type Review, type ReviewFile } from "../shared/review.ts";
 import { hideUnreadableDiffs, parseGitDiff } from "../host/review/diff.ts";
-import { parsePullRequestUrl, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../host/review/github.ts";
+import { parsePullRequestUrl, PendingReviewOfOtherCommit, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../host/review/github.ts";
 import { AnchorReader, git, ReviewProblems, snapshotReview } from "../host/review/snapshot.ts";
 import { gitRepository, reviewRequest as request } from "./review-repository.ts";
 
@@ -375,7 +375,7 @@ describe("posting to the pull request", () => {
       if (body.query.includes("states: PENDING")) {
         expect(body.variables).toEqual({ owner: "team", repo: "repo", number: 5 });
         const pending = responses.reviews.filter((review: any) => review.state === "PENDING");
-        return { data: { repository: { pullRequest: { reviews: { nodes: pending.map((review: any) => ({ id: review.node_id, url: review.html_url })) } } } } };
+        return { data: { repository: { pullRequest: { reviews: { nodes: pending.map((review: any) => ({ id: review.node_id, url: review.html_url, commit: { oid: review.commit_id } })) } } } } };
       }
       if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_new", url: "https://ghe.example.com/review/new" } } } };
       if (body.variables.input.path === responses.refuse) return { errors: [{ message: "Line could not be resolved" }] };
@@ -401,7 +401,7 @@ describe("posting to the pull request", () => {
   });
 
   test("adds to the pending review the user already has, and reports the comments GitHub refused", async () => {
-    const { gh, calls } = fakeGitHub({ head: "abc", reviews: [{ state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine" }], refuse: "src/app.ts" });
+    const { gh, calls } = fakeGitHub({ head: "abc", reviews: [{ state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine", commit_id: "abc" }], refuse: "src/app.ts" });
     const outcome = await postPendingReview(reviewOf("abc"), gh);
     expect(calls.some(({ body }) => body?.query.includes("addPullRequestReview("))).toBe(false);
     expect(outcome.pendingReviewUrl).toBe("https://ghe.example.com/review/mine");
@@ -411,7 +411,7 @@ describe("posting to the pull request", () => {
 
   test("finds the user's pending review on a pull request with more than a hundred reviews", async () => {
     const older = Array.from({ length: 120 }, (_, index) => ({ state: "COMMENTED", node_id: `old-${index}`, html_url: "x" }));
-    const { gh, calls } = fakeGitHub({ head: "abc", reviews: [...older, { state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine" }] });
+    const { gh, calls } = fakeGitHub({ head: "abc", reviews: [...older, { state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine", commit_id: "abc" }] });
     const outcome = await postPendingReview(reviewOf("abc"), gh);
     expect(calls.some(({ body }) => body?.query.includes("addPullRequestReview("))).toBe(false);
     expect(outcome.pendingReviewUrl).toBe("https://ghe.example.com/review/mine");
@@ -423,6 +423,18 @@ describe("posting to the pull request", () => {
     expect(refusal).toBeInstanceOf(PullRequestMovedOn);
     expect((refusal as PullRequestMovedOn).headCommit).toBe("0123456789abcdef");
     expect((refusal as PullRequestMovedOn).message).toBe("The pull request has changed since the review: its head is 0123456789, the review is of fedcba9876.");
+  });
+
+  test("refuses to add to the user's pending review when it was started on another commit, naming it, and posts nothing", async () => {
+    const pendingReview = { state: "PENDING", node_id: "PRR_mine", html_url: "https://ghe.example.com/review/mine", commit_id: "0123456789abcdef" };
+    const { gh, calls } = fakeGitHub({ head: "fedcba9876543210", reviews: [pendingReview] });
+    const refusal = await postPendingReview(reviewOf("fedcba9876543210"), gh).catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(PendingReviewOfOtherCommit);
+    expect((refusal as PendingReviewOfOtherCommit).pendingReview).toEqual({ url: "https://ghe.example.com/review/mine", commit: "0123456789abcdef" });
+    expect((refusal as PendingReviewOfOtherCommit).message).toBe(
+      "Your pending review on the pull request was started on 0123456789, not on fedcba9876, the commit this review is of. Submit or discard it on GitHub, then post again.",
+    );
+    expect(calls.map(({ body }) => body?.query.match(/(addPullRequestReview\w*)\(/)?.[1]).filter(Boolean)).toEqual([]);
   });
 });
 
