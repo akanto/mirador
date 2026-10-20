@@ -21,8 +21,8 @@ import { useDragToReorder, usePointerDrag } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
-import { pastelVariables, profileColorVariable } from "./pastels.ts";
-import { ProfileDot } from "./ProfileDot.tsx";
+import { pastelVariables } from "./pastels.ts";
+import { ProfileDot, ProfileEdge } from "./ProfileDot.tsx";
 import { highlightedCompletion } from "./path-completion.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
@@ -327,10 +327,7 @@ function WorkspaceSection({
   const deleteWorkspace = () => connection.send({ type: "workspace.delete", workspaceId: workspace.id });
   const deleteConversation = (conversation: Conversation) => connection.send({ type: "conversation.delete", conversationId: conversation.id });
   const conversationList = useRef<HTMLUListElement>(null);
-  const profileEdgeOf = ({ profileId }: Conversation) => {
-    const color = profiles.find(({ id }) => id === profileId)?.color;
-    return color ? { "data-profile-color": color, style: profileColorVariable(color) } : {};
-  };
+  const profileOf = ({ profileId }: Conversation) => profiles.find(({ id }) => id === profileId);
   const conversationDrag = useDragToReorder((conversationId, beforeConversationId) =>
     connection.send({ type: "conversation.move", conversationId, beforeConversationId }),
   );
@@ -382,12 +379,12 @@ function WorkspaceSection({
               key={conversation.id}
               data-reorder-id={conversation.id}
               data-waiting-tone={conversation.waitingFor ? waitingTones[conversation.waitingFor] : undefined}
-              {...profileEdgeOf(conversation)}
               className={[...rowClasses(conversation, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
               onPointerDown={(event) => conversationDrag.startDrag(conversation.id, conversationList.current, event)}
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
               onContextMenu={(event) => onConversationMenu(conversation, event)}
             >
+              <ProfileEdge profile={profileOf(conversation)} />
               {statusDot(conversation)}
               <ConversationTitle conversation={conversation} startEditingOn="double-click" className="conversation-title" />
               {conversation.waitingFor && <WaitingPill waitingFor={conversation.waitingFor} />}

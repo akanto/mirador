@@ -751,8 +751,15 @@ body.resizing iframe {
   background: var(--rail-hover);
 }
 
-.workspace li[data-profile-color] {
-  box-shadow: inset 3px 0 0 var(--profile-color);
+.profile-edge {
+  position: absolute;
+  left: 3px;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--profile-color);
+  pointer-events: none;
 }
 
 .workspace li.selected {

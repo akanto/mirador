@@ -54,10 +54,10 @@ test("a profile's colour marks it wherever it is named, and a workspace added on
     const statuslineProfile = page.locator(".statusline-chips .chip", { hasText: "Claude Code" });
     await expect(header.locator(".profile-dot")).toHaveAttribute("data-color", "rose");
     await expect(statuslineProfile.locator(".profile-dot")).toHaveAttribute("data-color", "rose");
-    await expect(row).toHaveAttribute("data-profile-color", "rose");
+    await expect(row.locator(".profile-edge")).toHaveAttribute("data-color", "rose");
 
     await page.getByLabel("Profile", { exact: true }).selectOption({ label: "Work" });
-    await expect(row).toHaveAttribute("data-profile-color", "mint");
+    await expect(row.locator(".profile-edge")).toHaveAttribute("data-color", "mint");
     await expect(header.locator(".profile-dot")).toHaveAttribute("data-color", "mint");
   });
 
