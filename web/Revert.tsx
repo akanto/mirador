@@ -1,5 +1,5 @@
 import { createContext, useEffect, useState } from "react";
-import type { RestorePlan } from "../shared/model.ts";
+import type { ListedPaths, RestoreFiles, RestorePlan } from "../shared/model.ts";
 import { whatChanged, whatWasLeft, type Turn } from "../shared/reverts.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
@@ -20,6 +20,8 @@ export const AskToRevert = createContext<AskToRevert>(() => {});
 /** What the dialog says while it is up, as the host works it out. */
 interface Preview {
   plan: RestorePlan | null;
+  /** Which files the plan's counts are. */
+  files?: RestoreFiles;
   /** Why the files stay as they are, when they do. */
   filesNote?: string;
   /** Why the conversation cannot go back, when it cannot. */
@@ -34,7 +36,7 @@ const previewFiles = (conversationId: string, seq: number) =>
     (requestId) => ({ type: "conversation.revert-preview", requestId, conversationId, seq }),
     (message, requestId) => {
       if (message.type === "conversation.revert-previewed" && message.requestId === requestId) {
-        return { plan: message.plan, ...(message.cannotUndo && { filesNote: message.cannotUndo }) };
+        return { plan: message.plan, ...(message.files && { files: message.files }), ...(message.cannotUndo && { filesNote: message.cannotUndo }) };
       }
       if (message.type === "conversation.revert-failed" && message.requestId === requestId) throw new Error(message.message);
       return undefined;
@@ -46,8 +48,8 @@ const previewRewind = (conversationId: string, seq: number) =>
     (requestId) => ({ type: "conversation.rewind-preview", requestId, conversationId, seq }),
     (message, requestId) => {
       if (message.type === "conversation.rewind-previewed" && message.requestId === requestId) {
-        const { plan, cannotRewind, filesNote, turnsLeaving, keptFrom } = message;
-        return { plan, ...(cannotRewind && { cannotRewind }), ...(filesNote && { filesNote }), ...(turnsLeaving !== undefined && { turnsLeaving }), keptFrom };
+        const { plan, files, cannotRewind, filesNote, turnsLeaving, keptFrom } = message;
+        return { plan, ...(files && { files }), ...(cannotRewind && { cannotRewind }), ...(filesNote && { filesNote }), ...(turnsLeaving !== undefined && { turnsLeaving }), keptFrom };
       }
       if (message.type === "conversation.rewind-failed" && message.requestId === requestId) throw new Error(message.message);
       return undefined;
@@ -111,6 +113,42 @@ function whatFiles(preview: Preview, rewind: boolean, keepFiles: boolean) {
   return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
 }
 
+function FileGroup({ title, listed }: { title: string; listed: ListedPaths }) {
+  if (listed.paths.length === 0) return null;
+  return (
+    <section className="revert-file-group" aria-label={title}>
+      <h3>{title}</h3>
+      <ul>
+        {listed.paths.map((path) => (
+          <li key={path}>{path}</li>
+        ))}
+      </ul>
+      {listed.more > 0 && <p className="hint">and {listed.more.toLocaleString("en")} more</p>}
+    </section>
+  );
+}
+
+const listsAnyFile = ({ deleted, putBack, committed }: RestoreFiles) => [deleted, putBack, committed].some(({ paths }) => paths.length > 0);
+
+/** The files behind the summary's counts, shown on asking: what goes, what goes back, and what stays as commits left it. */
+function FileList({ files, headMovedElsewhere }: { files: RestoreFiles; headMovedElsewhere: boolean }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="revert-files">
+      <button type="button" className="link" aria-expanded={shown} data-hint={hints.revertFiles} onClick={() => setShown(!shown)}>
+        {shown ? "Hide the files" : "Show the files"}
+      </button>
+      {shown && (
+        <div className="revert-file-groups">
+          <FileGroup title="Deleted" listed={files.deleted} />
+          <FileGroup title="Put back as they were" listed={files.putBack} />
+          <FileGroup title={headMovedElsewhere ? "Stay as they are" : "Stay as committed"} listed={files.committed} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RevertDialog({ conversationId, turn, rewind, onClose }: { conversationId: string; turn: Turn; rewind: boolean; onClose: () => void }) {
   const { preview, problem, setProblem } = usePreview(conversationId, turn.seq, rewind);
   const [working, setWorking] = useState(false);
@@ -128,6 +166,7 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
   const blocked = problem ?? preview?.cannotRewind ?? (rewind ? undefined : preview?.filesNote);
   const files = preview && !blocked ? whatFiles(preview, rewind, keepFiles) : "";
   const offersToKeepFiles = rewind && preview && !blocked && !preview.filesNote && putsAnyFileBack(preview.plan);
+  const listedFiles = preview && !blocked && !preview.filesNote && !keepFiles && preview.files && listsAnyFile(preview.files) ? preview.files : null;
   return (
     <Modal label={rewind ? "Rewind to here" : "Undo the files of a turn"} className="revert" onClose={onClose}>
       <h2>{rewind ? "Rewind to here" : "Undo the files"}</h2>
@@ -138,6 +177,7 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
         <>
           {rewind && <p className="revert-summary">{whatLeaves(preview)}</p>}
           {files && <p className="revert-summary">{files}</p>}
+          {listedFiles && <FileList files={listedFiles} headMovedElsewhere={preview.plan?.committed?.commits === null} />}
           {offersToKeepFiles && (
             <label className="revert-files-choice" data-hint={hints.rewindPutFilesBack}>
               <input type="checkbox" checked={!keepFiles} onChange={(event) => setKeepFiles(!event.target.checked)} />

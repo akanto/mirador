@@ -262,6 +262,21 @@ export interface CommittedFiles {
   commits: number | null;
 }
 
+/** The paths a restore would touch, by what it does to them, for a dialog to list. */
+export interface RestoreFiles {
+  /** Created since, so a restore deletes them. */
+  deleted: ListedPaths;
+  putBack: ListedPaths;
+  /** Changed by commits since, so a restore leaves them. */
+  committed: ListedPaths;
+}
+
+/** The first paths of a kind, from the workspace's folder, and how many more there are. */
+export interface ListedPaths {
+  paths: string[];
+  more: number;
+}
+
 export interface QueuedMessage {
   id: string;
   text: string;

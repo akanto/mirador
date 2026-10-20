@@ -834,7 +834,7 @@ export function startServer(services: HostServices) {
       case "conversation.revert-preview":
         return conversations
           .previewRevert(message.conversationId, message.seq)
-          .then(({ plan, cannotUndo }) => reply({ type: "conversation.revert-previewed", requestId: message.requestId, plan, ...(cannotUndo && { cannotUndo }) }))
+          .then(({ plan, files, cannotUndo }) => reply({ type: "conversation.revert-previewed", requestId: message.requestId, plan, ...(files && { files }), ...(cannotUndo && { cannotUndo }) }))
           .catch((error) => reply({ type: "conversation.revert-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.revert":
         return conversations
@@ -844,8 +844,8 @@ export function startServer(services: HostServices) {
       case "conversation.rewind-preview":
         return conversations
           .previewRewind(message.conversationId, message.seq)
-          .then(({ turnsLeaving, keptFrom, plan, cannotRewind, filesNote }) =>
-            reply({ type: "conversation.rewind-previewed", requestId: message.requestId, turnsLeaving, keptFrom, plan, ...(cannotRewind && { cannotRewind }), ...(filesNote && { filesNote }) }),
+          .then(({ turnsLeaving, keptFrom, plan, files, cannotRewind, filesNote }) =>
+            reply({ type: "conversation.rewind-previewed", requestId: message.requestId, turnsLeaving, keptFrom, plan, ...(files && { files }), ...(cannotRewind && { cannotRewind }), ...(filesNote && { filesNote }) }),
           )
           .catch((error) => reply({ type: "conversation.rewind-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.rewind":

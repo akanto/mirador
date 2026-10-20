@@ -84,6 +84,7 @@ export const hints = {
     "Takes the conversation and this workspace's files back to how they were before this turn began: the turn and every turn after it leave the conversation, and the agent goes on in a session that holds only what came before them.\n\nThe turns that leave are not offered back, in the timeline or anywhere else. The agent's own session file stays on disk, where its own resume (Claude Code's --resume, pi's /resume) can still reach it. Your commits, branches and history are untouched.",
   rewindConfirm:
     "The conversation loses this turn and every turn after it, and the agent's own history with them; the files go back to how they were when it began, unless you keep them as they are. Files that commits changed since, such as a pull's, stay as committed. Neither comes back from here.",
+  revertFiles: "Lists the files behind the counts above: those created since, which are deleted; those put back as they were when this turn began; and those commits changed since, which stay as they are.",
   rewindPutFilesBack:
     "On: the files go back to how they were when this turn began, but for those commits changed since. Off: only the conversation goes back, and every file stays as it is now, with what the turns that leave did to it. The agent is not told; it finds the files as they are.",
   commandDelivery: "Commands you run with ! go to the agent with your next message, in the tags Claude Code uses for its own ! commands.",

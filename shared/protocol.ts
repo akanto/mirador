@@ -21,6 +21,7 @@ import type {
   PromptTemplate,
   PublicAddress,
   ReachabilitySettings,
+  RestoreFiles,
   RestorePlan,
   SessionSearchHit,
   StatuslineRender,
@@ -304,14 +305,23 @@ export type ServerMessage =
   | { type: "async-task.output.got"; requestId: string; text: string | null }
   | { type: "conversation.event"; conversationId: string; event: StoredEvent }
   /** `cannotUndo` says why a turn cannot be undone, when it cannot; `plan` is absent then too. */
-  | { type: "conversation.revert-previewed"; requestId: string; plan: RestorePlan | null; cannotUndo?: string }
+  | { type: "conversation.revert-previewed"; requestId: string; plan: RestorePlan | null; files?: RestoreFiles; cannotUndo?: string }
   | { type: "conversation.reverted"; requestId: string; plan: RestorePlan }
   | { type: "conversation.revert-failed"; requestId: string; message: string }
   /**
    * `turnsLeaving` and `keptFrom` say what the conversation loses: how many turns, and the turn it goes back to (null
    * keptFrom: all of them). `cannotRewind` says why it cannot go back at all, `filesNote` why the files stay as they are.
    */
-  | { type: "conversation.rewind-previewed"; requestId: string; turnsLeaving: number; keptFrom: string | null; plan: RestorePlan | null; cannotRewind?: string; filesNote?: string }
+  | {
+      type: "conversation.rewind-previewed";
+      requestId: string;
+      turnsLeaving: number;
+      keptFrom: string | null;
+      plan: RestorePlan | null;
+      files?: RestoreFiles;
+      cannotRewind?: string;
+      filesNote?: string;
+    }
   /** The rewind this page asked for is done: the events from `fromSeq` on are gone. */
   | { type: "conversation.rewind-done"; requestId: string; conversationId: string; fromSeq: number }
   /** The conversation was taken back to before `fromSeq`, which every page showing it drops its events from. */

@@ -20,6 +20,7 @@ import {
   type PendingPermissionRequest,
   type PendingRequest,
   type QueuedMessage,
+  type RestoreFiles,
   type RestorePlan,
   type SessionSearchHit,
   type StoredEvent,
@@ -675,13 +676,13 @@ export class ConversationService {
     else if (!afterTurn) this.steerQueuedMessages(conversationId);
   }
 
-  /** What undoing the turn that began with this message would do to the files, or why it cannot be undone. */
-  async previewRevert(conversationId: string, seq: number): Promise<{ plan: RestorePlan | null; cannotUndo?: string }> {
+  /** What undoing the turn that began with this message would do to the files, and to which, or why it cannot be undone. */
+  async previewRevert(conversationId: string, seq: number): Promise<{ plan: RestorePlan | null; files?: RestoreFiles; cannotUndo?: string }> {
     const checkpoint = this.checkpointAt(conversationId, seq);
     if (!checkpoint) return { plan: null, cannotUndo: NO_FILES_KEPT };
-    const plan = await this.checkpoints.preview(this.workspaceOf(conversationId), checkpoint);
-    if (!plan) return { plan: null, cannotUndo: ONLY_GIT_REPOSITORIES };
-    return (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint)) ? { plan } : { plan: null, cannotUndo: FILES_NO_LONGER_KEPT };
+    const preview = await this.checkpoints.preview(this.workspaceOf(conversationId), checkpoint);
+    if (!preview) return { plan: null, cannotUndo: ONLY_GIT_REPOSITORIES };
+    return (await this.checkpoints.keeps(this.workspaceOf(conversationId), checkpoint)) ? preview : { plan: null, cannotUndo: FILES_NO_LONGER_KEPT };
   }
 
   /**
@@ -703,7 +704,10 @@ export class ConversationService {
    * What rewinding to this turn would do: the conversation loses its turns from here on, and the files go back to how
    * they were when the turn began. `filesNote` says why the files will be left alone, when they will be.
    */
-  async previewRewind(conversationId: string, seq: number): Promise<{ turnsLeaving: number; keptFrom: string | null; plan: RestorePlan | null; cannotRewind?: string; filesNote?: string }> {
+  async previewRewind(
+    conversationId: string,
+    seq: number,
+  ): Promise<{ turnsLeaving: number; keptFrom: string | null; plan: RestorePlan | null; files?: RestoreFiles; cannotRewind?: string; filesNote?: string }> {
     const events = this.store.listEvents(conversationId);
     const turnsLeaving = turnsFrom(events, seq).length;
     const before = events.filter(({ seq: at, event }) => at < seq && event.type === "user-message");
@@ -711,8 +715,8 @@ export class ConversationService {
     const keptFrom = kept?.type === "user-message" ? turnTitle(kept.text) : null;
     const cannotRewind = this.rewindProblem(conversationId, seq);
     if (cannotRewind) return { turnsLeaving, keptFrom, plan: null, cannotRewind };
-    const { plan, cannotUndo } = await this.previewRevert(conversationId, seq);
-    return { turnsLeaving, keptFrom, plan, ...(cannotUndo && { filesNote: cannotUndo }) };
+    const { plan, files, cannotUndo } = await this.previewRevert(conversationId, seq);
+    return { turnsLeaving, keptFrom, plan, ...(files && { files }), ...(cannotUndo && { filesNote: cannotUndo }) };
   }
 
   /**

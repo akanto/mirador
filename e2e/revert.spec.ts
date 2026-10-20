@@ -287,6 +287,9 @@ test("an undo after a commit leaves the commit's files as committed, says so, an
   await undoFiles(page).click();
   const dialog = page.getByRole("dialog", { name: "Undo the files of a turn" });
   await expect(dialog).toContainText(`1 file put back as they were since this turn began. ${leftAsCommitted}`);
+  await dialog.getByRole("button", { name: "Show the files" }).click();
+  await expect(dialog.getByRole("region", { name: "Put back as they were" }).getByRole("listitem")).toHaveText(["README.md"]);
+  await expect(dialog.getByRole("region", { name: "Stay as committed" }).getByRole("listitem")).toHaveText(["pulled.txt"]);
   await dialog.getByRole("button", { name: "Put the files back" }).click();
   await expect(dialog).toHaveCount(0);
   expect(readFileSync(readme, "utf8")).toBe(readmeAtStart);

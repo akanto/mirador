@@ -1725,6 +1725,37 @@ input.picker-search {
   margin: 0;
 }
 
+.revert-files {
+  margin-top: 6px;
+}
+
+.revert-file-groups {
+  max-height: 16em;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-left: 3px solid var(--border);
+}
+
+.revert-file-group h3 {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.revert-file-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.revert-file-group .hint {
+  margin: 2px 0 0;
+}
+
 .revert-files-choice {
   display: flex;
   align-items: center;

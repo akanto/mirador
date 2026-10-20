@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -11,6 +11,7 @@ const api = new FakeClaudeApi();
 const PROFILE = "rewindable";
 const notes = join(host.projectDir, "notes.md");
 const pulled = join(host.projectDir, "pulled.md");
+const scratch = join(host.projectDir, "scratch.md");
 
 const git = (...args: string[]) =>
   execFileSync("git", ["-C", host.projectDir, "-c", "user.name=e2e", "-c", "user.email=e2e@localhost", ...args], { encoding: "utf8" }).trim();
@@ -38,13 +39,16 @@ async function answer(page: Page, task: string) {
   await waitForTurnToEnd(page);
 }
 
+/** The paths the dialog lists under a heading, once its files are shown. */
+const listedUnder = (dialog: Locator, heading: string) => dialog.getByRole("region", { name: heading }).getByRole("listitem");
+
 async function openRewind(page: Page, task: string) {
   await turn(page, task).hover();
   await turn(page, task).locator(".undo-files").click();
   return page.getByRole("dialog", { name: "Rewind to here" });
 }
 
-test("a rewind leaves what commits since the turn changed as committed, and can leave every file as it is", async ({ page }) => {
+test("a rewind leaves what commits since the turn changed as committed, lists the files it touches, and can leave every file as it is", async ({ page }) => {
   test.setTimeout(300_000);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
@@ -57,22 +61,31 @@ test("a rewind leaves what commits since the turn changed as committed, and can 
     await answer(page, "First task");
     await answer(page, "Second task");
     writeFileSync(notes, "edited in the second turn\n");
+    writeFileSync(scratch, "made in the second turn\n");
     writeFileSync(pulled, "from a pull\n");
     git("add", "pulled.md");
     git("commit", "-qm", "a pull");
   });
 
-  await test.step("the dialog says the pull's file stays as committed, and puts the edit back", async () => {
+  await test.step("the dialog says the pull's file stays as committed, lists each file, and puts the edits back", async () => {
     const dialog = await openRewind(page, "Second task");
     await expect(dialog).toContainText(
-      "The files go back too: 1 file put back as they were since this turn began. 1 commit came in since then, and the 1 file it changed stays as committed.",
+      "The files go back too: 1 file put back as they were and 1 file created since deleted since this turn began. 1 commit came in since then, and the 1 file it changed stays as committed.",
     );
+    await expect(dialog.getByRole("region", { name: "Deleted" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Show the files" }).click();
+    await expect(listedUnder(dialog, "Deleted")).toHaveText(["scratch.md"]);
+    await expect(listedUnder(dialog, "Put back as they were")).toHaveText(["notes.md"]);
+    await expect(listedUnder(dialog, "Stay as committed")).toHaveText(["pulled.md"]);
+    await dialog.getByRole("button", { name: "Hide the files" }).click();
+    await expect(dialog.getByRole("region", { name: "Deleted" })).toHaveCount(0);
     await expect(dialog.getByRole("checkbox", { name: "Put the files back too" })).toBeChecked();
     await dialog.getByRole("button", { name: "Rewind", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.locator(".timeline")).not.toContainText("Second task");
     expect(readFileSync(notes, "utf8")).toBe("as committed\n");
     expect(readFileSync(pulled, "utf8")).toBe("from a pull\n");
+    expect(() => readFileSync(scratch, "utf8")).toThrow();
     expect(git("status", "--porcelain")).toBe("");
   });
 
@@ -83,6 +96,7 @@ test("a rewind leaves what commits since the turn changed as committed, and can 
     await expect(dialog).toContainText("The files go back too: 1 file put back as they were since this turn began.");
     await dialog.getByRole("checkbox", { name: "Put the files back too" }).uncheck();
     await expect(dialog).toContainText("The files stay as they are now, with what the turns that leave did to them.");
+    await expect(dialog.getByRole("button", { name: "Show the files" })).toHaveCount(0);
     await dialog.getByRole("button", { name: "Rewind", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.locator(".timeline")).not.toContainText("Third task");

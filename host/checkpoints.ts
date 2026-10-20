@@ -1,6 +1,6 @@
 import { copyFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { CommittedFiles, RestorePlan, Workspace } from "../shared/model.ts";
+import type { CommittedFiles, ListedPaths, RestoreFiles, RestorePlan, Workspace } from "../shared/model.ts";
 import { CheckpointGit, changesIn, NO_FILE_MODE, type Location } from "./checkpoints/git.ts";
 import { OwnBytesStaging, type Staged } from "./checkpoints/own-bytes.ts";
 import { PutBack, type PutBackPlan } from "./checkpoints/put-back.ts";
@@ -13,6 +13,8 @@ const snapshotRefsOf = (workspaceId: string) => `refs/mirador/turns/${workspaceI
 const snapshotRefOf = (workspaceId: string, commit: string, takenAt: number) => `${snapshotRefsOf(workspaceId)}${String(takenAt).padStart(16, "0")}-${commit}`;
 
 export const SNAPSHOTS_KEPT = 100;
+/** How many paths of each kind a preview names: one pull can change thousands. */
+export const PATHS_LISTED = 200;
 /** How many commit messages stay remembered; one forgotten is read from git again. */
 const MESSAGES_REMEMBERED = 1000;
 /** rev-parse's exit code when it found the repository but `--verify --quiet HEAD` found no commit, as before the first. */
@@ -41,9 +43,11 @@ function headNamedIn(message: string | null) {
 
 /** What commits changed since a snapshot: the paths, and how many commits, unless HEAD went somewhere not ahead of where it was. */
 type CommittedSince = { paths: Set<string>; commits: number | null };
-type RestoreDiff = PutBackPlan & { restored: number; removed: number; written: string[]; submodulesLeft: number; committed?: CommittedFiles };
+type RestoreDiff = PutBackPlan & { restored: number; removed: number; written: string[]; putBack: string[]; committedPaths: string[]; submodulesLeft: number; committed?: CommittedFiles };
 
 const planOf = ({ restored, removed, submodulesLeft, committed }: RestoreDiff): RestorePlan => ({ restored, removed, ...(submodulesLeft > 0 && { submodulesLeft }), ...(committed && { committed }) });
+const listed = (paths: string[]): ListedPaths => ({ paths: paths.slice(0, PATHS_LISTED), more: Math.max(0, paths.length - PATHS_LISTED) });
+const filesOf = ({ added, putBack, committedPaths }: RestoreDiff): RestoreFiles => ({ deleted: listed(added), putBack: listed(putBack), committed: listed(committedPaths) });
 
 /**
  * The files of a workspace, kept per turn so a turn can be undone.
@@ -118,12 +122,16 @@ export class Checkpoints {
     });
   }
 
-  /** What restoring `commit` would do, without touching a file; null when the workspace is not a git repository. */
-  preview(workspace: Workspace, commit: string): Promise<RestorePlan | null> {
+  /**
+   * What restoring `commit` would do, and to which files, without touching one; null when the workspace is not a git
+   * repository.
+   */
+  preview(workspace: Workspace, commit: string): Promise<{ plan: RestorePlan; files: RestoreFiles } | null> {
     return this.inOrder(workspace.id, async () => {
       const location = await this.locate(workspace);
       if (!location) return null;
-      return planOf(await this.diffToNow(workspace, location, commit, await this.keptAs(workspace, commit)));
+      const diff = await this.diffToNow(workspace, location, commit, await this.keptAs(workspace, commit));
+      return { plan: planOf(diff), files: filesOf(diff) };
     });
   }
 
@@ -210,15 +218,15 @@ export class Checkpoints {
     const committedSince = await this.committedSince(workspace, location, commit);
     const committedPaths = differing.filter(({ path }) => committedSince?.paths.has(path)).map(({ path }) => path);
     const files = differing.filter(({ path }) => !committedSince?.paths.has(path));
-    const withStatus = (letters: string[]) => files.filter(({ status }) => letters.includes(status)).length;
     const added = files.filter(({ status }) => status === "A").map(({ path }) => path);
     const written = files.map(({ path }) => path);
+    const putBack = files.filter(({ status }) => status !== "A").map(({ path }) => path);
     const kept = files.filter(({ fromMode }) => fromMode !== NO_FILE_MODE).map(({ fromMode, fromBlob, path }) => ({ mode: fromMode, blob: fromBlob, path }));
     const committed =
       committedSince && committedPaths.length > 0
         ? { files: committedPaths.length, editedSince: await this.editedSinceHead(workspace, location, staged.converted, committedPaths), commits: committedSince.commits }
         : undefined;
-    return { restored: withStatus(["M", "D"]), removed: added.length, added, written, kept, submodulesLeft: changes.length - differing.length, ...(committed && { committed }) };
+    return { restored: putBack.length, removed: added.length, added, written, putBack, committedPaths, kept, submodulesLeft: changes.length - differing.length, ...(committed && { committed }) };
   }
 
   /**

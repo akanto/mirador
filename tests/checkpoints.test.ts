@@ -3,7 +3,7 @@ import { appendFile, chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Workspace } from "../shared/model.ts";
-import { Checkpoints } from "../host/checkpoints.ts";
+import { Checkpoints, PATHS_LISTED } from "../host/checkpoints.ts";
 
 let dataDir: string;
 let projectDir: string;
@@ -43,7 +43,7 @@ test("a restore puts back what a turn changed, deletes what it created, and says
   await write("added.txt", "new\n");
   await rm(join(projectDir, "doomed.txt"));
 
-  expect(await checkpoints.preview(workspace, snapshot!)).toEqual({ restored: 2, removed: 1 });
+  expect((await checkpoints.preview(workspace, snapshot!))?.plan).toEqual({ restored: 2, removed: 1 });
   expect(await checkpoints.restore(workspace, snapshot!)).toEqual({ restored: 2, removed: 1 });
   expect(await read("kept.txt")).toBe("one\n");
   expect(await read("doomed.txt")).toBe("doomed\n");
@@ -142,13 +142,39 @@ test("a restore leaves the files that commits since the snapshot changed as comm
   await git(projectDir, ["commit", "-qm", "a pull"]);
   const plan = { restored: 1, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } };
 
-  expect(await checkpoints.preview(workspace, snapshot)).toEqual(plan);
+  expect((await checkpoints.preview(workspace, snapshot))?.plan).toEqual(plan);
   expect(await checkpoints.restore(workspace, snapshot)).toEqual(plan);
 
   expect(await read("kept.txt")).toBe("one\n");
   expect(await read("pulled.txt")).toBe("pulled\n");
   expect(await read("doomed.txt")).toBe("changed by a pull\n");
   expect(await status()).toBe("");
+});
+
+test("a preview names the files a restore would delete, put back and leave as committed", async () => {
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await write("kept.txt", "changed by the agent\n");
+  await rm(join(projectDir, "doomed.txt"));
+  await write("added.txt", "new\n");
+  await write("pulled.txt", "pulled\n");
+  await git(projectDir, ["add", "pulled.txt"]);
+  await git(projectDir, ["commit", "-qm", "a pull"]);
+
+  expect((await checkpoints.preview(workspace, snapshot))?.files).toEqual({
+    deleted: { paths: ["added.txt"], more: 0 },
+    putBack: { paths: ["doomed.txt", "kept.txt"], more: 0 },
+    committed: { paths: ["pulled.txt"], more: 0 },
+  });
+});
+
+test("a preview names at most the first files of each kind, and counts the rest", async () => {
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  const names = Array.from({ length: PATHS_LISTED + 3 }, (_, index) => `added-${String(index).padStart(4, "0")}.txt`);
+  await Promise.all(names.map((name) => write(name, "new\n")));
+
+  const { deleted } = (await checkpoints.preview(workspace, snapshot))!.files;
+  expect(deleted.paths).toEqual(names.slice(0, PATHS_LISTED));
+  expect(deleted.more).toBe(3);
 });
 
 test("a file a commit since the snapshot changed and that was edited after it stays as it is, and is counted apart", async () => {
@@ -273,7 +299,7 @@ test("in a folder below the repository's top, a restore puts back and deletes th
   await write("kept.txt", "the user's own change\n");
   await git(projectDir, ["add", "-A"]);
 
-  expect(await checkpoints.preview(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
+  expect((await checkpoints.preview(folder, snapshot))?.plan).toEqual({ restored: 1, removed: 1 });
   expect(await checkpoints.restore(folder, snapshot)).toEqual({ restored: 1, removed: 1 });
   expect(await read("sub/inner.txt")).toBe("inner\n");
   await expect(read("sub/added.txt")).rejects.toThrow();
@@ -340,7 +366,7 @@ test("a submodule that moved is left as it is, and counted apart from the files"
   await git(join(projectDir, "library"), ["commit", "-qam", "v2"]);
   await write("kept.txt", "changed\n");
 
-  expect(await checkpoints.preview(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
+  expect((await checkpoints.preview(workspace, snapshot))?.plan).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
   expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
   expect(await read("kept.txt")).toBe("one\n");
   expect(await readFile(join(projectDir, "library", "lib.txt"), "utf8")).toBe("v2\n");
@@ -370,7 +396,7 @@ test("a nested git repository the agent commits into after the snapshot is left 
   await git(nested, ["commit", "-qm", "the agent's first commit"]);
   await write("kept.txt", "changed\n");
 
-  expect(await checkpoints.preview(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
+  expect((await checkpoints.preview(workspace, snapshot))?.plan).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
   expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 1, removed: 0, submodulesLeft: 1 });
   expect(await read("kept.txt")).toBe("one\n");
   expect(await read(join("nested", "x.txt"))).toBe("nested\n");
