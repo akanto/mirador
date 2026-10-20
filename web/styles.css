@@ -2109,6 +2109,16 @@ button.approval-waiting:hover {
   padding: 0;
 }
 
+.file-link code {
+  color: var(--accent);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.file-link:hover code {
+  text-decoration-style: solid;
+}
+
 .location {
   background: none;
   border: 0;

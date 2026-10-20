@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { addWorkspace, createProfile, openSettings, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram, writeCompiledBunProgram } from "./test-host.ts";
 
@@ -85,6 +85,18 @@ test("a file path the agent writes in backticks in its reply is a link that open
     });
   }
   await expect(page.locator(".markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
+
+  await test.step("a path that opens looks unlike the code around it that does not", async () => {
+    const looksOf = (code: Locator) => code.evaluate((element) => ({ color: getComputedStyle(element).color, underline: getComputedStyle(element).textDecorationStyle }));
+    const linkCode = page.locator(".markdown button.file-link code").getByText("src/app.ts", { exact: true });
+    await page.mouse.move(0, 0);
+    const link = await looksOf(linkCode);
+    const plain = await looksOf(page.locator(".markdown code", { hasText: "not a file" }));
+    expect(link.color).not.toBe(plain.color);
+    expect(link.underline).toBe("dotted");
+    await linkCode.hover();
+    await expect.poll(async () => (await looksOf(linkCode)).underline).toBe("solid");
+  });
 });
 
 test("a link to a program says Mirador does not run it, and opens nothing", async ({ page }) => {
