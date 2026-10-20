@@ -120,6 +120,7 @@ export type ClientMessage =
     }
   | { type: "conversation.delete"; conversationId: string }
   | { type: "conversation.rename"; conversationId: string; title: string }
+  | { type: "conversation.set-unread"; conversationId: string; unread: boolean }
   | { type: "conversation.set-profile"; conversationId: string; profileId: string }
   | { type: "conversation.subscribe"; conversationId: string; lowData?: LowDataSubscription }
   /**

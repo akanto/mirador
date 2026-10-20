@@ -408,6 +408,10 @@ body.resizing iframe {
   --tone: var(--ok);
 }
 
+.tone-unread {
+  --tone: light-dark(#1279c2, #4ea6e6);
+}
+
 .dot.waiting {
   background: var(--tone);
   border-color: var(--tone);
@@ -2918,6 +2922,7 @@ button.edits-waiting {
 }
 
 .bar-menu [role="menu"],
+.context-menu,
 .page-save,
 .page-export-status {
   position: fixed;
@@ -2931,12 +2936,14 @@ button.edits-waiting {
   color: var(--text);
 }
 
-.bar-menu [role="menu"] {
+.bar-menu [role="menu"],
+.context-menu {
   min-width: 180px;
   list-style: none;
 }
 
-.bar-menu [role="menu"] button {
+.bar-menu [role="menu"] button,
+.context-menu button {
   display: block;
   position: relative;
   width: 100%;
@@ -2950,12 +2957,19 @@ button.edits-waiting {
 }
 
 .bar-menu [role="menu"] button:hover:not(:disabled),
-.bar-menu [role="menu"] button:focus-visible {
+.bar-menu [role="menu"] button:focus-visible,
+.context-menu button:hover:not(:disabled),
+.context-menu button:focus-visible {
   background: var(--rail-hover);
 }
 
-.bar-menu [role="menu"] button:disabled {
+.bar-menu [role="menu"] button:disabled,
+.context-menu button:disabled {
   opacity: 0.5;
+}
+
+.context-menu button {
+  padding-left: 10px;
 }
 
 .bar-menu [role="menu"] button[aria-checked="true"]::before {

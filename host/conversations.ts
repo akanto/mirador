@@ -868,9 +868,18 @@ export class ConversationService {
     else this.notifications.notify(conversationId, { kind: "job-ended", message });
   }
 
-  /** A focused window shows the conversation, so the turn that ended there has been seen. */
+  /** A focused window shows the conversation, or the owner marked it read: either way its Done, Failed or Unread mark goes. */
   markSeen(conversationId: string) {
     if (this.forgetUnseenTurnEnd(conversationId)) this.republish(conversationId);
+  }
+
+  /** Marks it to come back to, like a turn that ended unseen; a mark it has already stays as it is. */
+  markUnread(conversationId: string) {
+    if (!this.store.hasConversation(conversationId) || this.unseenTurnEnds.has(conversationId)) return;
+    this.unseenTurnEnds.set(conversationId, "unread");
+    this.store.setUnseenTurnEnd(conversationId, "unread");
+    this.keepLastWords(conversationId);
+    this.republish(conversationId);
   }
 
   /** The canvas reports each question it opens, has answered or withdraws. */

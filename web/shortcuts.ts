@@ -10,6 +10,7 @@ export type ShortcutCommand =
   | { type: "toggle-terminal" }
   | { type: "find" }
   | { type: "search" }
+  | { type: "mark-unread" }
   | { type: "focus"; pane: "chat" | "canvas" | "terminals" }
   | { type: "bigger-font" }
   | { type: "smaller-font" }
@@ -45,12 +46,14 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   const terminalClears = mac && typing === "terminal";
   const terminalSearchesHistory = !mac && typing === "terminal";
   const terminalFinds = !mac && typing === "terminal";
+  const terminalEntersUnicode = !mac && typing === "terminal";
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyK" && !terminalClears) return { type: "palette" };
   if (primary && !press.altKey && press.code === "KeyR" && !terminalSearchesHistory) return press.shiftKey ? { type: "restart-host" } : { type: "reload-page" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "Backslash") return { type: "toggle-canvas" };
   if (press.ctrlKey && !press.metaKey && !press.altKey && !press.shiftKey && press.code === "Backquote") return { type: "toggle-terminal" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyF" && typing !== "terminal") return { type: "find" };
   if (primary && !press.altKey && press.shiftKey && press.code === "KeyF" && !terminalFinds) return { type: "search" };
+  if (primary && !press.altKey && press.shiftKey && press.code === "KeyU" && !terminalEntersUnicode) return { type: "mark-unread" };
   if (primary && !press.altKey && press.shiftKey && typing !== "typing") {
     if (press.code === "ArrowLeft") return { type: "focus", pane: "chat" };
     if (press.code === "ArrowRight") return { type: "focus", pane: "canvas" };
@@ -104,6 +107,7 @@ export function shortcutKeys(mac = isMac) {
     find: `${primary}F`,
     search: `${primary}${shift}F`,
     restartHost: `${primary}${shift}R`,
+    markUnread: `${primary}${shift}U`,
     templates: `${primary}J`,
     send: "Enter",
     sendTheOtherWay: `${option}Enter`,
@@ -135,6 +139,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.toggleCanvas, action: "Show / hide the canvas" },
     { keys: keys.toggleTerminal, action: "Show / hide the terminal" },
     { keys: keys.search, action: "Search every conversation in every workspace" },
+    { keys: keys.markUnread, action: "Mark this conversation unread and go back to the one open before it (right-click a conversation in the sidebar to mark any)" },
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included; Aa matches case (Enter: older match, Shift+Enter: newer)" },
     { keys: keys.find, action: "In a review or tour: find in the code of its changed files, with match case, whole word and regular expression toggles (Enter: next match, Shift+Enter: previous)" },
     { keys: mac ? keys.find : "Ctrl+Shift+F", action: "In a terminal: find in its output, with match case, whole word and regular expression toggles (Enter: match further up, Shift+Enter: further down)" },

@@ -329,22 +329,27 @@ describe("Store", () => {
     expect(store.findProfile("p1")?.harness).toBe("claude");
   });
 
-  test("keeps queued messages and unseen turn ends across reopening the database", () => {
+  test("keeps queued messages, unseen turn ends and Unread marks across reopening the database", () => {
     const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const store = new Store(path);
     store.insertWorkspace({ id: "w1", name: "project", path: "/tmp/project", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
     store.insertConversation({ ...seededStore().conversation, id: "c1" });
     store.insertConversation({ ...seededStore().conversation, id: "c2" });
+    store.insertConversation({ ...seededStore().conversation, id: "c3" });
     const queued = [{ id: "q1", text: "after this turn", imageIds: ["img1"], fromScript: true as const }];
     store.saveQueuedMessages("c1", queued);
     store.setUnseenTurnEnd("c1", "finished");
     store.setUnseenTurnEnd("c2", "error");
     store.setUnseenTurnEnd("c2", null);
+    store.setUnseenTurnEnd("c3", "unread");
     store.close();
     const reopened = new Store(path);
     expect(reopened.findConversation("c1")?.queuedMessages).toEqual(queued);
     expect(reopened.findConversation("c2")?.queuedMessages).toEqual([]);
-    expect(reopened.listUnseenTurnEnds()).toEqual([["c1", "finished"]]);
+    expect(reopened.listUnseenTurnEnds()).toEqual([
+      ["c1", "finished"],
+      ["c3", "unread"],
+    ]);
     reopened.close();
   });
 

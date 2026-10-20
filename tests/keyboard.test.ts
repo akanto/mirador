@@ -47,6 +47,16 @@ describe("commandFor", () => {
     expect(commandFor(focusCanvas, "typing", true)).toBeNull();
   });
 
+  test("Cmd+Shift+U marks the open conversation unread, except in a Linux terminal, where Ctrl+Shift+U enters a Unicode character", () => {
+    const markUnread = { type: "mark-unread" } as const;
+    expect(commandFor(press("KeyU", { metaKey: true, shiftKey: true }), "typing", true)).toEqual(markUnread);
+    expect(commandFor(press("KeyU", { metaKey: true, shiftKey: true }), "terminal", true)).toEqual(markUnread);
+    expect(commandFor(press("KeyU", { ctrlKey: true, shiftKey: true }), "not-typing", false)).toEqual(markUnread);
+    expect(commandFor(press("KeyU", { ctrlKey: true, shiftKey: true }), "terminal", false)).toBeNull();
+    expect(commandFor(press("KeyU", { metaKey: true }), "not-typing", true)).toBeNull();
+    expect(shortcutKeys(true).markUnread).toBe("⌘⇧U");
+  });
+
   test("Ctrl+` shows and hides the terminal on every system, and Cmd+Shift+Down focuses it", () => {
     const toggleTerminal = press("Backquote", { ctrlKey: true });
     expect(commandFor(toggleTerminal, "typing", true)).toEqual({ type: "toggle-terminal" });

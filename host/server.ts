@@ -750,6 +750,8 @@ export function startServer(services: HostServices) {
         });
       case "conversation.rename":
         return conversations.rename(message.conversationId, message.title);
+      case "conversation.set-unread":
+        return message.unread ? conversations.markUnread(message.conversationId) : conversations.markSeen(message.conversationId);
       case "conversation.set-profile":
         return conversations.setProfile(message.conversationId, message.profileId);
       case "conversation.adopt":

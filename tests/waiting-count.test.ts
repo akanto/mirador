@@ -2,15 +2,26 @@ import { expect, test } from "bun:test";
 import { Hub, socketData, type BrowserSocket, type SocketData } from "../host/hub.ts";
 import type { Conversation } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
-import { countWaiting } from "../shared/waiting.ts";
+import { countWaiting, lastsUntilOpened, waitingByUrgency } from "../shared/waiting.ts";
 import { tabTitle } from "../web/tab-title.ts";
 
 const c = (waitingFor: Conversation["waitingFor"]) => ({ waitingFor }) as Conversation;
 
-test("counts every conversation waiting for you, whatever it waits for", () => {
-  expect(countWaiting([c("permission"), c("question"), c("finished"), c("error"), c(null)])).toBe(4);
+test("counts every conversation waiting for you, whatever it waits for, your own Unread marks too", () => {
+  expect(countWaiting([c("permission"), c("question"), c("finished"), c("error"), c("unread"), c(null)])).toBe(5);
   expect(countWaiting([])).toBe(0);
   expect(countWaiting([c(null)])).toBe(0);
+});
+
+test("an Unread mark comes after everything the agent waits on, and opening clears it as it clears Done and Failed", () => {
+  expect(waitingByUrgency([c("unread"), c("finished"), c(null), c("permission"), c("error")]).map(({ waitingFor }) => waitingFor)).toEqual([
+    "permission",
+    "error",
+    "finished",
+    "unread",
+  ]);
+  expect(["finished", "error", "unread"].every((waitingFor) => lastsUntilOpened(waitingFor as Conversation["waitingFor"]))).toBe(true);
+  expect([null, "permission", "question"].some((waitingFor) => lastsUntilOpened(waitingFor as Conversation["waitingFor"]))).toBe(false);
 });
 
 test("the tab title carries the count only while something waits", () => {

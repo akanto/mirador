@@ -12,6 +12,7 @@ import {
 } from "../shared/model.ts";
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
+import { ContextMenu } from "./ContextMenu.tsx";
 import { useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
@@ -25,7 +26,8 @@ import { highlightedCompletion } from "./path-completion.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
-import { waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
+import { canMarkUnread, markRead, markUnread } from "./unread.ts";
+import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingTones } from "./waiting.ts";
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
@@ -161,6 +163,14 @@ function WaitingList({ state, dispatch }: { state: AppState; dispatch: Dispatch<
   );
 }
 
+/** Outside the row, so choosing an entry does not also click the row and open the conversation, which would clear its mark. */
+function ConversationMenu({ conversation, at, dispatch, onClose }: { conversation: Conversation; at: { x: number; y: number }; dispatch: Dispatch<AppAction>; onClose: () => void }) {
+  const entry = lastsUntilOpened(conversation.waitingFor)
+    ? { label: "Mark as read", onChoose: () => markRead(conversation.id) }
+    : { label: "Mark as unread", onChoose: () => markUnread(conversation.id, dispatch), disabled: !canMarkUnread(conversation) };
+  return <ContextMenu name={conversation.title} at={at} entries={[entry]} onClose={onClose} />;
+}
+
 const rowClasses = (conversation: Conversation, selectedConversationId: string | null) =>
   [conversation.id === selectedConversationId && "selected", conversation.waitingFor && "waiting"].filter(Boolean);
 
@@ -244,6 +254,7 @@ function WorkspaceSection({
   dispatch,
   dragClasses,
   onStartDrag,
+  onConversationMenu,
 }: {
   workspace: Workspace;
   conversations: Conversation[];
@@ -254,6 +265,7 @@ function WorkspaceSection({
   dispatch: Dispatch<AppAction>;
   dragClasses: string[];
   onStartDrag: (event: PointerEvent<HTMLElement>) => void;
+  onConversationMenu: (conversation: Conversation, event: ReactMouseEvent) => void;
 }) {
   const mark = useRef<HTMLButtonElement>(null);
   const closePicker = useCallback(() => dispatch({ type: "close-overlay" }), [dispatch]);
@@ -315,6 +327,7 @@ function WorkspaceSection({
               className={[...rowClasses(conversation, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
               onPointerDown={(event) => conversationDrag.startDrag(conversation.id, conversationList.current, event)}
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
+              onContextMenu={(event) => onConversationMenu(conversation, event)}
             >
               {statusDot(conversation)}
               <ConversationTitle conversation={conversation} startEditingOn="double-click" className="conversation-title" />
@@ -527,6 +540,12 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const folded = useFoldedGroups();
   useUnfoldGroupOfOpenConversation(state);
   const items = sidebarItems(state.workspaces, state.workspaceGroups);
+  const [conversationMenu, setConversationMenu] = useState<{ conversationId: string; x: number; y: number } | null>(null);
+  const openConversationMenu = (conversation: Conversation, event: ReactMouseEvent) => {
+    event.preventDefault();
+    setConversationMenu({ conversationId: conversation.id, x: event.clientX, y: event.clientY });
+  };
+  const conversationInMenu = conversationMenu && state.conversations.find(({ id }) => id === conversationMenu.conversationId);
   const groupDrag = useDragToReorder((groupId, beforeId) => connection.send({ type: "workspace-group.move", groupId, ...landingBefore(state.workspaceGroups, beforeId) }));
   const workspaceDrag = usePointerDrag<WorkspaceDrop>((workspaceId, { groupId, beforeId }) =>
     connection.send({ type: "workspace.move", workspaceId, groupId, ...landingBefore(state.workspaceGroups, beforeId) }),
@@ -555,6 +574,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
       selectedConversationId={state.selectedConversationId}
       pickingColor={state.overlay?.kind === "workspace-color" && state.overlay.workspaceId === workspace.id}
       dispatch={dispatch}
+      onConversationMenu={openConversationMenu}
     />
   );
   const sidebarItem = (item: SidebarItem, index: number) => {
@@ -605,6 +625,9 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         {items.map(sidebarItem)}
         <WaitingEdge side="below" hidden={outOfView.below} onClick={() => scrollToWaiting("below")} />
       </div>
+      {conversationMenu && conversationInMenu && (
+        <ConversationMenu conversation={conversationInMenu} at={conversationMenu} dispatch={dispatch} onClose={() => setConversationMenu(null)} />
+      )}
       <footer>
         <ConnectedDevices listed={state.devices} onOpen={() => openOverlay({ kind: "settings", page: "devices" })} />
         <DesktopMenu />

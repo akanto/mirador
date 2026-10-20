@@ -119,8 +119,8 @@ const addedColumns = [
   { table: "conversations", column: "context_usage", definition: "TEXT" },
 ];
 
-/** A turn that ended while nobody looked at its conversation, until someone opens it. */
-export type UnseenTurnEnd = "finished" | "error";
+/** A turn that ended while nobody looked at its conversation, or the owner's Unread mark, until someone opens it. */
+export type UnseenTurnEnd = "finished" | "error" | "unread";
 
 type WorkspaceRow = {
   id: string;

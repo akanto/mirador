@@ -40,6 +40,7 @@ import { Splitter } from "./Splitter.tsx";
 import { initialStateFor, reducer, selectedOpen, type AppAction, type AppState, type OpenConversation } from "./state.ts";
 import { useSystemNotifications } from "./system-notifications.ts";
 import { useTabTitle } from "./tab-title.ts";
+import { canMarkUnread, markUnread } from "./unread.ts";
 import { TerminalPane } from "./Terminals.tsx";
 import { useShortcuts } from "./useShortcuts.ts";
 import { WorkspaceArea } from "./Workspace.tsx";
@@ -212,6 +213,9 @@ function paletteEntries(
     openHistory && openConversation
       ? [
           { id: "rename", label: "Rename conversation…", kind: "action", run: startRenamingOpenConversation },
+          ...(canMarkUnread(openConversation)
+            ? [{ id: "mark-unread", label: "Mark as unread", detail: openConversation.title, kind: "action" as const, run: () => markUnread(openConversation.id, dispatch) }]
+            : []),
           { id: "toggle-canvas", label: canvas.visible ? "Hide canvas" : "Show canvas", kind: "action", run: canvas.toggle },
           ...terminalActions,
           ...fullscreenActions,
@@ -384,6 +388,10 @@ export function App() {
         return toggleTerminal();
       case "find":
         return findInFocusedReview() || findInOpenConversation();
+      case "mark-unread": {
+        const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId);
+        return conversation && canMarkUnread(conversation) && markUnread(conversation.id, dispatch);
+      }
       case "focus": {
         const { pane } = command;
         if (pane === "terminals") return askTerminals({ type: "focus" });

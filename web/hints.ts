@@ -248,6 +248,7 @@ export const waitingHints: Record<WaitingFor, string> = {
   question: "Needs you: the agent asked you a question on the canvas.",
   finished: "Done: the turn ended while you were looking elsewhere. Opening the conversation clears this.",
   error: "Failed: the turn stopped with an error while you were looking elsewhere. Opening the conversation clears this.",
+  unread: "Unread: you marked it to come back to. Opening the conversation clears this.",
 };
 
 export const statusHints: Record<ConversationStatus, string> = {

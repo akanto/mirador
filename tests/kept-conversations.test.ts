@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { StoredEvent } from "../shared/model.ts";
+import type { Conversation, StoredEvent } from "../shared/model.ts";
 import { KEPT_CONVERSATIONS, initialState, reducer, selectedOpen, type AppState } from "../web/state.ts";
 
 const selecting = (state: AppState, conversationId: string | null) => reducer(state, { type: "select", conversationId });
@@ -27,4 +27,19 @@ test("a deleted conversation is no longer kept, and the others stay", () => {
   const afterDeleting = reducer(state, { type: "server", message: { type: "conversation.deleted", conversationId: "a" } });
   expect(keptIds(afterDeleting)).toEqual(["b"]);
   expect(afterDeleting.selectedConversationId).toBe("b");
+});
+
+test("leaving the open conversation goes back to the one open before it that has no mark opening would clear", () => {
+  const conversations = [
+    { id: "a", waitingFor: null },
+    { id: "b", waitingFor: "unread" },
+    { id: "c", waitingFor: "question" },
+    { id: "d", waitingFor: null },
+  ] as Conversation[];
+  const state = ["a", "c", "b", "d"].reduce(selecting, { ...initialState, conversations });
+  const leaving = (from: AppState, conversationId: string) => reducer(from, { type: "leave-conversation", conversationId });
+  expect(leaving(state, "d").selectedConversationId).toBe("c");
+  expect(leaving(state, "b"), "a conversation that is not open stays where it is").toBe(state);
+  const onlyMarked = ["b", "d"].reduce(selecting, { ...initialState, conversations });
+  expect(leaving(onlyMarked, "d").selectedConversationId).toBeNull();
 });

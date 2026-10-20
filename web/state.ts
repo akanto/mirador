@@ -3,6 +3,7 @@ import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
+import { lastsUntilOpened } from "../shared/waiting.ts";
 
 export interface OpenConversation {
   conversationId: string;
@@ -78,6 +79,7 @@ export interface AppState {
 export type AppAction =
   | { type: "server"; message: ServerMessage }
   | { type: "select"; conversationId: string | null }
+  | { type: "leave-conversation"; conversationId: string }
   | { type: "awaiting-conversation"; workspaceId: string }
   | { type: "open-overlay"; overlay: Overlay }
   | { type: "close-overlay" }
@@ -130,6 +132,15 @@ function upsert<T extends { id: string }>(items: T[], item: T) {
 export const KEPT_CONVERSATIONS = 5;
 
 export const selectedOpen = (state: AppState) => state.kept.find(({ conversationId }) => conversationId === state.selectedConversationId) ?? null;
+
+/** The conversation open most recently before it whose Done, Failed or Unread mark opening it would not clear; null for none. */
+function conversationToReturnTo(state: AppState, leaving: string) {
+  const hasNoMarkToClear = (conversationId: string) => {
+    const conversation = state.conversations.find(({ id }) => id === conversationId);
+    return conversation !== undefined && !lastsUntilOpened(conversation.waitingFor);
+  };
+  return state.kept.find(({ conversationId }) => conversationId !== leaving && hasNoMarkToClear(conversationId))?.conversationId ?? null;
+}
 
 function select(state: AppState, conversationId: string | null): AppState {
   if (conversationId === null) return { ...state, selectedConversationId: null };
@@ -328,6 +339,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return applyServerMessage(state, action.message);
     case "select":
       return action.conversationId === state.selectedConversationId ? state : select(state, action.conversationId);
+    case "leave-conversation":
+      return action.conversationId === state.selectedConversationId ? select(state, conversationToReturnTo(state, action.conversationId)) : state;
     case "awaiting-conversation":
       return { ...state, awaitingConversationIn: action.workspaceId };
     case "open-overlay":

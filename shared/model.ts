@@ -317,8 +317,11 @@ export interface StatuslineRender {
   quotas: PlanQuotas | null;
 }
 
-/** Why the agent waits for you: a tool to approve, a canvas question to answer, or a turn that ended (or failed) while you looked elsewhere. */
-export type WaitingFor = "permission" | "question" | "finished" | "error";
+/**
+ * Why the conversation waits for you: a tool to approve, a canvas question to answer, a turn that ended (or failed) while
+ * you looked elsewhere, or your own Unread mark.
+ */
+export type WaitingFor = "permission" | "question" | "finished" | "error" | "unread";
 
 /** A tool the agent waits for your approval of: what it would do, and the answers the agent offers. */
 export interface PendingPermissionRequest {
@@ -430,7 +433,7 @@ export interface Conversation {
   jobWaits: JobWait[];
   /** Claude Code's own background tasks it reported this agent process; kept in memory only, as they die with it. */
   asyncTasks: AsyncTask[];
-  /** A question and a turn that ended unseen outlast a host restart; a permission request ends with its agent. */
+  /** A question, a turn that ended unseen and an Unread mark outlast a host restart; a permission request ends with its agent. */
   waitingFor: WaitingFor | null;
   /** The permission request or question it waits for, the oldest first; worked out from those, never stored. */
   pendingRequest: PendingRequest | null;
