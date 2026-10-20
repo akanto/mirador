@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { knownModes } from "../shared/config-options.ts";
-import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Profile } from "../shared/model.ts";
+import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Pastel, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
+import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { ProfileDot } from "./ProfileDot.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
 const NEW_PROFILE = "new";
@@ -111,6 +113,7 @@ function ProfileEditor({
   const [mode, setMode] = useState(profile?.mode ?? AGENTS_OWN_MODE);
   const [bypassPermissions, setBypassPermissions] = useState(profile?.bypassPermissions ?? false);
   const [askMode, setAskMode] = useState<AskMode>(profile?.askMode ?? "wait");
+  const [color, setColor] = useState<Pastel | null>(profile?.color ?? null);
   const [savedOnce, setSavedOnce] = useState(false);
   const typingAidAttributes = useTypingAidAttributes();
   const { save, saving } = useSaveProfile((profileId) => {
@@ -125,7 +128,8 @@ function ProfileEditor({
     prelaunch === profile.prelaunch &&
     mode === (profile.mode ?? AGENTS_OWN_MODE) &&
     bypassPermissions === profile.bypassPermissions &&
-    askMode === profile.askMode;
+    askMode === profile.askMode &&
+    color === profile.color;
 
   const deleteProfile = () => profile && connection.send({ type: "profile.delete", profileId: profile.id });
 
@@ -134,7 +138,7 @@ function ProfileEditor({
       className="profile-editor"
       onSubmit={(event) => {
         event.preventDefault();
-        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, bypassPermissions, askMode });
+        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, bypassPermissions, askMode, color });
       }}
     >
       <label>
@@ -162,6 +166,9 @@ function ProfileEditor({
           ))}
         </select>
       </label>
+      <div className="field-label">Colour</div>
+      <ColorSwatches label="Profile colour" chosen={color} focusChosen={false} onChoose={setColor} />
+      <div className="hint">A dot in this colour goes before the profile's name wherever it shows, and its conversations get an edge of it in the sidebar.</div>
       <label>
         <span>Mode</span>
         <select aria-label="Profile mode" value={mode} onChange={(event) => setMode(event.target.value)}>
@@ -301,6 +308,7 @@ export function ProfilesDialog({
           <ul className="profile-list">
             {profiles.map((profile) => (
               <li key={profile.id} className={profile.id === selectedId ? "selected" : ""} onClick={() => setSelectedId(profile.id)}>
+                <ProfileDot profile={profile} />
                 {profile.name}
                 <span className="profile-agent">{harnessLabels[profile.harness]}</span>
               </li>

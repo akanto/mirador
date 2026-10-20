@@ -1,4 +1,4 @@
-import { askModeLabels, harnessIds, harnessLabels, type HarnessId, type Launch, type Profile, type Workspace } from "../shared/model.ts";
+import { askModeLabels, harnessIds, harnessLabels, isPastel, type HarnessId, type Launch, type Profile, type Workspace } from "../shared/model.ts";
 import { parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import type { ConversationService } from "./conversations.ts";
@@ -36,12 +36,13 @@ export function giveEveryWorkspaceAProfile(store: Store): Workspace[] {
     });
 }
 
-/** A new workspace starts its conversations as the workspace added last does, else on the first profile; with none yet, on none. */
-export function defaultLaunchForNewWorkspace(store: Store): Launch {
-  const profiles = store.listProfiles();
-  const latest = store.listWorkspaces().toSorted((first, second) => second.createdAt - first.createdAt)[0];
-  const profile = profiles.find(({ id }) => id === latest?.defaultLaunch.profileId) ?? profiles[0];
-  return profile ? launchOn(profile) : { harness: "claude", profileId: null };
+/** A new workspace starts its conversations on the profile it was added with; with no profile yet, on none. */
+export function launchForNewWorkspace(store: Store, profileId: string | null): Launch {
+  if (store.listProfiles().length === 0) return { harness: "claude", profileId: null };
+  if (!profileId) throw new Error("Pick the profile the workspace's conversations start on.");
+  const profile = store.findProfile(profileId);
+  if (!profile) throw new Error("That profile no longer exists.");
+  return launchOn(profile);
 }
 
 /**
@@ -62,6 +63,7 @@ export function moveProfilelessOntoProfiles(store: Store, installed: HarnessId[]
         mode: null,
         bypassPermissions: false,
         askMode: "wait",
+        color: null,
         createdAt: Date.now(),
       }),
     );
@@ -87,6 +89,7 @@ export class ProfileService {
     if (draft.id && !existing) throw new Error("That profile no longer exists.");
     if (!harnessIds.includes(draft.harness)) throw new Error(`Unknown agent ${draft.harness}.`);
     if (!(draft.askMode in askModeLabels)) throw new Error(`Unknown Questions setting ${draft.askMode}.`);
+    if (draft.color !== null && !isPastel(draft.color)) throw new Error(`Unknown colour ${draft.color}.`);
     const profile: Profile = {
       id: existing?.id ?? crypto.randomUUID(),
       name,
@@ -96,6 +99,7 @@ export class ProfileService {
       mode: draft.mode || null,
       bypassPermissions: draft.bypassPermissions,
       askMode: draft.askMode,
+      color: draft.color,
       createdAt: existing?.createdAt ?? Date.now(),
     };
     this.store.saveProfile(profile);

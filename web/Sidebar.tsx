@@ -21,7 +21,8 @@ import { useDragToReorder, usePointerDrag } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
-import { pastelVariables } from "./pastels.ts";
+import { pastelVariables, profileColorVariable } from "./pastels.ts";
+import { ProfileDot } from "./ProfileDot.tsx";
 import { highlightedCompletion } from "./path-completion.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import type { AppAction, AppState, DevicesListed, Overlay } from "./state.ts";
@@ -51,19 +52,45 @@ function useDirectoryCompletions(prefix: string) {
   return completions;
 }
 
-function AddWorkspace({ onDone }: { onDone: () => void }) {
+/**
+ * With more than one profile, Enter on the folder asks which one its conversations start on, with none picked: adding in a
+ * hurry, Enter twice still adds nothing. With one profile, it takes that one.
+ */
+function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () => void }) {
   const [path, setPath] = useState("~/");
+  const [pickingProfile, setPickingProfile] = useState(false);
+  const [highlightedProfile, setHighlightedProfile] = useState<number | null>(null);
   const typingAidAttributes = useTypingAidAttributes();
   const completions = useDirectoryCompletions(path);
   const [picked, setPicked] = useState<number | null>(null);
   useEffect(() => setPicked(null), [completions]);
   const highlighted = highlightedCompletion(path, completions, picked);
 
-  const submit = () => {
-    connection.send({ type: "workspace.create", path });
+  const add = (profileId: string | null) => {
+    connection.send({ type: "workspace.create", path, profileId });
     onDone();
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const submit = () => (profiles.length > 1 ? setPickingProfile(true) : add(profiles[0]?.id ?? null));
+  const backToFolder = () => {
+    setPickingProfile(false);
+    setHighlightedProfile(null);
+  };
+  const onProfileKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const profile = highlightedProfile === null ? undefined : profiles[highlightedProfile];
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedProfile(highlightedProfile === null ? 0 : Math.min(highlightedProfile + 1, profiles.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedProfile(Math.max((highlightedProfile ?? profiles.length) - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (profile) add(profile.id);
+    } else if (event.key === "Escape") {
+      backToFolder();
+    }
+  };
+  const onFolderKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const completion = completions[highlighted ?? 0];
     if (event.key === "Tab" && completion) {
       event.preventDefault();
@@ -91,17 +118,43 @@ function AddWorkspace({ onDone }: { onDone: () => void }) {
         value={path}
         spellCheck={false}
         aria-label="Workspace directory"
-        onChange={(event) => setPath(event.target.value)}
-        onKeyDown={onKeyDown}
+        onChange={(event) => {
+          setPath(event.target.value);
+          backToFolder();
+        }}
+        onKeyDown={pickingProfile ? onProfileKeyDown : onFolderKeyDown}
       />
-      <div className="hint">{highlighted === null ? "Enter adds, Tab completes, Esc cancels" : "Enter or Tab takes the highlighted folder, Esc cancels"}</div>
-      <ul className="completions">
-        {completions.map((completion, index) => (
-          <li key={completion} className={index === highlighted ? "highlighted" : ""} onMouseDown={() => setPath(completion)}>
-            {completion}
-          </li>
-        ))}
-      </ul>
+      {pickingProfile ? (
+        <>
+          <div className="hint">Pick the profile its conversations start on: ↑↓ and Enter, or click. Esc goes back to the folder.</div>
+          <ul className="completions" role="listbox" aria-label="Profile of the new workspace">
+            {profiles.map((profile, index) => (
+              <li
+                key={profile.id}
+                role="option"
+                aria-selected={index === highlightedProfile}
+                className={index === highlightedProfile ? "highlighted" : ""}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => add(profile.id)}
+              >
+                <ProfileDot profile={profile} />
+                {launchLabel({ harness: profile.harness, profileId: profile.id }, profiles)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <>
+          <div className="hint">{highlighted === null ? "Enter adds, Tab completes, Esc cancels" : "Enter or Tab takes the highlighted folder, Esc cancels"}</div>
+          <ul className="completions">
+            {completions.map((completion, index) => (
+              <li key={completion} className={index === highlighted ? "highlighted" : ""} onMouseDown={() => setPath(completion)}>
+                {completion}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }
@@ -205,6 +258,7 @@ function LaunchPicker({ workspace, profiles, dispatch }: { workspace: Workspace;
   };
   return (
     <span className="agent-chip">
+      <ProfileDot profile={profiles.find(({ id }) => id === workspace.defaultLaunch.profileId)} />
       <span className="agent-chip-label">{launchLabel(workspace.defaultLaunch, profiles)}</span>
       <select aria-label="Agent" data-hint={hints.launch} value={workspace.defaultLaunch.profileId ?? ""} onChange={(event) => choose(event.target.value)}>
         {profiles.map(({ id, harness }) => (
@@ -273,6 +327,10 @@ function WorkspaceSection({
   const deleteWorkspace = () => connection.send({ type: "workspace.delete", workspaceId: workspace.id });
   const deleteConversation = (conversation: Conversation) => connection.send({ type: "conversation.delete", conversationId: conversation.id });
   const conversationList = useRef<HTMLUListElement>(null);
+  const profileEdgeOf = ({ profileId }: Conversation) => {
+    const color = profiles.find(({ id }) => id === profileId)?.color;
+    return color ? { "data-profile-color": color, style: profileColorVariable(color) } : {};
+  };
   const conversationDrag = useDragToReorder((conversationId, beforeConversationId) =>
     connection.send({ type: "conversation.move", conversationId, beforeConversationId }),
   );
@@ -324,6 +382,7 @@ function WorkspaceSection({
               key={conversation.id}
               data-reorder-id={conversation.id}
               data-waiting-tone={conversation.waitingFor ? waitingTones[conversation.waitingFor] : undefined}
+              {...profileEdgeOf(conversation)}
               className={[...rowClasses(conversation, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
               onPointerDown={(event) => conversationDrag.startDrag(conversation.id, conversationList.current, event)}
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
@@ -615,7 +674,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
             </button>
           </span>
         </header>
-        {adding && <AddWorkspace onDone={() => setAdding(false)} />}
+        {adding && <AddWorkspace profiles={state.profiles} onDone={() => setAdding(false)} />}
         {state.workspaces.length === 0 && !adding && (
           <button className="link" onClick={() => setAdding(true)}>
             + Add a project directory

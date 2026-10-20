@@ -57,12 +57,26 @@ export async function reloadFromRestartedHost(page: Page) {
   }
 }
 
-export async function addWorkspace(page: Page, directory: string) {
+export async function addWorkspace(page: Page, directory: string, profile?: string) {
   await page.getByRole("button", { name: "+ Add a project directory" }).click();
+  await enterWorkspaceDirectory(page, directory, profile);
+}
+
+async function enterWorkspaceDirectory(page: Page, directory: string, profile: string | undefined) {
   const input = page.getByLabel("Workspace directory");
   await input.fill(directory);
   await input.press("Enter");
+  await pickProfileIfAsked(page, directory, profile);
   await expect(workspaceCard(page, directory)).toBeVisible();
+}
+
+/** With more than one profile, Enter on the folder asks which one its conversations start on: the one named, else the first. */
+export async function pickProfileIfAsked(page: Page, directory: string, profile?: string) {
+  const profiles = page.getByRole("listbox", { name: "Profile of the new workspace" });
+  await expect(workspaceCard(page, directory).or(profiles).first()).toBeVisible();
+  if (await profiles.isVisible()) {
+    await (profile ? profiles.getByRole("option", { name: profile, exact: true }) : profiles.getByRole("option").first()).click();
+  }
 }
 
 /** A Windows path's backslashes would start CSS escapes: in "C:\Users\…\AppData", \A is a line feed. */
@@ -72,12 +86,9 @@ export const workspaceCard = (scope: Page | FrameLocator, directory: string) =>
   scope.locator(".workspace", { has: scope.locator(`.workspace-heading[title=${cssString(directory)}]`) });
 
 /** With the sidebar's button, which shows whether or not there are workspaces already. */
-export async function addWorkspaceFromSidebar(page: Page, directory: string) {
+export async function addWorkspaceFromSidebar(page: Page, directory: string, profile?: string) {
   await page.getByRole("button", { name: "Add workspace" }).click();
-  const input = page.getByLabel("Workspace directory");
-  await input.fill(directory);
-  await input.press("Enter");
-  await expect(workspaceCard(page, directory)).toBeVisible();
+  await enterWorkspaceDirectory(page, directory, profile);
 }
 
 /** Settings opens at Appearance; another page is chosen from its list on the left. */

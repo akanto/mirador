@@ -751,6 +751,10 @@ body.resizing iframe {
   background: var(--rail-hover);
 }
 
+.workspace li[data-profile-color] {
+  box-shadow: inset 3px 0 0 var(--profile-color);
+}
+
 .workspace li.selected {
   background: var(--rail-selected);
   color: var(--text);
@@ -858,6 +862,25 @@ body.resizing iframe {
 .agent-chip::after {
   content: "▾";
   flex: none;
+}
+
+.profile-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--profile-color);
+  vertical-align: middle;
+}
+
+.agent-chip .profile-dot {
+  margin-right: 0;
+}
+
+.config .profile-dot {
+  margin: 0 0 0 4px;
 }
 
 .agent-chip-label {
@@ -1189,6 +1212,10 @@ button.icon.group-fold {
   gap: 4px;
   font-weight: 600;
   margin-top: 8px;
+}
+
+.profile-editor .color-swatches {
+  grid-template-columns: repeat(9, 24px);
 }
 
 .profile-editor label.checkbox {

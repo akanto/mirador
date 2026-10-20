@@ -114,6 +114,7 @@ const addedColumns = [
   { table: "profiles", column: "bypass_permissions", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "profiles", column: "ask_mode", definition: "TEXT NOT NULL DEFAULT 'wait'" },
   { table: "workspaces", column: "color", definition: "TEXT" },
+  { table: "profiles", column: "color", definition: "TEXT" },
   { table: "workspaces", column: "group_id", definition: "TEXT" },
   { table: "conversations", column: "rewound_through_seq", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "conversations", column: "context_usage", definition: "TEXT" },
@@ -143,6 +144,7 @@ type ProfileRow = {
   mode: string | null;
   bypass_permissions: number;
   ask_mode: AskMode;
+  color: string | null;
   created_at: number;
 };
 
@@ -189,6 +191,7 @@ const toProfile = (row: ProfileRow): Profile => ({
   mode: row.mode,
   bypassPermissions: row.bypass_permissions === 1,
   askMode: row.ask_mode,
+  color: isPastel(row.color) ? row.color : null,
   createdAt: row.created_at,
 });
 
@@ -490,9 +493,9 @@ export class Store {
   saveProfile(profile: Profile) {
     this.db
       .query(
-        `INSERT INTO profiles (id, name, harness, environment, prelaunch, mode, bypass_permissions, ask_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO profiles (id, name, harness, environment, prelaunch, mode, bypass_permissions, ask_mode, color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, environment = excluded.environment, prelaunch = excluded.prelaunch,
-           mode = excluded.mode, bypass_permissions = excluded.bypass_permissions, ask_mode = excluded.ask_mode`,
+           mode = excluded.mode, bypass_permissions = excluded.bypass_permissions, ask_mode = excluded.ask_mode, color = excluded.color`,
       )
       .run(
         profile.id,
@@ -503,6 +506,7 @@ export class Store {
         profile.mode,
         Number(profile.bypassPermissions),
         profile.askMode,
+        profile.color,
         profile.createdAt,
       );
   }

@@ -39,7 +39,7 @@ function conversationWithSlowStartingAgent() {
   mkdirSync(workspacePath);
   const store = new Store(":memory:");
   const prelaunch = `touch '${prelaunchStarted}'; while [ ! -e '${prelaunchReleased}' ]; do sleep 0.05; done; exit 3`;
-  store.saveProfile({ id: "p1", name: "slow start", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch, mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
+  store.saveProfile({ id: "p1", name: "slow start", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch, mode: null, bypassPermissions: false, askMode: "wait", color: null, createdAt: 1 });
   store.insertWorkspace({ id: "w1", name: "project", path: workspacePath, defaultLaunch: { harness: "claude", profileId: "p1" }, createdAt: 1 });
   store.insertConversation({
     id: "c1",
@@ -94,7 +94,7 @@ function hostWithEvents(events: ConversationEvent[], store = new Store(":memory:
   const scratch = mkdtempSync(join(tmpdir(), "mirador-restart-resume-"));
   const workspacePath = join(scratch, "project");
   mkdirSync(workspacePath);
-  store.saveProfile({ id: "p1", name: "failing", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
+  store.saveProfile({ id: "p1", name: "failing", harness: "claude", environment: "CLAUDE_CODE_EXECUTABLE=/usr/bin/false", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", color: null, createdAt: 1 });
   store.insertWorkspace({ id: "w1", name: "project", path: workspacePath, defaultLaunch: { harness: "claude", profileId: "p1" }, createdAt: 1 });
   store.insertConversation({
     id: "c1",

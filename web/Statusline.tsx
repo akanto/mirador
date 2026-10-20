@@ -5,6 +5,7 @@ import { parseAnsi, plainTextOf, type AnsiRun } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { readableOn } from "./readable-color.ts";
+import { ProfileDot } from "./ProfileDot.tsx";
 import { drawsShapesOnly, statuslineLooks, type StatuslineLook } from "./terminal-look.ts";
 import { terminalFontList, useTerminalSettings } from "./terminal-settings.ts";
 import { useShownTheme } from "./theme.ts";
@@ -213,6 +214,7 @@ function BuiltInStatusline({
       )}
       {profile && (
         <span className="chip" data-hint={hints.profileChip}>
+          <ProfileDot profile={profile} />
           {profile.name}
         </span>
       )}

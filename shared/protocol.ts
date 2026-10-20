@@ -65,10 +65,11 @@ export const PROFILE_LAUNCH_PARAMETER = "profile-launch";
 /** A desktop app built from a checkout opens /notifications with this query parameter naming the code it was built from. */
 export const DESKTOP_APP_CODE_PARAMETER = "desktop-app-code";
 
-export type ProfileDraft = Pick<Profile, "name" | "harness" | "environment" | "prelaunch" | "mode" | "bypassPermissions" | "askMode"> & { id?: string };
+export type ProfileDraft = Pick<Profile, "name" | "harness" | "environment" | "prelaunch" | "mode" | "bypassPermissions" | "askMode" | "color"> & { id?: string };
 
 export type ClientMessage =
-  | { type: "workspace.create"; path: string }
+  /** Its conversations start on the profile; null only while there is no profile yet. */
+  | { type: "workspace.create"; path: string; profileId: string | null }
   | { type: "workspace.delete"; workspaceId: string }
   | { type: "workspace.set-default-launch"; workspaceId: string; launch: Launch }
   /**

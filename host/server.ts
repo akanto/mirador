@@ -50,7 +50,7 @@ import { MAX_DROPPED_FILE_BYTES, type DroppedFiles } from "./dropped-files.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.ts";
 import { completeDirectories, existingDirectory } from "./paths.ts";
-import { defaultLaunchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
+import { launchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
 import type { DesktopAppCheck } from "./desktop-app-check.ts";
 import type { NewerVersionWatcher } from "./newer-version.ts";
 import type { HostRestart } from "./restart.ts";
@@ -665,7 +665,7 @@ export function startServer(services: HostServices) {
     if (workspace) hub.broadcast({ type: "workspace.upserted", workspace });
   }
 
-  async function createWorkspace(path: string): Promise<Workspace> {
+  async function createWorkspace(path: string, profileId: string | null): Promise<Workspace> {
     const directory = await existingDirectory(path);
     const existing = store.findWorkspaceByPath(directory);
     if (existing) return existing;
@@ -673,7 +673,7 @@ export function startServer(services: HostServices) {
       id: crypto.randomUUID(),
       name: basename(directory) || directory,
       path: directory,
-      defaultLaunch: defaultLaunchForNewWorkspace(store),
+      defaultLaunch: launchForNewWorkspace(store, profileId),
       createdAt: Date.now(),
     });
   }
@@ -684,7 +684,7 @@ export function startServer(services: HostServices) {
     const reply = (response: ServerMessage) => hub.send(socket, response);
     switch (message.type) {
       case "workspace.create":
-        return hub.broadcast({ type: "workspace.upserted", workspace: await createWorkspace(message.path) });
+        return hub.broadcast({ type: "workspace.upserted", workspace: await createWorkspace(message.path, message.profileId) });
       case "workspace.delete":
         conversations
           .list()

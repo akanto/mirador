@@ -10,3 +10,8 @@ export function pastelVariables(color: Pastel) {
   const { tint, stripe } = pastelShades(color);
   return { "--pastel-tint": lightDark(tint), "--pastel-stripe": lightDark(stripe) } as CSSProperties;
 }
+
+/** A profile's colour, under a name of its own so it holds inside a workspace card coloured by the pastel variables. */
+export function profileColorVariable(color: Pastel) {
+  return { "--profile-color": lightDark(pastelShades(color).stripe) } as CSSProperties;
+}

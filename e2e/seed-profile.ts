@@ -17,6 +17,7 @@ if (store.listProfiles().length === 0) {
     mode: null,
     bypassPermissions: false,
     askMode: "wait",
+    color: null,
     createdAt: Date.now(),
   });
 }

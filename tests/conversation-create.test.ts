@@ -12,7 +12,7 @@ const scratch = mkdtempSync(join(tmpdir(), "conversation-create-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 const profileOn = (id: string, harness: HarnessId) =>
-  ({ id, name: id, harness, environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 }) as const;
+  ({ id, name: id, harness, environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", color: null, createdAt: 1 }) as const;
 
 function hostWithAWorkspaceOnClaude() {
   const store = new Store(":memory:");

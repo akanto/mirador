@@ -163,6 +163,8 @@ export interface Profile {
   bypassPermissions: boolean;
   /** Questions, taken like the mode. */
   askMode: AskMode;
+  /** Shown as a dot wherever the profile is named, so a workspace on the wrong one stands out. */
+  color: Pastel | null;
   createdAt: number;
 }
 

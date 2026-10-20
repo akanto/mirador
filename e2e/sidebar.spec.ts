@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, createProfile, pickProfileIfAsked, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -49,6 +49,7 @@ test("a workspace added while the page reconnects to the host is added once it h
   const input = page.getByLabel("Workspace directory");
   await input.fill(directory);
   await input.press("Enter");
+  await pickProfileIfAsked(page, directory);
   await host.start();
   await expect(workspaceCard(page, directory)).toBeVisible({ timeout: 30_000 });
 });
@@ -77,5 +78,6 @@ test("Enter takes the highlighted folder while its name is being typed, and adds
   await expect(input).toHaveValue(`${parent}/alpha-two/`);
   await expect(page.locator(".add-workspace .hint")).toHaveText("Enter adds, Tab completes, Esc cancels");
   await input.press("Enter");
+  await pickProfileIfAsked(page, join(parent, "alpha-two"));
   await expect(workspaceCard(page, join(parent, "alpha-two"))).toBeVisible();
 });

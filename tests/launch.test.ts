@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Conversation } from "../shared/model.ts";
-import { defaultLaunchForNewWorkspace, giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, profileToLaunch } from "../host/profiles.ts";
+import { giveEveryWorkspaceAProfile, launchForNewWorkspace, moveProfilelessOntoProfiles, profileToLaunch } from "../host/profiles.ts";
 import { Store } from "../host/store.ts";
 
 describe("moveProfilelessOntoProfiles", () => {
   function storeFromBeforeProfilesWereRequired() {
     const store = new Store(":memory:");
-    store.saveProfile({ id: "p1", name: "work", harness: "claude", environment: "ANTHROPIC_MODEL=opus", prelaunch: "", mode: "plan", bypassPermissions: true, askMode: "next-message", createdAt: 1 });
+    store.saveProfile({ id: "p1", name: "work", harness: "claude", environment: "ANTHROPIC_MODEL=opus", prelaunch: "", mode: "plan", bypassPermissions: true, askMode: "next-message", color: null, createdAt: 1 });
     store.insertWorkspace({ id: "w1", name: "project", path: "/tmp/project", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
     store.insertWorkspace({ id: "w2", name: "other", path: "/tmp/other", defaultLaunch: { harness: "claude", profileId: "p1" }, createdAt: 2 });
     const conversation = (id: string, change: Partial<Conversation>): Conversation => ({
@@ -74,7 +74,7 @@ describe("moveProfilelessOntoProfiles", () => {
 
 describe("profileToLaunch", () => {
   const store = new Store(":memory:");
-  store.saveProfile({ id: "p1", name: "home llama", harness: "opencode", environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt: 1 });
+  store.saveProfile({ id: "p1", name: "home llama", harness: "opencode", environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", color: null, createdAt: 1 });
 
   test("gives the profile when it is on its own agent", () => {
     expect(profileToLaunch(store, { harness: "opencode", profileId: "p1" }).name).toBe("home llama");
@@ -90,7 +90,7 @@ describe("profileToLaunch", () => {
 
 describe("workspace defaults", () => {
   const profile = (id: string, name: string, harness: "claude" | "opencode", createdAt: number) =>
-    ({ id, name, harness, environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", createdAt }) as const;
+    ({ id, name, harness, environment: "", prelaunch: "", mode: null, bypassPermissions: false, askMode: "wait", color: null, createdAt }) as const;
   const workspace = (id: string, profileId: string | null, harness: "claude" | "opencode", createdAt: number) => ({
     id,
     name: id,
@@ -102,7 +102,7 @@ describe("workspace defaults", () => {
   test("with no profile yet, a workspace starts on none, and the first profile goes to every workspace", () => {
     const store = new Store(":memory:");
     store.insertWorkspace(workspace("w1", null, "claude", 1));
-    expect(defaultLaunchForNewWorkspace(store)).toEqual({ harness: "claude", profileId: null });
+    expect(launchForNewWorkspace(store, null)).toEqual({ harness: "claude", profileId: null });
     expect(giveEveryWorkspaceAProfile(store)).toEqual([]);
 
     store.saveProfile(profile("p1", "Claude Code", "claude", 1));
@@ -126,12 +126,14 @@ describe("workspace defaults", () => {
     expect(store.findWorkspace("on-opencode")!.defaultLaunch).toEqual({ harness: "claude", profileId: "a" });
   });
 
-  test("a new workspace starts as the one added last does", () => {
+  test("once there is a profile, a new workspace starts on the one it was added with, and needs one", () => {
     const store = new Store(":memory:");
     [profile("a", "alpha", "claude", 1), profile("o", "omega", "opencode", 2)].forEach((each) => store.saveProfile(each));
-    store.insertWorkspace(workspace("first", "a", "claude", 1));
-    store.insertWorkspace(workspace("latest", "o", "opencode", 2));
+    store.insertWorkspace(workspace("latest", "a", "claude", 2));
 
-    expect(defaultLaunchForNewWorkspace(store)).toEqual({ harness: "opencode", profileId: "o" });
+    expect(launchForNewWorkspace(store, "o")).toEqual({ harness: "opencode", profileId: "o" });
+    expect(() => launchForNewWorkspace(store, null)).toThrow("Pick the profile the workspace's conversations start on.");
+    expect(() => launchForNewWorkspace(store, undefined as never)).toThrow("Pick the profile the workspace's conversations start on.");
+    expect(() => launchForNewWorkspace(store, "deleted")).toThrow("That profile no longer exists.");
   });
 });

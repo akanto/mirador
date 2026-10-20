@@ -1,8 +1,18 @@
 import { pastelLabels, type Pastel } from "../shared/model.ts";
 import { pastels, pastelVariables } from "./pastels.ts";
 
-/** The pastels a workspace or a machine can take, and No colour; the one chosen takes the focus. */
-export function ColorSwatches({ label, chosen, onChoose }: { label: string; chosen: Pastel | null; onChoose: (color: Pastel | null) => void }) {
+/** The pastels a workspace, a machine or a profile can take, and No colour; the one chosen takes the focus unless the swatches sit in a form. */
+export function ColorSwatches({
+  label,
+  chosen,
+  onChoose,
+  focusChosen = true,
+}: {
+  label: string;
+  chosen: Pastel | null;
+  onChoose: (color: Pastel | null) => void;
+  focusChosen?: boolean;
+}) {
   return (
     <div className="color-swatches" role="radiogroup" aria-label={label}>
       {[null, ...pastels].map((color) => (
@@ -14,7 +24,7 @@ export function ColorSwatches({ label, chosen, onChoose }: { label: string; chos
           aria-label={color ? pastelLabels[color] : "No colour"}
           className={color ? "swatch" : "swatch no-color"}
           style={color ? pastelVariables(color) : undefined}
-          autoFocus={chosen === color}
+          autoFocus={focusChosen && chosen === color}
           onClick={() => onChoose(color)}
         />
       ))}

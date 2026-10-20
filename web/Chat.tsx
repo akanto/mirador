@@ -85,6 +85,7 @@ import {
   type TimelineBlock,
   type ToolBlock,
 } from "../shared/timeline.ts";
+import { ProfileDot } from "./ProfileDot.tsx";
 import { formatClockTime, formatDuration, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
@@ -149,6 +150,7 @@ function ProfilePicker({ conversation, profiles, begun }: { conversation: Conver
   return (
     <label className="config" data-hint={hints.profile}>
       <span>Profile</span>
+      <ProfileDot profile={profiles.find(({ id }) => id === conversation.profileId)} />
       <select
         aria-label="Profile"
         value={hasItsProfile ? conversation.profileId! : ""}
