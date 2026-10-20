@@ -14,9 +14,9 @@ export class OpenToolCalls {
     return this.titles.size;
   }
 
-  /** The open calls the agent made itself, leaving out those of its subagents. */
-  get mainAgentSize() {
-    return [...this.titles.keys()].filter((toolCallId) => !this.subagentCalls.has(toolCallId)).length;
+  /** Of the open calls the agent made itself, leaving out those of its subagents, the one started first. */
+  oldestOfMainAgent() {
+    return [...this.titles.keys()].find((toolCallId) => !this.subagentCalls.has(toolCallId)) ?? null;
   }
 
   clear() {

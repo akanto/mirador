@@ -49,17 +49,28 @@ describe("OpenToolCalls", () => {
     open.follow(started("launch", "Review the diff"));
     open.follow(started("subagent-run", "sleep 45"), true);
     open.follow(updated("subagent-run", { status: "in_progress" }));
-    expect([open.size, open.mainAgentSize]).toEqual([2, 1]);
+    expect([open.size, open.oldestOfMainAgent()]).toEqual([2, "launch"]);
     open.follow(updated("launch", { status: "completed" }));
-    expect([open.size, open.mainAgentSize]).toEqual([1, 0]);
+    expect([open.size, open.oldestOfMainAgent()]).toEqual([1, null]);
     open.follow(updated("subagent-run", { status: "completed" }));
     open.follow(started("subagent-run", "sleep 45 again"));
-    expect([open.size, open.mainAgentSize]).toEqual([1, 1]);
+    expect([open.size, open.oldestOfMainAgent()]).toEqual([1, "subagent-run"]);
     open.clear();
     open.follow(started("subagent-read", "Read a.ts"), true);
     open.clear();
     open.follow(started("subagent-read", "Read a.ts"));
-    expect(open.mainAgentSize).toBe(1);
+    expect(open.oldestOfMainAgent()).toBe("subagent-read");
+  });
+
+  test("of the agent's own open calls, names the one started first, also once a later one has started or it has updated", () => {
+    const open = new OpenToolCalls();
+    open.follow(started("left-open", "Bash"));
+    open.follow(started("next", "Read a.ts"));
+    open.follow(updated("left-open", { title: "bun test", kind: "execute" }));
+    open.follow(started("next", "Read b.ts"));
+    expect(open.oldestOfMainAgent()).toBe("left-open");
+    open.follow(updated("left-open", { status: "failed" }));
+    expect(open.oldestOfMainAgent()).toBe("next");
   });
 });
 

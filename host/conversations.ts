@@ -147,6 +147,8 @@ interface TurnInProgress {
   lastReplyMessageId: string | null;
   /** The turn waits on the user, so no reply of its own can still be on its way. */
   awaitedUser: boolean;
+  /** What kept queued messages out of the turn when the host last tried to steer them in, as the host log says it. */
+  queuedMessagesKeptOutBy?: string | null;
 }
 
 /**
@@ -1536,10 +1538,17 @@ export class ConversationService {
     const runtime = this.runtime(conversationId);
     const { harness } = runtime;
     const sessionId = this.get(conversationId).acpSessionId;
-    if (!harness || !sessionId || !runtime.running || runtime.openToolCalls.mainAgentSize > 0 || this.holdsQueue(runtime) || !(await harness.canSteer())) return;
+    if (!runtime.running) return;
+    const keptOutBy = whatKeepsQueuedMessagesOut({
+      hasSession: harness !== undefined && sessionId !== null,
+      ownToolCall: this.oldestOwnToolCall(runtime),
+      queueHold: this.whatHoldsQueue(runtime),
+      agentSteers: (await harness?.canSteer()) ?? false,
+    });
     const messages = queuedBeforeClear(runtime.queuedMessages).filter((message) => !message.afterTurn);
+    this.logWhatKeepsQueuedMessagesOut(conversationId, runtime, messages.length > 0 ? keptOutBy : null);
     const [first, ...rest] = messages;
-    if (!first) return;
+    if (keptOutBy !== null || !harness || !sessionId || !first) return;
     this.setQueue(conversationId, runtime, runtime.queuedMessages.filter((message) => !messages.includes(message)));
     this.publish(this.get(conversationId));
     const notes = this.notesForAgent(conversationId);
@@ -1563,6 +1572,18 @@ export class ConversationService {
     if (turn && !turn.ended) return void turn.steered.push(steered);
     await this.returnUnansweredSteers(conversationId, runtime, [steered]);
     this.sendNextQueuedMessage(conversationId);
+  }
+
+  private oldestOwnToolCall({ openToolCalls }: Runtime) {
+    const toolCallId = openToolCalls.oldestOfMainAgent();
+    return toolCallId === null ? null : { toolCallId, kind: openToolCalls.kindOf(toolCallId) };
+  }
+
+  /** A line in the host log each time what keeps queued messages out of the running turn changes, so that a stall shows its cause. */
+  private logWhatKeepsQueuedMessagesOut(conversationId: string, { turn }: Runtime, keptOutBy: string | null) {
+    if (!turn || turn.queuedMessagesKeptOutBy === keptOutBy) return;
+    turn.queuedMessagesKeptOutBy = keptOutBy;
+    if (keptOutBy) console.log(`${new Date().toISOString()} queued messages of conversation ${conversationId} wait outside its running turn: ${keptOutBy}`);
   }
 
   /**
@@ -1697,7 +1718,14 @@ export class ConversationService {
   }
 
   private holdsQueue(runtime: Runtime) {
-    return runtime.holdingQueue || this.stopping || runtime.usageLimit !== undefined;
+    return this.whatHoldsQueue(runtime) !== null;
+  }
+
+  private whatHoldsQueue(runtime: Runtime) {
+    if (runtime.holdingQueue) return "the queue waits for a profile switch or for a stopped turn to go on";
+    if (this.stopping) return "the host is stopping";
+    if (runtime.usageLimit !== undefined) return "the queue waits for the usage limit to reset";
+    return null;
   }
 
   /** Returns the failure's message. A turn Claude's usage limit stopped holds the queue until the limit resets. */
@@ -2007,6 +2035,23 @@ function turnRequestWithin(events: StoredEvent[], wholeLog: StoredEvent[]): Turn
   const [first] = messages;
   if (!first) return null;
   return { text: messages.map(({ text }) => text).join("\n\n"), firstText: first.text, imageIds: messages.flatMap(({ imageIds = [] }) => imageIds) };
+}
+
+interface SteeringState {
+  hasSession: boolean;
+  /** An open tool call of the agent's own: its id, and its kind when the agent said. */
+  ownToolCall: { toolCallId: string; kind: acp.ToolKind | null } | null;
+  queueHold: string | null;
+  agentSteers: boolean;
+}
+
+/** Why messages queued while a turn runs cannot join it now, or null when they can. Names a tool call by its id and kind, as its title can hold a secret. */
+export function whatKeepsQueuedMessagesOut({ hasSession, ownToolCall, queueHold, agentSteers }: SteeringState): string | null {
+  if (!hasSession) return "the conversation has no agent session";
+  if (ownToolCall) return `the agent's own tool call ${ownToolCall.toolCallId}${ownToolCall.kind ? ` (${ownToolCall.kind})` : ""} is still open`;
+  if (queueHold) return queueHold;
+  if (!agentSteers) return "its agent cannot take messages into a running turn";
+  return null;
 }
 
 /** Messages queued after a /clear wait for it, rather than join the turn in the session it ends. */

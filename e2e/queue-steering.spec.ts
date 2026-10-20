@@ -5,6 +5,7 @@ import { TestHost } from "./test-host.ts";
 const host = new TestHost();
 const QUEUED = "Also, which colour fills [Image #1] - answer with the colour's name.";
 const AFTER_TURN = "Reply with just the word LATER.";
+const keptOutLines = () => host.log.split("\n").filter((line) => line.includes("wait outside its running turn"));
 
 test.describe.configure({ mode: "serial" });
 
@@ -34,6 +35,9 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
   await composer.press("Enter");
   await expect(page.locator(".queue .queued-text")).toHaveText([QUEUED]);
   await expect(page.locator(".queued-delivery")).toHaveText(["joins the turn"]);
+  await test.step("the host log says once what keeps it out of the turn, naming the tool call by its id and kind rather than its command", async () => {
+    await expect.poll(keptOutLines).toEqual([expect.stringMatching(/ wait outside its running turn: the agent's own tool call \S+ \(execute\) is still open$/)]);
+  });
 
   await test.step("with Enter set to wait for the turn, Enter and the buttons swap roles", async () => {
     const settings = await openSettings(page, "Conversations");
@@ -63,6 +67,7 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
   await expect(lastAgentMessage(page)).toContainText("LATER");
   await expect(userMessages.filter({ hasText: QUEUED }).locator(".message-images img")).toHaveJSProperty("naturalWidth", 64);
   expect(eventsInOrder).toEqual([expect.stringContaining("sleep 30"), QUEUED, "turn-end", AFTER_TURN, "turn-end"]);
+  expect(keptOutLines(), "the message waiting for the turn to end is no stall to log").toHaveLength(1);
 });
 
 test("a message sent while Claude Code writes, with no tool running, joins the turn at once, and so does a waiting one switched to join it", async ({ page }) => {
