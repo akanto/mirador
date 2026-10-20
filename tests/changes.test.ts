@@ -185,6 +185,26 @@ test("this turn lists what differs from the turn's start, marks the agent's file
   ]);
 });
 
+test("this turn lists the files commits since the turn began changed apart, the agent's own commit still marked, and their diffs from the turn's start", async () => {
+  await startTurn();
+  await write("pulled.txt", "from a pull\n");
+  await git(projectDir, ["add", "pulled.txt"]);
+  await git(projectDir, ["commit", "-qm", "pulled"]);
+  await write("kept.txt", "one\nTWO\nthree\n");
+  agentEdits("t1", join(projectDir, "kept.txt"), "two\n", "TWO\n");
+  await git(projectDir, ["commit", "-qam", "the agent's"]);
+  await write("doomed.txt", "edited since\n");
+
+  const list = await changes.list("c1", "turn");
+  expect(list.project).toEqual([{ path: "doomed.txt", status: "modified", added: 1, removed: 1, byAgent: false }]);
+  expect(list.committed).toEqual([
+    { path: "kept.txt", status: "modified", added: 1, removed: 1, byAgent: true },
+    { path: "pulled.txt", status: "added", added: 1, removed: 0, byAgent: false },
+  ]);
+  expect((await changes.diff("c1", "turn", "kept.txt")).source).toBe("files");
+  expect((await changes.list("c1", "uncommitted")).committed).toEqual([]);
+});
+
 test("a new turn starts with an empty list, and edits of an earlier turn stay under uncommitted", async () => {
   await startTurn();
   await write("kept.txt", "changed\n");
@@ -219,7 +239,7 @@ test("a file the agent edits in a folder is listed once, by the path git gives i
 });
 
 test("before the first turn there is nothing to list for this turn", async () => {
-  expect(await changes.list("c1", "turn")).toEqual({ scope: "turn", base: "no-turn", project: [], outside: [] });
+  expect(await changes.list("c1", "turn")).toEqual({ scope: "turn", base: "no-turn", project: [], committed: [], outside: [] });
 });
 
 test("a file's diff has the file's line numbers against the turn's start, and against HEAD for uncommitted", async () => {
@@ -684,7 +704,7 @@ test("before the first message the session scope lists only the agent's edits, s
   store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "current_mode_update", currentModeId: "default" } });
   await mkdir(join(projectDir, "build"));
   await writeFile(join(projectDir, "build", "hook.js"), "written as the session started\n");
-  expect(await changes.list("c1", "session")).toEqual({ scope: "session", base: "session", project: [], outside: [] });
+  expect(await changes.list("c1", "session")).toEqual({ scope: "session", base: "session", project: [], committed: [], outside: [] });
 
   agentEdits("replayed", join(projectDir, "kept.txt"), "two", "TWO");
   expect((await changes.list("c1", "session")).project).toEqual([{ path: "kept.txt", status: "modified", added: null, removed: null, byAgent: true }]);

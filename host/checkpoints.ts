@@ -109,16 +109,18 @@ export class Checkpoints {
 
   /**
    * The workspace's files that differ from the snapshot `commit`, staged into our index as the snapshot was, so a file
-   * .gitignore hides counts on neither side; null when the workspace is not a git repository.
+   * .gitignore hides counts on neither side, and the paths commits since the snapshot changed; null when the workspace
+   * is not a git repository.
    */
-  changesSince(workspace: Workspace, commit: string): Promise<TreeChange[] | null> {
+  changesSince(workspace: Workspace, commit: string): Promise<{ changes: TreeChange[]; committedPaths: Set<string> } | null> {
     return this.inOrder(workspace.id, async () => {
       const location = await this.locate(workspace);
       if (!location) return null;
       const keptAs = await this.keptAs(workspace, commit);
       const now = this.treeLike(keptAs, await this.ownBytesStaging.stageEverything(workspace, location));
       const diff = async (format: string) => (await this.git.mustRun(workspace, ["diff-tree", "-r", "-z", "--relative", "--no-renames", format, commit, now])).stdout;
-      return treeChangesIn(await diff("--raw"), await diff("--numstat"));
+      const changes = treeChangesIn(await diff("--raw"), await diff("--numstat"));
+      return { changes, committedPaths: (await this.committedSince(workspace, location, commit))?.paths ?? new Set<string>() };
     });
   }
 

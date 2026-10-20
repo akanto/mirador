@@ -187,7 +187,7 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
   const [selectedPath, setSelectedPath] = useState(selectedPaths.get(conversationId) ?? null);
   const loadedList = useKeptLoad(`list ${conversationId} ${scope}`, () => listChanges(conversationId, scope), reloadWhen);
   const list = loadedList && "value" in loadedList ? loadedList.value : null;
-  const files = list ? [...list.project, ...list.outside] : [];
+  const files = list ? [...list.project, ...list.committed, ...list.outside] : [];
   const selected = files.find(({ path }) => path === selectedPath) ?? null;
   const loadedDiff = useKeptLoad<FileChanges | null>(
     `diff ${conversationId} ${scope} ${selected?.path}`,
@@ -225,6 +225,7 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
       {list && (
         <>
           <FileSection title="Project" files={list.project} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
+          <FileSection title="From commits since the turn began" files={list.committed} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
           <FileSection title="Outside the project" files={list.outside} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
         </>
       )}

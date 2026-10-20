@@ -29,6 +29,8 @@ export interface ChangeList {
   scope: ChangeScope;
   base: ChangesBase;
   project: ChangedFile[];
+  /** In a turn, the project's files that commits since the turn began changed, such as a pull's or the agent's own, apart from the rest. */
+  committed: ChangedFile[];
   outside: ChangedFile[];
   /** Set when the folder held more files than were checked, to how many were: the list may lack some. */
   filesCheckedAtMost?: number;

@@ -153,19 +153,27 @@ export class Changes {
   async list(conversationId: string, scope: ChangeScope): Promise<ChangeList> {
     const workspace = this.workspaceOf(conversationId);
     const start = await this.startOf(conversationId, workspace, scope);
-    if (start.base === "no-turn") return { scope, base: start.base, project: [], outside: [] };
+    if (start.base === "no-turn") return { scope, base: start.base, project: [], committed: [], outside: [] };
     const directories = await projectDirectories(workspace);
     const edits = this.agentEdits(conversationId, workspace, start.fromSeq);
     const agentProjectFiles = new Map(edits.flatMap((edit) => (projectPathOf(edit.path, directories) === null ? [] : [[projectPathOf(edit.path, directories)!, edit] as const])));
     const outside = edits.filter((edit) => projectPathOf(edit.path, directories) === null).map((edit) => agentOnly(edit.path, edit));
-    const { changes, truncated } = await this.treeChanges(workspace, scope, start);
+    const { changes, committedPaths, truncated } = await this.treeChanges(workspace, scope, start);
     const project = changes
       ? [
           ...changes.map((change) => ({ ...change, byAgent: agentProjectFiles.has(change.path) })),
           ...(scope !== "uncommitted" ? [...agentProjectFiles].filter(([path]) => !changes.some((change) => change.path === path)).map(([path, edit]) => agentOnly(path, edit)) : []),
         ]
       : [...agentProjectFiles].map(([path, edit]) => agentOnly(path, edit));
-    return { scope, base: start.base, project: project.sort(byPath), outside: outside.sort(byPath), ...(truncated && { filesCheckedAtMost: MAX_SCANNED_FILES }) };
+    const fromCommits = ({ path }: ChangedFile) => committedPaths.has(path);
+    return {
+      scope,
+      base: start.base,
+      project: project.filter((file) => !fromCommits(file)).sort(byPath),
+      committed: project.filter(fromCommits).sort(byPath),
+      outside: outside.sort(byPath),
+      ...(truncated && { filesCheckedAtMost: MAX_SCANNED_FILES }),
+    };
   }
 
   async diff(conversationId: string, scope: ChangeScope, path: string): Promise<FileChanges> {
@@ -263,10 +271,12 @@ export class Changes {
     return filesWrittenSince(workspace.path, since, MAX_SCANNED_FILES);
   }
 
-  private async treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<{ changes: TreeChange[] | null; truncated: boolean }> {
-    if (start.since !== undefined) return this.writtenSince(workspace, scope, start.since);
-    if (!start.revision) return { changes: null, truncated: false };
-    const changes = scope === "turn" ? await this.checkpoints.changesSince(workspace, start.revision) : await uncommittedChanges(workspace.path);
-    return { changes, truncated: false };
+  private async treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<{ changes: TreeChange[] | null; committedPaths: Set<string>; truncated: boolean }> {
+    const noCommits = new Set<string>();
+    if (start.since !== undefined) return { ...(await this.writtenSince(workspace, scope, start.since)), committedPaths: noCommits };
+    if (!start.revision) return { changes: null, committedPaths: noCommits, truncated: false };
+    if (scope !== "turn") return { changes: await uncommittedChanges(workspace.path), committedPaths: noCommits, truncated: false };
+    const sinceTurnStart = await this.checkpoints.changesSince(workspace, start.revision);
+    return { changes: sinceTurnStart?.changes ?? null, committedPaths: sinceTurnStart?.committedPaths ?? noCommits, truncated: false };
   }
 }

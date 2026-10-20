@@ -363,3 +363,25 @@ test("This session lists the git-ignored files written since the conversation be
   await fileRow(page, "build/cache.txt").click();
   await expect(changes(page).locator(".changes-diff")).toContainText("Not shown: git ignores this file, so there is no earlier version to compare with.");
 });
+
+test("This turn lists the files commits since the turn began changed in a section of their own, the agent's still marked", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "changes · opencode" });
+  await startConversation(page);
+  await changes(page).getByRole("button", { name: "This turn" }).click();
+  await writeFiles(page, [{ edit: appFile, content: withLine15("committed by the agent") }]);
+  await waitForTurnToEnd(page);
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["src/app.ts"]);
+
+  writeFileSync(join(host.projectDir, "pulled.txt"), "from a pull\n");
+  git("add", "pulled.txt", "src/app.ts");
+  git("commit", "-qm", "a pull and the agent's commit");
+  writeFileSync(join(host.projectDir, "by-hand.txt"), "typed after the commits\n");
+  await changes(page).getByRole("button", { name: "Refresh" }).click();
+  await expect(section(page, "From commits since the turn began").locator(".changed-path")).toHaveText(["pulled.txt", "src/app.ts"]);
+  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
+  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt"]);
+
+  await fileRow(page, "src/app.ts").click();
+  await expect(changes(page).locator(".changes-diff")).toContainText("committed by the agent");
+});
