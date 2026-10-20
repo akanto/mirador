@@ -191,6 +191,8 @@ function WaitingCount({ conversations, hint = hints.waitingCount }: { conversati
   );
 }
 
+const profileOf = (profiles: Profile[], { profileId }: Conversation) => profiles.find(({ id }) => id === profileId);
+
 /** Every conversation waiting for you, across the workspaces; the stylesheet shows it only when chosen in Settings. */
 function WaitingList({ state, dispatch }: { state: AppState; dispatch: Dispatch<AppAction> }) {
   const waiting = waitingByUrgency(state.workspaces.flatMap((workspace) => conversationsIn(state, workspace.id)));
@@ -206,6 +208,7 @@ function WaitingList({ state, dispatch }: { state: AppState; dispatch: Dispatch<
             className={conversation.id === state.selectedConversationId ? "selected" : ""}
             onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
           >
+            <ProfileEdge profile={profileOf(state.profiles, conversation)} />
             {statusDot(conversation)}
             <span className="waiting-title">{conversation.title}</span>
             <span className="waiting-workspace">{workspaceName(conversation.workspaceId)}</span>
@@ -327,7 +330,6 @@ function WorkspaceSection({
   const deleteWorkspace = () => connection.send({ type: "workspace.delete", workspaceId: workspace.id });
   const deleteConversation = (conversation: Conversation) => connection.send({ type: "conversation.delete", conversationId: conversation.id });
   const conversationList = useRef<HTMLUListElement>(null);
-  const profileOf = ({ profileId }: Conversation) => profiles.find(({ id }) => id === profileId);
   const conversationDrag = useDragToReorder((conversationId, beforeConversationId) =>
     connection.send({ type: "conversation.move", conversationId, beforeConversationId }),
   );
@@ -384,7 +386,7 @@ function WorkspaceSection({
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
               onContextMenu={(event) => onConversationMenu(conversation, event)}
             >
-              <ProfileEdge profile={profileOf(conversation)} />
+              <ProfileEdge profile={profileOf(profiles, conversation)} />
               {statusDot(conversation)}
               <ConversationTitle conversation={conversation} startEditingOn="double-click" className="conversation-title" />
               {conversation.waitingFor && <WaitingPill waitingFor={conversation.waitingFor} />}

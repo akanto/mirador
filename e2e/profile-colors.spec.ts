@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
-import { addWorkspace, openProfiles, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, openProfiles, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -47,7 +47,7 @@ test("a profile's colour marks it wherever it is named, and a workspace added on
     await expect(card.locator(".agent-chip .profile-dot")).toHaveAttribute("data-color", "rose");
   });
 
-  await test.step("a conversation shows its profile's colour in the header, the statusline and on its row's edge", async () => {
+  await test.step("a conversation shows its profile's colour in the header, the statusline and on its row's edge, in the waiting list too", async () => {
     const conversationId = await startConversation(page);
     const row = card.locator(`li[data-reorder-id="${conversationId}"]`);
     const header = page.locator("label.config", { has: page.getByLabel("Profile", { exact: true }) });
@@ -59,6 +59,12 @@ test("a profile's colour marks it wherever it is named, and a workspace added on
     await page.getByLabel("Profile", { exact: true }).selectOption({ label: "Work" });
     await expect(row.locator(".profile-edge")).toHaveAttribute("data-color", "mint");
     await expect(header.locator(".profile-dot")).toHaveAttribute("data-color", "mint");
+
+    await (await openSettings(page)).getByRole("radiogroup", { name: "Waiting for you" }).getByRole("radio", { name: "Pills and a list on top" }).click();
+    await page.keyboard.press("Escape");
+    await row.click({ button: "right" });
+    await page.getByRole("menu").getByRole("menuitem", { name: "Mark as unread" }).click();
+    await expect(page.getByRole("region", { name: "Waiting for you" }).locator("li .profile-edge")).toHaveAttribute("data-color", "mint");
   });
 
   await test.step("with two profiles, adding a workspace asks for one with none picked, so pressing Enter again adds nothing", async () => {
