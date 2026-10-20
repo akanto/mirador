@@ -8,7 +8,6 @@ import {
   noteOfTicks,
   tickedByUser,
   unheardTicks,
-  withChecklistNote,
   type ChecklistEdit,
   type ChecklistRequest,
 } from "../host/canvas/checklist.ts";
@@ -141,8 +140,6 @@ describe("the user's ticks", () => {
     const ticks = unheardTicks(tickedByUser(tickedByUser(tickedByUser(published(), "publish", true), "announce", true), "tests", false));
     const note = noteOfTicks("Release 0.4.2", ticks);
     expect(note).toBe('On your checklist "Release 0.4.2", the user ticked "publish" (Publish the release), "announce" (Post the announcement) and unticked "tests" (Run the tests).');
-    expect(withChecklistNote({ text: note, heard: () => {} }, "Go on")).toBe(`${note}\n\nGo on`);
-    expect(withChecklistNote(null, "Go on")).toBe("Go on");
   });
 
   test("once heard, only what the agent was told counts as heard: a tick made since is still news", () => {

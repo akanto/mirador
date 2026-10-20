@@ -33,12 +33,6 @@ export interface UserTick {
   done: boolean;
 }
 
-/** What the user ticked, for the agent with their next message; once the message is sent, the agent has heard. */
-export interface ChecklistNote {
-  text: string;
-  heard(): void;
-}
-
 const CHECKLIST_NOT_SHOWN = "The checklist was not shown. Fix these and call checklist again";
 export const CHECKLIST_NOT_CHANGED = "The checklist was not changed. Fix these and call update_checklist again";
 export const CHECKLIST_NOT_CHANGED_LEAD = "The checklist was not changed";
@@ -161,7 +155,3 @@ export function describeTicks(ticks: UserTick[]) {
 }
 
 export const noteOfTicks = (title: string, ticks: UserTick[]) => `On your checklist "${title}", the user ${describeTicks(ticks)}.`;
-
-export function withChecklistNote(note: ChecklistNote | null, message: string) {
-  return note ? `${note.text}\n\n${message}` : message;
-}

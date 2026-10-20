@@ -57,7 +57,7 @@ const canvasAssetsOrigins = [
   ...(network && certificate ? certificate.names.map((name) => `https://${name}:${network.canvasPort}`) : []),
 ];
 const canvas = new CanvasService(store, hub, conversations, notifications, [...new Set(canvasAssetsOrigins)]);
-conversations.hearChecklistTicksFrom((conversationId) => canvas.checklistNote(conversationId));
+conversations.hearCanvasNotesFrom((conversationId) => canvas.notesForAgent(conversationId));
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
 const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, certificate);

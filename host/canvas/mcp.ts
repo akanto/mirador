@@ -241,7 +241,7 @@ const askQuestionShape = {
 
 function describeRender(itemId: string, render: RenderOutcome) {
   if (render === "no-viewer") {
-    return `Saved to the canvas as item ${itemId}. Nobody is viewing this conversation right now, so rendering was not verified.`;
+    return `Saved to the canvas as item ${itemId}. Nobody is viewing this conversation right now, so rendering was not verified; if the page reports errors when the user opens it, you will hear of them with their next message.`;
   }
   if (render.errors.length === 0) return `Shown to the user as canvas item ${itemId}; it rendered without script errors.`;
   return `Shown to the user as canvas item ${itemId}, but the page reported errors:\n${render.errors.map((error) => `- ${error}`).join("\n")}`;

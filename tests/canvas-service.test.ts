@@ -25,7 +25,7 @@ function asReview(item: CanvasItem | undefined) {
   return (item as ReviewItem | undefined)?.review;
 }
 
-function setUp() {
+function setUp(hub = new Hub()) {
   const store = new Store(":memory:");
   store.insertWorkspace({ id: "w1", name: "p", path: "/tmp/p", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
   store.insertConversation({
@@ -62,7 +62,7 @@ function setUp() {
   } as unknown as ConversationService;
   const notified: [string, NotificationReason][] = [];
   const notifications = { notify: (conversationId: string, reason: NotificationReason) => void notified.push([conversationId, reason]) } as SystemNotifications;
-  const canvas = new CanvasService(store, new Hub(), conversations, notifications, ["http://127.0.0.1:4601"]);
+  const canvas = new CanvasService(store, hub, conversations, notifications, ["http://127.0.0.1:4601"]);
   const ask = () => canvas.openAsk("c1", { question: "Color?", options: [{ label: "Red" }, { label: "Blue" }] });
   const askSeveral = () =>
     canvas.openAsk("c1", {
@@ -278,6 +278,48 @@ describe("CanvasService", () => {
     expect(item.tour.files.map(({ path }) => path)).toEqual(["service.ts"]);
     expect(await canvas.readReviewedFile(item.id, "service.ts")).toEqual(["export function serve() {", "  return load() + 2;", "}"]);
     await expect(canvas.readReviewedFile(item.id, "other.ts")).rejects.toThrow("other.ts is not a file this tour shows changes of.");
+  });
+});
+
+describe("CanvasService pages shown while nobody viewed them", () => {
+  const charts = { title: "Charts", html: "<p>Charts</p>" };
+
+  test("the errors a page's first view reports reach the agent once, with the next message", async () => {
+    const { canvas } = setUp();
+    const { item, render } = await canvas.show("c1", charts);
+    expect(render).toBe("no-viewer");
+    expect(canvas.pageErrorsNote("c1")).toBeNull();
+
+    canvas.reportRender(item.id, { errors: ["SyntaxError: Unexpected token ']' (script 1 on the page)"] });
+    const note = canvas.pageErrorsNote("c1");
+    expect(note?.text).toBe(
+      `The page "Charts" (canvas item ${item.id}), shown while nobody was viewing, reported errors when the user opened it:\n- SyntaxError: Unexpected token ']' (script 1 on the page)`,
+    );
+    expect(canvas.notesForAgent("c1").map(({ text }) => text)).toEqual([note!.text]);
+    note?.heard();
+    expect(canvas.pageErrorsNote("c1")).toBeNull();
+    canvas.reportRender(item.id, { errors: ["seen again"] });
+    expect(canvas.pageErrorsNote("c1")).toBeNull();
+  });
+
+  test("a first view without errors leaves nothing to tell, now or after", async () => {
+    const { canvas } = setUp();
+    const { item } = await canvas.show("c1", charts);
+    canvas.reportRender(item.id, { errors: [] });
+    canvas.reportRender(item.id, { errors: ["a later error"] });
+    expect(canvas.notesForAgent("c1")).toEqual([]);
+  });
+
+  test("a page someone saw render as it was shown has told the agent already", async () => {
+    const hub = new Hub();
+    hub.isShown = () => true;
+    const { canvas, store } = setUp(hub);
+    const shown = canvas.show("c1", charts);
+    const [item] = store.listCanvasItems("c1");
+    canvas.reportRender(item!.id, { errors: ["told in the tool result"] });
+    expect((await shown).render).toEqual({ errors: ["told in the tool result"] });
+    canvas.reportRender(item!.id, { errors: ["a later view"] });
+    expect(canvas.pageErrorsNote("c1")).toBeNull();
   });
 });
 

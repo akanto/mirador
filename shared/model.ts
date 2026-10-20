@@ -578,6 +578,10 @@ export interface CanvasItemBase {
 export interface ShowItem extends CanvasItemBase {
   kind: "show";
   html?: string;
+  /** Shown while nobody viewed the conversation, so what its first view reports goes to the agent. */
+  unverified?: boolean;
+  /** Script errors its first view reported, which the agent hears of with the user's next message. */
+  errorsForAgent?: string[];
 }
 
 /** A question the user answers from options: the one question in the item's own fields, or several in `questions`. */

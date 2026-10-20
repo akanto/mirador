@@ -9,6 +9,7 @@ import type {
   CanvasItemBase,
   ChecklistCanvasItem,
   ReviewItem,
+  ShowItem,
   TourItem,
 } from "../../shared/model.ts";
 import { answersOf, type FindingDecision, type Review } from "../../shared/review.ts";
@@ -31,9 +32,9 @@ import {
   tickedByUser,
   unheardTicks,
   type ChecklistEdit,
-  type ChecklistNote,
   type ChecklistRequest,
 } from "./checklist.ts";
+import { noteOfPageErrors, type CanvasNote } from "./notes.ts";
 import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
 import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
@@ -103,7 +104,9 @@ export class CanvasService {
       status: "shown",
       createdAt: Date.now(),
     });
-    return { item, render: await this.waitForRenderReport(item) };
+    const render = await this.waitForRenderReport(item);
+    if (render === "no-viewer") this.awaitFirstView(item.id);
+    return { item, render };
   }
 
   openAsk(conversationId: string, request: AskRequest): AskItem {
@@ -227,7 +230,13 @@ export class CanvasService {
     this.save({ ...item, checklist: dismissedByUser(item.checklist) });
   }
 
-  checklistNote(conversationId: string): ChecklistNote | null {
+  /** What the canvas has for the agent to hear of with the user's next message. */
+  notesForAgent(conversationId: string): CanvasNote[] {
+    return [this.checklistNote(conversationId), this.pageErrorsNote(conversationId)].filter((note) => note !== null);
+  }
+
+  /** What the user ticked, for the agent with their next message; once the message is sent, the agent has heard. */
+  checklistNote(conversationId: string): CanvasNote | null {
     const current = this.newestChecklist(conversationId);
     const ticks = current ? unheardTicks(current.checklist) : [];
     if (!current || ticks.length === 0) return null;
@@ -352,7 +361,36 @@ export class CanvasService {
   }
 
   reportRender(itemId: string, report: RenderReport) {
-    this.renderWaiters.get(itemId)?.(report);
+    const waiter = this.renderWaiters.get(itemId);
+    if (waiter) waiter(report);
+    else this.keepFirstViewForAgent(itemId, report);
+  }
+
+  /** The errors pages shown while nobody viewed them reported when the user first opened them. */
+  pageErrorsNote(conversationId: string): CanvasNote | null {
+    const pages = this.store.listCanvasItems(conversationId).filter((item): item is ShowItem => item.kind === "show" && (item.errorsForAgent?.length ?? 0) > 0);
+    if (pages.length === 0) return null;
+    return { text: noteOfPageErrors(pages), heard: () => pages.forEach(({ id }) => this.heardErrorsOf(id)) };
+  }
+
+  /** Nobody saw the page render, so its first view's report goes to the agent instead. */
+  private awaitFirstView(itemId: string) {
+    const latest = this.store.findCanvasItem(itemId);
+    if (latest?.kind === "show") this.save({ ...latest, unverified: true });
+  }
+
+  private keepFirstViewForAgent(itemId: string, { errors }: RenderReport) {
+    const item = this.store.findCanvasItem(itemId);
+    if (item?.kind !== "show" || !item.unverified) return;
+    const { unverified: _viewed, ...viewed } = item;
+    this.save(errors.length > 0 ? { ...viewed, errorsForAgent: errors } : viewed);
+  }
+
+  private heardErrorsOf(itemId: string) {
+    const latest = this.store.findCanvasItem(itemId);
+    if (latest?.kind !== "show") return;
+    const { errorsForAgent: _heard, ...heard } = latest;
+    this.save(heard);
   }
 
   private waitForRenderReport(item: CanvasItem): Promise<RenderOutcome> {
