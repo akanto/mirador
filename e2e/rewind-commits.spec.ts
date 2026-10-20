@@ -69,6 +69,7 @@ test("a rewind leaves what commits since the turn changed as committed, lists th
 
   await test.step("the dialog says the pull's file stays as committed, lists each file, and puts the edits back", async () => {
     const dialog = await openRewind(page, "Second task");
+    await expect(dialog).toContainText("1 turn leaves the conversation, and the agent's own history goes back with it, to before “First task”.");
     await expect(dialog).toContainText(
       "The files go back too: 1 file put back as they were and 1 file created since deleted since this turn began. 1 commit came in since then, and the 1 file it changed stays as committed.",
     );

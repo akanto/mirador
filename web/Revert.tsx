@@ -96,9 +96,9 @@ function usePreview(conversationId: string, seq: number, rewind: boolean) {
 
 /** What the conversation loses: the turns from this one on, and the agent's own history with them. */
 function whatLeaves({ turnsLeaving = 1, keptFrom }: Preview) {
-  const turns = `${turnsLeaving} ${turnsLeaving === 1 ? "turn" : "turns"}`;
+  const turns = turnsLeaving === 1 ? "1 turn leaves" : `${turnsLeaving} turns leave`;
   return keptFrom
-    ? `${turns} leave the conversation, and the agent's own history goes back with them, to before “${keptFrom}”.`
+    ? `${turns} the conversation, and the agent's own history goes back with ${turnsLeaving === 1 ? "it" : "them"}, to before “${keptFrom}”.`
     : "Every turn leaves the conversation, and the agent starts over with nothing of it.";
 }
 
