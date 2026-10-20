@@ -1,6 +1,22 @@
 import { expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { joinedRunningTurn, lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, undoableTurns, whatChanged, whatWasLeft, whyNoRewindTo, withRevertNotes } from "../shared/reverts.ts";
+import {
+  joinedRunningTurn,
+  lastAgentMessageId,
+  listsAnyFile,
+  pendingReverts,
+  putsAnyFileBack,
+  rewindPointBefore,
+  turnTitle,
+  turnsFrom,
+  undoableTurns,
+  whatChanged,
+  whatFiles,
+  whatLeaves,
+  whatWasLeft,
+  whyNoRewindTo,
+  withRevertNotes,
+} from "../shared/reverts.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>
   ({ type: "user-message", text, ...extra }) as ConversationEvent;
@@ -142,4 +158,31 @@ test("a message that went out again after its turn starts the next turn, as the 
 test("turns taken elsewhere pick up after the agent's latest message in the conversation", () => {
   expect(lastAgentMessageId(stored(userMessage("first"), said("msg_1"), userMessage("second"), said("msg_2"), said()))).toBe("msg_2");
   expect(lastAgentMessageId(stored(userMessage("first")))).toBeNull();
+});
+
+test("a rewind says how many turns leave, one turn as one, and every turn when it goes back to the first", () => {
+  expect(whatLeaves({ plan: null, turnsLeaving: 1, keptFrom: "Add a button" })).toBe("1 turn leaves the conversation, and the agent's own history goes back with it, to before “Add a button”.");
+  expect(whatLeaves({ plan: null, turnsLeaving: 3, keptFrom: "Add a button" })).toBe("3 turns leave the conversation, and the agent's own history goes back with them, to before “Add a button”.");
+  expect(whatLeaves({ plan: null, turnsLeaving: 3, keptFrom: null })).toBe("Every turn leaves the conversation, and the agent starts over with nothing of it.");
+});
+
+test("what the files do: they go back with a rewind, stay with an undo's turn, stay as they are when kept, or say why they cannot go back", () => {
+  const plan = { restored: 1, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } };
+  expect(whatFiles({ plan }, true, false)).toBe("The files go back too: 1 file put back as they were since this turn began. 1 commit came in since then, and the 2 files it changed stay as committed.");
+  expect(whatFiles({ plan }, false, false)).toBe(
+    "1 file put back as they were since this turn began. 1 commit came in since then, and the 2 files it changed stay as committed. The turn above stays in the conversation, and the agent is told the files no longer hold it.",
+  );
+  expect(whatFiles({ plan }, true, true)).toBe("The files stay as they are now, with what the turns that leave did to them.");
+  expect(whatFiles({ plan: null, filesNote: "this workspace is not a git repository" }, true, false)).toBe("The files stay as they are: this workspace is not a git repository");
+  expect(whatFiles({ plan: null, filesNote: "this workspace is not a git repository" }, false, false)).toBe("this workspace is not a git repository");
+  expect(whatFiles({ plan: null }, true, false)).toBe("");
+});
+
+test("keeping the files is offered only when going back would put any back, and the file list only when it names any", () => {
+  expect(putsAnyFileBack({ restored: 0, removed: 1 })).toBe(true);
+  expect(putsAnyFileBack({ restored: 0, removed: 0, committed: { files: 2, editedSince: 0, commits: 1 } })).toBe(false);
+  expect(putsAnyFileBack(null)).toBe(false);
+  const none = { paths: [], more: 0 };
+  expect(listsAnyFile({ deleted: none, putBack: none, committed: { paths: ["pulled.txt"], more: 0 } })).toBe(true);
+  expect(listsAnyFile({ deleted: none, putBack: none, committed: none })).toBe(false);
 });

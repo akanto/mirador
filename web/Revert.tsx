@@ -1,6 +1,6 @@
 import { createContext, useEffect, useState } from "react";
-import type { ListedPaths, RestoreFiles, RestorePlan } from "../shared/model.ts";
-import { whatChanged, whatWasLeft, type Turn } from "../shared/reverts.ts";
+import type { ListedPaths, RestoreFiles } from "../shared/model.ts";
+import { listsAnyFile, putsAnyFileBack, whatFiles, whatLeaves, type Turn, type UndoPreview } from "../shared/reverts.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { Modal } from "./Palette.tsx";
@@ -16,20 +16,6 @@ export type AskToRevert = (request: UndoRequest) => void;
 
 /** The entries of a long timeline are memoized, so the way to ask reaches each message as context rather than as a prop. */
 export const AskToRevert = createContext<AskToRevert>(() => {});
-
-/** What the dialog says while it is up, as the host works it out. */
-interface Preview {
-  plan: RestorePlan | null;
-  /** Which files the plan's counts are. */
-  files?: RestoreFiles;
-  /** Why the files stay as they are, when they do. */
-  filesNote?: string;
-  /** Why the conversation cannot go back, when it cannot. */
-  cannotRewind?: string;
-  /** What a rewind leaves: how many turns go, and the turn it goes back to; null keptFrom: all of them. */
-  turnsLeaving?: number;
-  keptFrom?: string | null;
-}
 
 const previewFiles = (conversationId: string, seq: number) =>
   connection.sendAndAwait(
@@ -78,7 +64,7 @@ export const rewindTo = (conversationId: string, seq: number, keepFiles = false)
 
 /** What going back to the turn would do, which the host works out while the dialog is up. */
 function usePreview(conversationId: string, seq: number, rewind: boolean) {
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const [preview, setPreview] = useState<UndoPreview | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     let showing = true;
@@ -92,25 +78,6 @@ function usePreview(conversationId: string, seq: number, rewind: boolean) {
     };
   }, [conversationId, seq, rewind]);
   return { preview, problem, setProblem };
-}
-
-/** What the conversation loses: the turns from this one on, and the agent's own history with them. */
-function whatLeaves({ turnsLeaving = 1, keptFrom }: Preview) {
-  const turns = turnsLeaving === 1 ? "1 turn leaves" : `${turnsLeaving} turns leave`;
-  return keptFrom
-    ? `${turns} the conversation, and the agent's own history goes back with ${turnsLeaving === 1 ? "it" : "them"}, to before “${keptFrom}”.`
-    : "Every turn leaves the conversation, and the agent starts over with nothing of it.";
-}
-
-const putsAnyFileBack = (plan: RestorePlan | null) => plan !== null && plan.restored + plan.removed > 0;
-
-/** What the files do: they go back too, or they stay as they are and this says why. */
-function whatFiles(preview: Preview, rewind: boolean, keepFiles: boolean) {
-  if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
-  if (!preview.plan) return "";
-  if (keepFiles) return "The files stay as they are now, with what the turns that leave did to them.";
-  const changed = [`${whatChanged(preview.plan)} since this turn began.`, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
-  return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
 }
 
 function FileGroup({ title, listed }: { title: string; listed: ListedPaths }) {
@@ -127,8 +94,6 @@ function FileGroup({ title, listed }: { title: string; listed: ListedPaths }) {
     </section>
   );
 }
-
-const listsAnyFile = ({ deleted, putBack, committed }: RestoreFiles) => [deleted, putBack, committed].some(({ paths }) => paths.length > 0);
 
 /** The files behind the summary's counts, shown on asking: what goes, what goes back, and what stays as commits left it. */
 function FileList({ files, headMovedElsewhere }: { files: RestoreFiles; headMovedElsewhere: boolean }) {

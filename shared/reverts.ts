@@ -1,4 +1,4 @@
-import { harnessLabels, harnessRewinds, type CommittedFiles, type ConversationEvent, type HarnessId, type StoredEvent } from "./model.ts";
+import { harnessLabels, harnessRewinds, type CommittedFiles, type ConversationEvent, type HarnessId, type RestoreFiles, type RestorePlan, type StoredEvent } from "./model.ts";
 import { returnedSteerSeqs } from "./steered-messages.ts";
 import { cutWithEllipsis } from "./text-cut.ts";
 
@@ -128,6 +128,41 @@ const whatSubmodulesLeft = (submodulesLeft: number) =>
 /** What a restore does not put back, said after what it does; empty when nothing was left. */
 export const whatWasLeft = ({ submodulesLeft = 0, committed }: Pick<Revert, "submodulesLeft" | "committed">) =>
   [committed && whatCommitsLeft(committed), submodulesLeft > 0 && whatSubmodulesLeft(submodulesLeft)].filter(Boolean).join(" ");
+
+/** What going back to a turn would do, as the host works it out while the dialog is up. */
+export interface UndoPreview {
+  plan: RestorePlan | null;
+  /** Which files the plan's counts are. */
+  files?: RestoreFiles;
+  /** Why the files stay as they are, when they do. */
+  filesNote?: string;
+  /** Why the conversation cannot go back, when it cannot. */
+  cannotRewind?: string;
+  /** What a rewind leaves: how many turns go, and the turn it goes back to; null keptFrom: all of them. */
+  turnsLeaving?: number;
+  keptFrom?: string | null;
+}
+
+/** What the conversation loses: the turns from this one on, and the agent's own history with them. */
+export function whatLeaves({ turnsLeaving = 1, keptFrom }: UndoPreview) {
+  const turns = turnsLeaving === 1 ? "1 turn leaves" : `${turnsLeaving} turns leave`;
+  return keptFrom
+    ? `${turns} the conversation, and the agent's own history goes back with ${turnsLeaving === 1 ? "it" : "them"}, to before “${keptFrom}”.`
+    : "Every turn leaves the conversation, and the agent starts over with nothing of it.";
+}
+
+export const putsAnyFileBack = (plan: RestorePlan | null) => plan !== null && plan.restored + plan.removed > 0;
+
+/** What the files do: they go back too, or they stay as they are and this says why. */
+export function whatFiles(preview: UndoPreview, rewind: boolean, keepFiles: boolean) {
+  if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
+  if (!preview.plan) return "";
+  if (keepFiles) return "The files stay as they are now, with what the turns that leave did to them.";
+  const changed = [`${whatChanged(preview.plan)} since this turn began.`, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
+  return rewind ? `The files go back too: ${changed}` : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
+}
+
+export const listsAnyFile = ({ deleted, putBack, committed }: RestoreFiles) => [deleted, putBack, committed].some(({ paths }) => paths.length > 0);
 
 /** How the agent is told its changes are no longer in the files, ahead of the message it is being sent. */
 export function withRevertNotes(reverts: Revert[], message: string) {
