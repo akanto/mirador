@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   discardDownload,
   hostRunsReplacedFiles,
+  installRecordNamesAnotherApp,
   markUpdatePending,
+  repairInstallRecord,
   replacedFolder,
   signedBySameTeam,
   skippedBuilds,
@@ -91,4 +93,52 @@ test("the restart into an update stops the host the app started, and a backgroun
   expect(updateRestartStopsTheHost(false, "background")).toBe(false);
   expect(updateRestartStopsTheHost(true, "external")).toBe(false);
   expect(updateRestartStopsTheHost(true, "stopped")).toBe(false);
+});
+
+const recordAt = (appBundle: string) => writeFileSync(join(channel, ".electrobun-uninstall.json"), JSON.stringify({ identifier: "com.sodre90.mirador", app_bundle_path: appBundle }));
+const recordedApp = () => JSON.parse(readFileSync(join(channel, ".electrobun-uninstall.json"), "utf8")).app_bundle_path;
+
+/** An app whose bundled helper notes each run, and records the app the way Electrobun's --bootstrap-install does, unless told to fail. */
+function appWithHelper(records: boolean) {
+  const app = join(channel, "Moved", "Mirador.app");
+  mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
+  const helper = join(app, "Contents", "Resources", "uninstall");
+  const record = records ? `printf '{"app_bundle_path":"%s"}' '${app}' > "$2/.electrobun-uninstall.json"` : "exit 1";
+  writeFileSync(helper, `#!/bin/sh\necho "$@" >> '${join(channel, "helper-runs")}'\n${record}\n`, { mode: 0o755 });
+  const runs = () => (existsSync(join(channel, "helper-runs")) ? readFileSync(join(channel, "helper-runs"), "utf8").trim().split("\n") : []);
+  return { app, runs };
+}
+
+test("an install record naming another place than the app needs repair, and one naming the app, or none, or an unreadable one does not", () => {
+  expect(installRecordNamesAnotherApp(channel, "/Users/me/Applications/Mirador.app")).toBe(false);
+  recordAt("/Users/me/Applications/Mirador.app");
+  expect(installRecordNamesAnotherApp(channel, "/Users/me/Applications/Mirador.app")).toBe(false);
+  recordAt("/private/tmp/mount/Mirador.app");
+  expect(installRecordNamesAnotherApp(channel, "/Users/me/Applications/Mirador.app")).toBe(true);
+  writeFileSync(join(channel, ".electrobun-uninstall.json"), "{not json");
+  expect(installRecordNamesAnotherApp(channel, "/Users/me/Applications/Mirador.app")).toBe(false);
+});
+
+test("a record left at a place the app has moved from is rewritten by the helper inside the app, which then is not run again", async () => {
+  const { app, runs } = appWithHelper(true);
+  recordAt("/private/tmp/mount/Mirador.app");
+
+  await repairInstallRecord(channel, app);
+  await repairInstallRecord(channel, app);
+
+  expect(recordedApp()).toBe(app);
+  expect(runs()).toEqual([`--bootstrap-install ${channel} --quiet`]);
+});
+
+test("a helper that cannot rewrite the record leaves the app starting, and warns that it cannot update itself", async () => {
+  const { app, runs } = appWithHelper(false);
+  recordAt("/private/tmp/mount/Mirador.app");
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+
+  await repairInstallRecord(channel, app);
+
+  expect(runs()).toHaveLength(1);
+  expect(recordedApp()).toBe("/private/tmp/mount/Mirador.app");
+  expect(warn).toHaveBeenCalledWith(`Mirador could not record that it now lives in ${app}, so it cannot update itself there`);
+  warn.mockRestore();
 });

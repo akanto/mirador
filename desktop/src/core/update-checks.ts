@@ -10,6 +10,8 @@ import type { HostStatus } from "./host-supervisor.ts";
 const EXTRACTION_FOLDER = "self-extraction";
 const PREPARED_UPDATE_NOTE = ".electrobun-prepared-update.json";
 const SKIPPED_BUILDS_FILE = "mirador-skipped-updates.json";
+/** Electrobun's record of where the Mac app is, which its updater holds every update to. */
+const INSTALL_RECORD = ".electrobun-uninstall.json";
 
 /** `codesign -dv` names the team on stderr; an app signed ad hoc, or not at all, has none. */
 export function teamIdentifierIn(codesignDetails: string) {
@@ -51,6 +53,31 @@ export function updateBlockedBy(folder: string, platform: NodeJS.Platform, writa
   if (platform === "darwin" && isTranslocated(folder)) return "move Mirador to Applications to update it";
   if (!writable(dirname(folder))) return `Mirador cannot replace itself in ${dirname(folder)}`;
   return null;
+}
+
+function recordedAppBundle(channelFolder: string) {
+  try {
+    const { app_bundle_path } = JSON.parse(readFileSync(join(channelFolder, INSTALL_RECORD), "utf8"));
+    return typeof app_bundle_path === "string" ? app_bundle_path : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Electrobun 2.0.2's launcher records where the Mac app is only while there is no record yet, and its updater then refuses
+ * every update, with InvalidUpdateIdentity, to an app moved since. A missing record the launcher writes itself.
+ */
+export function installRecordNamesAnotherApp(channelFolder: string, appPath: string) {
+  const recorded = recordedAppBundle(channelFolder);
+  return recorded !== null && recorded !== appPath;
+}
+
+/** The helper inside the app records it afresh, as the launcher does on a first start, and replaces the stale copy that applies updates. */
+export async function repairInstallRecord(channelFolder: string, appPath: string) {
+  if (!installRecordNamesAnotherApp(channelFolder, appPath)) return;
+  await succeeds(join(appPath, "Contents", "Resources", "uninstall"), ["--bootstrap-install", channelFolder, "--quiet"]);
+  if (installRecordNamesAnotherApp(channelFolder, appPath)) console.warn(`Mirador could not record that it now lives in ${appPath}, so it cannot update itself there`);
 }
 
 /** The running build's archive stays: it is what the next patch applies to. */

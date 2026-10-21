@@ -1,7 +1,7 @@
 import { Updater } from "electrobun/main";
 import { MIRADOR_VERSION } from "../../../shared/version.ts";
 import { SelfUpdate, type UpdateOffer } from "../core/self-update.ts";
-import { discardDownload, downloadedArchive, replacedFolder, signedBySameTeam, skippedBuilds, teamIdentifierOf, updateBlockedBy } from "../core/update-checks.ts";
+import { discardDownload, downloadedArchive, repairInstallRecord, replacedFolder, signedBySameTeam, skippedBuilds, teamIdentifierOf, updateBlockedBy } from "../core/update-checks.ts";
 
 const FAILED_INSTALL = /^Update to .+ failed during /;
 
@@ -18,6 +18,7 @@ export async function selfUpdateFromReleases(appPath: string | null, events: Upd
   if (!appPath || !(await Updater.localInfo.baseUrl())) return null;
   if (process.platform === "darwin" && !(await teamIdentifierOf(appPath))) return null;
   const channelFolder = await Updater.appDataFolder();
+  if (process.platform === "darwin") await repairInstallRecord(channelFolder, appPath);
   const selfUpdate = new SelfUpdate(
     {
       currentVersion: MIRADOR_VERSION,
