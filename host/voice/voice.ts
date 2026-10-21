@@ -6,13 +6,13 @@ import { translated } from "./translation.ts";
 
 export type ThisMacService = "recognition" | "voiceModel";
 
-/** Where Mirador's own engine on this Mac serves a service, starting it first when it isn't running. */
-export type ThisMacEndpoints = (service: ThisMacService) => Promise<CustomEndpoint>;
+/** Lends work the endpoint of a service of Mirador's own engine on this Mac, starting it first when it isn't running. */
+export type ThisMac = <T>(service: ThisMacService, work: (endpoint: CustomEndpoint) => Promise<T>) => Promise<T>;
 
 /** Voice can't do what was asked as it is set up; Settings → Voice can change that. */
 export class VoiceUnavailable extends Error {}
 
-export const notSetUpOnThisMac: ThisMacEndpoints = () => Promise.reject(new VoiceUnavailable("Voice isn't set up on this Mac yet."));
+export const notSetUpOnThisMac: ThisMac = () => Promise.reject(new VoiceUnavailable("Voice isn't set up on this Mac yet."));
 
 const ASK_NOT_TO_THINK = "If it thinks first, Settings → Voice can ask it not to.";
 
@@ -35,35 +35,36 @@ export class Voice {
   constructor(
     private readonly settings: () => VoiceSettings,
     private readonly profileById: (profileId: string) => Profile | undefined,
-    private readonly thisMac: ThisMacEndpoints = notSetUpOnThisMac,
+    private readonly thisMac: ThisMac = notSetUpOnThisMac,
   ) {}
 
   /** What a clip of 16 kHz mono WAV says, in English when the user has translation on. */
   async dictation(clip: Blob): Promise<Dictation> {
     const settings = this.settings();
-    const recognition = await this.recognitionEndpoint(settings.recognition);
     const chosenLanguage = settings.language === AUTO_LANGUAGE ? null : settings.language;
-    const heard = await transcribe(recognition, clip, chosenLanguage);
+    const heard = await this.heard(settings.recognition, clip, chosenLanguage);
     const language = chosenLanguage ?? heard.language;
     const untranslated = { text: heard.text, original: null, language };
-    if (!settings.translateToEnglish || heard.text === "" || (language && isEnglish(language))) return untranslated;
-    const voiceModel = await this.voiceModelEndpoint(settings.voiceModel);
-    if (!voiceModel) return untranslated;
-    const english = await translated(voiceModel, heard.text, { spoken: true });
+    const { voiceModel } = settings;
+    if (!settings.translateToEnglish || heard.text === "" || (language && isEnglish(language)) || voiceModel.kind === "off") return untranslated;
+    const english = await this.inEnglish(voiceModel, heard.text);
     return english === heard.text ? untranslated : { text: english, original: heard.text, language };
   }
 
-  private async recognitionEndpoint(source: VoiceSource) {
+  /** This Mac's engine tells the language it heard only in its detailed answer. */
+  private heard(source: VoiceSource, clip: Blob, language: string | null) {
     if (source.kind === "off") throw new VoiceUnavailable("Voice is off. Settings → Voice can turn it on.");
-    return source.kind === "this-mac" ? this.thisMac("recognition") : source.endpoint;
+    if (source.kind === "this-mac") return this.thisMac("recognition", (endpoint) => transcribe(endpoint, clip, language, { detailed: true }));
+    return transcribe(source.endpoint, clip, language);
   }
 
-  private async voiceModelEndpoint(source: VoiceModelSource): Promise<ChatEndpoint | null> {
+  private async inEnglish(source: Exclude<VoiceModelSource, { kind: "off" }>, text: string) {
+    if (source.kind === "this-mac") return this.thisMac("voiceModel", (endpoint) => translated({ api: "openai", ...endpoint, turnsThinkingOff: true }, text, { spoken: true }));
+    return translated(this.voiceModelEndpoint(source), text, { spoken: true });
+  }
+
+  private voiceModelEndpoint(source: Exclude<VoiceModelSource, { kind: "off" | "this-mac" }>): ChatEndpoint {
     switch (source.kind) {
-      case "off":
-        return null;
-      case "this-mac":
-        return { api: "openai", ...(await this.thisMac("voiceModel")), turnsThinkingOff: true };
       case "custom":
         return { api: "openai", ...source.endpoint, turnsThinkingOff: source.turnsThinkingOff, adviceWhenTooLong: source.turnsThinkingOff ? undefined : ASK_NOT_TO_THINK };
       case "profile": {

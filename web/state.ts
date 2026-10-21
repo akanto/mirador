@@ -101,7 +101,7 @@ export const initialState: AppState = {
   scriptProgram: "",
   avatar: null,
   voiceSettings: defaultVoiceSettings,
-  voiceEngine: { setup: { state: "unsupported", reason: "" }, diskBytes: { base: 0, voiceModel: 0 } },
+  voiceEngine: { setup: { state: "unsupported", reason: "" }, servers: { speech: "stopped", voiceModel: "stopped" }, diskBytes: { base: 0, voiceModel: 0 } },
   installedAgents: [],
   version: "",
   canvasAssetsOrigin: "",

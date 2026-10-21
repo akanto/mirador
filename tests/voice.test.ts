@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Profile } from "../shared/model.ts";
 import { defaultVoiceSettings, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 import { Store } from "../host/store.ts";
-import { Voice, VoiceUnavailable } from "../host/voice/voice.ts";
+import { Voice, VoiceUnavailable, type ThisMac } from "../host/voice/voice.ts";
 
 interface Heard {
   path: string;
@@ -154,6 +154,21 @@ describe("dictation", () => {
     );
   });
 
+  test("this Mac's engine asks its speech server for the language it heard, and its voice model not to think first", async () => {
+    transcript = { text: "Futtasd le az e2e teszteket.", language: "hu" };
+    translation = "Run the e2e tests.";
+    const lent: string[] = [];
+    const thisMac: ThisMac = (service, work) => {
+      lent.push(service);
+      return work({ url: `${origin}/v1`, apiKey: "", model: `/voice/models/${service}` });
+    };
+    const settings: VoiceSettings = { ...defaultVoiceSettings, recognition: { kind: "this-mac" }, voiceModel: { kind: "this-mac" } };
+    expect(await new Voice(() => settings, () => undefined, thisMac).dictation(clip)).toEqual({ text: "Run the e2e tests.", original: "Futtasd le az e2e teszteket.", language: "hu" });
+    expect(lent).toEqual(["recognition", "voiceModel"]);
+    expect(heard[0]!.form).toEqual({ file: "44 bytes", model: "/voice/models/recognition", response_format: "verbose_json" });
+    expect(heard[1]!.json).toMatchObject({ model: "/voice/models/voiceModel", chat_template_kwargs: { enable_thinking: false } });
+  });
+
   test("a server's error comes back with its status and what it said", async () => {
     failure = { status: 500, text: "model not loaded" };
     await expect(voiceWith(ownServers).dictation(clip)).rejects.toThrow("The speech recognition server answered 500: model not loaded");
@@ -171,6 +186,13 @@ describe("voice settings", () => {
     expect(voiceSettingsProblem({ ...ownServers, recognition: { kind: "profile" } as unknown as VoiceSettings["recognition"] })).toContain("Speech recognition is off");
   });
 
+  test("this Mac's engine unloads after a whole number of minutes, up to a day", () => {
+    expect(voiceSettingsProblem({ ...ownServers, engineIdleMinutes: 1_440 })).toBeNull();
+    [0, 1_441, 2.5, Number.NaN].forEach((engineIdleMinutes) =>
+      expect(voiceSettingsProblem({ ...ownServers, engineIdleMinutes })).toBe("Unloading takes a whole number of minutes from 1 to 1440."),
+    );
+  });
+
   test("clients that never get profile environments don't get the endpoints' keys either", () => {
     const withoutKeys = voiceSettingsWithoutKeys(ownServers);
     expect(withoutKeys.recognition).toEqual({ kind: "custom", endpoint: { url: `${origin}/v1/`, apiKey: "", model: "whisper-turbo" } });
@@ -182,5 +204,8 @@ describe("voice settings", () => {
     expect(store.voiceSettings()).toEqual(defaultVoiceSettings);
     store.setVoiceSettings(ownServers);
     expect(store.voiceSettings()).toEqual(ownServers);
+    const { engineIdleMinutes: _, ...savedBeforeTheIdleTime } = ownServers;
+    store.setVoiceSettings(savedBeforeTheIdleTime as VoiceSettings);
+    expect(store.voiceSettings().engineIdleMinutes).toBe(30);
   });
 });

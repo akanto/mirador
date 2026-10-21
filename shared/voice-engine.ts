@@ -18,8 +18,13 @@ export type VoiceEngineSetup =
   | { state: "failed"; withVoiceModel: boolean; problem: string }
   | { state: "set-up"; withVoiceModel: boolean; bytesOnDisk: number };
 
+/** Each server's state, kept apart from setup: stopped servers load again the next time they're needed. */
+export type EngineServer = "speech" | "voiceModel";
+export type EngineServerState = "stopped" | "loading" | "ready";
+
 export interface VoiceEngineStatus {
   setup: VoiceEngineSetup;
+  servers: Record<EngineServer, EngineServerState>;
   /** About how much disk the engine takes: the speech servers with speech recognition and speech, and the voice model on top. */
   diskBytes: { base: number; voiceModel: number };
 }

@@ -6795,6 +6795,45 @@ body.reordering * {
   width: 14em;
 }
 
+.voice-engine-servers {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.voice-engine-servers li::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+  vertical-align: middle;
+}
+
+.voice-engine-servers li[data-state="loading"]::before {
+  background: var(--warn);
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
+}
+
+.voice-engine-servers li[data-state="ready"]::before {
+  background: var(--ok);
+}
+
+.voice-engine-server-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.voice-engine-idle {
+  width: 5em;
+}
+
 .voice-engine-problem {
   margin: 8px 0 0;
   color: var(--danger);

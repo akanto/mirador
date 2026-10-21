@@ -38,11 +38,12 @@ async function answerOf(response: Response, service: string) {
   throw new Error(`The ${service} answered ${response.status}${detail ? `: ${detail}` : ""}`);
 }
 
-export async function transcribe(endpoint: CustomEndpoint, clip: Blob, language: string | null): Promise<Transcript> {
+/** detailed asks for verbose_json, in which mlx-audio tells the language it heard; OpenAI's newer speech models don't take it. */
+export async function transcribe(endpoint: CustomEndpoint, clip: Blob, language: string | null, { detailed = false } = {}): Promise<Transcript> {
   const form = new FormData();
   form.append("file", clip, "speech.wav");
   form.append("model", endpoint.model);
-  form.append("response_format", "json");
+  form.append("response_format", detailed ? "verbose_json" : "json");
   if (language) form.append("language", language);
   const response = await postTo("speech recognition server", joined(endpoint.url, "/audio/transcriptions"), { headers: bearer(endpoint.apiKey), body: form });
   const answer = (await answerOf(response, "speech recognition server")) as { text?: unknown; language?: unknown };

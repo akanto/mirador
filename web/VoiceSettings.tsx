@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../shared/model.ts";
-import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
+import type { VoiceEngineSetup, VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { AUTO_LANGUAGE, isEnglish, type CustomEndpoint, type VoiceModelSource, type VoiceSettings as Settings, type VoiceSource } from "../shared/voice.ts";
 import { hints } from "./hints.ts";
 import { saveSetting } from "./saved-setting.ts";
@@ -33,8 +33,22 @@ function EndpointFields({ endpoint, modelPlaceholder, onChange }: { endpoint: Cu
   );
 }
 
-function RecognitionSettings({ source, onChange }: { source: VoiceSource; onChange: (source: VoiceSource) => void }) {
-  const choose = (kind: string) => onChange(kind === "custom" ? { kind, endpoint: source.kind === "custom" ? source.endpoint : noEndpoint } : { kind: "off" });
+/** Hidden where the engine can't run; disabled until setup put the service's models in place. */
+function ThisMacOption({ setup, needsVoiceModel }: { setup: VoiceEngineSetup; needsVoiceModel: boolean }) {
+  if (setup.state === "unsupported") return null;
+  const usable = setup.state === "set-up" && (setup.withVoiceModel || !needsVoiceModel);
+  return (
+    <option value="this-mac" disabled={!usable}>
+      On this Mac{usable ? "" : ", once set up above"}
+    </option>
+  );
+}
+
+function RecognitionSettings({ source, setup, onChange }: { source: VoiceSource; setup: VoiceEngineSetup; onChange: (source: VoiceSource) => void }) {
+  const choose = (kind: string) => {
+    if (kind === "custom") return onChange({ kind, endpoint: source.kind === "custom" ? source.endpoint : noEndpoint });
+    onChange(kind === "this-mac" ? { kind } : { kind: "off" });
+  };
   return (
     <fieldset className="voice-service">
       <legend>Speech recognition</legend>
@@ -43,6 +57,7 @@ function RecognitionSettings({ source, onChange }: { source: VoiceSource; onChan
           Turns speech into text
           <select value={source.kind} onChange={(event) => choose(event.target.value)}>
             <option value="off">Off</option>
+            <ThisMacOption setup={setup} needsVoiceModel={false} />
             <option value="custom">With a server of your own</option>
           </select>
         </label>
@@ -54,8 +69,9 @@ function RecognitionSettings({ source, onChange }: { source: VoiceSource; onChan
   );
 }
 
-function VoiceModelSettings({ source, profiles, onChange }: { source: VoiceModelSource; profiles: Profile[]; onChange: (source: VoiceModelSource) => void }) {
+function VoiceModelSettings({ source, setup, profiles, onChange }: { source: VoiceModelSource; setup: VoiceEngineSetup; profiles: Profile[]; onChange: (source: VoiceModelSource) => void }) {
   const choose = (kind: string) => {
+    if (kind === "this-mac") return onChange({ kind });
     if (kind === "custom") return onChange(source.kind === "custom" ? source : { kind, endpoint: noEndpoint, turnsThinkingOff: false });
     if (kind === "profile") return onChange({ kind, profileId: source.kind === "profile" ? source.profileId : (profiles[0]?.id ?? ""), model: source.kind === "profile" ? source.model : "" });
     onChange({ kind: "off" });
@@ -68,6 +84,7 @@ function VoiceModelSettings({ source, profiles, onChange }: { source: VoiceModel
           Translates
           <select value={source.kind} onChange={(event) => choose(event.target.value)}>
             <option value="off">Off</option>
+            <ThisMacOption setup={setup} needsVoiceModel />
             <option value="custom">With a server of your own</option>
             <option value="profile" disabled={profiles.length === 0}>
               With a profile's API
@@ -126,9 +143,12 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
         Speak to agents: Mirador turns what you say into text in the message box, in English if you like, before anything is sent. Kept by the host for every browser and
         the phone.
       </p>
-      <VoiceEngineSetupPanel engine={engine} />
-      <RecognitionSettings source={draft.recognition} onChange={(recognition) => change({ recognition })} />
-      <VoiceModelSettings source={draft.voiceModel} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
+      <VoiceEngineSetupPanel
+        engine={engine}
+        idleMinutes={{ saved: settings.engineIdleMinutes, draft: draft.engineIdleMinutes, change: (engineIdleMinutes) => change({ engineIdleMinutes }) }}
+      />
+      <RecognitionSettings source={draft.recognition} setup={engine.setup} onChange={(recognition) => change({ recognition })} />
+      <VoiceModelSettings source={draft.voiceModel} setup={engine.setup} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
       <div className="sending-settings">
         <label data-hint={hints.voiceLanguage}>
           You speak

@@ -60,7 +60,7 @@ import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
 import { VoiceUnavailable, type Voice } from "./voice/voice.ts";
-import type { VoiceEngineInstaller } from "./voice/engine/installer.ts";
+import type { VoiceEngine } from "./voice/engine/engine.ts";
 import { voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 
 export interface HostServices {
@@ -76,7 +76,7 @@ export interface HostServices {
   images: ImageStore;
   droppedFiles: DroppedFiles;
   voice: Voice;
-  voiceEngine: VoiceEngineInstaller;
+  voiceEngine: VoiceEngine;
   restart: HostRestart;
   desktopApp: DesktopAppCheck;
   newerVersion: NewerVersionWatcher;

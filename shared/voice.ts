@@ -29,6 +29,8 @@ export interface VoiceSettings {
   language: string;
   translateToEnglish: boolean;
   sendRightAway: boolean;
+  /** How long this Mac's engine keeps a server loaded once unused; loading it again takes a while. */
+  engineIdleMinutes: number;
 }
 
 export const AUTO_LANGUAGE = "auto";
@@ -39,6 +41,7 @@ export const defaultVoiceSettings: VoiceSettings = {
   language: AUTO_LANGUAGE,
   translateToEnglish: true,
   sendRightAway: false,
+  engineIdleMinutes: 30,
 };
 
 export const isEnglish = (language: string) => language.toLowerCase().split(/[-_]/)[0] === "en";
@@ -53,6 +56,7 @@ export interface Dictation {
   language: string | null;
 }
 
+const MAX_IDLE_MINUTES = 24 * 60;
 const LANGUAGE_CODE = /^[a-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*$/;
 
 function endpointProblem(service: string, { url, model }: CustomEndpoint) {
@@ -74,6 +78,9 @@ export function voiceSettingsProblem(settings: VoiceSettings) {
   if (!sourceKinds.includes(settings.recognition.kind)) return "Speech recognition is off, this Mac's or a server of your own.";
   if (!voiceModelKinds.includes(settings.voiceModel.kind)) return "The voice model is off, this Mac's, a server of your own or a profile's.";
   if (settings.language !== AUTO_LANGUAGE && !LANGUAGE_CODE.test(settings.language)) return `${settings.language} is not a language code.`;
+  if (!Number.isInteger(settings.engineIdleMinutes) || settings.engineIdleMinutes < 1 || settings.engineIdleMinutes > MAX_IDLE_MINUTES) {
+    return `Unloading takes a whole number of minutes from 1 to ${MAX_IDLE_MINUTES}.`;
+  }
   return sourceProblem("speech recognition", settings.recognition) ?? sourceProblem("voice model", settings.voiceModel);
 }
 

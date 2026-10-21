@@ -62,6 +62,8 @@ const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 /** Downloads and installs Mirador's own speech engine into the data folder, and takes it away again. */
 export class VoiceEngineInstaller {
   private setup: VoiceEngineSetup;
+  /** The models a finished setup put in place, which the servers may use even while setup adds another. */
+  private installed: EngineModelId[] = [];
   private run: AbortController | null = null;
   private progressFlush: Timer | null = null;
   private readonly freeBytes: (path: string) => Promise<number>;
@@ -77,13 +79,18 @@ export class VoiceEngineInstaller {
     if (this.setup.state === "unsupported") return;
     const record = await this.record();
     if (!record || !(await this.isCurrent(record))) return;
+    this.installed = Object.keys(record.models) as EngineModelId[];
     this.setup = { state: "set-up", withVoiceModel: record.models.voiceModel !== undefined, bytesOnDisk: await this.bytesOnDisk() };
     this.changed();
   }
 
-  status(): VoiceEngineStatus {
+  status(): Omit<VoiceEngineStatus, "servers"> {
     const { recognition, speech, voiceModel } = this.options.sources.models;
     return { setup: this.setup, diskBytes: { base: INSTALLED_BYTES + recognition.bytes + speech.bytes, voiceModel: voiceModel.bytes } };
+  }
+
+  isInstalled(id: EngineModelId) {
+    return this.installed.includes(id);
   }
 
   /** Where a model's files are, once set up. */
@@ -120,6 +127,7 @@ export class VoiceEngineInstaller {
   async remove() {
     if (this.setup.state === "unsupported" || this.run) return;
     await rm(this.options.voiceDir, { recursive: true, force: true });
+    this.installed = [];
     this.setup = { state: "not-set-up" };
     this.changed();
   }
@@ -139,6 +147,7 @@ export class VoiceEngineInstaller {
     }
     await this.downloadModels(withVoiceModel, downloads, signal);
     await this.writeRecord(models);
+    this.installed = models.map(([id]) => id);
   }
 
   private wantedModels(withVoiceModel: boolean) {
