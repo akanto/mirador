@@ -5,7 +5,8 @@
  *                                  draft on GitHub with the notes in dist/release-notes-<version>.md; with WINDOWS=no in
  *                                  the environment, without the Windows app and install.ps1
  *   publish <version>              publishes that draft as the latest release
- *   tap <version>                  pushes the Homebrew cask of the published release to the tap
+ *   tap <version>                  pushes the Homebrew cask of the published release to the tap, then removes the
+ *                                  release's worktree
  * The release is made in a worktree of its own at origin/main, so nothing uncommitted in this checkout reaches it, and
  * into dist/<version>/. After the gate the Linux, Windows and macOS builds run at once, each making its patches once it is
  * in, and the draft waits for all three. A step that fails names the steps to go on from once it is fixed.
@@ -299,9 +300,11 @@ function uploadedDigests(release: Release) {
   return Object.fromEntries(listing.split("\n").filter(Boolean).map((line) => line.split(" ") as [string, string]));
 }
 
+const removeWorktree = (release: Release) => run(["git", "worktree", "remove", "--force", release.worktree], CHECKOUT);
+
 function makeWorktree(release: Release) {
   run(["git", "fetch", "-q", "origin"], CHECKOUT);
-  if (existsSync(release.worktree)) run(["git", "worktree", "remove", "--force", release.worktree], CHECKOUT);
+  if (existsSync(release.worktree)) removeWorktree(release);
   run(["git", "worktree", "add", "-q", "--detach", release.worktree, "origin/main"], CHECKOUT);
   for (const folder of [".", "video", "desktop"]) run(["bun", "install", "--frozen-lockfile"], join(release.worktree, folder));
   rmSync(release.dist, { recursive: true, force: true });
@@ -546,7 +549,8 @@ function tap(release: Release) {
   copyFileSync(cask, join(tapFolder, "Casks", "mirador.rb"));
   run(["git", "commit", "-q", "-m", `Mirador ${release.version}`, "--", join("Casks", "mirador.rb")], tapFolder);
   run(["git", "push", "-q"], tapFolder);
-  console.log("The tap has the new cask. Audit and test it in the Homebrew kit on the Linux machine (run-real.sh).");
+  removeWorktree(release);
+  console.log("The tap has the new cask, and the release worktree is removed. Audit and test it in the Homebrew kit on the Linux machine (run-real.sh).");
 }
 
 async function main([command, version, from]: string[]) {
