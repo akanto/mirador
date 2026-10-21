@@ -42,6 +42,7 @@ import type { SlashCommand } from "./slash-commands.ts";
 import type { SplitAxis } from "./terminal-layout.ts";
 import type { SystemNotification } from "./system-notifications.ts";
 import type { SubagentUsage } from "./subagent-usage.ts";
+import type { VoiceSettings } from "./voice.ts";
 
 export interface TerminalSplit {
   terminalId: string;
@@ -235,6 +236,8 @@ export type ClientMessage =
   /** Saved to config.json for the host's next start; null takes the address out. */
   | { type: "settings.set-public-address"; requestId: string; address: PublicAddress | null }
   | { type: "settings.set-network"; requestId: string; on: boolean }
+  /** Only Mirador's own pages may send it, as only they get the endpoints' API keys to send back. */
+  | { type: "voice.set-settings"; requestId: string; settings: VoiceSettings }
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
@@ -285,6 +288,8 @@ export type ServerMessage =
   | { type: "settings.script-program"; scriptProgram: string }
   /** The user's picture next to every page; null when they set none, leaving the person icon. */
   | { type: "settings.avatar"; image: string | null }
+  /** Sent after the snapshot and on every change; API keys are empty for clients that don't get profile environments. */
+  | { type: "voice.settings"; settings: VoiceSettings }
   | { type: "workspace.upserted"; workspace: Workspace }
   | { type: "workspace.deleted"; workspaceId: string }
   | { type: "workspace-group.upserted"; group: WorkspaceGroup }

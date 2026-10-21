@@ -15,6 +15,7 @@ import { SignInCodes, signInLink } from "./sign-in-codes.ts";
 import { Hub } from "./hub.ts";
 import { DroppedFiles } from "./dropped-files.ts";
 import { ImageStore } from "./images.ts";
+import { Voice } from "./voice/voice.ts";
 import { MUTED_LIST_FILE, NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
@@ -95,7 +96,8 @@ const relays = new MachineRelays(
 );
 relays.startAll();
 watch.startAll();
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, droppedFiles, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId));
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, droppedFiles, voice, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();

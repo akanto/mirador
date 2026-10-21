@@ -3,6 +3,7 @@ import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
+import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import { lastsUntilOpened } from "../shared/waiting.ts";
 
 export interface OpenConversation {
@@ -30,7 +31,7 @@ export type Overlay =
   | { kind: "settings"; page?: SettingsPage };
 
 /** A part of Settings to open at, rather than at the top. */
-export type SettingsPage = "appearance" | "conversations" | "agents" | "terminal" | "canvas" | "layout" | "devices" | "notifications" | "about";
+export type SettingsPage = "appearance" | "conversations" | "agents" | "voice" | "terminal" | "canvas" | "layout" | "devices" | "notifications" | "about";
 
 export type DevicesListed = Extract<ServerMessage, { type: "devices.listed" }>;
 
@@ -46,6 +47,7 @@ export interface AppState {
   scriptProgram: string;
   /** The user's profile picture as a small square PNG data URL; null when they set none. */
   avatar: string | null;
+  voiceSettings: VoiceSettings;
   /** The agents the host's machine has a program for, which a new profile can run. */
   installedAgents: HarnessId[];
   /** The version of the host serving this page. */
@@ -96,6 +98,7 @@ export const initialState: AppState = {
   claudeProgram: { configured: "", found: null, version: null, installFolders: "", installCommand: "" },
   scriptProgram: "",
   avatar: null,
+  voiceSettings: defaultVoiceSettings,
   installedAgents: [],
   version: "",
   canvasAssetsOrigin: "",
@@ -261,6 +264,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, scriptProgram: message.scriptProgram };
     case "settings.avatar":
       return { ...state, avatar: message.image };
+    case "voice.settings":
+      return { ...state, voiceSettings: message.settings };
     case "prompt-template.deleted":
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":

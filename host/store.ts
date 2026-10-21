@@ -24,6 +24,7 @@ import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/mo
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
 import type { TerminalLayout } from "../shared/terminal-layout.ts";
+import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
 
@@ -567,6 +568,15 @@ export class Store {
 
   setAvatarSetting(image: string | null) {
     this.setSetting("avatar", image);
+  }
+
+  voiceSettings(): VoiceSettings {
+    const value = this.setting("voice");
+    return value ? { ...defaultVoiceSettings, ...(JSON.parse(value) as Partial<VoiceSettings>) } : defaultVoiceSettings;
+  }
+
+  setVoiceSettings(settings: VoiceSettings) {
+    this.setSetting("voice", JSON.stringify(settings));
   }
 
   private setting(key: string) {

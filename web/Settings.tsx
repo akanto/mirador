@@ -1,5 +1,6 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type PromptTemplate } from "../shared/model.ts";
+import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
+import type { VoiceSettings as VoiceSettingsValue } from "../shared/voice.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { FontSizePreview, MachineColorPreview, ShellLookPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
@@ -53,6 +54,7 @@ import {
 } from "./terminal-settings.ts";
 import { themeLabels, useTheme } from "./theme.ts";
 import { usePulsesOn } from "./pulses.ts";
+import { VoiceSettings } from "./VoiceSettings.tsx";
 import { useTimestampsShown } from "./timestamps.ts";
 import { setTypingAids, useTypingAids, type TypingAids } from "./typing-aids.ts";
 import { useWaitingStyle, waitingStyleLabels } from "./waiting.ts";
@@ -86,6 +88,7 @@ const pageLabels: Record<SettingsPage, string> = {
   appearance: "Appearance",
   conversations: "Conversations",
   agents: "Agents",
+  voice: "Voice",
   terminal: "Terminal",
   canvas: "Canvas",
   layout: "Layout",
@@ -104,6 +107,8 @@ export function SettingsDialog({
   claudeProgram,
   scriptProgram,
   avatar,
+  voiceSettings,
+  profiles,
   version,
   newerVersion,
   layoutDefault,
@@ -117,6 +122,8 @@ export function SettingsDialog({
   claudeProgram: ClaudeProgram;
   scriptProgram: string;
   avatar: string | null;
+  voiceSettings: VoiceSettingsValue;
+  profiles: Profile[];
   version: string;
   newerVersion: NewerVersion | null;
   layoutDefault: LayoutDefault;
@@ -147,6 +154,7 @@ export function SettingsDialog({
       </>
     ),
     agents: () => <AgentSettings claudeProgram={claudeProgram} />,
+    voice: () => <VoiceSettings settings={voiceSettings} profiles={profiles} />,
     terminal: () => <TerminalSettings />,
     canvas: () => (
       <>

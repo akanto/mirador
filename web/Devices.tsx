@@ -3,13 +3,14 @@ import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
 import { askToJoin, spacedNumber } from "../shared/join-requests.ts";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
 import type { PublicAddress, ReachabilitySettings } from "../shared/model.ts";
-import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
+import type { ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { setConnectedDevicesInSidebar, useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
 import { QrCode } from "./QrCode.tsx";
+import { saveSetting } from "./saved-setting.ts";
 import type { DevicesListed } from "./state.ts";
 
 /** Read before the app first draws: it then replaces the address's #part with the open conversation's. */
@@ -149,18 +150,6 @@ export function JoinMachine() {
 type Invite = Extract<ServerMessage, { type: "devices.invited" }>;
 
 const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-/** Sends a setting to the host, which saves it for its next start; null once saved, else what is wrong with it. */
-async function saveSetting(send: (requestId: string) => ClientMessage): Promise<string | null> {
-  try {
-    return await connection.sendAndAwait(
-      send,
-      (message, requestId) => (message.type === "settings.saved" && message.requestId === requestId ? message.problem : undefined),
-    );
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-}
-
 /** How other devices reach this host: at an address a proxy gives it, over the network itself, or nowhere. */
 type ReachRoute = "address" | "network" | "none";
 

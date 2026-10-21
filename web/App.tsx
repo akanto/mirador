@@ -599,6 +599,8 @@ export function App() {
           claudeProgram={state.claudeProgram}
           scriptProgram={state.scriptProgram}
           avatar={state.avatar}
+          voiceSettings={state.voiceSettings}
+          profiles={state.profiles}
           version={state.version}
           newerVersion={state.newerVersion}
           layoutDefault={conversationLayouts.layoutDefault}

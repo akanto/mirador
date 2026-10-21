@@ -1,6 +1,16 @@
 import type { ConversationStatus, WaitingFor } from "../shared/model.ts";
 
 export const hints = {
+  voiceRecognition:
+    "What turns your speech into text. A server of your own is anything that speaks OpenAI's speech-to-text API (POST /audio/transcriptions): OpenAI itself, or a Whisper server on this or another machine. Mirador sends it 16 kHz WAV.",
+  voiceModel:
+    "The language model that translates what you say into English before it goes into the message box. A server of your own speaks OpenAI's chat API (POST /chat/completions); a profile's API is the one its environment names, ANTHROPIC_BASE_URL with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN, or OPENAI_BASE_URL with OPENAI_API_KEY. Mirador calls it directly, without starting the profile's agent.",
+  voiceModelProfile: "Mirador calls this profile's API with its keys. Its agent doesn't start.",
+  voiceAddress: "The API's address up to and including its version, as in https://api.openai.com/v1. Mirador adds the path of each call.",
+  voiceLanguage:
+    "The language you speak. Naming it helps on short clips, where telling languages apart by sound alone often goes wrong. With any language, the speech server decides, and the voice model translates whatever isn't English.",
+  translateToEnglish: "What you say goes into the message box in English, with what you said under it, so you can check it before sending.",
+  translateNeedsVoiceModel: "Translating needs a voice model. Pick one above.",
   yolo:
     "Approve everything without asking.\n\nWhen the agent asks for permission to run a tool, the host answers with the agent's own \"allow\" option at once instead of showing you a card. Switching it on also approves a request that is already waiting. Requests that offer no allow option still ask you.\n\nThis is separate from the agent's Mode: tools that the Mode already allows never ask at all. Saved per conversation.",
   profile:

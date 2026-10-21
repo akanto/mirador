@@ -59,6 +59,8 @@ import { showWithNotifySend } from "./notify-send.ts";
 import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
+import { VoiceUnavailable, type Voice } from "./voice/voice.ts";
+import { voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 
 export interface HostServices {
   config: HostConfig;
@@ -72,6 +74,7 @@ export interface HostServices {
   terminals: TerminalService;
   images: ImageStore;
   droppedFiles: DroppedFiles;
+  voice: Voice;
   restart: HostRestart;
   desktopApp: DesktopAppCheck;
   newerVersion: NewerVersionWatcher;
@@ -86,6 +89,8 @@ export interface HostServices {
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
+/** What OpenAI's speech API takes at most: over 13 minutes of 16 kHz mono WAV. */
+const MAX_SPOKEN_CLIP_BYTES = 25 * 1024 * 1024;
 /**
  * How much of a conversation's history, as stored, a page gets at a time: the page shows at most a few hundred entries,
  * and a long conversation holds hundreds of megabytes.
@@ -130,6 +135,7 @@ export function startServer(services: HostServices) {
     terminals,
     images,
     droppedFiles,
+    voice,
     restart,
     desktopApp,
     newerVersion,
@@ -444,6 +450,40 @@ export function startServer(services: HostServices) {
     } catch (error) {
       return new Response(errorMessage(error), { status: 400 });
     }
+  }
+
+  /** What a clip the user spoke says, ready for the message box; sent as WAV, which every speech server reads. */
+  async function dictate(request: Bun.BunRequest<"/conversations/:conversationId/speech">, server: Bun.Server<SocketData>) {
+    const refused = refusedAttachmentRequest(request, request.params.conversationId);
+    if (refused) return refused;
+    letUploadTakeItsTime(request, server);
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_SPOKEN_CLIP_BYTES) return new Response("The spoken clip is too long.", { status: 413 });
+    const clip = await request.blob();
+    if (clip.size > MAX_SPOKEN_CLIP_BYTES) return new Response("The spoken clip is too long.", { status: 413 });
+    try {
+      return Response.json(await voice.dictation(clip));
+    } catch (error) {
+      return new Response(errorMessage(error), { status: error instanceof VoiceUnavailable ? 409 : 502 });
+    }
+  }
+
+  const voiceSettingsFor = (socket: BrowserSocket): ServerMessage => {
+    const settings = store.voiceSettings();
+    return { type: "voice.settings", settings: socket.data.readsProfileLaunch ? settings : voiceSettingsWithoutKeys(settings) };
+  };
+
+  /** Says what is wrong instead of saving, as a problem for Settings to show; settings of another shape, as from an older page, get an answer too. */
+  function saveVoiceSettings(socket: BrowserSocket, settings: VoiceSettings) {
+    if (!socket.data.readsProfileLaunch) return "Only Mirador's own pages change voice settings.";
+    try {
+      const problem = voiceSettingsProblem(settings);
+      if (problem) return problem;
+    } catch (error) {
+      return errorMessage(error);
+    }
+    store.setVoiceSettings(settings);
+    hub.sendEach(voiceSettingsFor);
+    return null;
   }
 
   /** The browser gives a dropped file's contents but not its path; the host keeps a copy and answers where it is. */
@@ -997,6 +1037,8 @@ export function startServer(services: HostServices) {
         return reply({ type: "settings.saved", requestId: message.requestId, problem: problemSaving(() => savePublicAddressFromSettings(message.address)) });
       case "settings.set-network":
         return reply({ type: "settings.saved", requestId: message.requestId, problem: problemSaving(() => saveNetworkFromSettings(message.on)) });
+      case "voice.set-settings":
+        return reply({ type: "settings.saved", requestId: message.requestId, problem: saveVoiceSettings(socket, message.settings) });
       case "machine.add":
         return await addMachine(message.name, message.address);
       case "machine.remove":
@@ -1039,6 +1081,7 @@ export function startServer(services: HostServices) {
     "/join-requests/:id/poll": { POST: pollJoinRequest },
     "/conversations/:conversationId/images": { POST: addImage },
     "/conversations/:conversationId/files": { POST: addDroppedFile },
+    "/conversations/:conversationId/speech": { POST: dictate },
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
     "/mirador-ca.pem": serveAuthority,
@@ -1079,6 +1122,7 @@ export function startServer(services: HostServices) {
       newerVersion: newerVersion.current,
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
+    hub.send(socket, voiceSettingsFor(socket));
   }
 
   /** Every page's list of devices shows who is connected now, and when the others were last seen. */
