@@ -12,6 +12,18 @@ describe("panelCommandLine", () => {
     expect(panelCommandLine("/plugins")).toBeNull();
     expect(panelCommandLine("what does /plugin do?")).toBeNull();
   });
+
+  test("takes an /mcp action Claude Code refuses over ACP, such as auth, which the panel its own /mcp opens has", () => {
+    expect(panelCommandLine("/mcp auth")).toBe("/mcp auth");
+    expect(panelCommandLine(" /mcp auth github ")).toBe("/mcp auth github");
+  });
+
+  test("leaves /mcp with the agent for the server list and the actions it takes over ACP", () => {
+    expect(panelCommandLine("/mcp")).toBeNull();
+    expect(panelCommandLine("/mcp reconnect all")).toBeNull();
+    expect(panelCommandLine("/mcp Enable github")).toBeNull();
+    expect(panelCommandLine("/mcp disable")).toBeNull();
+  });
 });
 
 describe("panelCommandRun", () => {
@@ -40,8 +52,13 @@ describe("refusedPanelCommand", () => {
     expect(refusedPanelCommand("/things-to-come isn't available in this environment.")).toBe("things-to-come");
   });
 
+  test("names the command whose action Claude Code does not take over ACP", () => {
+    expect(refusedPanelCommand(`"auth" isn't a recognized /mcp action. Try reconnect, enable, or disable.`)).toBe("mcp");
+  });
+
   test("leaves a message that only mentions a refusal alone", () => {
     expect(refusedPanelCommand("It said /plugin isn't available in this environment.")).toBeNull();
     expect(refusedPanelCommand("/plugin opened its panel.")).toBeNull();
+    expect(refusedPanelCommand(`It said "auth" isn't a recognized /mcp action. Try reconnect, enable, or disable.`)).toBeNull();
   });
 });

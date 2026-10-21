@@ -90,3 +90,32 @@ test("a command the agent says it cannot open here offers the tab that can", asy
   await expect(page.locator(".terminal-pane .terminal-splits.shown .xterm-rows")).toContainText("panel /things-to-come with");
   expect(ran()[0]).toBe("command=/things-to-come");
 });
+
+test("/mcp auth opens a terminal tab for Claude Code's MCP panel, and its refusal over ACP offers that tab too", async ({ page }) => {
+  rmSync(ranHere, { force: true });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+
+  await test.step("sending /mcp auth runs it in a terminal tab, as Claude Code takes only reconnect, enable and disable over ACP", async () => {
+    const composer = page.locator(".composer:visible textarea");
+    await composer.fill("/mcp auth");
+    await composer.press("Enter");
+    await expect(page.locator(".terminal-tab", { hasText: "/mcp auth" })).toBeVisible();
+    await expect(page.locator(".terminal-pane .terminal-splits.shown .xterm-rows")).toContainText("panel /mcp auth with");
+    expect(ran()[0]).toBe("command=/mcp auth");
+    await expect(composer).toHaveValue("");
+    await expect(page.locator(".timeline:visible .message.user")).toHaveCount(0);
+  });
+
+  await test.step("a refused /mcp action, sent from elsewhere, offers the tab with Claude Code's /mcp", async () => {
+    rmSync(ranHere, { force: true });
+    await host.stop();
+    agentRefusedToOpen(`"auth" isn't a recognized /mcp action. Try reconnect, enable, or disable.`, conversationId);
+    await host.start();
+    await reloadFromRestartedHost(page);
+    const refusal = page.locator(".timeline:visible .message.agent", { hasText: "isn't a recognized /mcp action" });
+    await refusal.getByRole("button", { name: "Open a terminal tab" }).click();
+    await expect(page.locator(".terminal-pane .terminal-splits.shown .xterm-rows")).toContainText("panel /mcp with");
+    expect(ran()[0]).toBe("command=/mcp");
+  });
+});

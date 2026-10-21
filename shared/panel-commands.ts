@@ -18,10 +18,21 @@ export const panelSlashCommands: SlashCommand[] = [
   { name: "terminal-setup", description: "Set up a terminal's keys for Claude Code, in a terminal tab", hint: null },
 ];
 
+/**
+ * Over ACP, Claude Code lists the MCP servers for /mcp and takes these actions on them, and refuses any other action,
+ * such as auth, with "isn't a recognized /mcp action". Its own /mcp opens the servers' panel for those instead.
+ */
+const MCP_ACTIONS_OVER_ACP = ["reconnect", "enable", "disable"];
+
+const isPanelCommand = (name: string) => panelSlashCommands.some((command) => `/${command.name}` === name);
+
+const isMcpActionForThePanel = (name: string, action: string | undefined) =>
+  name === "/mcp" && action !== undefined && !MCP_ACTIONS_OVER_ACP.includes(action.toLowerCase());
+
 /** The panel command a message asks for, with what follows it, or null when it asks for none of them. */
 export function panelCommandLine(message: string): string | null {
-  const [name] = message.trim().split(/\s+/);
-  return panelSlashCommands.some((command) => `/${command.name}` === name) ? message.trim() : null;
+  const [name = "", action] = message.trim().split(/\s+/);
+  return isPanelCommand(name) || isMcpActionForThePanel(name, action) ? message.trim() : null;
 }
 
 /**
@@ -34,8 +45,12 @@ export function panelCommandRun(line: string): string | null {
   return /^\/[a-z][a-z0-9-]*(?: [^\n]*)?$/.test(command) ? command : null;
 }
 
-/** The command Claude Code said it cannot open here, for the button that opens a terminal tab for it instead. */
+/**
+ * The command Claude Code said it cannot open here, or whose action it does not take here, for the button that opens a
+ * terminal tab for it instead.
+ */
 export function refusedPanelCommand(text: string): string | null {
-  const match = /^\/([a-z-]+) isn't available in this environment\.$/.exec(text.trim());
+  const refused = text.trim();
+  const match = /^\/([a-z-]+) isn't available in this environment\.$/.exec(refused) ?? /^"[^"\n]*" isn't a recognized \/([a-z-]+) action\. /.exec(refused);
   return match?.[1] ?? null;
 }
