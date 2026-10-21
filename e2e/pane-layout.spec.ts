@@ -52,8 +52,10 @@ async function dragDividerBy(page: Page, label: string, deltaY: number) {
 async function runFromPalette(page: Page, label: string) {
   const primary = (await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control";
   await page.keyboard.press(`${primary}+k`);
-  await page.getByPlaceholder(/Go to a conversation/).fill(label);
-  await page.keyboard.press("Enter");
+  const query = page.getByPlaceholder(/Go to a conversation/);
+  await query.fill(label);
+  /** A terminal pane the previous action showed focuses itself once its tabs arrive, which can be after the fill. */
+  await query.press("Enter");
 }
 
 test("panes resize, swap by their grips without reloading, go fullscreen, hide, and each conversation remembers its layout", async ({ page }) => {
