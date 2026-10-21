@@ -80,6 +80,20 @@ export async function repairInstallRecord(channelFolder: string, appPath: string
   if (installRecordNamesAnotherApp(channelFolder, appPath)) console.warn(`Mirador could not record that it now lives in ${appPath}, so it cannot update itself there`);
 }
 
+interface StatusSource<Entry> {
+  getStatusHistory(): Entry[];
+  onStatusChange(listener: (entry: Entry) => void): void;
+}
+
+/**
+ * Electrobun tells once how the last install went, as soon as the app first asks it anything and so often before the app
+ * listens. The statuses it already gave out come first, then each new one, in one tick so that none is missed or repeated.
+ */
+export function followStatuses<Entry>(updater: StatusSource<Entry>, listener: (entry: Entry) => void) {
+  updater.getStatusHistory().forEach(listener);
+  updater.onStatusChange(listener);
+}
+
 /** The running build's archive stays: it is what the next patch applies to. */
 export function discardDownload(channelFolder: string, hash: string) {
   rmSync(join(channelFolder, EXTRACTION_FOLDER, `${hash}.tar`), { force: true });

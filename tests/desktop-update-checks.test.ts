@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   discardDownload,
+  followStatuses,
   hostRunsReplacedFiles,
   installRecordNamesAnotherApp,
   markUpdatePending,
@@ -141,4 +142,15 @@ test("a helper that cannot rewrite the record leaves the app starting, and warns
   expect(recordedApp()).toBe("/private/tmp/mount/Mirador.app");
   expect(warn).toHaveBeenCalledWith(`Mirador could not record that it now lives in ${app}, so it cannot update itself there`);
   warn.mockRestore();
+});
+
+test("statuses the updater gave out before the app listened reach it first, then each new one, and none twice", () => {
+  const history = ["Update to 0.4.2 failed during validating"];
+  let notify = (_entry: string) => {};
+  const heard: string[] = [];
+
+  followStatuses({ getStatusHistory: () => [...history], onStatusChange: (listener) => (notify = listener) }, (entry) => heard.push(entry));
+  notify("Update downloaded");
+
+  expect(heard).toEqual(["Update to 0.4.2 failed during validating", "Update downloaded"]);
 });

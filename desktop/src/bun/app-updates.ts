@@ -1,7 +1,7 @@
 import { Updater } from "electrobun/main";
 import { MIRADOR_VERSION } from "../../../shared/version.ts";
 import { SelfUpdate, type UpdateOffer } from "../core/self-update.ts";
-import { discardDownload, downloadedArchive, repairInstallRecord, replacedFolder, signedBySameTeam, skippedBuilds, teamIdentifierOf, updateBlockedBy } from "../core/update-checks.ts";
+import { discardDownload, downloadedArchive, followStatuses, repairInstallRecord, replacedFolder, signedBySameTeam, skippedBuilds, teamIdentifierOf, updateBlockedBy } from "../core/update-checks.ts";
 
 const FAILED_INSTALL = /^Update to .+ failed during /;
 
@@ -41,7 +41,7 @@ export async function selfUpdateFromReleases(appPath: string | null, events: Upd
     },
     events.offered,
   );
-  Updater.onStatusChange(({ status, message, details }) => {
+  followStatuses(Updater, ({ status, message, details }) => {
     if (status !== "error" || !FAILED_INSTALL.test(message) || typeof details?.latestHash !== "string") return;
     selfUpdate.failedToInstall(details.latestHash);
     events.failedToInstall(message);
