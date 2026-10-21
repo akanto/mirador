@@ -215,6 +215,7 @@ export function useFind({
   loadFrom,
   earlier,
   firstHeldSeq,
+  rememberPlace,
 }: {
   conversationId: string;
   historyLoaded: boolean;
@@ -224,6 +225,8 @@ export function useFind({
   loadFrom: (index: number) => void;
   earlier: EarlierHistory;
   firstHeldSeq: number | undefined;
+  /** Opening the find bar resizes the transcript, which would otherwise take the jump to a match for its own scroll and undo it. */
+  rememberPlace: () => void;
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const [options, setOptions] = useState(ignoringCase);
@@ -286,6 +289,7 @@ export function useFind({
       placeShown.current = placeKey;
       unfoldAround(currentRange);
       scrollToMiddle(element, currentRange);
+      rememberPlace();
     }
     const highlightVisible = () => highlight(visibleMatches(element, query, options), currentRange);
     highlightVisible();

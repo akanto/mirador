@@ -998,18 +998,25 @@ function useScrollAnchor(dependency: unknown) {
     else scrollBackTo(ref.current!, place);
   });
 
+  const rememberPlaceIn = (timeline: HTMLElement) => {
+    pinned.current = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 40;
+    anchor.current = pinned.current ? null : anchorAtTop(timeline);
+  };
   const onScroll = () => {
     const timeline = ref.current;
     if (!timeline || resizedSinceLastLook(timeline)) return;
-    pinned.current = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 40;
-    anchor.current = pinned.current ? null : anchorAtTop(timeline);
+    rememberPlaceIn(timeline);
+  };
+  /** Where the view was moved on purpose, as to a match, is the reader's place, also while the pane changes size. */
+  const rememberPlace = () => {
+    if (ref.current) rememberPlaceIn(ref.current);
   };
   /** Keeps the reader's place through the next render, which adds or removes entries above the view. */
   const holdPlace = () => {
     if (ref.current) held.current = pinned.current ? "bottom" : entryAtTop(ref.current);
   };
   const isPinned = () => pinned.current;
-  return { ref, onScroll, holdPlace, isPinned };
+  return { ref, onScroll, holdPlace, isPinned, rememberPlace };
 }
 
 const ENTRIES_PER_LOAD = 200;
@@ -1783,7 +1790,7 @@ export function ChatPanel({
   const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
-  const { ref, onScroll, holdPlace, isPinned } = useScrollAnchor(open.events.length);
+  const { ref, onScroll, holdPlace, isPinned, rememberPlace } = useScrollAnchor(open.events.length);
   const earlier = useEarlierHistory(open);
   const { firstLoaded, loadFrom, loadEarlier } = useLoadedEntries(timeline, open.loaded, { holdPlace, isPinned }, earlier);
   const [subagentToShow, setSubagentToShow] = useState<string | null>(null);
@@ -1825,7 +1832,7 @@ export function ChatPanel({
     loadFrom(timeline.indexOf(approval));
     setApprovalToShow(approval.permissionId);
   };
-  const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom, earlier, firstHeldSeq: open.events[0]?.seq });
+  const find = useFind({ conversationId: conversation.id, historyLoaded: open.loaded, timeline, timelineRef: ref, firstLoaded, loadFrom, earlier, firstHeldSeq: open.events[0]?.seq, rememberPlace });
   const editsInCanvas = useEditsInCanvas();
   const canvasShowsEdits = canvasVisible && editsInCanvas;
   return (
