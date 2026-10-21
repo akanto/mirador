@@ -18,6 +18,7 @@ let heard: Heard[] = [];
 let transcript: { text: string; language?: string } = { text: "" };
 let translation = "";
 let failure: { status: number; text: string } | null = null;
+let chatChoice: Record<string, unknown> | null = null;
 
 const server = Bun.serve({
   port: 0,
@@ -29,7 +30,9 @@ const server = Bun.serve({
     heard.push({ path, authorization: request.headers.get("authorization"), apiKey: request.headers.get("x-api-key"), form: formFields, json });
     if (failure) return new Response(failure.text, { status: failure.status });
     if (path.endsWith("/audio/transcriptions")) return Response.json(transcript);
-    if (path.endsWith("/chat/completions")) return Response.json({ choices: [{ message: { role: "assistant", content: `<message>${translation}</message>` } }] });
+    if (path.endsWith("/chat/completions")) {
+      return Response.json({ choices: [chatChoice ?? { message: { role: "assistant", content: `<message>${translation}</message>` }, finish_reason: "stop" }] });
+    }
     return Response.json({
       id: "msg_1",
       type: "message",
@@ -46,14 +49,16 @@ afterAll(() => server.stop(true));
 beforeEach(() => {
   heard = [];
   failure = null;
+  chatChoice = null;
 });
 
 const origin = `http://127.0.0.1:${server.port}`;
 const clip = new Blob([new Uint8Array(44)], { type: "audio/wav" });
+const ownVoiceModel = { kind: "custom", endpoint: { url: `${origin}/v1`, apiKey: "model-key", model: "gemma" }, turnsThinkingOff: false } as const;
 const ownServers: VoiceSettings = {
   ...defaultVoiceSettings,
   recognition: { kind: "custom", endpoint: { url: `${origin}/v1/`, apiKey: "speech-key", model: "whisper-turbo" } },
-  voiceModel: { kind: "custom", endpoint: { url: `${origin}/v1`, apiKey: "model-key", model: "gemma" } },
+  voiceModel: ownVoiceModel,
   language: "hu",
 };
 const profile = (environment: string): Profile => ({
@@ -79,7 +84,7 @@ describe("dictation", () => {
     expect(recognition).toMatchObject({ path: "/v1/audio/transcriptions", authorization: "Bearer speech-key" });
     expect(recognition!.form).toEqual({ file: "44 bytes", model: "whisper-turbo", response_format: "json", language: "hu" });
     expect(voiceModel).toMatchObject({ path: "/v1/chat/completions", authorization: "Bearer model-key" });
-    expect(voiceModel!.json).toMatchObject({ model: "gemma", temperature: 0 });
+    expect(voiceModel!.json).toMatchObject({ model: "gemma", temperature: 0, max_completion_tokens: 16_000 });
     expect(voiceModel!.json).not.toHaveProperty("chat_template_kwargs");
     expect(JSON.stringify(voiceModel!.json)).toContain("<message>Futtasd le az e2e teszteket.</message>");
   });
@@ -134,6 +139,21 @@ describe("dictation", () => {
     await expect(voiceWith(settings, [keyless]).dictation(clip)).rejects.toThrow("The profile work has no ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY");
   });
 
+  test("a voice model of the user's own that thinks first is asked not to, and one that thinks out its room says what to change", async () => {
+    transcript = { text: "Futtasd le az e2e teszteket.", language: "hu" };
+    translation = "Run the e2e tests.";
+    expect(await voiceWith({ ...ownServers, voiceModel: { ...ownVoiceModel, turnsThinkingOff: true } }).dictation(clip)).toMatchObject({ text: "Run the e2e tests." });
+    expect(heard[1]!.json).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
+
+    chatChoice = { message: { role: "assistant", content: null, reasoning: "Source language: Hungarian…" }, finish_reason: "length" };
+    await expect(voiceWith(ownServers).dictation(clip)).rejects.toThrow("The voice model ran out of room before it answered. If it thinks first, Settings → Voice can ask it not to.");
+    const environment = `OPENAI_BASE_URL=${origin}/v1\nOPENAI_API_KEY=openai-key\n-u ANTHROPIC_API_KEY\n-u ANTHROPIC_AUTH_TOKEN`;
+    const throughProfile: VoiceSettings = { ...ownServers, voiceModel: { kind: "profile", profileId: "p1", model: "gpt-5" } };
+    await expect(voiceWith(throughProfile, [profile(environment)]).dictation(clip), "a profile's API has no such switch").rejects.toThrow(
+      new Error("The voice model ran out of room before it answered."),
+    );
+  });
+
   test("a server's error comes back with its status and what it said", async () => {
     failure = { status: 500, text: "model not loaded" };
     await expect(voiceWith(ownServers).dictation(clip)).rejects.toThrow("The speech recognition server answered 500: model not loaded");
@@ -154,7 +174,7 @@ describe("voice settings", () => {
   test("clients that never get profile environments don't get the endpoints' keys either", () => {
     const withoutKeys = voiceSettingsWithoutKeys(ownServers);
     expect(withoutKeys.recognition).toEqual({ kind: "custom", endpoint: { url: `${origin}/v1/`, apiKey: "", model: "whisper-turbo" } });
-    expect(withoutKeys.voiceModel).toEqual({ kind: "custom", endpoint: { url: `${origin}/v1`, apiKey: "", model: "gemma" } });
+    expect(withoutKeys.voiceModel).toEqual({ kind: "custom", endpoint: { url: `${origin}/v1`, apiKey: "", model: "gemma" }, turnsThinkingOff: false });
   });
 
   test("the host keeps them, starting with voice off", () => {

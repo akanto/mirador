@@ -8,7 +8,7 @@ interface Heard {
   path: string;
   authorization: string | undefined;
   form: Record<string, string> | null;
-  json: { model?: string; messages?: unknown[] } | null;
+  json: { model?: string; messages?: unknown[]; chat_template_kwargs?: unknown } | null;
 }
 
 const HEARD_IN_HUNGARIAN = "Futtasd le az e2e teszteket.";
@@ -93,6 +93,7 @@ test("Settings → Voice set the user's own servers, and a Hungarian clip comes 
     await recognition.getByLabel("Address").fill(voiceServerUrl());
     await expect(settings.getByRole("status")).toBeEmpty();
     await useOwnServer(voiceModel, "Translates", { apiKey: "model-key", model: "gemma" });
+    await voiceModel.getByLabel("Ask it not to think first").check();
     await settings.getByLabel("You speak").selectOption({ label: "Hungarian" });
     await expect(settings.getByLabel("Translate into English")).toBeChecked();
     await settings.getByRole("button", { name: "Save" }).click();
@@ -104,6 +105,7 @@ test("Settings → Voice set the user's own servers, and a Hungarian clip comes 
     const otherSettings = await openSettings(otherWindow, "Voice");
     await expect(otherSettings.getByRole("group", { name: "Speech recognition" }).getByLabel("Model")).toHaveValue("whisper-turbo");
     await expect(otherSettings.getByRole("group", { name: "Voice model" }).getByLabel("Address")).toHaveValue(voiceServerUrl());
+    await expect(otherSettings.getByRole("group", { name: "Voice model" }).getByLabel("Ask it not to think first")).toBeChecked();
     await expect(otherSettings.getByLabel("You speak")).toHaveValue("hu");
     await otherWindow.close();
   });
@@ -116,7 +118,7 @@ test("Settings → Voice set the user's own servers, and a Hungarian clip comes 
     const [transcription, translation] = heard;
     expect(transcription).toMatchObject({ path: "/v1/audio/transcriptions", authorization: "Bearer speech-key" });
     expect(transcription!.form).toEqual({ file: "44 bytes", model: "whisper-turbo", response_format: "json", language: "hu" });
-    expect(translation).toMatchObject({ path: "/v1/chat/completions", authorization: "Bearer model-key", json: { model: "gemma" } });
+    expect(translation).toMatchObject({ path: "/v1/chat/completions", authorization: "Bearer model-key", json: { model: "gemma", chat_template_kwargs: { enable_thinking: false } } });
     expect(JSON.stringify(translation!.json!.messages)).toContain(HEARD_IN_HUNGARIAN);
   });
 

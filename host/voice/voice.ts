@@ -14,6 +14,8 @@ export class VoiceUnavailable extends Error {}
 
 export const notSetUpOnThisMac: ThisMacEndpoints = () => Promise.reject(new VoiceUnavailable("Voice isn't set up on this Mac yet."));
 
+const ASK_NOT_TO_THINK = "If it thinks first, Settings → Voice can ask it not to.";
+
 const DEFAULT_ANTHROPIC_URL = "https://api.anthropic.com";
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1";
 
@@ -63,7 +65,7 @@ export class Voice {
       case "this-mac":
         return { api: "openai", ...(await this.thisMac("voiceModel")), turnsThinkingOff: true };
       case "custom":
-        return { api: "openai", ...source.endpoint, turnsThinkingOff: false };
+        return { api: "openai", ...source.endpoint, turnsThinkingOff: source.turnsThinkingOff, adviceWhenTooLong: source.turnsThinkingOff ? undefined : ASK_NOT_TO_THINK };
       case "profile": {
         const profile = this.profileById(source.profileId);
         if (!profile) throw new VoiceUnavailable("The voice model's profile no longer exists. Settings → Voice can pick another.");

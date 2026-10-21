@@ -54,7 +54,7 @@ function RecognitionSettings({ source, onChange }: { source: VoiceSource; onChan
 
 function VoiceModelSettings({ source, profiles, onChange }: { source: VoiceModelSource; profiles: Profile[]; onChange: (source: VoiceModelSource) => void }) {
   const choose = (kind: string) => {
-    if (kind === "custom") return onChange({ kind, endpoint: source.kind === "custom" ? source.endpoint : noEndpoint });
+    if (kind === "custom") return onChange(source.kind === "custom" ? source : { kind, endpoint: noEndpoint, turnsThinkingOff: false });
     if (kind === "profile") return onChange({ kind, profileId: source.kind === "profile" ? source.profileId : (profiles[0]?.id ?? ""), model: source.kind === "profile" ? source.model : "" });
     onChange({ kind: "off" });
   };
@@ -92,7 +92,15 @@ function VoiceModelSettings({ source, profiles, onChange }: { source: VoiceModel
         )}
       </div>
       {source.kind === "custom" && (
-        <EndpointFields endpoint={source.endpoint} modelPlaceholder="gpt-5-mini" onChange={(endpoint) => onChange({ kind: "custom", endpoint })} />
+        <>
+          <EndpointFields endpoint={source.endpoint} modelPlaceholder="gpt-5-mini" onChange={(endpoint) => onChange({ ...source, endpoint })} />
+          <div className="sending-settings">
+            <label data-hint={hints.voiceModelThinkingOff}>
+              <input type="checkbox" checked={source.turnsThinkingOff ?? false} onChange={(event) => onChange({ ...source, turnsThinkingOff: event.target.checked })} />
+              Ask it not to think first
+            </label>
+          </div>
+        </>
       )}
     </fieldset>
   );

@@ -6,10 +6,19 @@ export interface CustomEndpoint {
   model: string;
 }
 
-export type VoiceSource = { kind: "off" } | { kind: "this-mac" } | { kind: "custom"; endpoint: CustomEndpoint };
+type Off = { kind: "off" };
+type ThisMac = { kind: "this-mac" };
+type OwnServer = { kind: "custom"; endpoint: CustomEndpoint };
+
+export type VoiceSource = Off | ThisMac | OwnServer;
 
 /** A profile lends the API its environment names, Anthropic's or OpenAI's, without starting its agent. */
-export type VoiceModelSource = VoiceSource | { kind: "profile"; profileId: string; model: string };
+export type VoiceModelSource =
+  | Off
+  | ThisMac
+  /** turnsThinkingOff asks a local server not to think first, which OpenAI's API refuses. */
+  | (OwnServer & { turnsThinkingOff: boolean })
+  | { kind: "profile"; profileId: string; model: string };
 
 export interface VoiceSettings {
   /** Turns speech into text in the language spoken. */
@@ -52,7 +61,7 @@ function endpointProblem(service: string, { url, model }: CustomEndpoint) {
   return null;
 }
 
-function sourceProblem(service: string, source: VoiceModelSource) {
+function sourceProblem(service: string, source: VoiceSource | VoiceModelSource) {
   if (source.kind === "custom") return endpointProblem(service, source.endpoint);
   if (source.kind === "profile" && source.model.trim() === "") return `The ${service} needs a model name.`;
   return null;
@@ -68,7 +77,7 @@ export function voiceSettingsProblem(settings: VoiceSettings) {
   return sourceProblem("speech recognition", settings.recognition) ?? sourceProblem("voice model", settings.voiceModel);
 }
 
-const withoutKey = <Source extends VoiceModelSource>(source: Source): Source =>
+const withoutKey = <Source extends VoiceSource | VoiceModelSource>(source: Source): Source =>
   source.kind === "custom" ? { ...source, endpoint: { ...source.endpoint, apiKey: "" } } : source;
 
 /** For clients that never show API keys, as they never get a profile's environment. */
