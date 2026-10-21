@@ -6,7 +6,7 @@
 # On Windows, install.ps1 does it, from PowerShell.
 #
 # MIRADOR_DOWNLOAD_URL fetches the release's files from elsewhere, and MIRADOR_APP_DIR puts the macOS app in another folder
-# than the one it is in already, else /Applications.
+# than the one it is in already, else ~/Applications.
 #
 # sh reads this script from the pipe while it runs, so every program it starts gets /dev/null as its input, or it would
 # read the rest of the script; and nothing runs until main, on the last line, so a cut-off download runs nothing.
@@ -45,12 +45,11 @@ as_root() {
   fi
 }
 
+# ~/Applications needs no admin rights; an app already in /Applications is updated there while this user can write to it.
 macos_app_dir() {
   if [ -n "${MIRADOR_APP_DIR:-}" ]; then
     say "$MIRADOR_APP_DIR"
-  elif [ -d "$HOME/Applications/Mirador.app" ] && [ ! -d /Applications/Mirador.app ]; then
-    say "$HOME/Applications"
-  elif [ -w /Applications ]; then
+  elif [ -d /Applications/Mirador.app ] && [ ! -d "$HOME/Applications/Mirador.app" ] && [ -w /Applications ]; then
     say /Applications
   else
     say "$HOME/Applications"

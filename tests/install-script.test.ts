@@ -178,6 +178,16 @@ describe.skipIf(process.platform === "win32")("install.sh", () => {
     expect(callsTo(machine.calls(), "open")).toEqual([`open ${app}`]);
   });
 
+  test.skipIf(existsSync("/Applications/Mirador.app"))("on a Mac with no Mirador yet it installs to ~/Applications, which needs no admin rights", async () => {
+    const machine = machineOf({ os: "Darwin", appDir: null });
+    const app = join(machine.home, "Applications", "Mirador.app");
+    const result = await install(machine);
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(app, "Contents", "MacOS", "launcher"))).toBe(true);
+    expect(result.output).toContain(`Installed ${app}`);
+    expect(callsTo(machine.calls(), "open")).toEqual([`open ${app}`]);
+  });
+
   test("on a Mac it asks the user to quit a Mirador running from the folder it installs to, and checks only that folder", async () => {
     const machine = machineOf({ os: "Darwin", runningFrom: "Applications/Mirador.app/Contents/MacOS/" });
     const result = await install(machine);

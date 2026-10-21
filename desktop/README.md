@@ -21,13 +21,13 @@ For Macs with Apple Silicon.
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
 ```
 
-The script puts `Mirador.app` where it already is, else in `/Applications` (or `~/Applications` when that isn't writable), and opens it. Run it again to update; quit Mirador first.
+The script puts `Mirador.app` where it already is, else in `~/Applications`, which needs no admin rights, and opens it. Run it again to update; quit Mirador first.
 
 **By hand**: download `Mirador-macos-arm64.zip` from the [releases](https://github.com/sodre90/mirador/releases). The app is signed with a Developer ID and notarized by Apple:
 
 ```bash
-ditto -x -k Mirador-macos-arm64.zip /Applications
-open /Applications/Mirador.app
+ditto -x -k Mirador-macos-arm64.zip ~/Applications
+open ~/Applications/Mirador.app
 ```
 
 On first launch macOS asks whether Mirador may send notifications, and the first time the terminal or an agent reaches a machine on your local network, whether it may do that.
@@ -78,8 +78,8 @@ A build of your own runs the host from your checkout, with the Bun you built it 
 **macOS**:
 
 ```bash
-ditto "<repo>/desktop/build/stable-macos-arm64/Mirador.app" "/Applications/Mirador.app"
-open "/Applications/Mirador.app"
+ditto "<repo>/desktop/build/stable-macos-arm64/Mirador.app" ~/Applications/Mirador.app
+open ~/Applications/Mirador.app
 ```
 
 Copied with `ditto`, the app carries no quarantine flag. Launch it by its path, not `open -a "Mirador"`: the dev and stable build folders hold apps with the same identifier, and *Open at login* registers the path the app was launched from.
@@ -170,7 +170,7 @@ Replace `4600` with your port if you changed it. Your conversations and canvases
 launchctl bootout gui/$(id -u)/com.sodre90.mirador.host.4600 2>/dev/null
 launchctl bootout gui/$(id -u)/com.sodre90.mirador.open-at-login.4600 2>/dev/null
 rm -f ~/Library/LaunchAgents/com.sodre90.mirador.host.4600.plist ~/Library/LaunchAgents/com.sodre90.mirador.open-at-login.4600.plist
-rm -rf /Applications/Mirador.app ~/Library/Application\ Support/com.sodre90.mirador   # or ~/Applications/Mirador.app
+rm -rf ~/Applications/Mirador.app ~/Library/Application\ Support/com.sodre90.mirador   # or /Applications/Mirador.app
 rm -f ~/.mirador/desktop.json ~/.mirador/desktop-host.pid ~/.mirador/logs/host.log
 ```
 

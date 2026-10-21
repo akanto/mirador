@@ -80,7 +80,7 @@ curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.s
 
 The script downloads the latest release for your computer, installs it and starts it. Run it again to update.
 
-- **macOS** (Apple Silicon): the app goes where it already is, else in `/Applications`, or in `~/Applications` when that isn't writable. Quit a Mirador running from there first.
+- **macOS** (Apple Silicon): the app goes where it already is, else in `~/Applications`, which needs no admin rights. Quit a Mirador running from there first.
 - **Linux** (x64 or arm64): the app needs glibc 2.36 or newer (Ubuntu 24.04, Debian 12, Fedora 37 or later), and the script says so on an older system. The libraries the app needs (GTK 3, WebKitGTK 4.1, Ayatana AppIndicator and librsvg) are installed first, with `sudo apt-get` or `sudo dnf`; on other distributions the script names them. The app goes in `~/.local/share/com.sodre90.mirador`, with an entry in your applications menu.
 
 **Windows** (x64, experimental), in PowerShell:
@@ -106,8 +106,8 @@ The app updates itself, so `brew upgrade` leaves it alone. On Linux, Homebrew do
 **macOS**: `Mirador-macos-arm64.zip`. The app is signed with a Developer ID and notarized by Apple:
 
 ```bash
-ditto -x -k Mirador-macos-arm64.zip /Applications
-open /Applications/Mirador.app
+ditto -x -k Mirador-macos-arm64.zip ~/Applications
+open ~/Applications/Mirador.app
 ```
 
 **Linux**: `Mirador-linux-x64-Setup.tar.gz` or `Mirador-linux-arm64-Setup.tar.gz` (`uname -m` says which). It needs glibc 2.36 or newer (Ubuntu 24.04, Debian 12, Fedora 37 or later), GTK 3, WebKitGTK 4.1 and the Ayatana AppIndicator library ([details](desktop/README.md#install-on-linux)):
