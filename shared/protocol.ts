@@ -43,6 +43,7 @@ import type { SplitAxis } from "./terminal-layout.ts";
 import type { SystemNotification } from "./system-notifications.ts";
 import type { SubagentUsage } from "./subagent-usage.ts";
 import type { VoiceSettings } from "./voice.ts";
+import type { VoiceEngineStatus } from "./voice-engine.ts";
 
 export interface TerminalSplit {
   terminalId: string;
@@ -238,6 +239,10 @@ export type ClientMessage =
   | { type: "settings.set-network"; requestId: string; on: boolean }
   /** Only Mirador's own pages may send it, as only they get the endpoints' API keys to send back. */
   | { type: "voice.set-settings"; requestId: string; settings: VoiceSettings }
+  /** Only from Mirador's own pages; setting up again also brings in what a newer Mirador pins, and adds the voice model. */
+  | { type: "voice.engine.set-up"; withVoiceModel: boolean }
+  | { type: "voice.engine.cancel" }
+  | { type: "voice.engine.remove" }
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }
@@ -290,6 +295,8 @@ export type ServerMessage =
   | { type: "settings.avatar"; image: string | null }
   /** Sent after the snapshot and on every change; API keys are empty for clients that don't get profile environments. */
   | { type: "voice.settings"; settings: VoiceSettings }
+  /** Sent after the snapshot, on every change and, while setting up, on its progress. */
+  | { type: "voice.engine"; engine: VoiceEngineStatus }
   | { type: "workspace.upserted"; workspace: Workspace }
   | { type: "workspace.deleted"; workspaceId: string }
   | { type: "workspace-group.upserted"; group: WorkspaceGroup }

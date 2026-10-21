@@ -16,6 +16,8 @@ import { Hub } from "./hub.ts";
 import { DroppedFiles } from "./dropped-files.ts";
 import { ImageStore } from "./images.ts";
 import { Voice } from "./voice/voice.ts";
+import { engineSources } from "./voice/engine/catalog.ts";
+import { VoiceEngineInstaller } from "./voice/engine/installer.ts";
 import { MUTED_LIST_FILE, NotifierMute } from "./notifier.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
@@ -97,7 +99,15 @@ const relays = new MachineRelays(
 relays.startAll();
 watch.startAll();
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId));
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, droppedFiles, voice, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const voiceEngine: VoiceEngineInstaller = new VoiceEngineInstaller({
+  voiceDir: join(config.dataDir, "voice"),
+  logsDir: agentLogsDirectory(config.dataDir),
+  sources: engineSources(config.voiceModelsUrl),
+  fakePython: config.voiceEnginePython,
+  onChange: () => hub.broadcast({ type: "voice.engine", engine: voiceEngine.status() }),
+});
+voiceEngine.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
+const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();
@@ -129,6 +139,7 @@ function machineSignedOut(machineId: string) {
 }
 
 async function stopServices() {
+  voiceEngine.cancel();
   terminalSessions.stop();
   sourceWatcher.stop();
   newerVersion.stop();

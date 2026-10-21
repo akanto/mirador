@@ -600,6 +600,7 @@ export function App() {
           scriptProgram={state.scriptProgram}
           avatar={state.avatar}
           voiceSettings={state.voiceSettings}
+          voiceEngine={state.voiceEngine}
           profiles={state.profiles}
           version={state.version}
           newerVersion={state.newerVersion}

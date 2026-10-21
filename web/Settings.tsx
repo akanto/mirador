@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
 import type { VoiceSettings as VoiceSettingsValue } from "../shared/voice.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { FontSizePreview, MachineColorPreview, ShellLookPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
@@ -108,6 +109,7 @@ export function SettingsDialog({
   scriptProgram,
   avatar,
   voiceSettings,
+  voiceEngine,
   profiles,
   version,
   newerVersion,
@@ -123,6 +125,7 @@ export function SettingsDialog({
   scriptProgram: string;
   avatar: string | null;
   voiceSettings: VoiceSettingsValue;
+  voiceEngine: VoiceEngineStatus;
   profiles: Profile[];
   version: string;
   newerVersion: NewerVersion | null;
@@ -154,7 +157,7 @@ export function SettingsDialog({
       </>
     ),
     agents: () => <AgentSettings claudeProgram={claudeProgram} />,
-    voice: () => <VoiceSettings settings={voiceSettings} profiles={profiles} />,
+    voice: () => <VoiceSettings settings={voiceSettings} engine={voiceEngine} profiles={profiles} />,
     terminal: () => <TerminalSettings />,
     canvas: () => (
       <>

@@ -4,6 +4,7 @@ import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { lastsUntilOpened } from "../shared/waiting.ts";
 
 export interface OpenConversation {
@@ -48,6 +49,7 @@ export interface AppState {
   /** The user's profile picture as a small square PNG data URL; null when they set none. */
   avatar: string | null;
   voiceSettings: VoiceSettings;
+  voiceEngine: VoiceEngineStatus;
   /** The agents the host's machine has a program for, which a new profile can run. */
   installedAgents: HarnessId[];
   /** The version of the host serving this page. */
@@ -99,6 +101,7 @@ export const initialState: AppState = {
   scriptProgram: "",
   avatar: null,
   voiceSettings: defaultVoiceSettings,
+  voiceEngine: { setup: { state: "unsupported", reason: "" }, diskBytes: { base: 0, voiceModel: 0 } },
   installedAgents: [],
   version: "",
   canvasAssetsOrigin: "",
@@ -266,6 +269,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, avatar: message.image };
     case "voice.settings":
       return { ...state, voiceSettings: message.settings };
+    case "voice.engine":
+      return { ...state, voiceEngine: message.engine };
     case "prompt-template.deleted":
       return { ...state, promptTemplates: state.promptTemplates.filter(({ id }) => id !== message.templateId) };
     case "error":

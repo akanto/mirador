@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../shared/model.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { AUTO_LANGUAGE, isEnglish, type CustomEndpoint, type VoiceModelSource, type VoiceSettings as Settings, type VoiceSource } from "../shared/voice.ts";
 import { hints } from "./hints.ts";
 import { saveSetting } from "./saved-setting.ts";
+import { VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
 
 /** Languages Whisper recognizes well, as codes it takes. */
 const spokenLanguages = ["en", "hu", "de", "fr", "es", "it", "pt", "nl", "pl", "cs", "sk", "ro", "uk", "ru", "sv", "da", "fi", "no", "el", "tr", "ja", "zh", "ko", "hi", "ar", "he"];
@@ -107,7 +109,7 @@ function VoiceModelSettings({ source, profiles, onChange }: { source: VoiceModel
 }
 
 /** Kept by the host, so every browser and the phone dictate the same way; saved together, as an address and its key belong together. */
-export function VoiceSettings({ settings, profiles }: { settings: Settings; profiles: Profile[] }) {
+export function VoiceSettings({ settings, engine, profiles }: { settings: Settings; engine: VoiceEngineStatus; profiles: Profile[] }) {
   const [draft, setDraft] = useState(settings);
   const [outcome, setOutcome] = useState<string | null>(null);
   useEffect(() => setDraft(settings), [settings]);
@@ -124,6 +126,7 @@ export function VoiceSettings({ settings, profiles }: { settings: Settings; prof
         Speak to agents: Mirador turns what you say into text in the message box, in English if you like, before anything is sent. Kept by the host for every browser and
         the phone.
       </p>
+      <VoiceEngineSetupPanel engine={engine} />
       <RecognitionSettings source={draft.recognition} onChange={(recognition) => change({ recognition })} />
       <VoiceModelSettings source={draft.voiceModel} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
       <div className="sending-settings">

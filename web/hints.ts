@@ -7,6 +7,9 @@ export const hints = {
     "The language model that translates what you say into English before it goes into the message box. A server of your own speaks OpenAI's chat API (POST /chat/completions); a profile's API is the one its environment names, ANTHROPIC_BASE_URL with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN, or OPENAI_BASE_URL with OPENAI_API_KEY. Mirador calls it directly, without starting the profile's agent.",
   voiceModelThinkingOff:
     "For a local server running a model that thinks before it answers, such as Gemma 4 or Qwen 3: thinking makes a translation take far longer and can use up the answer. Mirador sends chat_template_kwargs with enable_thinking false, which servers such as mlx_lm, vLLM and llama.cpp understand. Leave it off for OpenAI's API.",
+  voiceEngineVoiceModel:
+    "Gemma 4 26B-A4B, which translates what you say into English, and later sums up replies to read aloud. Without it, what you say goes into the message box in the language you spoke, unless another voice model is set below. It uses about 16 GB of memory while loaded.",
+  removeVoiceEngineArmed: "Click again to delete the speech engine and its models from this Mac. Setting up again downloads them again.",
   voiceModelProfile: "Mirador calls this profile's API with its keys. Its agent doesn't start.",
   voiceAddress: "The API's address up to and including its version, as in https://api.openai.com/v1. Mirador adds the path of each call.",
   voiceLanguage:

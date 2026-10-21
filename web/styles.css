@@ -6783,3 +6783,19 @@ body.reordering * {
   gap: 12px;
   margin-top: 16px;
 }
+
+.voice-engine-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.voice-engine-progress progress {
+  width: 14em;
+}
+
+.voice-engine-problem {
+  margin: 8px 0 0;
+  color: var(--danger);
+}

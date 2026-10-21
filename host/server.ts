@@ -60,6 +60,7 @@ import type { StatuslineService } from "./statusline.ts";
 import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
 import { VoiceUnavailable, type Voice } from "./voice/voice.ts";
+import type { VoiceEngineInstaller } from "./voice/engine/installer.ts";
 import { voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 
 export interface HostServices {
@@ -75,6 +76,7 @@ export interface HostServices {
   images: ImageStore;
   droppedFiles: DroppedFiles;
   voice: Voice;
+  voiceEngine: VoiceEngineInstaller;
   restart: HostRestart;
   desktopApp: DesktopAppCheck;
   newerVersion: NewerVersionWatcher;
@@ -89,6 +91,7 @@ export interface HostServices {
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
+const ONLY_OWN_PAGES_SET_UP_VOICE: ServerMessage = { type: "error", message: "Only Mirador's own pages set up voice on this Mac." };
 /** What OpenAI's speech API takes at most: over 13 minutes of 16 kHz mono WAV. */
 const MAX_SPOKEN_CLIP_BYTES = 25 * 1024 * 1024;
 /**
@@ -136,6 +139,7 @@ export function startServer(services: HostServices) {
     images,
     droppedFiles,
     voice,
+    voiceEngine,
     restart,
     desktopApp,
     newerVersion,
@@ -1039,6 +1043,15 @@ export function startServer(services: HostServices) {
         return reply({ type: "settings.saved", requestId: message.requestId, problem: problemSaving(() => saveNetworkFromSettings(message.on)) });
       case "voice.set-settings":
         return reply({ type: "settings.saved", requestId: message.requestId, problem: saveVoiceSettings(socket, message.settings) });
+      case "voice.engine.set-up":
+        if (!socket.data.readsProfileLaunch) return reply(ONLY_OWN_PAGES_SET_UP_VOICE);
+        return voiceEngine.setUp(message.withVoiceModel);
+      case "voice.engine.cancel":
+        if (!socket.data.readsProfileLaunch) return reply(ONLY_OWN_PAGES_SET_UP_VOICE);
+        return voiceEngine.cancel();
+      case "voice.engine.remove":
+        if (!socket.data.readsProfileLaunch) return reply(ONLY_OWN_PAGES_SET_UP_VOICE);
+        return await voiceEngine.remove();
       case "machine.add":
         return await addMachine(message.name, message.address);
       case "machine.remove":
@@ -1123,6 +1136,7 @@ export function startServer(services: HostServices) {
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
     hub.send(socket, voiceSettingsFor(socket));
+    hub.send(socket, { type: "voice.engine", engine: voiceEngine.status() });
   }
 
   /** Every page's list of devices shows who is connected now, and when the others were last seen. */
