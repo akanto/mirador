@@ -1,0 +1,263 @@
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { flushSync } from "react-dom";
+import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
+import type { Dictation as Dictated, VoiceSettings } from "../shared/voice.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { dictationStatus, pressed, released, spacedAtCaret, type DictationPhase, type Press } from "./dictation.ts";
+import { joinDrafts } from "./drafts.ts";
+import { hints } from "./hints.ts";
+import { insertAtCaret } from "./insert-at-caret.ts";
+import { pauseWatch, type PauseWatch } from "./pause-watch.ts";
+import { startRecording, type Recording } from "./recorder.ts";
+import { dictates, shortcutKeys } from "./shortcuts.ts";
+
+const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
+const NOTHING_HEARD = "Nothing was heard, so dictation stopped.";
+const NO_WORDS = "Speech recognition heard no words.";
+
+const releasingKeys = ["Meta", "Control", "Shift"];
+const aDialogIsOpen = () => document.querySelector(".modal-backdrop") !== null;
+const problemOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+async function transcribed(conversationId: string, clip: Blob): Promise<Dictated> {
+  let response: Response;
+  try {
+    response = await fetch(`/conversations/${conversationId}/speech`, { method: "POST", headers: { "Content-Type": "audio/wav" }, body: clip });
+  } catch (error) {
+    throw new Error(`What you said didn't reach Mirador: ${problemOf(error)}`);
+  }
+  if (!response.ok) throw new Error((await response.text()) || `Speech recognition failed (${response.status}).`);
+  return response.json();
+}
+
+function insertDictated(box: HTMLTextAreaElement | null, setText: Dispatch<SetStateAction<string>>, words: string) {
+  if (box) insertAtCaret(box, setText, spacedAtCaret(box.value, box.selectionStart, box.selectionEnd, words));
+  else flushSync(() => setText((current) => joinDrafts(current, words)));
+}
+
+interface Listening {
+  recording: Promise<Recording>;
+  watch: PauseWatch;
+}
+
+/**
+ * Speech into the message box, from the mic button or ⌘⇧Space (Ctrl+Shift+Space elsewhere) anywhere in the window: a
+ * tap listens until the user pauses or presses again, a hold until they let go. What was heard goes in at the caret,
+ * in English when translated, with what they said kept to show under the box.
+ */
+export function useDictation({
+  conversationId,
+  settings,
+  textarea,
+  setText,
+  sendNow,
+}: {
+  conversationId: string;
+  settings: VoiceSettings;
+  textarea: RefObject<HTMLTextAreaElement | null>;
+  setText: Dispatch<SetStateAction<string>>;
+  sendNow: () => void;
+}) {
+  const [phase, setPhase] = useState<DictationPhase>("idle");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [originals, setOriginals] = useState<string[]>([]);
+  const press = useRef<Press>({ kind: "up" });
+  const listening = useRef<Listening | null>(null);
+  const latestSendNow = useRef(sendNow);
+  latestSendNow.current = sendNow;
+  const available = settings.recognition.kind !== "off";
+
+  const put = (dictated: Dictated) => {
+    if (dictated.text.trim() === "") return setProblem(NO_WORDS);
+    insertDictated(textarea.current, setText, dictated.text);
+    if (dictated.original !== null) setOriginals((before) => [...before, dictated.original!]);
+    if (settings.sendRightAway) latestSendNow.current();
+  };
+
+  const finish = async () => {
+    const ending = listening.current;
+    if (!ending) return;
+    listening.current = null;
+    press.current = { kind: "up" };
+    try {
+      const recording = await ending.recording;
+      if (!ending.watch.heardSpeech()) {
+        recording.cancel();
+        setPhase("idle");
+        return setProblem(NOTHING_HEARD);
+      }
+      setPhase("transcribing");
+      put(await transcribed(conversationId, await recording.finish()));
+    } catch (error) {
+      setProblem(problemOf(error));
+    }
+    setPhase("idle");
+  };
+
+  const onLevel = (watch: PauseWatch, level: number) => {
+    const verdict = watch.hear(level, performance.now());
+    if (verdict !== "go-on" && press.current.kind === "tapped") void finish();
+  };
+
+  const begin = () => {
+    setProblem(null);
+    const watch = pauseWatch(performance.now());
+    const recording = startRecording((level) => onLevel(watch, level));
+    const started = { recording, watch };
+    listening.current = started;
+    setPhase("listening");
+    recording.catch((error) => {
+      if (listening.current !== started) return;
+      listening.current = null;
+      press.current = { kind: "up" };
+      setPhase("idle");
+      setProblem(problemOf(error));
+    });
+  };
+
+  const cancel = () => {
+    const cancelled = listening.current;
+    if (!cancelled) return;
+    listening.current = null;
+    press.current = { kind: "up" };
+    cancelled.recording.then((recording) => recording.cancel(), () => {});
+    setPhase("idle");
+  };
+
+  const onPress = () => {
+    if (!available) return setProblem(RECOGNITION_OFF);
+    if (phase === "transcribing") return;
+    const next = pressed(press.current, performance.now());
+    press.current = next.press;
+    if (next.action === "start") begin();
+    if (next.action === "finish") void finish();
+  };
+
+  const onRelease = () => {
+    const next = released(press.current, performance.now());
+    press.current = next.press;
+    if (next.action === "finish") void finish();
+  };
+
+  const latest = useRef({ onPress, onRelease, cancel });
+  latest.current = { onPress, onRelease, cancel };
+
+  useEffect(() => {
+    const pressFromKeys = () => {
+      latest.current.onPress();
+      textarea.current?.focus();
+    };
+    const tapFromKeys = () => {
+      pressFromKeys();
+      latest.current.onRelease();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && listening.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        return latest.current.cancel();
+      }
+      if (!dictates(event)) return;
+      event.preventDefault();
+      if (!event.repeat && !aDialogIsOpen()) pressFromKeys();
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space" || releasingKeys.includes(event.key)) latest.current.onRelease();
+    };
+    const onBlur = () => latest.current.onRelease();
+    const onHidden = () => document.hidden && latest.current.onRelease();
+    /** The canvas page forwards presses but not letting go, which may come before the message box takes the focus. */
+    const onFrameMessage = (event: MessageEvent) => {
+      const focused = document.activeElement;
+      if (!(focused instanceof HTMLIFrameElement) || event.source !== focused.contentWindow) return;
+      if (isCanvasFrameMessage(event.data) && event.data.kind === "key" && dictates(event.data) && !aDialogIsOpen()) tapFromKeys();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("message", onFrameMessage);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("message", onFrameMessage);
+      latest.current.cancel();
+    };
+  }, []);
+
+  return {
+    phase,
+    available,
+    problem,
+    originals,
+    onPress,
+    onRelease,
+    clearOriginals: () => setOriginals((before) => (before.length === 0 ? before : [])),
+  };
+}
+
+export type DictationControls = ReturnType<typeof useDictation>;
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" fill="currentColor" />
+      <path d="M3.2 7.6a4.8 4.8 0 0 0 9.6 0M8 12.4v2.3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Keeps the message box focused, so what was said goes in at its caret; Enter or Space on the button taps it. */
+export function DictateButton({ dictation }: { dictation: DictationControls }) {
+  const { phase, available, onPress, onRelease } = dictation;
+  return (
+    <button
+      type="button"
+      className={`dictate dictate-${phase}`}
+      aria-label="Dictate"
+      aria-pressed={phase === "listening"}
+      aria-disabled={!available || undefined}
+      data-hint={available ? hints.dictate : hints.dictateOff}
+      data-shortcut={shortcutKeys().dictate}
+      onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        onPress();
+      }}
+      onPointerUp={onRelease}
+      onPointerCancel={onRelease}
+      onClick={(event) => {
+        if (event.detail !== 0) return;
+        onPress();
+        onRelease();
+      }}
+    >
+      <MicIcon />
+    </button>
+  );
+}
+
+export function DictationLines({ dictation, settings, engine }: { dictation: DictationControls; settings: VoiceSettings; engine: VoiceEngineStatus }) {
+  const status = dictationStatus(dictation.phase, settings, engine.servers);
+  if (status === null && dictation.originals.length === 0) return null;
+  return (
+    <div className="dictation-lines">
+      {status && (
+        <div className={`dictation-status dictation-${dictation.phase}`} role="status">
+          {status}
+        </div>
+      )}
+      {dictation.originals.length > 0 && (
+        <div className="dictation-original">
+          <span>You said: {dictation.originals.join(" ")}</span>
+          <button type="button" className="icon" aria-label="Hide what you said" onClick={dictation.clearOriginals}>
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

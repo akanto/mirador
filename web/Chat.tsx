@@ -26,12 +26,15 @@ import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.
 import { adjacentPlaceholder, placeholdersIn, type TextRange } from "../shared/prompt-templates.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
+import type { VoiceSettings } from "../shared/voice.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { parseAnsi, plainTextOf } from "./ansi.ts";
 import { harnessSteers, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { choiceGroups } from "./choices.ts";
 import { MessageImages, PastedImages, useComposerImages } from "./ComposerImages.tsx";
 import { useDroppedFiles } from "./dropped-files.ts";
+import { DictateButton, DictationLines, useDictation } from "./Dictation.tsx";
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
@@ -1473,6 +1476,8 @@ function Composer({
   holdsEarliest,
   pendingCommands,
   promptTemplates,
+  voiceSettings,
+  voiceEngine,
   onManageTemplates,
 }: {
   conversation: Conversation;
@@ -1480,6 +1485,8 @@ function Composer({
   holdsEarliest: boolean;
   pendingCommands: UserCommand[];
   promptTemplates: PromptTemplate[];
+  voiceSettings: VoiceSettings;
+  voiceEngine: VoiceEngineStatus;
   onManageTemplates: () => void;
 }) {
   const [text, setText] = useDraft(conversation.id);
@@ -1541,6 +1548,10 @@ function Composer({
     if (stoppedEdit.editing) void stoppedEdit.replace().then((replaced) => replaced && sendPrompt(message, imageIds, afterTurn));
     else sendPrompt(message, imageIds, afterTurn);
   };
+  const dictation = useDictation({ conversationId: conversation.id, settings: voiceSettings, textarea, setText, sendNow: () => send(enterWhileBusy === "after-turn") });
+  useEffect(() => {
+    if (!text) dictation.clearOriginals();
+  }, [text]);
   const closeTemplates = () => {
     setPickingTemplate(false);
     textarea.current?.focus();
@@ -1667,6 +1678,11 @@ function Composer({
           {droppedFiles.problem}
         </div>
       )}
+      {dictation.problem && (
+        <div className="composer-problem" role="alert">
+          {dictation.problem}
+        </div>
+      )}
       {stoppedEdit.editing && (
         <div className="editing-stopped" role="status">
           Editing your stopped message. Enter replaces it and its answer, and puts back any files it changed; Esc keeps them.
@@ -1724,6 +1740,7 @@ function Composer({
           />
         )}
         <div className="composer-actions">
+          <DictateButton dictation={dictation} />
           {command === null && (
             <button
               ref={templatesButton}
@@ -1758,6 +1775,7 @@ function Composer({
           )}
         </div>
       </div>
+      <DictationLines dictation={dictation} settings={voiceSettings} engine={voiceEngine} />
     </div>
   );
 }
@@ -1766,6 +1784,8 @@ export function ChatPanel({
   conversation,
   profiles,
   promptTemplates,
+  voiceSettings,
+  voiceEngine,
   userPicture,
   onManageTemplates,
   open,
@@ -1777,6 +1797,8 @@ export function ChatPanel({
   conversation: Conversation;
   profiles: Profile[];
   promptTemplates: PromptTemplate[];
+  voiceSettings: VoiceSettings;
+  voiceEngine: VoiceEngineStatus;
   /** The user's profile picture next to their messages; null leaves the person icon. */
   userPicture: string | null;
   onManageTemplates: () => void;
@@ -1891,6 +1913,8 @@ export function ChatPanel({
                   holdsEarliest={!open.hasEarlier}
                   pendingCommands={pendingCommands}
                   promptTemplates={promptTemplates}
+                  voiceSettings={voiceSettings}
+                  voiceEngine={voiceEngine}
                   onManageTemplates={onManageTemplates}
                 />
                 <Statusline conversation={conversation} profiles={profiles} />

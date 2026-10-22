@@ -18,6 +18,9 @@ export const hints = {
     "The language you speak. Naming it helps on short clips, where telling languages apart by sound alone often goes wrong. With any language, the speech server decides, and the voice model translates whatever isn't English.",
   translateToEnglish: "What you say goes into the message box in English, with what you said under it, so you can check it before sending.",
   translateNeedsVoiceModel: "Translating needs a voice model. Pick one above.",
+  sendRightAway: "Sends what you said as soon as it is text, instead of leaving it in the message box for you to check first.",
+  dictate: "Speak instead of typing. Tap to start, and it stops when you pause or tap again; or hold it while you talk. What you said goes in at the caret.",
+  dictateOff: "Dictating needs speech recognition. Settings → Voice can turn it on.",
   yolo:
     "Approve everything without asking.\n\nWhen the agent asks for permission to run a tool, the host answers with the agent's own \"allow\" option at once instead of showing you a card. Switching it on also approves a request that is already waiting. Requests that offer no allow option still ask you.\n\nThis is separate from the agent's Mode: tools that the Mode already allows never ask at all. Saved per conversation.",
   profile:

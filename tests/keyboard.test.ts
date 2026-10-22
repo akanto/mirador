@@ -9,7 +9,7 @@ import {
   type NavigationState,
 } from "../web/navigation.ts";
 import { matchesQuery } from "../web/Palette.tsx";
-import { commandFor, findsTemplate, shortcutKeys, type KeyPress } from "../web/shortcuts.ts";
+import { commandFor, dictates, findsTemplate, shortcutKeys, type KeyPress } from "../web/shortcuts.ts";
 import { terminalKeyAction } from "../web/terminal-keys.ts";
 
 const press = (code: string, modifiers: Partial<KeyPress> = {}, key = ""): KeyPress => ({
@@ -128,6 +128,20 @@ describe("findsTemplate", () => {
     expect(findsTemplate(press("KeyJ", { ctrlKey: true }), true)).toBe(false);
     expect(findsTemplate(press("KeyJ", { metaKey: true, shiftKey: true }), true)).toBe(false);
     expect(findsTemplate(press("KeyJ", {}), true)).toBe(false);
+  });
+});
+
+describe("dictates", () => {
+  test("is ⌘⇧Space on macOS and Ctrl+Shift+Space elsewhere, which no command takes", () => {
+    expect(dictates(press("Space", { metaKey: true, shiftKey: true }), true)).toBe(true);
+    expect(dictates(press("Space", { ctrlKey: true, shiftKey: true }), false)).toBe(true);
+    expect(dictates(press("Space", { ctrlKey: true, shiftKey: true }), true)).toBe(false);
+    expect(dictates(press("Space", { metaKey: true }), true)).toBe(false);
+    expect(dictates(press("Space", { metaKey: true, shiftKey: true, altKey: true }), true)).toBe(false);
+    expect(commandFor(press("Space", { metaKey: true, shiftKey: true }), "typing", true)).toBeNull();
+    expect(commandFor(press("Space", { ctrlKey: true, shiftKey: true }), "not-typing", false)).toBeNull();
+    expect(shortcutKeys(true).dictate).toBe("⌘⇧Space");
+    expect(shortcutKeys(false).dictate).toBe("Ctrl+Shift+Space");
   });
 });
 

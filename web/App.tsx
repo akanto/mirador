@@ -470,6 +470,8 @@ export function App() {
                     conversation={keptConversation}
                     profiles={state.profiles}
                     promptTemplates={state.promptTemplates}
+                    voiceSettings={state.voiceSettings}
+                    voiceEngine={state.voiceEngine}
                     userPicture={state.avatar}
                     onManageTemplates={() => dispatch({ type: "open-overlay", overlay: { kind: "settings", page: "conversations" } })}
                     open={kept}

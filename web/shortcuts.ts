@@ -78,6 +78,9 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
 /** In the message box: find a prompt template to put in at the caret. */
 export const findsTemplate = (press: KeyPress, mac = isMac) => holdsPrimary(press, mac) && !press.altKey && !press.shiftKey && press.code === "KeyJ";
 
+/** Anywhere in the window, the canvas included: dictate into the message box. */
+export const dictates = (press: KeyPress, mac = isMac) => holdsPrimary(press, mac) && press.shiftKey && !press.altKey && press.code === "Space";
+
 export function typingStateOf(element: Element | null): TypingState {
   if (element?.closest(".xterm")) return "terminal";
   if (element instanceof HTMLTextAreaElement || (element instanceof HTMLInputElement && element.type !== "checkbox")) {
@@ -109,6 +112,7 @@ export function shortcutKeys(mac = isMac) {
     restartHost: `${primary}${shift}R`,
     markUnread: `${primary}${shift}U`,
     templates: `${primary}J`,
+    dictate: `${primary}${shift}Space`,
     send: "Enter",
     sendTheOtherWay: `${option}Enter`,
     stop: "Esc",
@@ -145,6 +149,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: mac ? keys.find : "Ctrl+Shift+F", action: "In a terminal: find in its output, with match case, whole word and regular expression toggles (Enter: match further up, Shift+Enter: further down)" },
     { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
     { keys: keys.templates, action: "In the message box: find a prompt template by typing and put it in; Tab / Shift+Tab then go through its {{values}}" },
+    { keys: keys.dictate, action: "Dictate into the message box: tap to start, and it stops when you pause or tap again; or hold while you talk. Esc cancels (Settings → Voice turns it on)" },
     { keys: `${primary}${shift}← / ${primary}${shift}→ / ${primary}${shift}↓`, action: "Focus the message box / the canvas / the terminal (not while editing text)" },
     { keys: `${primary}+ / ${primary}−`, action: "Make text bigger / smaller (in a terminal, changes its font size instead)" },
     { keys: `${primary}0`, action: "Reset text size to 100% (in a terminal, resets to 12 px)" },

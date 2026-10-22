@@ -172,6 +172,10 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
             Translate into English
           </label>
         )}
+        <label data-hint={hints.sendRightAway}>
+          <input type="checkbox" checked={draft.sendRightAway} onChange={(event) => change({ sendRightAway: event.target.checked })} />
+          Send right away
+        </label>
       </div>
       <div className="voice-save">
         <button type="button" disabled={!unsaved} onClick={save}>
