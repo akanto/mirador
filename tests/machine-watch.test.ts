@@ -73,7 +73,7 @@ function watching(origin: string, joined = true) {
   );
   cleanUp.push(() => watch.stopAll());
   watch.startAll();
-  return { watch, statuses, notifications, signedOut };
+  return { watch, store, statuses, notifications, signedOut };
 }
 
 describe("MachineWatch", () => {
@@ -145,6 +145,18 @@ describe("MachineWatch", () => {
     await eventually(() => expect(signedOut).toEqual(["m1"]), 5_000);
     expect(watch.statuses()).toEqual([]);
   }, 10_000);
+
+  test("does not ask a machine it stopped watching whether it still lets this host in, so a host stopping never reads the store it closed", async () => {
+    const neverAnswers = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Promise<Response>(() => {}) });
+    cleanUp.push(() => neverAnswers.stop(true));
+    const { watch, store, statuses, signedOut } = watching(`http://127.0.0.1:${neverAnswers.port}`);
+    await Bun.sleep(100);
+    watch.stopAll();
+    store.close();
+    await Bun.sleep(200);
+    expect(statuses).toEqual([]);
+    expect(signedOut).toEqual([]);
+  });
 
   test("leaves a machine this host has not joined alone", async () => {
     const machine = fakeMachine();

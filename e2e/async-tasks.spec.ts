@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, primaryModifier, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -14,6 +14,7 @@ const fakeOpencode = () =>
     FAKE_ACP_TASK_OUTPUT_DIR: host.root,
   });
 
+test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   fakeOpencode();
   await host.start();
@@ -121,4 +122,20 @@ test("a background task the agent started shows with its output and Stop above t
     await expect(page.locator(".timeline:visible")).toContainText("Now using the profile “async elsewhere”");
     await expect(tasks).toHaveCount(0);
   });
+});
+
+test("Cmd+Shift+R while a background task runs restarts the host, rather than leave it on Restarting the host…", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "async · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await sendMessage(page, "ASYNC TASK");
+  await waitForTurnToEnd(page);
+  await expect(page.getByRole("region", { name: "Background tasks" }).locator("li")).toContainText("Running:");
+
+  const starts = () => host.log.match(/Mirador is running/g)?.length ?? 0;
+  const startsBefore = starts();
+  await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
+  await expect.poll(starts, { timeout: 60_000 }).toBe(startsBefore + 1);
+  await expect(page.getByText("Restarting the host…")).toHaveCount(0, { timeout: 30_000 });
+  expect(host.log).not.toContain("Cannot use a closed database");
 });

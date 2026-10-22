@@ -163,8 +163,9 @@ async function stopServices() {
   networkAssetsServer?.stop(true);
   relays.stopAll();
   watch.stopAll();
-  store.close();
+  // An agent's exit is handled before its stop resolves, and that handling still reads and writes the store.
   await Promise.all([childrenExited, voiceEngineStopped]);
+  store.close();
 }
 
 let stopping = false;

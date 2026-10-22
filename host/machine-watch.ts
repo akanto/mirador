@@ -39,7 +39,7 @@ class MachineSocket {
     socket.onclose = () => {
       this.socket = null;
       this.events.closed?.();
-      if (!opened) this.events.refused?.();
+      if (!opened && !this.stopped) this.events.refused?.();
       if (this.stopped) return;
       this.retry = setTimeout(() => this.start(), RECONNECT_DELAYS_MS[Math.min(this.failures++, RECONNECT_DELAYS_MS.length - 1)]);
     };
