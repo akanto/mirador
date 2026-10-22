@@ -137,4 +137,15 @@ describe("serveCanvasAssets", () => {
       server.stop(true);
     }
   });
+
+  test("names the addresses pages are given for the assets too, as a proxy in front may hand on a Host of its own", async () => {
+    const publicOrigin = "https://mirador.example.com:8443";
+    const server = serveCanvasAssets(0, { knownOrigins: [publicOrigin] });
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}${CANVAS_SHELL_PATH}`);
+      expect(response.headers.get("content-security-policy")).toContain(`'self' http://127.0.0.1:${server.port} ${publicOrigin};`);
+    } finally {
+      server.stop(true);
+    }
+  });
 });

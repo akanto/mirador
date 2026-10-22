@@ -57,15 +57,17 @@ const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, M
 notifierMute.unmuteSessionsOfEarlierRuns();
 const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications);
 const canvasAssetsOrigins = [
-  config.canvasAssetsOrigin,
-  `http://127.0.0.1:${config.canvasAssetsPort}`,
-  ...(network && certificate ? certificate.names.map((name) => `https://${name}:${network.canvasPort}`) : []),
+  ...new Set([
+    config.canvasAssetsOrigin,
+    `http://127.0.0.1:${config.canvasAssetsPort}`,
+    ...(network && certificate ? certificate.names.map((name) => `https://${name}:${network.canvasPort}`) : []),
+  ]),
 ];
-const canvas = new CanvasService(store, hub, conversations, notifications, [...new Set(canvasAssetsOrigins)]);
+const canvas = new CanvasService(store, hub, conversations, notifications, canvasAssetsOrigins);
 conversations.hearCanvasNotesFrom((conversationId) => canvas.notesForAgent(conversationId));
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
-const assetsServer = serveCanvasAssets(config.canvasAssetsPort);
-const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, certificate);
+const assetsServer = serveCanvasAssets(config.canvasAssetsPort, { knownOrigins: canvasAssetsOrigins });
+const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, { certificate, knownOrigins: canvasAssetsOrigins });
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, store);

@@ -35,8 +35,14 @@ export function resolveAsset(pathname: string): string | null {
   return file.startsWith(root + sep) ? file : null;
 }
 
+interface AssetsServing {
+  certificate?: { chain: string; key: string } | null;
+  /** The addresses pages are given for these assets. A proxy in front may hand the request a Host other than its own address. */
+  knownOrigins?: string[];
+}
+
 /** On 127.0.0.1 for this machine's pages; with a certificate, on every network for other devices' pages. */
-export function serveCanvasAssets(port: number, certificate: { chain: string; key: string } | null = null) {
+export function serveCanvasAssets(port: number, { certificate = null, knownOrigins = [] }: AssetsServing = {}) {
   return Bun.serve({
     hostname: certificate ? "0.0.0.0" : "127.0.0.1",
     port,
@@ -45,8 +51,10 @@ export function serveCanvasAssets(port: number, certificate: { chain: string; ke
       if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
       const pathname = new URL(request.url).pathname;
       if (pathname === HERE_PATH) return Response.json({ mirador: true }, { headers: corsHeaders });
-      if (pathname === CANVAS_SHELL_PATH)
-        return new Response(CANVAS_SHELL_PAGE, { headers: { ...shellHeaders, "Content-Security-Policy": canvasShellPolicy(new URL(request.url).origin) } });
+      if (pathname === CANVAS_SHELL_PATH) {
+        const policy = canvasShellPolicy([...new Set([new URL(request.url).origin, ...knownOrigins])]);
+        return new Response(CANVAS_SHELL_PAGE, { headers: { ...shellHeaders, "Content-Security-Policy": policy } });
+      }
       const file = resolveAsset(pathname);
       if (!file || !(await Bun.file(file).exists())) return new Response("not found", { status: 404, headers: corsHeaders });
       return new Response(Bun.file(file), { headers: corsHeaders });
