@@ -256,6 +256,58 @@ test("a machine added by its address alone asks for an invite code in this compu
   await server.close();
 });
 
+test("a machine left hidden for ten minutes lets go of its page, which comes back on the conversation it showed last", async ({ page }) => {
+  await page.clock.install();
+  await allowNotifications(page);
+  await signIn(page, laptop);
+  const rail = page.getByRole("navigation", { name: "Machines" });
+  const serverButton = rail.getByRole("button", { name: "Home server" });
+  const thisComputer = rail.getByRole("button", { name: "This computer" });
+  const frameElement = page.locator('iframe[title="Home server"]');
+  const frame = page.frameLocator('iframe[title="Home server"]');
+  const markPage = async () => (await (await frameElement.elementHandle())!.contentFrame())!.evaluate(() => ((window as { marked?: boolean }).marked = true));
+  const pageStillMarked = async () => (await (await frameElement.elementHandle())!.contentFrame())!.evaluate(() => (window as { marked?: boolean }).marked === true);
+  const serverOnly = workspaceCard(frame, join(host.root, "server-only"));
+  let shownLast = "";
+
+  await test.step("a notification opens one conversation in the frame, and the reader goes on to another there", async () => {
+    await serverButton.click();
+    await serverOnly.locator("li").first().click();
+    await expect.poll(() => conversationInFrame(page)).toBeTruthy();
+    const asking = conversationInFrame(page)!;
+    await thisComputer.click();
+    void callCanvasTool(host, asking, "ask", { question: "Keep going?", options: [{ label: "Yes" }, { label: "No" }] }).catch(() => {});
+    await expect.poll(() => notificationsShown(page)).toContainEqual(expect.objectContaining({ body: "Home server · server-only · Asks: Keep going?" }));
+    await clickLatestNotification(page);
+    await expect(serverButton).toHaveAttribute("aria-current", "true");
+    await expect.poll(() => conversationInFrame(page)).toBe(asking);
+    await serverOnly.getByRole("button", { name: "+ New conversation" }).click();
+    await expect.poll(() => conversationInFrame(page)).not.toBe(asking);
+    shownLast = conversationInFrame(page)!;
+    await markPage();
+  });
+
+  await test.step("shown again within ten minutes each time, the machine keeps its page", async () => {
+    await thisComputer.click();
+    await page.clock.fastForward("09:00");
+    await serverButton.click();
+    await thisComputer.click();
+    await page.clock.fastForward("09:00");
+    await expect(frameElement).toHaveCount(1);
+    expect(await pageStillMarked()).toBe(true);
+  });
+
+  await test.step("hidden for ten minutes, it lets go of the page, and opens again where the reader was, not where the notification led", async () => {
+    await page.clock.fastForward("01:01");
+    await expect(frameElement).toHaveCount(0);
+    await expect(serverButton.locator(".rail-waiting")).toHaveText("1");
+    await serverButton.click();
+    await expect(frameElement).toHaveAttribute("src", new RegExp(`#/c/${shownLast}$`));
+    await expect(frame.locator(".workspace li.selected")).toBeVisible();
+    expect(await pageStillMarked()).toBe(false);
+  });
+});
+
 test("pages of other sites cannot join for their visitors", async () => {
   const otherOrigin = await fetch(`${publicOrigin()}/join`, {
     method: "POST",

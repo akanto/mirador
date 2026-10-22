@@ -6,6 +6,7 @@ import type { ClientMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { useMachineColorStyle } from "./machine-colors.ts";
+import { placeIn } from "./machine-place.ts";
 import { pastelVariables } from "./pastels.ts";
 import { mostUrgentTone } from "./waiting.ts";
 
@@ -33,15 +34,36 @@ export interface ConversationToOpen {
   conversationId: string;
 }
 
-/** Which machine the window shows (null for this computer), and every machine it has shown, which stay loaded. */
+/** A machine's page keeps streaming what its conversations do while hidden, so a machine left for this long lets go of it. */
+export const HIDDEN_MACHINE_STAYS_LOADED_MS = 10 * 60_000;
+
+/**
+ * Which machine the window shows (null for this computer), and every machine it has shown, which stay loaded until
+ * hidden for HIDDEN_MACHINE_STAYS_LOADED_MS; a machine loaded again opens at the place its page showed last.
+ */
 export function useShownMachine(machines: Machine[], machinesLoaded: boolean) {
   const [shownId, setShownId] = useState(machineFromHash);
   const [visited, setVisited] = useState(() => new Set(shownId ? [shownId] : []));
   const [opening, setOpening] = useState<ConversationToOpen | null>(null);
+  const places = useRef(new Map<string, string>());
+  const lettingGo = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const shown = machines.find(({ id }) => id === shownId) ?? null;
   useEffect(() => {
     if (machinesLoaded && shownId && !shown) setShownId(null);
   }, [machinesLoaded, shownId, shown]);
+  useEffect(() => {
+    if (!shownId) return;
+    clearTimeout(lettingGo.current.get(shownId));
+    return () => {
+      lettingGo.current.set(shownId, setTimeout(() => letGo(shownId), HIDDEN_MACHINE_STAYS_LOADED_MS));
+    };
+  }, [shownId]);
+  const letGo = (machineId: string) => {
+    setVisited((before) => new Set([...before].filter((id) => id !== machineId)));
+    setOpening((current) => (current?.machineId === machineId ? null : current));
+  };
+  const rememberPlace = useCallback((machineId: string, place: string) => places.current.set(machineId, place), []);
+  const placeOf = useCallback((machineId: string) => places.current.get(machineId) ?? "", []);
   const show = useCallback((machineId: string | null) => {
     setShownId(machineId);
     if (machineId) setVisited((before) => new Set(before).add(machineId));
@@ -50,7 +72,7 @@ export function useShownMachine(machines: Machine[], machinesLoaded: boolean) {
     setOpening({ machineId, conversationId });
     show(machineId);
   }, []);
-  return { shownId, shown, visited, opening, show, openIn };
+  return { shownId, shown, visited, opening, show, openIn, rememberPlace, placeOf };
 }
 
 function WaitingBadge({ status }: { status: MachineStatus | undefined }) {
@@ -123,13 +145,35 @@ export function MachineRail({
 
 const conversationAddress = (machine: Machine, conversationId: string) => `${relayAddress(machine)}#/c/${conversationId}`;
 
-function MachineFrame({ machine, shown, opening, striped }: { machine: Machine; shown: boolean; opening: ConversationToOpen | null; striped: boolean }) {
+function MachineFrame({
+  machine,
+  shown,
+  opening,
+  striped,
+  place,
+  onPlace,
+}: {
+  machine: Machine;
+  shown: boolean;
+  opening: ConversationToOpen | null;
+  striped: boolean;
+  place: string;
+  onPlace: (machineId: string, place: string) => void;
+}) {
   const frame = useRef<HTMLIFrameElement>(null);
   const openedWith = useRef(opening);
-  const [address] = useState(() => (opening ? conversationAddress(machine, opening.conversationId) : relayAddress(machine)));
+  const [address] = useState(() => (opening ? conversationAddress(machine, opening.conversationId) : `${relayAddress(machine)}${place}`));
   useEffect(() => {
     if (opening && opening !== openedWith.current) frame.current!.contentWindow!.location.href = conversationAddress(machine, opening.conversationId);
   }, [opening]);
+  useEffect(() => {
+    const rememberPlace = (event: MessageEvent) => {
+      const sent = placeIn(event.data);
+      if (sent !== null && event.source === frame.current?.contentWindow && event.origin === new URL(address).origin) onPlace(machine.id, sent);
+    };
+    window.addEventListener("message", rememberPlace);
+    return () => window.removeEventListener("message", rememberPlace);
+  }, []);
   return (
     <iframe
       ref={frame}
@@ -211,17 +255,21 @@ function JoinMachinePanel({ machine }: { machine: Machine }) {
   );
 }
 
-/** Each machine's own Mirador, as its host serves it; once shown it stays loaded so going back to it is instant. */
+/** Each machine's own Mirador, as its host serves it; shown again within HIDDEN_MACHINE_STAYS_LOADED_MS, it is still loaded and back at once. */
 export function MachineFrames({
   machines,
   shownId,
   visited,
   opening,
+  placeOf,
+  onPlace,
 }: {
   machines: Machine[];
   shownId: string | null;
   visited: Set<string>;
   opening: ConversationToOpen | null;
+  placeOf: (machineId: string) => string;
+  onPlace: (machineId: string, place: string) => void;
 }) {
   const striped = useMachineColorStyle() === "strip";
   return machines
@@ -234,6 +282,8 @@ export function MachineFrames({
           shown={machine.id === shownId}
           opening={opening?.machineId === machine.id ? opening : null}
           striped={striped}
+          place={placeOf(machine.id)}
+          onPlace={onPlace}
         />
       ) : (
         machine.id === shownId && <JoinMachinePanel key={machine.id} machine={machine} />

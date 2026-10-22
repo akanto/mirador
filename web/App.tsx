@@ -15,6 +15,7 @@ import { useClosesAsDialog } from "./desktop-close.ts";
 import { JoinMachine } from "./Devices.tsx";
 import { JoinRequestPrompts } from "./JoinRequests.tsx";
 import { FileToOpenPrompt } from "./FileToOpenPrompt.tsx";
+import { tellTheRailThePlace } from "./machine-place.ts";
 import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
 import { MachinesDialog, openMachine } from "./Machines.tsx";
 import { NewerVersionBanner } from "./NewerVersion.tsx";
@@ -441,6 +442,7 @@ export function App() {
   useEffect(() => {
     const hash = machines.shownId ? `#/m/${machines.shownId}` : state.selectedConversationId ? `#/c/${state.selectedConversationId}` : "";
     if (location.hash !== hash) history.replaceState(null, "", hash || location.pathname);
+    tellTheRailThePlace(hash);
   }, [state.selectedConversationId, machines.shownId]);
 
   if (status === "unauthorized") return <JoinMachine />;
@@ -540,7 +542,16 @@ export function App() {
           }}
         />
       </div>
-      {railShown && <MachineFrames machines={state.machines} shownId={shownMachine?.id ?? null} visited={machines.visited} opening={machines.opening} />}
+      {railShown && (
+        <MachineFrames
+          machines={state.machines}
+          shownId={shownMachine?.id ?? null}
+          visited={machines.visited}
+          opening={machines.opening}
+          placeOf={machines.placeOf}
+          onPlace={machines.rememberPlace}
+        />
+      )}
       <HintLayer />
       <JoinRequestPrompts joinRequests={state.joinRequests} />
       <FileToOpenPrompt fileToOpen={state.fileToOpen} dispatch={dispatch} />
