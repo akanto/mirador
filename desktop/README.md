@@ -30,7 +30,7 @@ ditto -x -k Mirador-macos-arm64.zip ~/Applications
 open ~/Applications/Mirador.app
 ```
 
-On first launch macOS asks whether Mirador may send notifications, and the first time the terminal or an agent reaches a machine on your local network, whether it may do that.
+On first launch macOS asks whether Mirador may send notifications. It asks again the first time the terminal or an agent reaches a machine on your local network, and the first time you dictate ([Microphone](#microphone)).
 
 ## Install on Linux
 
@@ -138,6 +138,18 @@ On Windows:
 ### Notifications
 
 The app listens to the host for the notifications a browser tab would show (a question, a permission request, a finished turn or an error, in a conversation not on screen in a focused window) and shows them natively, also while its window is closed. It reconnects whenever the host restarts. While it listens, browser tabs on this computer show none, so nothing arrives twice.
+
+### Microphone
+
+Dictating into the message box (Settings › Voice) uses the microphone. The first time you dictate after the app starts, the app asks whether the page may use it:
+
+| | The app asks | Then |
+| --- | --- | --- |
+| macOS | *Microphone Access*: Allow or Block | The first time, macOS asks as well; System Settings › Privacy & Security › Microphone changes that later |
+| Linux | *Camera & Microphone Access*: Allow or Block | |
+| Windows | *Camera & Microphone Access*: Yes or No | Windows Settings › Privacy & security › Microphone must let desktop apps use it |
+
+The app keeps the answer while it runs, for a day at most, so a Block holds until you quit it.
 
 ### Settings
 
@@ -261,4 +273,5 @@ bun run test            # includes tests/desktop-*.test.ts
 - **Clicking a notification** doesn't open its conversation: Electrobun 2.0.2 does not report clicks.
 - **The macOS theme** is set through the Objective-C runtime (`src/bun/app-appearance.ts`), as Electrobun 2.0.2 has no call for it. Whether WebKitGTK renders canvas pages in the app's appearance on Linux is untested, so the Linux app is left as it is.
 - **Linux** is checked only under X11 (Xvfb with openbox); the tray icon and Wayland sessions are untested.
+- **The microphone question** comes again each time the app starts, as Electrobun 2.0.2 keeps the answer in memory only. On Windows, `build.win.autoGrantPermissions: ["microphone"]` in `electrobun.config.ts` would skip it, but for any page the window opens, so it is left off. No real microphone has been tried in the app yet: on Linux, recording is checked only in a bare WebKitGTK page with its mock microphone, and Windows is untested.
 - **Sign-in**: `host.log` holds no sign-in link, as the host prints one only to a terminal. The window signs in with `<data dir>/browser-token`, which the app never logs. The window is sandboxed, and links to other sites open in your default browser.

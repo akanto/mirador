@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { EngineServerState } from "../shared/voice-engine.ts";
-import { dictationStatus, HOLD_MS, pressed, released, spacedAtCaret, type Press } from "../web/dictation.ts";
+import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, spacedAtCaret, type MicrophonePlace, type Press } from "../web/dictation.ts";
 import { NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
 import { wavOf } from "../web/wav.ts";
 
@@ -95,6 +95,33 @@ describe("what was said goes in at the caret", () => {
     expect(spacedAtCaret("Please now", 7, 7, "run the tests")).toBe("run the tests ");
     expect(spacedAtCaret("Please XX now", 7, 9, "run")).toBe("run");
     expect(spacedAtCaret("Please\nnow", 7, 7, "run")).toBe("run ");
+  });
+});
+
+describe("when the microphone doesn't start", () => {
+  const browser: MicrophonePlace = { desktopApp: false, secure: true, system: "mac" };
+  const desktopApp = (system: MicrophonePlace["system"]): MicrophonePlace => ({ desktopApp: true, secure: true, system });
+
+  test("a browser points to its settings for the site, the desktop app to its own question and the system's setting", () => {
+    expect(microphoneProblem("NotAllowedError", browser)).toBe("Mirador may not use the microphone. The browser's settings for this site can allow it.");
+    expect(microphoneProblem("NotAllowedError", desktopApp("mac"))).toBe(
+      "Mirador may not use the microphone. Allow it when the desktop app asks and in System Settings → Privacy & Security → Microphone. Blocking it in the app holds until the app quits.",
+    );
+    expect(microphoneProblem("NotAllowedError", desktopApp("windows"))).toBe(
+      "Mirador may not use the microphone. Allow it when the desktop app asks and in Windows Settings → Privacy & security → Microphone, which desktop apps need too. Blocking it in the app holds until the app quits.",
+    );
+    expect(microphoneProblem("NotAllowedError", desktopApp("other"))).toBe("Mirador may not use the microphone. Allow it when the desktop app asks. Blocking it in the app holds until the app quits.");
+  });
+
+  test("a page without the microphone says why", () => {
+    expect(microphoneProblem(NO_MICROPHONE_API, { ...browser, secure: false })).toBe("Pages may use the microphone only when opened over https or at localhost. Open Mirador at one of those to dictate.");
+    expect(microphoneProblem(NO_MICROPHONE_API, browser)).toBe("This browser doesn't let pages use the microphone.");
+    expect(microphoneProblem(NO_MICROPHONE_API, desktopApp("other"))).toBe("This window of the desktop app offers no microphone. Mirador in a browser can dictate.");
+  });
+
+  test("no microphone, or another failure", () => {
+    expect(microphoneProblem("NotFoundError", desktopApp("mac"))).toBe("There is no microphone to listen with.");
+    expect(microphoneProblem("NotReadableError", browser, "Could not start audio source")).toBe("The microphone didn't start: Could not start audio source");
   });
 });
 

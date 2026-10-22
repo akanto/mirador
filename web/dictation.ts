@@ -36,3 +36,25 @@ export function spacedAtCaret(text: string, start: number, end: number, words: s
   const spaceAfter = after !== "" && !/^\s/.test(after) ? " " : "";
   return spaceBefore + words.trim() + spaceAfter;
 }
+
+export const NO_MICROPHONE_API = "NoMicrophoneApi";
+
+export interface MicrophonePlace {
+  desktopApp: boolean;
+  secure: boolean;
+  system: "mac" | "windows" | "other";
+}
+
+const systemMicrophoneSetting = { mac: " and in System Settings → Privacy & Security → Microphone", windows: " and in Windows Settings → Privacy & security → Microphone, which desktop apps need too", other: "" };
+
+/** What to tell the user when the microphone doesn't start, by the error's name, or NO_MICROPHONE_API when the page offers none. */
+export function microphoneProblem(errorName: string, place: MicrophonePlace, detail = "") {
+  if (errorName === NO_MICROPHONE_API && !place.secure) return "Pages may use the microphone only when opened over https or at localhost. Open Mirador at one of those to dictate.";
+  if (errorName === NO_MICROPHONE_API) return place.desktopApp ? "This window of the desktop app offers no microphone. Mirador in a browser can dictate." : "This browser doesn't let pages use the microphone.";
+  if (errorName === "NotAllowedError" && place.desktopApp) {
+    return `Mirador may not use the microphone. Allow it when the desktop app asks${systemMicrophoneSetting[place.system]}. Blocking it in the app holds until the app quits.`;
+  }
+  if (errorName === "NotAllowedError") return "Mirador may not use the microphone. The browser's settings for this site can allow it.";
+  if (errorName === "NotFoundError") return "There is no microphone to listen with.";
+  return `The microphone didn't start: ${detail}`;
+}

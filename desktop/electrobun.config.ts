@@ -32,7 +32,7 @@ export default {
       "icon.iconset/icon_32x32@2x.png": "views/assets/app-icon.png",
       ...(carriesMirador && { "release/mirador": "mirador" }),
     },
-    mac: { createDmg: false, icons: "icon.iconset", codesign: true },
+    mac: { createDmg: false, icons: "icon.iconset", codesign: true, entitlements: { "com.apple.security.device.audio-input": true } },
     linux: { icon: "icon.iconset/icon_512x512.png" },
     win: { icon: "icon.iconset/icon_256x256.png" },
   },

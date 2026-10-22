@@ -1,13 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Adds NSLocalNetworkUsageDescription to Info.plist and re-signs the app ad hoc.
- * Run automatically after electrobun build.
+ * Adds to Info.plist what macOS shows when the app asks for local network access and for the microphone, and re-signs
+ * the app ad hoc. Run automatically after electrobun build.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const LOCAL_NETWORK_USAGE = "This app requires local network access to connect to local services.";
+const USAGE_DESCRIPTIONS = {
+  NSLocalNetworkUsageDescription: "This app requires local network access to connect to local services.",
+  NSMicrophoneUsageDescription: "Mirador listens to the microphone while you dictate a message.",
+};
 
 function findBuiltApps(buildDir: string): string[] {
   if (!existsSync(buildDir)) return [];
@@ -37,7 +40,9 @@ if (process.platform === "darwin") {
   for (const app of targets) {
     const infoPlist = join(app, "Contents", "Info.plist");
     if (existsSync(infoPlist)) {
-      execFileSync("plutil", ["-replace", "NSLocalNetworkUsageDescription", "-string", LOCAL_NETWORK_USAGE, infoPlist]);
+      for (const [key, description] of Object.entries(USAGE_DESCRIPTIONS)) {
+        execFileSync("plutil", ["-replace", key, "-string", description, infoPlist]);
+      }
       execFileSync("codesign", ["--force", "--deep", "--sign", "-", app]);
     }
   }

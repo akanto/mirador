@@ -27,5 +27,5 @@ run([process.execPath, "x", "electrobun", "build", "--env=stable"], {
 
 if (process.platform === "darwin") {
   run(["scripts/unwrap-macos-app.sh"]);
-  run([process.execPath, "scripts/add-local-network-usage.ts"]);
+  run([process.execPath, "scripts/add-usage-descriptions.ts"]);
 }
