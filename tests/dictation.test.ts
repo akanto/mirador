@@ -116,7 +116,7 @@ describe("when the microphone doesn't start", () => {
   test("a page without the microphone says why", () => {
     expect(microphoneProblem(NO_MICROPHONE_API, { ...browser, secure: false })).toBe("Pages may use the microphone only when opened over https or at localhost. Open Mirador at one of those to dictate.");
     expect(microphoneProblem(NO_MICROPHONE_API, browser)).toBe("This browser doesn't let pages use the microphone.");
-    expect(microphoneProblem(NO_MICROPHONE_API, desktopApp("other"))).toBe("This window of the desktop app offers no microphone. Mirador in a browser can dictate.");
+    expect(microphoneProblem(NO_MICROPHONE_API, desktopApp("mac"))).toBe("This build of the desktop app can't use the microphone. Update or rebuild it, or dictate in a browser.");
   });
 
   test("no microphone, or another failure", () => {

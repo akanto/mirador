@@ -50,7 +50,7 @@ const systemMicrophoneSetting = { mac: " and in System Settings → Privacy & Se
 /** What to tell the user when the microphone doesn't start, by the error's name, or NO_MICROPHONE_API when the page offers none. */
 export function microphoneProblem(errorName: string, place: MicrophonePlace, detail = "") {
   if (errorName === NO_MICROPHONE_API && !place.secure) return "Pages may use the microphone only when opened over https or at localhost. Open Mirador at one of those to dictate.";
-  if (errorName === NO_MICROPHONE_API) return place.desktopApp ? "This window of the desktop app offers no microphone. Mirador in a browser can dictate." : "This browser doesn't let pages use the microphone.";
+  if (errorName === NO_MICROPHONE_API) return place.desktopApp ? "This build of the desktop app can't use the microphone. Update or rebuild it, or dictate in a browser." : "This browser doesn't let pages use the microphone.";
   if (errorName === "NotAllowedError" && place.desktopApp) {
     return `Mirador may not use the microphone. Allow it when the desktop app asks${systemMicrophoneSetting[place.system]}. Blocking it in the app holds until the app quits.`;
   }
