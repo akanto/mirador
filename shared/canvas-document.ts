@@ -94,8 +94,12 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
   ].join("; ");
 }
 
-/** 'self' is whatever address the viewer reached the assets at; the sandbox keeps the shell's origin opaque even where it is framed without one. */
-export const CANVAS_SHELL_POLICY = `${canvasContentSecurityPolicy("'self'")}; sandbox allow-scripts`;
+/**
+ * The sandbox keeps the shell's origin opaque even where it is framed without one, and WebKit matches 'self' against that
+ * opaque origin and matches nothing, which there refuses every library the page loads. The policy names the address the
+ * request came in on beside 'self', so both engines let the page load its assets.
+ */
+export const canvasShellPolicy = (assetsOrigin: string) => `${canvasContentSecurityPolicy(`'self' ${assetsOrigin}`)}; sandbox allow-scripts`;
 
 /**
  * WebKit tells a frame of an opaque origin only "Script error." of what its own classic scripts throw. A syntax error

@@ -65,7 +65,14 @@ function capturedPage(frame: HTMLIFrameElement): Promise<Blob> {
 
 // The clipboard is written at once, with the content still on its way: a browser takes a write only while it handles the
 // click, which would be over by the time the page is drawn or the host answers.
-export const copyPageImage = (frame: HTMLIFrameElement) => navigator.clipboard.write([new ClipboardItem({ "image/png": capturedPage(frame) })]);
+// Where the page could not be drawn, WebKit refuses the write with its own NotAllowedError and hides the reason, so the capture's error wins when both fail.
+export function copyPageImage(frame: HTMLIFrameElement) {
+  const capture = capturedPage(frame);
+  const captureFailure = capture.then(() => null, (error: unknown) => error);
+  return navigator.clipboard.write([new ClipboardItem({ "image/png": capture })]).catch(async (error: unknown) => {
+    throw (await captureFailure) ?? error;
+  });
+}
 
 export const copyPageHtml = (itemId: string) =>
   navigator.clipboard.write([new ClipboardItem({ "text/plain": exportedPage(itemId).then((html) => new Blob([html], { type: "text/plain" })) })]);

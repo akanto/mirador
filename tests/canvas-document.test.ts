@@ -127,7 +127,8 @@ describe("serveCanvasAssets", () => {
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}${CANVAS_SHELL_PATH}`);
       const policy = response.headers.get("content-security-policy");
-      expect(policy).toContain("script-src 'unsafe-inline' 'unsafe-eval' blob: 'self'");
+      // 'self' alone matches nothing in a sandboxed frame on WebKit, which there blocks every library: the address the request came in on is named beside it.
+      expect(policy).toContain(`script-src 'unsafe-inline' 'unsafe-eval' blob: 'self' http://127.0.0.1:${server.port}`);
       expect(policy).toContain("connect-src 'none'");
       expect(policy).toEndWith("sandbox allow-scripts");
       expect(response.headers.get("cache-control")).toBe("no-cache");
