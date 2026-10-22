@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, signIn, startConversation, workspaceCard } from "./helpers.ts";
-import { echo, promptMark, sum } from "./terminal-shell.ts";
+import { countTo, echo, printRaw, promptMark, showKeys, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -112,4 +112,28 @@ test("what the user pastes or types while a terminal's history replays reaches t
   await terminalToggle(page, "Show terminal").click();
   await expect(tabs.last()).toHaveAttribute("aria-selected", "true");
   await expect(screenOf(page, 0)).toContainText("pasted-42");
+});
+
+test("a full-screen program's arrow keys still reach it after its terminal replays more output than the scrollback keeps", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  await startConversation(page);
+  await page.getByRole("button", { name: "Show terminal" }).click();
+  await expect(screenOf(page, 0)).toContainText(promptMark);
+  const terminal = page.locator(".terminal-pane .terminal-splits.shown .xterm");
+  const row = (text: string) => screenOf(page, 0).locator(":scope > div").filter({ hasText: new RegExp(`^\\s*${text}\\s*$`) });
+
+  await terminal.click();
+  await page.keyboard.type(`${[printRaw("\x1b[?1h"), countTo(60000), showKeys("arrows-ready")].join("; ")}\n`);
+  await expect(row("arrows-ready")).toHaveCount(1);
+
+  await hideTerminalPane(page);
+  await terminalToggle(page, "Show terminal").click();
+  await expect(row("arrows-ready")).toHaveCount(1);
+  await terminal.click();
+  await page.keyboard.press("ArrowUp");
+  await expect(screenOf(page, 0)).toContainText("^[OA");
+  await expect(screenOf(page, 0)).not.toContainText("^[[A");
 });

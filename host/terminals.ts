@@ -9,6 +9,7 @@ import { isConsoleTitleOf, programName, terminalShell } from "./command-shell.ts
 import { hostEnvironment } from "./current-path.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
+import { SwitchedModes } from "./terminal-modes.ts";
 import { childProgramNames, killProcessTree } from "./windows-processes.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
@@ -53,6 +54,8 @@ interface Shell {
   child: Subprocess;
   scrollback: string[];
   scrollbackLength: number;
+  /** What the output the scrollback no longer holds switched, for a replay to switch again ahead of it. */
+  modesBeforeScrollback: SwitchedModes;
   title: string | null;
   titleCarry: string;
   program: string;
@@ -156,7 +159,7 @@ export class TerminalService {
 
   replay(socket: BrowserSocket, terminalId: string) {
     const shell = this.shells.get(terminalId);
-    if (shell) this.hub.send(socket, { type: "terminal.replayed", terminalId, data: shell.scrollback.join("") });
+    if (shell) this.hub.send(socket, { type: "terminal.replayed", terminalId, data: shell.modesBeforeScrollback.switches + shell.scrollback.join("") });
   }
 
   /** Starts a shell in a new tab, or beside or below the terminal `split` names. */
@@ -198,7 +201,9 @@ export class TerminalService {
   clear(terminalId: string) {
     const shell = this.shells.get(terminalId);
     if (!shell) return;
-    const cursorLine = shell.scrollback.join("").split("\n").at(-1) ?? "";
+    const output = shell.scrollback.join("");
+    const cursorLine = output.split("\n").at(-1) ?? "";
+    shell.modesBeforeScrollback.read(output.slice(0, output.length - cursorLine.length));
     shell.scrollback = [cursorLine];
     shell.scrollbackLength = cursorLine.length;
     if (shell.saved) this.saveScrollbackNow(shell);
@@ -347,6 +352,7 @@ export class TerminalService {
       child: undefined!,
       scrollback: restarting ? linesOf(restarting.scrollback) : [],
       scrollbackLength: restarting?.scrollback.length ?? 0,
+      modesBeforeScrollback: new SwitchedModes(),
       title: null,
       titleCarry: "",
       program: command[0]!,
@@ -372,7 +378,9 @@ export class TerminalService {
     shell.scrollback.push(text);
     shell.scrollbackLength += text.length;
     while (shell.scrollbackLength > SCROLLBACK_CHARACTERS && shell.scrollback.length > 1) {
-      shell.scrollbackLength -= shell.scrollback.shift()!.length;
+      const oldest = shell.scrollback.shift()!;
+      shell.scrollbackLength -= oldest.length;
+      shell.modesBeforeScrollback.read(oldest);
     }
     if (shell.saved && !this.stopping) this.scrollbackChanged(shell);
     this.publish(shell.conversationId, { type: "terminal.output", terminalId: shell.id, data: text });

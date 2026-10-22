@@ -186,6 +186,40 @@ test("clearing a terminal forgets the output above the cursor's line, in every w
   expect(replayed).not.toMatchObject({ data: expect.stringContaining("above-2-the-cursor") });
 });
 
+/** Application cursor keys, as a full-screen program switches them on once as it starts: the arrow keys then send ESC O A and so on. */
+const cursorKeysOn = "\x1b[?1h";
+/** The mode switches a replay starts with, ahead of the output it kept. */
+const leadingSwitches = (history: string) => history.match(/^(?:\x1b\[\?[\d;]*[hl]|\x1b[=>])*/)![0];
+const switchingCursorKeysOn = (marker: string) => shell.runningBun(`process.stdout.write('\\x1b[?1h'); console.log('${marker}-' + (2+3))`);
+
+test("a replay switches on again what the output the scrollback lost had switched on, as a full-screen program's cursor keys", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  const fillingTheScrollback = shell.runningBun("for (let i = 0; i < 4000; i++) console.log('line-' + i + ' ' + '0'.repeat(80))");
+  typing(terminalId, `${switchingCursorKeysOn("cursor-keys")}; ${fillingTheScrollback}; echo filled-$((2*3))`);
+  await eventually(() => outputOf(browser.received), (output) => output.includes("filled-6"), 20_000);
+
+  terminals.replay(browser.socket, terminalId);
+  const history = replayed(browser.received, terminalId);
+  expect(history).not.toContain("cursor-keys-5");
+  expect(leadingSwitches(history)).toContain(cursorKeysOn);
+}, 30_000);
+
+test("a replay after clearing a terminal switches on again what the cleared output had switched on", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  typing(terminalId, switchingCursorKeysOn("cleared-cursor-keys"));
+  await outputContaining(browser.received, "cleared-cursor-keys-5\r\n");
+
+  terminals.clear(terminalId);
+  terminals.replay(browser.socket, terminalId);
+  const history = replayed(browser.received, terminalId);
+  expect(history).not.toContain("cleared-cursor-keys-5");
+  expect(leadingSwitches(history)).toContain(cursorKeysOn);
+});
+
 test("new tabs are named after the shell with the lowest free number, and a tab splits into at most four terminals", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
