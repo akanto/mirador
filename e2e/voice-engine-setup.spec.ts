@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openSettings, signIn, startConversation, voiceSection } from "./helpers.ts";
 import { scratchPath, TestHost, writeCompiledBunProgram } from "./test-host.ts";
 
 const files = [
@@ -122,11 +122,20 @@ test.afterAll(async () => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
+/** The model chosen in a section for this Mac, apart from the section's own choice, such as Voice model. */
+const modelChosenIn = (section: Locator) => section.getByRole("combobox", { name: /^Model/ });
+
+/** Whether the server of the model chosen in a section has it loaded. */
+const serverStateIn = (section: Locator) => section.locator(".voice-engine-state");
+
+const modelRow = (models: Locator, name: string) => models.getByRole("row").filter({ hasText: name });
+
 test("Settings → Voice set up voice on this Mac: the download shows its progress, Cancel stops it, Remove takes it away, and a failed download says why", async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page, host);
   const settings = await openSettings(page, "Voice");
-  const thisMac = settings.getByRole("group", { name: "Voice on this Mac" });
+  const thisMac = voiceSection(settings, "Voice on this Mac");
+  const models = voiceSection(settings, "Models on this Mac");
   const setUpButton = thisMac.getByRole("button", { name: "Set up voice on this Mac" });
   const progress = thisMac.getByRole("progressbar", { name: "Setting up voice on this Mac" });
 
@@ -152,27 +161,27 @@ test("Settings → Voice set up voice on this Mac: the download shows its progre
     await expect(progress).toHaveCount(0);
   });
 
-  await test.step("once set up, it lists speech recognition, offers the best voice model to add, and every window shows it", async () => {
+  await test.step("once set up, the setup box gives way to Models on this Mac, listing speech recognition beside Kokoro, and every window shows it", async () => {
     slowly = false;
     downloaded = [];
     await setUpButton.click();
-    await expect(thisMac).toContainText(/Set up, using \d+\.\d GB\./);
-    await expect(thisMac.getByRole("list", { name: "Models on this Mac" }).getByRole("listitem")).toHaveText(["Speech recognition Whisper large-v3 turbo, 1.6 GB. Not in use.Remove"]);
-    await expect(thisMac.getByLabel("Add")).toHaveValue("gemma-4-26b-a4b");
-    await expect(thisMac.getByRole("button", { name: "Download (15.4 GB)" })).toBeVisible();
+    await expect(thisMac).toHaveCount(0);
+    await expect(models.getByRole("table", { name: "Models on this Mac" }).getByRole("row")).toHaveText(["ModelForSize", "KokoroEnglish replies0.4 GBKept", "Whisper large-v3 turboSpeech recognition1.6 GBRemove"]);
+    await expect(models).toContainText(/\d+\.\d GB in all, with the speech engine\./);
     expect(downloaded.some((path) => path.includes("gemma")), "the voice model was left out").toBe(false);
     expect(downloaded.some((path) => path.endsWith("README.md")), "readmes are left out").toBe(false);
 
     const otherWindow = await page.context().newPage();
     await otherWindow.goto(page.url());
-    await expect((await openSettings(otherWindow, "Voice")).getByRole("group", { name: "Voice on this Mac" })).toContainText("Whisper large-v3 turbo");
+    await expect(voiceSection(await openSettings(otherWindow, "Voice"), "Models on this Mac")).toContainText("Whisper large-v3 turbo");
     await otherWindow.close();
   });
 
-  await test.step("Remove asks again, then takes it away", async () => {
-    await thisMac.getByRole("button", { name: "Remove voice from this Mac" }).click();
-    await thisMac.getByRole("button", { name: "Confirm: Remove voice from this Mac" }).click();
+  await test.step("Remove all asks again, then takes it away", async () => {
+    await models.getByRole("button", { name: "Remove voice from this Mac" }).click();
+    await models.getByRole("button", { name: "Confirm: Remove voice from this Mac" }).click();
     await expect(setUpButton).toBeVisible();
+    await expect(models).toHaveCount(0);
   });
 
   await test.step("a download that comes in different is thrown away, and setup says so", async () => {
@@ -182,59 +191,67 @@ test("Settings → Voice set up voice on this Mac: the download shows its progre
     await expect(thisMac.getByRole("button", { name: "Try again" })).toBeVisible();
     corrupted = false;
     await thisMac.getByRole("button", { name: "Try again" }).click();
-    await expect(thisMac).toContainText("Set up, using");
+    await expect(models).toContainText("in all, with the speech engine.");
   });
 });
 
-test("Voice on this Mac loads its models when first needed and shows it, and unloads them with the host and on Remove", async ({ page }) => {
+test("Voice on this Mac downloads each model where it is chosen, loads them when first needed and shows it beside them, and unloads them with the host and on Remove", async ({ page }) => {
   test.setTimeout(180_000);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   const settings = await openSettings(page, "Voice");
-  const thisMac = settings.getByRole("group", { name: "Voice on this Mac" });
-  const models = thisMac.getByRole("list", { name: "Models on this Mac" });
-  const speech = models.getByRole("listitem").filter({ hasText: "Whisper large-v3 turbo" });
-  const voiceModel = models.getByRole("listitem").filter({ hasText: "Gemma 4 26B-A4B" });
-  const smallerVoiceModel = models.getByRole("listitem").filter({ hasText: "Gemma 4 12B" });
-  const recognitionChoice = settings.getByLabel("Turns speech into text");
-  const voiceModelSettings = settings.getByRole("group", { name: "Voice model", exact: true });
-  const voiceModelChoice = voiceModelSettings.getByLabel("Translates");
-  const save = async () => {
-    await settings.getByRole("button", { name: "Save" }).click();
-    await expect(settings.getByRole("status")).toHaveText("Saved.");
-  };
+  const speaking = voiceSection(settings, "When you speak");
+  const voiceModel = voiceSection(settings, "Translating and summing up");
+  const replies = voiceSection(settings, "When the agent replies");
+  const models = voiceSection(settings, "Models on this Mac");
+  const speechRow = modelRow(models, "Whisper large-v3 turbo");
+  const voiceModelRow = modelRow(models, "Gemma 4 26B-A4B");
+  const smallerVoiceModelRow = modelRow(models, "Gemma 4 12B");
+  const kokoroRow = modelRow(models, "Kokoro");
+  const omniVoiceRow = modelRow(models, "OmniVoice");
+  const recognitionChoice = speaking.getByLabel("Speech recognition");
+  const recognitionState = serverStateIn(speaking);
+  const voiceModelState = serverStateIn(voiceModel);
+  const replyVoiceState = serverStateIn(replies);
+  const lastCell = (row: Locator) => row.getByRole("cell").last();
 
-  await test.step("this Mac's voice model is on offer once it is added, a failed try leaving speech recognition set up, and both start unloaded once in use", async () => {
-    await expect(voiceModelChoice.getByRole("option", { name: "On this Mac, once set up above" })).toHaveJSProperty("disabled", true);
-    const addVoiceModel = thisMac.getByRole("button", { name: "Download (15.4 GB)" });
-    corrupted = true;
-    await addVoiceModel.click();
-    await expect(thisMac.getByRole("alert")).toContainText(/^Adding Gemma 4 26B-A4B failed\. .+ came in different from what was expected/);
-    await expect(speech).toBeVisible();
-    await expect(thisMac.getByRole("button", { name: "Remove voice from this Mac" })).toBeVisible();
-    corrupted = false;
-    await addVoiceModel.click();
-    await expect(voiceModel).toContainText("Gemma 4 26B-A4B, 15.4 GB. Not in use.");
-    await expect(thisMac.getByRole("alert")).toHaveCount(0);
+  await test.step("speech recognition on this Mac saves at once and starts unloaded, and the voice model downloads where it is chosen, a failed try saying why beside it", async () => {
     await recognitionChoice.selectOption({ label: "On this Mac" });
-    await voiceModelChoice.selectOption({ label: "On this Mac" });
-    await expect(voiceModelSettings.getByLabel("Model")).toHaveValue("gemma-4-26b-a4b");
-    await thisMac.getByLabel("Unload after").fill("45");
-    await save();
-    await expect(speech).toContainText("Unloaded. It loads when next needed, usually in 5 to 15 seconds.");
-    await expect(voiceModel).toContainText("Unloaded.");
+    await expect(speaking.getByRole("status")).toHaveText("Saved.");
+    await expect(modelChosenIn(speaking)).toHaveValue("whisper-large-v3-turbo");
+    await expect(recognitionState).toHaveText("Unloaded");
+    await expect(recognitionState).toHaveAttribute("data-hint", "Not holding memory now. It loads when next needed, usually in 5 to 15 seconds.");
+    await expect(lastCell(speechRow)).toHaveText("In use");
+
+    await voiceModel.getByLabel("Voice model").selectOption({ label: "On this Mac" });
+    await expect(voiceModel.getByRole("status")).toHaveText("Saved.");
+    await expect(modelChosenIn(voiceModel)).toHaveValue("gemma-4-26b-a4b");
+    const download = voiceModel.getByRole("button", { name: "Download 15.4 GB" });
+    corrupted = true;
+    await download.click();
+    await expect(voiceModel.getByRole("alert")).toContainText(/^Adding Gemma 4 26B-A4B failed\. .+ came in different from what was expected/);
+    await expect(speechRow).toBeVisible();
+    corrupted = false;
+    await download.click();
+    await expect(voiceModelState).toHaveText("Unloaded");
+    await expect(voiceModel.getByRole("alert")).toHaveCount(0);
+    await expect(voiceModelRow.getByRole("cell")).toHaveText(["Gemma 4 26B-A4B", "Voice model", "15.4 GB", "In use"]);
+
+    await models.getByLabel("Unload after").fill("45");
+    await expect(models.getByRole("status")).toHaveText("Saved.");
   });
 
   await test.step("the first dictation loads both, and Settings shows them loading, then loaded", async () => {
     const dictation = dictate(page, conversationId);
-    await expect(speech).toContainText("Loading…");
-    await expect(voiceModel).toContainText("Loading…");
+    await expect(recognitionState).toHaveText("Loading…");
+    await expect(voiceModelState).toHaveText("Loading…");
     const { status, body } = await dictation;
     expect(status).toBe(200);
     expect(JSON.parse(body)).toEqual({ text: "Run the e2e tests.", original: "Futtasd le az e2e teszteket.", language: "hu" });
-    await expect(speech).toContainText("Loaded. It unloads after 45 minutes unused.");
-    await expect(voiceModel).toContainText("Loaded. It unloads after 45 minutes unused.");
+    await expect(recognitionState).toHaveText("Loaded");
+    await expect(recognitionState).toHaveAttribute("data-hint", "Loaded, so it answers at once. It unloads after 45 minutes unused, set under Models on this Mac.");
+    await expect(voiceModelState).toHaveText("Loaded");
   });
 
   await test.step("the engine was asked for the language it heard, with this Mac's models, and not to think first", async () => {
@@ -246,68 +263,68 @@ test("Voice on this Mac loads its models when first needed and shows it, and unl
     expect(logged.find(({ event }) => event === "chat")).toMatchObject({ model: expect.stringMatching(/models\/gemma-4-26b-a4b-it-4bit$/), chatTemplateKwargs: { enable_thinking: false } });
   });
 
-  await test.step("another voice model downloads beside it, the one in use can't be removed, and switching unloads it at once and loads the new one at the next dictation", async () => {
-    await thisMac.getByLabel("Add").selectOption({ label: "Voice model: Gemma 4 12B · good · 6.8 GB" });
-    await thisMac.getByRole("button", { name: "Download (6.8 GB)" }).click();
-    await expect(smallerVoiceModel).toContainText("Gemma 4 12B, 6.8 GB. Not in use.");
-    await expect(voiceModel.getByRole("button", { name: "Remove Gemma 4 26B-A4B" })).toHaveAttribute("aria-disabled", "true");
-
+  await test.step("choosing another voice model unloads the one in use at once, dictation says to download it, and once downloaded it loads at the next dictation", async () => {
+    await expect(voiceModelRow.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
     const biggerModelServer = engineLogged().find(({ event, module }) => event === "start" && module === "mlx_lm.server")!.pid;
-    await voiceModelSettings.getByLabel("Model").selectOption({ label: "Gemma 4 12B · good" });
-    await save();
-    await expect(voiceModel).toContainText("Not in use.");
-    await expect(smallerVoiceModel).toContainText("Unloaded.");
+    await modelChosenIn(voiceModel).selectOption({ label: "Gemma 4 12B · good · 6.8 GB" });
+    await expect(voiceModel.getByRole("status")).toHaveText("Saved.");
     await expect.poll(() => isRunning(biggerModelServer)).toBe(false);
+    expect(await dictate(page, conversationId)).toEqual({ status: 409, body: "Gemma 4 12B isn't on this Mac. Settings → Voice can download it." });
+
+    await voiceModel.getByRole("button", { name: "Download 6.8 GB" }).click();
+    await expect(voiceModelState).toHaveText("Unloaded");
+    await expect(lastCell(smallerVoiceModelRow)).toHaveText("In use");
+    await expect(voiceModelRow.getByRole("button", { name: "Remove Gemma 4 26B-A4B" })).toBeVisible();
 
     expect(JSON.parse((await dictate(page, conversationId)).body)).toMatchObject({ text: "Run the e2e tests." });
     expect(engineLogged().filter(({ event }) => event === "chat").at(-1)?.model).toMatch(/models\/gemma-4-12B-it-4bit$/);
-    await expect(smallerVoiceModel).toContainText("Loaded.");
+    await expect(voiceModelState).toHaveText("Loaded");
   });
 
-  await test.step("a model not in use is removed after asking again, and is on offer to add again", async () => {
-    await voiceModel.getByRole("button", { name: "Remove Gemma 4 26B-A4B" }).click();
-    await voiceModel.getByRole("button", { name: "Confirm: Remove Gemma 4 26B-A4B" }).click();
-    await expect(voiceModel).toHaveCount(0);
-    await expect(thisMac.getByRole("button", { name: "Download (15.4 GB)" })).toBeVisible();
-    await expect(smallerVoiceModel).toContainText("Loaded.");
+  await test.step("a model not in use is removed after asking again, and is on offer to download again", async () => {
+    await voiceModelRow.getByRole("button", { name: "Remove Gemma 4 26B-A4B" }).click();
+    await voiceModelRow.getByRole("button", { name: "Confirm: Remove Gemma 4 26B-A4B" }).click();
+    await expect(voiceModelRow).toHaveCount(0);
+    await expect(modelChosenIn(voiceModel).getByRole("option", { name: "Gemma 4 26B-A4B · best · 15.4 GB" })).toBeAttached();
+    await expect(voiceModelState).toHaveText("Loaded");
   });
 
   await test.step("replies spoken on this Mac come from Kokoro, on a server of their own that leaves speech recognition loaded", async () => {
-    await settings.getByRole("group", { name: "Spoken replies" }).getByLabel("Reads replies aloud").selectOption({ label: "On this Mac" });
-    await save();
+    await replies.getByLabel("Read aloud").selectOption({ label: "On this Mac" });
+    await expect(replies.getByRole("status")).toHaveText("Saved.");
+    await expect(replies).toContainText("Spoken by Kokoro");
+    await expect(lastCell(kokoroRow)).toHaveText("In use");
     expect(await speakSentence(page, conversationId, "The tests passed.")).toEqual({ status: 200, type: "audio/wav" });
-    const speaking = engineLogged().filter(({ event }) => event === "speech");
-    expect(speaking.map(({ input }) => input)).toEqual(["Ready.", "The tests passed."]);
-    expect(speaking.at(-1)!.voice).toMatch(/models\/Kokoro-82M-bf16\/voices\/am_fenrir\.safetensors$/);
-    expect(new Set(speaking.map(({ pid }) => pid)).size).toBe(1);
-    await expect(speech).toContainText("Loaded.");
+    const spoken = engineLogged().filter(({ event }) => event === "speech");
+    expect(spoken.map(({ input }) => input)).toEqual(["Ready.", "The tests passed."]);
+    expect(spoken.at(-1)!.voice).toMatch(/models\/Kokoro-82M-bf16\/voices\/am_fenrir\.safetensors$/);
+    expect(new Set(spoken.map(({ pid }) => pid)).size).toBe(1);
+    await expect(replyVoiceState).toHaveText("Loaded");
+    await expect(recognitionState).toHaveText("Loaded");
   });
 
-  await test.step("Hungarian replies offer OmniVoice's download, noted as non-commercial, and then speak in the voice of its clip in place of Kokoro", async () => {
-    const replies = settings.getByRole("group", { name: "Spoken replies" });
-    const download = replies.getByRole("button", { name: "Download OmniVoice" });
-    const omniVoice = models.getByRole("listitem").filter({ hasText: "OmniVoice" });
-    await replies.getByLabel("Language").selectOption({ label: "Hungarian" });
-    await expect(replies).toContainText("Hungarian replies on this Mac need OmniVoice, a 2.0 GB download for non-commercial use only.");
-    await download.click();
-    await expect(omniVoice).toHaveText("Hungarian reply voice OmniVoice, 2.0 GB, for non-commercial use only. Not in use.Remove");
-    await expect(download).toHaveCount(0);
-
+  await test.step("Hungarian replies unload Kokoro, offer OmniVoice's download beside them, noted as non-commercial, and then speak in the voice of its clip", async () => {
     const kokoroServer = engineLogged().filter(({ event }) => event === "speech").at(-1)!.pid;
-    await save();
-    await expect(omniVoice).toContainText("Unloaded.");
+    await replies.getByLabel("Language").selectOption({ label: "Hungarian" });
+    await expect(replies.getByRole("status")).toHaveText("Saved.");
+    await expect(replies).toContainText("Spoken by OmniVoice, for non-commercial use only");
     await expect.poll(() => isRunning(kokoroServer)).toBe(false);
+    await replies.getByRole("button", { name: "Download 2.0 GB" }).click();
+    await expect(omniVoiceRow.getByRole("cell")).toHaveText(["OmniVoice · non-commercial use only", "Hungarian replies", "2.0 GB", "In use"]);
+    await expect(lastCell(kokoroRow)).toHaveText("Kept");
+    await expect(replyVoiceState).toHaveText("Unloaded");
+
     expect(await speakSentence(page, conversationId, "Kész a javítás.")).toEqual({ status: 200, type: "audio/wav" });
-    const speaking = engineLogged().filter(({ event }) => event === "speech").slice(-2);
-    expect(speaking.map(({ input }) => input)).toEqual(["Ready.", "Kész a javítás."]);
-    expect(speaking.at(-1)).toMatchObject({
+    const spoken = engineLogged().filter(({ event }) => event === "speech").slice(-2);
+    expect(spoken.map(({ input }) => input)).toEqual(["Ready.", "Kész a javítás."]);
+    expect(spoken.at(-1)).toMatchObject({
       model: expect.stringMatching(/models\/OmniVoice-bfloat16$/),
       langCode: "hu",
       refAudio: expect.stringMatching(/hungarian-voice\.wav$/),
       refText: expect.stringContaining("Fedora"),
     });
-    expect(speaking.at(-1)!.voice).toBeUndefined();
-    await expect(omniVoice).toContainText("Loaded.");
+    expect(spoken.at(-1)!.voice).toBeUndefined();
+    await expect(replyVoiceState).toHaveText("Loaded");
   });
 
   await test.step("the models unload when the host stops", async () => {
@@ -316,18 +333,18 @@ test("Voice on this Mac loads its models when first needed and shows it, and unl
     expect(pids.filter(isRunning)).toEqual([]);
     await expect(page.locator(".banner")).toHaveCount(0, { timeout: 30_000 });
     await openSettings(page, "Voice");
-    await expect(speech).toContainText("Unloaded.");
-    await expect(smallerVoiceModel).toContainText("Unloaded.");
+    await expect(recognitionState).toHaveText("Unloaded");
+    await expect(voiceModelState).toHaveText("Unloaded");
   });
 
-  await test.step("Remove unloads them before taking them away, and dictating then says to set voice up again", async () => {
+  await test.step("Remove all unloads them before taking them away, and dictating then says to set voice up again", async () => {
     expect(JSON.parse((await dictate(page, conversationId)).body)).toMatchObject({ text: "Run the e2e tests." });
-    await expect(smallerVoiceModel).toContainText("Loaded.");
+    await expect(voiceModelState).toHaveText("Loaded");
     const pids = serverPids().filter(isRunning);
     expect(pids).toHaveLength(2);
-    await thisMac.getByRole("button", { name: "Remove voice from this Mac" }).click();
-    await thisMac.getByRole("button", { name: "Confirm: Remove voice from this Mac" }).click();
-    await expect(thisMac.getByRole("button", { name: "Set up voice on this Mac" })).toBeVisible();
+    await models.getByRole("button", { name: "Remove voice from this Mac" }).click();
+    await models.getByRole("button", { name: "Confirm: Remove voice from this Mac" }).click();
+    await expect(voiceSection(settings, "Voice on this Mac").getByRole("button", { name: "Set up voice on this Mac" })).toBeVisible();
     expect(pids.filter(isRunning)).toEqual([]);
     await expect(recognitionChoice.getByRole("option", { name: "On this Mac, once set up above" })).toHaveJSProperty("disabled", true);
     expect(await dictate(page, conversationId)).toEqual({ status: 409, body: "Voice isn't set up on this Mac yet. Settings → Voice can set it up." });
@@ -340,8 +357,9 @@ test("a Mac with less memory is offered only the voice models that fit it, and a
     memoryGb = gigabytes;
     await host.restart();
     await signIn(page, host);
-    const thisMac = (await openSettings(page, "Voice")).getByRole("group", { name: "Voice on this Mac" });
-    return { thisMac, voiceModelChoice: thisMac.getByLabel("Voice model, which translates") };
+    const settings = await openSettings(page, "Voice");
+    const thisMac = voiceSection(settings, "Voice on this Mac");
+    return { settings, thisMac, voiceModelChoice: thisMac.getByLabel("Voice model, which translates") };
   };
   const disabled = (choice: Locator, label: string) => expect(choice.getByRole("option", { name: label, exact: true })).toHaveJSProperty("disabled", true);
 
@@ -353,22 +371,24 @@ test("a Mac with less memory is offered only the voice models that fit it, and a
     await expect(thisMac).not.toContainText("too little for a voice model");
   });
 
-  await test.step("8 GB: none, saying why and what translates instead, and set up without one there is none to add", async () => {
-    const { thisMac, voiceModelChoice } = await offeredOn(8);
+  await test.step("8 GB: none, saying why and what translates instead, and once set up this Mac's voice model stays off for lack of memory", async () => {
+    const { settings, thisMac, voiceModelChoice } = await offeredOn(8);
     await expect(voiceModelChoice).toHaveValue("");
     await disabled(voiceModelChoice, "Gemma 4 E4B · fair · needs a Mac with 16 GB of memory");
     await expect(thisMac).toContainText("This Mac's 8 GB of memory is too little for a voice model of its own. A profile's API or a server of your own can translate, set below.");
     await thisMac.getByRole("button", { name: "Set up voice on this Mac" }).click();
-    await expect(thisMac.getByLabel("Add")).toHaveValue("");
-    await expect(thisMac.getByLabel("Add").getByRole("option", { name: "None that fits this Mac" })).toBeAttached();
-    await expect(thisMac.getByRole("button", { name: /^Download/ })).toHaveCount(0);
+    await expect(thisMac).toHaveCount(0);
+    const voiceModel = voiceSection(settings, "Translating and summing up");
+    await disabled(voiceModel.getByLabel("Voice model"), "On this Mac, too little memory");
+    await expect(voiceModel.getByRole("button", { name: /^Download/ })).toHaveCount(0);
   });
 
   await test.step("8 GB: Hungarian replies say OmniVoice needs a bigger Mac, without a download", async () => {
-    const replies = page.getByRole("group", { name: "Spoken replies" });
-    await replies.getByLabel("Reads replies aloud").selectOption({ label: "On this Mac" });
+    const replies = voiceSection(page.getByRole("dialog", { name: "Settings" }), "When the agent replies");
+    await replies.getByLabel("Read aloud").selectOption({ label: "On this Mac" });
     await replies.getByLabel("Language").selectOption({ label: "Hungarian" });
-    await expect(replies).toContainText("Hungarian replies on this Mac need OmniVoice, which needs a Mac with 18 GB of memory. A server of your own can speak them.");
-    await expect(replies.getByRole("button", { name: "Download OmniVoice" })).toHaveCount(0);
+    await expect(replies).toContainText("Spoken by OmniVoice, for non-commercial use only");
+    await expect(replies).toContainText("Needs a Mac with 18 GB of memory.");
+    await expect(replies.getByRole("button", { name: /^Download/ })).toHaveCount(0);
   });
 });

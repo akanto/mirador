@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openSettings, signIn, startConversation, useOwnVoiceServer, voiceSection } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -21,12 +21,7 @@ test("inside the desktop app, a refused microphone says to allow it when the app
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
   const settings = await openSettings(page, "Voice");
-  const recognition = settings.getByRole("group", { name: "Speech recognition" });
-  await recognition.getByLabel("Turns speech into text").selectOption({ label: "With a server of your own" });
-  await recognition.getByLabel("Address").fill("http://127.0.0.1:9/v1");
-  await recognition.getByLabel("Model").fill("whisper-turbo");
-  await settings.getByRole("button", { name: "Save" }).click();
-  await expect(settings.getByRole("status")).toHaveText("Saved.");
+  await useOwnVoiceServer(voiceSection(settings, "When you speak"), "Speech recognition", { url: "http://127.0.0.1:9/v1", model: "whisper-turbo" });
   await settings.getByRole("button", { name: "Close" }).click();
   const mic = page.locator(".composer:visible").getByRole("button", { name: "Dictate" });
   const problem = page.locator(".composer-area:visible .composer-problem");

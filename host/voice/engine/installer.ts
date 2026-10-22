@@ -61,7 +61,7 @@ const sha256Of = async (path: string) => createHash("sha256").update(await readF
 /** A setup run starts over from what was set up, forgetting why an earlier run failed. */
 function withoutProblem(setup: VoiceEngineSetup): VoiceEngineSetup {
   if (setup.state !== "set-up") return setup;
-  const { problem: _, ...setUp } = setup;
+  const { notAdded: _, ...setUp } = setup;
   return setUp;
 }
 
@@ -74,6 +74,8 @@ export class VoiceEngineInstaller {
   private setup: VoiceEngineSetup;
   /** The models, by id, a finished setup put in place, which the servers may use even while setup adds others. */
   private installed: string[] = [];
+  /** The models, by id, the running setup downloads. */
+  private downloading: string[] = [];
   private run: AbortController | null = null;
   private progressFlush: Timer | null = null;
   private readonly freeBytes: (path: string) => Promise<number>;
@@ -110,6 +112,10 @@ export class VoiceEngineInstaller {
     return this.installed.length > 0;
   }
 
+  isDownloading(id: string) {
+    return this.downloading.includes(id);
+  }
+
   /** Where a model's files are, once set up. */
   modelDir(id: string) {
     return this.folderOf(this.modelOf(id));
@@ -134,10 +140,12 @@ export class VoiceEngineInstaller {
       .catch((error) => {
         const problem = error instanceof Error ? error.message : String(error);
         if (run.signal.aborted) this.setup = before;
-        else this.setup = before.state === "set-up" ? { ...before, problem: `Adding ${namesOf(adding)} failed. ${problem}` } : { state: "failed", problem };
+        else if (before.state === "set-up") this.setup = { ...before, notAdded: { models: adding.map(({ id }) => id), problem: `Adding ${namesOf(adding)} failed. ${problem}` } };
+        else this.setup = { state: "failed", problem };
       })
       .finally(() => {
         this.run = null;
+        this.downloading = [];
         this.changed();
       });
   }
@@ -167,6 +175,7 @@ export class VoiceEngineInstaller {
   private async install(adding: ChoosableModel[], signal: AbortSignal) {
     const { spokenVoice } = this.options.sources;
     const models = this.isInstalled(spokenVoice.id) ? adding : [spokenVoice, ...adding];
+    this.downloading = models.map(({ id }) => id);
     this.progress("space", 0, 0);
     const downloads = (await Promise.all(models.map((model) => this.downloadsOf(model, signal)))).flat();
     await this.checkSpace(downloads);
@@ -340,7 +349,7 @@ export class VoiceEngineInstaller {
   /** Sent at most every quarter second, as a download reports every chunk. */
   private progress(step: VoiceEngineStep, done: number, total: number) {
     const stepChanged = this.setup.state !== "setting-up" || this.setup.step !== step;
-    this.setup = { state: "setting-up", step, done, total };
+    this.setup = { state: "setting-up", step, done, total, models: [...this.downloading] };
     if (stepChanged) return this.changed();
     this.progressFlush ??= setTimeout(() => this.changed(), PROGRESS_INTERVAL_MS);
   }

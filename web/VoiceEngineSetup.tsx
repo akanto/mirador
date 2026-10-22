@@ -1,33 +1,27 @@
-import { useState } from "react";
-import { gigabytes, voiceEngineStepLabels, type EngineServer, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
-import {
-  bestFitting,
-  choosableModels,
-  ENGINE_PACKAGES_BYTES,
-  fitsMemory,
-  modelsFor,
-  SPOKEN_VOICE,
-  type ChoosableModel,
-  type EngineService,
-} from "../shared/voice-engine-models.ts";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { gigabytes, voiceEngineStepLabels, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { bestFitting, choosableModels, ENGINE_PACKAGES_BYTES, fitsMemory, modelsFor, SPOKEN_VOICE, type ChoosableModel, type EngineService } from "../shared/voice-engine-models.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { modelChoice, tooLittleMemoryForVoiceModel } from "./voice-models.ts";
+import { modelChoice, modelState, tooLittleMemoryForVoiceModel } from "./voice-models.ts";
 
 /** Sets voice up on this Mac with the models, or adds them once it is set up. */
 export const setUpModels = (models: string[]) => connection.send({ type: "voice.engine.set-up", models });
 
-function SetupProgress({ setup: { step, done, total } }: { setup: Extract<VoiceEngineSetup, { state: "setting-up" }> }) {
+type SettingUp = Extract<VoiceEngineSetup, { state: "setting-up" }>;
+
+/** How far setup is: in the setup box the first time, then beside each model it adds. */
+function DownloadProgress({ setup: { step, done, total }, label }: { setup: SettingUp; label: string }) {
   const counted = total > 0;
   return (
-    <div className="voice-engine-progress">
+    <span className="voice-engine-progress">
       <span>{counted ? `${voiceEngineStepLabels[step]}: ${gigabytes(done)} of ${gigabytes(total)}` : `${voiceEngineStepLabels[step]}…`}</span>
-      <progress aria-label="Setting up voice on this Mac" value={counted ? done : undefined} max={counted ? total : undefined} />
+      <progress aria-label={label} value={counted ? done : undefined} max={counted ? total : undefined} />
       <button type="button" onClick={() => connection.send({ type: "voice.engine.cancel" })}>
         Cancel
       </button>
-    </div>
+    </span>
   );
 }
 
@@ -71,145 +65,183 @@ function NotSetUp({ engine: { setup, memoryBytes }, choice }: { engine: VoiceEng
   );
 }
 
-/** Saved with the rest of the voice settings, so the panel shows the saved time and edits the draft. */
-interface IdleMinutes {
-  saved: number;
-  draft: number;
-  change: (minutes: number) => void;
+/** Setting voice up on this Mac the first time. Once set up, models download where they are chosen and are listed under Models on this Mac. */
+export function VoiceEngineSetupPanel({ engine }: { engine: VoiceEngineStatus }) {
+  const { setup } = engine;
+  const [picked, pick] = useState<string | null | undefined>(undefined);
+  if (setup.state === "unsupported" || setup.state === "set-up" || engine.onDisk.length > 0) return null;
+  return (
+    <fieldset className="voice-service voice-engine">
+      <legend>Voice on this Mac</legend>
+      {setup.state === "setting-up" ? <DownloadProgress setup={setup} label="Setting up voice on this Mac" /> : <NotSetUp engine={engine} choice={{ picked, pick }} />}
+    </fieldset>
+  );
 }
 
-const serviceNames: Record<EngineService, string> = { recognition: "Speech recognition", voiceModel: "Voice model", speaking: "Hungarian reply voice" };
-const serverOf: Record<EngineService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel", speaking: "speaking" };
+const serverStateNames: Record<EngineServerState, string> = { stopped: "Unloaded", loading: "Loading…", ready: "Loaded" };
 
-const minutes = (count: number) => `${count} minute${count === 1 ? "" : "s"}`;
+/** Whether the server of a model in use has it loaded; the hint says when it loads or unloads. */
+export function ServerState({ state, idleMinutes }: { state: EngineServerState; idleMinutes: number }) {
+  return (
+    <span className="voice-engine-state" data-state={state} data-hint={state === "ready" ? hints.voiceEngineLoaded(idleMinutes) : hints.voiceEngineUnloaded}>
+      {serverStateNames[state]}
+    </span>
+  );
+}
 
-function serverStateText(state: EngineServerState, idleMinutes: number) {
-  switch (state) {
-    case "stopped":
-      return "Unloaded. It loads when next needed, usually in 5 to 15 seconds.";
-    case "loading":
-      return "Loading…";
-    case "ready":
-      return `Loaded. It unloads after ${minutes(idleMinutes)} unused.`;
+/** Beside a model chosen for this Mac: whether it is loaded, its download, or why this Mac can't have it. */
+export function ModelBeside({ model, engine, idleMinutes }: { model: ChoosableModel; engine: VoiceEngineStatus; idleMinutes: number }) {
+  const state = modelState(model, engine);
+  switch (state.is) {
+    case "on-disk":
+      return <ServerState state={state.server} idleMinutes={idleMinutes} />;
+    case "downloading":
+      return <DownloadProgress setup={state.setup} label={`Downloading ${model.name}`} />;
+    case "too-big":
+      return <span className="hint">Needs a Mac with {state.neededGb} GB of memory.</span>;
+    case "waiting-for-another-download":
+      return (
+        <button type="button" aria-disabled="true" data-hint={hints.voiceEngineDownloadWaits}>
+          Download {gigabytes(model.bytes)}
+        </button>
+      );
+    case "downloadable":
+      return (
+        <>
+          <button type="button" onClick={() => setUpModels([model.id])}>
+            Download {gigabytes(model.bytes)}
+          </button>
+          {state.problem && (
+            <span className="voice-engine-problem" role="alert">
+              {state.problem}
+            </span>
+          )}
+        </>
+      );
   }
 }
 
-/** Only a model the saved settings use loads, so only its row tells whether it is loaded, and only the others can be removed. */
-function ModelOnThisMac({ model, inUse, state, idleMinutes }: { model: ChoosableModel; inUse: boolean; state: EngineServerState; idleMinutes: number }) {
+const usedFor: Record<EngineService, string> = { recognition: "Speech recognition", voiceModel: "Voice model", speaking: "Hungarian replies" };
+
+/** A model on this Mac, or one downloading; only one the saved settings don't use can be removed. */
+function ModelRow({ model, engine, inUse }: { model: ChoosableModel; engine: VoiceEngineStatus; inUse: boolean }) {
+  const { setup } = engine;
+  const downloading = setup.state === "setting-up" && !engine.onDisk.includes(model.id) ? setup : null;
   return (
-    <li data-state={inUse ? state : "stopped"}>
-      <span>
-        <span className="voice-engine-server-name">{serviceNames[model.service]}</span> {model.name}, {gigabytes(model.bytes)}
-        {model.nonCommercial ? ", for non-commercial use only" : ""}. {inUse ? serverStateText(state, idleMinutes) : "Not in use."}
-      </span>
-      {inUse ? (
-        <button type="button" className="danger" aria-label={`Remove ${model.name}`} data-hint={hints.voiceEngineModelInUse} aria-disabled="true">
-          Remove
-        </button>
-      ) : (
-        <ConfirmButton
-          className="danger"
-          label={`Remove ${model.name}`}
-          armedText="Remove?"
-          armedHint={hints.removeVoiceEngineModelArmed}
-          onConfirm={() => connection.send({ type: "voice.engine.remove-model", model: model.id })}
-        >
-          Remove
-        </ConfirmButton>
-      )}
-    </li>
+    <tr>
+      <td className="voice-engine-model-name">
+        {model.name}
+        {model.nonCommercial && <span className="hint"> · non-commercial use only</span>}
+      </td>
+      <td>{usedFor[model.service]}</td>
+      <td>{gigabytes(model.bytes)}</td>
+      <td>
+        {downloading ? (
+          <DownloadProgress setup={downloading} label={`Downloading ${model.name}`} />
+        ) : inUse ? (
+          "In use"
+        ) : (
+          <ConfirmButton
+            className="danger"
+            label={`Remove ${model.name}`}
+            armedText="Remove?"
+            armedHint={hints.removeVoiceEngineModelArmed}
+            onConfirm={() => connection.send({ type: "voice.engine.remove-model", model: model.id })}
+          >
+            Remove
+          </ConfirmButton>
+        )}
+      </td>
+    </tr>
   );
 }
 
-function AddModel({ onDisk, memoryBytes }: { onDisk: string[]; memoryBytes: number }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const missing = choosableModels.filter(({ id }) => !onDisk.includes(id));
-  const fitting = missing.filter((model) => fitsMemory(model, memoryBytes));
-  const chosen = fitting.find(({ id }) => id === picked) ?? fitting[0];
-  if (missing.length === 0) return null;
+const IDLE_SAVE_DELAY_MS = 800;
+
+/** Saved once the user stops changing it, as each minute typed or stepped would otherwise unload servers on its own. */
+function IdleMinutes({ saved, onSave }: { saved: number; onSave: (minutes: number) => void }) {
+  const [draft, setDraft] = useState(saved);
+  const pending = useRef<Timer | null>(null);
+  useEffect(() => setDraft(saved), [saved]);
+  const saveNow = (minutes: number) => {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = null;
+    if (Number.isFinite(minutes) && minutes !== saved) onSave(minutes);
+  };
+  const change = (minutes: number) => {
+    setDraft(minutes);
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = setTimeout(() => saveNow(minutes), IDLE_SAVE_DELAY_MS);
+  };
   return (
-    <div className="sending-settings">
-      <label data-hint={hints.voiceEngineAddModel}>
-        Add
-        <select value={chosen?.id ?? ""} onChange={(event) => setPicked(event.target.value)}>
-          {!chosen && <option value="">None that fits this Mac</option>}
-          {missing.map((model) => (
-            <option key={model.id} value={model.id} disabled={!fitsMemory(model, memoryBytes)}>
-              {serviceNames[model.service]}: {modelChoice(model, memoryBytes)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {chosen && (
-        <button type="button" onClick={() => setUpModels([chosen.id])}>
-          Download ({gigabytes(chosen.bytes)})
-        </button>
-      )}
-    </div>
+    <label data-hint={hints.voiceEngineIdle}>
+      Unload after
+      <input
+        type="number"
+        className="voice-engine-idle"
+        min={1}
+        max={1440}
+        step={1}
+        value={Number.isNaN(draft) ? "" : draft}
+        onChange={(event) => change(event.target.valueAsNumber)}
+        onBlur={() => saveNow(draft)}
+      />
+      minutes unused
+    </label>
   );
 }
 
-function SetUp({
-  setup,
+/** What voice on this Mac keeps on disk, what each model is for, and how long a loaded one stays loaded. */
+export function ModelsOnThisMac({
   engine,
   inUse,
   idleMinutes,
+  onIdleMinutes,
+  status,
 }: {
-  setup: Extract<VoiceEngineSetup, { state: "set-up" }>;
   engine: VoiceEngineStatus;
   inUse: string[];
-  idleMinutes: IdleMinutes;
+  idleMinutes: number;
+  onIdleMinutes: (minutes: number) => void;
+  status: ReactNode;
 }) {
-  const onDisk = choosableModels.filter(({ id }) => engine.onDisk.includes(id));
+  const { setup } = engine;
+  if (setup.state === "unsupported" || engine.onDisk.length === 0) return null;
+  const listed = choosableModels.filter(({ id }) => engine.onDisk.includes(id) || (setup.state === "setting-up" && setup.models.includes(id)));
   return (
-    <>
+    <fieldset className="voice-service">
+      <legend>Models on this Mac</legend>
+      <table className="voice-engine-models" aria-label="Models on this Mac">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>For</th>
+            <th>Size</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="voice-engine-model-name">{SPOKEN_VOICE.name}</td>
+            <td>English replies</td>
+            <td>{gigabytes(SPOKEN_VOICE.bytes)}</td>
+            <td>{inUse.includes(SPOKEN_VOICE.id) ? "In use" : <span data-hint={hints.spokenVoiceKept}>Kept</span>}</td>
+          </tr>
+          {listed.map((model) => (
+            <ModelRow key={model.id} model={model} engine={engine} inUse={inUse.includes(model.id)} />
+          ))}
+        </tbody>
+      </table>
       <div className="sending-settings">
-        <span>Set up, using {gigabytes(setup.bytesOnDisk)}.</span>
+        <IdleMinutes saved={idleMinutes} onSave={onIdleMinutes} />
+      </div>
+      <div className="sending-settings">
+        {setup.state === "set-up" && <span>{gigabytes(setup.bytesOnDisk)} in all, with the speech engine.</span>}
         <ConfirmButton className="danger" label="Remove voice from this Mac" armedText="Remove?" armedHint={hints.removeVoiceEngineArmed} onConfirm={() => connection.send({ type: "voice.engine.remove" })}>
           Remove all
         </ConfirmButton>
       </div>
-      {setup.problem && (
-        <p className="voice-engine-problem" role="alert">
-          {setup.problem}
-        </p>
-      )}
-      <ul className="voice-engine-servers" aria-label="Models on this Mac">
-        {onDisk.map((model) => (
-          <ModelOnThisMac key={model.id} model={model} inUse={inUse.includes(model.id)} state={engine.servers[serverOf[model.service]]} idleMinutes={idleMinutes.saved} />
-        ))}
-      </ul>
-      <AddModel onDisk={engine.onDisk} memoryBytes={engine.memoryBytes} />
-      <div className="sending-settings">
-        <label data-hint={hints.voiceEngineIdle}>
-          Unload after
-          <input
-            type="number"
-            className="voice-engine-idle"
-            min={1}
-            max={1440}
-            step={1}
-            value={Number.isNaN(idleMinutes.draft) ? "" : idleMinutes.draft}
-            onChange={(event) => idleMinutes.change(event.target.valueAsNumber)}
-          />
-          minutes unused
-        </label>
-      </div>
-    </>
-  );
-}
-
-/** Mirador's own speech engine, on Macs with Apple silicon. The voice model choice outlasts a cancelled setup. */
-export function VoiceEngineSetupPanel({ engine, inUse, idleMinutes }: { engine: VoiceEngineStatus; inUse: string[]; idleMinutes: IdleMinutes }) {
-  const { setup } = engine;
-  const [picked, pick] = useState<string | null | undefined>(undefined);
-  if (setup.state === "unsupported") return null;
-  return (
-    <fieldset className="voice-service voice-engine">
-      <legend>Voice on this Mac</legend>
-      {setup.state === "setting-up" && <SetupProgress setup={setup} />}
-      {setup.state === "set-up" && <SetUp setup={setup} engine={engine} inUse={inUse} idleMinutes={idleMinutes} />}
-      {(setup.state === "not-set-up" || setup.state === "failed") && <NotSetUp engine={engine} choice={{ picked, pick }} />}
+      {status}
     </fieldset>
   );
 }

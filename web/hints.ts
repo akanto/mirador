@@ -9,20 +9,21 @@ export const hints = {
     "For a local server running a model that thinks before it answers, such as Gemma 4 or Qwen 3: thinking makes a translation take far longer and can use up the answer. Mirador sends chat_template_kwargs with enable_thinking false, which servers such as mlx_lm, vLLM and llama.cpp understand. Leave it off for OpenAI's API.",
   voiceEngineVoiceModel:
     "The voice model translates what you say into English, and later sums up replies to read aloud. Bigger ones translate better and need more memory: Mirador offers those that hold at most half of this Mac's memory while loaded. Without one, what you say goes into the message box in the language you spoke, unless another voice model is set below.",
-  voiceEngineAddModel:
-    "Downloads another model, for the settings below to use. Best, good and fair are how each did in Mirador's comparison on a Mac. Mirador offers those that hold at most half of this Mac's memory while loaded.",
-  voiceEngineModelInUse: "The settings below use this model. Change them and save, then it can be removed.",
-  thisMacModel: "One of the models on this Mac for this service. Voice on this Mac, above, adds and removes them.",
-  voiceEngineIdle:
-    "A loaded model holds memory, a voice model up to 15 GB, so each unloads once unused this long. Loading it again makes the next dictation wait. Saved with the settings below.",
+  thisMacModel:
+    "Mirador's models for this service. Best, good and fair are how each did in Mirador's comparison on a Mac; one that isn't on this Mac yet downloads with the button beside it. Mirador offers those that hold at most half of this Mac's memory while loaded.",
+  voiceEngineIdle: "A loaded model holds memory, a voice model up to 15 GB, so each unloads once unused this long. Loading it again makes the next dictation wait.",
+  voiceEngineLoaded: (minutes: number) => `Loaded, so it answers at once. It unloads after ${minutes} minute${minutes === 1 ? "" : "s"} unused, set under Models on this Mac.`,
+  voiceEngineUnloaded: "Not holding memory now. It loads when next needed, usually in 5 to 15 seconds.",
+  voiceEngineDownloadWaits: "Another download is going on. This one can start once it ends.",
+  spokenVoiceKept: "Kokoro comes with voice on this Mac for English replies, and goes only with Remove all.",
   removeVoiceEngineArmed: "Click again to delete the speech engine and its models from this Mac. Setting up again downloads them again.",
-  removeVoiceEngineModelArmed: "Click again to delete this model from this Mac. Adding it again downloads it again.",
+  removeVoiceEngineModelArmed: "Click again to delete this model from this Mac. Choosing it again downloads it again.",
   voiceModelProfile: "Mirador calls this profile's API with its keys. Its agent doesn't start.",
   voiceAddress: "The API's address up to and including its version, as in https://api.openai.com/v1. Mirador adds the path of each call.",
   voiceLanguage:
     "The language you speak. Naming it helps on short clips, where telling languages apart by sound alone often goes wrong; this Mac's engine still hears English as English. With any language, the speech server decides, and the voice model translates whatever isn't English.",
   translateToEnglish: "What you say goes into the message box in English, with what you said under it, so you can check it before sending.",
-  translateNeedsVoiceModel: "Translating needs a voice model. Pick one above.",
+  translateNeedsVoiceModel: "Translating needs a voice model. Pick one below.",
   replyVoice:
     "What reads replies aloud, once the voice model has summed each up in a few sentences. This Mac's engine speaks English with Kokoro, and Hungarian with OmniVoice, a download of its own whose licence allows only non-commercial use. A server of your own speaks OpenAI's text-to-speech API (POST /audio/speech) with one of its voices. After a message you dictated, its reply is read as the turn ends, in the browser you dictated in.",
   replyLanguage: "The language replies are read in. The voice model sums them up in it, whatever language the agent wrote in.",

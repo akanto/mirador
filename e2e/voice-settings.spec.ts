@@ -1,7 +1,7 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, openSettings, signIn, startConversation, voiceSection } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 interface Heard {
@@ -61,13 +61,6 @@ async function dictate(page: Page, conversationId: string) {
   }, conversationId);
 }
 
-async function useOwnServer(service: Locator, choice: string, { apiKey, model }: { apiKey: string; model: string }) {
-  await service.getByLabel(choice).selectOption({ label: "With a server of your own" });
-  await service.getByLabel("Address").fill(voiceServerUrl());
-  await service.getByLabel("API key").fill(apiKey);
-  await service.getByLabel("Model").fill(model);
-}
-
 test("Settings → Voice set the user's own servers, and a Hungarian clip comes back in English with what was heard", async ({ page }) => {
   test.setTimeout(180_000);
   await signIn(page, host);
@@ -79,34 +72,47 @@ test("Settings → Voice set the user's own servers, and a Hungarian clip comes 
   });
 
   const settings = await openSettings(page, "Voice");
-  const recognition = settings.getByRole("group", { name: "Speech recognition" });
-  const voiceModel = settings.getByRole("group", { name: "Voice model" });
+  const speaking = voiceSection(settings, "When you speak");
+  const voiceModel = voiceSection(settings, "Translating and summing up");
 
-  await test.step("an address that isn't http isn't saved", async () => {
-    await useOwnServer(recognition, "Turns speech into text", { apiKey: "speech-key", model: "whisper-turbo" });
-    await recognition.getByLabel("Address").fill("ftp://box/v1");
-    await settings.getByRole("button", { name: "Save" }).click();
-    await expect(settings.getByRole("status")).toHaveText("The speech recognition address must be an http or https URL.");
+  await test.step("an address that isn't http isn't saved, and stays to be fixed", async () => {
+    await speaking.getByLabel("Speech recognition").selectOption({ label: "With a server of your own" });
+    await speaking.getByLabel("Address").fill("ftp://box/v1");
+    await speaking.getByLabel("API key").fill("speech-key");
+    await speaking.getByLabel("Model", { exact: true }).fill("whisper-turbo");
+    await speaking.getByRole("button", { name: "Save" }).click();
+    await expect(speaking.getByRole("status")).toHaveText("The speech recognition address must be an http or https URL.");
+    await expect(speaking.getByLabel("Address")).toHaveValue("ftp://box/v1");
   });
 
-  await test.step("both servers and the language save together, and another window shows them", async () => {
-    await recognition.getByLabel("Address").fill(voiceServerUrl());
-    await expect(settings.getByRole("status")).toBeEmpty();
-    await useOwnServer(voiceModel, "Translates", { apiKey: "model-key", model: "gemma" });
+  await test.step("each section saves on its own, and another window shows what they saved", async () => {
+    await speaking.getByLabel("Address").fill(voiceServerUrl());
+    await speaking.getByRole("button", { name: "Save" }).click();
+    await expect(speaking.getByRole("status")).toHaveText("Saved.");
+    await expect(speaking.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await voiceModel.getByLabel("Voice model").selectOption({ label: "With a server of your own" });
+    await voiceModel.getByLabel("Address").fill(voiceServerUrl());
+    await voiceModel.getByLabel("API key").fill("model-key");
+    await voiceModel.getByLabel("Model", { exact: true }).fill("gemma");
     await voiceModel.getByLabel("Ask it not to think first").check();
-    await settings.getByLabel("You speak").selectOption({ label: "Hungarian" });
-    await expect(settings.getByLabel("Translate into English")).toBeChecked();
-    await settings.getByRole("button", { name: "Save" }).click();
-    await expect(settings.getByRole("status")).toHaveText("Saved.");
-    await expect(settings.getByRole("button", { name: "Save" })).toBeDisabled();
+    await voiceModel.getByRole("button", { name: "Save" }).click();
+    await expect(voiceModel.getByRole("status")).toHaveText("Saved.");
+    await expect(speaking.getByRole("status")).toHaveCount(0);
+
+    await speaking.getByLabel("You speak").selectOption({ label: "Hungarian" });
+    await expect(speaking.getByRole("status")).toHaveText("Saved.");
+    await expect(speaking.getByLabel("Translate into English")).toBeChecked();
 
     const otherWindow = await page.context().newPage();
     await otherWindow.goto(page.url());
     const otherSettings = await openSettings(otherWindow, "Voice");
-    await expect(otherSettings.getByRole("group", { name: "Speech recognition" }).getByLabel("Model")).toHaveValue("whisper-turbo");
-    await expect(otherSettings.getByRole("group", { name: "Voice model" }).getByLabel("Address")).toHaveValue(voiceServerUrl());
-    await expect(otherSettings.getByRole("group", { name: "Voice model" }).getByLabel("Ask it not to think first")).toBeChecked();
-    await expect(otherSettings.getByLabel("You speak")).toHaveValue("hu");
+    const otherSpeaking = voiceSection(otherSettings, "When you speak");
+    const otherVoiceModel = voiceSection(otherSettings, "Translating and summing up");
+    await expect(otherSpeaking.getByLabel("Model", { exact: true })).toHaveValue("whisper-turbo");
+    await expect(otherSpeaking.getByLabel("You speak")).toHaveValue("hu");
+    await expect(otherVoiceModel.getByLabel("Address")).toHaveValue(voiceServerUrl());
+    await expect(otherVoiceModel.getByLabel("Ask it not to think first")).toBeChecked();
     await otherWindow.close();
   });
 
@@ -123,9 +129,8 @@ test("Settings → Voice set the user's own servers, and a Hungarian clip comes 
   });
 
   await test.step("with translation off, what was heard comes back as it is", async () => {
-    await settings.getByLabel("Translate into English").uncheck();
-    await settings.getByRole("button", { name: "Save" }).click();
-    await expect(settings.getByRole("status")).toHaveText("Saved.");
+    await speaking.getByLabel("Translate into English").uncheck();
+    await expect(speaking.getByRole("status")).toHaveText("Saved.");
     expect(JSON.parse((await dictate(page, conversationId)).body)).toEqual({ text: HEARD_IN_HUNGARIAN, original: null, language: "hu" });
   });
 });

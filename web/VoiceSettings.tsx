@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Profile } from "../shared/model.ts";
-import { gigabytes, type VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { choosableModel, fitsMemory, memoryNeededGb, modelsFor, SPOKEN_VOICE, type ThisMacService } from "../shared/voice-engine-models.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { bestFitting, choosableModel, fitsMemory, modelsFor, SPOKEN_VOICE, type ThisMacService } from "../shared/voice-engine-models.ts";
 import {
   AUTO_LANGUAGE,
   isEnglish,
@@ -16,8 +16,8 @@ import {
 } from "../shared/voice.ts";
 import { hints } from "./hints.ts";
 import { saveSetting } from "./saved-setting.ts";
-import { modelWithQuality } from "./voice-models.ts";
-import { setUpModels, VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
+import { modelOffer } from "./voice-models.ts";
+import { ModelBeside, ModelsOnThisMac, ServerState, VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
 
 /** Languages Whisper recognizes well, as codes it takes. */
 const spokenLanguages = ["en", "hu", "de", "fr", "es", "it", "pt", "nl", "pl", "cs", "sk", "ro", "uk", "ru", "sv", "da", "fi", "no", "el", "tr", "ja", "zh", "ko", "hi", "ar", "he"];
@@ -25,7 +25,87 @@ const spokenLanguages = ["en", "hu", "de", "fr", "es", "it", "pt", "nl", "pl", "
 const languageNames = new Intl.DisplayNames([navigator.language], { type: "language" });
 const languageName = (code: string) => languageNames.of(code) ?? code;
 
+const replyLanguageNames: Record<ReplyLanguage, string> = { en: "English", hu: "Hungarian" };
+
 const noEndpoint: CustomEndpoint = { url: "", apiKey: "", model: "" };
+
+type Section = "speaking" | "voiceModel" | "replies" | "models";
+type Save = (change: Partial<Settings>, options?: { showOnceSaved?: boolean }) => void;
+
+/** What the last save from this page came to, shown in the section where the change was made. */
+interface Outcome {
+  section: Section;
+  text: string;
+}
+
+function SavedStatus({ section, outcome }: { section: Section; outcome: Outcome | null }) {
+  if (outcome?.section !== section) return null;
+  return (
+    <p className="hint voice-saved" role="status">
+      {outcome.text}
+    </p>
+  );
+}
+
+/**
+ * Each change is saved at once and shows before the host answers, so that quick changes build on each other; one the
+ * host refuses is undone. Typed fields show as saved only once the host takes them, so refused ones stay to be fixed.
+ */
+function useSavedAtOnce(settings: Settings) {
+  const [shown, setShown] = useState(settings);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const latest = useRef(settings);
+  const pending = useRef(0);
+  useEffect(() => {
+    if (pending.current > 0) return;
+    latest.current = settings;
+    setShown(settings);
+  }, [settings]);
+  const saveIn =
+    (section: Section): Save =>
+    async (change, { showOnceSaved = false } = {}) => {
+      const before = latest.current;
+      const next = { ...before, ...change };
+      latest.current = next;
+      if (!showOnceSaved) setShown(next);
+      setOutcome(null);
+      pending.current++;
+      const problem = await saveSetting((requestId) => ({ type: "voice.set-settings", requestId, settings: next }));
+      pending.current--;
+      if (problem) latest.current = before;
+      setShown(latest.current);
+      setOutcome({ section, text: problem ?? "Saved." });
+    };
+  return { shown, outcome, saveIn };
+}
+
+const typedKinds = ["custom", "profile"];
+
+/**
+ * A service's choice as the page shows it: the saved one, except a server of your own or a profile's API, whose typed
+ * fields wait for their own Save. Those are kept when the user switches away, so switching back finds them again.
+ */
+function useChoice<Source extends { kind: string }>(saved: Source) {
+  const savedJson = JSON.stringify(saved);
+  const [draft, setDraft] = useState(saved);
+  const typed = useRef(new Map<string, Source>(typedKinds.includes(saved.kind) ? [[saved.kind, saved]] : []));
+  useEffect(() => setDraft(JSON.parse(savedJson) as Source), [savedJson]);
+  const change = (next: Source) => {
+    if (typedKinds.includes(next.kind)) typed.current.set(next.kind, next);
+    setDraft(next);
+  };
+  return { draft, change, typedBefore: (kind: string) => typed.current.get(kind), unsaved: JSON.stringify(draft) !== savedJson };
+}
+
+function SaveTyped({ unsaved, onSave }: { unsaved: boolean; onSave: () => void }) {
+  return (
+    <div className="sending-settings">
+      <button type="button" disabled={!unsaved} onClick={onSave}>
+        Save
+      </button>
+    </div>
+  );
+}
 
 function EndpointFields({ endpoint, modelPlaceholder, onChange }: { endpoint: CustomEndpoint; modelPlaceholder: string; onChange: (endpoint: CustomEndpoint) => void }) {
   return (
@@ -46,95 +126,138 @@ function EndpointFields({ endpoint, modelPlaceholder, onChange }: { endpoint: Cu
   );
 }
 
-const onDiskFor = (service: ThisMacService, engine: VoiceEngineStatus) => modelsFor(service).filter(({ id }) => engine.onDisk.includes(id));
+const isSetUpHere = (engine: VoiceEngineStatus) => engine.onDisk.includes(SPOKEN_VOICE.id);
 
-/** Hidden where the engine can't run; disabled until setup put a model for the service in place. */
-function ThisMacOption({ engine, usable }: { engine: VoiceEngineStatus; usable: boolean }) {
+/** Hidden where the engine can't run; choosable once voice is set up here, if a model for the service fits this Mac. */
+function ThisMacOption({ engine, service }: { engine: VoiceEngineStatus; service: ThisMacService | null }) {
   if (engine.setup.state === "unsupported") return null;
+  const fits = service === null || bestFitting(service, engine.memoryBytes) !== null;
+  const why = !isSetUpHere(engine) ? ", once set up above" : fits ? "" : ", too little memory";
   return (
-    <option value="this-mac" disabled={!usable}>
-      On this Mac{usable ? "" : ", once set up above"}
+    <option value="this-mac" disabled={why !== ""}>
+      On this Mac{why}
     </option>
   );
 }
 
-/** The best of the service's models on this Mac, unless the source already runs one here. */
+/** The service's model on this Mac if it runs one already, else the best one here, else the best that fits, to download. */
 function thisMacSource(source: VoiceSource | VoiceModelSource, service: ThisMacService, engine: VoiceEngineStatus) {
-  return { kind: "this-mac" as const, model: source.kind === "this-mac" ? source.model : (onDiskFor(service, engine)[0]?.id ?? "") };
+  const onDisk = modelsFor(service).find(({ id }) => engine.onDisk.includes(id));
+  return { kind: "this-mac" as const, model: source.kind === "this-mac" ? source.model : ((onDisk ?? bestFitting(service, engine.memoryBytes))?.id ?? "") };
 }
 
-/** Offers the models on this Mac, and the chosen one even once it is gone, so the choice still shows. */
-function ThisMacModel({ service, model, engine, onChange }: { service: ThisMacService; model: string; engine: VoiceEngineStatus; onChange: (model: string) => void }) {
-  const offered = modelsFor(service).filter(({ id }) => id === model || engine.onDisk.includes(id));
+/** Offers every model for the service: those not on this Mac say what they download, and the chosen one shows its download beside it. */
+function ThisMacModel({
+  service,
+  model,
+  engine,
+  idleMinutes,
+  onChange,
+}: {
+  service: ThisMacService;
+  model: string;
+  engine: VoiceEngineStatus;
+  idleMinutes: number;
+  onChange: (model: string) => void;
+}) {
+  const chosen = choosableModel(model);
   return (
-    <label data-hint={hints.thisMacModel}>
-      Model
-      <select value={model} onChange={(event) => onChange(event.target.value)}>
-        {offered.map((offer) => (
-          <option key={offer.id} value={offer.id}>
-            {modelWithQuality(offer)}
-            {engine.onDisk.includes(offer.id) ? "" : ", not on this Mac"}
-          </option>
-        ))}
-      </select>
-    </label>
+    <>
+      <label data-hint={hints.thisMacModel}>
+        Model
+        <select value={model} onChange={(event) => onChange(event.target.value)}>
+          {modelsFor(service).map((offer) => (
+            <option key={offer.id} value={offer.id} disabled={offer.id !== model && !engine.onDisk.includes(offer.id) && !fitsMemory(offer, engine.memoryBytes)}>
+              {modelOffer(offer, engine)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {chosen && <ModelBeside model={chosen} engine={engine} idleMinutes={idleMinutes} />}
+    </>
   );
 }
 
-function RecognitionSettings({ source, engine, onChange }: { source: VoiceSource; engine: VoiceEngineStatus; onChange: (source: VoiceSource) => void }) {
-  const choose = (kind: string) => {
-    if (kind === "custom") return onChange({ kind, endpoint: source.kind === "custom" ? source.endpoint : noEndpoint });
-    onChange(kind === "this-mac" ? thisMacSource(source, "recognition", engine) : { kind: "off" });
+function RecognitionChoice({ saved, engine, idleMinutes, save }: { saved: VoiceSource; engine: VoiceEngineStatus; idleMinutes: number; save: Save }) {
+  const { draft, change, typedBefore, unsaved } = useChoice<VoiceSource>(saved);
+  const choose = (next: VoiceSource) => {
+    change(next);
+    save({ recognition: next });
+  };
+  const chooseKind = (kind: string) => {
+    if (kind === "custom") return change(typedBefore(kind) ?? { kind, endpoint: noEndpoint });
+    choose(kind === "this-mac" ? thisMacSource(saved, "recognition", engine) : { kind: "off" });
   };
   return (
-    <fieldset className="voice-service">
-      <legend>Speech recognition</legend>
+    <>
       <div className="sending-settings">
         <label data-hint={hints.voiceRecognition}>
-          Turns speech into text
-          <select value={source.kind} onChange={(event) => choose(event.target.value)}>
+          Speech recognition
+          <select value={draft.kind} onChange={(event) => chooseKind(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption engine={engine} usable={onDiskFor("recognition", engine).length > 0} />
+            <ThisMacOption engine={engine} service="recognition" />
             <option value="custom">With a server of your own</option>
           </select>
         </label>
-        {source.kind === "this-mac" && <ThisMacModel service="recognition" model={source.model} engine={engine} onChange={(model) => onChange({ kind: "this-mac", model })} />}
+        {draft.kind === "this-mac" && (
+          <ThisMacModel service="recognition" model={draft.model} engine={engine} idleMinutes={idleMinutes} onChange={(model) => choose({ kind: "this-mac", model })} />
+        )}
       </div>
-      {source.kind === "custom" && (
-        <EndpointFields endpoint={source.endpoint} modelPlaceholder="whisper-1" onChange={(endpoint) => onChange({ kind: "custom", endpoint })} />
+      {draft.kind === "custom" && (
+        <>
+          <EndpointFields endpoint={draft.endpoint} modelPlaceholder="whisper-1" onChange={(endpoint) => change({ kind: "custom", endpoint })} />
+          <SaveTyped unsaved={unsaved} onSave={() => save({ recognition: draft }, { showOnceSaved: true })} />
+        </>
       )}
-    </fieldset>
+    </>
   );
 }
 
-function VoiceModelSettings({ source, engine, profiles, onChange }: { source: VoiceModelSource; engine: VoiceEngineStatus; profiles: Profile[]; onChange: (source: VoiceModelSource) => void }) {
-  const choose = (kind: string) => {
-    if (kind === "this-mac") return onChange(thisMacSource(source, "voiceModel", engine));
-    if (kind === "custom") return onChange(source.kind === "custom" ? source : { kind, endpoint: noEndpoint, turnsThinkingOff: false });
-    if (kind === "profile") return onChange({ kind, profileId: source.kind === "profile" ? source.profileId : (profiles[0]?.id ?? ""), model: source.kind === "profile" ? source.model : "" });
-    onChange({ kind: "off" });
+function VoiceModelChoice({
+  saved,
+  engine,
+  idleMinutes,
+  profiles,
+  save,
+}: {
+  saved: VoiceModelSource;
+  engine: VoiceEngineStatus;
+  idleMinutes: number;
+  profiles: Profile[];
+  save: Save;
+}) {
+  const { draft, change, typedBefore, unsaved } = useChoice<VoiceModelSource>(saved);
+  const choose = (next: VoiceModelSource) => {
+    change(next);
+    save({ voiceModel: next });
+  };
+  const chooseKind = (kind: string) => {
+    if (kind === "custom") return change(typedBefore(kind) ?? { kind, endpoint: noEndpoint, turnsThinkingOff: false });
+    if (kind === "profile") return change(typedBefore(kind) ?? { kind, profileId: profiles[0]?.id ?? "", model: "" });
+    choose(kind === "this-mac" ? thisMacSource(saved, "voiceModel", engine) : { kind: "off" });
   };
   return (
-    <fieldset className="voice-service">
-      <legend>Voice model</legend>
+    <>
       <div className="sending-settings">
         <label data-hint={hints.voiceModel}>
-          Translates
-          <select value={source.kind} onChange={(event) => choose(event.target.value)}>
+          Voice model
+          <select value={draft.kind} onChange={(event) => chooseKind(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption engine={engine} usable={onDiskFor("voiceModel", engine).length > 0} />
+            <ThisMacOption engine={engine} service="voiceModel" />
             <option value="custom">With a server of your own</option>
             <option value="profile" disabled={profiles.length === 0}>
               With a profile's API
             </option>
           </select>
         </label>
-        {source.kind === "this-mac" && <ThisMacModel service="voiceModel" model={source.model} engine={engine} onChange={(model) => onChange({ kind: "this-mac", model })} />}
-        {source.kind === "profile" && (
+        {draft.kind === "this-mac" && (
+          <ThisMacModel service="voiceModel" model={draft.model} engine={engine} idleMinutes={idleMinutes} onChange={(model) => choose({ kind: "this-mac", model })} />
+        )}
+        {draft.kind === "profile" && (
           <>
             <label data-hint={hints.voiceModelProfile}>
               Profile
-              <select value={source.profileId} onChange={(event) => onChange({ ...source, profileId: event.target.value })}>
+              <select value={draft.profileId} onChange={(event) => change({ ...draft, profileId: event.target.value })}>
                 {profiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
                     {profile.name}
@@ -144,81 +267,78 @@ function VoiceModelSettings({ source, engine, profiles, onChange }: { source: Vo
             </label>
             <label>
               Model
-              <input type="text" value={source.model} placeholder="claude-opus-5-5" spellCheck={false} onChange={(event) => onChange({ ...source, model: event.target.value })} />
+              <input type="text" value={draft.model} placeholder="claude-opus-5-5" spellCheck={false} onChange={(event) => change({ ...draft, model: event.target.value })} />
             </label>
           </>
         )}
       </div>
-      {source.kind === "custom" && (
+      {draft.kind === "custom" && (
         <>
-          <EndpointFields endpoint={source.endpoint} modelPlaceholder="gpt-5-mini" onChange={(endpoint) => onChange({ ...source, endpoint })} />
+          <EndpointFields endpoint={draft.endpoint} modelPlaceholder="gpt-5-mini" onChange={(endpoint) => change({ ...draft, endpoint })} />
           <div className="sending-settings">
             <label data-hint={hints.voiceModelThinkingOff}>
-              <input type="checkbox" checked={source.turnsThinkingOff ?? false} onChange={(event) => onChange({ ...source, turnsThinkingOff: event.target.checked })} />
+              <input type="checkbox" checked={draft.turnsThinkingOff ?? false} onChange={(event) => change({ ...draft, turnsThinkingOff: event.target.checked })} />
               Ask it not to think first
             </label>
           </div>
         </>
       )}
-    </fieldset>
+      {(draft.kind === "custom" || draft.kind === "profile") && <SaveTyped unsaved={unsaved} onSave={() => save({ voiceModel: draft }, { showOnceSaved: true })} />}
+    </>
   );
 }
 
-const replyLanguageNames: Record<ReplyLanguage, string> = { en: "English", hu: "Hungarian" };
-
-/** This Mac's voice for the reply language, when it isn't on this Mac yet: what it takes, and its download when it fits. */
-function MissingReplyVoice({ language, engine }: { language: ReplyLanguage; engine: VoiceEngineStatus }) {
+/** The voice this Mac reads replies in for the language: Kokoro, always here, or a model of its own to download. */
+function ThisMacReplyVoice({ language, engine, idleMinutes }: { language: ReplyLanguage; engine: VoiceEngineStatus; idleMinutes: number }) {
   const voice = choosableModel(thisMacReplyVoice(language));
-  if (!voice || engine.onDisk.includes(voice.id)) return null;
-  const needs = `${replyLanguageNames[language]} replies on this Mac need ${voice.name}`;
-  if (!fitsMemory(voice, engine.memoryBytes)) {
-    return <p className="hint">{`${needs}, which needs a Mac with ${memoryNeededGb(voice)} GB of memory. A server of your own can speak them.`}</p>;
-  }
   return (
     <div className="sending-settings">
-      <span className="hint">{`${needs}, a ${gigabytes(voice.bytes)} download${voice.nonCommercial ? " for non-commercial use only" : ""}.`}</span>
-      {engine.setup.state === "set-up" && (
-        <button type="button" onClick={() => setUpModels([voice.id])}>
-          Download {voice.name}
-        </button>
-      )}
+      <span>
+        Spoken by {voice?.name ?? SPOKEN_VOICE.name}
+        {voice?.nonCommercial && ", for non-commercial use only"}
+      </span>
+      {voice ? <ModelBeside model={voice} engine={engine} idleMinutes={idleMinutes} /> : <ServerState state={engine.servers.speaking} idleMinutes={idleMinutes} />}
     </div>
   );
 }
 
-function ReplyVoiceSettings({
-  source,
+function ReplyChoice({
+  saved,
   language,
   engine,
+  idleMinutes,
   voiceModelSet,
-  onChange,
+  save,
 }: {
-  source: ReplyVoiceSource;
+  saved: ReplyVoiceSource;
   language: ReplyLanguage;
   engine: VoiceEngineStatus;
+  idleMinutes: number;
   voiceModelSet: boolean;
-  onChange: (next: { replyVoice?: ReplyVoiceSource; replyLanguage?: ReplyLanguage }) => void;
+  save: Save;
 }) {
-  const choose = (kind: string) => {
-    if (kind === "custom") return onChange({ replyVoice: source.kind === "custom" ? source : { kind, endpoint: noEndpoint, voice: "" } });
-    onChange({ replyVoice: kind === "this-mac" ? { kind } : { kind: "off" } });
+  const { draft, change, typedBefore, unsaved } = useChoice<ReplyVoiceSource>(saved);
+  const chooseKind = (kind: string) => {
+    if (kind === "custom") return change(typedBefore(kind) ?? { kind, endpoint: noEndpoint, voice: "" });
+    const next: ReplyVoiceSource = kind === "this-mac" ? { kind } : { kind: "off" };
+    change(next);
+    save({ replyVoice: next });
   };
   return (
-    <fieldset className="voice-service">
-      <legend>Spoken replies</legend>
+    <>
       <div className="sending-settings">
         <label data-hint={hints.replyVoice}>
-          Reads replies aloud
-          <select value={source.kind} onChange={(event) => choose(event.target.value)}>
+          Read aloud
+          <select value={draft.kind} onChange={(event) => chooseKind(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption engine={engine} usable={engine.onDisk.includes(SPOKEN_VOICE.id)} />
+            <ThisMacOption engine={engine} service={null} />
             <option value="custom">With a server of your own</option>
           </select>
         </label>
-        {source.kind !== "off" && (
+        {draft.kind !== "off" && (
           <label data-hint={hints.replyLanguage}>
             Language
-            <select value={language} onChange={(event) => onChange({ replyLanguage: event.target.value as ReplyLanguage })}>
+            <select value={language} onChange={(event) => save({ replyLanguage: event.target.value as ReplyLanguage })}>
               {Object.entries(replyLanguageNames).map(([code, name]) => (
                 <option key={code} value={code}>
                   {name}
@@ -227,82 +347,91 @@ function ReplyVoiceSettings({
             </select>
           </label>
         )}
-        {source.kind === "custom" && (
+        {draft.kind === "custom" && (
           <label data-hint={hints.replyVoiceName}>
             Voice
-            <input type="text" value={source.voice} placeholder="alloy" spellCheck={false} onChange={(event) => onChange({ replyVoice: { ...source, voice: event.target.value } })} />
+            <input type="text" value={draft.voice} placeholder="alloy" spellCheck={false} onChange={(event) => change({ ...draft, voice: event.target.value })} />
           </label>
         )}
       </div>
-      {source.kind === "this-mac" && <MissingReplyVoice language={language} engine={engine} />}
-      {source.kind === "custom" && <EndpointFields endpoint={source.endpoint} modelPlaceholder="gpt-4o-mini-tts" onChange={(endpoint) => onChange({ replyVoice: { ...source, endpoint } })} />}
-      {source.kind !== "off" && !voiceModelSet && <p className="hint">Spoken replies need a voice model, which sums each reply up. Set one above.</p>}
-    </fieldset>
+      {draft.kind === "this-mac" && <ThisMacReplyVoice language={language} engine={engine} idleMinutes={idleMinutes} />}
+      {draft.kind === "custom" && (
+        <>
+          <EndpointFields endpoint={draft.endpoint} modelPlaceholder="gpt-4o-mini-tts" onChange={(endpoint) => change({ ...draft, endpoint })} />
+          <SaveTyped unsaved={unsaved} onSave={() => save({ replyVoice: draft }, { showOnceSaved: true })} />
+        </>
+      )}
+      {draft.kind !== "off" && !voiceModelSet && <p className="hint">Spoken replies need a voice model, which sums each reply up. Set one above.</p>}
+    </>
   );
 }
 
-/** Kept by the host, so every browser and the phone dictate the same way; saved together, as an address and its key belong together. */
+/**
+ * Kept by the host, so every browser and the phone dictate the same way. Laid out in the order things happen: what the
+ * user says, the voice model that translates it and sums replies up, the replies read aloud, then the models on disk.
+ */
 export function VoiceSettings({ settings, engine, profiles }: { settings: Settings; engine: VoiceEngineStatus; profiles: Profile[] }) {
-  const [draft, setDraft] = useState(settings);
-  const [outcome, setOutcome] = useState<string | null>(null);
-  useEffect(() => setDraft(settings), [settings]);
-  const change = (next: Partial<Settings>) => {
-    setDraft({ ...draft, ...next });
-    setOutcome(null);
-  };
-  const save = async () => setOutcome((await saveSetting((requestId) => ({ type: "voice.set-settings", requestId, settings: draft }))) ?? "Saved.");
-  const unsaved = JSON.stringify(draft) !== JSON.stringify(settings);
+  const { shown, outcome, saveIn } = useSavedAtOnce(settings);
+  const idleMinutes = shown.engineIdleMinutes;
+  const voiceModelSet = shown.voiceModel.kind !== "off";
+  const speaking = saveIn("speaking");
   return (
     <>
       <h3>Voice</h3>
-      <p className="hint">
-        Speak to agents: Mirador turns what you say into text in the message box, in English if you like, before anything is sent, and can read short summaries of their
-        replies aloud. Kept by the host for every browser and the phone.
-      </p>
-      <VoiceEngineSetupPanel
-        engine={engine}
-        inUse={thisMacModelsInUse(settings)}
-        idleMinutes={{ saved: settings.engineIdleMinutes, draft: draft.engineIdleMinutes, change: (engineIdleMinutes) => change({ engineIdleMinutes }) }}
-      />
-      <RecognitionSettings source={draft.recognition} engine={engine} onChange={(recognition) => change({ recognition })} />
-      <VoiceModelSettings source={draft.voiceModel} engine={engine} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
-      <ReplyVoiceSettings source={draft.replyVoice} language={draft.replyLanguage} engine={engine} voiceModelSet={draft.voiceModel.kind !== "off"} onChange={change} />
-      <div className="sending-settings">
-        <label data-hint={hints.voiceLanguage}>
-          You speak
-          <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>
-            <option value={AUTO_LANGUAGE}>Any language, told apart by itself</option>
-            {spokenLanguages.map((code) => (
-              <option key={code} value={code}>
-                {languageName(code)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!isEnglish(draft.language) && (
-          <label data-hint={draft.voiceModel.kind === "off" ? hints.translateNeedsVoiceModel : hints.translateToEnglish}>
-            <input
-              type="checkbox"
-              checked={draft.translateToEnglish && draft.voiceModel.kind !== "off"}
-              disabled={draft.voiceModel.kind === "off"}
-              onChange={(event) => change({ translateToEnglish: event.target.checked })}
-            />
-            Translate into English
+      <p className="hint">Speak to agents, and hear short summaries of their replies. Kept by the host for every browser and the phone.</p>
+      <VoiceEngineSetupPanel engine={engine} />
+      <fieldset className="voice-service">
+        <legend>When you speak</legend>
+        <div className="sending-settings">
+          <label data-hint={hints.voiceLanguage}>
+            You speak
+            <select value={shown.language} onChange={(event) => speaking({ language: event.target.value })}>
+              <option value={AUTO_LANGUAGE}>Any language, told apart by itself</option>
+              {spokenLanguages.map((code) => (
+                <option key={code} value={code}>
+                  {languageName(code)}
+                </option>
+              ))}
+            </select>
           </label>
-        )}
-        <label data-hint={hints.sendRightAway}>
-          <input type="checkbox" checked={draft.sendRightAway} onChange={(event) => change({ sendRightAway: event.target.checked })} />
-          Send right away
-        </label>
-      </div>
-      <div className="voice-save">
-        <button type="button" disabled={!unsaved} onClick={save}>
-          Save
-        </button>
-        <span className="hint" role="status">
-          {outcome}
-        </span>
-      </div>
+          {!isEnglish(shown.language) && (
+            <label data-hint={voiceModelSet ? hints.translateToEnglish : hints.translateNeedsVoiceModel}>
+              <input
+                type="checkbox"
+                checked={shown.translateToEnglish && voiceModelSet}
+                disabled={!voiceModelSet}
+                onChange={(event) => speaking({ translateToEnglish: event.target.checked })}
+              />
+              Translate into English
+            </label>
+          )}
+        </div>
+        <RecognitionChoice saved={shown.recognition} engine={engine} idleMinutes={idleMinutes} save={speaking} />
+        <div className="sending-settings">
+          <label data-hint={hints.sendRightAway}>
+            <input type="checkbox" checked={shown.sendRightAway} onChange={(event) => speaking({ sendRightAway: event.target.checked })} />
+            Send right away
+          </label>
+        </div>
+        <SavedStatus section="speaking" outcome={outcome} />
+      </fieldset>
+      <fieldset className="voice-service">
+        <legend>Translating and summing up</legend>
+        <VoiceModelChoice saved={shown.voiceModel} engine={engine} idleMinutes={idleMinutes} profiles={profiles} save={saveIn("voiceModel")} />
+        <SavedStatus section="voiceModel" outcome={outcome} />
+      </fieldset>
+      <fieldset className="voice-service">
+        <legend>When the agent replies</legend>
+        <ReplyChoice saved={shown.replyVoice} language={shown.replyLanguage} engine={engine} idleMinutes={idleMinutes} voiceModelSet={voiceModelSet} save={saveIn("replies")} />
+        <SavedStatus section="replies" outcome={outcome} />
+      </fieldset>
+      <ModelsOnThisMac
+        engine={engine}
+        inUse={thisMacModelsInUse(shown)}
+        idleMinutes={idleMinutes}
+        onIdleMinutes={(engineIdleMinutes) => saveIn("models")({ engineIdleMinutes })}
+        status={<SavedStatus section="models" outcome={outcome} />}
+      />
     </>
   );
 }

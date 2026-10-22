@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fakeMicrophone } from "./fake-microphone.ts";
-import { addWorkspace, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, openSettings, signIn, startConversation, useOwnVoiceServer, voiceSection, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 test.use(fakeMicrophone);
@@ -40,12 +40,10 @@ test("another machine's Mirador in the rail dictates with this computer's microp
   await addWorkspace(serverPage, server.projectDir);
   await startConversation(serverPage);
   const settings = await openSettings(serverPage, "Voice");
-  const recognition = settings.getByRole("group", { name: "Speech recognition" });
-  await recognition.getByLabel("Turns speech into text").selectOption({ label: "With a server of your own" });
-  await recognition.getByLabel("Address").fill(`http://127.0.0.1:${(recognitionServer.address() as AddressInfo).port}/v1`);
-  await recognition.getByLabel("Model").fill("whisper-turbo");
-  await settings.getByRole("button", { name: "Save" }).click();
-  await expect(settings.getByRole("status")).toHaveText("Saved.");
+  await useOwnVoiceServer(voiceSection(settings, "When you speak"), "Speech recognition", {
+    url: `http://127.0.0.1:${(recognitionServer.address() as AddressInfo).port}/v1`,
+    model: "whisper-turbo",
+  });
   await settings.getByRole("button", { name: "Close" }).click();
   const invite = await openSettings(serverPage, "Devices");
   await invite.getByRole("button", { name: "Invite a device" }).click();

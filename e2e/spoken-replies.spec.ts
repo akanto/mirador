@@ -1,9 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fakeMicrophone } from "./fake-microphone.ts";
-import { addWorkspace, createProfile, openSettings, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, openSettings, sendMessage, signIn, useOwnVoiceServer, voiceSection, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 import { toneWav } from "./wav.ts";
 
@@ -58,12 +58,6 @@ test.afterAll(async () => {
 
 const voiceAddress = () => `http://127.0.0.1:${(voiceServer.address() as AddressInfo).port}/v1`;
 
-async function ownServer(group: ReturnType<Page["getByRole"]>, choice: string, model: string) {
-  await group.getByLabel(choice).selectOption({ label: "With a server of your own" });
-  await group.getByLabel("Address").fill(voiceAddress());
-  await group.getByLabel("Model").fill(model);
-}
-
 test("a reply to a dictated message is summed up and read aloud as the turn ends, and every reply has a button reading it", async ({ page }) => {
   test.setTimeout(180_000);
   await signIn(page, host);
@@ -74,15 +68,14 @@ test("a reply to a dictated message is summed up and read aloud as the turn ends
   await page.getByRole("button", { name: "+ New conversation" }).click();
 
   const settings = await openSettings(page, "Voice");
-  await ownServer(settings.getByRole("group", { name: "Speech recognition" }), "Turns speech into text", "whisper-turbo");
-  await ownServer(settings.getByRole("group", { name: "Voice model" }), "Translates", "gemma");
-  const replies = settings.getByRole("group", { name: "Spoken replies" });
-  await ownServer(replies, "Reads replies aloud", "tts-1");
+  const speaking = voiceSection(settings, "When you speak");
+  await useOwnVoiceServer(speaking, "Speech recognition", { url: voiceAddress(), model: "whisper-turbo" });
+  await useOwnVoiceServer(voiceSection(settings, "Translating and summing up"), "Voice model", { url: voiceAddress(), model: "gemma" });
+  const replies = voiceSection(settings, "When the agent replies");
+  await useOwnVoiceServer(replies, "Read aloud", { url: voiceAddress(), model: "tts-1", voice: "alloy" });
   await expect(replies.getByLabel("Language")).toHaveValue("en");
-  await replies.getByLabel("Voice").fill("alloy");
-  await settings.getByLabel("Send right away").check();
-  await settings.getByRole("button", { name: "Save" }).click();
-  await expect(settings.getByRole("status")).toHaveText("Saved.");
+  await speaking.getByLabel("Send right away").check();
+  await expect(speaking.getByRole("status")).toHaveText("Saved.");
   await settings.getByRole("button", { name: "Close" }).click();
 
   const reply = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(".message.agent") }).last();
@@ -152,9 +145,10 @@ test("a reply to a dictated message is summed up and read aloud as the turn ends
 
   await test.step("another reply voice saved makes a summary and sound of its own", async () => {
     const voice = await openSettings(page, "Voice");
-    await voice.getByRole("group", { name: "Spoken replies" }).getByLabel("Voice").fill("nova");
-    await voice.getByRole("button", { name: "Save" }).click();
-    await expect(voice.getByRole("status")).toHaveText("Saved.");
+    const replies = voiceSection(voice, "When the agent replies");
+    await replies.getByLabel("Voice", { exact: true }).fill("nova");
+    await replies.getByRole("button", { name: "Save" }).click();
+    await expect(replies.getByRole("status")).toHaveText("Saved.");
     await voice.getByRole("button", { name: "Close" }).click();
     const summedBefore = summed.length;
     await reply.hover();
@@ -167,10 +161,10 @@ test("a reply to a dictated message is summed up and read aloud as the turn ends
 
   await test.step("without a voice model to sum them up, replies have no button, and Settings says what they need", async () => {
     const voice = await openSettings(page, "Voice");
-    await voice.getByRole("group", { name: "Voice model" }).getByLabel("Translates").selectOption({ label: "Off" });
-    await expect(voice.getByRole("group", { name: "Spoken replies" })).toContainText("Spoken replies need a voice model, which sums each reply up. Set one above.");
-    await voice.getByRole("button", { name: "Save" }).click();
-    await expect(voice.getByRole("status")).toHaveText("Saved.");
+    const voiceModel = voiceSection(voice, "Translating and summing up");
+    await voiceModel.getByLabel("Voice model").selectOption({ label: "Off" });
+    await expect(voiceModel.getByRole("status")).toHaveText("Saved.");
+    await expect(voiceSection(voice, "When the agent replies")).toContainText("Spoken replies need a voice model, which sums each reply up. Set one above.");
     await voice.getByRole("button", { name: "Close" }).click();
     await expect(page.locator(".timeline:visible .read-aloud")).toHaveCount(0);
   });

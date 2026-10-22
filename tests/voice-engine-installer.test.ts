@@ -178,7 +178,7 @@ describe("setting up voice on this Mac", () => {
 
     const steps = seen.flatMap((setup) => (setup.state === "setting-up" ? [setup.step] : []));
     expect([...new Set(steps)]).toEqual(["space", "uv", "python", "packages", "models"]);
-    expect(seen.find((setup) => setup.state === "setting-up" && setup.step === "models")).toMatchObject({ done: 0, total: 302_000 + 2 + 24 });
+    expect(seen.find((setup) => setup.state === "setting-up" && setup.step === "models")).toMatchObject({ done: 0, total: 302_000 + 2 + 24, models: ["kokoro-82m", WHISPER] });
 
     const later = installerWith();
     await later.load();
@@ -231,8 +231,11 @@ describe("setting up voice on this Mac", () => {
     await settled(installer);
     corrupted.add("/mlx-community/gemma/resolve/rev1/model.safetensors");
     installer.setUp([WHISPER, GEMMA]);
+    expect(installer.status().setup).toMatchObject({ state: "setting-up", models: [GEMMA] });
+    expect(installer.isDownloading(GEMMA)).toBe(true);
     const failed = await settled(installer);
-    expect(failed).toMatchObject({ state: "set-up", problem: expect.stringMatching(/^Adding Gemma failed\. .*came in different from what was expected/) });
+    expect(installer.isDownloading(GEMMA)).toBe(false);
+    expect(failed).toMatchObject({ state: "set-up", notAdded: { models: [GEMMA], problem: expect.stringMatching(/^Adding Gemma failed\. .*came in different from what was expected/) } });
     expect(installer.isInstalled(WHISPER)).toBe(true);
     expect(installer.isInstalled(GEMMA)).toBe(false);
 

@@ -78,10 +78,15 @@ const SMALL_GEMMA = "gemma-4-12b";
 const KOKORO = "kokoro-82m";
 const OMNIVOICE = "omnivoice";
 
-function engineServers({ python = fakePython(), installed = [KOKORO, OMNIVOICE, WHISPER, GEMMA, SMALL_GEMMA], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[] } = {}) {
+function engineServers({
+  python = fakePython(),
+  installed = [KOKORO, OMNIVOICE, WHISPER, GEMMA, SMALL_GEMMA],
+  downloading = [],
+  ...options
+}: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[]; downloading?: string[] } = {}) {
   const states: Record<string, EngineServerState>[] = [];
   servers = new VoiceEngineServers({
-    installer: { python, modelDir: (id) => join(root, "models", id), isInstalled: (id) => installed.includes(id), isSetUp: () => installed.length > 0 },
+    installer: { python, modelDir: (id) => join(root, "models", id), isInstalled: (id) => installed.includes(id), isSetUp: () => installed.length > 0, isDownloading: (id) => downloading.includes(id) },
     voiceDir: join(root, "voice"),
     logsDir: join(root, "logs"),
     idleMs: () => 60_000,
@@ -244,12 +249,16 @@ describe("the engine's servers", () => {
     await until(() => !isRunning(pid));
   });
 
-  test("refuse services whose models aren't set up", async () => {
+  test("refuse services whose models aren't set up, saying when one is still downloading", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const nothing = engineServers({ installed: [] }).servers;
     await expect(nothing.use("recognition", WHISPER, async () => {})).rejects.toThrow(new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up."));
     const withoutVoiceModel = engineServers({ installed: ["kokoro-82m", WHISPER] }).servers;
-    await expect(withoutVoiceModel.use("voiceModel", GEMMA, async () => {})).rejects.toThrow(new VoiceUnavailable("Gemma 4 26B-A4B isn't on this Mac. Settings → Voice can add it."));
+    await expect(withoutVoiceModel.use("voiceModel", GEMMA, async () => {})).rejects.toThrow(new VoiceUnavailable("Gemma 4 26B-A4B isn't on this Mac. Settings → Voice can download it."));
+    const downloadingVoiceModel = engineServers({ installed: ["kokoro-82m", WHISPER], downloading: [GEMMA] }).servers;
+    await expect(downloadingVoiceModel.use("voiceModel", GEMMA, async () => {})).rejects.toThrow(
+      new VoiceUnavailable("Gemma 4 26B-A4B is still downloading. Settings → Voice shows how far it is."),
+    );
     expect(logged()).toEqual([]);
   });
 

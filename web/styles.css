@@ -6890,68 +6890,79 @@ body.reordering * {
   max-width: 100%;
 }
 
-.voice-save {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
+.voice-saved {
+  margin: 8px 0 0;
 }
 
 .voice-engine-progress {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 12px;
-  margin-top: 6px;
 }
 
 .voice-engine-progress progress {
   width: 14em;
 }
 
-.voice-engine-servers {
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.voice-engine-state {
   color: var(--muted);
+  white-space: nowrap;
 }
 
-.voice-engine-servers li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-engine-servers button[aria-disabled="true"] {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.voice-engine-servers li::before {
+.voice-engine-state::before {
   content: "";
   display: inline-block;
   width: 7px;
   height: 7px;
-  margin-right: 8px;
+  margin-right: 6px;
   border-radius: 50%;
   background: var(--faint);
   vertical-align: middle;
 }
 
-.voice-engine-servers li[data-state="loading"]::before {
+.voice-engine-state[data-state="loading"]::before {
   background: var(--warn);
   animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
-.voice-engine-servers li[data-state="ready"]::before {
+.voice-engine-state[data-state="ready"]::before {
   background: var(--ok);
 }
 
-.voice-engine-server-name {
+.voice-service button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.voice-engine-models {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+}
+
+.voice-engine-models th {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: calc(12px * var(--font-scale));
+  text-align: left;
+}
+
+.voice-engine-models th,
+.voice-engine-models td {
+  padding: 4px 8px 4px 0;
+}
+
+.voice-engine-models td {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.voice-engine-models td:last-child {
+  text-align: right;
+}
+
+.voice-engine-models .voice-engine-model-name {
   color: var(--text);
-  font-weight: 500;
 }
 
 .voice-engine-idle {
@@ -6961,4 +6972,8 @@ body.reordering * {
 .voice-engine-problem {
   margin: 8px 0 0;
   color: var(--danger);
+}
+
+span.voice-engine-problem {
+  margin: 0;
 }

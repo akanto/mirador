@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fakeMicrophone, SILENCE_SECONDS, SPEECH_SECONDS } from "./fake-microphone.ts";
-import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation, useOwnVoiceServer, voiceSection } from "./helpers.ts";
 import { NOTHING_HEARD_MS } from "../web/pause-watch.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -62,17 +62,9 @@ test.afterAll(async () => {
   voiceServer.close();
 });
 
-async function useOwnServer(service: Locator, choice: string, model: string) {
-  await service.getByLabel(choice).selectOption({ label: "With a server of your own" });
-  await service.getByLabel("Address").fill(voiceServerUrl());
-  await service.getByLabel("Model").fill(model);
-}
-
-async function saveVoiceSettings(page: Page, change: (settings: Locator) => Promise<void>) {
+async function changeVoiceSettings(page: Page, change: (settings: Locator) => Promise<void>) {
   const settings = await openSettings(page, "Voice");
   await change(settings);
-  await settings.getByRole("button", { name: "Save" }).click();
-  await expect(settings.getByRole("status")).toHaveText("Saved.");
   await settings.getByRole("button", { name: "Close" }).click();
 }
 
@@ -101,10 +93,11 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
     expect(clips).toEqual([]);
   });
 
-  await saveVoiceSettings(page, async (settings) => {
-    await useOwnServer(settings.getByRole("group", { name: "Speech recognition" }), "Turns speech into text", "whisper-turbo");
-    await useOwnServer(settings.getByRole("group", { name: "Voice model" }), "Translates", "gemma");
+  await changeVoiceSettings(page, async (settings) => {
+    await useOwnVoiceServer(voiceSection(settings, "When you speak"), "Speech recognition", { url: voiceServerUrl(), model: "whisper-turbo" });
+    await useOwnVoiceServer(voiceSection(settings, "Translating and summing up"), "Voice model", { url: voiceServerUrl(), model: "gemma" });
     await settings.getByLabel("You speak").selectOption({ label: "Hungarian" });
+    await expect(voiceSection(settings, "When you speak").getByRole("status")).toHaveText("Saved.");
   });
 
   await test.step("a tap listens until the user pauses, then the English goes in at the caret, in 16 kHz mono WAV to the server, with what was said under the box", async () => {
@@ -196,7 +189,10 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
     await box.fill("");
   });
 
-  await saveVoiceSettings(page, (settings) => settings.getByLabel("Send right away").check());
+  await changeVoiceSettings(page, async (settings) => {
+    await settings.getByLabel("Send right away").check();
+    await expect(voiceSection(settings, "When you speak").getByRole("status")).toHaveText("Saved.");
+  });
 
   await test.step("with Send right away, what was said is sent once it is text, and stays under the box until the next dictation", async () => {
     await mic.click();

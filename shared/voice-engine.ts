@@ -1,3 +1,5 @@
+import type { EngineService } from "./voice-engine-models.ts";
+
 /** What setting up voice on this Mac is doing, in order. */
 export type VoiceEngineStep = "space" | "uv" | "python" | "packages" | "models";
 
@@ -13,14 +15,17 @@ export const voiceEngineStepLabels: Record<VoiceEngineStep, string> = {
 export type VoiceEngineSetup =
   | { state: "unsupported"; reason: string }
   | { state: "not-set-up" }
-  /** done and total count bytes while downloading; both 0 while a step can't tell how far it is. */
-  | { state: "setting-up"; step: VoiceEngineStep; done: number; total: number }
+  /** done and total count bytes while downloading; both 0 while a step can't tell how far it is. models are the ones it downloads, by id. */
+  | { state: "setting-up"; step: VoiceEngineStep; done: number; total: number; models: string[] }
   | { state: "failed"; problem: string }
-  /** problem says why adding models failed; what was set up before still works. */
-  | { state: "set-up"; bytesOnDisk: number; problem?: string };
+  /** notAdded says which models, by id, adding failed for, and why; what was set up before still works. */
+  | { state: "set-up"; bytesOnDisk: number; notAdded?: { models: string[]; problem: string } };
 
 /** Each server's state, kept apart from setup: stopped servers load again the next time they're needed. */
 export type EngineServer = "speech" | "voiceModel" | "speaking";
+
+/** Speaking replies has a server of its own, so that dictating never waits for Whisper to load again. */
+export const SERVER_OF: Record<EngineService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel", speaking: "speaking" };
 export type EngineServerState = "stopped" | "loading" | "ready";
 
 export interface VoiceEngineStatus {

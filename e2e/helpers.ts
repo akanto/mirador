@@ -99,6 +99,26 @@ export async function openSettings(page: Page, pageName = "Appearance") {
   return settings;
 }
 
+type VoiceSectionName = "Voice on this Mac" | "When you speak" | "Translating and summing up" | "When the agent replies" | "Models on this Mac";
+
+/** One of the sections of Settings → Voice; a change there saves at once and says so in the section. */
+export const voiceSection = (settings: Locator, name: VoiceSectionName) => settings.getByRole("group", { name, exact: true });
+
+/** Points a voice service at an OpenAI-style server of the user's own, whose typed fields save together with the section's Save. */
+export async function useOwnVoiceServer(
+  section: Locator,
+  choice: "Speech recognition" | "Voice model" | "Read aloud",
+  { url, model, apiKey = "", voice = "" }: { url: string; model: string; apiKey?: string; voice?: string },
+) {
+  await section.getByLabel(choice).selectOption({ label: "With a server of your own" });
+  await section.getByLabel("Address").fill(url);
+  await section.getByLabel("API key").fill(apiKey);
+  await section.getByLabel("Model", { exact: true }).fill(model);
+  if (voice) await section.getByLabel("Voice", { exact: true }).fill(voice);
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("status")).toHaveText("Saved.");
+}
+
 /** One of the pictures in a choice of Settings, e.g. Light under Theme. */
 export async function chooseInSettings(page: Page, label: string, option: string) {
   const settings = await openSettings(page);

@@ -2,7 +2,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, write
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import type { EngineServer, EngineServerState } from "../../../shared/voice-engine.ts";
+import { SERVER_OF, type EngineServer, type EngineServerState } from "../../../shared/voice-engine.ts";
 import { modelName, type EngineService } from "../../../shared/voice-engine-models.ts";
 import type { CustomEndpoint } from "../../../shared/voice.ts";
 import { VoiceUnavailable } from "../voice.ts";
@@ -14,8 +14,6 @@ const SERVERS: EngineServer[] = ["speech", "voiceModel", "speaking"];
 const SERVER_MODULES: Record<EngineServer, string[]> = { speech: ["-m", "mlx_audio.server"], voiceModel: ["-m", "mlx_lm.server"], speaking: ["-m", "mlx_audio.server"] };
 const SERVER_NAMES: Record<EngineServer, string> = { speech: "speech server", voiceModel: "voice model server", speaking: "server speaking replies" };
 const LOG_NAMES: Record<EngineServer, string> = { speech: "voice-speech.log", voiceModel: "voice-model.log", speaking: "voice-speaking.log" };
-/** Speaking replies has a server of its own, so that dictating never waits for Whisper to load again. */
-const SERVER_OF: Record<EngineService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel", speaking: "speaking" };
 const START_TIMEOUT_MS = 180_000;
 const ANSWERING_POLL_MS = 250;
 const STOP_GRACE_MS = 5_000;
@@ -33,7 +31,7 @@ interface Running {
 }
 
 export interface VoiceEngineServersOptions {
-  installer: Pick<VoiceEngineInstaller, "python" | "modelDir" | "isInstalled" | "isSetUp">;
+  installer: Pick<VoiceEngineInstaller, "python" | "modelDir" | "isInstalled" | "isSetUp" | "isDownloading">;
   voiceDir: string;
   logsDir: string;
   idleMs: () => number;
@@ -168,7 +166,8 @@ export class VoiceEngineServers {
     const { installer } = this.options;
     if (installer.isInstalled(model)) return;
     if (!installer.isSetUp()) throw new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up.");
-    throw new VoiceUnavailable(`${modelName(model)} isn't on this Mac. Settings → Voice can add it.`);
+    if (installer.isDownloading(model)) throw new VoiceUnavailable(`${modelName(model)} is still downloading. Settings → Voice shows how far it is.`);
+    throw new VoiceUnavailable(`${modelName(model)} isn't on this Mac. Settings → Voice can download it.`);
   }
 
   private async runningWith(server: EngineServer, model: string) {
