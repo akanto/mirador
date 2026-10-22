@@ -6,6 +6,7 @@ export class SaveRefused extends Error {}
 export class FileAlreadyThere extends SaveRefused {}
 
 const HTML_NAME = /\.html?$/i;
+const IMAGE_NAME = /\.png$/i;
 
 const escapes = (relativePath: string) => relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
 
@@ -30,7 +31,8 @@ async function assertNotLeadingOut(root: string, target: string, name: string) {
   if (realLocation === undefined || !isWithin(root, realLocation)) throw outsideWorkspace(name);
 }
 
-export async function saveIntoWorkspace(workspaceRoot: string, path: string, content: string, { replace = false } = {}): Promise<string> {
+export async function saveIntoWorkspace(workspaceRoot: string, path: string, content: string | Uint8Array, { replace = false } = {}): Promise<string> {
+  const savesHtml = typeof content === "string";
   const name = path.trim();
   if (name === "") throw new SaveRefused("Name the file to save the page as.");
   if (isAbsolute(name)) throw new SaveRefused(`"${name}" is an absolute path. Give a path inside the project folder.`);
@@ -39,7 +41,7 @@ export async function saveIntoWorkspace(workspaceRoot: string, path: string, con
   const target = resolve(root, name);
   if (!isInside(root, target)) throw outsideWorkspace(name);
   await assertNotLeadingOut(root, target, name);
-  if (!HTML_NAME.test(name)) throw new SaveRefused("Save the page as an .html file.");
+  if (!(savesHtml ? HTML_NAME : IMAGE_NAME).test(name)) throw new SaveRefused(savesHtml ? "Save the page as an .html file." : "Save the image as a .png file.");
 
   const existing = await statOf(target);
   if (existing?.isDirectory()) throw new SaveRefused(`"${name}" is a folder. Name the page differently.`);
@@ -49,6 +51,6 @@ export async function saveIntoWorkspace(workspaceRoot: string, path: string, con
   await mkdir(dirname(target), { recursive: true }).catch(() => {
     throw new SaveRefused(`Part of "${name}" is a file, not a folder.`);
   });
-  await writeFile(target, content, "utf8");
+  await writeFile(target, content);
   return saved;
 }

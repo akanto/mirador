@@ -121,6 +121,14 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
     expect(saved).not.toMatch(/<script[^>]*src=[^>]*d3\.min\.js/);
   });
 
+  await test.step("Save image to project draws the page and writes it into the project as a PNG", async () => {
+    await exportBy(page, "Save image to project…");
+    await expect(saveForm(page).getByLabel("Save in the project as")).toHaveValue("docs/sales-by-region.png");
+    await saveForm(page).getByRole("button", { name: "Save" }).click();
+    await expect(exportStatus(page)).toHaveText("Saved to docs/sales-by-region.png");
+    expect(readFileSync(join(host.projectDir, "docs", "sales-by-region.png")).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  });
+
   await test.step("inside the desktop app, whose downloads land unannounced in ~/Downloads, Export offers no Download", async () => {
     await page.addInitScript(() => {
       window.__electrobunSendToHost = () => {};
@@ -133,6 +141,7 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
       "Ask agent for Markdown",
       "Ask agent to save Markdown file",
       "Save to project…",
+      "Save image to project…",
     ]);
     await page.keyboard.press("Escape");
   });

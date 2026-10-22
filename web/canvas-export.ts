@@ -63,6 +63,30 @@ function capturedPage(frame: HTMLIFrameElement): Promise<Blob> {
   });
 }
 
+const asBase64 = async (blob: Blob) => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const chunks: string[] = [];
+  for (let start = 0; start < bytes.length; start += 0x8000) chunks.push(String.fromCharCode(...bytes.subarray(start, start + 0x8000)));
+  return btoa(chunks.join(""));
+};
+
+/** Draws the page as a PNG and writes it into the conversation's project; resolves to the path it was saved at. */
+export const savePageImageToProject = (itemId: string, frame: HTMLIFrameElement, path: string, replace: boolean) =>
+  capturedPage(frame)
+    .then(asBase64)
+    .then((image) =>
+      connection.sendAndAwait(
+        (requestId) => ({ type: "canvas.save-image-to-project", requestId, itemId, path, image, replace }),
+        (message, requestId) => {
+          if (message.type === "canvas.saved-to-project" && message.requestId === requestId) return message.path;
+          if (message.type === "canvas.export-failed" && message.requestId === requestId) {
+            throw message.alreadyThere ? new AlreadyThere(message.message) : new Error(message.message);
+          }
+          return undefined;
+        },
+      ),
+    );
+
 // The clipboard is written at once, with the content still on its way: a browser takes a write only while it handles the
 // click, which would be over by the time the page is drawn or the host answers.
 // Where the page could not be drawn, WebKit refuses the write with its own NotAllowedError and hides the reason, so the capture's error wins when both fail.

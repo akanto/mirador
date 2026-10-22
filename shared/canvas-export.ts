@@ -27,6 +27,9 @@ export const pageFileName = (title: string) => `${pageName(title)}.html`;
 /** Where Save to project offers to put a page. */
 export const suggestedPagePath = (title: string) => `docs/${pageFileName(title)}`;
 
+/** Where Save image to project offers to put the page drawn as a PNG. */
+export const suggestedImagePagePath = (title: string) => `docs/${pageName(title)}.png`;
+
 /** Where the agent is asked to save a page as Markdown: beside where Save to project offers its HTML. */
 export const markdownPagePath = (title: string) => `docs/${pageName(title)}.md`;
 

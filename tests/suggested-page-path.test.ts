@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { pageFileName, suggestedPagePath } from "../shared/canvas-export.ts";
+import { pageFileName, suggestedImagePagePath, suggestedPagePath } from "../shared/canvas-export.ts";
 
 describe("a page's file name and the path Save to project offers", () => {
   test("follow the title in lowercase, with dashes for anything but letters and digits", () => {
     expect(pageFileName("Release plan: Q3 / 2026")).toBe("release-plan-q3-2026.html");
     expect(suggestedPagePath("Release plan: Q3 / 2026")).toBe("docs/release-plan-q3-2026.html");
+  });
+
+  test("Save image to project offers the same name as a PNG", () => {
+    expect(suggestedImagePagePath("Release plan: Q3 / 2026")).toBe("docs/release-plan-q3-2026.png");
   });
 
   test("keep the letters of accented words without their accents", () => {

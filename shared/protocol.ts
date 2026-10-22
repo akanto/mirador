@@ -184,6 +184,8 @@ export type ClientMessage =
   /** A page the agent showed, as a file of its own, for the user to copy or download. */
   | { type: "canvas.export"; requestId: string; itemId: string; libraries: PageLibraries }
   | { type: "canvas.save-to-project"; requestId: string; itemId: string; path: string; libraries: PageLibraries; replace: boolean }
+  /** The page drawn as a PNG by its own frame, sent as base64 for the host to write into the project. */
+  | { type: "canvas.save-image-to-project"; requestId: string; itemId: string; path: string; image: string; replace: boolean }
   | { type: "review.update-finding"; itemId: string; findingId: string; decision?: FindingDecision; body?: string }
   | { type: "review.update-answer"; itemId: string; answerId: string; decision?: FindingDecision; body?: string; resolve?: boolean }
   /** Adds the kept findings to the user's pending review on the pull request; the user submits it on GitHub. */

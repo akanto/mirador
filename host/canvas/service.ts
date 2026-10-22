@@ -350,12 +350,14 @@ export class CanvasService {
     return { page, html: await standalonePage({ title: page.title, html: page.html }, this.assetsOrigins, libraries) };
   }
 
-  /** Writes the page into the conversation's workspace, at a path inside it; the path it was saved at comes back. */
-  async savePageToProject(itemId: string, path: string, libraries: PageLibraries, replace: boolean) {
-    const { page, html } = await this.exportPage(itemId, libraries);
+  /** Writes the page into the conversation's workspace, at a path inside it; the path it was saved at comes back. The page is built here from its HTML, or comes as a PNG its viewer's frame drew. */
+  async saveIntoProject(itemId: string, path: string, replace: boolean, content: PageLibraries | Uint8Array) {
+    const page = this.store.findCanvasItem(itemId);
+    if (page?.kind !== "show" || page.html === undefined) throw new Error("Only a page the agent showed can be copied or saved.");
+    const file = typeof content === "string" ? (await this.exportPage(itemId, content)).html : content;
     const workspace = this.store.findWorkspace(this.conversations.get(page.conversationId).workspaceId);
     if (!workspace) throw new Error("The workspace no longer exists.");
-    return saveIntoWorkspace(workspace.path, path, html, { replace });
+    return saveIntoWorkspace(workspace.path, path, file, { replace });
   }
 
   openInEditor(itemId: string, path: string, line: number) {

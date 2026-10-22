@@ -925,8 +925,9 @@ export function startServer(services: HostServices) {
           .catch((error) => reply({ type: "canvas.export-failed", requestId: message.requestId, message: errorMessage(error), alreadyThere: false }));
         return;
       case "canvas.save-to-project":
+      case "canvas.save-image-to-project":
         canvas
-          .savePageToProject(message.itemId, message.path, message.libraries, message.replace)
+          .saveIntoProject(message.itemId, message.path, message.replace, message.type === "canvas.save-to-project" ? message.libraries : Buffer.from(message.image, "base64"))
           .then((path) => reply({ type: "canvas.saved-to-project", requestId: message.requestId, path }))
           .catch((error) =>
             reply({ type: "canvas.export-failed", requestId: message.requestId, message: errorMessage(error), alreadyThere: error instanceof FileAlreadyThere }),

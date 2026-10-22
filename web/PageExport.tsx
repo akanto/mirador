@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from "react";
-import { markdownPagePath, suggestedPagePath, type MarkdownDelivery } from "../shared/canvas-export.ts";
+import { markdownPagePath, suggestedImagePagePath, suggestedPagePath, type MarkdownDelivery } from "../shared/canvas-export.ts";
 import type { ShowItem } from "../shared/model.ts";
 import { placedBelow, useClosing, type BarMenuEntry } from "./BarMenu.tsx";
 import { useEnterWhileBusy } from "./busy-sending.ts";
-import { AlreadyThere, askAgentForMarkdown, copyPageHtml, copyPageImage, downloadPage, savePageToProject } from "./canvas-export.ts";
+import { AlreadyThere, askAgentForMarkdown, copyPageHtml, copyPageImage, downloadPage, savePageImageToProject, savePageToProject } from "./canvas-export.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
@@ -33,17 +33,19 @@ const failureText = (error: unknown) => (error instanceof Error ? error.message 
  * Copy, download or save the page the agent showed: the menu entries, for whichever bar menu holds them, and what they
  * open, the Save form and a note of how it went, under the menu's button.
  */
+type SaveKind = "html" | "image";
+
 export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLIFrameElement | null>): { entries: BarMenuEntry[]; opened: ReactNode } {
   const [placement, setPlacement] = useState<CSSProperties>();
-  const [saveFormOpen, setSaveFormOpen] = useState(false);
+  const [saving, setSaving] = useState<SaveKind | null>(null);
   const [status, setStatus] = useStatus();
   const enterWhileBusy = useEnterWhileBusy();
-  useEffect(() => setSaveFormOpen(false), [page?.id]);
+  useEffect(() => setSaving(null), [page?.id]);
   if (!page) return { entries: [], opened: null };
 
   const run = async (opener: HTMLElement, working: string, action: () => Promise<unknown>, done: string) => {
     setPlacement(placedBelow(opener));
-    setSaveFormOpen(false);
+    setSaving(null);
     setStatus({ text: working, working: true });
     try {
       await action();
@@ -58,16 +60,18 @@ export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLI
     onChoose: (opener) => run(opener, "Asking the agent…", async () => askAgentForMarkdown(page, delivery, enterWhileBusy === "after-turn"), done),
   });
   const download: BarMenuEntry ={ label: "Download", onChoose: (opener) => run(opener, "Preparing the file…", () => downloadPage(page), "Downloaded") };
-  const saveToProject: BarMenuEntry = {
-    label: "Save to project…",
+  const saveAs = (label: string, kind: SaveKind): BarMenuEntry => ({
+    label,
     onChoose: (opener) => {
       setPlacement(placedBelow(opener));
       setStatus(null);
-      setSaveFormOpen(true);
+      setSaving(kind);
     },
-  };
+  });
+  const saveToProject = saveAs("Save to project…", "html");
+  const saveImageToProject = saveAs("Save image to project…", "image");
   // The desktop app's webview puts downloads in ~/Downloads without a word, so there the file is only saved to the project.
-  const [firstSaving, ...otherSaving] = inDesktopApp() ? [saveToProject] : [download, saveToProject];
+  const [firstSaving, ...otherSaving] = inDesktopApp() ? [saveToProject, saveImageToProject] : [download, saveToProject, saveImageToProject];
   const entries: BarMenuEntry[] = [
     { label: "Copy as image", onChoose: (opener) => run(opener, "Drawing the page…", copyImage, "Copied as an image") },
     { label: "Copy HTML", onChoose: (opener) => run(opener, "Copying…", () => copyPageHtml(page.id), "Copied the HTML") },
@@ -76,16 +80,22 @@ export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLI
     { ...firstSaving!, separatorBefore: true },
     ...otherSaving,
   ];
-  const opened = saveFormOpen ? (
+  const opened = saving ? (
     <SaveToProject
-      key={page.id}
+      key={`${page.id}:${saving}`}
       page={page}
+      kind={saving}
       style={placement}
+      onSave={(path, replace) => {
+        if (saving === "html") return savePageToProject(page.id, path, replace);
+        if (!frame.current) return Promise.reject(new Error("The page is not shown."));
+        return savePageImageToProject(page.id, frame.current, path, replace);
+      }}
       onSaved={(path) => {
-        setSaveFormOpen(false);
+        setSaving(null);
         setStatus({ text: `Saved to ${path}` });
       }}
-      onCancel={() => setSaveFormOpen(false)}
+      onCancel={() => setSaving(null)}
     />
   ) : (
     status && (
@@ -97,8 +107,22 @@ export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLI
   return { entries, opened };
 }
 
-function SaveToProject({ page, style, onSaved, onCancel }: { page: ShowItem; style?: CSSProperties; onSaved: (path: string) => void; onCancel: () => void }) {
-  const [path, setPath] = useState(() => suggestedPagePath(page.title));
+function SaveToProject({
+  page,
+  kind,
+  style,
+  onSave,
+  onSaved,
+  onCancel,
+}: {
+  page: ShowItem;
+  kind: SaveKind;
+  style?: CSSProperties;
+  onSave: (path: string, replace: boolean) => Promise<string>;
+  onSaved: (path: string) => void;
+  onCancel: () => void;
+}) {
+  const [path, setPath] = useState(() => (kind === "image" ? suggestedImagePagePath(page.title) : suggestedPagePath(page.title)));
   const [problem, setProblem] = useState<string | null>(null);
   const [alreadyThere, setAlreadyThere] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,7 +134,7 @@ function SaveToProject({ page, style, onSaved, onCancel }: { page: ShowItem; sty
     event.preventDefault();
     setSaving(true);
     try {
-      onSaved(await savePageToProject(page.id, path, alreadyThere));
+      onSaved(await onSave(path, alreadyThere));
     } catch (error) {
       setAlreadyThere(error instanceof AlreadyThere);
       setProblem(failureText(error));

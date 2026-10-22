@@ -82,6 +82,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
       "Ask agent to save Markdown file",
       "Download",
       "Save to project…",
+      "Save image to project…",
     ]);
     await page.keyboard.press("Escape");
     await expect(moreMenu(page)).toHaveCount(0);

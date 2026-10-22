@@ -21,6 +21,7 @@ afterEach(async () => {
 });
 
 const PAGE = "<h1>Checkout</h1>";
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3]);
 
 const rejectionOf = (attempt: Promise<unknown>) =>
   attempt.then(
@@ -62,6 +63,26 @@ describe("saveIntoWorkspace", () => {
 
     await saveIntoWorkspace(workspace, "docs/a.html", PAGE, { replace: true });
     expect(await readFile(join(workspace, "docs/a.html"), "utf8")).toBe(PAGE);
+  });
+
+  test("writes image bytes to a .png name, and refuses an image under any other name", async () => {
+    const saved = await saveIntoWorkspace(workspace, "docs/flow.png", PNG);
+    expect(saved).toBe("docs/flow.png");
+    expect(new Uint8Array(await readFile(join(workspace, "docs/flow.png")))).toEqual(PNG);
+    await expectRefused(saveIntoWorkspace(workspace, "flow.html", PNG), "Save the image as a .png file.");
+    expect(await readdir(workspace)).toEqual(["docs"]);
+  });
+
+  test("refuses an existing image with FileAlreadyThere and keeps it, and replaces it when asked to", async () => {
+    await saveIntoWorkspace(workspace, "a.png", PNG);
+    const other = new Uint8Array([1, 2, 3]);
+
+    const error = await rejectionOf(saveIntoWorkspace(workspace, "a.png", other));
+    expect(error).toBeInstanceOf(FileAlreadyThere);
+    expect(new Uint8Array(await readFile(join(workspace, "a.png")))).toEqual(PNG);
+
+    await saveIntoWorkspace(workspace, "a.png", other, { replace: true });
+    expect(new Uint8Array(await readFile(join(workspace, "a.png")))).toEqual(other);
   });
 
   test("refuses a path that leads out of the workspace and writes nothing", async () => {
