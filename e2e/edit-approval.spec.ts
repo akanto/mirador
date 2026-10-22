@@ -127,9 +127,17 @@ test("with edits kept out of the canvas in Settings, or the canvas hidden, the c
   };
 
   await showInCanvas(false);
-  await askToEdit(page, edit("Edit src/app.ts", "line 7\n", "line seven\n"));
+  await askToEdit(page, edit("Edit src/app.ts", "line 7\n", `line seven ${"and on ".repeat(80)}\n`));
   await expect(pendingCard(page).locator(".diff")).toContainText("line seven");
   await expect(editView(page)).toHaveCount(0);
+
+  await test.step("lines wider than the card keep their colour all the way when scrolled", async () => {
+    const widths = await pendingCard(page)
+      .locator(".diff pre")
+      .evaluate((pre) => ({ scrolled: pre.scrollWidth, shown: pre.clientWidth, rows: [...pre.children].map((row) => (row as HTMLElement).offsetWidth) }));
+    expect(widths.scrolled).toBeGreaterThan(widths.shown);
+    expect(widths.rows).toEqual(widths.rows.map(() => widths.scrolled));
+  });
   await expect(canvas(page).locator(".canvas-title")).toHaveText("Canvas");
   await pendingCard(page).getByRole("button", { name: "Allow", exact: true }).click();
   await expect(lastAgentMessage(page)).toHaveText("Edit src/app.ts: allow");

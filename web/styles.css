@@ -2180,6 +2180,7 @@ button.approval-waiting:hover {
 }
 
 .diff pre {
+  display: grid;
   background: var(--code-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
