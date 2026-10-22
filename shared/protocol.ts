@@ -241,10 +241,12 @@ export type ClientMessage =
   | { type: "settings.set-network"; requestId: string; on: boolean }
   /** Only Mirador's own pages may send it, as only they get the endpoints' API keys to send back. */
   | { type: "voice.set-settings"; requestId: string; settings: VoiceSettings }
-  /** Only from Mirador's own pages; setting up again also brings in what a newer Mirador pins, and adds the voice model. */
-  | { type: "voice.engine.set-up"; withVoiceModel: boolean }
+  /** Only from Mirador's own pages; setting up again also brings in what a newer Mirador pins, and adds the models, by id, not on this Mac yet. */
+  | { type: "voice.engine.set-up"; models: string[] }
   | { type: "voice.engine.cancel" }
   | { type: "voice.engine.remove" }
+  /** Refused for a model the voice settings use. */
+  | { type: "voice.engine.remove-model"; model: string }
   /** address is what the user typed or pasted: a name on the network, an address, or an invite link. */
   | { type: "machine.add"; name: string; address: string }
   | { type: "machine.remove"; machineId: string }

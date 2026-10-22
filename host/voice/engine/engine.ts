@@ -1,4 +1,5 @@
 import type { VoiceEngineStatus } from "../../../shared/voice-engine.ts";
+import { modelName } from "../../../shared/voice-engine-models.ts";
 import { VoiceUnavailable, type ThisMac } from "../voice.ts";
 import type { VoiceEngineInstaller } from "./installer.ts";
 import type { VoiceEngineServers } from "./servers.ts";
@@ -6,18 +7,19 @@ import type { VoiceEngineServers } from "./servers.ts";
 /** Mirador's own speech engine on this Mac: set up by the installer, run by the servers. */
 export class VoiceEngine {
   private removing = false;
+  private readonly removingModels = new Set<string>();
 
   constructor(
-    private readonly installer: Pick<VoiceEngineInstaller, "status" | "setUp" | "cancel" | "remove">,
-    private readonly servers: Pick<VoiceEngineServers, "states" | "use" | "stopAll" | "killAllNow" | "idleTimeChanged">,
+    private readonly installer: Pick<VoiceEngineInstaller, "status" | "setUp" | "cancel" | "remove" | "removeModel">,
+    private readonly servers: Pick<VoiceEngineServers, "states" | "use" | "servedModels" | "stopServing" | "stopAll" | "killAllNow" | "idleTimeChanged">,
   ) {}
 
   status(): VoiceEngineStatus {
     return { ...this.installer.status(), servers: this.servers.states() };
   }
 
-  setUp(withVoiceModel: boolean) {
-    this.installer.setUp(withVoiceModel);
+  setUp(models: string[]) {
+    this.installer.setUp(models);
   }
 
   cancel() {
@@ -35,7 +37,27 @@ export class VoiceEngine {
     }
   }
 
-  use: ThisMac = (service, work) => (this.removing ? Promise.reject(new VoiceUnavailable("Voice is being removed from this Mac.")) : this.servers.use(service, work));
+  /** As remove does, for one model. */
+  async removeModel(model: string) {
+    this.removingModels.add(model);
+    try {
+      await this.servers.stopServing(model);
+      await this.installer.removeModel(model);
+    } finally {
+      this.removingModels.delete(model);
+    }
+  }
+
+  /** A model the settings no longer use unloads at once, freeing its memory, as its server would start again for the new one anyway. */
+  async unloadAllBut(models: string[]) {
+    await Promise.all(this.servers.servedModels().filter((model) => !models.includes(model)).map((model) => this.servers.stopServing(model)));
+  }
+
+  use: ThisMac = (service, model, work) => {
+    if (this.removing) return Promise.reject(new VoiceUnavailable("Voice is being removed from this Mac."));
+    if (this.removingModels.has(model)) return Promise.reject(new VoiceUnavailable(`${modelName(model)} is being removed from this Mac.`));
+    return this.servers.use(service, model, work);
+  };
 
   idleTimeChanged() {
     this.servers.idleTimeChanged();

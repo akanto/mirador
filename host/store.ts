@@ -24,7 +24,7 @@ import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/mo
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
 import type { TerminalLayout } from "../shared/terminal-layout.ts";
-import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
+import { defaultVoiceSettings, withThisMacModels, type VoiceSettings } from "../shared/voice.ts";
 
 const TYPED_IN_WORKSPACE_LIMIT = 100;
 
@@ -572,7 +572,7 @@ export class Store {
 
   voiceSettings(): VoiceSettings {
     const value = this.setting("voice");
-    return value ? { ...defaultVoiceSettings, ...(JSON.parse(value) as Partial<VoiceSettings>) } : defaultVoiceSettings;
+    return value ? withThisMacModels({ ...defaultVoiceSettings, ...(JSON.parse(value) as Partial<VoiceSettings>) }) : defaultVoiceSettings;
   }
 
   setVoiceSettings(settings: VoiceSettings) {

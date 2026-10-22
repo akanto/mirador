@@ -6871,6 +6871,17 @@ body.reordering * {
   color: var(--muted);
 }
 
+.voice-engine-servers li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-engine-servers button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .voice-engine-servers li::before {
   content: "";
   display: inline-block;

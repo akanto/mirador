@@ -56,6 +56,8 @@ export interface HostConfig {
   voiceModelsUrl: string;
   /** e2e's stand-in for the speech engine's Python, on machines without MLX. */
   voiceEnginePython: string | null;
+  /** e2e's stand-in for this Mac's memory, which tells the voice models that fit it. */
+  voiceEngineMemoryBytes: number | null;
 }
 
 function loadOrCreateToken(dataDir: string, fileName: string) {
@@ -200,5 +202,6 @@ export function loadConfig(env = process.env): HostConfig {
     latestReleaseUrl: env.MIRADOR_LATEST_RELEASE_URL ?? `https://api.github.com/repos/${RELEASES_REPOSITORY}/releases/latest`,
     voiceModelsUrl: env.MIRADOR_VOICE_MODELS_URL ?? "https://huggingface.co",
     voiceEnginePython: env.MIRADOR_VOICE_PYTHON ?? null,
+    voiceEngineMemoryBytes: env.MIRADOR_VOICE_MEMORY_GB ? Number(env.MIRADOR_VOICE_MEMORY_GB) * 2 ** 30 : null,
   };
 }

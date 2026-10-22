@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Profile } from "../shared/model.ts";
-import { defaultVoiceSettings, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
+import { defaultVoiceSettings, thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 import { Store } from "../host/store.ts";
 import { Voice, VoiceUnavailable, type ThisMac } from "../host/voice/voice.ts";
 
@@ -76,8 +76,8 @@ const profile = (environment: string): Profile => ({
   createdAt: 1,
 });
 const voiceWith = (settings: VoiceSettings, profiles: Profile[] = []) => new Voice(() => settings, (id) => profiles.find((each) => each.id === id));
-const onThisMac: VoiceSettings = { ...defaultVoiceSettings, recognition: { kind: "this-mac" }, voiceModel: { kind: "this-mac" } };
-const thisMacEngine: ThisMac = (service, work) => work({ url: `${origin}/v1`, apiKey: "", model: `/voice/models/${service}` });
+const onThisMac: VoiceSettings = { ...defaultVoiceSettings, recognition: { kind: "this-mac", model: "whisper-large-v3-turbo" }, voiceModel: { kind: "this-mac", model: "gemma-4-12b" } };
+const thisMacEngine: ThisMac = (_, model, work) => work({ url: `${origin}/v1`, apiKey: "", model: `/voice/models/${model}` });
 
 describe("dictation", () => {
   test("a Hungarian clip comes back in English, with what was heard under it, through servers of the user's own", async () => {
@@ -137,7 +137,7 @@ describe("dictation", () => {
   test("voice off, this Mac's engine before it is set up, and a profile without a key each say what to change", async () => {
     transcript = { text: "Futtasd le.", language: "hu" };
     await expect(voiceWith(defaultVoiceSettings).dictation(clip)).rejects.toThrow(new VoiceUnavailable("Voice is off. Settings → Voice can turn it on."));
-    await expect(voiceWith({ ...ownServers, recognition: { kind: "this-mac" } }).dictation(clip)).rejects.toBeInstanceOf(VoiceUnavailable);
+    await expect(voiceWith({ ...ownServers, recognition: { kind: "this-mac", model: "whisper-large-v3-turbo" } }).dictation(clip)).rejects.toBeInstanceOf(VoiceUnavailable);
     const keyless = profile("-u ANTHROPIC_API_KEY\n-u ANTHROPIC_AUTH_TOKEN\n-u OPENAI_API_KEY");
     const settings: VoiceSettings = { ...ownServers, voiceModel: { kind: "profile", profileId: "p1", model: "claude-opus-5-5" } };
     await expect(voiceWith(settings, [keyless]).dictation(clip)).rejects.toThrow("The profile work has no ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY");
@@ -158,18 +158,18 @@ describe("dictation", () => {
     );
   });
 
-  test("this Mac's engine asks its speech server for the language it heard, and its voice model not to think first", async () => {
+  test("this Mac's engine runs the chosen models, asks its speech server for the language it heard, and its voice model not to think first", async () => {
     transcript = { text: "Futtasd le az e2e teszteket.", language: "hu" };
     translation = "Run the e2e tests.";
     const lent: string[] = [];
-    const thisMac: ThisMac = (service, work) => {
-      lent.push(service);
-      return thisMacEngine(service, work);
+    const thisMac: ThisMac = (service, model, work) => {
+      lent.push(`${service} ${model}`);
+      return thisMacEngine(service, model, work);
     };
     expect(await new Voice(() => onThisMac, () => undefined, thisMac).dictation(clip)).toEqual({ text: "Run the e2e tests.", original: "Futtasd le az e2e teszteket.", language: "hu" });
-    expect(lent).toEqual(["recognition", "voiceModel"]);
-    expect(heard[0]!.form).toEqual({ file: "44 bytes", model: "/voice/models/recognition", response_format: "verbose_json" });
-    expect(heard[1]!.json).toMatchObject({ model: "/voice/models/voiceModel", chat_template_kwargs: { enable_thinking: false } });
+    expect(lent).toEqual(["recognition whisper-large-v3-turbo", "voiceModel gemma-4-12b"]);
+    expect(heard[0]!.form).toEqual({ file: "44 bytes", model: "/voice/models/whisper-large-v3-turbo", response_format: "verbose_json" });
+    expect(heard[1]!.json).toMatchObject({ model: "/voice/models/gemma-4-12b", chat_template_kwargs: { enable_thinking: false } });
   });
 
   test("on this Mac's engine, English is heard as English with another language chosen, and a clip it takes for a third language is heard again in the chosen one", async () => {
@@ -209,6 +209,14 @@ describe("voice settings", () => {
     expect(voiceSettingsProblem({ ...ownServers, recognition: { kind: "profile" } as unknown as VoiceSettings["recognition"] })).toContain("Speech recognition is off");
   });
 
+  test("this Mac's engine runs one of its own models for each service", () => {
+    expect(voiceSettingsProblem(onThisMac)).toBeNull();
+    expect(voiceSettingsProblem({ ...onThisMac, recognition: { kind: "this-mac", model: "gemma-4-12b" } })).toBe("Choose one of this Mac's speech recognition models.");
+    expect(voiceSettingsProblem({ ...onThisMac, voiceModel: { kind: "this-mac", model: "llama" } })).toBe("Choose one of this Mac's voice models.");
+    expect(thisMacModelsInUse(onThisMac)).toEqual(["whisper-large-v3-turbo", "gemma-4-12b"]);
+    expect(thisMacModelsInUse(ownServers)).toEqual([]);
+  });
+
   test("this Mac's engine unloads after a whole number of minutes, up to a day", () => {
     expect(voiceSettingsProblem({ ...ownServers, engineIdleMinutes: 1_440 })).toBeNull();
     [0, 1_441, 2.5, Number.NaN].forEach((engineIdleMinutes) =>
@@ -230,5 +238,13 @@ describe("voice settings", () => {
     const { engineIdleMinutes: _, ...savedBeforeTheIdleTime } = ownServers;
     store.setVoiceSettings(savedBeforeTheIdleTime as VoiceSettings);
     expect(store.voiceSettings().engineIdleMinutes).toBe(30);
+  });
+
+  test("settings saved before this Mac's models could be chosen run the first ones", () => {
+    const store = new Store(":memory:");
+    store.setVoiceSettings({ ...defaultVoiceSettings, recognition: { kind: "this-mac" }, voiceModel: { kind: "this-mac" } } as unknown as VoiceSettings);
+    expect(store.voiceSettings()).toMatchObject({ recognition: { kind: "this-mac", model: "whisper-large-v3-turbo" }, voiceModel: { kind: "this-mac", model: "gemma-4-26b-a4b" } });
+    store.setVoiceSettings(onThisMac);
+    expect(store.voiceSettings()).toEqual(onThisMac);
   });
 });

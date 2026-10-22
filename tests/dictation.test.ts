@@ -74,16 +74,18 @@ describe("the status under the message box", () => {
   const settings = (recognition: VoiceSettings["recognition"], voiceModel: VoiceSettings["voiceModel"] = { kind: "off" }): VoiceSettings => ({ ...defaultVoiceSettings, recognition, voiceModel });
   const servers = (speech: EngineServerState, voiceModel: EngineServerState = "stopped") => ({ speech, voiceModel });
   const ownServer = { kind: "custom" as const, endpoint: { url: "http://box/v1", apiKey: "", model: "whisper" } };
+  const thisMacRecognition = { kind: "this-mac" as const, model: "whisper-large-v3-turbo" };
+  const thisMacVoiceModel = { kind: "this-mac" as const, model: "gemma-4-26b-a4b" };
 
   test("says what is happening, and what on this Mac is loading", () => {
     expect(dictationStatus("idle", settings(ownServer), servers("stopped"))).toBeNull();
     expect(dictationStatus("starting", settings(ownServer), servers("stopped"))).toBe("Starting the microphone…");
     expect(dictationStatus("listening", settings(ownServer), servers("stopped"))).toBe("Listening… It stops when you pause or let go. Esc cancels.");
     expect(dictationStatus("transcribing", settings(ownServer), servers("stopped"))).toBe("Turning speech into text…");
-    expect(dictationStatus("transcribing", settings({ kind: "this-mac" }), servers("stopped"))).toBe("Loading speech recognition on this Mac…");
-    expect(dictationStatus("transcribing", settings({ kind: "this-mac" }), servers("loading"))).toBe("Loading speech recognition on this Mac…");
-    expect(dictationStatus("transcribing", settings({ kind: "this-mac" }, { kind: "this-mac" }), servers("ready", "loading"))).toBe("Loading the voice model on this Mac…");
-    expect(dictationStatus("transcribing", settings({ kind: "this-mac" }, { kind: "this-mac" }), servers("ready", "stopped"))).toBe("Turning speech into text…");
+    expect(dictationStatus("transcribing", settings(thisMacRecognition), servers("stopped"))).toBe("Loading speech recognition on this Mac…");
+    expect(dictationStatus("transcribing", settings(thisMacRecognition), servers("loading"))).toBe("Loading speech recognition on this Mac…");
+    expect(dictationStatus("transcribing", settings(thisMacRecognition, thisMacVoiceModel), servers("ready", "loading"))).toBe("Loading the voice model on this Mac…");
+    expect(dictationStatus("transcribing", settings(thisMacRecognition, thisMacVoiceModel), servers("ready", "stopped"))).toBe("Turning speech into text…");
   });
 });
 

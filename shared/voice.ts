@@ -1,3 +1,5 @@
+import { choosableModel, FIRST_MODELS, type ThisMacService } from "./voice-engine-models.ts";
+
 /** An OpenAI-style server of the user's own: another local server, one on another machine, or a hosted API. */
 export interface CustomEndpoint {
   /** Up to and including the API version, as in https://api.openai.com/v1. */
@@ -7,7 +9,8 @@ export interface CustomEndpoint {
 }
 
 type Off = { kind: "off" };
-type ThisMac = { kind: "this-mac" };
+/** model is one of this Mac's engine's, by id. */
+type ThisMac = { kind: "this-mac"; model: string };
 type OwnServer = { kind: "custom"; endpoint: CustomEndpoint };
 
 export type VoiceSource = Off | ThisMac | OwnServer;
@@ -67,8 +70,11 @@ function endpointProblem(service: string, { url, model }: CustomEndpoint) {
   return null;
 }
 
-function sourceProblem(service: string, source: VoiceSource | VoiceModelSource) {
+const thisMacModelsName: Record<ThisMacService, string> = { recognition: "speech recognition models", voiceModel: "voice models" };
+
+function sourceProblem(service: string, source: VoiceSource | VoiceModelSource, thisMacService: ThisMacService) {
   if (source.kind === "custom") return endpointProblem(service, source.endpoint);
+  if (source.kind === "this-mac" && choosableModel(source.model)?.service !== thisMacService) return `Choose one of this Mac's ${thisMacModelsName[thisMacService]}.`;
   if (source.kind === "profile" && source.model.trim() === "") return `The ${service} needs a model name.`;
   return null;
 }
@@ -83,8 +89,20 @@ export function voiceSettingsProblem(settings: VoiceSettings) {
   if (!Number.isInteger(settings.engineIdleMinutes) || settings.engineIdleMinutes < 1 || settings.engineIdleMinutes > MAX_IDLE_MINUTES) {
     return `Unloading takes a whole number of minutes from 1 to ${MAX_IDLE_MINUTES}.`;
   }
-  return sourceProblem("speech recognition", settings.recognition) ?? sourceProblem("voice model", settings.voiceModel);
+  return sourceProblem("speech recognition", settings.recognition, "recognition") ?? sourceProblem("voice model", settings.voiceModel, "voiceModel");
 }
+
+const withFirstModel = <Source extends VoiceSource | VoiceModelSource>(source: Source, service: ThisMacService): Source =>
+  source.kind === "this-mac" && !source.model ? { ...source, model: FIRST_MODELS[service] } : source;
+
+/** Settings saved before this Mac's models could be chosen used the first ones. */
+export const withThisMacModels = (settings: VoiceSettings): VoiceSettings => ({
+  ...settings,
+  recognition: withFirstModel(settings.recognition, "recognition"),
+  voiceModel: withFirstModel(settings.voiceModel, "voiceModel"),
+});
+
+export const thisMacModelsInUse = ({ recognition, voiceModel }: VoiceSettings) => [recognition, voiceModel].flatMap((source) => (source.kind === "this-mac" ? [source.model] : []));
 
 const withoutKey = <Source extends VoiceSource | VoiceModelSource>(source: Source): Source =>
   source.kind === "custom" ? { ...source, endpoint: { ...source.endpoint, apiKey: "" } } : source;

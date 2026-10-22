@@ -8,10 +8,15 @@ export const hints = {
   voiceModelThinkingOff:
     "For a local server running a model that thinks before it answers, such as Gemma 4 or Qwen 3: thinking makes a translation take far longer and can use up the answer. Mirador sends chat_template_kwargs with enable_thinking false, which servers such as mlx_lm, vLLM and llama.cpp understand. Leave it off for OpenAI's API.",
   voiceEngineVoiceModel:
-    "Gemma 4 26B-A4B, which translates what you say into English, and later sums up replies to read aloud. Without it, what you say goes into the message box in the language you spoke, unless another voice model is set below. It uses about 16 GB of memory while loaded.",
+    "The voice model translates what you say into English, and later sums up replies to read aloud. Bigger ones translate better and need more memory: Mirador offers those that hold at most half of this Mac's memory while loaded. Without one, what you say goes into the message box in the language you spoke, unless another voice model is set below.",
+  voiceEngineAddModel:
+    "Downloads another model, to choose below. Best, good and fair are how each did in Mirador's comparison on a Mac. Mirador offers those that hold at most half of this Mac's memory while loaded.",
+  voiceEngineModelInUse: "The settings below use this model. Choose another one and save, then it can be removed.",
+  thisMacModel: "One of the models on this Mac for this service. Voice on this Mac, above, adds and removes them.",
   voiceEngineIdle:
-    "A loaded model holds memory, the voice model about 16 GB, so each unloads once unused this long. Loading it again makes the next dictation wait. Saved with the settings below.",
+    "A loaded model holds memory, a voice model up to 15 GB, so each unloads once unused this long. Loading it again makes the next dictation wait. Saved with the settings below.",
   removeVoiceEngineArmed: "Click again to delete the speech engine and its models from this Mac. Setting up again downloads them again.",
+  removeVoiceEngineModelArmed: "Click again to delete this model from this Mac. Adding it again downloads it again.",
   voiceModelProfile: "Mirador calls this profile's API with its keys. Its agent doesn't start.",
   voiceAddress: "The API's address up to and including its version, as in https://api.openai.com/v1. Mirador adds the path of each call.",
   voiceLanguage:

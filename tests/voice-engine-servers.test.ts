@@ -3,7 +3,6 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EngineServerState } from "../shared/voice-engine.ts";
-import type { EngineModelId } from "../host/voice/engine/catalog.ts";
 import { VoiceEngineServers, type VoiceEngineServersOptions } from "../host/voice/engine/servers.ts";
 import { transcribe } from "../host/voice/endpoints.ts";
 import { VoiceUnavailable } from "../host/voice/voice.ts";
@@ -72,10 +71,14 @@ echo "ModuleNotFoundError: No module named 'mlx_audio'" >&2
 exit 1
 `);
 
-function engineServers({ python = fakePython(), installed = ["recognition", "speech", "voiceModel"] as EngineModelId[], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: EngineModelId[] } = {}) {
+const WHISPER = "whisper-large-v3-turbo";
+const GEMMA = "gemma-4-26b-a4b";
+const SMALL_GEMMA = "gemma-4-12b";
+
+function engineServers({ python = fakePython(), installed = ["kokoro-82m", WHISPER, GEMMA, SMALL_GEMMA], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[] } = {}) {
   const states: Record<string, EngineServerState>[] = [];
   servers = new VoiceEngineServers({
-    installer: { python, modelDir: (id) => join(root, "models", id), isInstalled: (id) => installed.includes(id) },
+    installer: { python, modelDir: (id) => join(root, "models", id), isInstalled: (id) => installed.includes(id), isSetUp: () => installed.length > 0 },
     voiceDir: join(root, "voice"),
     logsDir: join(root, "logs"),
     idleMs: () => 60_000,
@@ -99,7 +102,7 @@ describe("the engine's servers", () => {
   test("start at their first use, once for uses at the same time, and lend their address and model", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers, states } = engineServers({ python: fakePython(300) });
-    const hear = () => servers.use("recognition", (endpoint) => transcribe(endpoint, silentClip, null, { detailed: true }));
+    const hear = () => servers.use("recognition", WHISPER, (endpoint) => transcribe(endpoint, silentClip, null, { detailed: true }));
     const [first, second] = await Promise.all([hear(), hear()]);
     expect(first).toEqual({ text: "Futtasd le az e2e teszteket.", language: "hu" });
     expect(second).toEqual(first);
@@ -110,37 +113,54 @@ describe("the engine's servers", () => {
     ]);
     const transcriptions = logged().filter((entry) => entry.event === "transcription");
     expect(transcriptions.map(({ responseFormat }) => responseFormat)).toEqual(["json", "verbose_json", "verbose_json"]);
-    expect(new Set(transcriptions.map(({ model }) => model))).toEqual(new Set([join(root, "models", "recognition")]));
+    expect(new Set(transcriptions.map(({ model }) => model))).toEqual(new Set([join(root, "models", WHISPER)]));
   });
 
   test("start the voice model's server with its model", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers();
-    const endpoint = await servers.use("voiceModel", async (endpoint) => endpoint);
-    expect(endpoint).toMatchObject({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/v1$/), apiKey: "", model: join(root, "models", "voiceModel") });
-    expect(startsOf("mlx_lm.server").map(({ model }) => model)).toEqual([join(root, "models", "voiceModel")]);
+    const endpoint = await servers.use("voiceModel", GEMMA, async (endpoint) => endpoint);
+    expect(endpoint).toMatchObject({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/v1$/), apiKey: "", model: join(root, "models", GEMMA) });
+    expect(startsOf("mlx_lm.server").map(({ model }) => model)).toEqual([join(root, "models", GEMMA)]);
     expect(servers.states()).toEqual({ speech: "stopped", voiceModel: "ready" });
+  });
+
+  test("start again for another model, as a server holds what it loaded, and stop for a model being removed", async () => {
+    root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
+    const { servers } = engineServers();
+    await servers.use("voiceModel", GEMMA, async () => {});
+    const [first] = startsOf("mlx_lm.server");
+    const endpoint = await servers.use("voiceModel", SMALL_GEMMA, async (endpoint) => endpoint);
+    expect(endpoint.model).toBe(join(root, "models", SMALL_GEMMA));
+    expect(startsOf("mlx_lm.server").map(({ model }) => model)).toEqual([join(root, "models", GEMMA), join(root, "models", SMALL_GEMMA)]);
+    expect(isRunning(first!.pid)).toBe(false);
+
+    await servers.use("recognition", WHISPER, async () => {});
+    expect(servers.servedModels().sort()).toEqual([SMALL_GEMMA, WHISPER]);
+    await servers.stopServing(SMALL_GEMMA);
+    expect(servers.states()).toEqual({ speech: "ready", voiceModel: "stopped" });
+    expect(servers.servedModels()).toEqual([WHISPER]);
   });
 
   test("stop once unused for the idle time, but not while work goes on", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers({ idleMs: () => 200 });
-    await servers.use("recognition", async () => Bun.sleep(500));
+    await servers.use("recognition", WHISPER, async () => Bun.sleep(500));
     expect(servers.states().speech).toBe("ready");
     const { pid } = startsOf("mlx_audio.server")[0]!;
     await until(() => servers.states().speech === "stopped");
     expect(isRunning(pid)).toBe(false);
     expect(existsSync(join(root, "voice", "run", "speech.pid"))).toBe(false);
-    await servers.use("recognition", async () => {});
+    await servers.use("recognition", WHISPER, async () => {});
     expect(startsOf("mlx_audio.server")).toHaveLength(2);
   });
 
   test("use again within the idle time keeps the server", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers({ idleMs: () => 300 });
-    await servers.use("recognition", async () => {});
+    await servers.use("recognition", WHISPER, async () => {});
     await Bun.sleep(200);
-    await servers.use("recognition", async () => {});
+    await servers.use("recognition", WHISPER, async () => {});
     await Bun.sleep(200);
     expect(servers.states().speech).toBe("ready");
     expect(startsOf("mlx_audio.server")).toHaveLength(1);
@@ -150,12 +170,12 @@ describe("the engine's servers", () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     let idleMs = 60_000;
     const { servers } = engineServers({ idleMs: () => idleMs });
-    await Promise.all([servers.use("recognition", async () => {}), servers.use("voiceModel", async () => {})]);
+    await Promise.all([servers.use("recognition", WHISPER, async () => {}), servers.use("voiceModel", GEMMA, async () => {})]);
     idleMs = 300;
     servers.idleTimeChanged();
     await until(() => servers.states().speech === "stopped" && servers.states().voiceModel === "stopped");
 
-    await servers.use("recognition", async () => {});
+    await servers.use("recognition", WHISPER, async () => {});
     idleMs = 60_000;
     servers.idleTimeChanged();
     await Bun.sleep(600);
@@ -165,7 +185,7 @@ describe("the engine's servers", () => {
   test("stop with the host, all of each server's processes", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers();
-    await Promise.all([servers.use("recognition", async () => {}), servers.use("voiceModel", async () => {})]);
+    await Promise.all([servers.use("recognition", WHISPER, async () => {}), servers.use("voiceModel", GEMMA, async () => {})]);
     const pids = logged()
       .filter((entry) => entry.event === "start")
       .map(({ pid }) => pid);
@@ -177,16 +197,16 @@ describe("the engine's servers", () => {
   test("say why a server stopped while starting, and try again at the next use", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers({ python: brokenPython() });
-    await expect(servers.use("recognition", async () => {})).rejects.toThrow("The speech server on this Mac stopped while starting: ModuleNotFoundError: No module named 'mlx_audio'");
+    await expect(servers.use("recognition", WHISPER, async () => {})).rejects.toThrow("The speech server on this Mac stopped while starting: ModuleNotFoundError: No module named 'mlx_audio'");
     await until(() => servers.states().speech === "stopped");
     fakePython();
-    expect(await servers.use("recognition", async () => "heard")).toBe("heard");
+    expect(await servers.use("recognition", WHISPER, async () => "heard")).toBe("heard");
   });
 
   test("give up on a server that doesn't answer in time", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers({ python: fakePython(10_000), startTimeoutMs: 1_500 });
-    await expect(servers.use("voiceModel", async () => {})).rejects.toThrow("The voice model server on this Mac didn't start within 1.5 seconds.");
+    await expect(servers.use("voiceModel", GEMMA, async () => {})).rejects.toThrow("The voice model server on this Mac didn't start within 1.5 seconds.");
     await until(() => servers.states().voiceModel === "stopped");
     const { pid } = startsOf("mlx_lm.server")[0]!;
     await until(() => !isRunning(pid));
@@ -195,9 +215,9 @@ describe("the engine's servers", () => {
   test("refuse services whose models aren't set up", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const nothing = engineServers({ installed: [] }).servers;
-    await expect(nothing.use("recognition", async () => {})).rejects.toThrow(new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up."));
-    const withoutVoiceModel = engineServers({ installed: ["recognition", "speech"] }).servers;
-    await expect(withoutVoiceModel.use("voiceModel", async () => {})).rejects.toThrow(new VoiceUnavailable("The voice model isn't set up on this Mac. Settings → Voice can add it."));
+    await expect(nothing.use("recognition", WHISPER, async () => {})).rejects.toThrow(new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up."));
+    const withoutVoiceModel = engineServers({ installed: ["kokoro-82m", WHISPER] }).servers;
+    await expect(withoutVoiceModel.use("voiceModel", GEMMA, async () => {})).rejects.toThrow(new VoiceUnavailable("Gemma 4 26B-A4B isn't on this Mac. Settings → Voice can add it."));
     expect(logged()).toEqual([]);
   });
 

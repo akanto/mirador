@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../shared/model.ts";
-import type { VoiceEngineSetup, VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { AUTO_LANGUAGE, isEnglish, type CustomEndpoint, type VoiceModelSource, type VoiceSettings as Settings, type VoiceSource } from "../shared/voice.ts";
+import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { modelsFor, type ThisMacService } from "../shared/voice-engine-models.ts";
+import { AUTO_LANGUAGE, isEnglish, thisMacModelsInUse, type CustomEndpoint, type VoiceModelSource, type VoiceSettings as Settings, type VoiceSource } from "../shared/voice.ts";
 import { hints } from "./hints.ts";
 import { saveSetting } from "./saved-setting.ts";
+import { modelWithQuality } from "./voice-models.ts";
 import { VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
 
 /** Languages Whisper recognizes well, as codes it takes. */
@@ -33,10 +35,12 @@ function EndpointFields({ endpoint, modelPlaceholder, onChange }: { endpoint: Cu
   );
 }
 
-/** Hidden where the engine can't run; disabled until setup put the service's models in place. */
-function ThisMacOption({ setup, needsVoiceModel }: { setup: VoiceEngineSetup; needsVoiceModel: boolean }) {
-  if (setup.state === "unsupported") return null;
-  const usable = setup.state === "set-up" && (setup.withVoiceModel || !needsVoiceModel);
+const onDiskFor = (service: ThisMacService, engine: VoiceEngineStatus) => modelsFor(service).filter(({ id }) => engine.onDisk.includes(id));
+
+/** Hidden where the engine can't run; disabled until setup put a model for the service in place. */
+function ThisMacOption({ engine, service }: { engine: VoiceEngineStatus; service: ThisMacService }) {
+  if (engine.setup.state === "unsupported") return null;
+  const usable = onDiskFor(service, engine).length > 0;
   return (
     <option value="this-mac" disabled={!usable}>
       On this Mac{usable ? "" : ", once set up above"}
@@ -44,10 +48,33 @@ function ThisMacOption({ setup, needsVoiceModel }: { setup: VoiceEngineSetup; ne
   );
 }
 
-function RecognitionSettings({ source, setup, onChange }: { source: VoiceSource; setup: VoiceEngineSetup; onChange: (source: VoiceSource) => void }) {
+/** The best of the service's models on this Mac, unless the source already runs one here. */
+function thisMacSource(source: VoiceSource | VoiceModelSource, service: ThisMacService, engine: VoiceEngineStatus) {
+  return { kind: "this-mac" as const, model: source.kind === "this-mac" ? source.model : (onDiskFor(service, engine)[0]?.id ?? "") };
+}
+
+/** Offers the models on this Mac, and the chosen one even once it is gone, so the choice still shows. */
+function ThisMacModel({ service, model, engine, onChange }: { service: ThisMacService; model: string; engine: VoiceEngineStatus; onChange: (model: string) => void }) {
+  const offered = modelsFor(service).filter(({ id }) => id === model || engine.onDisk.includes(id));
+  return (
+    <label data-hint={hints.thisMacModel}>
+      Model
+      <select value={model} onChange={(event) => onChange(event.target.value)}>
+        {offered.map((offer) => (
+          <option key={offer.id} value={offer.id}>
+            {modelWithQuality(offer)}
+            {engine.onDisk.includes(offer.id) ? "" : ", not on this Mac"}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function RecognitionSettings({ source, engine, onChange }: { source: VoiceSource; engine: VoiceEngineStatus; onChange: (source: VoiceSource) => void }) {
   const choose = (kind: string) => {
     if (kind === "custom") return onChange({ kind, endpoint: source.kind === "custom" ? source.endpoint : noEndpoint });
-    onChange(kind === "this-mac" ? { kind } : { kind: "off" });
+    onChange(kind === "this-mac" ? thisMacSource(source, "recognition", engine) : { kind: "off" });
   };
   return (
     <fieldset className="voice-service">
@@ -57,10 +84,11 @@ function RecognitionSettings({ source, setup, onChange }: { source: VoiceSource;
           Turns speech into text
           <select value={source.kind} onChange={(event) => choose(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption setup={setup} needsVoiceModel={false} />
+            <ThisMacOption engine={engine} service="recognition" />
             <option value="custom">With a server of your own</option>
           </select>
         </label>
+        {source.kind === "this-mac" && <ThisMacModel service="recognition" model={source.model} engine={engine} onChange={(model) => onChange({ kind: "this-mac", model })} />}
       </div>
       {source.kind === "custom" && (
         <EndpointFields endpoint={source.endpoint} modelPlaceholder="whisper-1" onChange={(endpoint) => onChange({ kind: "custom", endpoint })} />
@@ -69,9 +97,9 @@ function RecognitionSettings({ source, setup, onChange }: { source: VoiceSource;
   );
 }
 
-function VoiceModelSettings({ source, setup, profiles, onChange }: { source: VoiceModelSource; setup: VoiceEngineSetup; profiles: Profile[]; onChange: (source: VoiceModelSource) => void }) {
+function VoiceModelSettings({ source, engine, profiles, onChange }: { source: VoiceModelSource; engine: VoiceEngineStatus; profiles: Profile[]; onChange: (source: VoiceModelSource) => void }) {
   const choose = (kind: string) => {
-    if (kind === "this-mac") return onChange({ kind });
+    if (kind === "this-mac") return onChange(thisMacSource(source, "voiceModel", engine));
     if (kind === "custom") return onChange(source.kind === "custom" ? source : { kind, endpoint: noEndpoint, turnsThinkingOff: false });
     if (kind === "profile") return onChange({ kind, profileId: source.kind === "profile" ? source.profileId : (profiles[0]?.id ?? ""), model: source.kind === "profile" ? source.model : "" });
     onChange({ kind: "off" });
@@ -84,13 +112,14 @@ function VoiceModelSettings({ source, setup, profiles, onChange }: { source: Voi
           Translates
           <select value={source.kind} onChange={(event) => choose(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption setup={setup} needsVoiceModel />
+            <ThisMacOption engine={engine} service="voiceModel" />
             <option value="custom">With a server of your own</option>
             <option value="profile" disabled={profiles.length === 0}>
               With a profile's API
             </option>
           </select>
         </label>
+        {source.kind === "this-mac" && <ThisMacModel service="voiceModel" model={source.model} engine={engine} onChange={(model) => onChange({ kind: "this-mac", model })} />}
         {source.kind === "profile" && (
           <>
             <label data-hint={hints.voiceModelProfile}>
@@ -145,10 +174,11 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
       </p>
       <VoiceEngineSetupPanel
         engine={engine}
+        inUse={thisMacModelsInUse(settings)}
         idleMinutes={{ saved: settings.engineIdleMinutes, draft: draft.engineIdleMinutes, change: (engineIdleMinutes) => change({ engineIdleMinutes }) }}
       />
-      <RecognitionSettings source={draft.recognition} setup={engine.setup} onChange={(recognition) => change({ recognition })} />
-      <VoiceModelSettings source={draft.voiceModel} setup={engine.setup} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
+      <RecognitionSettings source={draft.recognition} engine={engine} onChange={(recognition) => change({ recognition })} />
+      <VoiceModelSettings source={draft.voiceModel} engine={engine} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
       <div className="sending-settings">
         <label data-hint={hints.voiceLanguage}>
           You speak

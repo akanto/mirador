@@ -1,13 +1,5 @@
 import { join } from "node:path";
-
-export type EngineModelId = "recognition" | "speech" | "voiceModel";
-
-export interface EngineModel {
-  repo: string;
-  revision: string;
-  /** What it downloads, as shown before setup starts. */
-  bytes: number;
-}
+import { choosableModels, SPOKEN_VOICE, type ChoosableModel, type EngineModel } from "../../../shared/voice-engine-models.ts";
 
 /** What setting up voice on this Mac installs, pinned so that every Mac gets the same engine. */
 export interface EngineSources {
@@ -17,7 +9,9 @@ export interface EngineSources {
   lockFile: string;
   /** Hugging Face, or a fake of it in e2e. */
   modelsUrl: string;
-  models: Record<EngineModelId, EngineModel>;
+  /** Always set up, as the speech server needs it. */
+  spokenVoice: EngineModel;
+  models: ChoosableModel[];
 }
 
 export const engineSources = (modelsUrl: string): EngineSources => ({
@@ -28,11 +22,8 @@ export const engineSources = (modelsUrl: string): EngineSources => ({
   pythonVersion: "3.12.15",
   lockFile: join(import.meta.dir, "requirements.lock"),
   modelsUrl,
-  models: {
-    recognition: { repo: "mlx-community/whisper-large-v3-turbo-asr-fp16", revision: "624c19c9af5603fa73b83bce14d4aeea96156d18", bytes: 1_618_633_596 },
-    speech: { repo: "mlx-community/Kokoro-82M-bf16", revision: "a71e4d38b236d968966a2002c4c895dbd12b1c3c", bytes: 383_587_492 },
-    voiceModel: { repo: "mlx-community/gemma-4-26b-a4b-it-4bit", revision: "0d77464eeb233a2da68ebf9d7dc4edaac7db956d", bytes: 15_373_586_252 },
-  },
+  spokenVoice: SPOKEN_VOICE,
+  models: choosableModels,
 });
 
 /** Kokoro's sample recordings and the repositories' readmes; the servers never read them. */

@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { VoiceEngineSetup } from "../shared/voice-engine.ts";
+import type { ChoosableModel } from "../shared/voice-engine-models.ts";
 import type { EngineSources } from "../host/voice/engine/catalog.ts";
 import { VoiceEngineInstaller, type VoiceEngineInstallerOptions } from "../host/voice/engine/installer.ts";
 
@@ -21,6 +22,7 @@ const repos: Record<string, RepoFile[]> = {
   "mlx-community/whisper": [file("config.json", '{"model_type":"whisper"}'), file("model.safetensors", Buffer.alloc(300_000, 7), true), file("README.md", "# Whisper")],
   "mlx-community/Kokoro": [file("config.json", "{}"), file("voices/am_fenrir.safetensors", Buffer.alloc(2_000, 3), true), file("samples/hello.wav", "RIFF")],
   "mlx-community/gemma": [file("config.json", '{"model_type":"gemma4"}'), file("model.safetensors", Buffer.alloc(50_000, 9), true)],
+  "mlx-community/gemma-small": [file("config.json", '{"model_type":"gemma4"}'), file("model.safetensors", Buffer.alloc(20_000, 5), true)],
 };
 
 const sha256 = (content: Buffer) => createHash("sha256").update(content).digest("hex");
@@ -89,16 +91,29 @@ const origin = `http://127.0.0.1:${server.port}`;
 const lockFile = join(root, "requirements.lock");
 writeFileSync(lockFile, "mlx==0.32.4 --hash=sha256:00\n");
 
+/** The ids of the first models, as setups from before models could be chosen had them. */
+const WHISPER = "whisper-large-v3-turbo";
+const GEMMA = "gemma-4-26b-a4b";
+const SMALL_GEMMA = "gemma-4-12b";
+
+const model = (id: string, service: ChoosableModel["service"], name: string, repo: string): ChoosableModel => ({
+  id,
+  service,
+  name,
+  quality: "good",
+  repo,
+  revision: "rev1",
+  bytes: 1,
+  memoryBytes: 1,
+});
+
 const sources = (overrides: Partial<EngineSources> = {}): EngineSources => ({
   uv: { url: `${origin}/uv.tar.gz`, sha256: sha256(uv) },
   pythonVersion: "3.12.15",
   lockFile,
   modelsUrl: origin,
-  models: {
-    recognition: { repo: "mlx-community/whisper", revision: "rev1", bytes: 300_000 },
-    speech: { repo: "mlx-community/Kokoro", revision: "rev1", bytes: 2_000 },
-    voiceModel: { repo: "mlx-community/gemma", revision: "rev1", bytes: 50_000 },
-  },
+  spokenVoice: { id: "kokoro-82m", name: "Kokoro", repo: "mlx-community/Kokoro", revision: "rev1", bytes: 2_000 },
+  models: [model(WHISPER, "recognition", "Whisper", "mlx-community/whisper"), model(GEMMA, "voiceModel", "Gemma", "mlx-community/gemma"), model(SMALL_GEMMA, "voiceModel", "Small Gemma", "mlx-community/gemma-small")],
   ...overrides,
 });
 
@@ -146,8 +161,9 @@ const modelFile = (folder: string, path: string) => join(voiceDir, "models", fol
 describe("setting up voice on this Mac", () => {
   test("installs uv, Python and the speech servers, downloads the models the servers read, and a later host finds it set up", async () => {
     const installer = installerWith();
-    installer.setUp(false);
-    expect(await settled(installer)).toMatchObject({ state: "set-up", withVoiceModel: false });
+    installer.setUp([WHISPER]);
+    expect(await settled(installer)).toMatchObject({ state: "set-up" });
+    expect(installer.status().onDisk).toEqual(["kokoro-82m", WHISPER]);
 
     expect(uvCalls()).toEqual([
       "python install 3.12.15 --no-bin --no-config",
@@ -158,7 +174,7 @@ describe("setting up voice on this Mac", () => {
     expect(readFileSync(modelFile("Kokoro", "voices/am_fenrir.safetensors"))).toEqual(repos["mlx-community/Kokoro"]![1]!.content);
     expect(existsSync(modelFile("whisper", "README.md")) || existsSync(modelFile("Kokoro", "samples/hello.wav"))).toBe(false);
     expect(existsSync(join(voiceDir, "models", "gemma"))).toBe(false);
-    expect(installer.modelDir("speech")).toBe(join(voiceDir, "models", "Kokoro"));
+    expect(installer.modelDir("kokoro-82m")).toBe(join(voiceDir, "models", "Kokoro"));
 
     const steps = seen.flatMap((setup) => (setup.state === "setting-up" ? [setup.step] : []));
     expect([...new Set(steps)]).toEqual(["space", "uv", "python", "packages", "models"]);
@@ -166,17 +182,19 @@ describe("setting up voice on this Mac", () => {
 
     const later = installerWith();
     await later.load();
-    expect(later.status().setup).toMatchObject({ state: "set-up", withVoiceModel: false });
+    expect(later.status().setup).toMatchObject({ state: "set-up" });
+    expect(later.status().onDisk).toEqual(["kokoro-82m", WHISPER]);
     expect((later.status().setup as { bytesOnDisk: number }).bytesOnDisk).toBeGreaterThan(300_000);
   });
 
   test("adding the voice model later downloads only what is new", async () => {
     const installer = installerWith();
-    installer.setUp(false);
+    installer.setUp([WHISPER]);
     await settled(installer);
     requests = [];
-    installer.setUp(true);
-    expect(await settled(installer)).toMatchObject({ state: "set-up", withVoiceModel: true });
+    installer.setUp([WHISPER, GEMMA]);
+    expect(await settled(installer)).toMatchObject({ state: "set-up" });
+    expect(requests.map(({ path }) => path).filter((path) => !path.includes("gemma"))).toEqual([]);
     expect(requests.map(({ path }) => path).filter((path) => path.includes("/resolve/"))).toEqual([
       "/mlx-community/gemma/resolve/rev1/config.json",
       "/mlx-community/gemma/resolve/rev1/model.safetensors",
@@ -190,7 +208,7 @@ describe("setting up voice on this Mac", () => {
     writeFileSync(`${modelFile("whisper", "model.safetensors")}.part`, whole.subarray(0, 120_000));
     failOnce.add("/mlx-community/whisper/resolve/rev1/model.safetensors");
     const installer = installerWith();
-    installer.setUp(false);
+    installer.setUp([WHISPER]);
     expect(await settled(installer)).toMatchObject({ state: "set-up" });
     const asked = requests.filter(({ path }) => path === "/mlx-community/whisper/resolve/rev1/model.safetensors");
     expect(asked.map(({ range }) => range)).toEqual(["bytes=120000-", "bytes=120000-"]);
@@ -200,7 +218,7 @@ describe("setting up voice on this Mac", () => {
   test("a file that comes in different from what Hugging Face lists is thrown away, and setup says so", async () => {
     corrupted.add("/mlx-community/Kokoro/resolve/rev1/voices/am_fenrir.safetensors");
     const installer = installerWith();
-    installer.setUp(false);
+    installer.setUp([WHISPER]);
     const setup = await settled(installer);
     expect(setup).toMatchObject({ state: "failed" });
     expect((setup as { problem: string }).problem).toContain("came in different from what was expected");
@@ -209,24 +227,24 @@ describe("setting up voice on this Mac", () => {
 
   test("adding the voice model can fail without undoing what was set up, and trying again forgets why it failed", async () => {
     const installer = installerWith();
-    installer.setUp(false);
+    installer.setUp([WHISPER]);
     await settled(installer);
     corrupted.add("/mlx-community/gemma/resolve/rev1/model.safetensors");
-    installer.setUp(true);
+    installer.setUp([WHISPER, GEMMA]);
     const failed = await settled(installer);
-    expect(failed).toMatchObject({ state: "set-up", withVoiceModel: false, problem: expect.stringContaining("came in different from what was expected") });
-    expect(installer.isInstalled("recognition")).toBe(true);
-    expect(installer.isInstalled("voiceModel")).toBe(false);
+    expect(failed).toMatchObject({ state: "set-up", problem: expect.stringMatching(/^Adding Gemma failed\. .*came in different from what was expected/) });
+    expect(installer.isInstalled(WHISPER)).toBe(true);
+    expect(installer.isInstalled(GEMMA)).toBe(false);
 
     corrupted = new Set();
-    installer.setUp(true);
-    expect(await settled(installer)).toEqual({ state: "set-up", withVoiceModel: true, bytesOnDisk: expect.any(Number) });
-    expect(installer.isInstalled("voiceModel")).toBe(true);
+    installer.setUp([WHISPER, GEMMA]);
+    expect(await settled(installer)).toEqual({ state: "set-up", bytesOnDisk: expect.any(Number) });
+    expect(installer.isInstalled(GEMMA)).toBe(true);
   });
 
   test("a uv download that isn't the pinned one stops setup before anything runs", async () => {
     const installer = installerWith({ sources: sources({ uv: { url: `${origin}/uv.tar.gz`, sha256: "0".repeat(64) } }) });
-    installer.setUp(false);
+    installer.setUp([WHISPER]);
     expect(await settled(installer)).toMatchObject({ state: "failed" });
     expect(existsSync(join(root, "uv-calls.log"))).toBe(false);
   });
@@ -234,21 +252,21 @@ describe("setting up voice on this Mac", () => {
   test("a failing install shows what uv said", async () => {
     writeFileSync(join(root, "uv-fails"), "");
     const installer = installerWith();
-    installer.setUp(false);
-    expect(await settled(installer)).toEqual({ state: "failed", withVoiceModel: false, problem: "uv pip failed: error: no wheel for mlx" });
+    installer.setUp([WHISPER]);
+    expect(await settled(installer)).toEqual({ state: "failed", problem: "uv pip failed: error: no wheel for mlx" });
   });
 
   test("doesn't start without room for everything and some to spare", async () => {
     const installer = installerWith({ freeBytes: async () => 4e9 });
-    installer.setUp(true);
-    expect(await settled(installer)).toEqual({ state: "failed", withVoiceModel: true, problem: "Setting up needs 5.0 GB free, and this Mac has 4.0 GB." });
+    installer.setUp([WHISPER, GEMMA]);
+    expect(await settled(installer)).toEqual({ state: "failed", problem: "Setting up needs 5.0 GB free, and this Mac has 4.0 GB." });
     expect(requests.filter(({ path }) => path.includes("/resolve/"))).toHaveLength(0);
   });
 
   test("Cancel keeps what came in for the next try, and Remove takes everything away", async () => {
     slowly.add("/mlx-community/whisper/resolve/rev1/model.safetensors");
     const installer = installerWith();
-    installer.setUp(false);
+    installer.setUp([WHISPER]);
     while (!seen.some((setup) => setup.state === "setting-up" && setup.step === "models" && setup.done > 20_000)) await Bun.sleep(10);
     installer.cancel();
     expect(await settled(installer)).toEqual({ state: "not-set-up" });
@@ -257,6 +275,53 @@ describe("setting up voice on this Mac", () => {
     await installer.remove();
     expect(existsSync(voiceDir)).toBe(false);
     expect(installer.status().setup).toEqual({ state: "not-set-up" });
+  });
+
+  test("keeps several models, takes one away at a time but not the spoken voice, and a later host finds what is left", async () => {
+    const installer = installerWith();
+    installer.setUp([WHISPER, GEMMA]);
+    await settled(installer);
+    installer.setUp([SMALL_GEMMA, "llama"]);
+    await settled(installer);
+    expect(installer.status().onDisk).toEqual(["kokoro-82m", WHISPER, GEMMA, SMALL_GEMMA]);
+
+    await installer.removeModel(GEMMA);
+    await installer.removeModel("kokoro-82m");
+    expect(installer.status().onDisk).toEqual(["kokoro-82m", WHISPER, SMALL_GEMMA]);
+    expect(existsSync(join(voiceDir, "models", "gemma"))).toBe(false);
+    expect(existsSync(join(voiceDir, "models", "gemma-small"))).toBe(true);
+    expect(seen.at(-1)).toEqual({ state: "set-up", bytesOnDisk: expect.any(Number) });
+
+    const later = installerWith();
+    await later.load();
+    expect(later.status().onDisk).toEqual(["kokoro-82m", WHISPER, SMALL_GEMMA]);
+  });
+
+  test("a setup from before models could be chosen carries over with its models where they are, and one pinned anew counts as gone", async () => {
+    const record = (models: Record<string, string>) =>
+      writeFileSync(
+        join(voiceDir, "setup.json"),
+        JSON.stringify({ uvSha256: sha256(uv), pythonVersion: "3.12.15", lockSha256: sha256(readFileSync(lockFile)), models }),
+      );
+    record({ recognition: "rev1", speech: "rev1", voiceModel: "rev1" });
+    const before = installerWith();
+    await before.load();
+    expect(before.status()).toMatchObject({ setup: { state: "set-up" }, onDisk: [WHISPER, "kokoro-82m", GEMMA] });
+    expect(before.modelDir(GEMMA)).toBe(join(voiceDir, "models", "gemma"));
+
+    record({ recognition: "rev1", speech: "rev1", voiceModel: "rev0" });
+    const pinnedAnew = installerWith();
+    await pinnedAnew.load();
+    expect(pinnedAnew.status()).toMatchObject({ setup: { state: "set-up" }, onDisk: [WHISPER, "kokoro-82m"] });
+
+    record({ recognition: "rev1", speech: "rev0" });
+    const withoutTheSpokenVoice = installerWith();
+    await withoutTheSpokenVoice.load();
+    expect(withoutTheSpokenVoice.status()).toMatchObject({ setup: { state: "not-set-up" }, onDisk: [] });
+  });
+
+  test("tells this Mac's memory", () => {
+    expect(installerWith({ memoryBytes: 16 * 2 ** 30 }).status().memoryBytes).toBe(16 * 2 ** 30);
   });
 
   test("is only offered on Apple silicon with macOS 14 or newer, unless e2e stands in for the engine", () => {

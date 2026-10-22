@@ -1,13 +1,12 @@
 import type { Profile } from "../../shared/model.ts";
+import { choosableModel, type ThisMacService } from "../../shared/voice-engine-models.ts";
 import { AUTO_LANGUAGE, isEnglish, sameLanguage, type CustomEndpoint, type Dictation, type VoiceModelSource, type VoiceSettings, type VoiceSource } from "../../shared/voice.ts";
 import { profileEnvironment } from "../acp/harnesses.ts";
 import { transcribe, type ChatEndpoint, type Transcript } from "./endpoints.ts";
 import { translated } from "./translation.ts";
 
-export type ThisMacService = "recognition" | "voiceModel";
-
-/** Lends work the endpoint of a service of Mirador's own engine on this Mac, starting it first when it isn't running. */
-export type ThisMac = <T>(service: ThisMacService, work: (endpoint: CustomEndpoint) => Promise<T>) => Promise<T>;
+/** Lends work the endpoint of a service of Mirador's own engine on this Mac with the model, by id, starting it first when it isn't running. */
+export type ThisMac = <T>(service: ThisMacService, model: string, work: (endpoint: CustomEndpoint) => Promise<T>) => Promise<T>;
 
 /** Voice can't do what was asked as it is set up; Settings → Voice can change that. */
 export class VoiceUnavailable extends Error {}
@@ -32,7 +31,7 @@ export function profileVoiceModel(profile: Profile, model: string): ChatEndpoint
 }
 
 /** An own server may answer without the language it heard, as OpenAI's newer speech models do. */
-const tellsLanguage = (source: VoiceSource) => source.kind === "this-mac";
+const tellsLanguage = (source: VoiceSource) => source.kind === "this-mac" && choosableModel(source.model)?.tellsLanguage === true;
 
 export class Voice {
   constructor(
@@ -70,12 +69,12 @@ export class Voice {
   /** This Mac's engine tells the language it heard only in its detailed answer. */
   private heard(source: VoiceSource, clip: Blob, language: string | null) {
     if (source.kind === "off") throw new VoiceUnavailable("Voice is off. Settings → Voice can turn it on.");
-    if (source.kind === "this-mac") return this.thisMac("recognition", (endpoint) => transcribe(endpoint, clip, language, { detailed: true }));
+    if (source.kind === "this-mac") return this.thisMac("recognition", source.model, (endpoint) => transcribe(endpoint, clip, language, { detailed: true }));
     return transcribe(source.endpoint, clip, language);
   }
 
   private async inEnglish(source: Exclude<VoiceModelSource, { kind: "off" }>, text: string) {
-    if (source.kind === "this-mac") return this.thisMac("voiceModel", (endpoint) => translated({ api: "openai", ...endpoint, turnsThinkingOff: true }, text, { spoken: true }));
+    if (source.kind === "this-mac") return this.thisMac("voiceModel", source.model, (endpoint) => translated({ api: "openai", ...endpoint, turnsThinkingOff: true }, text, { spoken: true }));
     return translated(this.voiceModelEndpoint(source), text, { spoken: true });
   }
 

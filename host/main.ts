@@ -109,6 +109,7 @@ const voiceEngineInstaller = new VoiceEngineInstaller({
   logsDir: agentLogsDirectory(config.dataDir),
   sources: engineSources(config.voiceModelsUrl),
   fakePython: config.voiceEnginePython,
+  memoryBytes: config.voiceEngineMemoryBytes ?? undefined,
   onChange: voiceEngineChanged,
 });
 const voiceEngine = new VoiceEngine(

@@ -3,8 +3,9 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import type { EngineServer, EngineServerState } from "../../../shared/voice-engine.ts";
+import { modelName, type ThisMacService } from "../../../shared/voice-engine-models.ts";
 import type { CustomEndpoint } from "../../../shared/voice.ts";
-import { VoiceUnavailable, type ThisMacService } from "../voice.ts";
+import { VoiceUnavailable } from "../voice.ts";
 import type { VoiceEngineInstaller } from "./installer.ts";
 
 const HOST = "127.0.0.1";
@@ -16,6 +17,8 @@ const STOP_GRACE_MS = 5_000;
 const WARM_UP_CLIP = silentWav(1_600);
 
 interface Running {
+  /** By id: a server serves one model, and starts again for another, so that what it holds and its state stay true. */
+  model: string;
   child: Subprocess;
   port: Promise<number>;
   inFlight: number;
@@ -24,7 +27,7 @@ interface Running {
 }
 
 export interface VoiceEngineServersOptions {
-  installer: Pick<VoiceEngineInstaller, "python" | "modelDir" | "isInstalled">;
+  installer: Pick<VoiceEngineInstaller, "python" | "modelDir" | "isInstalled" | "isSetUp">;
   voiceDir: string;
   logsDir: string;
   idleMs: () => number;
@@ -98,22 +101,31 @@ export class VoiceEngineServers {
     return { ...this.state };
   }
 
-  /** Lends a service's endpoint to `work`, starting its server first; the server doesn't stop for being idle while work goes on. */
-  async use<T>(service: ThisMacService, work: (endpoint: CustomEndpoint) => Promise<T>): Promise<T> {
-    this.checkInstalled(service);
+  /** Lends a service's endpoint to `work`, starting its server with the model first; the server doesn't stop for being idle while work goes on. */
+  async use<T>(service: ThisMacService, model: string, work: (endpoint: CustomEndpoint) => Promise<T>): Promise<T> {
+    this.checkInstalled(model);
     const server = serverOf(service);
-    const running = this.running.get(server) ?? this.start(server);
+    const running = await this.runningWith(server, model);
     running.inFlight++;
     if (running.idleStop) clearTimeout(running.idleStop);
     running.idleStop = null;
     try {
       const port = await running.port;
-      return await work({ url: `http://${HOST}:${port}/v1`, apiKey: "", model: this.options.installer.modelDir(service) });
+      return await work({ url: `http://${HOST}:${port}/v1`, apiKey: "", model: this.options.installer.modelDir(model) });
     } finally {
       running.inFlight--;
       running.lastUsedAt = Date.now();
       if (running.inFlight === 0 && this.running.get(server) === running) this.stopWhenIdle(server, running);
     }
+  }
+
+  servedModels() {
+    return [...this.running.values()].map(({ model }) => model);
+  }
+
+  /** For removing a model: no server reads its files any more. */
+  async stopServing(model: string) {
+    await Promise.all([...this.running].filter(([, running]) => running.model === model).map(([server]) => this.stop(server)));
   }
 
   /** Servers waiting to unload unload when the new idle time since their last use is up. */
@@ -148,18 +160,26 @@ export class VoiceEngineServers {
     running.idleStop = setTimeout(() => void this.stop(server), Math.max(0, running.lastUsedAt + this.options.idleMs() - Date.now()));
   }
 
-  private checkInstalled(service: ThisMacService) {
+  private checkInstalled(model: string) {
     const { installer } = this.options;
-    if (!installer.isInstalled("recognition")) throw new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up.");
-    if (service === "voiceModel" && !installer.isInstalled("voiceModel")) {
-      throw new VoiceUnavailable("The voice model isn't set up on this Mac. Settings → Voice can add it.");
-    }
+    if (installer.isInstalled(model)) return;
+    if (!installer.isSetUp()) throw new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up.");
+    throw new VoiceUnavailable(`${modelName(model)} isn't on this Mac. Settings → Voice can add it.`);
   }
 
-  private start(server: EngineServer) {
+  private async runningWith(server: EngineServer, model: string) {
+    let running = this.running.get(server);
+    while (running && running.model !== model) {
+      await this.stop(server);
+      running = this.running.get(server);
+    }
+    return running ?? this.start(server, model);
+  }
+
+  private start(server: EngineServer, model: string) {
     const port = freePort();
-    const child = this.spawn(server, port);
-    const running: Running = { child, port: this.untilReady(server, child, port), inFlight: 0, lastUsedAt: Date.now(), idleStop: null };
+    const child = this.spawn(server, port, model);
+    const running: Running = { model, child, port: this.untilReady(server, child, port, model), inFlight: 0, lastUsedAt: Date.now(), idleStop: null };
     this.running.set(server, running);
     this.setState(server, "loading");
     running.port.then(
@@ -170,9 +190,9 @@ export class VoiceEngineServers {
     return running;
   }
 
-  private spawn(server: EngineServer, port: number) {
+  private spawn(server: EngineServer, port: number, model: string) {
     const { installer, logsDir } = this.options;
-    const serverArgs = server === "speech" ? [...SERVER_MODULES.speech] : [...SERVER_MODULES.voiceModel, "--model", installer.modelDir("voiceModel")];
+    const serverArgs = server === "speech" ? [...SERVER_MODULES.speech] : [...SERVER_MODULES.voiceModel, "--model", installer.modelDir(model)];
     mkdirSync(logsDir, { recursive: true });
     const log = openSync(this.logPath(server), "w");
     const child = Bun.spawn([installer.python, ...serverArgs, "--host", HOST, "--port", String(port)], {
@@ -195,7 +215,7 @@ export class VoiceEngineServers {
     return { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", HOME: homedir(), TMPDIR: tmpdir(), HF_HUB_OFFLINE: "1", HF_HUB_CACHE: cache };
   }
 
-  private async untilReady(server: EngineServer, child: Subprocess, port: number) {
+  private async untilReady(server: EngineServer, child: Subprocess, port: number, model: string) {
     const deadline = Date.now() + (this.options.startTimeoutMs ?? START_TIMEOUT_MS);
     while (!(await this.answers(port))) {
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -207,7 +227,7 @@ export class VoiceEngineServers {
       }
       await Bun.sleep(ANSWERING_POLL_MS);
     }
-    if (server === "speech") await this.warmUp(port);
+    if (server === "speech") await this.warmUp(port, model);
     return port;
   }
 
@@ -218,10 +238,10 @@ export class VoiceEngineServers {
     );
   }
 
-  private async warmUp(port: number) {
+  private async warmUp(port: number, model: string) {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(WARM_UP_CLIP)], { type: "audio/wav" }), "silence.wav");
-    form.append("model", this.options.installer.modelDir("recognition"));
+    form.append("model", this.options.installer.modelDir(model));
     form.append("response_format", "json");
     await fetch(`http://${HOST}:${port}/v1/audio/transcriptions`, { method: "POST", body: form }).catch(() => {});
   }

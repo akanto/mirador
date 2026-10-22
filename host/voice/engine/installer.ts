@@ -1,18 +1,17 @@
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rm, statfs, writeFile } from "node:fs/promises";
-import { homedir, platform, arch, release, tmpdir } from "node:os";
+import { homedir, platform, arch, release, tmpdir, totalmem } from "node:os";
 import { join } from "node:path";
 import { gigabytes, type VoiceEngineSetup, type VoiceEngineStatus, type VoiceEngineStep } from "../../../shared/voice-engine.ts";
-import { isUnusedModelFile, modelFolderName, type EngineModel, type EngineModelId, type EngineSources } from "./catalog.ts";
+import { ENGINE_PACKAGES_BYTES, FIRST_MODELS, type ChoosableModel, type EngineModel } from "../../../shared/voice-engine-models.ts";
+import { isUnusedModelFile, modelFolderName, type EngineSources } from "./catalog.ts";
 import { bytesOnDisk, downloadFile, type Download } from "./downloads.ts";
 
 /** Room left over once everything is in, so the Mac isn't left full. */
 const SPARE_BYTES = 2e9;
-/** uv, Python and the speech servers' packages, once installed. */
-const INSTALLED_BYTES = 1.5e9;
 /** What installing takes on top, for uv's cache of the packages while it installs them. */
-const INSTALLING_BYTES = INSTALLED_BYTES + 1.5e9;
+const INSTALLING_BYTES = ENGINE_PACKAGES_BYTES + 1.5e9;
 const PROGRESS_INTERVAL_MS = 250;
 const MACOS_14_DARWIN_MAJOR = 23;
 
@@ -20,7 +19,8 @@ interface SetupRecord {
   uvSha256: string;
   pythonVersion: string;
   lockSha256: string;
-  models: Partial<Record<EngineModelId, string>>;
+  /** Each model's revision by its id, or by its service in setups from before models could be chosen. */
+  models: Record<string, string>;
 }
 
 interface TreeEntry {
@@ -39,6 +39,7 @@ export interface VoiceEngineInstallerOptions {
   fakePython: string | null;
   freeBytes?: (path: string) => Promise<number>;
   platform?: { os: string; cpu: string; darwinMajor: number };
+  memoryBytes?: number;
   onChange: () => void;
 }
 
@@ -66,17 +67,21 @@ function withoutProblem(setup: VoiceEngineSetup): VoiceEngineSetup {
 
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 
+const namesOf = (models: EngineModel[]) => models.map(({ name }) => name).join(" and ");
+
 /** Downloads and installs Mirador's own speech engine into the data folder, and takes it away again. */
 export class VoiceEngineInstaller {
   private setup: VoiceEngineSetup;
-  /** The models a finished setup put in place, which the servers may use even while setup adds another. */
-  private installed: EngineModelId[] = [];
+  /** The models, by id, a finished setup put in place, which the servers may use even while setup adds others. */
+  private installed: string[] = [];
   private run: AbortController | null = null;
   private progressFlush: Timer | null = null;
   private readonly freeBytes: (path: string) => Promise<number>;
+  private readonly memoryBytes: number;
 
   constructor(private readonly options: VoiceEngineInstallerOptions) {
     this.freeBytes = options.freeBytes ?? freeBytesOf;
+    this.memoryBytes = options.memoryBytes ?? totalmem();
     const reason = options.fakePython ? null : unsupportedReason(options.platform ?? thisMachine());
     this.setup = reason ? { state: "unsupported", reason } : { state: "not-set-up" };
   }
@@ -85,43 +90,51 @@ export class VoiceEngineInstaller {
   async load() {
     if (this.setup.state === "unsupported") return;
     const record = await this.record();
-    if (!record || !(await this.isCurrent(record))) return;
-    this.installed = Object.keys(record.models) as EngineModelId[];
-    this.setup = { state: "set-up", withVoiceModel: record.models.voiceModel !== undefined, bytesOnDisk: await this.bytesOnDisk() };
+    if (!record || !(await this.packagesCurrent(record))) return;
+    const current = this.currentModels(record);
+    if (!current.includes(this.options.sources.spokenVoice.id)) return;
+    this.installed = current;
+    this.setup = { state: "set-up", bytesOnDisk: await this.bytesOnDisk() };
     this.changed();
   }
 
   status(): Omit<VoiceEngineStatus, "servers"> {
-    const { recognition, speech, voiceModel } = this.options.sources.models;
-    return { setup: this.setup, diskBytes: { base: INSTALLED_BYTES + recognition.bytes + speech.bytes, voiceModel: voiceModel.bytes } };
+    return { setup: this.setup, onDisk: [...this.installed], memoryBytes: this.memoryBytes };
   }
 
-  isInstalled(id: EngineModelId) {
+  isInstalled(id: string) {
     return this.installed.includes(id);
   }
 
+  isSetUp() {
+    return this.installed.length > 0;
+  }
+
   /** Where a model's files are, once set up. */
-  modelDir(id: EngineModelId) {
-    return join(this.options.voiceDir, "models", modelFolderName(this.options.sources.models[id]));
+  modelDir(id: string) {
+    return this.folderOf(this.modelOf(id));
   }
 
   get python() {
     return this.options.fakePython ?? join(this.options.voiceDir, "venv", "bin", "python");
   }
 
-  setUp(withVoiceModel: boolean) {
+  /** Sets up what is missing: the packages and the spoken voice, and those of these models that aren't on this Mac yet. */
+  setUp(models: string[]) {
     if (this.setup.state === "unsupported" || this.run) return;
+    const adding = this.options.sources.models.filter(({ id }) => models.includes(id) && !this.isInstalled(id));
+    const before = withoutProblem(this.setup);
+    if (before.state === "set-up" && adding.length === 0) return;
     const run = new AbortController();
     this.run = run;
-    const before = withoutProblem(this.setup);
-    this.install(withVoiceModel, run.signal)
+    this.install(adding, run.signal)
       .then(async () => {
-        this.setup = { state: "set-up", withVoiceModel, bytesOnDisk: await this.bytesOnDisk() };
+        this.setup = { state: "set-up", bytesOnDisk: await this.bytesOnDisk() };
       })
       .catch((error) => {
         const problem = error instanceof Error ? error.message : String(error);
         if (run.signal.aborted) this.setup = before;
-        else this.setup = before.state === "set-up" ? { ...before, problem } : { state: "failed", withVoiceModel, problem };
+        else this.setup = before.state === "set-up" ? { ...before, problem: `Adding ${namesOf(adding)} failed. ${problem}` } : { state: "failed", problem };
       })
       .finally(() => {
         this.run = null;
@@ -141,34 +154,53 @@ export class VoiceEngineInstaller {
     this.changed();
   }
 
-  private async install(withVoiceModel: boolean, signal: AbortSignal) {
-    const models = this.wantedModels(withVoiceModel);
-    this.progress(withVoiceModel, "space", 0, 0);
-    const downloads = (await Promise.all(models.map(([id, model]) => this.downloadsOf(id, model, signal)))).flat();
+  /** Takes one model away; the spoken voice goes only with the rest. */
+  async removeModel(id: string) {
+    if (this.setup.state !== "set-up" || this.run || !this.isInstalled(id) || id === this.options.sources.spokenVoice.id) return;
+    this.installed = this.installed.filter((each) => each !== id);
+    await this.writeRecord(this.installed);
+    await rm(this.modelDir(id), { recursive: true, force: true });
+    this.setup = { state: "set-up", bytesOnDisk: await this.bytesOnDisk() };
+    this.changed();
+  }
+
+  private async install(adding: ChoosableModel[], signal: AbortSignal) {
+    const { spokenVoice } = this.options.sources;
+    const models = this.isInstalled(spokenVoice.id) ? adding : [spokenVoice, ...adding];
+    this.progress("space", 0, 0);
+    const downloads = (await Promise.all(models.map((model) => this.downloadsOf(model, signal)))).flat();
     await this.checkSpace(downloads);
     if (!this.options.fakePython) {
-      this.progress(withVoiceModel, "uv", 0, 0);
+      this.progress("uv", 0, 0);
       await this.installUv(signal);
-      this.progress(withVoiceModel, "python", 0, 0);
+      this.progress("python", 0, 0);
       await this.uv(["python", "install", this.options.sources.pythonVersion, "--no-bin"], signal);
-      this.progress(withVoiceModel, "packages", 0, 0);
+      this.progress("packages", 0, 0);
       await this.installPackages(signal);
     }
-    await this.downloadModels(withVoiceModel, downloads, signal);
-    await this.writeRecord(models);
-    this.installed = models.map(([id]) => id);
+    await this.downloadModels(downloads, signal);
+    const installed = [...this.installed, ...models.map(({ id }) => id)];
+    await this.writeRecord(installed);
+    this.installed = installed;
   }
 
-  private wantedModels(withVoiceModel: boolean) {
-    const { recognition, speech, voiceModel } = this.options.sources.models;
-    const base: [EngineModelId, EngineModel][] = [
-      ["recognition", recognition],
-      ["speech", speech],
-    ];
-    return withVoiceModel ? [...base, ["voiceModel", voiceModel] as [EngineModelId, EngineModel]] : base;
+  private get knownModels(): EngineModel[] {
+    const { spokenVoice, models } = this.options.sources;
+    return [spokenVoice, ...models];
   }
 
-  private async downloadsOf(id: EngineModelId, { repo, revision }: EngineModel, signal: AbortSignal): Promise<Download[]> {
+  private modelOf(id: string) {
+    const model = this.knownModels.find((each) => each.id === id);
+    if (!model) throw new Error(`Mirador has no model ${id} for this Mac.`);
+    return model;
+  }
+
+  private folderOf(model: EngineModel) {
+    return join(this.options.voiceDir, "models", modelFolderName(model));
+  }
+
+  private async downloadsOf(model: EngineModel, signal: AbortSignal): Promise<Download[]> {
+    const { repo, revision } = model;
     const { modelsUrl } = this.options.sources;
     const response = await fetch(`${modelsUrl}/api/models/${repo}/tree/${revision}?recursive=true`, { signal });
     if (!response.ok) throw new Error(`${new URL(modelsUrl).host} answered ${response.status} when asked for the files of ${repo}.`);
@@ -177,7 +209,7 @@ export class VoiceEngineInstaller {
       .filter(({ type, path }) => type === "file" && !isUnusedModelFile(path))
       .map(({ path, size, oid, lfs }) => ({
         url: `${modelsUrl}/${repo}/resolve/${revision}/${path.split("/").map(encodeURIComponent).join("/")}`,
-        destination: join(this.modelDir(id), path),
+        destination: join(this.folderOf(model), path),
         size,
         checksum: lfs ? { sha256: lfs.oid } : { gitBlobSha1: oid },
       }));
@@ -227,15 +259,15 @@ export class VoiceEngineInstaller {
     return installed === (await sha256Of(this.options.sources.lockFile));
   }
 
-  private async downloadModels(withVoiceModel: boolean, downloads: Download[], signal: AbortSignal) {
+  private async downloadModels(downloads: Download[], signal: AbortSignal) {
     const onDisk = await Promise.all(downloads.map(bytesOnDisk));
     const total = downloads.reduce((sum, { size }) => sum + size, 0);
     const done = () => onDisk.reduce((sum, bytes) => sum + bytes, 0);
-    this.progress(withVoiceModel, "models", done(), total);
+    this.progress("models", done(), total);
     for (const [index, download] of downloads.entries()) {
       await downloadFile(download, signal, (bytes) => {
         onDisk[index] = bytes;
-        this.progress(withVoiceModel, "models", done(), total);
+        this.progress("models", done(), total);
       });
     }
   }
@@ -273,23 +305,30 @@ export class VoiceEngineInstaller {
     return JSON.parse(await readFile(this.recordPath(), "utf8").catch(() => "null")) as SetupRecord | null;
   }
 
-  private async writeRecord(models: [EngineModelId, EngineModel][]) {
+  private async writeRecord(models: string[]) {
     const record: SetupRecord = {
       uvSha256: this.options.sources.uv.sha256,
       pythonVersion: this.options.sources.pythonVersion,
       lockSha256: await sha256Of(this.options.sources.lockFile),
-      models: Object.fromEntries(models.map(([id, { revision }]) => [id, revision])),
+      models: Object.fromEntries(models.map((id) => [id, this.modelOf(id).revision])),
     };
     await writeFile(this.recordPath(), JSON.stringify(record, null, 2));
   }
 
-  /** Set up by this version of Mirador: a newer one may pin other packages or models, which setting up again brings in. */
-  private async isCurrent(record: SetupRecord) {
-    const { sources } = this.options;
-    const modelsCurrent = Object.entries(record.models).every(([id, revision]) => sources.models[id as EngineModelId]?.revision === revision);
-    if (!modelsCurrent || record.models.recognition === undefined || record.models.speech === undefined) return false;
+  /** Installed by this version of Mirador: a newer one may pin other packages, which setting up again brings in. */
+  private async packagesCurrent(record: SetupRecord) {
     if (this.options.fakePython) return true;
+    const { sources } = this.options;
     return record.uvSha256 === sources.uv.sha256 && record.pythonVersion === sources.pythonVersion && record.lockSha256 === (await sha256Of(sources.lockFile));
+  }
+
+  /** The recorded models at the revisions this version of Mirador pins; one it pins anew downloads again when added. */
+  private currentModels(record: SetupRecord) {
+    const byService: Record<string, string> = { ...FIRST_MODELS, speech: this.options.sources.spokenVoice.id };
+    return Object.entries(record.models)
+      .map(([key, revision]) => [byService[key] ?? key, revision] as const)
+      .filter(([id, revision]) => this.knownModels.some((model) => model.id === id && model.revision === revision))
+      .map(([id]) => id);
   }
 
   private async bytesOnDisk() {
@@ -299,9 +338,9 @@ export class VoiceEngineInstaller {
   }
 
   /** Sent at most every quarter second, as a download reports every chunk. */
-  private progress(withVoiceModel: boolean, step: VoiceEngineStep, done: number, total: number) {
+  private progress(step: VoiceEngineStep, done: number, total: number) {
     const stepChanged = this.setup.state !== "setting-up" || this.setup.step !== step;
-    this.setup = { state: "setting-up", withVoiceModel, step, done, total };
+    this.setup = { state: "setting-up", step, done, total };
     if (stepChanged) return this.changed();
     this.progressFlush ??= setTimeout(() => this.changed(), PROGRESS_INTERVAL_MS);
   }

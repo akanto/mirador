@@ -1,10 +1,21 @@
 import { useState } from "react";
 import { gigabytes, voiceEngineStepLabels, type EngineServer, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
+import {
+  bestFitting,
+  choosableModels,
+  ENGINE_PACKAGES_BYTES,
+  fitsMemory,
+  modelsFor,
+  SPOKEN_VOICE,
+  type ChoosableModel,
+  type ThisMacService,
+} from "../shared/voice-engine-models.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { modelChoice, tooLittleMemoryForVoiceModel } from "./voice-models.ts";
 
-const setUp = (withVoiceModel: boolean) => connection.send({ type: "voice.engine.set-up", withVoiceModel });
+const setUp = (models: string[]) => connection.send({ type: "voice.engine.set-up", models });
 
 function SetupProgress({ setup: { step, done, total } }: { setup: Extract<VoiceEngineSetup, { state: "setting-up" }> }) {
   const counted = total > 0;
@@ -19,27 +30,37 @@ function SetupProgress({ setup: { step, done, total } }: { setup: Extract<VoiceE
   );
 }
 
+/** The voice model picked for the first setup, by id, or null for none; undefined until the user picks, for the best one that fits. */
 interface VoiceModelChoice {
-  withVoiceModel: boolean;
-  setWithVoiceModel: (withVoiceModel: boolean) => void;
+  picked: string | null | undefined;
+  pick: (model: string | null) => void;
 }
 
-function NotSetUp({ engine: { setup, diskBytes }, choice: { withVoiceModel, setWithVoiceModel } }: { engine: VoiceEngineStatus; choice: VoiceModelChoice }) {
-  const disk = gigabytes(diskBytes.base + (withVoiceModel ? diskBytes.voiceModel : 0));
+function NotSetUp({ engine: { setup, memoryBytes }, choice }: { engine: VoiceEngineStatus; choice: VoiceModelChoice }) {
+  const recognition = bestFitting("recognition", memoryBytes) ?? modelsFor("recognition")[0]!;
+  const bestVoiceModel = bestFitting("voiceModel", memoryBytes);
+  const voiceModel = choice.picked === undefined ? bestVoiceModel : modelsFor("voiceModel").find(({ id }) => id === choice.picked);
+  const disk = gigabytes(ENGINE_PACKAGES_BYTES + SPOKEN_VOICE.bytes + recognition.bytes + (voiceModel?.bytes ?? 0));
   return (
     <>
-      <p className="hint">
-        Mirador can run speech recognition and the voice model here, so you need no server of your own. They take about {disk} of disk.
-      </p>
+      <p className="hint">Mirador can run speech recognition and a voice model here, so you need no server of your own. They take about {disk} of disk.</p>
       <div className="sending-settings">
         <label data-hint={hints.voiceEngineVoiceModel}>
-          <input type="checkbox" checked={withVoiceModel} onChange={(event) => setWithVoiceModel(event.target.checked)} />
-          Include the voice model, which translates ({gigabytes(diskBytes.voiceModel)})
+          Voice model, which translates
+          <select value={voiceModel?.id ?? ""} onChange={(event) => choice.pick(event.target.value || null)}>
+            <option value="">None</option>
+            {modelsFor("voiceModel").map((model) => (
+              <option key={model.id} value={model.id} disabled={!fitsMemory(model, memoryBytes)}>
+                {modelChoice(model, memoryBytes)}
+              </option>
+            ))}
+          </select>
         </label>
-        <button type="button" onClick={() => setUp(withVoiceModel)}>
+        <button type="button" onClick={() => setUp([recognition.id, ...(voiceModel ? [voiceModel.id] : [])])}>
           {setup.state === "failed" ? "Try again" : "Set up voice on this Mac"}
         </button>
       </div>
+      {!bestVoiceModel && <p className="hint">{tooLittleMemoryForVoiceModel(memoryBytes)}</p>}
       {setup.state === "failed" && (
         <p className="voice-engine-problem" role="alert">
           {setup.problem}
@@ -56,7 +77,8 @@ interface IdleMinutes {
   change: (minutes: number) => void;
 }
 
-const serverNames: Record<EngineServer, string> = { speech: "Speech recognition", voiceModel: "Voice model" };
+const serviceNames: Record<ThisMacService, string> = { recognition: "Speech recognition", voiceModel: "Voice model" };
+const serverOf: Record<ThisMacService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel" };
 
 const minutes = (count: number) => `${count} minute${count === 1 ? "" : "s"}`;
 
@@ -71,41 +93,91 @@ function serverStateText(state: EngineServerState, idleMinutes: number) {
   }
 }
 
-function ServerStates({ servers, withVoiceModel, idleMinutes }: { servers: VoiceEngineStatus["servers"]; withVoiceModel: boolean; idleMinutes: number }) {
-  const shown: EngineServer[] = withVoiceModel ? ["speech", "voiceModel"] : ["speech"];
+/** Only a model the saved settings use loads, so only its row tells whether it is loaded, and only the others can be removed. */
+function ModelOnThisMac({ model, inUse, state, idleMinutes }: { model: ChoosableModel; inUse: boolean; state: EngineServerState; idleMinutes: number }) {
   return (
-    <ul className="voice-engine-servers" aria-label="Models on this Mac">
-      {shown.map((server) => (
-        <li key={server} data-state={servers[server]}>
-          <span className="voice-engine-server-name">{serverNames[server]}</span> {serverStateText(servers[server], idleMinutes)}
-        </li>
-      ))}
-    </ul>
+    <li data-state={inUse ? state : "stopped"}>
+      <span>
+        <span className="voice-engine-server-name">{serviceNames[model.service]}</span> {model.name}, {gigabytes(model.bytes)}. {inUse ? serverStateText(state, idleMinutes) : "Not in use."}
+      </span>
+      {inUse ? (
+        <button type="button" className="danger" aria-label={`Remove ${model.name}`} data-hint={hints.voiceEngineModelInUse} aria-disabled="true">
+          Remove
+        </button>
+      ) : (
+        <ConfirmButton
+          className="danger"
+          label={`Remove ${model.name}`}
+          armedText="Remove?"
+          armedHint={hints.removeVoiceEngineModelArmed}
+          onConfirm={() => connection.send({ type: "voice.engine.remove-model", model: model.id })}
+        >
+          Remove
+        </ConfirmButton>
+      )}
+    </li>
   );
 }
 
-function SetUp({ setup, engine, idleMinutes }: { setup: Extract<VoiceEngineSetup, { state: "set-up" }>; engine: VoiceEngineStatus; idleMinutes: IdleMinutes }) {
+function AddModel({ onDisk, memoryBytes }: { onDisk: string[]; memoryBytes: number }) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const missing = choosableModels.filter(({ id }) => !onDisk.includes(id));
+  const fitting = missing.filter((model) => fitsMemory(model, memoryBytes));
+  const chosen = fitting.find(({ id }) => id === picked) ?? fitting[0];
+  if (missing.length === 0) return null;
+  return (
+    <div className="sending-settings">
+      <label data-hint={hints.voiceEngineAddModel}>
+        Add
+        <select value={chosen?.id ?? ""} onChange={(event) => setPicked(event.target.value)}>
+          {!chosen && <option value="">None that fits this Mac</option>}
+          {missing.map((model) => (
+            <option key={model.id} value={model.id} disabled={!fitsMemory(model, memoryBytes)}>
+              {serviceNames[model.service]}: {modelChoice(model, memoryBytes)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {chosen && (
+        <button type="button" onClick={() => setUp([chosen.id])}>
+          Download ({gigabytes(chosen.bytes)})
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SetUp({
+  setup,
+  engine,
+  inUse,
+  idleMinutes,
+}: {
+  setup: Extract<VoiceEngineSetup, { state: "set-up" }>;
+  engine: VoiceEngineStatus;
+  inUse: string[];
+  idleMinutes: IdleMinutes;
+}) {
+  const onDisk = choosableModels.filter(({ id }) => engine.onDisk.includes(id));
   return (
     <>
       <div className="sending-settings">
-        <span>
-          Set up with speech recognition{setup.withVoiceModel ? " and the voice model" : ""}, using {gigabytes(setup.bytesOnDisk)}.
-        </span>
-        {!setup.withVoiceModel && (
-          <button type="button" onClick={() => setUp(true)}>
-            Add the voice model ({gigabytes(engine.diskBytes.voiceModel)})
-          </button>
-        )}
+        <span>Set up, using {gigabytes(setup.bytesOnDisk)}.</span>
         <ConfirmButton className="danger" label="Remove voice from this Mac" armedText="Remove?" armedHint={hints.removeVoiceEngineArmed} onConfirm={() => connection.send({ type: "voice.engine.remove" })}>
-          Remove
+          Remove all
         </ConfirmButton>
       </div>
       {setup.problem && (
         <p className="voice-engine-problem" role="alert">
-          Adding the voice model failed. {setup.problem}
+          {setup.problem}
         </p>
       )}
-      <ServerStates servers={engine.servers} withVoiceModel={setup.withVoiceModel} idleMinutes={idleMinutes.saved} />
+      <ul className="voice-engine-servers" aria-label="Models on this Mac">
+        {onDisk.map((model) => (
+          <ModelOnThisMac key={model.id} model={model} inUse={inUse.includes(model.id)} state={engine.servers[serverOf[model.service]]} idleMinutes={idleMinutes.saved} />
+        ))}
+      </ul>
+      <AddModel onDisk={engine.onDisk} memoryBytes={engine.memoryBytes} />
       <div className="sending-settings">
         <label data-hint={hints.voiceEngineIdle}>
           Unload after
@@ -126,16 +198,16 @@ function SetUp({ setup, engine, idleMinutes }: { setup: Extract<VoiceEngineSetup
 }
 
 /** Mirador's own speech engine, on Macs with Apple silicon. The voice model choice outlasts a cancelled setup. */
-export function VoiceEngineSetupPanel({ engine, idleMinutes }: { engine: VoiceEngineStatus; idleMinutes: IdleMinutes }) {
+export function VoiceEngineSetupPanel({ engine, inUse, idleMinutes }: { engine: VoiceEngineStatus; inUse: string[]; idleMinutes: IdleMinutes }) {
   const { setup } = engine;
-  const [withVoiceModel, setWithVoiceModel] = useState(true);
+  const [picked, pick] = useState<string | null | undefined>(undefined);
   if (setup.state === "unsupported") return null;
   return (
     <fieldset className="voice-service voice-engine">
       <legend>Voice on this Mac</legend>
       {setup.state === "setting-up" && <SetupProgress setup={setup} />}
-      {setup.state === "set-up" && <SetUp setup={setup} engine={engine} idleMinutes={idleMinutes} />}
-      {(setup.state === "not-set-up" || setup.state === "failed") && <NotSetUp engine={engine} choice={{ withVoiceModel, setWithVoiceModel }} />}
+      {setup.state === "set-up" && <SetUp setup={setup} engine={engine} inUse={inUse} idleMinutes={idleMinutes} />}
+      {(setup.state === "not-set-up" || setup.state === "failed") && <NotSetUp engine={engine} choice={{ picked, pick }} />}
     </fieldset>
   );
 }
