@@ -88,3 +88,15 @@ export async function complete(endpoint: ChatEndpoint, instructions: string, tex
   const answer = endpoint.api === "openai" ? await completeWithOpenAi(endpoint, instructions, text) : await completeWithAnthropic(endpoint, instructions, text);
   return answer.trim();
 }
+
+/** The text spoken in the voice, as WAV, which every page plays; OpenAI's API answers mp3 unless asked. */
+export async function speak(endpoint: CustomEndpoint, text: string, voice: string) {
+  const response = await postTo("reply voice server", joined(endpoint.url, "/audio/speech"), {
+    headers: { "Content-Type": "application/json", ...bearer(endpoint.apiKey) },
+    body: JSON.stringify({ model: endpoint.model, input: text, voice, response_format: "wav" }),
+  });
+  if (!response.ok) await answerOf(response, "reply voice server");
+  const audio = await response.arrayBuffer();
+  if (audio.byteLength === 0) throw new Error("The reply voice server answered without sound.");
+  return new Blob([audio], { type: "audio/wav" });
+}

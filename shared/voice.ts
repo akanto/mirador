@@ -1,4 +1,4 @@
-import { choosableModel, FIRST_MODELS, type ThisMacService } from "./voice-engine-models.ts";
+import { choosableModel, FIRST_MODELS, SPOKEN_VOICE, type ThisMacService } from "./voice-engine-models.ts";
 
 /** An OpenAI-style server of the user's own: another local server, one on another machine, or a hosted API. */
 export interface CustomEndpoint {
@@ -23,11 +23,19 @@ export type VoiceModelSource =
   | (OwnServer & { turnsThinkingOff: boolean })
   | { kind: "profile"; profileId: string; model: string };
 
+/** A server of the user's own speaks with one of its voices, as alloy is OpenAI's; this Mac's engine picks the voice by the reply language. */
+export type ReplyVoiceSource = Off | { kind: "this-mac" } | (OwnServer & { voice: string });
+
+export type ReplyLanguage = "en" | "hu";
+
 export interface VoiceSettings {
   /** Turns speech into text in the language spoken. */
   recognition: VoiceSource;
   /** Translates what the user says and writes, and sums up replies to be spoken. */
   voiceModel: VoiceModelSource;
+  /** Reads the voice model's summary of a reply aloud. */
+  replyVoice: ReplyVoiceSource;
+  replyLanguage: ReplyLanguage;
   /** What the user speaks, as a language code such as "hu", or "auto" for the recognizer to tell. */
   language: string;
   translateToEnglish: boolean;
@@ -41,6 +49,8 @@ export const AUTO_LANGUAGE = "auto";
 export const defaultVoiceSettings: VoiceSettings = {
   recognition: { kind: "off" },
   voiceModel: { kind: "off" },
+  replyVoice: { kind: "off" },
+  replyLanguage: "en",
   language: AUTO_LANGUAGE,
   translateToEnglish: true,
   sendRightAway: false,
@@ -81,6 +91,18 @@ function sourceProblem(service: string, source: VoiceSource | VoiceModelSource, 
 
 const sourceKinds: VoiceSource["kind"][] = ["off", "this-mac", "custom"];
 const voiceModelKinds: VoiceModelSource["kind"][] = [...sourceKinds, "profile"];
+const replyLanguages: ReplyLanguage[] = ["en", "hu"];
+
+/** The engine's voice for replies in the language, by id; none yet for Hungarian. */
+export const thisMacReplyVoice = (language: ReplyLanguage) => (language === "en" ? SPOKEN_VOICE.id : null);
+
+function replyVoiceProblem({ replyVoice, replyLanguage }: VoiceSettings) {
+  if (!sourceKinds.includes(replyVoice?.kind)) return "The reply voice is off, this Mac's or a server of your own.";
+  if (!replyLanguages.includes(replyLanguage)) return "Replies are spoken in English or Hungarian.";
+  if (replyVoice.kind === "this-mac" && thisMacReplyVoice(replyLanguage) === null) return "This Mac speaks replies only in English so far.";
+  if (replyVoice.kind !== "custom") return null;
+  return endpointProblem("reply voice", replyVoice.endpoint) ?? (replyVoice.voice.trim() === "" ? "The reply voice needs the name of one of the server's voices." : null);
+}
 
 export function voiceSettingsProblem(settings: VoiceSettings) {
   if (!sourceKinds.includes(settings.recognition.kind)) return "Speech recognition is off, this Mac's or a server of your own.";
@@ -89,7 +111,7 @@ export function voiceSettingsProblem(settings: VoiceSettings) {
   if (!Number.isInteger(settings.engineIdleMinutes) || settings.engineIdleMinutes < 1 || settings.engineIdleMinutes > MAX_IDLE_MINUTES) {
     return `Unloading takes a whole number of minutes from 1 to ${MAX_IDLE_MINUTES}.`;
   }
-  return sourceProblem("speech recognition", settings.recognition, "recognition") ?? sourceProblem("voice model", settings.voiceModel, "voiceModel");
+  return sourceProblem("speech recognition", settings.recognition, "recognition") ?? sourceProblem("voice model", settings.voiceModel, "voiceModel") ?? replyVoiceProblem(settings);
 }
 
 const withFirstModel = <Source extends VoiceSource | VoiceModelSource>(source: Source, service: ThisMacService): Source =>
@@ -102,9 +124,15 @@ export const withThisMacModels = (settings: VoiceSettings): VoiceSettings => ({
   voiceModel: withFirstModel(settings.voiceModel, "voiceModel"),
 });
 
-export const thisMacModelsInUse = ({ recognition, voiceModel }: VoiceSettings) => [recognition, voiceModel].flatMap((source) => (source.kind === "this-mac" ? [source.model] : []));
+export const thisMacModelsInUse = ({ recognition, voiceModel, replyVoice, replyLanguage }: VoiceSettings) => [
+  ...[recognition, voiceModel].flatMap((source) => (source.kind === "this-mac" ? [source.model] : [])),
+  ...(replyVoice.kind === "this-mac" ? [thisMacReplyVoice(replyLanguage)].filter((model) => model !== null) : []),
+];
 
-const withoutKey = <Source extends VoiceSource | VoiceModelSource>(source: Source): Source =>
+/** Replies are spoken as the voice model sums them up. */
+export const speaksReplies = ({ replyVoice, voiceModel }: VoiceSettings) => replyVoice.kind !== "off" && voiceModel.kind !== "off";
+
+const withoutKey = <Source extends VoiceSource | VoiceModelSource | ReplyVoiceSource>(source: Source): Source =>
   source.kind === "custom" ? { ...source, endpoint: { ...source.endpoint, apiKey: "" } } : source;
 
 /** For clients that never show API keys, as they never get a profile's environment. */
@@ -112,4 +140,5 @@ export const voiceSettingsWithoutKeys = (settings: VoiceSettings): VoiceSettings
   ...settings,
   recognition: withoutKey(settings.recognition),
   voiceModel: withoutKey(settings.voiceModel),
+  replyVoice: withoutKey(settings.replyVoice),
 });

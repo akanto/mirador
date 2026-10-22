@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { flushSync } from "react-dom";
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
-import type { Dictation as Dictated, VoiceSettings } from "../shared/voice.ts";
+import { speaksReplies, type Dictation as Dictated, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { dictationStatus, pressed, released, spacedAtCaret, type DictationPhase, type Press } from "./dictation.ts";
 import { joinDrafts } from "./drafts.ts";
@@ -9,6 +9,7 @@ import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
 import { pauseWatch, type PauseWatch } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
+import { allowReplyAudio, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
 
 const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
@@ -66,11 +67,13 @@ export function useDictation({
   const listening = useRef<Listening | null>(null);
   const latestSendNow = useRef(sendNow);
   latestSendNow.current = sendNow;
+  const dictatedIntoDraft = useRef(false);
   const available = settings.recognition.kind !== "off";
 
   const put = (dictated: Dictated) => {
     if (dictated.text.trim() === "") return setProblem(NO_WORDS);
     insertDictated(textarea.current, setText, dictated.text);
+    dictatedIntoDraft.current = true;
     if (settings.sendRightAway) {
       setSentOriginal(dictated.original);
       return latestSendNow.current();
@@ -103,7 +106,10 @@ export function useDictation({
     if (verdict !== "go-on" && press.current.kind === "tapped") void finish();
   };
 
+  /** The microphone would hear a reply being read aloud. */
   const begin = () => {
+    stopReading();
+    if (speaksReplies(settings)) allowReplyAudio();
     setProblem(null);
     setSentOriginal(null);
     /** Pauses count from when the microphone records, as starting it, or the user allowing it, may take a while. */
@@ -207,7 +213,16 @@ export function useDictation({
     said: sentOriginal ?? (originals.length > 0 ? originals.join(" ") : null),
     onPress,
     onRelease,
-    clearOriginals: () => setOriginals((before) => (before.length === 0 ? before : [])),
+    clearOriginals: () => {
+      dictatedIntoDraft.current = false;
+      setOriginals((before) => (before.length === 0 ? before : []));
+    },
+    /** Whether the message being sent was dictated, at least in part. */
+    takeDictated: () => {
+      const dictated = dictatedIntoDraft.current;
+      dictatedIntoDraft.current = false;
+      return dictated;
+    },
     hideSaid: () => {
       setOriginals([]);
       setSentOriginal(null);

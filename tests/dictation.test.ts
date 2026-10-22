@@ -72,7 +72,7 @@ describe("the pause watch", () => {
 
 describe("the status under the message box", () => {
   const settings = (recognition: VoiceSettings["recognition"], voiceModel: VoiceSettings["voiceModel"] = { kind: "off" }): VoiceSettings => ({ ...defaultVoiceSettings, recognition, voiceModel });
-  const servers = (speech: EngineServerState, voiceModel: EngineServerState = "stopped") => ({ speech, voiceModel });
+  const servers = (speech: EngineServerState, voiceModel: EngineServerState = "stopped") => ({ speech, voiceModel, speaking: "stopped" as const });
   const ownServer = { kind: "custom" as const, endpoint: { url: "http://box/v1", apiKey: "", model: "whisper" } };
   const thisMacRecognition = { kind: "this-mac" as const, model: "whisper-large-v3-turbo" };
   const thisMacVoiceModel = { kind: "this-mac" as const, model: "gemma-4-26b-a4b" };

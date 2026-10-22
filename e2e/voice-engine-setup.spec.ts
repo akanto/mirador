@@ -61,6 +61,8 @@ interface EngineEntry {
   model?: string;
   responseFormat?: string;
   chatTemplateKwargs?: unknown;
+  input?: string;
+  voice?: string;
 }
 
 const engineLogged = (): EngineEntry[] =>
@@ -254,6 +256,21 @@ test("Voice on this Mac loads its models when first needed and shows it, and unl
     await expect(voiceModel).toHaveCount(0);
     await expect(thisMac.getByRole("button", { name: "Download (15.4 GB)" })).toBeVisible();
     await expect(smallerVoiceModel).toContainText("Loaded.");
+  });
+
+  await test.step("replies spoken on this Mac come from Kokoro, on a server of their own that leaves speech recognition loaded", async () => {
+    await settings.getByRole("group", { name: "Spoken replies" }).getByLabel("Reads replies aloud").selectOption({ label: "On this Mac" });
+    await save();
+    const spoken = await page.evaluate(async (conversationId) => {
+      const response = await fetch(`/conversations/${conversationId}/spoken-sentence`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "The tests passed." });
+      return { status: response.status, type: response.headers.get("content-type") };
+    }, conversationId);
+    expect(spoken).toEqual({ status: 200, type: "audio/wav" });
+    const speaking = engineLogged().filter(({ event }) => event === "speech");
+    expect(speaking.map(({ input }) => input)).toEqual(["Ready.", "The tests passed."]);
+    expect(speaking.at(-1)!.voice).toMatch(/models\/Kokoro-82M-bf16\/voices\/am_fenrir\.safetensors$/);
+    expect(new Set(speaking.map(({ pid }) => pid)).size).toBe(1);
+    await expect(speech).toContainText("Loaded.");
   });
 
   await test.step("the models unload when the host stops", async () => {

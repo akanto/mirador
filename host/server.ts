@@ -95,6 +95,14 @@ const ONLY_OWN_PAGES_SET_UP_VOICE: ServerMessage = { type: "error", message: "On
 const MODEL_IN_USE: ServerMessage = { type: "error", message: "The voice settings use this model. Choose another one and save before removing it." };
 /** What OpenAI's speech API takes at most: over 13 minutes of 16 kHz mono WAV. */
 const MAX_SPOKEN_CLIP_BYTES = 25 * 1024 * 1024;
+const MAX_REPLY_BYTES = 1024 * 1024;
+const MAX_SPOKEN_SENTENCE_BYTES = 4 * 1024;
+
+async function textWithin(request: Request, maxBytes: number) {
+  if (Number(request.headers.get("content-length") ?? 0) > maxBytes) return null;
+  const text = await request.text();
+  return Buffer.byteLength(text) > maxBytes ? null : text;
+}
 /**
  * How much of a conversation's history, as stored, a page gets at a time: the page shows at most a few hundred entries,
  * and a long conversation holds hundreds of megabytes.
@@ -465,8 +473,31 @@ export function startServer(services: HostServices) {
     if (Number(request.headers.get("content-length") ?? 0) > MAX_SPOKEN_CLIP_BYTES) return new Response("The spoken clip is too long.", { status: 413 });
     const clip = await request.blob();
     if (clip.size > MAX_SPOKEN_CLIP_BYTES) return new Response("The spoken clip is too long.", { status: 413 });
+    return voiceAnswer(async () => Response.json(await voice.dictation(clip)));
+  }
+
+  /** A reply of the agent, sent as text, summed up for reading aloud a sentence at a time. */
+  async function sumUpReply(request: Bun.BunRequest<"/conversations/:conversationId/reply-summary">) {
+    const refused = refusedAttachmentRequest(request, request.params.conversationId);
+    if (refused) return refused;
+    const reply = await textWithin(request, MAX_REPLY_BYTES);
+    if (reply === null) return new Response("The reply is too long to sum up.", { status: 413 });
+    return voiceAnswer(async () => Response.json({ sentences: await voice.replySummary(reply) }));
+  }
+
+  /** A sentence of a reply's summary, sent as text, spoken as WAV. */
+  async function speakSentence(request: Bun.BunRequest<"/conversations/:conversationId/spoken-sentence">) {
+    const refused = refusedAttachmentRequest(request, request.params.conversationId);
+    if (refused) return refused;
+    const sentence = await textWithin(request, MAX_SPOKEN_SENTENCE_BYTES);
+    if (sentence === null) return new Response("The sentence is too long to speak.", { status: 413 });
+    return voiceAnswer(async () => new Response(await voice.spoken(sentence), { headers: { "Content-Type": "audio/wav" } }));
+  }
+
+  /** 409 when Settings → Voice can change what failed. */
+  async function voiceAnswer(work: () => Promise<Response>) {
     try {
-      return Response.json(await voice.dictation(clip));
+      return await work();
     } catch (error) {
       return new Response(errorMessage(error), { status: error instanceof VoiceUnavailable ? 409 : 502 });
     }
@@ -1104,6 +1135,8 @@ export function startServer(services: HostServices) {
     "/conversations/:conversationId/images": { POST: addImage },
     "/conversations/:conversationId/files": { POST: addDroppedFile },
     "/conversations/:conversationId/speech": { POST: dictate },
+    "/conversations/:conversationId/reply-summary": { POST: sumUpReply },
+    "/conversations/:conversationId/spoken-sentence": { POST: speakSentence },
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
     "/mirador-ca.pem": serveAuthority,

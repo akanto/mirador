@@ -11,7 +11,7 @@ function engineWith({ remove = async () => {}, removeModel = async () => {}, ser
   const engine = new VoiceEngine(
     { status: () => ({ setup, onDisk: [], memoryBytes: 0 }), setUp: () => {}, cancel: () => {}, remove, removeModel },
     {
-      states: () => ({ speech: "stopped", voiceModel: "stopped" }),
+      states: () => ({ speech: "stopped", voiceModel: "stopped", speaking: "stopped" }),
       use: async (_, model, work) => {
         started.push(model);
         return work({ url: "http://127.0.0.1:1/v1", apiKey: "", model });

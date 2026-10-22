@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EngineServerState } from "../shared/voice-engine.ts";
 import { VoiceEngineServers, type VoiceEngineServersOptions } from "../host/voice/engine/servers.ts";
-import { transcribe } from "../host/voice/endpoints.ts";
+import { speak, transcribe } from "../host/voice/endpoints.ts";
 import { VoiceUnavailable } from "../host/voice/voice.ts";
 
 const fakeEngine = join(import.meta.dir, "..", "e2e", "fake-voice-engine.ts");
@@ -74,8 +74,9 @@ exit 1
 const WHISPER = "whisper-large-v3-turbo";
 const GEMMA = "gemma-4-26b-a4b";
 const SMALL_GEMMA = "gemma-4-12b";
+const KOKORO = "kokoro-82m";
 
-function engineServers({ python = fakePython(), installed = ["kokoro-82m", WHISPER, GEMMA, SMALL_GEMMA], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[] } = {}) {
+function engineServers({ python = fakePython(), installed = [KOKORO, WHISPER, GEMMA, SMALL_GEMMA], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[] } = {}) {
   const states: Record<string, EngineServerState>[] = [];
   servers = new VoiceEngineServers({
     installer: { python, modelDir: (id) => join(root, "models", id), isInstalled: (id) => installed.includes(id), isSetUp: () => installed.length > 0 },
@@ -108,8 +109,8 @@ describe("the engine's servers", () => {
     expect(second).toEqual(first);
     expect(startsOf("mlx_audio.server")).toHaveLength(1);
     expect(states).toEqual([
-      { speech: "loading", voiceModel: "stopped" },
-      { speech: "ready", voiceModel: "stopped" },
+      { speech: "loading", voiceModel: "stopped", speaking: "stopped" },
+      { speech: "ready", voiceModel: "stopped", speaking: "stopped" },
     ]);
     const transcriptions = logged().filter((entry) => entry.event === "transcription");
     expect(transcriptions.map(({ responseFormat }) => responseFormat)).toEqual(["json", "verbose_json", "verbose_json"]);
@@ -122,7 +123,7 @@ describe("the engine's servers", () => {
     const endpoint = await servers.use("voiceModel", GEMMA, async (endpoint) => endpoint);
     expect(endpoint).toMatchObject({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/v1$/), apiKey: "", model: join(root, "models", GEMMA) });
     expect(startsOf("mlx_lm.server").map(({ model }) => model)).toEqual([join(root, "models", GEMMA)]);
-    expect(servers.states()).toEqual({ speech: "stopped", voiceModel: "ready" });
+    expect(servers.states()).toEqual({ speech: "stopped", voiceModel: "ready", speaking: "stopped" });
   });
 
   test("start again for another model, as a server holds what it loaded, and stop for a model being removed", async () => {
@@ -138,8 +139,25 @@ describe("the engine's servers", () => {
     await servers.use("recognition", WHISPER, async () => {});
     expect(servers.servedModels().sort()).toEqual([SMALL_GEMMA, WHISPER]);
     await servers.stopServing(SMALL_GEMMA);
-    expect(servers.states()).toEqual({ speech: "ready", voiceModel: "stopped" });
+    expect(servers.states()).toEqual({ speech: "ready", voiceModel: "stopped", speaking: "stopped" });
     expect(servers.servedModels()).toEqual([WHISPER]);
+  });
+
+  test("speak replies with a server of their own, warmed up with a word in Kokoro's voice, so that Whisper stays loaded", async () => {
+    root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
+    const { servers } = engineServers();
+    await servers.use("recognition", WHISPER, async () => {});
+    const sound = await servers.use("speaking", KOKORO, (endpoint) => speak(endpoint, "The tests passed.", "af_heart"));
+    expect(sound.type).toBe("audio/wav");
+    expect(startsOf("mlx_audio.server")).toHaveLength(2);
+    expect(servers.states()).toEqual({ speech: "ready", voiceModel: "stopped", speaking: "ready" });
+    const kokoro = join(root, "models", KOKORO);
+    expect(logged().filter((entry) => entry.event === "speech")).toMatchObject([
+      { model: kokoro, input: "Ready.", voice: join(kokoro, "voices", "am_fenrir.safetensors"), responseFormat: "wav" },
+      { model: kokoro, input: "The tests passed.", voice: "af_heart", responseFormat: "wav" },
+    ]);
+    expect(existsSync(join(root, "logs", "voice-speaking.log"))).toBe(true);
+    expect(existsSync(join(root, "voice", "run", "speaking.pid"))).toBe(true);
   });
 
   test("stop once unused for the idle time, but not while work goes on", async () => {
@@ -185,13 +203,13 @@ describe("the engine's servers", () => {
   test("stop with the host, all of each server's processes", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers();
-    await Promise.all([servers.use("recognition", WHISPER, async () => {}), servers.use("voiceModel", GEMMA, async () => {})]);
+    await Promise.all([servers.use("recognition", WHISPER, async () => {}), servers.use("voiceModel", GEMMA, async () => {}), servers.use("speaking", KOKORO, async () => {})]);
     const pids = logged()
       .filter((entry) => entry.event === "start")
       .map(({ pid }) => pid);
     await servers.stopAll();
     expect(pids.filter(isRunning)).toEqual([]);
-    expect(servers.states()).toEqual({ speech: "stopped", voiceModel: "stopped" });
+    expect(servers.states()).toEqual({ speech: "stopped", voiceModel: "stopped", speaking: "stopped" });
   });
 
   test("say why a server stopped while starting, and try again at the next use", async () => {
@@ -224,20 +242,22 @@ describe("the engine's servers", () => {
   test("stop servers a crashed host left running, and nothing else a pid file names", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const python = fakePython();
-    const serving = (port: number) => Bun.spawn([python, "-m", "mlx_lm.server", "--host", "127.0.0.1", "--port", String(port)], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
+    const serving = (port: number, serverModule = "mlx_lm.server") =>
+      Bun.spawn([python, "-m", serverModule, "--host", "127.0.0.1", "--port", String(port)], { detached: true, stdio: ["ignore", "ignore", "ignore"] });
     const leftOver = serving(0);
     const usersOwn = serving(0);
-    others.push(leftOver.pid, usersOwn.pid);
-    await until(() => startsOf("mlx_lm.server").length === 2);
+    const leftSpeaking = serving(0, "mlx_audio.server");
+    others.push(leftOver.pid, usersOwn.pid, leftSpeaking.pid);
+    await until(() => startsOf("mlx_lm.server").length === 2 && startsOf("mlx_audio.server").length === 1);
     const runDir = join(root, "voice", "run");
     mkdirSync(runDir, { recursive: true });
     writeFileSync(join(runDir, "voiceModel.pid"), JSON.stringify({ pid: leftOver.pid, port: 0 }));
     writeFileSync(join(runDir, "speech.pid"), JSON.stringify({ pid: usersOwn.pid, port: 0 }));
+    writeFileSync(join(runDir, "speaking.pid"), JSON.stringify({ pid: leftSpeaking.pid, port: 0 }));
     engineServers({ python });
-    await leftOver.exited;
+    await Promise.all([leftOver.exited, leftSpeaking.exited]);
     expect(isRunning(usersOwn.pid), "a voice model server isn't the speech server the pid file named").toBe(true);
-    expect(existsSync(join(runDir, "voiceModel.pid"))).toBe(false);
-    expect(existsSync(join(runDir, "speech.pid"))).toBe(false);
+    expect(["voiceModel.pid", "speech.pid", "speaking.pid"].filter((name) => existsSync(join(runDir, name)))).toEqual([]);
 
     const onAnotherPort = serving(0);
     others.push(onAnotherPort.pid);

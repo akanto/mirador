@@ -4,7 +4,7 @@ export const hints = {
   voiceRecognition:
     "What turns your speech into text. A server of your own is anything that speaks OpenAI's speech-to-text API (POST /audio/transcriptions): OpenAI itself, or a Whisper server on this or another machine. Mirador sends it 16 kHz WAV.",
   voiceModel:
-    "The language model that translates what you say into English before it goes into the message box. A server of your own speaks OpenAI's chat API (POST /chat/completions); a profile's API is the one its environment names, ANTHROPIC_BASE_URL with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN, or OPENAI_BASE_URL with OPENAI_API_KEY. Mirador calls it directly, without starting the profile's agent.",
+    "The language model that translates what you say into English before it goes into the message box, and sums up replies to read aloud. A server of your own speaks OpenAI's chat API (POST /chat/completions); a profile's API is the one its environment names, ANTHROPIC_BASE_URL with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN, or OPENAI_BASE_URL with OPENAI_API_KEY. Mirador calls it directly, without starting the profile's agent.",
   voiceModelThinkingOff:
     "For a local server running a model that thinks before it answers, such as Gemma 4 or Qwen 3: thinking makes a translation take far longer and can use up the answer. Mirador sends chat_template_kwargs with enable_thinking false, which servers such as mlx_lm, vLLM and llama.cpp understand. Leave it off for OpenAI's API.",
   voiceEngineVoiceModel:
@@ -23,6 +23,12 @@ export const hints = {
     "The language you speak. Naming it helps on short clips, where telling languages apart by sound alone often goes wrong; this Mac's engine still hears English as English. With any language, the speech server decides, and the voice model translates whatever isn't English.",
   translateToEnglish: "What you say goes into the message box in English, with what you said under it, so you can check it before sending.",
   translateNeedsVoiceModel: "Translating needs a voice model. Pick one above.",
+  replyVoice:
+    "What reads replies aloud, once the voice model has summed each up in a few sentences. This Mac's engine speaks English with Kokoro. A server of your own speaks OpenAI's text-to-speech API (POST /audio/speech) with one of its voices. After a message you dictated, its reply is read as the turn ends, in the browser you dictated in.",
+  replyLanguage: "The language replies are read in. The voice model sums them up in it, whatever language the agent wrote in.",
+  replyVoiceName: "One of the server's voices, as alloy is one of OpenAI's.",
+  readAloud: "Reads a short summary of this reply aloud.",
+  stopReadingAloud: "Stops reading this reply aloud.",
   sendRightAway: "Sends what you said as soon as it is text, instead of leaving it in the message box for you to check first.",
   dictate: "Speak instead of typing. Tap to start, and it stops when you pause or tap again; or hold it while you talk. What you said goes in at the caret.",
   dictateOff: "Dictating needs speech recognition. Settings → Voice can turn it on.",

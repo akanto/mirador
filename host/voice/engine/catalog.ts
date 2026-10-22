@@ -31,3 +31,6 @@ export const isUnusedModelFile = (path: string) => path.endsWith(".md") || path 
 
 /** mlx-audio tells a model's kind from its folder's name when its config doesn't say, as Kokoro's doesn't. */
 export const modelFolderName = ({ repo }: EngineModel) => repo.split("/").at(-1)!;
+
+/** As a file: mlx-audio looks a voice given by name up on Hugging Face, which the engine never reaches. */
+export const kokoroVoice = (modelDir: string) => join(modelDir, "voices", "am_fenrir.safetensors");

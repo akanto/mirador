@@ -20,7 +20,7 @@ export type VoiceEngineSetup =
   | { state: "set-up"; bytesOnDisk: number; problem?: string };
 
 /** Each server's state, kept apart from setup: stopped servers load again the next time they're needed. */
-export type EngineServer = "speech" | "voiceModel";
+export type EngineServer = "speech" | "voiceModel" | "speaking";
 export type EngineServerState = "stopped" | "loading" | "ready";
 
 export interface VoiceEngineStatus {

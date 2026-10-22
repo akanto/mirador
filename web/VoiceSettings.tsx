@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../shared/model.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { modelsFor, type ThisMacService } from "../shared/voice-engine-models.ts";
-import { AUTO_LANGUAGE, isEnglish, thisMacModelsInUse, type CustomEndpoint, type VoiceModelSource, type VoiceSettings as Settings, type VoiceSource } from "../shared/voice.ts";
+import { modelsFor, SPOKEN_VOICE, type ThisMacService } from "../shared/voice-engine-models.ts";
+import {
+  AUTO_LANGUAGE,
+  isEnglish,
+  thisMacModelsInUse,
+  type CustomEndpoint,
+  type ReplyLanguage,
+  type ReplyVoiceSource,
+  type VoiceModelSource,
+  type VoiceSettings as Settings,
+  type VoiceSource,
+} from "../shared/voice.ts";
 import { hints } from "./hints.ts";
 import { saveSetting } from "./saved-setting.ts";
 import { modelWithQuality } from "./voice-models.ts";
@@ -38,9 +48,8 @@ function EndpointFields({ endpoint, modelPlaceholder, onChange }: { endpoint: Cu
 const onDiskFor = (service: ThisMacService, engine: VoiceEngineStatus) => modelsFor(service).filter(({ id }) => engine.onDisk.includes(id));
 
 /** Hidden where the engine can't run; disabled until setup put a model for the service in place. */
-function ThisMacOption({ engine, service }: { engine: VoiceEngineStatus; service: ThisMacService }) {
+function ThisMacOption({ engine, usable }: { engine: VoiceEngineStatus; usable: boolean }) {
   if (engine.setup.state === "unsupported") return null;
-  const usable = onDiskFor(service, engine).length > 0;
   return (
     <option value="this-mac" disabled={!usable}>
       On this Mac{usable ? "" : ", once set up above"}
@@ -84,7 +93,7 @@ function RecognitionSettings({ source, engine, onChange }: { source: VoiceSource
           Turns speech into text
           <select value={source.kind} onChange={(event) => choose(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption engine={engine} service="recognition" />
+            <ThisMacOption engine={engine} usable={onDiskFor("recognition", engine).length > 0} />
             <option value="custom">With a server of your own</option>
           </select>
         </label>
@@ -112,7 +121,7 @@ function VoiceModelSettings({ source, engine, profiles, onChange }: { source: Vo
           Translates
           <select value={source.kind} onChange={(event) => choose(event.target.value)}>
             <option value="off">Off</option>
-            <ThisMacOption engine={engine} service="voiceModel" />
+            <ThisMacOption engine={engine} usable={onDiskFor("voiceModel", engine).length > 0} />
             <option value="custom">With a server of your own</option>
             <option value="profile" disabled={profiles.length === 0}>
               With a profile's API
@@ -154,6 +163,62 @@ function VoiceModelSettings({ source, engine, profiles, onChange }: { source: Vo
   );
 }
 
+const replyLanguageNames: Record<ReplyLanguage, string> = { en: "English", hu: "Hungarian" };
+
+function ReplyVoiceSettings({
+  source,
+  language,
+  engine,
+  voiceModelSet,
+  onChange,
+}: {
+  source: ReplyVoiceSource;
+  language: ReplyLanguage;
+  engine: VoiceEngineStatus;
+  voiceModelSet: boolean;
+  onChange: (next: { replyVoice?: ReplyVoiceSource; replyLanguage?: ReplyLanguage }) => void;
+}) {
+  const choose = (kind: string) => {
+    if (kind === "custom") return onChange({ replyVoice: source.kind === "custom" ? source : { kind, endpoint: noEndpoint, voice: "" } });
+    onChange({ replyVoice: kind === "this-mac" ? { kind } : { kind: "off" } });
+  };
+  return (
+    <fieldset className="voice-service">
+      <legend>Spoken replies</legend>
+      <div className="sending-settings">
+        <label data-hint={hints.replyVoice}>
+          Reads replies aloud
+          <select value={source.kind} onChange={(event) => choose(event.target.value)}>
+            <option value="off">Off</option>
+            <ThisMacOption engine={engine} usable={engine.onDisk.includes(SPOKEN_VOICE.id)} />
+            <option value="custom">With a server of your own</option>
+          </select>
+        </label>
+        {source.kind !== "off" && (
+          <label data-hint={hints.replyLanguage}>
+            Language
+            <select value={language} onChange={(event) => onChange({ replyLanguage: event.target.value as ReplyLanguage })}>
+              {Object.entries(replyLanguageNames).map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {source.kind === "custom" && (
+          <label data-hint={hints.replyVoiceName}>
+            Voice
+            <input type="text" value={source.voice} placeholder="alloy" spellCheck={false} onChange={(event) => onChange({ replyVoice: { ...source, voice: event.target.value } })} />
+          </label>
+        )}
+      </div>
+      {source.kind === "custom" && <EndpointFields endpoint={source.endpoint} modelPlaceholder="gpt-4o-mini-tts" onChange={(endpoint) => onChange({ replyVoice: { ...source, endpoint } })} />}
+      {source.kind !== "off" && !voiceModelSet && <p className="hint">Spoken replies need a voice model, which sums each reply up. Set one above.</p>}
+    </fieldset>
+  );
+}
+
 /** Kept by the host, so every browser and the phone dictate the same way; saved together, as an address and its key belong together. */
 export function VoiceSettings({ settings, engine, profiles }: { settings: Settings; engine: VoiceEngineStatus; profiles: Profile[] }) {
   const [draft, setDraft] = useState(settings);
@@ -169,8 +234,8 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
     <>
       <h3>Voice</h3>
       <p className="hint">
-        Speak to agents: Mirador turns what you say into text in the message box, in English if you like, before anything is sent. Kept by the host for every browser and
-        the phone.
+        Speak to agents: Mirador turns what you say into text in the message box, in English if you like, before anything is sent, and can read short summaries of their
+        replies aloud. Kept by the host for every browser and the phone.
       </p>
       <VoiceEngineSetupPanel
         engine={engine}
@@ -179,6 +244,7 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
       />
       <RecognitionSettings source={draft.recognition} engine={engine} onChange={(recognition) => change({ recognition })} />
       <VoiceModelSettings source={draft.voiceModel} engine={engine} profiles={profiles} onChange={(voiceModel) => change({ voiceModel })} />
+      <ReplyVoiceSettings source={draft.replyVoice} language={draft.replyLanguage} engine={engine} voiceModelSet={draft.voiceModel.kind !== "off"} onChange={change} />
       <div className="sending-settings">
         <label data-hint={hints.voiceLanguage}>
           You speak

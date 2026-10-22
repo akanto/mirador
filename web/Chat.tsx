@@ -26,7 +26,7 @@ import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.
 import { adjacentPlaceholder, placeholdersIn, type TextRange } from "../shared/prompt-templates.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
-import type { VoiceSettings } from "../shared/voice.ts";
+import { speaksReplies, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { parseAnsi, plainTextOf } from "./ansi.ts";
 import { harnessSteers, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
@@ -50,6 +50,8 @@ import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
 import { MarkdownText } from "./Markdown.tsx";
+import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
+import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
 import { useMentionMenu } from "./MentionMenu.tsx";
@@ -842,17 +844,20 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
     case "agent": {
       const refused = harness === "claude" ? refusedPanelCommand(block.text) : null;
       return (
-        <div className="message agent">
-          <MarkdownText text={block.text} conversationId={conversationId} />
-          <MessageImages conversationId={conversationId} carried={block.images} />
-          {refused && (
-            <div className="terminal-command">
-              <button type="button" data-hint={hints.terminalCommand} onClick={() => requestPanelCommand(conversationId, `/${refused}`)}>
-                Open a terminal tab
-              </button>
-            </div>
-          )}
-        </div>
+        <>
+          <div className="message agent">
+            <MarkdownText text={block.text} conversationId={conversationId} />
+            <MessageImages conversationId={conversationId} carried={block.images} />
+            {refused && (
+              <div className="terminal-command">
+                <button type="button" data-hint={hints.terminalCommand} onClick={() => requestPanelCommand(conversationId, `/${refused}`)}>
+                  Open a terminal tab
+                </button>
+              </div>
+            )}
+          </div>
+          <ReadAloud conversationId={conversationId} replyKey={block.key} reply={block.text} />
+        </>
       );
     }
     case "thought":
@@ -1524,6 +1529,9 @@ function Composer({
 
   const sendPrompt = (message: string, imageIds: string[], afterTurn: boolean) => {
     if (!connection.send({ type: "conversation.prompt", conversationId: conversation.id, text: message, imageIds, afterTurn })) return;
+    stopReading();
+    if (dictation.takeDictated() && speaksReplies(voiceSettings)) awaitSpokenReply(conversation.id, events);
+    else forgetSpokenReply(conversation.id);
     setText("");
     images.clearAfterSending();
   };
@@ -1809,6 +1817,8 @@ export function ChatPanel({
   onToggleTerminal: () => void;
 }) {
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
+  useEffect(() => readWhenSpokenTurnEnds(conversation.id, open.events, timeline), [timeline]);
+  useEffect(() => () => stopReadingIn(conversation.id), [conversation.id]);
   const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
@@ -1864,60 +1874,62 @@ export function ChatPanel({
           <CanvasShowsEdits.Provider value={canvasShowsEdits}>
             <ConversationBusy.Provider value={busy}>
               <UserPicture.Provider value={userPicture}>
-                <ChatHeader
-                  conversation={conversation}
-                  profiles={profiles}
-                  canvasVisible={canvasVisible}
-                  onToggleCanvas={onToggleCanvas}
-                  terminalVisible={terminalVisible}
-                  onToggleTerminal={onToggleTerminal}
-                  runningSubagents={runningSubagents.length}
-                  onShowRunningSubagent={showRunningSubagent}
-                  onFind={find.open}
-                  begun={begun}
-                />
-                {find.query !== null && <FindBar find={find} />}
-                <MatchesFind.Provider value={find.matches}>
-                  <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
-                    {!open.loaded && <div className="notice-line">Loading…</div>}
-                    {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
-                    {(firstLoaded > 0 || earlier.available) && (
-                      <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
-                        {earlierEntriesLabel(firstLoaded, earlier)}
-                      </button>
-                    )}
-                    {timeline.slice(firstLoaded).map((block, offset) => (
-                      <TimestampedEntry
-                        key={block.key}
-                        block={block}
-                        startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
-                        harness={conversation.harness}
-                        conversationId={conversation.id}
-                      />
-                    ))}
-                    {conversation.status === "running" && <div className="working">Working…</div>}
-                  </div>
-                </MatchesFind.Provider>
-                {approvalsOutOfView.length > 0 && <ApprovalsWaiting approvals={approvalsOutOfView} timeline={timeline} onShow={showApproval} />}
-                {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
-                {conversation.openInTerminal && (
-                  <div className="terminal-warning" role="status">
-                    This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
-                    there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
-                    it there first.
-                  </div>
-                )}
-                <Composer
-                  conversation={conversation}
-                  events={open.events}
-                  holdsEarliest={!open.hasEarlier}
-                  pendingCommands={pendingCommands}
-                  promptTemplates={promptTemplates}
-                  voiceSettings={voiceSettings}
-                  voiceEngine={voiceEngine}
-                  onManageTemplates={onManageTemplates}
-                />
-                <Statusline conversation={conversation} profiles={profiles} />
+                <ReadsRepliesAloud.Provider value={speaksReplies(voiceSettings)}>
+                  <ChatHeader
+                    conversation={conversation}
+                    profiles={profiles}
+                    canvasVisible={canvasVisible}
+                    onToggleCanvas={onToggleCanvas}
+                    terminalVisible={terminalVisible}
+                    onToggleTerminal={onToggleTerminal}
+                    runningSubagents={runningSubagents.length}
+                    onShowRunningSubagent={showRunningSubagent}
+                    onFind={find.open}
+                    begun={begun}
+                  />
+                  {find.query !== null && <FindBar find={find} />}
+                  <MatchesFind.Provider value={find.matches}>
+                    <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
+                      {!open.loaded && <div className="notice-line">Loading…</div>}
+                      {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
+                      {(firstLoaded > 0 || earlier.available) && (
+                        <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
+                          {earlierEntriesLabel(firstLoaded, earlier)}
+                        </button>
+                      )}
+                      {timeline.slice(firstLoaded).map((block, offset) => (
+                        <TimestampedEntry
+                          key={block.key}
+                          block={block}
+                          startsGroup={offset === 0 || startsAuthorGroup(timeline, firstLoaded + offset)}
+                          harness={conversation.harness}
+                          conversationId={conversation.id}
+                        />
+                      ))}
+                      {conversation.status === "running" && <div className="working">Working…</div>}
+                    </div>
+                  </MatchesFind.Provider>
+                  {approvalsOutOfView.length > 0 && <ApprovalsWaiting approvals={approvalsOutOfView} timeline={timeline} onShow={showApproval} />}
+                  {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
+                  {conversation.openInTerminal && (
+                    <div className="terminal-warning" role="status">
+                      This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
+                      there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
+                      it there first.
+                    </div>
+                  )}
+                  <Composer
+                    conversation={conversation}
+                    events={open.events}
+                    holdsEarliest={!open.hasEarlier}
+                    pendingCommands={pendingCommands}
+                    promptTemplates={promptTemplates}
+                    voiceSettings={voiceSettings}
+                    voiceEngine={voiceEngine}
+                    onManageTemplates={onManageTemplates}
+                  />
+                  <Statusline conversation={conversation} profiles={profiles} />
+                </ReadsRepliesAloud.Provider>
               </UserPicture.Provider>
             </ConversationBusy.Provider>
           </CanvasShowsEdits.Provider>

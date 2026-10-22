@@ -1,5 +1,7 @@
 /** The engine's services whose model the user picks; the spoken voice is always Kokoro. */
 export type ThisMacService = "recognition" | "voiceModel";
+/** Speaking replies takes the voice for their language. */
+export type EngineService = ThisMacService | "speaking";
 
 export interface EngineModel {
   id: string;

@@ -1746,6 +1746,52 @@ input.picker-search {
   visibility: visible;
 }
 
+.read-aloud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+}
+
+.read-aloud button {
+  display: inline-flex;
+  padding: 2px 6px;
+  color: var(--muted);
+  /* Not visibility: a hidden button can't take focus, and Tab must reach it. */
+  opacity: 0;
+}
+
+.read-aloud svg {
+  width: calc(14px * var(--font-scale));
+  height: calc(14px * var(--font-scale));
+}
+
+.timeline-entry:hover .read-aloud button,
+.read-aloud button:focus-visible,
+.read-aloud button.reading {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .read-aloud button {
+    opacity: 1;
+  }
+}
+
+.read-aloud button.reading {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.read-aloud button.summing-up {
+  animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
+}
+
+.read-aloud-problem {
+  color: var(--danger);
+  font-size: calc(12px * var(--font-scale));
+}
+
 .modal.revert {
   width: min(560px, 100%);
 }

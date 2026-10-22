@@ -1,12 +1,24 @@
 import type { Profile } from "../../shared/model.ts";
-import { choosableModel, type ThisMacService } from "../../shared/voice-engine-models.ts";
-import { AUTO_LANGUAGE, isEnglish, sameLanguage, type CustomEndpoint, type Dictation, type VoiceModelSource, type VoiceSettings, type VoiceSource } from "../../shared/voice.ts";
+import { choosableModel, type EngineService } from "../../shared/voice-engine-models.ts";
+import {
+  AUTO_LANGUAGE,
+  isEnglish,
+  sameLanguage,
+  thisMacReplyVoice,
+  type CustomEndpoint,
+  type Dictation,
+  type VoiceModelSource,
+  type VoiceSettings,
+  type VoiceSource,
+} from "../../shared/voice.ts";
 import { profileEnvironment } from "../acp/harnesses.ts";
-import { transcribe, type ChatEndpoint, type Transcript } from "./endpoints.ts";
+import { kokoroVoice } from "./engine/catalog.ts";
+import { speak, transcribe, type ChatEndpoint, type Transcript } from "./endpoints.ts";
+import { spokenSummary } from "./reply-summary.ts";
 import { translated } from "./translation.ts";
 
 /** Lends work the endpoint of a service of Mirador's own engine on this Mac with the model, by id, starting it first when it isn't running. */
-export type ThisMac = <T>(service: ThisMacService, model: string, work: (endpoint: CustomEndpoint) => Promise<T>) => Promise<T>;
+export type ThisMac = <T>(service: EngineService, model: string, work: (endpoint: CustomEndpoint) => Promise<T>) => Promise<T>;
 
 /** Voice can't do what was asked as it is set up; Settings → Voice can change that. */
 export class VoiceUnavailable extends Error {}
@@ -73,9 +85,31 @@ export class Voice {
     return transcribe(source.endpoint, clip, language);
   }
 
-  private async inEnglish(source: Exclude<VoiceModelSource, { kind: "off" }>, text: string) {
-    if (source.kind === "this-mac") return this.thisMac("voiceModel", source.model, (endpoint) => translated({ api: "openai", ...endpoint, turnsThinkingOff: true }, text, { spoken: true }));
-    return translated(this.voiceModelEndpoint(source), text, { spoken: true });
+  /** A reply of the agent summed up for reading aloud, a sentence each, in the language replies are spoken in. */
+  async replySummary(reply: string) {
+    const { voiceModel, replyLanguage } = this.settings();
+    if (voiceModel.kind === "off") throw new VoiceUnavailable("Spoken replies need a voice model. Settings → Voice can set one.");
+    return this.withVoiceModel(voiceModel, (endpoint) => spokenSummary(endpoint, reply, replyLanguage));
+  }
+
+  /** A sentence of a reply's summary, spoken as WAV. */
+  async spoken(sentence: string) {
+    const { replyVoice, replyLanguage } = this.settings();
+    if (replyVoice.kind === "off") throw new VoiceUnavailable("Spoken replies are off. Settings → Voice can turn them on.");
+    if (replyVoice.kind === "custom") return speak(replyVoice.endpoint, sentence, replyVoice.voice);
+    const model = thisMacReplyVoice(replyLanguage);
+    if (!model) throw new VoiceUnavailable("This Mac speaks replies only in English so far. Settings → Voice can set a server of your own for them.");
+    return this.thisMac("speaking", model, (endpoint) => speak(endpoint, sentence, kokoroVoice(endpoint.model)));
+  }
+
+  private inEnglish(source: Exclude<VoiceModelSource, { kind: "off" }>, text: string) {
+    return this.withVoiceModel(source, (endpoint) => translated(endpoint, text, { spoken: true }));
+  }
+
+  /** This Mac's voice model is asked not to think first, which only slows it down for translating and summing up. */
+  private withVoiceModel<T>(source: Exclude<VoiceModelSource, { kind: "off" }>, work: (endpoint: ChatEndpoint) => Promise<T>) {
+    if (source.kind === "this-mac") return this.thisMac("voiceModel", source.model, (endpoint) => work({ api: "openai", ...endpoint, turnsThinkingOff: true }));
+    return work(this.voiceModelEndpoint(source));
   }
 
   private voiceModelEndpoint(source: Exclude<VoiceModelSource, { kind: "off" | "this-mac" }>): ChatEndpoint {

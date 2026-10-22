@@ -1,9 +1,10 @@
 /**
  * Stands in for the speech engine's Python where there is no MLX: `-m mlx_audio.server` and `-m mlx_lm.server` serve
  * OpenAI-style answers on the port they are given, after FAKE_VOICE_ENGINE_LOAD_MS, and note what they were asked in
- * FAKE_VOICE_ENGINE_LOG.
+ * FAKE_VOICE_ENGINE_LOG. Asked to sum up a reply, the voice model answers two sentences.
  */
 import { appendFileSync } from "node:fs";
+import { toneWav } from "./wav.ts";
 
 const args = process.argv.slice(2);
 const option = (name: string) => args[args.indexOf(name) + 1] ?? "";
@@ -25,10 +26,17 @@ Bun.serve({
       const text = "Futtasd le az e2e teszteket.";
       return Response.json(form.get("response_format") === "verbose_json" ? { text, language: "hu", segments: [] } : { text });
     }
+    if (pathname === "/v1/audio/speech") {
+      const body = (await request.json()) as { model: string; input: string; voice: string; response_format: string };
+      log({ event: "speech", model: body.model, input: body.input, voice: body.voice, responseFormat: body.response_format });
+      return new Response(toneWav(0.5), { headers: { "Content-Type": "audio/wav" } });
+    }
     if (pathname === "/v1/chat/completions") {
-      const body = (await request.json()) as { model: string; chat_template_kwargs?: unknown };
+      const body = (await request.json()) as { model: string; messages: { role: string; content: string }[]; chat_template_kwargs?: unknown };
       log({ event: "chat", model: body.model, chatTemplateKwargs: body.chat_template_kwargs ?? null });
-      return Response.json({ choices: [{ message: { role: "assistant", content: "Run the e2e tests." }, finish_reason: "stop" }] });
+      const summingUp = body.messages[0]!.content.includes("sum up");
+      const content = summingUp ? "The agent ran the end to end tests.\nAll of them passed." : "Run the e2e tests.";
+      return Response.json({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }] });
     }
     return new Response("not found", { status: 404 });
   },

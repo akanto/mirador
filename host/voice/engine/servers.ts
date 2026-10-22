@@ -3,13 +3,19 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import type { EngineServer, EngineServerState } from "../../../shared/voice-engine.ts";
-import { modelName, type ThisMacService } from "../../../shared/voice-engine-models.ts";
+import { modelName, type EngineService } from "../../../shared/voice-engine-models.ts";
 import type { CustomEndpoint } from "../../../shared/voice.ts";
 import { VoiceUnavailable } from "../voice.ts";
+import { kokoroVoice } from "./catalog.ts";
 import type { VoiceEngineInstaller } from "./installer.ts";
 
 const HOST = "127.0.0.1";
-const SERVER_MODULES: Record<EngineServer, string[]> = { speech: ["-m", "mlx_audio.server"], voiceModel: ["-m", "mlx_lm.server"] };
+const SERVERS: EngineServer[] = ["speech", "voiceModel", "speaking"];
+const SERVER_MODULES: Record<EngineServer, string[]> = { speech: ["-m", "mlx_audio.server"], voiceModel: ["-m", "mlx_lm.server"], speaking: ["-m", "mlx_audio.server"] };
+const SERVER_NAMES: Record<EngineServer, string> = { speech: "speech server", voiceModel: "voice model server", speaking: "server speaking replies" };
+const LOG_NAMES: Record<EngineServer, string> = { speech: "voice-speech.log", voiceModel: "voice-model.log", speaking: "voice-speaking.log" };
+/** Speaking replies has a server of its own, so that dictating never waits for Whisper to load again. */
+const SERVER_OF: Record<EngineService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel", speaking: "speaking" };
 const START_TIMEOUT_MS = 180_000;
 const ANSWERING_POLL_MS = 250;
 const STOP_GRACE_MS = 5_000;
@@ -79,8 +85,6 @@ function isStillServing(server: EngineServer, { pid, port }: LeftRunning) {
   return command.includes(` ${SERVER_MODULES[server].join(" ")} `) && command.includes(` --port ${port} `);
 }
 
-const serverOf = (service: ThisMacService): EngineServer => (service === "recognition" ? "speech" : "voiceModel");
-
 const logTail = (path: string) =>
   readFileSync(path, "utf8")
     .trim()
@@ -88,10 +92,10 @@ const logTail = (path: string) =>
     .filter((line) => !line.includes("Warning") && line.trim() !== "")
     .at(-1) ?? "";
 
-/** Runs the engine's two servers: each starts when first used, stops when unused for a while, and stops with the host. */
+/** Runs the engine's servers: each starts when first used, stops when unused for a while, and stops with the host. */
 export class VoiceEngineServers {
   private readonly running = new Map<EngineServer, Running>();
-  private readonly state: Record<EngineServer, EngineServerState> = { speech: "stopped", voiceModel: "stopped" };
+  private readonly state = Object.fromEntries(SERVERS.map((server) => [server, "stopped"])) as Record<EngineServer, EngineServerState>;
 
   constructor(private readonly options: VoiceEngineServersOptions) {
     this.stopLeftFromAnEarlierHost();
@@ -102,9 +106,9 @@ export class VoiceEngineServers {
   }
 
   /** Lends a service's endpoint to `work`, starting its server with the model first; the server doesn't stop for being idle while work goes on. */
-  async use<T>(service: ThisMacService, model: string, work: (endpoint: CustomEndpoint) => Promise<T>): Promise<T> {
+  async use<T>(service: EngineService, model: string, work: (endpoint: CustomEndpoint) => Promise<T>): Promise<T> {
     this.checkInstalled(model);
-    const server = serverOf(service);
+    const server = SERVER_OF[service];
     const running = await this.runningWith(server, model);
     running.inFlight++;
     if (running.idleStop) clearTimeout(running.idleStop);
@@ -147,7 +151,7 @@ export class VoiceEngineServers {
   }
 
   async stopAll() {
-    await Promise.all([this.stop("speech"), this.stop("voiceModel")]);
+    await Promise.all(SERVERS.map((server) => this.stop(server)));
   }
 
   /** For the host's exit, which can't wait for the servers to stop. */
@@ -192,7 +196,7 @@ export class VoiceEngineServers {
 
   private spawn(server: EngineServer, port: number, model: string) {
     const { installer, logsDir } = this.options;
-    const serverArgs = server === "speech" ? [...SERVER_MODULES.speech] : [...SERVER_MODULES.voiceModel, "--model", installer.modelDir(model)];
+    const serverArgs = server === "voiceModel" ? [...SERVER_MODULES.voiceModel, "--model", installer.modelDir(model)] : [...SERVER_MODULES[server]];
     mkdirSync(logsDir, { recursive: true });
     const log = openSync(this.logPath(server), "w");
     const child = Bun.spawn([installer.python, ...serverArgs, "--host", HOST, "--port", String(port)], {
@@ -219,15 +223,16 @@ export class VoiceEngineServers {
     const deadline = Date.now() + (this.options.startTimeoutMs ?? START_TIMEOUT_MS);
     while (!(await this.answers(port))) {
       if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error(`The ${server === "speech" ? "speech" : "voice model"} server on this Mac stopped while starting: ${logTail(this.logPath(server))}`);
+        throw new Error(`The ${SERVER_NAMES[server]} on this Mac stopped while starting: ${logTail(this.logPath(server))}`);
       }
       if (Date.now() > deadline) {
         this.killGroup(child, "SIGKILL");
-        throw new Error(`The ${server === "speech" ? "speech" : "voice model"} server on this Mac didn't start within ${(this.options.startTimeoutMs ?? START_TIMEOUT_MS) / 1000} seconds.`);
+        throw new Error(`The ${SERVER_NAMES[server]} on this Mac didn't start within ${(this.options.startTimeoutMs ?? START_TIMEOUT_MS) / 1000} seconds.`);
       }
       await Bun.sleep(ANSWERING_POLL_MS);
     }
-    if (server === "speech") await this.warmUp(port, model);
+    if (server === "speech") await this.warmUpRecognition(port, model);
+    if (server === "speaking") await this.warmUpSpeaking(port, model);
     return port;
   }
 
@@ -238,12 +243,22 @@ export class VoiceEngineServers {
     );
   }
 
-  private async warmUp(port: number, model: string) {
+  private async warmUpRecognition(port: number, model: string) {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(WARM_UP_CLIP)], { type: "audio/wav" }), "silence.wav");
     form.append("model", this.options.installer.modelDir(model));
     form.append("response_format", "json");
     await fetch(`http://${HOST}:${port}/v1/audio/transcriptions`, { method: "POST", body: form }).catch(() => {});
+  }
+
+  /** A word spoken: mlx-audio loads the voice at the first request, which would otherwise hold up the first reply. */
+  private async warmUpSpeaking(port: number, model: string) {
+    const modelDir = this.options.installer.modelDir(model);
+    await fetch(`http://${HOST}:${port}/v1/audio/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: modelDir, input: "Ready.", voice: kokoroVoice(modelDir), response_format: "wav" }),
+    }).catch(() => {});
   }
 
   private forget(server: EngineServer, running: Running) {
@@ -269,7 +284,7 @@ export class VoiceEngineServers {
 
   /** A host that crashed left its servers running; a pid file names each, and only a process still running that server on its port is stopped. */
   private stopLeftFromAnEarlierHost() {
-    (["speech", "voiceModel"] as const).filter((server) => existsSync(this.pidFile(server))).forEach((server) => {
+    SERVERS.filter((server) => existsSync(this.pidFile(server))).forEach((server) => {
       const left = leftRunning(readFileSync(this.pidFile(server), "utf8"));
       if (left && isStillServing(server, left)) {
         try {
@@ -289,6 +304,6 @@ export class VoiceEngineServers {
   }
 
   private logPath(server: EngineServer) {
-    return join(this.options.logsDir, `voice-${server === "speech" ? "speech" : "model"}.log`);
+    return join(this.options.logsDir, LOG_NAMES[server]);
   }
 }

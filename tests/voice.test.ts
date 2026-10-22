@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import type { Profile } from "../shared/model.ts";
-import { defaultVoiceSettings, thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
+import { defaultVoiceSettings, speaksReplies, thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 import { Store } from "../host/store.ts";
 import { Voice, VoiceUnavailable, type ThisMac } from "../host/voice/voice.ts";
 
@@ -21,6 +21,7 @@ let transcript: Transcript | ((language: string | undefined) => Transcript) = { 
 let translation = "";
 let failure: { status: number; text: string } | null = null;
 let chatChoice: Record<string, unknown> | null = null;
+let sound = new Uint8Array([82, 73, 70, 70]);
 
 const server = Bun.serve({
   port: 0,
@@ -32,6 +33,7 @@ const server = Bun.serve({
     heard.push({ path, authorization: request.headers.get("authorization"), apiKey: request.headers.get("x-api-key"), form: formFields, json });
     if (failure) return new Response(failure.text, { status: failure.status });
     if (path.endsWith("/audio/transcriptions")) return Response.json(typeof transcript === "function" ? transcript(formFields?.language) : transcript);
+    if (path.endsWith("/audio/speech")) return new Response(sound, { headers: { "Content-Type": "audio/wav" } });
     if (path.endsWith("/chat/completions")) {
       return Response.json({ choices: [chatChoice ?? { message: { role: "assistant", content: `<message>${translation}</message>` }, finish_reason: "stop" }] });
     }
@@ -52,6 +54,7 @@ beforeEach(() => {
   heard = [];
   failure = null;
   chatChoice = null;
+  sound = new Uint8Array([82, 73, 70, 70]);
 });
 
 const origin = `http://127.0.0.1:${server.port}`;
@@ -198,6 +201,62 @@ describe("dictation", () => {
   });
 });
 
+describe("spoken replies", () => {
+  const ownReplyVoice = { kind: "custom", endpoint: { url: `${origin}/v1`, apiKey: "voice-key", model: "tts-1" }, voice: "alloy" } as const;
+  const speaking: VoiceSettings = { ...ownServers, replyVoice: ownReplyVoice };
+  const summedUp = (content: string) => (chatChoice = { message: { role: "assistant", content }, finish_reason: "stop" });
+  const instructionsHeard = () => (heard[0]!.json!.messages as { content: string }[])[0]!.content;
+
+  test("the voice model sums a reply up a sentence a line, and a server of the user's own speaks each in its voice", async () => {
+    summedUp("The agent fixed the failing test.\n\n  It asks whether to push.  \n");
+    const voice = voiceWith(speaking);
+    expect(await voice.replySummary("Fixed `parse()` in **host/x.ts**. Push?")).toEqual(["The agent fixed the failing test.", "It asks whether to push."]);
+    expect(instructionsHeard()).toContain("in English");
+    expect((heard[0]!.json!.messages as { content: string }[])[1]!.content).toBe("<reply>Fixed `parse()` in **host/x.ts**. Push?</reply>");
+
+    const spoken = await voice.spoken("It asks whether to push.");
+    expect(spoken.type).toBe("audio/wav");
+    expect(spoken.size).toBe(4);
+    expect(heard[1]).toMatchObject({
+      path: "/v1/audio/speech",
+      authorization: "Bearer voice-key",
+      json: { model: "tts-1", input: "It asks whether to push.", voice: "alloy", response_format: "wav" },
+    });
+  });
+
+  test("replies spoken in Hungarian are summed up in Hungarian, and the tags a model repeats are left out", async () => {
+    summedUp("<reply>Az ügynök kijavította a tesztet.</reply>");
+    expect(await voiceWith({ ...speaking, replyLanguage: "hu" }).replySummary("Fixed the test.")).toEqual(["Az ügynök kijavította a tesztet."]);
+    expect(instructionsHeard()).toContain("in Hungarian");
+  });
+
+  test("this Mac speaks English with Kokoro's voice file, and its voice model sums up without thinking first", async () => {
+    summedUp("The tests passed.");
+    const voice = new Voice(() => ({ ...onThisMac, replyVoice: { kind: "this-mac" } }), () => undefined, thisMacEngine);
+    await voice.replySummary("All green.");
+    expect(heard[0]!.json).toMatchObject({ model: "/voice/models/gemma-4-12b", chat_template_kwargs: { enable_thinking: false } });
+    await voice.spoken("The tests passed.");
+    expect(heard[1]!.json).toMatchObject({ model: "/voice/models/kokoro-82m", voice: "/voice/models/kokoro-82m/voices/am_fenrir.safetensors" });
+  });
+
+  test("without a voice model, with the reply voice off, or in Hungarian on this Mac, each says what to change", async () => {
+    const unavailable = (promise: Promise<unknown>) => expect(promise).rejects.toBeInstanceOf(VoiceUnavailable);
+    await unavailable(voiceWith({ ...speaking, voiceModel: { kind: "off" } }).replySummary("Done."));
+    await expect(voiceWith({ ...speaking, voiceModel: { kind: "off" } }).replySummary("Done.")).rejects.toThrow("Spoken replies need a voice model. Settings → Voice can set one.");
+    await expect(voiceWith(ownServers).spoken("Done.")).rejects.toThrow("Spoken replies are off. Settings → Voice can turn them on.");
+    await unavailable(new Voice(() => ({ ...onThisMac, replyVoice: { kind: "this-mac" }, replyLanguage: "hu" }), () => undefined, thisMacEngine).spoken("Kész."));
+    expect(heard).toEqual([]);
+  });
+
+  test("a reply voice server's error comes back with what it said, and an answer without sound says so", async () => {
+    failure = { status: 400, text: "unknown voice" };
+    await expect(voiceWith(speaking).spoken("Done.")).rejects.toThrow("The reply voice server answered 400: unknown voice");
+    failure = null;
+    sound = new Uint8Array();
+    await expect(voiceWith(speaking).spoken("Done.")).rejects.toThrow("The reply voice server answered without sound.");
+  });
+});
+
 describe("voice settings", () => {
   test("endpoints need an http address and a model, and the language a code", () => {
     expect(voiceSettingsProblem(ownServers)).toBeNull();
@@ -217,6 +276,24 @@ describe("voice settings", () => {
     expect(thisMacModelsInUse(ownServers)).toEqual([]);
   });
 
+  test("replies are spoken in English or Hungarian, by this Mac or a server of the user's own that names one of its voices", () => {
+    const ownReplyVoice = (voice: string, url = "http://box/v1"): VoiceSettings => ({ ...ownServers, replyVoice: { kind: "custom", endpoint: { url, apiKey: "", model: "tts-1" }, voice } });
+    expect(voiceSettingsProblem(ownReplyVoice("alloy"))).toBeNull();
+    expect(voiceSettingsProblem({ ...ownReplyVoice("alloy"), replyLanguage: "hu" })).toBeNull();
+    expect(voiceSettingsProblem(ownReplyVoice(" "))).toBe("The reply voice needs the name of one of the server's voices.");
+    expect(voiceSettingsProblem(ownReplyVoice("alloy", "box"))).toBe("The reply voice address must be an http or https URL.");
+    expect(voiceSettingsProblem({ ...ownServers, replyLanguage: "de" } as unknown as VoiceSettings)).toBe("Replies are spoken in English or Hungarian.");
+    const spokenOnThisMac: VoiceSettings = { ...onThisMac, replyVoice: { kind: "this-mac" } };
+    expect(voiceSettingsProblem(spokenOnThisMac)).toBeNull();
+    expect(voiceSettingsProblem({ ...spokenOnThisMac, replyLanguage: "hu" })).toBe("This Mac speaks replies only in English so far.");
+    const { replyVoice: _, ...fromAnOlderPage } = ownServers;
+    expect(voiceSettingsProblem(fromAnOlderPage as VoiceSettings)).toBe("The reply voice is off, this Mac's or a server of your own.");
+    expect(thisMacModelsInUse(spokenOnThisMac)).toEqual(["whisper-large-v3-turbo", "gemma-4-12b", "kokoro-82m"]);
+    expect(speaksReplies(spokenOnThisMac)).toBe(true);
+    expect(speaksReplies({ ...spokenOnThisMac, voiceModel: { kind: "off" } }), "replies are spoken as the voice model sums them up").toBe(false);
+    expect(speaksReplies(onThisMac)).toBe(false);
+  });
+
   test("this Mac's engine unloads after a whole number of minutes, up to a day", () => {
     expect(voiceSettingsProblem({ ...ownServers, engineIdleMinutes: 1_440 })).toBeNull();
     [0, 1_441, 2.5, Number.NaN].forEach((engineIdleMinutes) =>
@@ -228,6 +305,8 @@ describe("voice settings", () => {
     const withoutKeys = voiceSettingsWithoutKeys(ownServers);
     expect(withoutKeys.recognition).toEqual({ kind: "custom", endpoint: { url: `${origin}/v1/`, apiKey: "", model: "whisper-turbo" } });
     expect(withoutKeys.voiceModel).toEqual({ kind: "custom", endpoint: { url: `${origin}/v1`, apiKey: "", model: "gemma" }, turnsThinkingOff: false });
+    const replyVoice = { kind: "custom", endpoint: { url: "http://box/v1", apiKey: "voice-key", model: "tts-1" }, voice: "alloy" } as const;
+    expect(voiceSettingsWithoutKeys({ ...ownServers, replyVoice }).replyVoice).toEqual({ ...replyVoice, endpoint: { ...replyVoice.endpoint, apiKey: "" } });
   });
 
   test("the host keeps them, starting with voice off", () => {
@@ -238,6 +317,9 @@ describe("voice settings", () => {
     const { engineIdleMinutes: _, ...savedBeforeTheIdleTime } = ownServers;
     store.setVoiceSettings(savedBeforeTheIdleTime as VoiceSettings);
     expect(store.voiceSettings().engineIdleMinutes).toBe(30);
+    const { replyVoice: _voice, replyLanguage: _language, ...savedBeforeSpokenReplies } = ownServers;
+    store.setVoiceSettings(savedBeforeSpokenReplies as VoiceSettings);
+    expect(store.voiceSettings()).toMatchObject({ replyVoice: { kind: "off" }, replyLanguage: "en" });
   });
 
   test("settings saved before this Mac's models could be chosen run the first ones", () => {
