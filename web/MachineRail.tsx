@@ -181,7 +181,7 @@ function MachineFrame({
       {...colorAttributes(striped ? machine.color : null)}
       title={machine.name}
       src={address}
-      allow="clipboard-read; clipboard-write"
+      allow="clipboard-read; clipboard-write; microphone"
     />
   );
 }
