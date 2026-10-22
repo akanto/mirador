@@ -220,6 +220,42 @@ test("a replay after clearing a terminal switches on again what the cleared outp
   expect(leadingSwitches(history)).toContain(cursorKeysOn);
 });
 
+/** A colour whose sequence has a line break inside, which xterm.js carries out without ending the sequence: clearing cuts it there. */
+const printingAColourWithALineBreakInside = shell.runningBun("process.stdout.write('\\x1b[3\\n1mred-' + (2+3))");
+const colourWhole = "\x1b[3\r\n1mred-5";
+
+/** Windows' console carries a program's sequences out itself and passes on its own, so none reaches the host cut by a line break. */
+const passesSequencesOnAsWritten = process.platform !== "win32";
+
+test.if(passesSequencesOnAsWritten)("a replay after clearing a terminal in the middle of a sequence reads the sequence whole, not its rest as text", async () => {
+  const browser = fakeBrowser();
+  terminals.attach(browser.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  typing(terminalId, printingAColourWithALineBreakInside);
+  await outputContaining(browser.received, "red-5");
+
+  terminals.clear(terminalId);
+  terminals.replay(browser.socket, terminalId);
+  expect(replayed(browser.received, terminalId)).toContain(colourWhole);
+});
+
+test.if(passesSequencesOnAsWritten)("output kept over a restart comes back with the start of the sequence its scrollback was cut in", async () => {
+  const before = fakeBrowser();
+  terminals.attach(before.socket, "c1");
+  const { terminalId } = terminals.open("c1", 80, 24);
+  typing(terminalId, printingAColourWithALineBreakInside);
+  await outputContaining(before.received, "red-5");
+  terminals.clear(terminalId);
+
+  await restartHost();
+  const after = fakeBrowser();
+  terminals.attach(after.socket, "c1");
+  terminals.replay(after.socket, terminalId);
+  const history = replayed(after.received, terminalId);
+  expect(history).toContain(colourWhole);
+  expect(history.indexOf(RESTARTED_NOTE)).toBeGreaterThan(history.indexOf(colourWhole));
+}, 15_000);
+
 test("new tabs are named after the shell with the lowest free number, and a tab splits into at most four terminals", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");

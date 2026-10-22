@@ -9,7 +9,7 @@ import { isConsoleTitleOf, programName, terminalShell } from "./command-shell.ts
 import { hostEnvironment } from "./current-path.ts";
 import type { BrowserSocket, Hub } from "./hub.ts";
 import type { Store } from "./store.ts";
-import { SwitchedModes } from "./terminal-modes.ts";
+import { TrimmedOutput } from "./trimmed-output.ts";
 import { childProgramNames, killProcessTree } from "./windows-processes.ts";
 
 const SCROLLBACK_CHARACTERS = 256 * 1024;
@@ -54,14 +54,16 @@ interface Shell {
   child: Subprocess;
   scrollback: string[];
   scrollbackLength: number;
-  /** What the output the scrollback no longer holds switched, for a replay to switch again ahead of it. */
-  modesBeforeScrollback: SwitchedModes;
+  trimmed: TrimmedOutput;
   title: string | null;
   titleCarry: string;
   program: string;
   programKey: string | undefined;
   saved: boolean;
 }
+
+/** What reattaching windows are sent, and the store keeps: the scrollback, led by what its trimmed output left it needing. */
+const replayedOutput = (shell: Shell) => shell.trimmed.lead + shell.scrollback.join("");
 
 /** A program to run in a terminal tab of its own instead of the login shell; without an environment, it gets the shell's. */
 export interface TerminalProgram {
@@ -159,7 +161,7 @@ export class TerminalService {
 
   replay(socket: BrowserSocket, terminalId: string) {
     const shell = this.shells.get(terminalId);
-    if (shell) this.hub.send(socket, { type: "terminal.replayed", terminalId, data: shell.modesBeforeScrollback.switches + shell.scrollback.join("") });
+    if (shell) this.hub.send(socket, { type: "terminal.replayed", terminalId, data: replayedOutput(shell) });
   }
 
   /** Starts a shell in a new tab, or beside or below the terminal `split` names. */
@@ -203,7 +205,7 @@ export class TerminalService {
     if (!shell) return;
     const output = shell.scrollback.join("");
     const cursorLine = output.split("\n").at(-1) ?? "";
-    shell.modesBeforeScrollback.read(output.slice(0, output.length - cursorLine.length));
+    shell.trimmed.read(output.slice(0, output.length - cursorLine.length));
     shell.scrollback = [cursorLine];
     shell.scrollbackLength = cursorLine.length;
     if (shell.saved) this.saveScrollbackNow(shell);
@@ -315,13 +317,13 @@ export class TerminalService {
   private saveScrollback() {
     clearTimeout(this.scrollbackSave);
     this.scrollbackSave = undefined;
-    this.unsavedScrollback.forEach((shell) => this.store.setTerminalScrollback(shell.id, shell.scrollback.join("")));
+    this.unsavedScrollback.forEach((shell) => this.store.setTerminalScrollback(shell.id, replayedOutput(shell)));
     this.unsavedScrollback.clear();
   }
 
   private saveScrollbackNow(shell: Shell) {
     this.unsavedScrollback.delete(shell);
-    this.store.setTerminalScrollback(shell.id, shell.scrollback.join(""));
+    this.store.setTerminalScrollback(shell.id, replayedOutput(shell));
   }
 
   private splittableTabOf(terminalId: string) {
@@ -352,7 +354,7 @@ export class TerminalService {
       child: undefined!,
       scrollback: restarting ? linesOf(restarting.scrollback) : [],
       scrollbackLength: restarting?.scrollback.length ?? 0,
-      modesBeforeScrollback: new SwitchedModes(),
+      trimmed: new TrimmedOutput(),
       title: null,
       titleCarry: "",
       program: command[0]!,
@@ -380,7 +382,7 @@ export class TerminalService {
     while (shell.scrollbackLength > SCROLLBACK_CHARACTERS && shell.scrollback.length > 1) {
       const oldest = shell.scrollback.shift()!;
       shell.scrollbackLength -= oldest.length;
-      shell.modesBeforeScrollback.read(oldest);
+      shell.trimmed.read(oldest);
     }
     if (shell.saved && !this.stopping) this.scrollbackChanged(shell);
     this.publish(shell.conversationId, { type: "terminal.output", terminalId: shell.id, data: text });

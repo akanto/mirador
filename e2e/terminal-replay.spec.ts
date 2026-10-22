@@ -137,3 +137,31 @@ test("a full-screen program's arrow keys still reach it after its terminal repla
   await expect(screenOf(page, 0)).toContainText("^[OA");
   await expect(screenOf(page, 0)).not.toContainText("^[[A");
 });
+
+test.describe("on macOS", () => {
+  test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" });
+
+  test("on macOS, a colour ⌘K cleared in the middle of its sequence comes back whole after a replay, not as text", async ({ page }) => {
+    test.skip(process.platform === "win32", "Windows' console keeps the cleared lines and paints them again at the reload's resize (vcs-pgm.44)");
+    await signIn(page, host);
+    const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+    await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+    if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+    await startConversation(page);
+    await page.getByRole("button", { name: "Show terminal" }).click();
+    await expect(screenOf(page, 0)).toContainText(promptMark);
+    const terminal = page.locator(".terminal-pane .terminal-splits.shown .xterm");
+    const redText = screenOf(page, 0).locator(".xterm-fg-1", { hasText: "red-text" });
+
+    await terminal.click();
+    await page.keyboard.type(`${printRaw("\x1b[3\n1mred-text")}\n`);
+    await expect(redText).toBeVisible();
+    await page.keyboard.press("Meta+K");
+    await expect(screenOf(page, 0)).not.toContainText(printRaw("\x1b[3\n1mred-text"));
+
+    await hideTerminalPane(page);
+    await terminalToggle(page, "Show terminal").click();
+    await expect(redText).toBeVisible();
+    await expect(screenOf(page, 0)).not.toContainText("1mred-text");
+  });
+});
