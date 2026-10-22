@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { choosableModels, SPOKEN_VOICE, type ChoosableModel, type EngineModel } from "../../../shared/voice-engine-models.ts";
+import type { SpeakingVoice } from "../endpoints.ts";
 
 /** What setting up voice on this Mac installs, pinned so that every Mac gets the same engine. */
 export interface EngineSources {
@@ -33,4 +34,16 @@ export const isUnusedModelFile = (path: string) => path.endsWith(".md") || path 
 export const modelFolderName = ({ repo }: EngineModel) => repo.split("/").at(-1)!;
 
 /** As a file: mlx-audio looks a voice given by name up on Hugging Face, which the engine never reaches. */
-export const kokoroVoice = (modelDir: string) => join(modelDir, "voices", "am_fenrir.safetensors");
+const kokoroVoice = (modelDir: string) => join(modelDir, "voices", "am_fenrir.safetensors");
+
+/** The female voice the owner chose by ear, which OmniVoice made itself; asked only for a female voice, it makes up a new one each time. */
+const HUNGARIAN_VOICE_CLIP = {
+  path: join(import.meta.dir, "hungarian-voice.wav"),
+  text: "Lefuttattam az e2e teszteket a Fedora gépen. Kettő elbukott, a beállítások oldal és a hangfelvétel teszt, a többi rendben van.",
+};
+
+/** How this Mac's engine speaks with the reply voice, by id: Kokoro in one of its voices, OmniVoice in Hungarian, copying the clip's voice. */
+export function speakingVoice(model: string, modelDir: string): SpeakingVoice {
+  if (model === SPOKEN_VOICE.id) return { voice: kokoroVoice(modelDir) };
+  return { lang_code: "hu", ref_audio: HUNGARIAN_VOICE_CLIP.path, ref_text: HUNGARIAN_VOICE_CLIP.text };
+}

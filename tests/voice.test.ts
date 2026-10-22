@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import type { Profile } from "../shared/model.ts";
 import { defaultVoiceSettings, speaksReplies, thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 import { Store } from "../host/store.ts";
@@ -239,12 +240,20 @@ describe("spoken replies", () => {
     expect(heard[1]!.json).toMatchObject({ model: "/voice/models/kokoro-82m", voice: "/voice/models/kokoro-82m/voices/am_fenrir.safetensors" });
   });
 
-  test("without a voice model, with the reply voice off, or in Hungarian on this Mac, each says what to change", async () => {
+  test("this Mac speaks Hungarian with OmniVoice, copying the voice of a clip that ships with Mirador", async () => {
+    await new Voice(() => ({ ...onThisMac, replyVoice: { kind: "this-mac" }, replyLanguage: "hu" }), () => undefined, thisMacEngine).spoken("Kész a javítás.");
+    const asked = heard[0]!.json as { voice?: string; ref_audio: string; ref_text: string };
+    expect(asked).toMatchObject({ model: "/voice/models/omnivoice", input: "Kész a javítás.", lang_code: "hu", response_format: "wav" });
+    expect(asked.voice).toBeUndefined();
+    expect(existsSync(asked.ref_audio)).toBe(true);
+    expect(asked.ref_text).toStartWith("Lefuttattam");
+  });
+
+  test("without a voice model, or with the reply voice off, each says what to change", async () => {
     const unavailable = (promise: Promise<unknown>) => expect(promise).rejects.toBeInstanceOf(VoiceUnavailable);
     await unavailable(voiceWith({ ...speaking, voiceModel: { kind: "off" } }).replySummary("Done."));
     await expect(voiceWith({ ...speaking, voiceModel: { kind: "off" } }).replySummary("Done.")).rejects.toThrow("Spoken replies need a voice model. Settings → Voice can set one.");
     await expect(voiceWith(ownServers).spoken("Done.")).rejects.toThrow("Spoken replies are off. Settings → Voice can turn them on.");
-    await unavailable(new Voice(() => ({ ...onThisMac, replyVoice: { kind: "this-mac" }, replyLanguage: "hu" }), () => undefined, thisMacEngine).spoken("Kész."));
     expect(heard).toEqual([]);
   });
 
@@ -285,10 +294,11 @@ describe("voice settings", () => {
     expect(voiceSettingsProblem({ ...ownServers, replyLanguage: "de" } as unknown as VoiceSettings)).toBe("Replies are spoken in English or Hungarian.");
     const spokenOnThisMac: VoiceSettings = { ...onThisMac, replyVoice: { kind: "this-mac" } };
     expect(voiceSettingsProblem(spokenOnThisMac)).toBeNull();
-    expect(voiceSettingsProblem({ ...spokenOnThisMac, replyLanguage: "hu" })).toBe("This Mac speaks replies only in English so far.");
+    expect(voiceSettingsProblem({ ...spokenOnThisMac, replyLanguage: "hu" })).toBeNull();
     const { replyVoice: _, ...fromAnOlderPage } = ownServers;
     expect(voiceSettingsProblem(fromAnOlderPage as VoiceSettings)).toBe("The reply voice is off, this Mac's or a server of your own.");
     expect(thisMacModelsInUse(spokenOnThisMac)).toEqual(["whisper-large-v3-turbo", "gemma-4-12b", "kokoro-82m"]);
+    expect(thisMacModelsInUse({ ...spokenOnThisMac, replyLanguage: "hu" })).toEqual(["whisper-large-v3-turbo", "gemma-4-12b", "omnivoice"]);
     expect(speaksReplies(spokenOnThisMac)).toBe(true);
     expect(speaksReplies({ ...spokenOnThisMac, voiceModel: { kind: "off" } }), "replies are spoken as the voice model sums them up").toBe(false);
     expect(speaksReplies(onThisMac)).toBe(false);

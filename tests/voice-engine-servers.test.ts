@@ -15,6 +15,7 @@ interface Logged {
   event: string;
   model?: string;
   responseFormat?: string;
+  refAudio?: string;
 }
 
 let root = "";
@@ -75,8 +76,9 @@ const WHISPER = "whisper-large-v3-turbo";
 const GEMMA = "gemma-4-26b-a4b";
 const SMALL_GEMMA = "gemma-4-12b";
 const KOKORO = "kokoro-82m";
+const OMNIVOICE = "omnivoice";
 
-function engineServers({ python = fakePython(), installed = [KOKORO, WHISPER, GEMMA, SMALL_GEMMA], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[] } = {}) {
+function engineServers({ python = fakePython(), installed = [KOKORO, OMNIVOICE, WHISPER, GEMMA, SMALL_GEMMA], ...options }: Partial<VoiceEngineServersOptions> & { python?: string; installed?: string[] } = {}) {
   const states: Record<string, EngineServerState>[] = [];
   servers = new VoiceEngineServers({
     installer: { python, modelDir: (id) => join(root, "models", id), isInstalled: (id) => installed.includes(id), isSetUp: () => installed.length > 0 },
@@ -147,7 +149,7 @@ describe("the engine's servers", () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers();
     await servers.use("recognition", WHISPER, async () => {});
-    const sound = await servers.use("speaking", KOKORO, (endpoint) => speak(endpoint, "The tests passed.", "af_heart"));
+    const sound = await servers.use("speaking", KOKORO, (endpoint) => speak(endpoint, "The tests passed.", { voice: "af_heart" }));
     expect(sound.type).toBe("audio/wav");
     expect(startsOf("mlx_audio.server")).toHaveLength(2);
     expect(servers.states()).toEqual({ speech: "ready", voiceModel: "stopped", speaking: "ready" });
@@ -158,6 +160,18 @@ describe("the engine's servers", () => {
     ]);
     expect(existsSync(join(root, "logs", "voice-speaking.log"))).toBe(true);
     expect(existsSync(join(root, "voice", "run", "speaking.pid"))).toBe(true);
+  });
+
+  test("speak Hungarian replies with OmniVoice instead of Kokoro, warmed up copying the voice of its clip", async () => {
+    root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
+    const { servers } = engineServers();
+    await servers.use("speaking", KOKORO, async () => {});
+    await servers.use("speaking", OMNIVOICE, async () => {});
+    expect(startsOf("mlx_audio.server")).toHaveLength(2);
+    expect(servers.servedModels()).toEqual([OMNIVOICE]);
+    const warmUp = logged().filter((entry) => entry.event === "speech").at(-1)!;
+    expect(warmUp).toMatchObject({ model: join(root, "models", OMNIVOICE), input: "Ready.", langCode: "hu", refText: expect.stringContaining("Fedora") });
+    expect(existsSync(warmUp.refAudio!)).toBe(true);
   });
 
   test("stop once unused for the idle time, but not while work goes on", async () => {

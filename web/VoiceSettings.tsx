@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../shared/model.ts";
-import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { modelsFor, SPOKEN_VOICE, type ThisMacService } from "../shared/voice-engine-models.ts";
+import { gigabytes, type VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { choosableModel, fitsMemory, memoryNeededGb, modelsFor, SPOKEN_VOICE, type ThisMacService } from "../shared/voice-engine-models.ts";
 import {
   AUTO_LANGUAGE,
   isEnglish,
   thisMacModelsInUse,
+  thisMacReplyVoice,
   type CustomEndpoint,
   type ReplyLanguage,
   type ReplyVoiceSource,
@@ -16,7 +17,7 @@ import {
 import { hints } from "./hints.ts";
 import { saveSetting } from "./saved-setting.ts";
 import { modelWithQuality } from "./voice-models.ts";
-import { VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
+import { setUpModels, VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
 
 /** Languages Whisper recognizes well, as codes it takes. */
 const spokenLanguages = ["en", "hu", "de", "fr", "es", "it", "pt", "nl", "pl", "cs", "sk", "ro", "uk", "ru", "sv", "da", "fi", "no", "el", "tr", "ja", "zh", "ko", "hi", "ar", "he"];
@@ -165,6 +166,26 @@ function VoiceModelSettings({ source, engine, profiles, onChange }: { source: Vo
 
 const replyLanguageNames: Record<ReplyLanguage, string> = { en: "English", hu: "Hungarian" };
 
+/** This Mac's voice for the reply language, when it isn't on this Mac yet: what it takes, and its download when it fits. */
+function MissingReplyVoice({ language, engine }: { language: ReplyLanguage; engine: VoiceEngineStatus }) {
+  const voice = choosableModel(thisMacReplyVoice(language));
+  if (!voice || engine.onDisk.includes(voice.id)) return null;
+  const needs = `${replyLanguageNames[language]} replies on this Mac need ${voice.name}`;
+  if (!fitsMemory(voice, engine.memoryBytes)) {
+    return <p className="hint">{`${needs}, which needs a Mac with ${memoryNeededGb(voice)} GB of memory. A server of your own can speak them.`}</p>;
+  }
+  return (
+    <div className="sending-settings">
+      <span className="hint">{`${needs}, a ${gigabytes(voice.bytes)} download${voice.nonCommercial ? " for non-commercial use only" : ""}.`}</span>
+      {engine.setup.state === "set-up" && (
+        <button type="button" onClick={() => setUpModels([voice.id])}>
+          Download {voice.name}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ReplyVoiceSettings({
   source,
   language,
@@ -213,6 +234,7 @@ function ReplyVoiceSettings({
           </label>
         )}
       </div>
+      {source.kind === "this-mac" && <MissingReplyVoice language={language} engine={engine} />}
       {source.kind === "custom" && <EndpointFields endpoint={source.endpoint} modelPlaceholder="gpt-4o-mini-tts" onChange={(endpoint) => onChange({ replyVoice: { ...source, endpoint } })} />}
       {source.kind !== "off" && !voiceModelSet && <p className="hint">Spoken replies need a voice model, which sums each reply up. Set one above.</p>}
     </fieldset>

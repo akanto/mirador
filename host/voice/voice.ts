@@ -12,7 +12,7 @@ import {
   type VoiceSource,
 } from "../../shared/voice.ts";
 import { profileEnvironment } from "../acp/harnesses.ts";
-import { kokoroVoice } from "./engine/catalog.ts";
+import { speakingVoice } from "./engine/catalog.ts";
 import { speak, transcribe, type ChatEndpoint, type Transcript } from "./endpoints.ts";
 import { spokenSummary } from "./reply-summary.ts";
 import { translated } from "./translation.ts";
@@ -96,10 +96,9 @@ export class Voice {
   async spoken(sentence: string) {
     const { replyVoice, replyLanguage } = this.settings();
     if (replyVoice.kind === "off") throw new VoiceUnavailable("Spoken replies are off. Settings → Voice can turn them on.");
-    if (replyVoice.kind === "custom") return speak(replyVoice.endpoint, sentence, replyVoice.voice);
+    if (replyVoice.kind === "custom") return speak(replyVoice.endpoint, sentence, { voice: replyVoice.voice });
     const model = thisMacReplyVoice(replyLanguage);
-    if (!model) throw new VoiceUnavailable("This Mac speaks replies only in English so far. Settings → Voice can set a server of your own for them.");
-    return this.thisMac("speaking", model, (endpoint) => speak(endpoint, sentence, kokoroVoice(endpoint.model)));
+    return this.thisMac("speaking", model, (endpoint) => speak(endpoint, sentence, speakingVoice(model, endpoint.model)));
   }
 
   private inEnglish(source: Exclude<VoiceModelSource, { kind: "off" }>, text: string) {

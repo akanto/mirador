@@ -27,8 +27,8 @@ Bun.serve({
       return Response.json(form.get("response_format") === "verbose_json" ? { text, language: "hu", segments: [] } : { text });
     }
     if (pathname === "/v1/audio/speech") {
-      const body = (await request.json()) as { model: string; input: string; voice: string; response_format: string };
-      log({ event: "speech", model: body.model, input: body.input, voice: body.voice, responseFormat: body.response_format });
+      const body = (await request.json()) as { model: string; input: string; voice?: string; lang_code?: string; ref_audio?: string; ref_text?: string; response_format: string };
+      log({ event: "speech", model: body.model, input: body.input, voice: body.voice, langCode: body.lang_code, refAudio: body.ref_audio, refText: body.ref_text, responseFormat: body.response_format });
       return new Response(toneWav(0.5), { headers: { "Content-Type": "audio/wav" } });
     }
     if (pathname === "/v1/chat/completions") {

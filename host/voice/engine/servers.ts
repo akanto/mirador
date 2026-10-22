@@ -6,7 +6,7 @@ import type { EngineServer, EngineServerState } from "../../../shared/voice-engi
 import { modelName, type EngineService } from "../../../shared/voice-engine-models.ts";
 import type { CustomEndpoint } from "../../../shared/voice.ts";
 import { VoiceUnavailable } from "../voice.ts";
-import { kokoroVoice } from "./catalog.ts";
+import { speakingVoice } from "./catalog.ts";
 import type { VoiceEngineInstaller } from "./installer.ts";
 
 const HOST = "127.0.0.1";
@@ -251,13 +251,13 @@ export class VoiceEngineServers {
     await fetch(`http://${HOST}:${port}/v1/audio/transcriptions`, { method: "POST", body: form }).catch(() => {});
   }
 
-  /** A word spoken: mlx-audio loads the voice at the first request, which would otherwise hold up the first reply. */
+  /** A word spoken: mlx-audio loads the voice at the first request, and OmniVoice reads the clip it copies, which would otherwise hold up the first reply. */
   private async warmUpSpeaking(port: number, model: string) {
     const modelDir = this.options.installer.modelDir(model);
     await fetch(`http://${HOST}:${port}/v1/audio/speech`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: modelDir, input: "Ready.", voice: kokoroVoice(modelDir), response_format: "wav" }),
+      body: JSON.stringify({ model: modelDir, input: "Ready.", ...speakingVoice(model, modelDir), response_format: "wav" }),
     }).catch(() => {});
   }
 

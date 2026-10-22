@@ -8,14 +8,15 @@ import {
   modelsFor,
   SPOKEN_VOICE,
   type ChoosableModel,
-  type ThisMacService,
+  type EngineService,
 } from "../shared/voice-engine-models.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { modelChoice, tooLittleMemoryForVoiceModel } from "./voice-models.ts";
 
-const setUp = (models: string[]) => connection.send({ type: "voice.engine.set-up", models });
+/** Sets voice up on this Mac with the models, or adds them once it is set up. */
+export const setUpModels = (models: string[]) => connection.send({ type: "voice.engine.set-up", models });
 
 function SetupProgress({ setup: { step, done, total } }: { setup: Extract<VoiceEngineSetup, { state: "setting-up" }> }) {
   const counted = total > 0;
@@ -56,7 +57,7 @@ function NotSetUp({ engine: { setup, memoryBytes }, choice }: { engine: VoiceEng
             ))}
           </select>
         </label>
-        <button type="button" onClick={() => setUp([recognition.id, ...(voiceModel ? [voiceModel.id] : [])])}>
+        <button type="button" onClick={() => setUpModels([recognition.id, ...(voiceModel ? [voiceModel.id] : [])])}>
           {setup.state === "failed" ? "Try again" : "Set up voice on this Mac"}
         </button>
       </div>
@@ -77,8 +78,8 @@ interface IdleMinutes {
   change: (minutes: number) => void;
 }
 
-const serviceNames: Record<ThisMacService, string> = { recognition: "Speech recognition", voiceModel: "Voice model" };
-const serverOf: Record<ThisMacService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel" };
+const serviceNames: Record<EngineService, string> = { recognition: "Speech recognition", voiceModel: "Voice model", speaking: "Hungarian reply voice" };
+const serverOf: Record<EngineService, EngineServer> = { recognition: "speech", voiceModel: "voiceModel", speaking: "speaking" };
 
 const minutes = (count: number) => `${count} minute${count === 1 ? "" : "s"}`;
 
@@ -98,7 +99,8 @@ function ModelOnThisMac({ model, inUse, state, idleMinutes }: { model: Choosable
   return (
     <li data-state={inUse ? state : "stopped"}>
       <span>
-        <span className="voice-engine-server-name">{serviceNames[model.service]}</span> {model.name}, {gigabytes(model.bytes)}. {inUse ? serverStateText(state, idleMinutes) : "Not in use."}
+        <span className="voice-engine-server-name">{serviceNames[model.service]}</span> {model.name}, {gigabytes(model.bytes)}
+        {model.nonCommercial ? ", for non-commercial use only" : ""}. {inUse ? serverStateText(state, idleMinutes) : "Not in use."}
       </span>
       {inUse ? (
         <button type="button" className="danger" aria-label={`Remove ${model.name}`} data-hint={hints.voiceEngineModelInUse} aria-disabled="true">
@@ -139,7 +141,7 @@ function AddModel({ onDisk, memoryBytes }: { onDisk: string[]; memoryBytes: numb
         </select>
       </label>
       {chosen && (
-        <button type="button" onClick={() => setUp([chosen.id])}>
+        <button type="button" onClick={() => setUpModels([chosen.id])}>
           Download ({gigabytes(chosen.bytes)})
         </button>
       )}

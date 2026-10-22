@@ -63,6 +63,9 @@ interface EngineEntry {
   chatTemplateKwargs?: unknown;
   input?: string;
   voice?: string;
+  langCode?: string;
+  refAudio?: string;
+  refText?: string;
 }
 
 const engineLogged = (): EngineEntry[] =>
@@ -85,6 +88,17 @@ function isRunning(pid: number) {
   } catch {
     return false;
   }
+}
+
+/** What a reply's play button asks for, a sentence of its summary at a time. */
+async function speakSentence(page: Page, conversationId: string, sentence: string) {
+  return page.evaluate(
+    async ({ conversationId, sentence }) => {
+      const response = await fetch(`/conversations/${conversationId}/spoken-sentence`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: sentence });
+      return { status: response.status, type: response.headers.get("content-type") };
+    },
+    { conversationId, sentence },
+  );
 }
 
 /** What the composer will send: a clip of 16 kHz mono WAV, here a header without samples. */
@@ -261,16 +275,39 @@ test("Voice on this Mac loads its models when first needed and shows it, and unl
   await test.step("replies spoken on this Mac come from Kokoro, on a server of their own that leaves speech recognition loaded", async () => {
     await settings.getByRole("group", { name: "Spoken replies" }).getByLabel("Reads replies aloud").selectOption({ label: "On this Mac" });
     await save();
-    const spoken = await page.evaluate(async (conversationId) => {
-      const response = await fetch(`/conversations/${conversationId}/spoken-sentence`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "The tests passed." });
-      return { status: response.status, type: response.headers.get("content-type") };
-    }, conversationId);
-    expect(spoken).toEqual({ status: 200, type: "audio/wav" });
+    expect(await speakSentence(page, conversationId, "The tests passed.")).toEqual({ status: 200, type: "audio/wav" });
     const speaking = engineLogged().filter(({ event }) => event === "speech");
     expect(speaking.map(({ input }) => input)).toEqual(["Ready.", "The tests passed."]);
     expect(speaking.at(-1)!.voice).toMatch(/models\/Kokoro-82M-bf16\/voices\/am_fenrir\.safetensors$/);
     expect(new Set(speaking.map(({ pid }) => pid)).size).toBe(1);
     await expect(speech).toContainText("Loaded.");
+  });
+
+  await test.step("Hungarian replies offer OmniVoice's download, noted as non-commercial, and then speak in the voice of its clip in place of Kokoro", async () => {
+    const replies = settings.getByRole("group", { name: "Spoken replies" });
+    const download = replies.getByRole("button", { name: "Download OmniVoice" });
+    const omniVoice = models.getByRole("listitem").filter({ hasText: "OmniVoice" });
+    await replies.getByLabel("Language").selectOption({ label: "Hungarian" });
+    await expect(replies).toContainText("Hungarian replies on this Mac need OmniVoice, a 2.0 GB download for non-commercial use only.");
+    await download.click();
+    await expect(omniVoice).toHaveText("Hungarian reply voice OmniVoice, 2.0 GB, for non-commercial use only. Not in use.Remove");
+    await expect(download).toHaveCount(0);
+
+    const kokoroServer = engineLogged().filter(({ event }) => event === "speech").at(-1)!.pid;
+    await save();
+    await expect(omniVoice).toContainText("Unloaded.");
+    await expect.poll(() => isRunning(kokoroServer)).toBe(false);
+    expect(await speakSentence(page, conversationId, "Kész a javítás.")).toEqual({ status: 200, type: "audio/wav" });
+    const speaking = engineLogged().filter(({ event }) => event === "speech").slice(-2);
+    expect(speaking.map(({ input }) => input)).toEqual(["Ready.", "Kész a javítás."]);
+    expect(speaking.at(-1)).toMatchObject({
+      model: expect.stringMatching(/models\/OmniVoice-bfloat16$/),
+      langCode: "hu",
+      refAudio: expect.stringMatching(/hungarian-voice\.wav$/),
+      refText: expect.stringContaining("Fedora"),
+    });
+    expect(speaking.at(-1)!.voice).toBeUndefined();
+    await expect(omniVoice).toContainText("Loaded.");
   });
 
   await test.step("the models unload when the host stops", async () => {
@@ -325,5 +362,13 @@ test("a Mac with less memory is offered only the voice models that fit it, and a
     await expect(thisMac.getByLabel("Add")).toHaveValue("");
     await expect(thisMac.getByLabel("Add").getByRole("option", { name: "None that fits this Mac" })).toBeAttached();
     await expect(thisMac.getByRole("button", { name: /^Download/ })).toHaveCount(0);
+  });
+
+  await test.step("8 GB: Hungarian replies say OmniVoice needs a bigger Mac, without a download", async () => {
+    const replies = page.getByRole("group", { name: "Spoken replies" });
+    await replies.getByLabel("Reads replies aloud").selectOption({ label: "On this Mac" });
+    await replies.getByLabel("Language").selectOption({ label: "Hungarian" });
+    await expect(replies).toContainText("Hungarian replies on this Mac need OmniVoice, which needs a Mac with 18 GB of memory. A server of your own can speak them.");
+    await expect(replies.getByRole("button", { name: "Download OmniVoice" })).toHaveCount(0);
   });
 });

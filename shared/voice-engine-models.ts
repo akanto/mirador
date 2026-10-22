@@ -1,6 +1,6 @@
-/** The engine's services whose model the user picks; the spoken voice is always Kokoro. */
+/** The engine's services whose model the user picks. */
 export type ThisMacService = "recognition" | "voiceModel";
-/** Speaking replies takes the voice for their language. */
+/** Speaking replies takes the voice for their language: Kokoro, always set up, for English. */
 export type EngineService = ThisMacService | "speaking";
 
 export interface EngineModel {
@@ -13,13 +13,15 @@ export interface EngineModel {
 }
 
 export interface ChoosableModel extends EngineModel {
-  service: ThisMacService;
+  service: EngineService;
   /** How it did in Mirador's comparison on a Mac, against the others for its service; none until compared. */
   quality?: string;
   /** What its server held in memory while it worked, measured on a Mac. */
   memoryBytes: number;
   /** Speech recognition that names the language it heard. */
   tellsLanguage?: boolean;
+  /** Its licence allows only non-commercial use. */
+  nonCommercial?: boolean;
 }
 
 const mebibytes = (count: number) => count * 2 ** 20;
@@ -72,6 +74,16 @@ export const choosableModels: ChoosableModel[] = [
     bytes: 5_179_239_349,
     memoryBytes: mebibytes(5_034),
   },
+  {
+    id: "omnivoice",
+    service: "speaking",
+    name: "OmniVoice",
+    repo: "mlx-community/OmniVoice-bfloat16",
+    revision: "6119f7072580cc30c3cbdf496269216b03ad9742",
+    bytes: 2_042_320_520,
+    memoryBytes: mebibytes(9_050),
+    nonCommercial: true,
+  },
 ];
 
 /** What setting up voice on this Mac put in place before its models could be chosen. */
@@ -82,7 +94,7 @@ export const ENGINE_PACKAGES_BYTES = 1.5e9;
 
 export const choosableModel = (id: string) => choosableModels.find((model) => model.id === id);
 export const modelName = (id: string) => choosableModel(id)?.name ?? id;
-export const modelsFor = (service: ThisMacService) => choosableModels.filter((model) => model.service === service);
+export const modelsFor = (service: EngineService) => choosableModels.filter((model) => model.service === service);
 
 /** At most half the Mac's memory, leaving the rest to macOS, the user's apps and the engine's other model. */
 export const fitsMemory = (model: ChoosableModel, memoryBytes: number) => model.memoryBytes * 2 <= memoryBytes;

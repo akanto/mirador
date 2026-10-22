@@ -10,8 +10,8 @@ export const hints = {
   voiceEngineVoiceModel:
     "The voice model translates what you say into English, and later sums up replies to read aloud. Bigger ones translate better and need more memory: Mirador offers those that hold at most half of this Mac's memory while loaded. Without one, what you say goes into the message box in the language you spoke, unless another voice model is set below.",
   voiceEngineAddModel:
-    "Downloads another model, to choose below. Best, good and fair are how each did in Mirador's comparison on a Mac. Mirador offers those that hold at most half of this Mac's memory while loaded.",
-  voiceEngineModelInUse: "The settings below use this model. Choose another one and save, then it can be removed.",
+    "Downloads another model, for the settings below to use. Best, good and fair are how each did in Mirador's comparison on a Mac. Mirador offers those that hold at most half of this Mac's memory while loaded.",
+  voiceEngineModelInUse: "The settings below use this model. Change them and save, then it can be removed.",
   thisMacModel: "One of the models on this Mac for this service. Voice on this Mac, above, adds and removes them.",
   voiceEngineIdle:
     "A loaded model holds memory, a voice model up to 15 GB, so each unloads once unused this long. Loading it again makes the next dictation wait. Saved with the settings below.",
@@ -24,7 +24,7 @@ export const hints = {
   translateToEnglish: "What you say goes into the message box in English, with what you said under it, so you can check it before sending.",
   translateNeedsVoiceModel: "Translating needs a voice model. Pick one above.",
   replyVoice:
-    "What reads replies aloud, once the voice model has summed each up in a few sentences. This Mac's engine speaks English with Kokoro. A server of your own speaks OpenAI's text-to-speech API (POST /audio/speech) with one of its voices. After a message you dictated, its reply is read as the turn ends, in the browser you dictated in.",
+    "What reads replies aloud, once the voice model has summed each up in a few sentences. This Mac's engine speaks English with Kokoro, and Hungarian with OmniVoice, a download of its own whose licence allows only non-commercial use. A server of your own speaks OpenAI's text-to-speech API (POST /audio/speech) with one of its voices. After a message you dictated, its reply is read as the turn ends, in the browser you dictated in.",
   replyLanguage: "The language replies are read in. The voice model sums them up in it, whatever language the agent wrote in.",
   replyVoiceName: "One of the server's voices, as alloy is one of OpenAI's.",
   readAloud: "Reads a short summary of this reply aloud.",

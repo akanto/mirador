@@ -89,11 +89,14 @@ export async function complete(endpoint: ChatEndpoint, instructions: string, tex
   return answer.trim();
 }
 
+/** One of the server's voices by name, or for mlx-audio's OmniVoice, the language and a clip whose voice it copies, with what the clip says. */
+export type SpeakingVoice = { voice: string } | { lang_code: string; ref_audio: string; ref_text: string };
+
 /** The text spoken in the voice, as WAV, which every page plays; OpenAI's API answers mp3 unless asked. */
-export async function speak(endpoint: CustomEndpoint, text: string, voice: string) {
+export async function speak(endpoint: CustomEndpoint, text: string, voice: SpeakingVoice) {
   const response = await postTo("reply voice server", joined(endpoint.url, "/audio/speech"), {
     headers: { "Content-Type": "application/json", ...bearer(endpoint.apiKey) },
-    body: JSON.stringify({ model: endpoint.model, input: text, voice, response_format: "wav" }),
+    body: JSON.stringify({ model: endpoint.model, input: text, ...voice, response_format: "wav" }),
   });
   if (!response.ok) await answerOf(response, "reply voice server");
   const audio = await response.arrayBuffer();
