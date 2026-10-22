@@ -111,6 +111,21 @@ test("a reply to a dictated message is summed up and read aloud as the turn ends
     expect(spoken).toHaveLength(4);
   });
 
+  await test.step("the button shows when the pointer is over its reply", async () => {
+    await page.locator(".composer:visible textarea").hover();
+    await expect(readAloud).toHaveCSS("opacity", "0");
+    await reply.hover();
+    await expect(readAloud).toHaveCSS("opacity", "1");
+  });
+
+  await test.step("hearing a reply again replays its summary and sound, without asking the servers again", async () => {
+    await readAloud.click();
+    await expect(stopReading).toBeVisible();
+    await expect(readAloud).toBeVisible({ timeout: 15_000 });
+    expect(summed).toHaveLength(2);
+    expect(spoken).toHaveLength(4);
+  });
+
   await test.step("stopping it, or starting the microphone, ends the reading", async () => {
     await readAloud.click();
     await expect(stopReading).toBeVisible();
@@ -126,11 +141,28 @@ test("a reply to a dictated message is summed up and read aloud as the turn ends
   });
 
   await test.step("a reply voice that fails says why under the reply", async () => {
+    await sendMessage(page, "SAY Not heard yet.");
+    await waitForTurnToEnd(page);
     speechFails = true;
     await readAloud.click();
     await expect(reply.getByRole("alert")).toHaveText("The reply voice server answered 500: voice not loaded");
     await expect(readAloud).toBeVisible();
     speechFails = false;
+  });
+
+  await test.step("another reply voice saved makes a summary and sound of its own", async () => {
+    const voice = await openSettings(page, "Voice");
+    await voice.getByRole("group", { name: "Spoken replies" }).getByLabel("Voice").fill("nova");
+    await voice.getByRole("button", { name: "Save" }).click();
+    await expect(voice.getByRole("status")).toHaveText("Saved.");
+    await voice.getByRole("button", { name: "Close" }).click();
+    const summedBefore = summed.length;
+    await reply.hover();
+    await readAloud.click();
+    await expect(stopReading).toBeVisible();
+    await expect(readAloud).toBeVisible({ timeout: 15_000 });
+    expect(summed.length).toBe(summedBefore + 1);
+    expect(spoken.slice(-2).map(({ voice }) => voice)).toEqual(["nova", "nova"]);
   });
 
   await test.step("without a voice model to sum them up, replies have no button, and Settings says what they need", async () => {

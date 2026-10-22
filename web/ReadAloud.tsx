@@ -2,8 +2,8 @@ import { createContext, useContext } from "react";
 import { hints } from "./hints.ts";
 import { readReply, stopReading, useReplyReading } from "./reply-player.ts";
 
-/** Replies are read aloud when Settings → Voice has a reply voice and a voice model to sum them up. */
-export const ReadsRepliesAloud = createContext(false);
+/** How replies are read aloud, when Settings → Voice has a reply voice and a voice model to sum them up. */
+export const ReadsRepliesAloud = createContext<string | null>(null);
 
 function SpeakerIcon() {
   return (
@@ -25,9 +25,9 @@ function StopIcon() {
 /** Reads a short summary of the reply aloud, or stops it; says why when it couldn't. */
 export function ReadAloud({ conversationId, replyKey, reply }: { conversationId: string; replyKey: string; reply: string }) {
   const { reading, problem } = useReplyReading();
-  const readsAloud = useContext(ReadsRepliesAloud);
+  const readingAs = useContext(ReadsRepliesAloud);
   const isThis = (of: { conversationId: string; key: string } | null) => of?.conversationId === conversationId && of.key === replyKey;
-  if (!readsAloud) return null;
+  if (!readingAs) return null;
   const readingThis = isThis(reading) ? reading : null;
   return (
     <div className="read-aloud">
@@ -37,7 +37,7 @@ export function ReadAloud({ conversationId, replyKey, reply }: { conversationId:
         aria-label={readingThis ? "Stop reading" : "Read aloud"}
         aria-busy={readingThis?.phase === "summing-up" || undefined}
         data-hint={readingThis ? hints.stopReadingAloud : hints.readAloud}
-        onClick={() => (readingThis ? stopReading() : void readReply(conversationId, replyKey, reply))}
+        onClick={() => (readingThis ? stopReading() : void readReply(conversationId, replyKey, reply, readingAs))}
       >
         {readingThis ? <StopIcon /> : <SpeakerIcon />}
       </button>

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { StoredEvent } from "../shared/model.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
+import { speaksReplies, type VoiceSettings } from "../shared/voice.ts";
 
 /** A reply being read aloud, by its timeline block's key: summed up first, then spoken a sentence at a time. */
 export interface ReplyReading {
@@ -27,6 +28,7 @@ interface AwaitedReply {
 }
 
 const RESUME_WAIT_MS = 500;
+const MAX_KEPT_SUMMARIES = 20;
 
 export const AUDIO_BLOCKED = "The browser didn't let Mirador play sound. The reply's play button reads it aloud.";
 
@@ -35,6 +37,35 @@ let snapshot: Snapshot = { reading: null, problem: null };
 let stopCurrent: (() => void) | null = null;
 let awaited: AwaitedReply | null = null;
 const listeners = new Set<() => void>();
+
+/** A reply's summary and its sentences' sound, kept so that hearing it again starts at once, in the same words. */
+interface KeptSummary {
+  sentences: string[];
+  sounds: AudioBuffer[];
+}
+
+/** By reply and by how replies are read, so that other settings make a summary of their own; the least recently heard go first. */
+const keptSummaries = new Map<string, KeptSummary>();
+
+function keptSummary(id: string) {
+  const kept = keptSummaries.get(id);
+  if (!kept) return null;
+  keptSummaries.delete(id);
+  keptSummaries.set(id, kept);
+  return kept;
+}
+
+function keep(id: string, summary: KeptSummary) {
+  keptSummaries.set(id, summary);
+  if (keptSummaries.size > MAX_KEPT_SUMMARIES) keptSummaries.delete(keptSummaries.keys().next().value!);
+  return summary;
+}
+
+/** What a reply's summary and sound depend on; null when replies aren't read aloud. */
+export const replyReadingOf = (settings: VoiceSettings) => {
+  const { voiceModel, replyVoice, replyLanguage } = settings;
+  return speaksReplies(settings) ? JSON.stringify({ voiceModel, replyVoice, replyLanguage }) : null;
+};
 
 function publish(next: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...next };
@@ -73,6 +104,13 @@ async function summary(conversationId: string, reply: string, signal: AbortSigna
   return sentences;
 }
 
+/** Kept only once it says something, so that hearing the reply again asks the voice model again. */
+async function sayable(conversationId: string, reply: string, signal: AbortSignal) {
+  const sentences = await summary(conversationId, reply, signal);
+  if (sentences.length === 0) throw new Error("The voice model found nothing in the reply to say.");
+  return sentences;
+}
+
 async function spokenSentence(conversationId: string, sentence: string, signal: AbortSignal) {
   const sound = await (await posted(conversationId, "spoken-sentence", sentence, signal)).arrayBuffer();
   return context!.decodeAudioData(sound);
@@ -103,7 +141,7 @@ function inAdvance<T>(making: Promise<T>) {
 }
 
 /** Sums the reply up and speaks it, starting as soon as the first sentence is ready; reading another reply stops this one. */
-export async function readReply(conversationId: string, key: string, reply: string) {
+export async function readReply(conversationId: string, key: string, reply: string, readingAs: string) {
   stopReading();
   allowReplyAudio();
   const aborts = new AbortController();
@@ -116,12 +154,13 @@ export async function readReply(conversationId: string, key: string, reply: stri
   const reading: ReplyReading = { conversationId, key, phase: "summing-up" };
   publish({ reading, problem: null });
   try {
-    const sentences = await summary(conversationId, reply, aborts.signal);
-    if (sentences.length === 0) throw new Error("The voice model found nothing in the reply to say.");
-    let next = inAdvance(spokenSentence(conversationId, sentences[0]!, aborts.signal));
-    for (const following of [...sentences.slice(1), null]) {
+    const id = JSON.stringify([conversationId, key, reply, readingAs]);
+    const { sentences, sounds } = keptSummary(id) ?? keep(id, { sentences: await sayable(conversationId, reply, aborts.signal), sounds: [] });
+    const soundOf = async (index: number) => (sounds[index] ??= await spokenSentence(conversationId, sentences[index]!, aborts.signal));
+    let next = inAdvance(soundOf(0));
+    for (const index of sentences.keys()) {
       const sound = await next;
-      if (following !== null) next = inAdvance(spokenSentence(conversationId, following, aborts.signal));
+      if (index + 1 < sentences.length) next = inAdvance(soundOf(index + 1));
       if (aborts.signal.aborted) return;
       if (snapshot.reading?.phase !== "speaking") publish({ reading: { ...reading, phase: "speaking" } });
       await played(sound, (playing) => (source = playing));
@@ -177,11 +216,11 @@ export function lastReply(timeline: TimelineBlock[]) {
 }
 
 /** Reads the last reply aloud once the turn a dictated message started ends, for the page that dictated it. */
-export function readWhenSpokenTurnEnds(conversationId: string, events: StoredEvent[], timeline: TimelineBlock[]) {
+export function readWhenSpokenTurnEnds(conversationId: string, events: StoredEvent[], timeline: TimelineBlock[], readingAs: string | null) {
   if (awaited?.conversationId !== conversationId) return;
   const outcome = spokenTurn(events, awaited.afterSeq);
   if (outcome === "going-on") return;
   awaited = null;
   const reply = outcome === "ended" ? lastReply(timeline) : null;
-  if (reply) void readReply(conversationId, reply.key, reply.text);
+  if (reply && readingAs) void readReply(conversationId, reply.key, reply.text, readingAs);
 }

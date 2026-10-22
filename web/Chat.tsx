@@ -51,7 +51,7 @@ import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
 import { MarkdownText } from "./Markdown.tsx";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
-import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
+import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, replyReadingOf, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
 import { useMentionMenu } from "./MentionMenu.tsx";
@@ -1817,7 +1817,8 @@ export function ChatPanel({
   onToggleTerminal: () => void;
 }) {
   const timeline = useMemo(() => buildTimeline(open.events), [open.events]);
-  useEffect(() => readWhenSpokenTurnEnds(conversation.id, open.events, timeline), [timeline]);
+  const readingAs = replyReadingOf(voiceSettings);
+  useEffect(() => readWhenSpokenTurnEnds(conversation.id, open.events, timeline, readingAs), [timeline]);
   useEffect(() => () => stopReadingIn(conversation.id), [conversation.id]);
   const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
@@ -1874,7 +1875,7 @@ export function ChatPanel({
           <CanvasShowsEdits.Provider value={canvasShowsEdits}>
             <ConversationBusy.Provider value={busy}>
               <UserPicture.Provider value={userPicture}>
-                <ReadsRepliesAloud.Provider value={speaksReplies(voiceSettings)}>
+                <ReadsRepliesAloud.Provider value={readingAs}>
                   <ChatHeader
                     conversation={conversation}
                     profiles={profiles}
