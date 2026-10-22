@@ -43,3 +43,16 @@ test("leaving the open conversation goes back to the one open before it that has
   const onlyMarked = ["b", "d"].reduce(selecting, { ...initialState, conversations });
   expect(leaving(onlyMarked, "d").selectedConversationId).toBeNull();
 });
+
+test("a reply streamed into a kept conversation is held as one event, however many chunks it came in", () => {
+  const history = { type: "conversation.history" as const, conversationId: "a", events: [event(1)], canvas: [] };
+  const chunk = (seq: number): StoredEvent => ({ seq, at: seq, event: { type: "acp", update: { sessionUpdate: "agent_message_chunk", messageId: "m1", content: { type: "text", text: `word${seq} ` } } } });
+  const streamed = Array.from({ length: 500 }, (_, index) => chunk(index + 2));
+  const state = streamed.reduce(
+    (before, stored) => reducer(before, { type: "server", message: { type: "conversation.event", conversationId: "a", event: stored } }),
+    reducer(selecting(initialState, "a"), { type: "server", message: history }),
+  );
+  const held = selectedOpen(state)!.events;
+  expect(held.map(({ seq }) => seq)).toEqual([1, 501]);
+  expect(held[1]).toMatchObject({ event: { update: { content: { text: streamed.map((_, index) => `word${index + 2} `).join("") } } } });
+});

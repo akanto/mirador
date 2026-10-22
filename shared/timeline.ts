@@ -697,6 +697,9 @@ function countedChunk({ event }: StoredEvent): { messageId: string; text: string
   return messageId && content.type !== "image" && !isInformational(_meta) ? { messageId, text: contentText(content) } : null;
 }
 
+const sameMessage = (update: ChunkUpdate, other: ChunkUpdate) =>
+  update.sessionUpdate === other.sessionUpdate && update.messageId === other.messageId && JSON.stringify(update._meta ?? null) === JSON.stringify(other._meta ?? null);
+
 /** Consecutive chunks of one message, with nothing between them, that go out as one. */
 class ChunkRun {
   private readonly texts: string[];
@@ -716,9 +719,7 @@ class ChunkRun {
 
   /** The timeline would read the run as a repeat of the whole message if it came to hold just that. */
   takes(update: ChunkUpdate, text: string) {
-    const sameMessage =
-      update.sessionUpdate === this.update.sessionUpdate && update.messageId === this.update.messageId && JSON.stringify(update._meta ?? null) === JSON.stringify(this.update._meta ?? null);
-    return sameMessage && !this.wouldRepeatWhole(text);
+    return sameMessage(update, this.update) && !this.wouldRepeatWhole(text);
   }
 
   private wouldRepeatWhole(text: string) {
@@ -772,3 +773,51 @@ export function withChunksCoalesced(events: StoredEvent[]): StoredEvent[] {
   endRun();
   return coalesced;
 }
+
+/**
+ * The events with one more that streamed in, its chunk joined to the chunks before it as withChunksCoalesced joins
+ * them, so a conversation followed for hours holds one event per message rather than one per chunk.
+ */
+export function withStreamedEvent(events: StoredEvent[], stored: StoredEvent): StoredEvent[] {
+  const joined = joinedToLastRun(events, stored);
+  return joined ? [...events.slice(0, -1), joined] : [...events, stored];
+}
+
+function joinedToLastRun(events: StoredEvent[], stored: StoredEvent): StoredEvent | null {
+  const last = events.at(-1);
+  const chunk = coalescibleChunk(stored);
+  const run = last && coalescibleChunk(last);
+  if (!last || !chunk || !run || !sameMessage(chunk.update, asFirstChunk(run.update))) return null;
+  const counted = countedChunk(stored);
+  if (counted && !joinsWithoutRepeating(events, counted.messageId, run.text + chunk.text, counted.text)) return null;
+  const coalesced = coalescedIn(run.update);
+  const joinedRun: Coalesced = { chunks: (coalesced?.chunks ?? 1) + 1, firstSeq: coalesced?.firstSeq ?? last.seq, firstAt: coalesced?.firstAt ?? last.at };
+  const content = { ...(run.update.content as Extract<ContentBlock, { type: "text" }>), text: run.text + chunk.text };
+  return { seq: stored.seq, at: stored.at, event: { type: "acp", update: { ...run.update, content, _meta: { ...run.update._meta, [COALESCED_KEY]: joinedRun } } } };
+}
+
+/** A joined run's update as its first chunk had it, which the chunks after it are compared with. */
+function asFirstChunk(update: ChunkUpdate): ChunkUpdate {
+  if (!coalescedIn(update)) return update;
+  const { [COALESCED_KEY]: _, ...meta } = update._meta!;
+  return { ...update, _meta: Object.keys(meta).length > 0 ? meta : undefined };
+}
+
+/**
+ * Whether withChunksCoalesced would have kept the last event's run going with this chunk: the run is not a lone repeat
+ * of the message, the chunk doesn't repeat all of it, and the run would not come to hold just what streamed before it.
+ */
+function joinsWithoutRepeating(events: StoredEvent[], messageId: string, joinedText: string, text: string) {
+  const streamed = new StreamedMessages();
+  const replay = (stored: StoredEvent) => {
+    const counted = countedChunk(stored);
+    return counted?.messageId === messageId && streamed.repeats(messageId, counted.text, chunksIn(stored));
+  };
+  events.slice(0, -1).forEach(replay);
+  const beforeRun = streamed.soFar(messageId);
+  if (replay(events.at(-1)!)) return false;
+  const runWouldRepeatWhole = joinedText.length === beforeRun.text.length && repeatsWhole(beforeRun, joinedText);
+  return !repeatsWhole(streamed.soFar(messageId), text) && !runWouldRepeatWhole;
+}
+
+const chunksIn = ({ event }: StoredEvent) => (event.type === "acp" ? (coalescedIn(event.update)?.chunks ?? 1) : 1);

@@ -3,6 +3,7 @@ import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
+import { withStreamedEvent } from "../shared/timeline.ts";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { lastsUntilOpened } from "../shared/waiting.ts";
@@ -246,7 +247,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "conversation.event":
       return withOpen(state, message.conversationId, (open) => {
         const lastSeq = open.events.at(-1)?.seq ?? 0;
-        return message.event.seq <= lastSeq ? open : { ...open, events: [...open.events, message.event] };
+        return message.event.seq <= lastSeq ? open : { ...open, events: withStreamedEvent(open.events, message.event) };
       });
     case "conversation.rewound":
     case "conversation.rewind-done":

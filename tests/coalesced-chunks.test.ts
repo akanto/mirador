@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { buildTimeline, withChunksCoalesced } from "../shared/timeline.ts";
+import { buildTimeline, withChunksCoalesced, withStreamedEvent } from "../shared/timeline.ts";
 
 const stored = (events: ConversationEvent[]): StoredEvent[] => events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
 const acp = (update: SessionUpdate): ConversationEvent => ({ type: "acp", update });
@@ -82,4 +82,23 @@ test("a message that goes on after a tool call with the very text it had so far 
     chunk("agent_message_chunk", "m1", "b"),
   ]);
   expect(buildTimeline(withChunksCoalesced(events))).toEqual(buildTimeline(events));
+});
+
+test("live chunks joined one at a time to a history that stops anywhere hold what the whole history coalesced holds", () => {
+  for (let seed = 1; seed <= 120; seed++) {
+    const next = random(seed);
+    const events = stored([...streamedTurn(next), ...streamedTurn(next)]);
+    const whole = withChunksCoalesced(events);
+    for (let split = 0; split <= events.length; split++) {
+      const held = events.slice(split).reduce(withStreamedEvent, withChunksCoalesced(events.slice(0, split)));
+      expect({ seed, split, held }).toEqual({ seed, split, held: whole });
+    }
+  }
+});
+
+test("a reply that goes on streaming after the history loaded stays one event, under its newest chunk's number", () => {
+  const events = stored([{ type: "user-message", text: "hi" }, chunk("agent_message_chunk", "m1", "Hel"), chunk("agent_message_chunk", "m1", "lo"), chunk("agent_message_chunk", "m1", "!")]);
+  const held = events.slice(2).reduce(withStreamedEvent, withChunksCoalesced(events.slice(0, 2)));
+  expect(held.map(({ seq }) => seq)).toEqual([1, 4]);
+  expect(held[1]).toMatchObject({ at: 4000, event: { update: { content: { text: "Hello!" }, _meta: { "mirador/coalesced": { chunks: 3, firstSeq: 2, firstAt: 2000 } } } } });
 });

@@ -1790,7 +1790,7 @@ export function ChatPanel({
   const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
-  const { ref, onScroll, holdPlace, isPinned, rememberPlace } = useScrollAnchor(open.events.length);
+  const { ref, onScroll, holdPlace, isPinned, rememberPlace } = useScrollAnchor(open.events);
   const earlier = useEarlierHistory(open);
   const { firstLoaded, loadFrom, loadEarlier } = useLoadedEntries(timeline, open.loaded, { holdPlace, isPinned }, earlier);
   const [subagentToShow, setSubagentToShow] = useState<string | null>(null);

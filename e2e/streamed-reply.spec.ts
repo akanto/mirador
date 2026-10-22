@@ -54,3 +54,20 @@ test("a reply that streams in word by word shows all of its text once the turn e
   expect(updates).toBeGreaterThan(5);
   expect(updates).toBeLessThan(secondsCounted * 8 + 10);
 });
+
+test("a long reply keeps the reader at its newest line while it streams in", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 560 });
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "stream · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
+  await sendMessage(page, "STREAM 600");
+  await expect(lastAgentMessage(page)).toContainText("word450");
+  const below = await page.locator(".timeline:visible").evaluate((timeline) => ({
+    hidden: timeline.scrollHeight - timeline.clientHeight,
+    unread: timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop,
+  }));
+  expect(below.hidden).toBeGreaterThan(400);
+  expect(below.unread).toBeLessThan(150);
+  await waitForTurnToEnd(page);
+});
