@@ -1,6 +1,7 @@
 # The Linux machine scripts/linux-test.sh runs Mirador's checks on: Bun, Node (for the Playwright runner and pi), Claude
-# Code, opencode, pi and Playwright's Chromium, as a non-root user because Claude Code refuses to skip permission prompts
-# as root.
+# Code, opencode, pi, Playwright's Chromium, and WebKitGTK with a virtual display, the Linux desktop app's engine, which
+# e2e/canvas-webkitgtk.spec.ts shows canvas pages in. As a non-root user because Claude Code refuses to skip permission
+# prompts as root.
 FROM ubuntu:24.04
 
 # .bun-version names the Bun, which build_image passes in.
@@ -29,3 +30,7 @@ RUN /home/ubuntu/.bun/bin/bunx playwright@${PLAYWRIGHT_VERSION} install-deps chr
 
 USER ubuntu
 RUN bunx playwright@${PLAYWRIGHT_VERSION} install chromium
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 xvfb xauth && rm -rf /var/lib/apt/lists/*
+USER ubuntu
