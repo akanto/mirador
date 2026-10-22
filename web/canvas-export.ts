@@ -73,9 +73,9 @@ const asBase64 = async (blob: Blob) => {
   return btoa(chunks.join(""));
 };
 
-// The host ends the connection on a message over 16 MB, and base64 grows a PNG by a third: past this a save would
-// drop the connection and read as a lost host, so the image is refused while the reason is still the image.
-const MAX_SENT_IMAGE_BYTES = 12 * 1024 * 1024;
+// The host ends the connection on a message over 16 MiB, and base64 grows a PNG by a third, so 12 MiB of image alone fills a frame:
+// the cap leaves room for the JSON around it too, so a save near the top is refused for its size instead of dropping the connection.
+export const MAX_SENT_IMAGE_BYTES = 12 * 1024 * 1024 - 64 * 1024;
 
 export const refuseOversizedImage = (image: Blob) => {
   if (image.size > MAX_SENT_IMAGE_BYTES) throw new Error("The page's image is too large to send to the host.");

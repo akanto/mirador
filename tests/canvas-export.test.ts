@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { assetPackageVersion, resolveAsset } from "../host/canvas/assets.ts";
 import { inlineScript, standalonePage } from "../host/canvas/export.ts";
-import { refuseOversizedImage, writeImageToClipboard } from "../web/canvas-export.ts";
+import { MAX_SENT_IMAGE_BYTES, refuseOversizedImage, writeImageToClipboard } from "../web/canvas-export.ts";
 
 const ORIGIN = "http://127.0.0.1:4601";
 const PUBLIC_ORIGIN = "https://mirador.example.com:4601";
@@ -118,6 +118,7 @@ describe("inlineScript", () => {
 Object.defineProperty(globalThis, "ClipboardItem", { value: class {}, configurable: true });
 const REFUSED = "NotAllowedError: the clipboard refused the write";
 const refusedWrite = { write: () => Promise.reject(new Error(REFUSED)) };
+afterAll(() => Reflect.deleteProperty(globalThis, "ClipboardItem"));
 
 describe("the page image on its way to the project and the clipboard", () => {
   test("the capture's own failure wins over the clipboard's refusal", async () => {
@@ -129,10 +130,9 @@ describe("the page image on its way to the project and the clipboard", () => {
     await expect(writeImageToClipboard(drawn, refusedWrite)).rejects.toThrow(REFUSED);
   });
 
-  test("refuses an image past what fits a message to the host, and passes a smaller one through", () => {
-    const oversized = new Blob([new Uint8Array(12 * 1024 * 1024 + 1)]);
-    expect(() => refuseOversizedImage(oversized)).toThrow("The page's image is too large to send to the host.");
-    const small = new Blob(["x"]);
-    expect(refuseOversizedImage(small)).toBe(small);
+  test("refuses the first byte past the cap, and passes the last image whose encoded message still fits", () => {
+    expect(() => refuseOversizedImage(new Blob([new Uint8Array(MAX_SENT_IMAGE_BYTES + 1)]))).toThrow("The page's image is too large to send to the host.");
+    const lastFits = new Blob([new Uint8Array(MAX_SENT_IMAGE_BYTES)]);
+    expect(refuseOversizedImage(lastFits)).toBe(lastFits);
   });
 });
