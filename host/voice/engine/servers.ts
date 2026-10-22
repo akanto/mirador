@@ -19,6 +19,7 @@ interface Running {
   child: Subprocess;
   port: Promise<number>;
   inFlight: number;
+  lastUsedAt: number;
   idleStop: Timer | null;
 }
 
@@ -110,10 +111,16 @@ export class VoiceEngineServers {
       return await work({ url: `http://${HOST}:${port}/v1`, apiKey: "", model: this.options.installer.modelDir(service) });
     } finally {
       running.inFlight--;
-      if (running.inFlight === 0 && this.running.get(server) === running) {
-        running.idleStop = setTimeout(() => void this.stop(server), this.options.idleMs());
-      }
+      running.lastUsedAt = Date.now();
+      if (running.inFlight === 0 && this.running.get(server) === running) this.stopWhenIdle(server, running);
     }
+  }
+
+  /** Servers waiting to unload unload when the new idle time since their last use is up. */
+  idleTimeChanged() {
+    this.running.forEach((running, server) => {
+      if (running.inFlight === 0) this.stopWhenIdle(server, running);
+    });
   }
 
   async stop(server: EngineServer) {
@@ -136,6 +143,11 @@ export class VoiceEngineServers {
     this.running.forEach(({ child }) => this.killGroup(child, "SIGKILL"));
   }
 
+  private stopWhenIdle(server: EngineServer, running: Running) {
+    if (running.idleStop) clearTimeout(running.idleStop);
+    running.idleStop = setTimeout(() => void this.stop(server), Math.max(0, running.lastUsedAt + this.options.idleMs() - Date.now()));
+  }
+
   private checkInstalled(service: ThisMacService) {
     const { installer } = this.options;
     if (!installer.isInstalled("recognition")) throw new VoiceUnavailable("Voice isn't set up on this Mac yet. Settings → Voice can set it up.");
@@ -147,7 +159,7 @@ export class VoiceEngineServers {
   private start(server: EngineServer) {
     const port = freePort();
     const child = this.spawn(server, port);
-    const running: Running = { child, port: this.untilReady(server, child, port), inFlight: 0, idleStop: null };
+    const running: Running = { child, port: this.untilReady(server, child, port), inFlight: 0, lastUsedAt: Date.now(), idleStop: null };
     this.running.set(server, running);
     this.setState(server, "loading");
     running.port.then(

@@ -172,11 +172,19 @@ test("Voice on this Mac loads its models when first needed and shows it, and unl
   const recognitionChoice = settings.getByLabel("Turns speech into text");
   const voiceModelChoice = settings.getByLabel("Translates");
 
-  await test.step("this Mac's voice model is on offer once it is added, and both start unloaded", async () => {
+  await test.step("this Mac's voice model is on offer once it is added, a failed try leaving speech recognition set up, and both start unloaded", async () => {
     await expect(voiceModelChoice.getByRole("option", { name: "On this Mac, once set up above" })).toHaveJSProperty("disabled", true);
-    await thisMac.getByRole("button", { name: "Add the voice model (15.4 GB)" }).click();
+    const addVoiceModel = thisMac.getByRole("button", { name: "Add the voice model (15.4 GB)" });
+    corrupted = true;
+    await addVoiceModel.click();
+    await expect(thisMac.getByRole("alert")).toContainText(/^Adding the voice model failed\. .+ came in different from what was expected/);
+    await expect(thisMac).toContainText("Set up with speech recognition, using");
+    await expect(thisMac.getByRole("button", { name: "Remove voice from this Mac" })).toBeVisible();
+    corrupted = false;
+    await addVoiceModel.click();
     await expect(thisMac).toContainText("Set up with speech recognition and the voice model");
-    await expect(speech).toContainText("Unloaded. It loads again when next needed");
+    await expect(thisMac.getByRole("alert")).toHaveCount(0);
+    await expect(speech).toContainText("Unloaded. It loads when next needed, usually in 5 to 15 seconds.");
     await expect(voiceModel).toContainText("Unloaded.");
     await recognitionChoice.selectOption({ label: "On this Mac" });
     await voiceModelChoice.selectOption({ label: "On this Mac" });

@@ -485,7 +485,9 @@ export function startServer(services: HostServices) {
     } catch (error) {
       return errorMessage(error);
     }
+    const idleMinutesBefore = store.voiceSettings().engineIdleMinutes;
     store.setVoiceSettings(settings);
+    if (settings.engineIdleMinutes !== idleMinutesBefore) voiceEngine.idleTimeChanged();
     hub.sendEach(voiceSettingsFor);
     return null;
   }

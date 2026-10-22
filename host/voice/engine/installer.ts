@@ -57,6 +57,13 @@ function unsupportedReason({ os, cpu, darwinMajor }: { os: string; cpu: string; 
 
 const sha256Of = async (path: string) => createHash("sha256").update(await readFile(path)).digest("hex");
 
+/** A setup run starts over from what was set up, forgetting why an earlier run failed. */
+function withoutProblem(setup: VoiceEngineSetup): VoiceEngineSetup {
+  if (setup.state !== "set-up") return setup;
+  const { problem: _, ...setUp } = setup;
+  return setUp;
+}
+
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 
 /** Downloads and installs Mirador's own speech engine into the data folder, and takes it away again. */
@@ -106,13 +113,15 @@ export class VoiceEngineInstaller {
     if (this.setup.state === "unsupported" || this.run) return;
     const run = new AbortController();
     this.run = run;
-    const before = this.setup;
+    const before = withoutProblem(this.setup);
     this.install(withVoiceModel, run.signal)
       .then(async () => {
         this.setup = { state: "set-up", withVoiceModel, bytesOnDisk: await this.bytesOnDisk() };
       })
       .catch((error) => {
-        this.setup = run.signal.aborted ? before : { state: "failed", withVoiceModel, problem: error instanceof Error ? error.message : String(error) };
+        const problem = error instanceof Error ? error.message : String(error);
+        if (run.signal.aborted) this.setup = before;
+        else this.setup = before.state === "set-up" ? { ...before, problem } : { state: "failed", withVoiceModel, problem };
       })
       .finally(() => {
         this.run = null;

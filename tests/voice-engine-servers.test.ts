@@ -146,6 +146,22 @@ describe("the engine's servers", () => {
     expect(startsOf("mlx_audio.server")).toHaveLength(1);
   });
 
+  test("unloading follows a new idle time, counted from the last use", async () => {
+    root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
+    let idleMs = 60_000;
+    const { servers } = engineServers({ idleMs: () => idleMs });
+    await Promise.all([servers.use("recognition", async () => {}), servers.use("voiceModel", async () => {})]);
+    idleMs = 300;
+    servers.idleTimeChanged();
+    await until(() => servers.states().speech === "stopped" && servers.states().voiceModel === "stopped");
+
+    await servers.use("recognition", async () => {});
+    idleMs = 60_000;
+    servers.idleTimeChanged();
+    await Bun.sleep(600);
+    expect(servers.states().speech).toBe("ready");
+  });
+
   test("stop with the host, all of each server's processes", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers } = engineServers();

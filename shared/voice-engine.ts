@@ -16,7 +16,8 @@ export type VoiceEngineSetup =
   /** done and total count bytes while downloading; both 0 while a step can't tell how far it is. */
   | { state: "setting-up"; withVoiceModel: boolean; step: VoiceEngineStep; done: number; total: number }
   | { state: "failed"; withVoiceModel: boolean; problem: string }
-  | { state: "set-up"; withVoiceModel: boolean; bytesOnDisk: number };
+  /** problem says why adding the voice model failed; what was set up before still works. */
+  | { state: "set-up"; withVoiceModel: boolean; bytesOnDisk: number; problem?: string };
 
 /** Each server's state, kept apart from setup: stopped servers load again the next time they're needed. */
 export type EngineServer = "speech" | "voiceModel";

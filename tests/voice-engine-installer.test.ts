@@ -207,6 +207,23 @@ describe("setting up voice on this Mac", () => {
     expect(existsSync(modelFile("Kokoro", "voices/am_fenrir.safetensors")) || existsSync(`${modelFile("Kokoro", "voices/am_fenrir.safetensors")}.part`)).toBe(false);
   });
 
+  test("adding the voice model can fail without undoing what was set up, and trying again forgets why it failed", async () => {
+    const installer = installerWith();
+    installer.setUp(false);
+    await settled(installer);
+    corrupted.add("/mlx-community/gemma/resolve/rev1/model.safetensors");
+    installer.setUp(true);
+    const failed = await settled(installer);
+    expect(failed).toMatchObject({ state: "set-up", withVoiceModel: false, problem: expect.stringContaining("came in different from what was expected") });
+    expect(installer.isInstalled("recognition")).toBe(true);
+    expect(installer.isInstalled("voiceModel")).toBe(false);
+
+    corrupted = new Set();
+    installer.setUp(true);
+    expect(await settled(installer)).toEqual({ state: "set-up", withVoiceModel: true, bytesOnDisk: expect.any(Number) });
+    expect(installer.isInstalled("voiceModel")).toBe(true);
+  });
+
   test("a uv download that isn't the pinned one stops setup before anything runs", async () => {
     const installer = installerWith({ sources: sources({ uv: { url: `${origin}/uv.tar.gz`, sha256: "0".repeat(64) } }) });
     installer.setUp(false);

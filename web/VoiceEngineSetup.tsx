@@ -63,7 +63,7 @@ const minutes = (count: number) => `${count} minute${count === 1 ? "" : "s"}`;
 function serverStateText(state: EngineServerState, idleMinutes: number) {
   switch (state) {
     case "stopped":
-      return "Unloaded. It loads again when next needed, which takes about 15 seconds.";
+      return "Unloaded. It loads when next needed, usually in 5 to 15 seconds.";
     case "loading":
       return "Loading…";
     case "ready":
@@ -100,6 +100,11 @@ function SetUp({ setup, engine, idleMinutes }: { setup: Extract<VoiceEngineSetup
           Remove
         </ConfirmButton>
       </div>
+      {setup.problem && (
+        <p className="voice-engine-problem" role="alert">
+          Adding the voice model failed. {setup.problem}
+        </p>
+      )}
       <ServerStates servers={engine.servers} withVoiceModel={setup.withVoiceModel} idleMinutes={idleMinutes.saved} />
       <div className="sending-settings">
         <label data-hint={hints.voiceEngineIdle}>
