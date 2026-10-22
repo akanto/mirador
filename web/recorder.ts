@@ -54,14 +54,15 @@ async function asSpeechClip(samples: Float32Array<ArrayBuffer>, sampleRate: numb
 }
 
 /**
- * Starts listening, telling the microphone's level as it goes. Call it from the press itself: its audio context is made
- * before the first await, while the browser still counts the press as the user's, or it may stay suspended.
+ * Starts listening, telling the microphone's level as it goes, and once when its first samples come in: until then,
+ * the microphone may still be starting, and what is said is lost. Call it from the press itself: its audio context is
+ * made before the first await, while the browser still counts the press as the user's, or it may stay suspended.
  *
  * The samples are taken as they are, not through MediaRecorder, which needs encoders WebKitGTK's GStreamer lacks unless
  * extra plugins are installed. ScriptProcessorNode is deprecated for AudioWorklet, whose module the page's CSP would
  * have to serve, but every engine still runs it.
  */
-export async function startRecording(onLevel: (level: number) => void): Promise<Recording> {
+export async function startRecording(onLevel: (level: number) => void, onRecording: () => void): Promise<Recording> {
   const listening = new AudioContext();
   void listening.resume();
   let stream: MediaStream;
@@ -80,7 +81,10 @@ export async function startRecording(onLevel: (level: number) => void): Promise<
   const silent = listening.createGain();
   silent.gain.value = 0;
   const chunks: Float32Array[] = [];
-  capture.addEventListener("audioprocess", (event) => chunks.push(new Float32Array(event.inputBuffer.getChannelData(0))));
+  capture.addEventListener("audioprocess", (event) => {
+    if (chunks.length === 0) onRecording();
+    chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+  });
   source.connect(analyser);
   source.connect(capture).connect(silent).connect(listening.destination);
   const latestSamples = new Float32Array(analyser.fftSize);

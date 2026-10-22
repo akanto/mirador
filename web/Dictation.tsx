@@ -37,13 +37,13 @@ function insertDictated(box: HTMLTextAreaElement | null, setText: Dispatch<SetSt
 
 interface Listening {
   recording: Promise<Recording>;
-  watch: PauseWatch;
+  heardSpeech: () => boolean;
 }
 
 /**
  * Speech into the message box, from the mic button or ⌘⇧Space (Ctrl+Shift+Space elsewhere) anywhere in the window: a
  * tap listens until the user pauses or presses again, a hold until they let go. What was heard goes in at the caret,
- * in English when translated, with what they said kept to show under the box.
+ * in English when translated, with what they said kept to show under the box, after sending it right away too.
  */
 export function useDictation({
   conversationId,
@@ -61,6 +61,7 @@ export function useDictation({
   const [phase, setPhase] = useState<DictationPhase>("idle");
   const [problem, setProblem] = useState<string | null>(null);
   const [originals, setOriginals] = useState<string[]>([]);
+  const [sentOriginal, setSentOriginal] = useState<string | null>(null);
   const press = useRef<Press>({ kind: "up" });
   const listening = useRef<Listening | null>(null);
   const latestSendNow = useRef(sendNow);
@@ -70,8 +71,11 @@ export function useDictation({
   const put = (dictated: Dictated) => {
     if (dictated.text.trim() === "") return setProblem(NO_WORDS);
     insertDictated(textarea.current, setText, dictated.text);
+    if (settings.sendRightAway) {
+      setSentOriginal(dictated.original);
+      return latestSendNow.current();
+    }
     if (dictated.original !== null) setOriginals((before) => [...before, dictated.original!]);
-    if (settings.sendRightAway) latestSendNow.current();
   };
 
   const finish = async () => {
@@ -81,7 +85,7 @@ export function useDictation({
     press.current = { kind: "up" };
     try {
       const recording = await ending.recording;
-      if (!ending.watch.heardSpeech()) {
+      if (!ending.heardSpeech()) {
         recording.cancel();
         setPhase("idle");
         return setProblem(NOTHING_HEARD);
@@ -101,12 +105,21 @@ export function useDictation({
 
   const begin = () => {
     setProblem(null);
-    const watch = pauseWatch(performance.now());
-    const recording = startRecording((level) => onLevel(watch, level));
-    const started = { recording, watch };
+    setSentOriginal(null);
+    /** Pauses count from when the microphone records, as starting it, or the user allowing it, may take a while. */
+    let watch: PauseWatch | null = null;
+    const recordingStarted = () => {
+      if (listening.current !== started) return;
+      watch = pauseWatch(performance.now());
+      setPhase("listening");
+    };
+    const started: Listening = {
+      recording: startRecording((level) => watch && onLevel(watch, level), recordingStarted),
+      heardSpeech: () => watch?.heardSpeech() ?? false,
+    };
     listening.current = started;
-    setPhase("listening");
-    recording.catch((error) => {
+    setPhase("starting");
+    started.recording.catch((error) => {
       if (listening.current !== started) return;
       listening.current = null;
       press.current = { kind: "up" };
@@ -191,10 +204,14 @@ export function useDictation({
     phase,
     available,
     problem,
-    originals,
+    said: sentOriginal ?? (originals.length > 0 ? originals.join(" ") : null),
     onPress,
     onRelease,
     clearOriginals: () => setOriginals((before) => (before.length === 0 ? before : [])),
+    hideSaid: () => {
+      setOriginals([]);
+      setSentOriginal(null);
+    },
   };
 }
 
@@ -217,7 +234,7 @@ export function DictateButton({ dictation }: { dictation: DictationControls }) {
       type="button"
       className={`dictate dictate-${phase}`}
       aria-label="Dictate"
-      aria-pressed={phase === "listening"}
+      aria-pressed={phase === "starting" || phase === "listening"}
       aria-disabled={!available || undefined}
       data-hint={available ? hints.dictate : hints.dictateOff}
       data-shortcut={shortcutKeys().dictate}
@@ -242,7 +259,7 @@ export function DictateButton({ dictation }: { dictation: DictationControls }) {
 
 export function DictationLines({ dictation, settings, engine }: { dictation: DictationControls; settings: VoiceSettings; engine: VoiceEngineStatus }) {
   const status = dictationStatus(dictation.phase, settings, engine.servers);
-  if (status === null && dictation.originals.length === 0) return null;
+  if (status === null && dictation.said === null) return null;
   return (
     <div className="dictation-lines">
       {status && (
@@ -250,10 +267,10 @@ export function DictationLines({ dictation, settings, engine }: { dictation: Dic
           {status}
         </div>
       )}
-      {dictation.originals.length > 0 && (
+      {dictation.said !== null && (
         <div className="dictation-original">
-          <span>You said: {dictation.originals.join(" ")}</span>
-          <button type="button" className="icon" aria-label="Hide what you said" onClick={dictation.clearOriginals}>
+          <span>You said: {dictation.said}</span>
+          <button type="button" className="icon" aria-label="Hide what you said" onClick={dictation.hideSaid}>
             ×
           </button>
         </div>

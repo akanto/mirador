@@ -18,10 +18,11 @@ export function released(press: Press, at: number): { press: Press; action: Pres
   return at - press.at < HOLD_MS ? { press: { kind: "tapped" }, action: null } : { press: { kind: "up" }, action: "finish" };
 }
 
-export type DictationPhase = "idle" | "listening" | "transcribing";
+export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 
 export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>) {
   if (phase === "idle") return null;
+  if (phase === "starting") return "Starting the microphone…";
   if (phase === "listening") return "Listening… It stops when you pause or let go. Esc cancels.";
   if (settings.recognition.kind === "this-mac" && servers.speech !== "ready") return "Loading speech recognition on this Mac…";
   if (settings.voiceModel.kind === "this-mac" && servers.voiceModel === "loading") return "Loading the voice model on this Mac…";

@@ -1,7 +1,7 @@
 import type { Profile } from "../../shared/model.ts";
-import { AUTO_LANGUAGE, isEnglish, type CustomEndpoint, type Dictation, type VoiceModelSource, type VoiceSettings, type VoiceSource } from "../../shared/voice.ts";
+import { AUTO_LANGUAGE, isEnglish, sameLanguage, type CustomEndpoint, type Dictation, type VoiceModelSource, type VoiceSettings, type VoiceSource } from "../../shared/voice.ts";
 import { profileEnvironment } from "../acp/harnesses.ts";
-import { transcribe, type ChatEndpoint } from "./endpoints.ts";
+import { transcribe, type ChatEndpoint, type Transcript } from "./endpoints.ts";
 import { translated } from "./translation.ts";
 
 export type ThisMacService = "recognition" | "voiceModel";
@@ -31,6 +31,9 @@ export function profileVoiceModel(profile: Profile, model: string): ChatEndpoint
   throw new VoiceUnavailable(`The profile ${profile.name} has no ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY in its environment.`);
 }
 
+/** An own server may answer without the language it heard, as OpenAI's newer speech models do. */
+const tellsLanguage = (source: VoiceSource) => source.kind === "this-mac";
+
 export class Voice {
   constructor(
     private readonly settings: () => VoiceSettings,
@@ -41,14 +44,27 @@ export class Voice {
   /** What a clip of 16 kHz mono WAV says, in English when the user has translation on. */
   async dictation(clip: Blob): Promise<Dictation> {
     const settings = this.settings();
-    const chosenLanguage = settings.language === AUTO_LANGUAGE ? null : settings.language;
-    const heard = await this.heard(settings.recognition, clip, chosenLanguage);
-    const language = chosenLanguage ?? heard.language;
+    const heard = await this.heardIn(settings.recognition, clip, settings.language === AUTO_LANGUAGE ? null : settings.language);
+    const { language } = heard;
     const untranslated = { text: heard.text, original: null, language };
     const { voiceModel } = settings;
     if (!settings.translateToEnglish || heard.text === "" || (language && isEnglish(language)) || voiceModel.kind === "off") return untranslated;
     const english = await this.inEnglish(voiceModel, heard.text);
     return english === heard.text ? untranslated : { text: english, original: heard.text, language };
+  }
+
+  /**
+   * What the clip says, and in which language. Choosing a language other than English still lets the user speak English
+   * to a recognizer that tells the language it heard: it hears the clip as it is first, and again in the chosen language
+   * when it names another one than these two, as on short clips it may.
+   */
+  private async heardIn(source: VoiceSource, clip: Blob, chosenLanguage: string | null): Promise<Transcript> {
+    if (chosenLanguage !== null && !isEnglish(chosenLanguage) && tellsLanguage(source)) {
+      const told = await this.heard(source, clip, null);
+      if (told.language && (isEnglish(told.language) || sameLanguage(told.language, chosenLanguage))) return told;
+    }
+    const heard = await this.heard(source, clip, chosenLanguage);
+    return { ...heard, language: chosenLanguage ?? heard.language };
   }
 
   /** This Mac's engine tells the language it heard only in its detailed answer. */

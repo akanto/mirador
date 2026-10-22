@@ -2704,6 +2704,11 @@ button.edits-waiting {
   background: var(--danger);
 }
 
+.composer .dictate-starting {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .composer .dictate-transcribing {
   color: var(--accent);
   border-color: var(--accent);

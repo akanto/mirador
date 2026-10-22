@@ -15,7 +15,9 @@ interface Heard {
 const described = (value: unknown) => (value instanceof Blob ? `${value.size} bytes` : String(value));
 
 let heard: Heard[] = [];
-let transcript: { text: string; language?: string } = { text: "" };
+type Transcript = { text: string; language?: string };
+/** Or what the server hears in the language it was asked to hear, or by itself when asked none. */
+let transcript: Transcript | ((language: string | undefined) => Transcript) = { text: "" };
 let translation = "";
 let failure: { status: number; text: string } | null = null;
 let chatChoice: Record<string, unknown> | null = null;
@@ -29,7 +31,7 @@ const server = Bun.serve({
     const json = form ? null : ((await request.json()) as Record<string, unknown>);
     heard.push({ path, authorization: request.headers.get("authorization"), apiKey: request.headers.get("x-api-key"), form: formFields, json });
     if (failure) return new Response(failure.text, { status: failure.status });
-    if (path.endsWith("/audio/transcriptions")) return Response.json(transcript);
+    if (path.endsWith("/audio/transcriptions")) return Response.json(typeof transcript === "function" ? transcript(formFields?.language) : transcript);
     if (path.endsWith("/chat/completions")) {
       return Response.json({ choices: [chatChoice ?? { message: { role: "assistant", content: `<message>${translation}</message>` }, finish_reason: "stop" }] });
     }
@@ -74,6 +76,8 @@ const profile = (environment: string): Profile => ({
   createdAt: 1,
 });
 const voiceWith = (settings: VoiceSettings, profiles: Profile[] = []) => new Voice(() => settings, (id) => profiles.find((each) => each.id === id));
+const onThisMac: VoiceSettings = { ...defaultVoiceSettings, recognition: { kind: "this-mac" }, voiceModel: { kind: "this-mac" } };
+const thisMacEngine: ThisMac = (service, work) => work({ url: `${origin}/v1`, apiKey: "", model: `/voice/models/${service}` });
 
 describe("dictation", () => {
   test("a Hungarian clip comes back in English, with what was heard under it, through servers of the user's own", async () => {
@@ -160,13 +164,32 @@ describe("dictation", () => {
     const lent: string[] = [];
     const thisMac: ThisMac = (service, work) => {
       lent.push(service);
-      return work({ url: `${origin}/v1`, apiKey: "", model: `/voice/models/${service}` });
+      return thisMacEngine(service, work);
     };
-    const settings: VoiceSettings = { ...defaultVoiceSettings, recognition: { kind: "this-mac" }, voiceModel: { kind: "this-mac" } };
-    expect(await new Voice(() => settings, () => undefined, thisMac).dictation(clip)).toEqual({ text: "Run the e2e tests.", original: "Futtasd le az e2e teszteket.", language: "hu" });
+    expect(await new Voice(() => onThisMac, () => undefined, thisMac).dictation(clip)).toEqual({ text: "Run the e2e tests.", original: "Futtasd le az e2e teszteket.", language: "hu" });
     expect(lent).toEqual(["recognition", "voiceModel"]);
     expect(heard[0]!.form).toEqual({ file: "44 bytes", model: "/voice/models/recognition", response_format: "verbose_json" });
     expect(heard[1]!.json).toMatchObject({ model: "/voice/models/voiceModel", chat_template_kwargs: { enable_thinking: false } });
+  });
+
+  test("on this Mac's engine, English is heard as English with another language chosen, and a clip it takes for a third language is heard again in the chosen one", async () => {
+    const voice = new Voice(() => ({ ...onThisMac, language: "hu" }), () => undefined, thisMacEngine);
+    const passes = () => heard.map(({ path, form }) => (form ? `heard ${form.language ?? "as it is"}` : path));
+    transcript = (language) => (language ? { text: "Ran the and to and tests.", language } : { text: "Run the e2e tests.", language: "en" });
+    expect(await voice.dictation(clip)).toEqual({ text: "Run the e2e tests.", original: null, language: "en" });
+    expect(passes()).toEqual(["heard as it is"]);
+
+    heard = [];
+    transcript = { text: "Futtasd le az e2e teszteket.", language: "hu" };
+    translation = "Run the e2e tests.";
+    expect(await voice.dictation(clip)).toEqual({ text: "Run the e2e tests.", original: "Futtasd le az e2e teszteket.", language: "hu" });
+    expect(passes()).toEqual(["heard as it is", "/v1/chat/completions"]);
+
+    heard = [];
+    transcript = (language) => (language === "hu" ? { text: "Hogyan működik?", language: "hu" } : { text: "Hogyan mukodik?", language: "fi" });
+    translation = "How does it work?";
+    expect(await voice.dictation(clip)).toEqual({ text: "How does it work?", original: "Hogyan működik?", language: "hu" });
+    expect(passes()).toEqual(["heard as it is", "heard hu", "/v1/chat/completions"]);
   });
 
   test("a server's error comes back with its status and what it said", async () => {

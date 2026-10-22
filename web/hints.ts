@@ -15,7 +15,7 @@ export const hints = {
   voiceModelProfile: "Mirador calls this profile's API with its keys. Its agent doesn't start.",
   voiceAddress: "The API's address up to and including its version, as in https://api.openai.com/v1. Mirador adds the path of each call.",
   voiceLanguage:
-    "The language you speak. Naming it helps on short clips, where telling languages apart by sound alone often goes wrong. With any language, the speech server decides, and the voice model translates whatever isn't English.",
+    "The language you speak. Naming it helps on short clips, where telling languages apart by sound alone often goes wrong; this Mac's engine still hears English as English. With any language, the speech server decides, and the voice model translates whatever isn't English.",
   translateToEnglish: "What you say goes into the message box in English, with what you said under it, so you can check it before sending.",
   translateNeedsVoiceModel: "Translating needs a voice model. Pick one above.",
   sendRightAway: "Sends what you said as soon as it is text, instead of leaving it in the message box for you to check first.",

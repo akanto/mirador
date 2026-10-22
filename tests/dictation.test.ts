@@ -77,6 +77,7 @@ describe("the status under the message box", () => {
 
   test("says what is happening, and what on this Mac is loading", () => {
     expect(dictationStatus("idle", settings(ownServer), servers("stopped"))).toBeNull();
+    expect(dictationStatus("starting", settings(ownServer), servers("stopped"))).toBe("Starting the microphone…");
     expect(dictationStatus("listening", settings(ownServer), servers("stopped"))).toBe("Listening… It stops when you pause or let go. Esc cancels.");
     expect(dictationStatus("transcribing", settings(ownServer), servers("stopped"))).toBe("Turning speech into text…");
     expect(dictationStatus("transcribing", settings({ kind: "this-mac" }), servers("stopped"))).toBe("Loading speech recognition on this Mac…");

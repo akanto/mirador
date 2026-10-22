@@ -44,7 +44,9 @@ export const defaultVoiceSettings: VoiceSettings = {
   engineIdleMinutes: 30,
 };
 
-export const isEnglish = (language: string) => language.toLowerCase().split(/[-_]/)[0] === "en";
+const primaryLanguage = (language: string) => language.toLowerCase().split(/[-_]/)[0];
+export const isEnglish = (language: string) => primaryLanguage(language) === "en";
+export const sameLanguage = (one: string, other: string) => primaryLanguage(one) === primaryLanguage(other);
 
 /** A dictated clip as the host turns it into text for the message box. */
 export interface Dictation {

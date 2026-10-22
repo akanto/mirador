@@ -6,6 +6,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
+import { NOTHING_HEARD_MS } from "../web/pause-watch.ts";
 import { TestHost } from "./test-host.ts";
 
 const SPEECH_SECONDS = 2;
@@ -200,6 +201,27 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
     await expect(original).toHaveCount(0);
   });
 
+  await test.step("until the microphone records, the box says it is starting, and a slow start, as while the user allows it, isn't taken for silence", async () => {
+    await page.evaluate(() => {
+      const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      const allowed = new Promise<void>((resolve) => Object.assign(window, { allowMicrophone: resolve }));
+      navigator.mediaDevices.getUserMedia = async (constraints) => {
+        await allowed;
+        return open(constraints);
+      };
+    });
+    await mic.click();
+    await expect(mic).toHaveAttribute("aria-pressed", "true");
+    await expect(status).toHaveText("Starting the microphone…");
+    await page.waitForTimeout(NOTHING_HEARD_MS + 1_000);
+    await expect(status).toHaveText("Starting the microphone…");
+    await page.evaluate(() => (window as unknown as { allowMicrophone: () => void }).allowMicrophone());
+    await expect(status).toHaveText("Listening… It stops when you pause or let go. Esc cancels.");
+    await expect(box).toHaveValue(IN_ENGLISH, { timeout: 15_000 });
+    await expect(problem).toHaveCount(0);
+    await box.fill("");
+  });
+
   await test.step("when the server fails, the message box says why", async () => {
     failing = true;
     await mic.click();
@@ -222,10 +244,16 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
 
   await saveVoiceSettings(page, (settings) => settings.getByLabel("Send right away").check());
 
-  await test.step("with Send right away, what was said is sent once it is text", async () => {
+  await test.step("with Send right away, what was said is sent once it is text, and stays under the box until the next dictation", async () => {
     await mic.click();
     await expect(page.locator(".timeline:visible .message.user").filter({ hasText: IN_ENGLISH })).toHaveCount(1, { timeout: 15_000 });
     await expect(box).toHaveValue("");
     await expect(problem).toHaveCount(0);
+    await expect(original).toContainText(`You said: ${HEARD_IN_HUNGARIAN}`);
+    await mic.click();
+    await expect(mic).toHaveAttribute("aria-pressed", "true");
+    await expect(original).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(mic).toHaveAttribute("aria-pressed", "false");
   });
 });
