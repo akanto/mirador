@@ -1,11 +1,20 @@
 import { canvasCaptureMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { markdownRequest, pageFileName, type MarkdownDelivery } from "../shared/canvas-export.ts";
 import type { ShowItem } from "../shared/model.ts";
+import type { ServerMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
 import { currentPageLibraries } from "./page-libraries.ts";
 
 /** Save to project found a file at the path; saving again with `replace` writes over it. */
 export class AlreadyThere extends Error {}
+
+const savedPath = (message: ServerMessage, requestId: string) => {
+  if (message.type === "canvas.saved-to-project" && message.requestId === requestId) return message.path;
+  if (message.type === "canvas.export-failed" && message.requestId === requestId) {
+    throw message.alreadyThere ? new AlreadyThere(message.message) : new Error(message.message);
+  }
+  return undefined;
+};
 
 const exportedPage = (itemId: string) =>
   connection.sendAndAwait(
@@ -21,13 +30,7 @@ const exportedPage = (itemId: string) =>
 export const savePageToProject = (itemId: string, path: string, replace: boolean) =>
   connection.sendAndAwait(
     (requestId) => ({ type: "canvas.save-to-project", requestId, itemId, path, libraries: currentPageLibraries(), replace }),
-    (message, requestId) => {
-      if (message.type === "canvas.saved-to-project" && message.requestId === requestId) return message.path;
-      if (message.type === "canvas.export-failed" && message.requestId === requestId) {
-        throw message.alreadyThere ? new AlreadyThere(message.message) : new Error(message.message);
-      }
-      return undefined;
-    },
+    savedPath,
   );
 
 const CAPTURE_TIMEOUT_MS = 30_000;
@@ -70,33 +73,35 @@ const asBase64 = async (blob: Blob) => {
   return btoa(chunks.join(""));
 };
 
+// The host ends the connection on a message over 16 MB, and base64 grows a PNG by a third: past this a save would
+// drop the connection and read as a lost host, so the image is refused while the reason is still the image.
+const MAX_SENT_IMAGE_BYTES = 12 * 1024 * 1024;
+
+export const refuseOversizedImage = (image: Blob) => {
+  if (image.size > MAX_SENT_IMAGE_BYTES) throw new Error("The page's image is too large to send to the host.");
+  return image;
+};
+
 /** Draws the page as a PNG and writes it into the conversation's project; resolves to the path it was saved at. */
 export const savePageImageToProject = (itemId: string, frame: HTMLIFrameElement, path: string, replace: boolean) =>
   capturedPage(frame)
+    .then(refuseOversizedImage)
     .then(asBase64)
     .then((image) =>
-      connection.sendAndAwait(
-        (requestId) => ({ type: "canvas.save-image-to-project", requestId, itemId, path, image, replace }),
-        (message, requestId) => {
-          if (message.type === "canvas.saved-to-project" && message.requestId === requestId) return message.path;
-          if (message.type === "canvas.export-failed" && message.requestId === requestId) {
-            throw message.alreadyThere ? new AlreadyThere(message.message) : new Error(message.message);
-          }
-          return undefined;
-        },
-      ),
+      connection.sendAndAwait((requestId) => ({ type: "canvas.save-image-to-project", requestId, itemId, path, image, replace }), savedPath),
     );
 
 // The clipboard is written at once, with the content still on its way: a browser takes a write only while it handles the
 // click, which would be over by the time the page is drawn or the host answers.
 // Where the page could not be drawn, WebKit refuses the write with its own NotAllowedError and hides the reason, so the capture's error wins when both fail.
-export function copyPageImage(frame: HTMLIFrameElement) {
-  const capture = capturedPage(frame);
+export const writeImageToClipboard = (capture: Promise<Blob>, clipboard: Pick<Clipboard, "write">) => {
   const captureFailure = capture.then(() => null, (error: unknown) => error);
-  return navigator.clipboard.write([new ClipboardItem({ "image/png": capture })]).catch(async (error: unknown) => {
+  return clipboard.write([new ClipboardItem({ "image/png": capture })]).catch(async (error: unknown) => {
     throw (await captureFailure) ?? error;
   });
-}
+};
+
+export const copyPageImage = (frame: HTMLIFrameElement) => writeImageToClipboard(capturedPage(frame), navigator.clipboard);
 
 export const copyPageHtml = (itemId: string) =>
   navigator.clipboard.write([new ClipboardItem({ "text/plain": exportedPage(itemId).then((html) => new Blob([html], { type: "text/plain" })) })]);

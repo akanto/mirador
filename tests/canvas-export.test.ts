@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assetPackageVersion, resolveAsset } from "../host/canvas/assets.ts";
 import { inlineScript, standalonePage } from "../host/canvas/export.ts";
+import { refuseOversizedImage, writeImageToClipboard } from "../web/canvas-export.ts";
 
 const ORIGIN = "http://127.0.0.1:4601";
 const PUBLIC_ORIGIN = "https://mirador.example.com:4601";
@@ -110,5 +111,28 @@ describe("standalonePage", () => {
 describe("inlineScript", () => {
   test("writes every closing script tag in the text so it cannot end the tag early, whatever its case", () => {
     expect(inlineScript('a("</SCRIPT>"); b("</script"); c()')).toBe('<script>a("<\\/SCRIPT>"); b("<\\/script"); c()</script>');
+  });
+});
+
+// WebKit hands out its own NotAllowedError for a write whose promise was rejected, hiding why; the pin below keeps the capture's reason the one the user reads.
+Object.defineProperty(globalThis, "ClipboardItem", { value: class {}, configurable: true });
+const REFUSED = "NotAllowedError: the clipboard refused the write";
+const refusedWrite = { write: () => Promise.reject(new Error(REFUSED)) };
+
+describe("the page image on its way to the project and the clipboard", () => {
+  test("the capture's own failure wins over the clipboard's refusal", async () => {
+    await expect(writeImageToClipboard(Promise.reject(new Error("The page could not be drawn.")), refusedWrite)).rejects.toThrow("The page could not be drawn.");
+  });
+
+  test("keeps the clipboard's refusal when the capture came", async () => {
+    const drawn = Promise.resolve(new Blob(["x"], { type: "image/png" }));
+    await expect(writeImageToClipboard(drawn, refusedWrite)).rejects.toThrow(REFUSED);
+  });
+
+  test("refuses an image past what fits a message to the host, and passes a smaller one through", () => {
+    const oversized = new Blob([new Uint8Array(12 * 1024 * 1024 + 1)]);
+    expect(() => refuseOversizedImage(oversized)).toThrow("The page's image is too large to send to the host.");
+    const small = new Blob(["x"]);
+    expect(refuseOversizedImage(small)).toBe(small);
   });
 });
