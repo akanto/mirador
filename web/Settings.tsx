@@ -9,6 +9,7 @@ import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterW
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
+import { PluginSettings } from "./PluginSettings.tsx";
 import { externalImages, setExternalImages, useExternalImagesBlocked } from "./external-images.ts";
 import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
@@ -92,6 +93,7 @@ const pageLabels: Record<SettingsPage, string> = {
   voice: "Voice",
   terminal: "Terminal",
   canvas: "Canvas",
+  plugins: "Plugins",
   layout: "Layout",
   devices: "Devices",
   notifications: "Notifications",
@@ -167,6 +169,7 @@ export function SettingsDialog({
         <SavedPageSettings />
       </>
     ),
+    plugins: () => <PluginSettings />,
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
     devices: () => <DeviceSettings listed={devices} />,
     notifications: () => <NotificationSettings />,

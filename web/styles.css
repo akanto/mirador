@@ -6473,6 +6473,57 @@ body.reordering * {
   justify-items: start;
 }
 
+.plugin-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.plugin-list li.failed {
+  border-color: var(--danger);
+}
+
+.plugin-title {
+  font-weight: 600;
+}
+
+.plugin-name {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.plugin-source,
+.plugin-problem {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.plugin-source {
+  color: var(--muted);
+}
+
+.plugin-problem {
+  color: var(--danger);
+}
+
+.plugin-list li.plugin-none {
+  border-style: dashed;
+  color: var(--muted);
+}
+
 .invite {
   display: grid;
   gap: 4px;

@@ -2,16 +2,10 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { isNewerVersion, releasePage, type NewerVersion } from "../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
+import { environmentWithoutPrompts } from "./git-environment.ts";
 
 const CHECK_EVERY_MILLISECONDS = 6 * 60 * 60 * 1000;
 const GIVE_UP_AFTER_MILLISECONDS = 60_000;
-
-/** Nobody is there to type a password or a key's passphrase, and a prompt would land in the terminal the host was started from. */
-const environmentWithoutPrompts = () => ({
-  ...process.env,
-  GIT_TERMINAL_PROMPT: "0",
-  GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes",
-});
 
 async function git(directory: string, args: string[]) {
   const child = Bun.spawn(["git", "-C", directory, ...args], {

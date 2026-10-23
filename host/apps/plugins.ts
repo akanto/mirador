@@ -31,17 +31,21 @@ export const installedApp = (plugin: AppPlugin): InstalledApp => ({
   viewPath: appViewPath(plugin),
 });
 
+/** The folders, or links to folders, in `pluginsFolder` that hold a plugin.json. */
+export function pluginFolders(pluginsFolder: string): string[] {
+  if (!existsSync(pluginsFolder)) return [];
+  return readdirSync(pluginsFolder, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+    .map((entry) => join(pluginsFolder, entry.name))
+    .filter((folder) => existsSync(join(folder, "plugin.json")))
+    .sort();
+}
+
 /** Every folder in `pluginsFolder` with a plugin.json that brings an app; one that fails to load is reported and the rest still load. */
 export async function loadAppPlugins(pluginsFolder: string): Promise<{ plugins: AppPlugin[]; problems: PluginLoadProblem[] }> {
-  const folders = existsSync(pluginsFolder)
-    ? readdirSync(pluginsFolder, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-        .map((entry) => join(pluginsFolder, entry.name))
-        .filter((folder) => existsSync(join(folder, "plugin.json")))
-    : [];
   const plugins: AppPlugin[] = [];
   const problems: PluginLoadProblem[] = [];
-  for (const folder of folders.sort()) {
+  for (const folder of pluginFolders(pluginsFolder)) {
     try {
       const plugin = await loadAppPlugin(folder);
       if (plugins.some(({ manifest }) => manifest.name === plugin.manifest.name)) throw new Error(`another plugin is already named ${plugin.manifest.name}`);

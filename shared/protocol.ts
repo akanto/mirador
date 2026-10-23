@@ -34,7 +34,7 @@ import type {
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { FindingDecision, GitHubCliProblem } from "./review.ts";
 import type { PageLibraries } from "./canvas-export.ts";
-import type { AppDocumentState, InstalledApp, OpenApp } from "./apps.ts";
+import type { AppDocumentState, InstalledApp, OpenApp, PluginInfo } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -234,6 +234,7 @@ export type ClientMessage =
   | { type: "presence"; conversationId: string | null; attentive: boolean }
   | { type: "host.restart" }
   | { type: "devices.list" }
+  | { type: "plugins.list" }
   | { type: "devices.invite"; requestId: string }
   /** Looks for the addresses other devices reach this host at; address.serve first puts its ports on the tailnet, when Tailscale is installed. */
   | { type: "address.find"; requestId: string }
@@ -407,6 +408,8 @@ export type ServerMessage =
   | { type: "files.ask-to-open"; conversationId: string; file: string }
   /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
   | { type: "devices.listed"; devices: ListedDevice[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
+  /** `folder` is where plugins are installed. */
+  | { type: "plugins.listed"; folder: string; plugins: PluginInfo[] }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   /** The addresses that answered as this Mirador, and whether this machine has Tailscale to put its ports on the tailnet. */
   | { type: "address.found"; requestId: string; addresses: FoundAddress[]; tailscale: "absent" | "present"; problem: string | null }

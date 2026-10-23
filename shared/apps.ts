@@ -68,6 +68,23 @@ export interface AppDocumentState {
   problem: string | null;
 }
 
+/** Where a plugin's folder came from: a git clone (its remote shown without credentials), a link to a folder elsewhere, or a plain folder. */
+export type PluginSource =
+  | { kind: "git"; remote: string | null; branch: string | null; commit: string; subject: string }
+  | { kind: "linked"; target: string }
+  | { kind: "folder" };
+
+/** A folder in the plugins folder that holds a plugin.json, as the Plugins settings list it. */
+export interface PluginInfo {
+  folder: string;
+  /** From its plugin.json, while that can be read. */
+  name: string | null;
+  title: string | null;
+  source: PluginSource;
+  /** Why it didn't load when Mirador started; null when it did. */
+  problem: string | null;
+}
+
 export const appKey = ({ workspaceId, app }: { workspaceId: string; app: string }) => `${workspaceId}/${app}`;
 
 /** The user's message from an app's view: it names the app and its file, so the agent knows what it is about. */

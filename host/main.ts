@@ -3,6 +3,7 @@ import { serveCanvasAssets } from "./canvas/assets.ts";
 import { authorityFingerprint, namesToCover, servingCertificate } from "./certificates.ts";
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { AppDocuments } from "./apps/documents.ts";
+import { InstalledPlugins } from "./apps/installed-plugins.ts";
 import { loadAppPlugins } from "./apps/plugins.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { agentLogsDirectory, loadConfig } from "./config.ts";
@@ -67,8 +68,10 @@ const canvasAssetsOrigins = [
 ];
 const canvas = new CanvasService(store, hub, conversations, notifications, canvasAssetsOrigins);
 conversations.hearCanvasNotesFrom((conversationId) => canvas.notesForAgent(conversationId));
-const appPlugins = await loadAppPlugins(join(config.dataDir, "plugins"));
+const pluginsFolder = join(config.dataDir, "plugins");
+const appPlugins = await loadAppPlugins(pluginsFolder);
 for (const { folder, message } of appPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
+const plugins = new InstalledPlugins(pluginsFolder, appPlugins.problems);
 const apps = new AppDocuments(store, appPlugins.plugins, {
   openAppsChanged: (openApps) => hub.broadcast({ type: "apps.open", openApps }),
   stateChanged: (state) => hub.publishAppState(state),
@@ -134,7 +137,7 @@ const voiceEngine = new VoiceEngine(
 );
 voiceEngineInstaller.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();

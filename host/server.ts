@@ -25,6 +25,7 @@ import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import type { AppDocuments } from "./apps/documents.ts";
+import type { InstalledPlugins } from "./apps/installed-plugins.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
@@ -74,6 +75,7 @@ export interface HostServices {
   canvas: CanvasService;
   mcp: CanvasMcpEndpoints;
   apps: AppDocuments;
+  plugins: InstalledPlugins;
   profiles: ProfileService;
   statusline: StatuslineService;
   terminals: TerminalService;
@@ -147,6 +149,7 @@ export function startServer(services: HostServices) {
     canvas,
     mcp,
     apps,
+    plugins,
     profiles,
     statusline,
     terminals,
@@ -1083,6 +1086,11 @@ export function startServer(services: HostServices) {
         return restart.restart();
       case "devices.list":
         return hub.send(socket, devicesListed(socket));
+      case "plugins.list":
+        return void plugins
+          .list()
+          .then((listed) => hub.send(socket, { type: "plugins.listed", folder: plugins.folder, plugins: listed }))
+          .catch((error) => console.warn(`Listing the plugins failed: ${messageOf(error)}`));
       case "devices.invite":
         return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });
       case "address.find":
