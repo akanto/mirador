@@ -123,6 +123,15 @@ export function ModelBeside({ model, engine, idleMinutes }: { model: ChoosableMo
 
 const usedFor: Record<EngineService, string> = { recognition: "Speech recognition", voiceModel: "Voice model", speaking: "Hungarian replies" };
 
+/** The engine removes nothing while a download goes on, so its Remove buttons wait. */
+function RemoveWaitingForDownload({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <button type="button" className="danger" aria-disabled="true" aria-label={label} data-hint={hints.voiceEngineRemoveWaits}>
+      {children}
+    </button>
+  );
+}
+
 /** A model on this Mac, or one downloading; only one the saved settings don't use can be removed. */
 function ModelRow({ model, engine, inUse }: { model: ChoosableModel; engine: VoiceEngineStatus; inUse: boolean }) {
   const { setup } = engine;
@@ -140,6 +149,8 @@ function ModelRow({ model, engine, inUse }: { model: ChoosableModel; engine: Voi
           <DownloadProgress setup={downloading} label={`Downloading ${model.name}`} />
         ) : inUse ? (
           "In use"
+        ) : setup.state === "setting-up" ? (
+          <RemoveWaitingForDownload label={`Remove ${model.name}`}>Remove</RemoveWaitingForDownload>
         ) : (
           <ConfirmButton
             className="danger"
@@ -237,9 +248,13 @@ export function ModelsOnThisMac({
       </div>
       <div className="sending-settings">
         {setup.state === "set-up" && <span>{gigabytes(setup.bytesOnDisk)} in all, with the speech engine.</span>}
-        <ConfirmButton className="danger" label="Remove voice from this Mac" armedText="Remove?" armedHint={hints.removeVoiceEngineArmed} onConfirm={() => connection.send({ type: "voice.engine.remove" })}>
-          Remove all
-        </ConfirmButton>
+        {setup.state === "setting-up" ? (
+          <RemoveWaitingForDownload label="Remove voice from this Mac">Remove all</RemoveWaitingForDownload>
+        ) : (
+          <ConfirmButton className="danger" label="Remove voice from this Mac" armedText="Remove?" armedHint={hints.removeVoiceEngineArmed} onConfirm={() => connection.send({ type: "voice.engine.remove" })}>
+            Remove all
+          </ConfirmButton>
+        )}
       </div>
       {status}
     </fieldset>

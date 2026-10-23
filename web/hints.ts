@@ -15,6 +15,7 @@ export const hints = {
   voiceEngineLoaded: (minutes: number) => `Loaded, so it answers at once. It unloads after ${minutes} minute${minutes === 1 ? "" : "s"} unused, set under Models on this Mac.`,
   voiceEngineUnloaded: "Not holding memory now. It loads when next needed, usually in 5 to 15 seconds.",
   voiceEngineDownloadWaits: "Another download is going on. This one can start once it ends.",
+  voiceEngineRemoveWaits: "A download is going on. Removing can start once it ends.",
   spokenVoiceKept: "Kokoro comes with voice on this Mac for English replies, and goes only with Remove all.",
   removeVoiceEngineArmed: "Click again to delete the speech engine and its models from this Mac. Setting up again downloads them again.",
   removeVoiceEngineModelArmed: "Click again to delete this model from this Mac. Choosing it again downloads it again.",

@@ -10,7 +10,7 @@ export class VoiceEngine {
   private readonly removingModels = new Set<string>();
 
   constructor(
-    private readonly installer: Pick<VoiceEngineInstaller, "status" | "setUp" | "cancel" | "remove" | "removeModel">,
+    private readonly installer: Pick<VoiceEngineInstaller, "status" | "setUp" | "cancel" | "remove" | "removeModel" | "isSettingUp">,
     private readonly servers: Pick<VoiceEngineServers, "states" | "use" | "servedModels" | "stopServing" | "stopAll" | "killAllNow" | "idleTimeChanged">,
   ) {}
 
@@ -26,8 +26,9 @@ export class VoiceEngine {
     this.installer.cancel();
   }
 
-  /** No server starts while removing, so none runs from files about to be deleted. */
+  /** No server starts while removing, so none runs from files about to be deleted; while a setup runs, nothing is removed, so the servers go on. */
   async remove() {
+    if (this.installer.isSettingUp()) return;
     this.removing = true;
     try {
       await this.servers.stopAll();
@@ -39,6 +40,7 @@ export class VoiceEngine {
 
   /** As remove does, for one model. */
   async removeModel(model: string) {
+    if (this.installer.isSettingUp()) return;
     this.removingModels.add(model);
     try {
       await this.servers.stopServing(model);

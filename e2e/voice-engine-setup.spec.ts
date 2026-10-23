@@ -263,7 +263,7 @@ test("Voice on this Mac downloads each model where it is chosen, loads them when
     expect(logged.find(({ event }) => event === "chat")).toMatchObject({ model: expect.stringMatching(/models\/gemma-4-26b-a4b-it-4bit$/), chatTemplateKwargs: { enable_thinking: false } });
   });
 
-  await test.step("choosing another voice model unloads the one in use at once, dictation says to download it, and once downloaded it loads at the next dictation", async () => {
+  await test.step("choosing another voice model unloads the one in use at once, dictation says to download it, nothing can be removed while it downloads, and once downloaded it loads at the next dictation", async () => {
     await expect(voiceModelRow.getByRole("button", { name: /^Remove/ })).toHaveCount(0);
     const biggerModelServer = engineLogged().find(({ event, module }) => event === "start" && module === "mlx_lm.server")!.pid;
     await modelChosenIn(voiceModel).selectOption({ label: "Gemma 4 12B · good · 6.8 GB" });
@@ -271,10 +271,21 @@ test("Voice on this Mac downloads each model where it is chosen, loads them when
     await expect.poll(() => isRunning(biggerModelServer)).toBe(false);
     expect(await dictate(page, conversationId)).toEqual({ status: 409, body: "Gemma 4 12B isn't on this Mac. Settings → Voice can download it." });
 
+    const removeBiggerModel = voiceModelRow.getByRole("button", { name: "Remove Gemma 4 26B-A4B" });
+    const removeAll = models.getByRole("button", { name: "Remove voice from this Mac" });
+    slowly = true;
     await voiceModel.getByRole("button", { name: "Download 6.8 GB" }).click();
+    await expect(removeBiggerModel).toHaveAttribute("aria-disabled", "true");
+    await expect(removeBiggerModel).toHaveAttribute("data-hint", "A download is going on. Removing can start once it ends.");
+    await expect(removeAll).toHaveAttribute("aria-disabled", "true");
+    await removeAll.click({ force: true });
+    await expect(models.getByRole("button", { name: "Confirm: Remove voice from this Mac" })).toHaveCount(0);
+    slowly = false;
     await expect(voiceModelState).toHaveText("Unloaded");
     await expect(lastCell(smallerVoiceModelRow)).toHaveText("In use");
-    await expect(voiceModelRow.getByRole("button", { name: "Remove Gemma 4 26B-A4B" })).toBeVisible();
+    await expect(removeBiggerModel).toBeVisible();
+    await expect(removeBiggerModel).not.toHaveAttribute("aria-disabled");
+    await expect(removeAll).not.toHaveAttribute("aria-disabled");
 
     expect(JSON.parse((await dictate(page, conversationId)).body)).toMatchObject({ text: "Run the e2e tests." });
     expect(engineLogged().filter(({ event }) => event === "chat").at(-1)?.model).toMatch(/models\/gemma-4-12B-it-4bit$/);

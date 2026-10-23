@@ -5,11 +5,11 @@ import { VoiceUnavailable } from "../host/voice/voice.ts";
 
 const setup: VoiceEngineSetup = { state: "set-up", bytesOnDisk: 1 };
 
-function engineWith({ remove = async () => {}, removeModel = async () => {}, served = [] as string[] }) {
+function engineWith({ remove = async () => {}, removeModel = async (_model: string) => {}, served = [] as string[], settingUp = false }) {
   const started: string[] = [];
   const stopped: string[] = [];
   const engine = new VoiceEngine(
-    { status: () => ({ setup, onDisk: [], memoryBytes: 0 }), setUp: () => {}, cancel: () => {}, remove, removeModel },
+    { status: () => ({ setup, onDisk: [], memoryBytes: 0 }), setUp: () => {}, cancel: () => {}, remove, removeModel, isSettingUp: () => settingUp },
     {
       states: () => ({ speech: "stopped", voiceModel: "stopped", speaking: "stopped" }),
       use: async (_, model, work) => {
@@ -20,7 +20,9 @@ function engineWith({ remove = async () => {}, removeModel = async () => {}, ser
       stopServing: async (model) => {
         stopped.push(model);
       },
-      stopAll: async () => {},
+      stopAll: async () => {
+        stopped.push(...served);
+      },
       killAllNow: () => {},
       idleTimeChanged: () => {},
     },
@@ -49,6 +51,24 @@ test("a model being removed stops its server first and doesn't start again, whil
   deleted.resolve();
   await removed;
   expect(started).toEqual(["gemma-4-e4b"]);
+});
+
+test("while a setup downloads, removing leaves every server running, as nothing is removed", async () => {
+  const removed: string[] = [];
+  const { engine, stopped } = engineWith({
+    served: ["whisper-large-v3-turbo", "gemma-4-26b-a4b"],
+    settingUp: true,
+    remove: async () => {
+      removed.push("everything");
+    },
+    removeModel: async (model) => {
+      removed.push(model);
+    },
+  });
+  await engine.remove();
+  await engine.removeModel("gemma-4-26b-a4b");
+  expect(stopped).toEqual([]);
+  expect(removed).toEqual([]);
 });
 
 test("models the settings no longer use unload", async () => {

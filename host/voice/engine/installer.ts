@@ -112,6 +112,10 @@ export class VoiceEngineInstaller {
     return this.installed.length > 0;
   }
 
+  isSettingUp() {
+    return this.run !== null;
+  }
+
   isDownloading(id: string) {
     return this.downloading.includes(id);
   }
