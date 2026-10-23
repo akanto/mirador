@@ -54,11 +54,17 @@ export const systemNotification = (conversation: Pick<Conversation, "id" | "titl
 
 export type TurnOutcome = { stopReason: string } | { error: string };
 
-/** A turn you cancelled, or one whose queued message goes out right away, is not your move. */
-export function turnEndReason(outcome: TurnOutcome, messagesQueued: boolean): Extract<NotificationReason, { kind: "finished" | "error" }> | null {
+/**
+ * A turn you cancelled, one whose queued message goes out right away, or one that finished to wait for a job whose end
+ * resumes the agent, is not your move.
+ */
+export function turnEndReason(
+  outcome: TurnOutcome,
+  { messagesQueued = false, resumedByAJob = false } = {},
+): Extract<NotificationReason, { kind: "finished" | "error" }> | null {
   if (messagesQueued) return null;
   if ("error" in outcome) return { kind: "error", message: outcome.error };
-  return outcome.stopReason === "cancelled" ? null : { kind: "finished" };
+  return outcome.stopReason === "cancelled" || resumedByAJob ? null : { kind: "finished" };
 }
 
 /** On this machine's own screen, so whoever sits there can let the device in, typing the number it shows. */

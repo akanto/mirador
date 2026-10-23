@@ -40,14 +40,19 @@ describe("system notification text", () => {
 
 describe("a turn that ends makes it your move", () => {
   test("when it finished or stopped with an error", () => {
-    expect(turnEndReason({ stopReason: "end_turn" }, false)).toEqual({ kind: "finished" });
-    expect(turnEndReason({ error: "boom" }, false)).toEqual({ kind: "error", message: "boom" });
+    expect(turnEndReason({ stopReason: "end_turn" })).toEqual({ kind: "finished" });
+    expect(turnEndReason({ error: "boom" })).toEqual({ kind: "error", message: "boom" });
   });
 
   test("but not when you cancelled it, nor when a queued message goes out next", () => {
-    expect(turnEndReason({ stopReason: "cancelled" }, false)).toBeNull();
-    expect(turnEndReason({ stopReason: "end_turn" }, true)).toBeNull();
-    expect(turnEndReason({ error: "boom" }, true)).toBeNull();
+    expect(turnEndReason({ stopReason: "cancelled" })).toBeNull();
+    expect(turnEndReason({ stopReason: "end_turn" }, { messagesQueued: true })).toBeNull();
+    expect(turnEndReason({ error: "boom" }, { messagesQueued: true })).toBeNull();
+  });
+
+  test("nor when it finished to wait for a job whose end resumes the agent, though a failure still is", () => {
+    expect(turnEndReason({ stopReason: "end_turn" }, { resumedByAJob: true })).toBeNull();
+    expect(turnEndReason({ error: "boom" }, { resumedByAJob: true })).toEqual({ kind: "error", message: "boom" });
   });
 });
 

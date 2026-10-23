@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, allowNotifications, createProfile, notificationsShown, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -42,6 +42,7 @@ function watchSessionId(page: Page) {
 test("the agent has the host wait for a job it left running, then resume the agent, or only tell you, also after a restart", async ({ page }) => {
   test.setTimeout(180_000);
   const sessionId = watchSessionId(page);
+  await allowNotifications(page);
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const dialog = await createProfile(page, PROFILE, scriptedOpencodeEnvironment(model, host.root), "", "opencode");
@@ -87,6 +88,25 @@ test("the agent has the host wait for a job it left running, then resume the age
       await expect.poll(() => model.userMessagesInContext().join("\n")).toContain("build-finished check the output");
       await expect(sidebarDot).toHaveClass(/status-idle/);
     });
+  });
+
+  await test.step("while you look elsewhere, a turn that ends waiting for a job that resumes the agent doesn't notify, as the agent isn't done, and the turn its end resumes does", async () => {
+    const job = startJob();
+    const notificationsAbout = async () => (await notificationsShown(page)).filter(({ tag }) => tag === conversationId).map(({ body }) => body);
+    model.hold();
+    await sendMessage(page, `CALL when_done ${JSON.stringify({ pid: job.pid, message: "build-finished-elsewhere", resume: true })}`);
+    await startConversation(page);
+    model.answerHeld();
+    await expect(sidebarDot).not.toHaveClass(/status-(starting|running)/);
+    await page.waitForTimeout(500);
+    expect(await notificationsAbout()).toEqual([]);
+    await expect(sidebarDot).toHaveClass(/waiting-on-job/);
+
+    job.kill();
+    await expect.poll(notificationsAbout).toEqual(["project · Finished, waiting for you"]);
+    await page.locator(`li[data-reorder-id="${conversationId}"] .conversation-title`).click();
+    await expect(fromScript.filter({ hasText: "build-finished-elsewhere" })).toHaveCount(1);
+    await waitForTurnToEnd(page);
   });
 
   await test.step("without resuming the agent, only you are told: the agent gets nothing", async () => {

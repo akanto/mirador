@@ -1849,7 +1849,10 @@ export class ConversationService {
 
   private notifyTurnEnded(conversationId: string, outcome: TurnOutcome) {
     if (!this.store.hasConversation(conversationId)) return;
-    const reason = turnEndReason(outcome, this.runtime(conversationId).queuedMessages.length > 0);
+    const reason = turnEndReason(outcome, {
+      messagesQueued: this.runtime(conversationId).queuedMessages.length > 0,
+      resumedByAJob: this.jobWaits.in(conversationId).some(({ resume }) => resume),
+    });
     if (!reason || this.stopping) return;
     this.notifications.notify(conversationId, reason);
     if (this.hub.isWatched(conversationId)) return;
