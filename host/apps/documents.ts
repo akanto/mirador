@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, watch, type FSWatcher } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, watch, type FSWatcher } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type OpenApp } from "../../shared/apps.ts";
 import type { Store } from "../store.ts";
 import { AppProblem, appViewPath, installedApp, messageOf, type AppPlugin } from "./plugins.ts";
@@ -8,6 +8,17 @@ import { AppProblem, appViewPath, installedApp, messageOf, type AppPlugin } from
 /** Editors save in several writes; an edit made outside Mirador is read once the file has been quiet this long. */
 const OUTSIDE_EDIT_SETTLE_MS = 150;
 const CHANGES_DESCRIBED = 10;
+const MAX_APP_FILE_BYTES = 10 * 1024 * 1024;
+
+/** Why a view can't have the file it asked for, with the HTTP status that says so. */
+export class AppFileRefused extends AppProblem {
+  constructor(
+    readonly status: 400 | 403 | 404 | 413,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 export interface AppPublisher {
   openAppsChanged(openApps: OpenApp[]): void;
@@ -66,6 +77,16 @@ function fileInWorkspace(workspacePath: string, file: string) {
   return { path, file: relative(root, path) };
 }
 
+const realPathOrNull = (path: string) => {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return null;
+  }
+};
+
+const isInside = (folder: string, path: string) => path.startsWith(folder + sep);
+
 /** The document each workspace has open in each app: operations from the agent and the user change it one at a time, and the file stores it. */
 export class AppDocuments {
   private readonly documents = new Map<string, AppDocument>();
@@ -74,6 +95,7 @@ export class AppDocuments {
     private readonly store: Store,
     private readonly plugins: AppPlugin[],
     private readonly publisher: AppPublisher,
+    private readonly maxFileBytes = MAX_APP_FILE_BYTES,
   ) {}
 
   installed() {
@@ -83,6 +105,25 @@ export class AppDocuments {
   /** The view's code for a path the canvas assets serve, or null when no plugin's view is there. */
   viewCode(pathname: string): Uint8Array<ArrayBuffer> | null {
     return this.plugins.find((plugin) => appViewPath(plugin) === pathname)?.view.code ?? null;
+  }
+
+  /** The real path of a file in the folder of the app's open document, or below it: links that lead out of the folder are refused. */
+  fileNextToDocument(workspaceId: string, appName: string, path: unknown): string {
+    const opened = this.documents.get(appKey({ workspaceId, app: appName }));
+    if (!opened) throw new AppFileRefused(404, `${appName} isn't open in this workspace.`);
+    if (typeof path !== "string" || path === "" || isAbsolute(path)) throw new AppFileRefused(400, "Give the file's path relative to the document's folder.");
+    const folder = realPathOrNull(dirname(opened.path));
+    if (!folder) throw new AppFileRefused(404, "The document's folder doesn't exist.");
+    const refusedAsOutside = new AppFileRefused(403, `${path} is outside the document's folder.`);
+    const wanted = resolve(folder, path);
+    if (!isInside(folder, wanted)) throw refusedAsOutside;
+    const file = realPathOrNull(wanted);
+    if (!file) throw new AppFileRefused(404, `${path} doesn't exist.`);
+    if (!isInside(folder, file)) throw refusedAsOutside;
+    const stats = statSync(file);
+    if (!stats.isFile()) throw new AppFileRefused(400, `${path} isn't a file.`);
+    if (stats.size > this.maxFileBytes) throw new AppFileRefused(413, `${path} is larger than ${this.maxFileBytes / 1024 / 1024} MB.`);
+    return file;
   }
 
   openApps(): OpenApp[] {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { appPromptText, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
-import { appStateMessage, appViewPage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
+import { appFileFailedMessage, appFileMessage, appStateMessage, appViewPage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { CanvasFrame } from "./Canvas.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
@@ -36,6 +36,15 @@ function useAppPrompt(openApp: OpenApp, conversationId: string) {
   return { prompt, sent: sentAt !== null };
 }
 
+const appFileUrl = ({ workspaceId, app }: OpenApp, path: string) => `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(app)}/file?path=${encodeURIComponent(path)}`;
+
+/** The bytes of a file next to the app's document, or the host's reason it can't be had. */
+async function fileForView(openApp: OpenApp, path: string) {
+  const response = await fetch(appFileUrl(openApp, path));
+  if (!response.ok) throw new Error((await response.text()) || `Mirador answered ${response.status}.`);
+  return { bytes: await response.arrayBuffer(), type: response.headers.get("content-type") ?? "" };
+}
+
 /** An app's view, live: its page loads once and every change to the document reaches it as a message. */
 export function AppView({
   openApp,
@@ -61,10 +70,21 @@ export function AppView({
 
   useEffect(postState, [documentState]);
 
+  const sendFile = async (requestId: string, path: string) => {
+    const answerTo = frame.current?.contentWindow;
+    try {
+      const { bytes, type } = await fileForView(openApp, path);
+      answerTo?.postMessage(appFileMessage(requestId, bytes, type), "*", [bytes]);
+    } catch (error) {
+      answerTo?.postMessage(appFileFailedMessage(requestId, error instanceof Error ? error.message : String(error)), "*");
+    }
+  };
+
   const received = (message: CanvasFrameMessage) => {
     if (message.kind === "app-ready") postState();
     if (message.kind === "app-apply") connection.send({ type: "app.apply", workspaceId: openApp.workspaceId, app: openApp.app, op: message.op });
     if (message.kind === "app-prompt") prompt(message.text);
+    if (message.kind === "app-read-file" && typeof message.path === "string" && typeof message.requestId === "string") void sendFile(message.requestId, message.path);
   };
 
   return (

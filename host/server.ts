@@ -24,7 +24,7 @@ import { claudeProgramLookUps, claudeProgramReport } from "./acp/claude-program.
 import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
-import type { AppDocuments } from "./apps/documents.ts";
+import { AppFileRefused, type AppDocuments } from "./apps/documents.ts";
 import { withoutCredentials, type InstalledPlugins } from "./apps/installed-plugins.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
@@ -456,13 +456,19 @@ export function startServer(services: HostServices) {
     }
   }
 
-  /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images and dropped files. */
-  function refusedAttachmentRequest(request: Request, conversationId: string) {
+  /** Only the app's own pages, signed in with the browser cookie, may read or add a conversation's images and dropped files, or read an app's files. */
+  function refusedPageRequest(request: Request) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
     if (!signedInAs(request)) return new Response("unauthorized", { status: 401 });
     const site = request.headers.get("sec-fetch-site");
     if (site && site !== "same-origin") return new Response("forbidden", { status: 403 });
     if (request.method !== "GET" && !isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
+    return null;
+  }
+
+  function refusedAttachmentRequest(request: Request, conversationId: string) {
+    const refused = refusedPageRequest(request);
+    if (refused) return refused;
     if (!store.findConversation(conversationId)) return new Response("unknown conversation", { status: 404 });
     return null;
   }
@@ -569,6 +575,19 @@ export function startServer(services: HostServices) {
     const file = isImageId(imageId) ? images.file(conversationId, imageId) : null;
     if (!file || !(await file.exists())) return new Response("not found", { status: 404 });
     return new Response(file, { headers: { "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" } });
+  }
+
+  /** A file next to an open app's document, for the app's view in the signed-in page. */
+  function serveAppFile(request: Bun.BunRequest<"/workspaces/:workspaceId/apps/:app/file">) {
+    const refused = refusedPageRequest(request);
+    if (refused) return refused;
+    const { workspaceId, app } = request.params;
+    try {
+      const file = Bun.file(apps.fileNextToDocument(workspaceId, app, new URL(request.url).searchParams.get("path")));
+      return new Response(file, { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+    } catch (error) {
+      return new Response(errorMessage(error), { status: error instanceof AppFileRefused ? error.status : 500 });
+    }
   }
 
   /** An image an agent's tool returned, which the low-data form of its event links to. */
@@ -1190,6 +1209,7 @@ export function startServer(services: HostServices) {
     "/conversations/:conversationId/spoken-sentence": { POST: speakSentence },
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
+    "/workspaces/:workspaceId/apps/:app/file": { GET: serveAppFile },
     "/mirador-ca.pem": serveAuthority,
     "/mirador-here": here,
   };

@@ -27,6 +27,8 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-apply"; op: unknown }
   /** Words the user wrote in an app's view, for the agent of the conversation whose canvas shows it. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-prompt"; text: unknown }
+  /** A file next to the app's document that the view wants, named relative to the document's folder; the panel answers with an "app-file" or "app-file-failed" message. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-read-file"; requestId: string; path: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -79,23 +81,42 @@ export function appStateMessage(state: unknown) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "app-state", state };
 }
 
+/** A file the view asked for, as the panel read it. */
+export function appFileMessage(requestId: string, bytes: ArrayBuffer, type: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "app-file", requestId, bytes, type };
+}
+
+/** Why a file the view asked for can't be had. */
+export function appFileFailedMessage(requestId: string, message: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "app-file-failed", requestId, message };
+}
+
+/** A view that waits longer than this for a file is told Mirador didn't answer, as on the phone, where nobody answers yet. */
+export const APP_FILE_ANSWER_MS = 30_000;
+
 /**
  * `window.mirador` for an app's view. The desktop's panel posts the state from the parent window; the phone's WebView,
  * where the parent is the page itself, injects it as an event with no source. A view gets the latest state as soon as
  * it listens, so it may start listening whenever its code is ready. `prompt` sends the user's words to the agent of the
- * conversation the view is open in, as the user's message.
+ * conversation the view is open in, as the user's message. `readFile` reads a file in the folder of the view's document, or
+ * below it, as a Blob.
  */
 function appBridge(frameId: string) {
   return `(() => {
   const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
   const itemId = ${JSON.stringify(frameId)};
   const listeners = new Set();
+  const fileRequests = new Map();
   let latest;
   addEventListener("message", (event) => {
     const data = event.data;
-    if ((event.source !== parent && event.source !== null) || !data || data.source !== source || data.kind !== "app-state") return;
-    latest = data.state;
-    listeners.forEach((listener) => listener(latest));
+    if ((event.source !== parent && event.source !== null) || !data || data.source !== source) return;
+    if (data.kind === "app-state") {
+      latest = data.state;
+      listeners.forEach((listener) => listener(latest));
+    }
+    if (data.kind === "app-file") fileRequests.get(data.requestId)?.resolve(new Blob([data.bytes], { type: data.type }));
+    if (data.kind === "app-file-failed") fileRequests.get(data.requestId)?.reject(new Error(data.message));
   });
   window.mirador = Object.freeze({
     onState(listener) {
@@ -108,6 +129,19 @@ function appBridge(frameId: string) {
     },
     prompt(text) {
       parent.postMessage({ source, itemId, kind: "app-prompt", text }, "*");
+    },
+    readFile(path) {
+      const requestId = crypto.randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer the request for " + path + ".")), ${APP_FILE_ANSWER_MS});
+        const settle = (finish, result) => {
+          clearTimeout(timer);
+          fileRequests.delete(requestId);
+          finish(result);
+        };
+        fileRequests.set(requestId, { resolve: (blob) => settle(resolve, blob), reject: (error) => settle(reject, error) });
+        parent.postMessage({ source, itemId, kind: "app-read-file", requestId, path }, "*");
+      });
     },
   });
   parent.postMessage({ source, itemId, kind: "app-ready" }, "*");

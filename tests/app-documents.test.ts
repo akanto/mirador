@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppDocuments, type AppPublisher } from "../host/apps/documents.ts";
+import { AppDocuments, AppFileRefused, type AppPublisher } from "../host/apps/documents.ts";
 import { AppProblem, loadAppPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
 import { appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
@@ -16,11 +16,11 @@ function recordingPublisher() {
   return { publisher, states, openAppLists };
 }
 
-async function setUp(store = new Store(":memory:"), workspacePath = mkdtempSync(join(tmpdir(), "app-workspace-"))) {
+async function setUp(store = new Store(":memory:"), workspacePath = mkdtempSync(join(tmpdir(), "app-workspace-")), maxFileBytes?: number) {
   if (!store.findWorkspace("w1")) store.insertWorkspace({ id: "w1", name: "p", path: workspacePath, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
   const { plugins } = await loadAppPlugins(FIXTURE_APPS);
   const recorded = recordingPublisher();
-  const apps = new AppDocuments(store, plugins, recorded.publisher);
+  const apps = new AppDocuments(store, plugins, recorded.publisher, maxFileBytes);
   const fileText = () => readFileSync(join(workspacePath, "counter.json"), "utf8");
   return { store, workspacePath, apps, fileText, ...recorded };
 }
@@ -183,6 +183,80 @@ describe("AppDocuments", () => {
     expect(apps.describe("w1", undefined)).toBe("Counter on counter.json\n\nThe count is 0.\n\nNo changes yet since Mirador started.");
     await apps.apply("w1", undefined, { op: "add", by: 3 }, { kind: "agent", conversationId: "c1", turnSeq: null });
     expect(apps.describe("w1", "counter")).toBe("Counter on counter.json\n\nThe count is 3.\n\nLatest changes:\n1. agent: Added 3; the count is 3.");
+    apps.stop();
+  });
+});
+
+describe("AppDocuments.fileNextToDocument", () => {
+  async function openIn(documentFolder: string, maxFileBytes?: number) {
+    const set = await setUp(new Store(":memory:"), mkdtempSync(join(tmpdir(), "app-workspace-")), maxFileBytes);
+    mkdirSync(join(set.workspacePath, documentFolder), { recursive: true });
+    await set.apps.open("w1", "counter", join(documentFolder, "counter.json"));
+    const folder = join(set.workspacePath, documentFolder);
+    const refusal = (path: unknown) => {
+      try {
+        set.apps.fileNextToDocument("w1", "counter", path);
+      } catch (error) {
+        return error as AppFileRefused;
+      }
+      throw new Error(`${String(path)} was not refused.`);
+    };
+    return { ...set, folder, refusal };
+  }
+
+  test("gives the file next to the document, and one in a subfolder", async () => {
+    const { apps, folder } = await openIn("plan");
+    mkdirSync(join(folder, "textures"));
+    writeFileSync(join(folder, "note.txt"), "note");
+    writeFileSync(join(folder, "textures", "1.jpg"), "jpg");
+    expect(readFileSync(apps.fileNextToDocument("w1", "counter", "note.txt"), "utf8")).toBe("note");
+    expect(readFileSync(apps.fileNextToDocument("w1", "counter", "textures/1.jpg"), "utf8")).toBe("jpg");
+    expect(readFileSync(apps.fileNextToDocument("w1", "counter", "./textures/../note.txt"), "utf8")).toBe("note");
+    apps.stop();
+  });
+
+  test("refuses a path that leaves the folder, an absolute one, and one that is empty or not a string", async () => {
+    const { apps, workspacePath, refusal } = await openIn("plan");
+    writeFileSync(join(workspacePath, "outside.txt"), "secret");
+    expect(refusal("../outside.txt")).toMatchObject({ status: 403, message: "../outside.txt is outside the document's folder." });
+    expect(refusal("textures/../../outside.txt").status).toBe(403);
+    expect(refusal(join(workspacePath, "outside.txt")).status).toBe(400);
+    expect(refusal("").status).toBe(400);
+    expect(refusal(undefined).status).toBe(400);
+    expect(refusal(7).status).toBe(400);
+    apps.stop();
+  });
+
+  test("refuses a link inside the folder that leads out of it, to a file or a folder, but follows one that stays in", async () => {
+    const { apps, folder, workspacePath, refusal } = await openIn("plan");
+    mkdirSync(join(workspacePath, "elsewhere"));
+    writeFileSync(join(workspacePath, "elsewhere", "secret.txt"), "secret");
+    writeFileSync(join(folder, "real.txt"), "real");
+    symlinkSync(join(workspacePath, "elsewhere", "secret.txt"), join(folder, "leak.txt"));
+    symlinkSync(join(workspacePath, "elsewhere"), join(folder, "leaky"));
+    symlinkSync("real.txt", join(folder, "alias.txt"));
+    expect(refusal("leak.txt").status).toBe(403);
+    expect(refusal("leaky/secret.txt").status).toBe(403);
+    expect(readFileSync(apps.fileNextToDocument("w1", "counter", "alias.txt"), "utf8")).toBe("real");
+    apps.stop();
+  });
+
+  test("refuses a directory, a missing file, and an app that is not open", async () => {
+    const { apps, folder, refusal } = await openIn("plan");
+    mkdirSync(join(folder, "textures"));
+    expect(refusal("textures")).toMatchObject({ status: 400, message: "textures isn't a file." });
+    expect(refusal("missing.txt")).toMatchObject({ status: 404, message: "missing.txt doesn't exist." });
+    expect(() => apps.fileNextToDocument("w2", "counter", "x")).toThrow(AppFileRefused);
+    expect(() => apps.fileNextToDocument("w1", "sketchbook", "x")).toThrow("sketchbook isn't open in this workspace.");
+    apps.stop();
+  });
+
+  test("refuses a file over the size it is allowed", async () => {
+    const { apps, folder, refusal } = await openIn("plan", 10);
+    writeFileSync(join(folder, "fits.txt"), "0123456789");
+    writeFileSync(join(folder, "big.bin"), "0123456789!");
+    expect(apps.fileNextToDocument("w1", "counter", "fits.txt")).toEndWith("fits.txt");
+    expect(refusal("big.bin").status).toBe(413);
     apps.stop();
   });
 });

@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { resolveAsset, serveCanvasAssets } from "../host/canvas/assets.ts";
-import { buildCanvasDocument, CANVAS_SHELL_PAGE, CANVAS_SHELL_PATH, HIDDEN_ERROR_SCRIPT, TEXT_CONTRAST_SCRIPT } from "../shared/canvas-document.ts";
+import {
+  APP_FILE_ANSWER_MS,
+  appFileFailedMessage,
+  appFileMessage,
+  appViewPage,
+  buildCanvasDocument,
+  CANVAS_MESSAGE_SOURCE,
+  CANVAS_SHELL_PAGE,
+  CANVAS_SHELL_PATH,
+  HIDDEN_ERROR_SCRIPT,
+  TEXT_CONTRAST_SCRIPT,
+} from "../shared/canvas-document.ts";
 
 const assetsOrigin = "http://127.0.0.1:4601";
 
@@ -147,5 +158,72 @@ describe("serveCanvasAssets", () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+interface FrameWindow {
+  mirador: { readFile(path: string): Promise<Blob> };
+}
+
+/** The app page's bridge, run against a stand-in window whose parent records what the view posts and whose clock the test turns. */
+function runAppBridge() {
+  const posted: Record<string, unknown>[] = [];
+  const listeners: ((event: { source: unknown; data: unknown }) => void)[] = [];
+  const timers: { fire: () => void; delay: number }[] = [];
+  const parent = { postMessage: (message: Record<string, unknown>) => posted.push(message) };
+  const frameWindow = {} as FrameWindow;
+  const setTimer = (fire: () => void, delay: number) => timers.push({ fire, delay });
+  const bridge = appViewPage("http://assets/view.js", "app:w1/counter").match(/^<script>([\s\S]*?)<\/script>/)![1]!;
+  new Function("window", "parent", "addEventListener", "setTimeout", "clearTimeout", bridge)(frameWindow, parent, (_: string, listener: (typeof listeners)[number]) => listeners.push(listener), setTimer, () => {});
+  const answer = (data: unknown, source: unknown = parent) => listeners.forEach((listener) => listener({ source, data }));
+  return { mirador: frameWindow.mirador, posted, answer, timers };
+}
+
+describe("an app view's window.mirador.readFile", () => {
+  test("posts the request for the path, and resolves with the bytes it is answered with, typed", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const reading = mirador.readFile("textures/1.jpg");
+    const request = posted.find(({ kind }) => kind === "app-read-file")!;
+    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-read-file", requestId: expect.any(String), path: "textures/1.jpg" });
+    answer(appFileMessage(request.requestId as string, new TextEncoder().encode("hello").buffer as ArrayBuffer, "image/png"));
+    const blob = await reading;
+    expect(blob.type).toBe("image/png");
+    expect(await blob.text()).toBe("hello");
+  });
+
+  test("rejects with the reason it is answered with", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const reading = mirador.readFile("../outside.txt");
+    answer(appFileFailedMessage(posted.find(({ kind }) => kind === "app-read-file")!.requestId as string, "../outside.txt is outside the document's folder."));
+    await expect(reading).rejects.toThrow("../outside.txt is outside the document's folder.");
+  });
+
+  test("keeps two reads apart, and ignores an answer from a window that is not its parent", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const first = mirador.readFile("a.txt");
+    const second = mirador.readFile("b.txt");
+    const [firstId, secondId] = posted.filter(({ kind }) => kind === "app-read-file").map(({ requestId }) => requestId as string);
+    expect(firstId).not.toBe(secondId);
+    answer(appFileMessage(firstId!, new ArrayBuffer(1), "text/plain"), {});
+    answer(appFileMessage(secondId!, new TextEncoder().encode("b").buffer as ArrayBuffer, "text/plain"));
+    expect(await (await second).text()).toBe("b");
+    const settled = await Promise.race([first.then(() => "answered"), Bun.sleep(20).then(() => "waiting")]);
+    expect(settled).toBe("waiting");
+  });
+
+  test("rejects when Mirador doesn't answer in time, as on the phone", async () => {
+    const { mirador, timers } = runAppBridge();
+    const reading = mirador.readFile("a.txt");
+    expect(timers.map(({ delay }) => delay)).toEqual([APP_FILE_ANSWER_MS]);
+    timers[0]!.fire();
+    await expect(reading).rejects.toThrow("Mirador didn't answer the request for a.txt.");
+  });
+});
+
+describe("the messages that answer an app view's file request", () => {
+  test("carry the request id with the bytes and their type, or with the reason", () => {
+    const bytes = new ArrayBuffer(2);
+    expect(appFileMessage("r1", bytes, "image/png")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-file", requestId: "r1", bytes, type: "image/png" });
+    expect(appFileFailedMessage("r1", "nope")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-file-failed", requestId: "r1", message: "nope" });
   });
 });

@@ -102,6 +102,15 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(page.locator(".timeline:visible .message.user").last()).toContainText("Is 40 a good count?");
   });
 
+  await test.step("the view reads a file next to the document, and is refused one outside its folder", async () => {
+    writeFileSync(join(host.projectDir, "note.txt"), "Remember the milk\n");
+    writeFileSync(join(host.root, "outside.txt"), "not for the view");
+    await view(page).getByRole("button", { name: "Read the note" }).click();
+    await expect(view(page).locator("#file-text")).toHaveText("Remember the milk");
+    await view(page).getByRole("button", { name: "Read the file outside" }).click();
+    await expect(view(page).locator("#file-text")).toHaveText("../outside.txt is outside the document's folder.");
+  });
+
   await test.step("another conversation of the workspace has the same app, and its agent reads every change", async () => {
     const second = await startConversationWithoutModel(page);
     await sendAndWait(page, "Start");
