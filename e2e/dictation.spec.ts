@@ -69,6 +69,18 @@ async function changeVoiceSettings(page: Page, change: (settings: Locator) => Pr
   await settings.getByRole("button", { name: "Close" }).click();
 }
 
+/** Keeps the microphone from recording, as while the user is asked to allow it, until allowTheMicrophone. */
+const holdTheMicrophone = (page: Page) =>
+  page.evaluate(() => {
+    const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    const allowed = new Promise<void>((resolve) => Object.assign(window, { allowMicrophone: resolve }));
+    navigator.mediaDevices.getUserMedia = async (constraints) => {
+      await allowed;
+      return open(constraints);
+    };
+  });
+const allowTheMicrophone = (page: Page) => page.evaluate(() => (window as unknown as { allowMicrophone: () => void }).allowMicrophone());
+
 const dictateKey = (page: Page) => page.evaluate(() => (navigator.userAgent.includes("Mac") ? "Meta" : "Control"));
 
 test("The mic button and ⌘⇧Space dictate into the message box: a tap listens until a pause, a hold until let go, and the English goes in at the caret with what was said under it", async ({ page }) => {
@@ -150,21 +162,28 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
   });
 
   await test.step("until the microphone records, the box says it is starting, and a slow start, as while the user allows it, isn't taken for silence", async () => {
-    await page.evaluate(() => {
-      const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-      const allowed = new Promise<void>((resolve) => Object.assign(window, { allowMicrophone: resolve }));
-      navigator.mediaDevices.getUserMedia = async (constraints) => {
-        await allowed;
-        return open(constraints);
-      };
-    });
+    await holdTheMicrophone(page);
     await mic.click();
     await expect(mic).toHaveAttribute("aria-pressed", "true");
     await expect(status).toHaveText("Starting the microphone…");
     await page.waitForTimeout(NOTHING_HEARD_MS + 1_000);
     await expect(status).toHaveText("Starting the microphone…");
-    await page.evaluate(() => (window as unknown as { allowMicrophone: () => void }).allowMicrophone());
+    await allowTheMicrophone(page);
     await expect(status).toHaveText("Listening… It stops when you pause or let go. Esc cancels.");
+    await expect(box).toHaveValue(IN_ENGLISH, { timeout: 15_000 });
+    await expect(problem).toHaveCount(0);
+    await box.fill("");
+  });
+
+  await test.step("pressing again while the microphone starts ends that dictation, and a press after it begins the next, which goes on listening", async () => {
+    await holdTheMicrophone(page);
+    await mic.click();
+    await expect(status).toHaveText("Starting the microphone…");
+    await mic.click();
+    await mic.click();
+    await allowTheMicrophone(page);
+    await expect(status).toHaveText("Listening… It stops when you pause or let go. Esc cancels.");
+    await expect(mic).toHaveAttribute("aria-pressed", "true");
     await expect(box).toHaveValue(IN_ENGLISH, { timeout: 15_000 });
     await expect(problem).toHaveCount(0);
     await box.fill("");

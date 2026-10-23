@@ -86,16 +86,19 @@ export function useDictation({
     if (!ending) return;
     listening.current = null;
     press.current = { kind: "up" };
+    const nextDictationBegan = () => listening.current !== null;
     try {
       const recording = await ending.recording;
       if (!ending.heardSpeech()) {
         recording.cancel();
+        if (nextDictationBegan()) return;
         setPhase("idle");
         return setProblem(NOTHING_HEARD);
       }
       setPhase("transcribing");
       put(await transcribed(conversationId, await recording.finish()));
     } catch (error) {
+      if (nextDictationBegan()) return;
       setProblem(problemOf(error));
     }
     setPhase("idle");
