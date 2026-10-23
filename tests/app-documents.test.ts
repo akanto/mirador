@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AppDocuments, type AppPublisher } from "../host/apps/documents.ts";
 import { AppProblem, loadAppPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
-import type { AppDocumentState, OpenApp } from "../shared/apps.ts";
+import { appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
 const FIXTURE_APPS = join(import.meta.dir, "fixtures", "apps");
 
@@ -184,5 +184,12 @@ describe("AppDocuments", () => {
     await apps.apply("w1", undefined, { op: "add", by: 3 }, { kind: "agent", conversationId: "c1", turnSeq: null });
     expect(apps.describe("w1", "counter")).toBe("Counter on counter.json\n\nThe count is 3.\n\nLatest changes:\n1. agent: Added 3; the count is 3.");
     apps.stop();
+  });
+});
+
+describe("appPromptText", () => {
+  test("names the app and its file before the user's words, so the agent knows what they are about", () => {
+    const counter: OpenApp = { workspaceId: "w1", app: "counter", title: "Counter", file: "notes/counter.json" };
+    expect(appPromptText(counter, "  Make it 10\n")).toBe("About notes/counter.json, open in Counter (app_state reads it, apply changes it):\n\nMake it 10");
   });
 });

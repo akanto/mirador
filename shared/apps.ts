@@ -70,6 +70,11 @@ export interface AppDocumentState {
 
 export const appKey = ({ workspaceId, app }: { workspaceId: string; app: string }) => `${workspaceId}/${app}`;
 
+/** The user's message from an app's view: it names the app and its file, so the agent knows what it is about. */
+export function appPromptText({ title, file }: OpenApp, text: string) {
+  return `About ${file}, open in ${title} (app_state reads it, apply changes it):\n\n${text.trim()}`;
+}
+
 export function isAppManifest(value: unknown): value is AppManifest {
   if (typeof value !== "object" || value === null) return false;
   const { name, title, api, app } = value as Partial<AppManifest>;

@@ -905,7 +905,7 @@ export function CanvasPanel({
         )}
         {checklistOpen && <ChecklistView checklist={checklist} plan={plan} seenEditAt={seenEdit.current.at} />}
         {shownApp && shownAppInstalled && (
-          <AppView key={shownApp.app} openApp={shownApp} installed={shownAppInstalled} documentState={apps.documents[appKey(shownApp)]} assetsOrigin={assetsOrigin} />
+          <AppView key={shownApp.app} openApp={shownApp} installed={shownAppInstalled} documentState={apps.documents[appKey(shownApp)]} assetsOrigin={assetsOrigin} conversationId={conversationId} />
         )}
         {!tab && edit.shown && (
           <EditApproval key={edit.shown.permissionId} request={edit.shown} moreWaiting={edit.waiting - 1} note={settledNote} conversationId={conversationId} />

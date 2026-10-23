@@ -1,5 +1,5 @@
 const page = document.createElement("main");
-page.innerHTML = '<p>Count: <output id="count">…</output></p><p id="last-change"></p><p id="problem"></p><button id="add">Add one</button><p id="page-load"></p>';
+page.innerHTML = '<p>Count: <output id="count">…</output></p><p id="last-change"></p><p id="problem"></p><button id="add">Add one</button><button id="ask">Ask about the count</button><p id="page-load"></p>';
 document.body.append(page);
 document.getElementById("page-load").textContent = crypto.randomUUID();
 window.mirador.onState((state) => {
@@ -8,3 +8,4 @@ window.mirador.onState((state) => {
   document.getElementById("problem").textContent = state.problem ?? "";
 });
 document.getElementById("add").addEventListener("click", () => window.mirador.apply({ op: "add", by: 1 }));
+document.getElementById("ask").addEventListener("click", () => window.mirador.prompt(`Is ${document.getElementById("count").textContent} a good count?`));

@@ -94,6 +94,14 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#page-load")).toHaveText(pageLoad);
   });
 
+  await test.step("words the view sends go to this conversation's agent, naming the app and its file", async () => {
+    await view(page).getByRole("button", { name: "Ask about the count" }).click();
+    await expect(page.locator(".canvas-panel:visible .app-sent")).toHaveText("Sent to the agent. The answer comes in the chat.");
+    await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 60_000 });
+    await expect.poll(() => readFileSync(join(host.root, "prompts"), "utf8")).toContain("About counter.json, open in Counter (app_state reads it, apply changes it):\n\nIs 40 a good count?\n");
+    await expect(page.locator(".timeline:visible .message.user").last()).toContainText("Is 40 a good count?");
+  });
+
   await test.step("another conversation of the workspace has the same app, and its agent reads every change", async () => {
     const second = await startConversationWithoutModel(page);
     await sendAndWait(page, "Start");

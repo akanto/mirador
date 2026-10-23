@@ -25,6 +25,8 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-ready" }
   /** An operation the user made in an app's view, for the host to apply. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-apply"; op: unknown }
+  /** Words the user wrote in an app's view, for the agent of the conversation whose canvas shows it. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-prompt"; text: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -80,7 +82,8 @@ export function appStateMessage(state: unknown) {
 /**
  * `window.mirador` for an app's view. The desktop's panel posts the state from the parent window; the phone's WebView,
  * where the parent is the page itself, injects it as an event with no source. A view gets the latest state as soon as
- * it listens, so it may start listening whenever its code is ready.
+ * it listens, so it may start listening whenever its code is ready. `prompt` sends the user's words to the agent of the
+ * conversation the view is open in, as the user's message.
  */
 function appBridge(frameId: string) {
   return `(() => {
@@ -102,6 +105,9 @@ function appBridge(frameId: string) {
     },
     apply(op) {
       parent.postMessage({ source, itemId, kind: "app-apply", op }, "*");
+    },
+    prompt(text) {
+      parent.postMessage({ source, itemId, kind: "app-prompt", text }, "*");
     },
   });
   parent.postMessage({ source, itemId, kind: "app-ready" }, "*");
