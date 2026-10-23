@@ -34,6 +34,7 @@ import type {
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { FindingDecision, GitHubCliProblem } from "./review.ts";
 import type { PageLibraries } from "./canvas-export.ts";
+import type { AppDocumentState, InstalledApp, OpenApp } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -177,6 +178,11 @@ export type ClientMessage =
   | { type: "permission.respond"; conversationId: string; permissionId: string; optionId: string | null }
   | { type: "ask.answer"; itemId: string; label: string; note?: string; answers?: AskAnswerEntry[] }
   | { type: "canvas.report"; itemId: string; errors: string[] }
+  /** The page shows this app's document, and gets its state on every change until it unsubscribes. */
+  | { type: "app.subscribe"; workspaceId: string; app: string }
+  | { type: "app.unsubscribe"; workspaceId: string; app: string }
+  /** An operation the user made in the app's view. */
+  | { type: "app.apply"; workspaceId: string; app: string; op: unknown }
   /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
   | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
   /** The user takes the checklist off the canvas; it stays gone until the agent publishes a new one. */
@@ -286,7 +292,13 @@ export type ServerMessage =
       /** The version of Mirador this host is. */
       version: string;
       newerVersion: NewerVersion | null;
+      installedApps: InstalledApp[];
+      openApps: OpenApp[];
     }
+  /** Every app open in every workspace, whenever one opens or closes. */
+  | { type: "apps.open"; openApps: OpenApp[] }
+  /** Only to the pages subscribed to the app: a whole document, on every change. */
+  | { type: "app.state"; state: AppDocumentState }
   | { type: "profile.upserted"; profile: Profile }
   | { type: "profile.deleted"; profileId: string }
   | { type: "profile.saved"; requestId: string; profileId: string }

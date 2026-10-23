@@ -39,10 +39,14 @@ interface AssetsServing {
   certificate?: { chain: string; key: string } | null;
   /** The addresses pages are given for these assets. A proxy in front may hand the request a Host other than its own address. */
   knownOrigins?: string[];
+  /** The code of an installed app's view, by the path it is served at; that path carries a hash of the code, so it never goes stale. */
+  appViewCode?: (pathname: string) => Uint8Array<ArrayBuffer> | null;
 }
 
+const appViewHeaders = { ...corsHeaders, "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=31536000, immutable" };
+
 /** On 127.0.0.1 for this machine's pages; with a certificate, on every network for other devices' pages. */
-export function serveCanvasAssets(port: number, { certificate = null, knownOrigins = [] }: AssetsServing = {}) {
+export function serveCanvasAssets(port: number, { certificate = null, knownOrigins = [], appViewCode = () => null }: AssetsServing = {}) {
   return Bun.serve({
     hostname: certificate ? "0.0.0.0" : "127.0.0.1",
     port,
@@ -55,6 +59,8 @@ export function serveCanvasAssets(port: number, { certificate = null, knownOrigi
         const policy = canvasShellPolicy([...new Set([new URL(request.url).origin, ...knownOrigins])]);
         return new Response(CANVAS_SHELL_PAGE, { headers: { ...shellHeaders, "Content-Security-Policy": policy } });
       }
+      const viewCode = pathname.startsWith("/apps/") ? appViewCode(pathname) : null;
+      if (viewCode) return new Response(viewCode, { headers: appViewHeaders });
       const file = resolveAsset(pathname);
       if (!file || !(await Bun.file(file).exists())) return new Response("not found", { status: 404, headers: corsHeaders });
       return new Response(Bun.file(file), { headers: corsHeaders });

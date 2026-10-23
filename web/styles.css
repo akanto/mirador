@@ -3027,6 +3027,7 @@ button.edits-waiting {
 
 .changes-toggle,
 .checklist-toggle,
+.app-toggle,
 .history-toggle,
 .bar-menu-toggle,
 .canvas-clear {
@@ -3039,6 +3040,7 @@ button.edits-waiting {
 
 .changes-toggle.on,
 .checklist-toggle.on,
+.app-toggle.on,
 .history-toggle.on,
 .bar-menu-toggle.on {
   color: var(--text);
@@ -3058,7 +3060,7 @@ button.edits-waiting {
 .canvas-header[data-fold="0"] .canvas-more,
 .canvas-header:not([data-fold="0"]) :is(.history-toggle, .canvas-clear, .page-export),
 .canvas-header:is([data-fold="2"], [data-fold="3"]) :is(.canvas-nav, .changes-toggle),
-.canvas-header[data-fold="3"] :is(.checklist-toggle, .checklist-dismiss) {
+.canvas-header[data-fold="3"] :is(.checklist-toggle, .checklist-dismiss, .app-toggle) {
   display: none;
 }
 
@@ -3457,6 +3459,26 @@ button.edits-waiting {
 
 .canvas-frame.show {
   flex: 1;
+}
+
+.app-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-view .canvas-frame.app {
+  flex: 1;
+}
+
+.app-problem {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  font-size: calc(12px * var(--font-scale));
 }
 
 .ask-page-before {

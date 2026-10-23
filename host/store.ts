@@ -86,6 +86,9 @@ const schema = `
     position INTEGER NOT NULL, name TEXT NOT NULL, layout TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS terminal_scrollback (
     terminal_id TEXT PRIMARY KEY, tab_id TEXT NOT NULL REFERENCES terminal_tabs(id) ON DELETE CASCADE, text TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS open_apps (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, file TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, app));
 `;
 
 /** A conversation's terminal tab as the host left it, with what each of its terminals showed by then. */
@@ -364,6 +367,14 @@ export class Store {
 
   deleteWorkspace(id: string) {
     this.db.query("DELETE FROM workspaces WHERE id = ?").run(id);
+  }
+
+  listOpenApps(): { workspaceId: string; app: string; file: string }[] {
+    return this.db.query("SELECT workspace_id AS workspaceId, app, file FROM open_apps").all() as { workspaceId: string; app: string; file: string }[];
+  }
+
+  saveOpenApp(workspaceId: string, app: string, file: string) {
+    this.db.query("INSERT INTO open_apps (workspace_id, app, file) VALUES (?, ?, ?) ON CONFLICT (workspace_id, app) DO UPDATE SET file = excluded.file").run(workspaceId, app, file);
   }
 
   listConversations(): Conversation[] {

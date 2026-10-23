@@ -24,6 +24,9 @@ import { claudeProgramLookUps, claudeProgramReport } from "./acp/claude-program.
 import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
+import type { AppDocuments } from "./apps/documents.ts";
+import { messageOf } from "./apps/plugins.ts";
+import { appKey } from "../shared/apps.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
 import { OutsideWorkspace } from "./changes.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
@@ -70,6 +73,7 @@ export interface HostServices {
   conversations: ConversationService;
   canvas: CanvasService;
   mcp: CanvasMcpEndpoints;
+  apps: AppDocuments;
   profiles: ProfileService;
   statusline: StatuslineService;
   terminals: TerminalService;
@@ -142,6 +146,7 @@ export function startServer(services: HostServices) {
     conversations,
     canvas,
     mcp,
+    apps,
     profiles,
     statusline,
     terminals,
@@ -769,6 +774,7 @@ export function startServer(services: HostServices) {
           .list()
           .filter((conversation) => conversation.workspaceId === message.workspaceId)
           .forEach((conversation) => deleteConversation(conversation.id));
+        apps.forgetWorkspace(message.workspaceId);
         store.deleteWorkspace(message.workspaceId);
         return hub.broadcast({ type: "workspace.deleted", workspaceId: message.workspaceId });
       case "workspace.set-default-launch":
@@ -945,6 +951,19 @@ export function startServer(services: HostServices) {
         return conversations.respondToPermission(message.conversationId, message.permissionId, message.optionId);
       case "ask.answer":
         return canvas.answer(message.itemId, message.label, message.note, message.answers);
+      case "app.subscribe": {
+        socket.data.appSubscriptions.add(appKey(message));
+        const state = apps.state(message.workspaceId, message.app);
+        if (state) hub.send(socket, { type: "app.state", state });
+        return;
+      }
+      case "app.unsubscribe":
+        socket.data.appSubscriptions.delete(appKey(message));
+        return;
+      case "app.apply":
+        return void apps
+          .apply(message.workspaceId, message.app, message.op, { kind: "you" })
+          .catch((error) => hub.send(socket, { type: "error", message: messageOf(error) }));
       case "canvas.report":
         return canvas.reportRender(message.itemId, { errors: message.errors });
       case "checklist.tick":
@@ -1175,6 +1194,8 @@ export function startServer(services: HostServices) {
       desktopAppOutdated: desktopApp.outdated,
       version: MIRADOR_VERSION,
       newerVersion: newerVersion.current,
+      installedApps: apps.installed(),
+      openApps: apps.openApps(),
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
     hub.send(socket, voiceSettingsFor(socket));

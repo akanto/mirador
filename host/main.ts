@@ -2,6 +2,8 @@ import { dirname, join } from "node:path";
 import { serveCanvasAssets } from "./canvas/assets.ts";
 import { authorityFingerprint, namesToCover, servingCertificate } from "./certificates.ts";
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
+import { AppDocuments } from "./apps/documents.ts";
+import { loadAppPlugins } from "./apps/plugins.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { agentLogsDirectory, loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
@@ -65,9 +67,17 @@ const canvasAssetsOrigins = [
 ];
 const canvas = new CanvasService(store, hub, conversations, notifications, canvasAssetsOrigins);
 conversations.hearCanvasNotesFrom((conversationId) => canvas.notesForAgent(conversationId));
-const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin);
-const assetsServer = serveCanvasAssets(config.canvasAssetsPort, { knownOrigins: canvasAssetsOrigins });
-const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, { certificate, knownOrigins: canvasAssetsOrigins });
+const appPlugins = await loadAppPlugins(join(config.dataDir, "plugins"));
+for (const { folder, message } of appPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
+const apps = new AppDocuments(store, appPlugins.plugins, {
+  openAppsChanged: (openApps) => hub.broadcast({ type: "apps.open", openApps }),
+  stateChanged: (state) => hub.publishAppState(state),
+});
+await apps.reopenAll();
+const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin, apps);
+const appViewCode = (pathname: string) => apps.viewCode(pathname);
+const assetsServer = serveCanvasAssets(config.canvasAssetsPort, { knownOrigins: canvasAssetsOrigins, appViewCode });
+const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, { certificate, knownOrigins: canvasAssetsOrigins, appViewCode });
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, store);
@@ -124,7 +134,7 @@ const voiceEngine = new VoiceEngine(
 );
 voiceEngineInstaller.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();
@@ -166,6 +176,7 @@ async function stopServices() {
   networkAssetsServer?.stop(true);
   relays.stopAll();
   watch.stopAll();
+  apps.stop();
   // An agent's exit is handled before its stop resolves, and that handling still reads and writes the store.
   await Promise.all([childrenExited, voiceEngineStopped]);
   store.close();

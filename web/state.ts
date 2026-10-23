@@ -1,5 +1,6 @@
 import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
+import { appKey, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
@@ -79,6 +80,10 @@ export interface AppState {
   hostRestarting: boolean;
   desktopAppOutdated: boolean;
   newerVersion: NewerVersion | null;
+  installedApps: InstalledApp[];
+  openApps: OpenApp[];
+  /** The documents of the apps this page shows, by appKey: it gets them only while subscribed. */
+  appDocuments: Record<string, AppDocumentState>;
 }
 
 export type AppAction =
@@ -121,6 +126,9 @@ export const initialState: AppState = {
   hostRestarting: false,
   desktopAppOutdated: false,
   newerVersion: null,
+  installedApps: [],
+  openApps: [],
+  appDocuments: {},
   notices: [],
   noticesEverShown: 0,
   fileToOpen: null,
@@ -204,10 +212,16 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         hostCodeChanged: message.hostCodeChanged,
         desktopAppOutdated: message.desktopAppOutdated,
         newerVersion: message.newerVersion,
+        installedApps: message.installedApps,
+        openApps: message.openApps,
         kept: state.kept.filter(({ conversationId }) => exists(conversationId)),
       };
       return exists(state.selectedConversationId) ? next : select(next, null);
     }
+    case "apps.open":
+      return { ...state, openApps: message.openApps };
+    case "app.state":
+      return { ...state, appDocuments: { ...state.appDocuments, [appKey(message.state)]: message.state } };
     case "workspace.upserted":
       return { ...state, workspaces: upsert(state.workspaces, message.workspace).sort(inSidebarOrder) };
     case "workspace.deleted":

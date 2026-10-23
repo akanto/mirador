@@ -21,6 +21,10 @@ export type CanvasFrameMessage =
       shiftKey: boolean;
       typing: boolean;
     }
+  /** An app's view is ready for its document's state. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-ready" }
+  /** An operation the user made in an app's view, for the host to apply. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-apply"; op: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -67,6 +71,47 @@ export const CANVAS_SHELL_PAGE = `<!doctype html>
   });
   parent.postMessage({ source: ${JSON.stringify(CANVAS_MESSAGE_SOURCE)}, kind: "shell-ready" }, "*");
 </script>`;
+
+/** An app document's state for its view, posted by the panel or injected by the phone. */
+export function appStateMessage(state: unknown) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "app-state", state };
+}
+
+/**
+ * `window.mirador` for an app's view. The desktop's panel posts the state from the parent window; the phone's WebView,
+ * where the parent is the page itself, injects it as an event with no source. A view gets the latest state as soon as
+ * it listens, so it may start listening whenever its code is ready.
+ */
+function appBridge(frameId: string) {
+  return `(() => {
+  const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
+  const itemId = ${JSON.stringify(frameId)};
+  const listeners = new Set();
+  let latest;
+  addEventListener("message", (event) => {
+    const data = event.data;
+    if ((event.source !== parent && event.source !== null) || !data || data.source !== source || data.kind !== "app-state") return;
+    latest = data.state;
+    listeners.forEach((listener) => listener(latest));
+  });
+  window.mirador = Object.freeze({
+    onState(listener) {
+      listeners.add(listener);
+      if (latest !== undefined) listener(latest);
+      return () => listeners.delete(listener);
+    },
+    apply(op) {
+      parent.postMessage({ source, itemId, kind: "app-apply", op }, "*");
+    },
+  });
+  parent.postMessage({ source, itemId, kind: "app-ready" }, "*");
+})();`;
+}
+
+/** The page of an app's view: the bridge first, then the view's code, which the canvas assets serve. */
+export function appViewPage(viewUrl: string, frameId: string) {
+  return `<script>${appBridge(frameId)}</script>\n<script type="module" src="${escapeAttribute(viewUrl)}"></script>`;
+}
 
 export function canvasImportMap(assetsOrigin: string) {
   return {

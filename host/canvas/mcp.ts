@@ -12,6 +12,8 @@ import { ReviewProblems } from "../review/snapshot.ts";
 import { checklistItems, checklistOwners, checklistProgress, type ChecklistItem } from "../../shared/checklist.ts";
 import { carriedOverDone, describeTicks, itemNamed, type UserTick } from "./checklist.ts";
 import { MIRADOR_VERSION } from "../../shared/version.ts";
+import type { AppDocuments } from "../apps/documents.ts";
+import { registerAppTools } from "../apps/tools.ts";
 
 const PROGRESS_HEARTBEAT_MS = 15_000;
 
@@ -258,7 +260,7 @@ const toolError = (text: string) => ({ isError: true, content: [{ type: "text" a
 /** opencode 2 names the session that calls a tool, its subagents' included. */
 const OPENCODE_SESSION_META = "ai.opencode/sessionID";
 
-function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string) {
+function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string, apps: AppDocuments | null) {
   const server = new McpServer(
     { name: CANVAS_SERVER_NAME, version: MIRADOR_VERSION },
     { instructions: canvasInstructions(assetsOrigin) },
@@ -474,6 +476,8 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
     },
   );
 
+  if (apps && apps.installed().length > 0) registerAppTools(server, apps, conversations, callingConversation);
+
   return server;
 }
 
@@ -484,6 +488,7 @@ export class CanvasMcpEndpoints {
     private readonly canvas: CanvasService,
     private readonly conversations: ConversationService,
     private readonly assetsOrigin: string,
+    private readonly apps: AppDocuments | null = null,
   ) {}
 
   handle(conversationId: string, request: Request) {
@@ -498,7 +503,7 @@ export class CanvasMcpEndpoints {
     let handler = this.handlers.get(conversationId);
     if (!handler) {
       handler = createMcpHandler(() =>
-        buildCanvasServer(conversationId, this.canvas, this.conversations, this.assetsOrigin),
+        buildCanvasServer(conversationId, this.canvas, this.conversations, this.assetsOrigin, this.apps),
       );
       this.handlers.set(conversationId, handler);
     }

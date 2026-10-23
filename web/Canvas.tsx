@@ -1,8 +1,10 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
-import { buildCanvasDocument, CANVAS_SHELL_PATH, canvasPageMessage, canvasThemeMessage, isCanvasFrameMessage } from "../shared/canvas-document.ts";
+import { buildCanvasDocument, CANVAS_SHELL_PATH, canvasPageMessage, canvasThemeMessage, isCanvasFrameMessage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
+import { appKey, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
 import type { AskItem, AskQuestion, CanvasItem, ShowItem } from "../shared/model.ts";
+import { AppView } from "./AppView.tsx";
 import { BarMenu, type BarMenuEntry } from "./BarMenu.tsx";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
@@ -80,7 +82,7 @@ function fittedStyles(contentSize: ContentSize | undefined, roomWidth: number): 
   };
 }
 
-function CanvasFrame({
+export function CanvasFrame({
   frameId,
   html,
   assetsOrigin,
@@ -88,6 +90,7 @@ function CanvasFrame({
   fitsContent = false,
   onRendered,
   onContentWidth,
+  onMessage,
   frameRef,
 }: {
   frameId: string;
@@ -97,6 +100,8 @@ function CanvasFrame({
   fitsContent?: boolean;
   onRendered?: (errors: string[]) => void;
   onContentWidth?: (width: number) => void;
+  /** Every message the page posts, for what the frame itself doesn't handle, such as an app view's operations. */
+  onMessage?: (message: CanvasFrameMessage) => void;
   /** For the panel to reach the page's frame, as copying it as an image does. */
   frameRef?: RefObject<HTMLIFrameElement | null>;
 }) {
@@ -112,6 +117,8 @@ function CanvasFrame({
   onRenderedRef.current = onRendered;
   const onContentWidthRef = useRef(onContentWidth);
   onContentWidthRef.current = onContentWidth;
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
 
   useEffect(() => {
     setErrors([]);
@@ -128,6 +135,7 @@ function CanvasFrame({
         if (askedWidth) onContentWidthRef.current?.(askedWidth);
       }
       if (message.kind === "wheel") scrollPanelBy(frame.current, message);
+      onMessageRef.current?.(message);
     };
     window.addEventListener("message", listener);
     return () => window.removeEventListener("message", listener);
@@ -594,8 +602,28 @@ function useFoldLevel(bar: RefObject<HTMLElement | null>) {
   return level;
 }
 
-/** A tab that covers the canvas until it is closed. */
-type CoveringTab = "changes" | "checklist" | null;
+/** A tab that covers the canvas until it is closed; an app's is named after the app. */
+type AppTab = `app:${string}`;
+type CoveringTab = "changes" | "checklist" | AppTab | null;
+
+const appTab = (app: string): AppTab => `app:${app}`;
+
+/** The apps open in the conversation's workspace, with what the panel needs to show them. */
+export interface WorkspaceApps {
+  open: OpenApp[];
+  installed: InstalledApp[];
+  documents: Record<string, AppDocumentState>;
+}
+
+/** Opens an app's tab when the app opens in the workspace while the panel is up, as the agent's app_open says the user will see it. */
+function useAppTabOnOpen(open: OpenApp[], showTab: (tab: AppTab) => void) {
+  const known = useRef(new Set(open.map(({ app }) => app)));
+  useEffect(() => {
+    const opened = open.find(({ app }) => !known.current.has(app));
+    known.current = new Set(open.map(({ app }) => app));
+    if (opened) showTab(appTab(opened.app));
+  }, [open.map(({ app }) => app).join(" ")]);
+}
 
 /** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */
 const leftViews = new Map<string, { latestId: string | undefined; selectedId: string | null; tab: CoveringTab; seenEdit: SeenEdit }>();
@@ -614,6 +642,7 @@ export function CanvasPanel({
   assetsOrigin,
   homeDir,
   changesRefreshPoint,
+  apps,
   onHide,
 }: {
   conversationId: string;
@@ -625,6 +654,7 @@ export function CanvasPanel({
   assetsOrigin: string;
   homeDir: string;
   changesRefreshPoint: number;
+  apps: WorkspaceApps;
   onHide: () => void;
 }) {
   const pages = useMemo(() => items.filter((item) => item.kind !== "checklist"), [items]);
@@ -643,6 +673,9 @@ export function CanvasPanel({
   const changesOpen = tab === "changes";
   const checklistOpen = tab === "checklist";
   const toggleTab = (toggled: Exclude<CoveringTab, null>) => setTab((open) => (open === toggled ? null : toggled));
+  const shownApp = apps.open.find(({ app }) => tab === appTab(app));
+  const shownAppInstalled = shownApp && apps.installed.find(({ name }) => name === shownApp.app);
+  useAppTabOnOpen(apps.open, setTab);
   const editAt = checklist?.checklist.agentEdit?.at;
   const seenEdit = useRef<SeenEdit>(left ? left.seenEdit : { checklistId: checklist?.id, at: editAt });
   const checklistFlashing = useFlashOnAgentEdit(checklist?.id, editAt, !checklistOpen);
@@ -708,6 +741,7 @@ export function CanvasPanel({
         ]
       : []),
     ...(foldLevel >= FOLDS.checklist && checklistCountText ? [{ label: checklistCountText, checked: checklistOpen, onChoose: () => toggleTab("checklist") }] : []),
+    ...(foldLevel >= FOLDS.checklist ? apps.open.map(({ app, title }) => ({ label: title, checked: tab === appTab(app), onChoose: () => toggleTab(appTab(app)) })) : []),
     ...(foldLevel >= FOLDS.checklist && checklistOpen && checklist ? [{ label: "Dismiss", onChoose: dismissChecklist }] : []),
     ...(foldLevel >= FOLDS.leastUsed
       ? [
@@ -729,6 +763,11 @@ export function CanvasPanel({
         <PaneGrip pane="canvas" />
         {changesOpen ? (
           <span className="canvas-title">Changes</span>
+        ) : shownApp ? (
+          <>
+            <span className="canvas-title">{shownApp.title}</span>
+            <span className="canvas-outcome app-file">{shownApp.file}</span>
+          </>
         ) : checklistOpen ? (
           <>
             <span className="canvas-kind">{kindIcons.checklist}</span>
@@ -803,6 +842,18 @@ export function CanvasPanel({
             {checklistCountText}
           </button>
         )}
+        {apps.open.map(({ app, title }) => (
+          <button
+            key={app}
+            type="button"
+            className={`app-toggle ${tab === appTab(app) ? "on" : ""}`}
+            aria-pressed={tab === appTab(app)}
+            data-hint={hints.canvasApp}
+            onClick={() => toggleTab(appTab(app))}
+          >
+            {title}
+          </button>
+        ))}
         <button
           type="button"
           className={`history-toggle ${historyOpen ? "on" : ""}`}
@@ -853,6 +904,9 @@ export function CanvasPanel({
           </>
         )}
         {checklistOpen && <ChecklistView checklist={checklist} plan={plan} seenEditAt={seenEdit.current.at} />}
+        {shownApp && shownAppInstalled && (
+          <AppView key={shownApp.app} openApp={shownApp} installed={shownAppInstalled} documentState={apps.documents[appKey(shownApp)]} assetsOrigin={assetsOrigin} />
+        )}
         {!tab && edit.shown && (
           <EditApproval key={edit.shown.permissionId} request={edit.shown} moreWaiting={edit.waiting - 1} note={settledNote} conversationId={conversationId} />
         )}

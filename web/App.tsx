@@ -313,6 +313,10 @@ export function App() {
   const showSidebarWidth = (share: number) =>
     layoutElement.current?.style.setProperty("--sidebar-width", `${sidebarWidthWithinLimits(share * layoutArea().size)}px`);
   const workspace = currentWorkspace(state);
+  const workspaceApps = useMemo(
+    () => ({ open: state.openApps.filter(({ workspaceId }) => workspaceId === workspace?.id), installed: state.installedApps, documents: state.appDocuments }),
+    [state.openApps, state.installedApps, state.appDocuments, workspace?.id],
+  );
   const layout = conversationLayouts.layoutOf(state.selectedConversationId);
   const changeLayout = (update: (layout: PaneLayout) => PaneLayout) => conversationLayouts.change(state.selectedConversationId, update);
   const setHidden = (pane: "canvas" | "terminals", hidden: (wasHidden: boolean) => boolean) =>
@@ -535,6 +539,7 @@ export function App() {
                 assetsOrigin={state.canvasAssetsOrigin}
                 homeDir={state.homeDir}
                 changesRefreshPoint={changesRefresh}
+                apps={workspaceApps}
                 onHide={toggleCanvas}
               />
             ) : null,

@@ -4,6 +4,7 @@ import type { ClientAddress, DeviceConnection, StoredEvent } from "../shared/mod
 import { DEFLATED_MESSAGE_MIN_LENGTH } from "../shared/low-data.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
+import { appKey, type AppDocumentState } from "../shared/apps.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 import { lowDataEvent, pageEvent } from "./low-data.ts";
 
@@ -18,6 +19,8 @@ export interface SocketData {
   /** The joined device the socket signed in as; null for the host's own link. */
   deviceId: string | null;
   subscriptions: Set<string>;
+  /** The apps the socket's page shows, by appKey: only these pages get the apps' documents, which can be large. */
+  appSubscriptions: Set<string>;
   /** The subscribed conversations the socket follows in their low-data form, as a phone does. */
   lowDataSubscriptions: Set<string>;
   /** The socket's client reads long messages deflated, in binary frames. */
@@ -52,6 +55,7 @@ export const socketData = (
   readsProfileLaunch,
   desktopAppCode,
   subscriptions: new Set<string>(),
+  appSubscriptions: new Set<string>(),
   lowDataSubscriptions: new Set<string>(),
   terminalConversationId: null,
   presence: { conversationId: null, attentive: false },
@@ -175,6 +179,10 @@ export class Hub {
     this.sockets.forEach((socket) => {
       if (isRecipient(socket)) deliver(socket, payload);
     });
+  }
+
+  publishAppState(state: AppDocumentState) {
+    this.publishWhere((socket) => socket.data.appSubscriptions.has(appKey(state)), { type: "app.state", state });
   }
 
   publishToConversation(conversationId: string, message: ServerMessage) {

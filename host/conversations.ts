@@ -286,6 +286,11 @@ export class ConversationService {
     return [...this.runtimes.values()].filter((runtime) => runtime.running).length;
   }
 
+  /** The turn the conversation's agent is in, or last was in: the seq of the message that started it. */
+  latestTurnSeq(conversationId: string): number | null {
+    return this.store.latestTurnStart(conversationId)?.seq ?? null;
+  }
+
   get(conversationId: string): Conversation {
     const conversation = this.store.findConversation(conversationId);
     if (!conversation) throw new Error(`Unknown conversation ${conversationId}`);
