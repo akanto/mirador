@@ -16,6 +16,7 @@ export type ChatEndpoint =
 /** A local model may first have to load, which takes a while. */
 const ENDPOINT_TIMEOUT_MS = 120_000;
 const MAX_REPLY_TOKENS = 16_000;
+const RAN_OUT_OF_ROOM = "The voice model ran out of room before it answered.";
 
 const joined = (url: string, path: string) => `${url.replace(/\/+$/, "")}${path}`;
 const bearer = (apiKey: string): Record<string, string> => (apiKey ? { Authorization: `Bearer ${apiKey}` } : {});
@@ -56,7 +57,6 @@ async function completeWithOpenAi(endpoint: Extract<ChatEndpoint, { api: "openai
     headers: { "Content-Type": "application/json", ...bearer(endpoint.apiKey) },
     body: JSON.stringify({
       model: endpoint.model,
-      temperature: 0,
       max_completion_tokens: MAX_REPLY_TOKENS,
       messages: [
         { role: "system", content: instructions },
@@ -67,9 +67,8 @@ async function completeWithOpenAi(endpoint: Extract<ChatEndpoint, { api: "openai
   }, endpoint.adviceWhenTooLong);
   const answer = (await answerOf(response, "voice model")) as { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[] };
   const [choice] = answer.choices ?? [];
-  if (typeof choice?.message?.content === "string") return choice.message.content;
-  if (choice?.finish_reason === "length") throw new Error(withAdvice("The voice model ran out of room before it answered.", endpoint.adviceWhenTooLong));
-  throw new Error("The voice model answered without text.");
+  if (choice?.finish_reason === "length") throw new Error(withAdvice(RAN_OUT_OF_ROOM, endpoint.adviceWhenTooLong));
+  return typeof choice?.message?.content === "string" ? choice.message.content : "";
 }
 
 async function completeWithAnthropic(endpoint: Extract<ChatEndpoint, { api: "anthropic" }>, instructions: string, text: string) {
@@ -81,11 +80,14 @@ async function completeWithAnthropic(endpoint: Extract<ChatEndpoint, { api: "ant
     messages: [{ role: "user", content: text }],
   });
   if (message.stop_reason === "refusal") throw new Error("The voice model declined to answer.");
+  if (message.stop_reason === "max_tokens") throw new Error(RAN_OUT_OF_ROOM);
   return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
 }
 
+/** A cut-off or empty answer is a failure, never text to put in place of what the user said. */
 export async function complete(endpoint: ChatEndpoint, instructions: string, text: string) {
   const answer = endpoint.api === "openai" ? await completeWithOpenAi(endpoint, instructions, text) : await completeWithAnthropic(endpoint, instructions, text);
+  if (answer.trim() === "") throw new Error("The voice model answered without text.");
   return answer.trim();
 }
 

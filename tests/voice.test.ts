@@ -22,6 +22,7 @@ let transcript: Transcript | ((language: string | undefined) => Transcript) = { 
 let translation = "";
 let failure: { status: number; text: string } | null = null;
 let chatChoice: Record<string, unknown> | null = null;
+let anthropicStopReason = "end_turn";
 let sound = new Uint8Array([82, 73, 70, 70]);
 
 const server = Bun.serve({
@@ -44,7 +45,7 @@ const server = Bun.serve({
       role: "assistant",
       model: json?.model,
       content: [{ type: "text", text: translation }],
-      stop_reason: "end_turn",
+      stop_reason: anthropicStopReason,
       stop_sequence: null,
       usage: { input_tokens: 1, output_tokens: 1 },
     });
@@ -55,6 +56,7 @@ beforeEach(() => {
   heard = [];
   failure = null;
   chatChoice = null;
+  anthropicStopReason = "end_turn";
   sound = new Uint8Array([82, 73, 70, 70]);
 });
 
@@ -92,7 +94,7 @@ describe("dictation", () => {
     expect(recognition).toMatchObject({ path: "/v1/audio/transcriptions", authorization: "Bearer speech-key" });
     expect(recognition!.form).toEqual({ file: "44 bytes", model: "whisper-turbo", response_format: "json", language: "hu" });
     expect(voiceModel).toMatchObject({ path: "/v1/chat/completions", authorization: "Bearer model-key" });
-    expect(voiceModel!.json).toMatchObject({ model: "gemma", temperature: 0, max_completion_tokens: 16_000 });
+    expect(voiceModel!.json).toMatchObject({ model: "gemma", max_completion_tokens: 16_000 });
     expect(voiceModel!.json).not.toHaveProperty("chat_template_kwargs");
     expect(JSON.stringify(voiceModel!.json)).toContain("<message>Futtasd le az e2e teszteket.</message>");
   });
@@ -136,6 +138,7 @@ describe("dictation", () => {
     const environment = `OPENAI_BASE_URL=${origin}/v1\nOPENAI_API_KEY=openai-key\n-u ANTHROPIC_API_KEY\n-u ANTHROPIC_AUTH_TOKEN`;
     expect(await voiceWith(settings, [profile(environment)]).dictation(clip)).toMatchObject({ text: "Run the e2e tests." });
     expect(heard[1]).toMatchObject({ path: "/v1/chat/completions", authorization: "Bearer openai-key" });
+    expect(heard[1]!.json, "GPT-5 refuses any temperature but its default").not.toHaveProperty("temperature");
   });
 
   test("voice off, this Mac's engine before it is set up, and a profile without a key each say what to change", async () => {
@@ -145,6 +148,23 @@ describe("dictation", () => {
     const keyless = profile("-u ANTHROPIC_API_KEY\n-u ANTHROPIC_AUTH_TOKEN\n-u OPENAI_API_KEY");
     const settings: VoiceSettings = { ...ownServers, voiceModel: { kind: "profile", profileId: "p1", model: "claude-opus-5-5" } };
     await expect(voiceWith(settings, [keyless]).dictation(clip)).rejects.toThrow("The profile work has no ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY");
+  });
+
+  test("an answer the voice model cut off or left empty fails, rather than taking the place of what was heard", async () => {
+    transcript = { text: "Futtasd le az e2e teszteket.", language: "hu" };
+    chatChoice = { message: { role: "assistant", content: "Run the" }, finish_reason: "length" };
+    await expect(voiceWith(ownServers).dictation(clip)).rejects.toThrow("The voice model ran out of room before it answered.");
+    chatChoice = { message: { role: "assistant", content: "  " }, finish_reason: "stop" };
+    await expect(voiceWith(ownServers).dictation(clip)).rejects.toThrow(new Error("The voice model answered without text."));
+
+    const throughProfile: VoiceSettings = { ...ownServers, voiceModel: { kind: "profile", profileId: "p1", model: "claude-opus-5-5" } };
+    const anthropic = [profile(`ANTHROPIC_BASE_URL=${origin}\nANTHROPIC_AUTH_TOKEN=profile-token`)];
+    translation = "Run the";
+    anthropicStopReason = "max_tokens";
+    await expect(voiceWith(throughProfile, anthropic).dictation(clip)).rejects.toThrow(new Error("The voice model ran out of room before it answered."));
+    translation = "";
+    anthropicStopReason = "end_turn";
+    await expect(voiceWith(throughProfile, anthropic).dictation(clip)).rejects.toThrow(new Error("The voice model answered without text."));
   });
 
   test("a voice model of the user's own that thinks first is asked not to, and one that thinks out its room says what to change", async () => {

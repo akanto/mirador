@@ -20,6 +20,7 @@ interface Clip {
 
 let clips: Clip[] = [];
 let failing = false;
+let translationLeftEmpty = false;
 
 async function bodyOf(request: IncomingMessage) {
   const chunks: Buffer[] = [];
@@ -46,7 +47,7 @@ const voiceServer = createServer(async (request, response) => {
     return response.end(JSON.stringify({ text: HEARD_IN_HUNGARIAN, language: "hu" }));
   }
   response.setHeader("content-type", "application/json");
-  response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: IN_ENGLISH } }] }));
+  response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: translationLeftEmpty ? "" : IN_ENGLISH } }] }));
 });
 const voiceServerUrl = () => `http://127.0.0.1:${(voiceServer.address() as AddressInfo).port}/v1`;
 
@@ -175,6 +176,15 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
     await expect(problem).toContainText("The speech recognition server answered 500", { timeout: 15_000 });
     await expect(box).toHaveValue("");
     failing = false;
+  });
+
+  await test.step("when the voice model answers without text, the message box says so rather than taking that for what was said", async () => {
+    translationLeftEmpty = true;
+    await mic.click();
+    await expect(problem).toHaveText("The voice model answered without text.", { timeout: 15_000 });
+    await expect(box).toHaveValue("");
+    await expect(original).toHaveCount(0);
+    translationLeftEmpty = false;
   });
 
   await test.step("the key taps from a focused canvas page too, and what was said goes into the message box", async () => {
