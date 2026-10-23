@@ -7,9 +7,11 @@
  *   publish <version>              publishes that draft as the latest release
  *   tap <version>                  pushes the Homebrew cask of the published release to the tap, then removes the
  *                                  release's worktree
- * The release is made in a worktree of its own at origin/main, so nothing uncommitted in this checkout reaches it, and
- * into dist/<version>/. After the gate the Linux, Windows and macOS builds run at once, each making its patches once it is
- * in, and the draft waits for all three. A step that fails names the steps to go on from once it is fixed.
+ * The release is made in a worktree of its own, so nothing uncommitted in this checkout reaches it, and into
+ * dist/<version>/. An x.y.0 release is made from main and starts the branch release/x.y.x at its commit; a patch x.y.z
+ * is made from that branch, so a fix ships without what main gained since. After the gate the Linux, Windows and macOS
+ * builds run at once, each making its patches once it is in, and the draft waits for all three. A step that fails names
+ * the steps to go on from once it is fixed.
  */
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,6 +40,8 @@ const isWindowsOnly = (file: string) => WINDOWS_FILE.test(file) || file === "ins
 export interface Release {
   version: string;
   tag: string;
+  branch: string;
+  patchBranch: string;
   worktree: string;
   dist: string;
   notes: string;
@@ -45,10 +49,14 @@ export interface Release {
 }
 
 export function releaseOf(version: string, checkout = CHECKOUT, temporary = tmpdir(), windows = true): Release {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`Name the release as x.y.z, not "${version}"`);
+  const [, major, minor, patch] = version.match(/^(\d+)\.(\d+)\.(\d+)$/) ?? [];
+  if (patch === undefined) throw new Error(`Name the release as x.y.z, not "${version}"`);
+  const patchBranch = `release/${major}.${minor}.x`;
   return {
     version,
     tag: `v${version}`,
+    branch: patch === "0" ? "main" : patchBranch,
+    patchBranch,
     worktree: join(temporary, `mirador-release-${version}`),
     dist: join(checkout, "dist", version),
     notes: join(checkout, "dist", `release-notes-${version}.md`),
@@ -305,20 +313,25 @@ const removeWorktree = (release: Release) => run(["git", "worktree", "remove", "
 function makeWorktree(release: Release) {
   run(["git", "fetch", "-q", "origin"], CHECKOUT);
   if (existsSync(release.worktree)) removeWorktree(release);
-  run(["git", "worktree", "add", "-q", "--detach", release.worktree, "origin/main"], CHECKOUT);
+  run(["git", "worktree", "add", "-q", "--detach", release.worktree, `origin/${release.branch}`], CHECKOUT);
   for (const folder of [".", "video", "desktop"]) run(["bun", "install", "--frozen-lockfile"], join(release.worktree, folder));
   rmSync(release.dist, { recursive: true, force: true });
   mkdirSync(release.dist, { recursive: true });
 }
 
-function bump(release: Release) {
+export function bump(release: Release) {
   const current = versionIn(release.worktree);
-  if (current === release.version) return console.log(`main already names release ${release.version}`);
-  if (!isNewerVersion(release.version, current)) throw new Error(`${release.version} is not newer than ${current}, the version on main`);
+  if (current === release.version) console.log(`${release.branch} already names release ${release.version}`);
+  else nameTheRelease(release, current);
+  if (release.branch !== release.patchBranch) run(["git", "push", "-q", "origin", `HEAD:refs/heads/${release.patchBranch}`], release.worktree);
+}
+
+function nameTheRelease(release: Release, current: string) {
+  if (!isNewerVersion(release.version, current)) throw new Error(`${release.version} is not newer than ${current}, the version on ${release.branch}`);
   const file = join(release.worktree, VERSION_FILE);
   writeFileSync(file, readFileSync(file, "utf8").replace(`MIRADOR_VERSION = "${current}"`, `MIRADOR_VERSION = "${release.version}"`));
   run(["git", "commit", "-q", "-m", `Name this release ${release.version}`, "--", VERSION_FILE], release.worktree);
-  run(["git", "push", "-q", "origin", "HEAD:main"], release.worktree);
+  run(["git", "push", "-q", "origin", `HEAD:refs/heads/${release.branch}`], release.worktree);
 }
 
 /** Restart specs flake under load, so the gate waits for a mirador-mobile e2e run another session started. */
@@ -361,7 +374,7 @@ function windowsRunState(runId: string) {
 }
 
 function startWindowsRun(release: Release, head: string) {
-  const started = readBoth(["gh", "workflow", "run", WINDOWS_WORKFLOW, "--repo", RELEASES_REPOSITORY, "--ref", "main", "-f", `commit=${head}`]);
+  const started = readBoth(["gh", "workflow", "run", WINDOWS_WORKFLOW, "--repo", RELEASES_REPOSITORY, "--ref", release.branch, "-f", `commit=${head}`]);
   const runId = runIdIn(started);
   if (!runId) throw new Error(`gh started the Windows build without naming its run; find "Windows release of ${head}" with gh run list --workflow ${WINDOWS_WORKFLOW}`);
   writeFileSync(join(release.dist, WINDOWS_RUN_FILE), JSON.stringify({ id: runId, commit: head } satisfies WindowsRun));

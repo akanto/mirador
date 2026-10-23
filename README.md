@@ -455,10 +455,12 @@ Build the arm64 release installer on an x64 Linux machine too: in Docker on Appl
 A release is made with three goals, each when the one before has been checked. Write the notes into `dist/release-notes-x.y.z.md` first:
 
 ```bash
-make release VERSION=x.y.z LINUX_HOST=user@host   # in a worktree at origin/main: names the release, runs every test, builds and checks every app, and leaves a draft on GitHub whose files are checked against dist/x.y.z
+make release VERSION=x.y.z LINUX_HOST=user@host   # in a worktree of its own: names the release, runs every test, builds and checks every app, and leaves a draft on GitHub whose files are checked against dist/x.y.z
 make publish VERSION=x.y.z                        # publishes the draft as the latest release
 make tap VERSION=x.y.z                            # pushes its Homebrew cask to the tap
 ```
+
+An x.y.0 release is made from `main` and starts the branch `release/x.y.x` at its commit. A patch, x.y.1 and on, is made from that branch, so a fix goes out without what `main` gained since: commit it on `main`, cherry-pick it onto `release/x.y.x`, then `make release VERSION=x.y.z`.
 
 After the gate the Linux, Windows and macOS builds run at once, and each makes its update files as soon as it is in. A step that fails names the steps to go on from once it is fixed (`FROM=step`, or `FROM=step,step` with the failed step of each build). The Windows app is built by the *Windows release* workflow on GitHub's Windows runner, which `make release` starts for the release's commit, waits for, and downloads from. The workflow's e2e survey runs a third of the suite on each of three runners at once, and going on from the `windows` step after a red run runs only its failed jobs again. `WINDOWS=no` makes a release without it and without `install.ps1`. Every app carries the Bun `.bun-version` names, the one the checks run on: a release build refuses any other, and the gate refuses to run on another. The rest it builds with the goals below, which can also be run alone. The release assets go to `dist/` (`make help` lists the goals):
 

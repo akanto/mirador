@@ -1,8 +1,9 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  bump,
   caskMismatches,
   digestMismatches,
   inTurn,
@@ -30,12 +31,72 @@ test("a release is made in a worktree of its own, into dist/ of the checkout, fr
   expect(releaseOf("0.5.0", "/checkout", "/tmp")).toEqual({
     version: "0.5.0",
     tag: "v0.5.0",
+    branch: "main",
+    patchBranch: "release/0.5.x",
     worktree: join("/tmp", "mirador-release-0.5.0"),
     dist: join("/checkout", "dist", "0.5.0"),
     notes: join("/checkout", "dist", "release-notes-0.5.0.md"),
     windows: true,
   });
   expect(releaseOf("0.5.0", "/checkout", "/tmp", false).windows).toBe(false);
+});
+
+test("a patch is made from its line's branch, which the x.y.0 release starts from main", () => {
+  expect(releaseOf("0.6.0")).toMatchObject({ branch: "main", patchBranch: "release/0.6.x" });
+  expect(releaseOf("0.6.1")).toMatchObject({ branch: "release/0.6.x", patchBranch: "release/0.6.x" });
+  expect(releaseOf("1.12.10").branch).toBe("release/1.12.x");
+});
+
+function git(folder: string, ...args: string[]) {
+  const { exitCode, stdout, stderr } = Bun.spawnSync(["git", ...args], { cwd: folder, stdout: "pipe", stderr: "pipe" });
+  if (exitCode !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
+  return stdout.toString().trim();
+}
+
+function repositoryNaming(version: string) {
+  const folder = mkdtempSync(join(tmpdir(), "mirador-bump-"));
+  const worktree = join(folder, "worktree");
+  const origin = join(folder, "origin.git");
+  mkdirSync(join(worktree, "shared"), { recursive: true });
+  writeFileSync(join(worktree, "shared", "version.ts"), `export const MIRADOR_VERSION = "${version}";\n`);
+  git(worktree, "init", "-q", "-b", "main");
+  for (const [key, value] of [["user.name", "Release test"], ["user.email", "release-test@example.com"], ["commit.gpgsign", "false"]]) git(worktree, "config", key!, value!);
+  git(worktree, "add", ".");
+  git(worktree, "commit", "-q", "-m", `Name this release ${version}`);
+  git(folder, "clone", "-q", "--bare", worktree, origin);
+  git(worktree, "remote", "add", "origin", origin);
+  return { worktree, origin };
+}
+
+const subjectOn = (origin: string, branch: string) => git(origin, "log", "-1", "--format=%s", branch);
+
+function commitOnMain(worktree: string, subject: string) {
+  git(worktree, "commit", "-q", "--allow-empty", "-m", subject);
+  git(worktree, "push", "-q", "origin", "HEAD:refs/heads/main");
+}
+
+test("an x.y.0 release names itself on main and starts release/x.y.x at that commit, which a run again after a fix moves on", () => {
+  spyOn(console, "log").mockImplementation(() => {});
+  const { worktree, origin } = repositoryNaming("0.5.4");
+  const release = { ...releaseOf("0.6.0"), worktree };
+  bump(release);
+  expect(subjectOn(origin, "main")).toBe("Name this release 0.6.0");
+  expect(git(origin, "rev-parse", "release/0.6.x")).toBe(git(origin, "rev-parse", "main"));
+  commitOnMain(worktree, "Fix what the gate found");
+  bump(release);
+  expect(subjectOn(origin, "release/0.6.x")).toBe("Fix what the gate found");
+});
+
+test("a patch names itself on its line's branch and leaves main as it was", () => {
+  spyOn(console, "log").mockImplementation(() => {});
+  const { worktree, origin } = repositoryNaming("0.6.0");
+  git(worktree, "push", "-q", "origin", "HEAD:refs/heads/release/0.6.x");
+  commitOnMain(worktree, "Work for 0.7.0");
+  git(worktree, "fetch", "-q", "origin");
+  git(worktree, "checkout", "-q", "--detach", "origin/release/0.6.x");
+  bump({ ...releaseOf("0.6.1"), worktree });
+  expect(subjectOn(origin, "release/0.6.x")).toBe("Name this release 0.6.1");
+  expect(subjectOn(origin, "main")).toBe("Work for 0.7.0");
 });
 
 test("a release is named x.y.z", () => {
