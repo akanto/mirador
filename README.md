@@ -158,6 +158,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 - [Code review](#code-review)
 - [Conversations and agents](#conversations-and-agents)
 - [The message box](#the-message-box)
+- [Voice](#voice)
 - [The transcript](#the-transcript)
 - [Sidebar and workspaces](#sidebar-and-workspaces)
 - [Layout](#layout)
@@ -280,6 +281,14 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **Resizable**: drag the box's top edge; double-click resets it.
 - **macOS keys**: fn+←/→ go to the start and end of the line; spelling autocorrection and inline predictions are off by default and can be switched on.
 
+### Voice
+
+- **Dictate**: the mic button beside the message box, or `⌘⇧Space` anywhere in the window, also while a canvas page has focus. A tap listens until you pause or tap again, a hold until you let go, and Esc cancels. What you said goes in at the caret, or is sent at once with *Send right away*. It works in the desktop app, which asks for the microphone once, in a browser, and in another machine's Mirador in the rail, through that machine's speech recognition.
+- **Any language, in English**: the voice model translates what you said into English, keeping code, file names and commands as they are, and *You said:* under the box shows your own words. Naming the language you speak helps on short clips. Turn *Translate into English* off to keep what was heard as it is.
+- **Spoken replies**: after a message you dictated, the voice model sums the reply up in one to three sentences and reads them aloud as the turn ends, in the browser you dictated in. With a reply voice set, every reply has a button that reads it, and hearing it again starts at once, in the same words. Replies are read in English or Hungarian, whatever language the agent wrote in.
+- **Voice on this Mac** (Apple silicon, macOS 14 or later): *Settings → Voice* sets up a speech engine in `~/.mirador/voice`, and nothing you say leaves the Mac. Whisper large-v3 turbo hears you; a Gemma 4 voice model translates and sums up, from those that fit in half the Mac's memory (E4B, 12B or 26B-A4B); Kokoro reads English replies, and OmniVoice Hungarian ones, under a licence that allows only non-commercial use. A model loads when first needed, in 5 to 15 seconds, and unloads after 30 minutes unused. *Models on this Mac* lists what is on disk, and removes what you no longer use.
+- **Servers of your own**: each part can be an OpenAI-style server instead: speech recognition (`/audio/transcriptions`), the voice model (`/chat/completions`) and the reply voice (`/audio/speech`, with one of its voices). The voice model can also call a profile's Anthropic or OpenAI API with its keys, without starting its agent. On Linux and Windows, voice uses these.
+
 ### The transcript
 
 - **Grouped by author**, with avatars and times. Point at a line for its time, or switch on *Show timestamps* for every line.
@@ -361,6 +370,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **Agents**: which Claude Code program the host runs, when not the one it finds.
 - **Terminal**: font size and copy on select.
 - **Canvas**: how often Claude Code uses it, where reviews open, and whether edits waiting for approval show on it.
+- **Voice**: speech recognition, the voice model and the reply voice, each on this Mac, on a server of your own, or off (the voice model can also go through a profile); the language you speak, *Translate into English* and *Send right away*; the models on this Mac. See [Voice](#voice).
 - **Layout**: the default arrangement for new conversations, and whether the canvas and terminals start hidden.
 - **Devices** and **Notifications**, as above.
 - **About**: the Mirador version, and the Claude Code it runs.
@@ -380,6 +390,7 @@ Hovering almost any control explains what it does behind the scenes, together wi
 | `⌘⇧←` `⌘⇧→` `⌘⇧↓` | Focus the message box / the canvas / the terminal |
 | `⌘F` / `⌘⇧F` | Find in the conversation (in a terminal, in its output) / search everywhere |
 | `⌘J` | In the message box, find a prompt template and put it in |
+| `⌘⇧Space` | Dictate: a tap listens until you pause, a hold until you let go |
 | `⌘+` `⌘−` / `⌘0` | Text size bigger or smaller / back to 100% (in a terminal, its font size) |
 | `⌘R` / `⌘⇧R` | Reload the page / restart the host |
 | `?` | Every shortcut, terminal keys included |
