@@ -39,6 +39,23 @@ async function saveToProject(page: Page) {
   await saveForm(page).getByRole("button", { name: "Save" }).click();
 }
 
+/** Copies the shown page as an image, and counts the pixels in it that are clearly red, green or blue. */
+async function copyAsImage(page: Page) {
+  await exportBy(page, "Copy as image");
+  await expect(exportStatus(page)).toHaveText("Copied as an image", { timeout: 30_000 });
+  return page.evaluate(async () => {
+    const [item] = await navigator.clipboard.read();
+    const bitmap = await createImageBitmap(await item!.getType("image/png"));
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    const pixelsWhereOnly = (channel: number) =>
+      pixels.filter((value, index) => index % 4 === channel && value > 150 && [0, 1, 2].every((other) => other === channel || pixels[index - channel + other]! < 60)).length;
+    return { types: item!.types, width: bitmap.width, height: bitmap.height, redPixels: pixelsWhereOnly(0), greenPixels: pixelsWhereOnly(1), bluePixels: pixelsWhereOnly(2) };
+  });
+}
+
 async function chooseLibraries(page: Page, option: string) {
   const settings = await openSettings(page, "Canvas");
   await settings.getByLabel("Libraries").selectOption({ label: option });
@@ -64,18 +81,7 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
   });
 
   await test.step("Copy as image puts a PNG of the page, in its own colours, on the clipboard", async () => {
-    await exportBy(page, "Copy as image");
-    await expect(exportStatus(page)).toHaveText("Copied as an image", { timeout: 30_000 });
-    const image = await page.evaluate(async () => {
-      const [item] = await navigator.clipboard.read();
-      const bitmap = await createImageBitmap(await item!.getType("image/png"));
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const context = canvas.getContext("2d")!;
-      context.drawImage(bitmap, 0, 0);
-      const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
-      const redPixels = pixels.filter((red, index) => index % 4 === 0 && red > 150 && pixels[index + 1]! < 60 && pixels[index + 2]! < 60).length;
-      return { types: item!.types, width: bitmap.width, height: bitmap.height, redPixels };
-    });
+    const image = await copyAsImage(page);
     expect(image.types).toContain("image/png");
     expect(image.width).toBeGreaterThan(100);
     expect(image.height).toBeGreaterThan(20);
@@ -152,12 +158,35 @@ test("a page the agent showed can be copied as an image or HTML, downloaded, and
   });
 });
 
-test("Export asks the agent for the page as Markdown, in the chat or also as a file in the project, with the page's HTML in the request", async ({ page }) => {
+async function startConversationInProject(page: Page) {
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
-  const conversationId = await startConversation(page);
+  return startConversation(page);
+}
+
+test("Copy as image draws shapes a page reuses with <use> in the page's own styles, and in the colour each <use> passes on", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const conversationId = await startConversationInProject(page);
+  await callCanvasTool(host, conversationId, "show", {
+    title: "Reused shapes",
+    html: `<style>.tile { fill: rgb(0, 160, 0); }</style>
+<svg width="0" height="0" style="position: absolute"><defs>
+  <g id="tile"><rect class="tile" width="200" height="100"/></g>
+  <symbol id="square" viewBox="0 0 10 10"><rect width="10" height="10"/></symbol>
+</defs></svg>
+<svg id="drawn" width="340" height="100"><use href="#tile"/><use href="#square" x="240" width="100" height="100" fill="rgb(0, 0, 200)"/></svg>`,
+  });
+  await expect(canvasPage(page).locator("#drawn")).toBeVisible();
+
+  const image = await copyAsImage(page);
+  expect(image.greenPixels, "the tile in its class's green, not black").toBeGreaterThan(10_000);
+  expect(image.bluePixels, "the square in the blue its <use> gives it").toBeGreaterThan(5_000);
+});
+
+test("Export asks the agent for the page as Markdown, in the chat or also as a file in the project, with the page's HTML in the request", async ({ page }) => {
+  const conversationId = await startConversationInProject(page);
   await callCanvasTool(host, conversationId, "show", {
     title: "Release plan",
     html: "<h1>Release plan</h1><table><tr><th>Month</th><th>Goal</th></tr><tr><td>May</td><td>Beta</td></tr></table>",

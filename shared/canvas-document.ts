@@ -236,6 +236,32 @@ ${TEXT_CONTRAST_SCRIPT}
   };
   addEventListener("DOMContentLoaded", checkText);
   addEventListener("load", checkText);
+  // The library puts a bare copy of each <use> target, without the page's styles, in front of the page, where it wins
+  // over the page's own copy. That copy has all its computed styles written out, so the bare one goes, and the page's copy
+  // gives up the values it only inherited where it sits, to inherit them from each <use> as the browser does.
+  // A value it set itself that happens to equal the inherited one goes too: a rare loss.
+  const drawUseTargetsInPageStyles = (svg) => {
+    const page = svg.querySelector("foreignObject");
+    const bareCopies = svg.querySelector(":scope > defs");
+    if (!page || !bareCopies) return;
+    for (const bareCopy of [...bareCopies.children]) {
+      const pageCopy = bareCopy.id && page.querySelector("svg #" + CSS.escape(bareCopy.id));
+      if (!pageCopy) continue;
+      bareCopy.remove();
+      inheritFromEachUse(pageCopy);
+    }
+  };
+  const inheritFromEachUse = (target) => {
+    const outside = target.parentElement.style;
+    const inheritedValues = [];
+    const collect = (element, names) => {
+      const unchanged = names.filter((name) => element.style.getPropertyValue(name) === outside.getPropertyValue(name));
+      inheritedValues.push([element, unchanged]);
+      for (const child of element.children) collect(child, unchanged);
+    };
+    collect(target, Array.from(outside));
+    inheritedValues.forEach(([element, names]) => names.forEach((name) => element.style.removeProperty(name)));
+  };
   // The whole page, not only what the frame shows, in the colours it is shown in.
   const capture = async (requestId) => {
     try {
@@ -250,6 +276,7 @@ ${TEXT_CONTRAST_SCRIPT}
         // The library works out the browser's default styles in a frame of its own, which a sandboxed page cannot reach;
         // with a stand-in that has no window, it writes out every style of each element instead.
         sandbox: { remove() {} },
+        onCreateForeignObjectSvg: drawUseTargetsInPageStyles,
       });
       post({ kind: "captured", requestId, image });
     } catch (error) {
