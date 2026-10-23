@@ -56,7 +56,7 @@ export function registerAppTools(
       description:
         "Change the document of the app open in this workspace with one operation. The app checks it and applies it in turn with the user's own changes, and the result says what changed or what was wrong. Never edit the app's file to change it: an operation is recorded as yours and can be undone. app_state says which operations the app takes.",
       inputSchema: z.object({
-        op: z.record(z.string(), z.unknown()).describe('The operation, as the app defines it, e.g. { "op": "move_wall", "wall": "w12", "by": [1, 0] }.'),
+        op: z.record(z.string(), z.unknown()).describe('The operation, as the app defines it, e.g. { "op": "add", "by": 2 }.'),
         app: appNameSchema,
       }),
       _meta: loadedUpFront,
