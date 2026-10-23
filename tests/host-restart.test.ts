@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../host/config.ts";
@@ -8,7 +8,7 @@ import { Hub } from "../host/hub.ts";
 import { HostRestart, hostCommandLine, relaunchOf, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import { Store } from "../host/store.ts";
 import type { ConversationEvent } from "../shared/model.ts";
-import { SourceWatcher } from "../host/source-watcher.ts";
+import { isEdit, SourceWatcher } from "../host/source-watcher.ts";
 
 describe("hostCommandLine", () => {
   /** The desktop app does not run on Windows yet, and knows its host by host/main.ts, which a restart there gives as host\main.ts. */
@@ -323,6 +323,35 @@ describe("SourceWatcher", () => {
       expect(await editAndCollect("web/App.tsx")).toEqual(["ui"]);
       expect(await editAndCollect("host/acp/harness.ts")).toEqual(["host"]);
       expect(await editAndCollect("shared/model.ts")).toEqual(["host", "ui"]);
+    } finally {
+      watcher.stop();
+    }
+  });
+
+  test("a change Linux tells of without a name is an edit", () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
+    mkdirSync(join(sourceDir, "acp"));
+    writeFileSync(join(sourceDir, "main.ts"), "export {};\n");
+    expect(isEdit(sourceDir, undefined)).toBe(true);
+    expect(isEdit(sourceDir, null)).toBe(true);
+    expect(isEdit(sourceDir, "main.ts")).toBe(true);
+    expect(isEdit(sourceDir, "acp")).toBe(false);
+  });
+
+  test("replacing a watched folder, as a deploy can, makes the UI stale without failing the watcher", async () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
+    ["web", "shared", "host"].forEach((directory) => mkdirSync(join(sourceDir, directory)));
+    await Bun.sleep(200);
+    const edited: string[] = [];
+    const watcher = new SourceWatcher(sourceDir, { uiEdited: () => edited.push("ui"), hostEdited: () => edited.push("host") });
+    watcher.start();
+    try {
+      renameSync(join(sourceDir, "web"), join(sourceDir, "web.old"));
+      mkdirSync(join(sourceDir, "web"));
+      writeFileSync(join(sourceDir, "web", "App.tsx"), "export {};\n");
+      await Bun.sleep(300);
+      expect(edited).toContain("ui");
+      expect(edited).not.toContain("host");
     } finally {
       watcher.stop();
     }
