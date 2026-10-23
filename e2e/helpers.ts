@@ -45,15 +45,15 @@ const RELOAD_CUT_SHORT = ["net::ERR_ABORTED", "Not attached to an active page"];
 
 /**
  * Loads the page again from a host the spec just restarted. The page also loads again by itself once it reaches a
- * restarted host, which may serve newer code, and that cuts a reload in flight short; one more reload then lands.
+ * restarted host, which may serve newer code, and that cuts a reload in flight short, at times the next one too.
  */
-export async function reloadFromRestartedHost(page: Page) {
+export async function reloadFromRestartedHost(page: Page, triesLeft = 3) {
   try {
     await page.reload();
   } catch (error) {
-    if (!RELOAD_CUT_SHORT.some((message) => String(error).includes(message))) throw error;
+    if (triesLeft === 1 || !RELOAD_CUT_SHORT.some((message) => String(error).includes(message))) throw error;
     test.info().annotations.push({ type: "reload cut short", description: "the page's own reload, on reaching the restarted host, cut the spec's short" });
-    await page.reload();
+    await reloadFromRestartedHost(page, triesLeft - 1);
   }
 }
 
