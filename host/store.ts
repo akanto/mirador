@@ -373,6 +373,10 @@ export class Store {
     return this.db.query("SELECT workspace_id AS workspaceId, app, file FROM open_apps").all() as { workspaceId: string; app: string; file: string }[];
   }
 
+  forgetOpenApps(app: string) {
+    this.db.query("DELETE FROM open_apps WHERE app = ?").run(app);
+  }
+
   saveOpenApp(workspaceId: string, app: string, file: string) {
     this.db.query("INSERT INTO open_apps (workspace_id, app, file) VALUES (?, ?, ?) ON CONFLICT (workspace_id, app) DO UPDATE SET file = excluded.file").run(workspaceId, app, file);
   }

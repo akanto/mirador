@@ -6481,7 +6481,7 @@ body.reordering * {
   list-style: none;
 }
 
-.plugin-list li {
+.plugin-list > li {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -6491,7 +6491,7 @@ body.reordering * {
   border-radius: 6px;
 }
 
-.plugin-list li.failed {
+.plugin-list > li.failed {
   border-color: var(--danger);
 }
 
@@ -6519,7 +6519,60 @@ body.reordering * {
   color: var(--danger);
 }
 
-.plugin-list li.plugin-none {
+.plugin-waits {
+  color: var(--accent);
+  font-size: calc(11px * var(--font-scale));
+}
+
+.plugin-actions {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.plugin-status {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.plugin-commits {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 18px;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.plugin-output {
+  flex-basis: 100%;
+  max-height: 200px;
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--danger);
+  font-size: calc(11.5px * var(--font-scale));
+  white-space: pre-wrap;
+}
+
+.plugin-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plugin-add input:first-child {
+  flex: 3 1 260px;
+}
+
+.plugin-add input:nth-child(2) {
+  flex: 1 1 120px;
+}
+
+.plugin-list > li.plugin-none {
   border-style: dashed;
   color: var(--muted);
 }

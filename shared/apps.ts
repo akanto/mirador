@@ -12,6 +12,11 @@ export interface AppManifest {
     /** One ES module, relative to the plugin's folder, that draws the app in a canvas frame with `window.mirador`. */
     view: string;
   };
+  /**
+   * A shell command that builds the plugin in its folder, e.g. "bun install && bun run build". Mirador runs it after
+   * cloning the plugin's repo and after each update, with the Bun it runs on first on the PATH.
+   */
+  build?: string;
 }
 
 /**
@@ -83,6 +88,14 @@ export interface PluginInfo {
   source: PluginSource;
   /** Why it didn't load when Mirador started; null when it did. */
   problem: string | null;
+  /** Added or updated since Mirador started, which loads it as it is now only at its next start. */
+  waitsForRestart: boolean;
+}
+
+/** A commit an update would bring. */
+export interface PluginCommit {
+  commit: string;
+  subject: string;
 }
 
 export const appKey = ({ workspaceId, app }: { workspaceId: string; app: string }) => `${workspaceId}/${app}`;
@@ -94,7 +107,7 @@ export function appPromptText({ title, file }: OpenApp, text: string) {
 
 export function isAppManifest(value: unknown): value is AppManifest {
   if (typeof value !== "object" || value === null) return false;
-  const { name, title, api, app } = value as Partial<AppManifest>;
+  const { name, title, api, app, build } = value as Partial<AppManifest>;
   return (
     typeof name === "string" &&
     /^[a-z0-9][a-z0-9-]*$/.test(name) &&
@@ -103,6 +116,7 @@ export function isAppManifest(value: unknown): value is AppManifest {
     typeof app === "object" &&
     app !== null &&
     typeof app.host === "string" &&
-    typeof app.view === "string"
+    typeof app.view === "string" &&
+    (build === undefined || typeof build === "string")
   );
 }

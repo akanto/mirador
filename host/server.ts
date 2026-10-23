@@ -25,7 +25,7 @@ import { installedHarnesses } from "./acp/harnesses.ts";
 import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import type { AppDocuments } from "./apps/documents.ts";
-import type { InstalledPlugins } from "./apps/installed-plugins.ts";
+import { withoutCredentials, type InstalledPlugins } from "./apps/installed-plugins.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
@@ -333,6 +333,17 @@ export function startServer(services: HostServices) {
     reachability: reachabilitySettings(),
   });
   const sendDevicesToEveryPage = () => hub.sendEach(devicesListed);
+  const pluginsListed = async (): Promise<ServerMessage> => ({ type: "plugins.listed", folder: plugins.folder, plugins: await plugins.list(), restartNeeded: plugins.restartNeeded });
+
+  /** Answers whoever asked for the change, then shows the plugins as they are now on every page. */
+  async function changePlugins(socket: BrowserSocket, requestId: string, change: () => Promise<unknown>) {
+    const problem = await change().then(
+      () => null,
+      (error) => withoutCredentials(messageOf(error)),
+    );
+    hub.send(socket, { type: "plugins.changed", requestId, problem });
+    if (problem === null) hub.broadcast(await pluginsListed());
+  }
 
   /** Saves a setting from Settings for the next start, or says what is wrong with it. */
   function problemSaving(save: () => void) {
@@ -1087,10 +1098,23 @@ export function startServer(services: HostServices) {
       case "devices.list":
         return hub.send(socket, devicesListed(socket));
       case "plugins.list":
-        return void plugins
-          .list()
-          .then((listed) => hub.send(socket, { type: "plugins.listed", folder: plugins.folder, plugins: listed }))
+        return void pluginsListed()
+          .then((listed) => hub.send(socket, listed))
           .catch((error) => console.warn(`Listing the plugins failed: ${messageOf(error)}`));
+      case "plugins.add":
+        return void changePlugins(socket, message.requestId, () => plugins.add(message.url, message.branch));
+      case "plugins.update":
+        return void changePlugins(socket, message.requestId, () => plugins.update(message.folder));
+      case "plugins.remove":
+        return void changePlugins(socket, message.requestId, async () => {
+          const name = await plugins.remove(message.folder);
+          if (name) store.forgetOpenApps(name);
+        });
+      case "plugins.find-commits":
+        return void plugins.newCommits(message.folder).then(
+          (commits) => reply({ type: "plugins.commits-found", requestId: message.requestId, commits, problem: null }),
+          (error) => reply({ type: "plugins.commits-found", requestId: message.requestId, commits: [], problem: withoutCredentials(messageOf(error)) }),
+        );
       case "devices.invite":
         return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });
       case "address.find":

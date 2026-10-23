@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InstalledPlugins, withoutCredentials } from "../host/apps/installed-plugins.ts";
@@ -57,15 +57,146 @@ describe("InstalledPlugins", () => {
     const listed = await new InstalledPlugins(plugins, loaded.problems).list();
 
     expect(listed).toEqual([
-      { folder: "broken", name: "broken", title: "Broken", source: { kind: "folder" }, problem: "host.ts doesn't exist; build the plugin first?" },
+      { folder: "broken", name: "broken", title: "Broken", source: { kind: "folder" }, problem: "host.ts doesn't exist; build the plugin first?", waitsForRestart: false },
       {
         folder: "cloned",
         name: "counter",
         title: "Counter",
         source: { kind: "git", remote: "https://example.com/me/counter.git", branch: "main", commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by one" },
         problem: null,
+        waitsForRestart: false,
       },
-      { folder: "linked", name: "linked-counter", title: "Linked counter", source: { kind: "linked", target: elsewhere }, problem: null },
+      { folder: "linked", name: "linked-counter", title: "Linked counter", source: { kind: "linked", target: elsewhere }, problem: null, waitsForRestart: false },
     ]);
+  });
+});
+
+describe("adding, updating and removing plugins", () => {
+  /** A repo of the counter plugin whose view only exists once its build ran, as with a bundled view. */
+  function builtCounterRepo(name: string) {
+    const repo = join(root, name);
+    cpSync(COUNTER, repo, { recursive: true });
+    mkdirSync(join(repo, "src"));
+    cpSync(join(COUNTER, "view.js"), join(repo, "src", "view.js"));
+    rmSync(join(repo, "view.js"));
+    writeFileSync(join(repo, ".gitignore"), "/view.js\n");
+    writeFileSync(join(repo, "build.ts"), 'await Bun.write("view.js", Bun.file("src/view.js"));\n');
+    writeFileSync(join(repo, "plugin.json"), JSON.stringify({ name: "counter", title: "Counter", api: 1, app: { host: "host.ts", view: "view.js" }, build: "bun build.ts" }));
+    git(repo, "init", "--quiet", "-b", "main");
+    git(repo, "add", ".");
+    git(repo, "commit", "--quiet", "-m", "Count by one");
+    return repo;
+  }
+
+  function commit(repo: string, file: string, content: string, message: string) {
+    writeFileSync(join(repo, file), content);
+    git(repo, "commit", "--quiet", "-am", message);
+  }
+
+  const pluginsIn = (name: string) => {
+    const folder = join(root, name, "plugins");
+    mkdirSync(folder, { recursive: true });
+    return folder;
+  };
+  const leftInStaging = (plugins: string) => (existsSync(`${plugins}-staging`) ? readdirSync(`${plugins}-staging`) : []);
+
+  test("clones the repo, runs its build, and puts it in a folder named as the plugin, which loads at the next start", async () => {
+    const repo = builtCounterRepo("add-repo");
+    const plugins = pluginsIn("add");
+    const installed = new InstalledPlugins(plugins, []);
+    await installed.add(` ${repo} `, "main");
+
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe(readFileSync(join(COUNTER, "view.js"), "utf8"));
+    expect(installed.restartNeeded).toBe(true);
+    expect(await installed.list()).toEqual([
+      {
+        folder: "counter",
+        name: "counter",
+        title: "Counter",
+        source: { kind: "git", remote: repo, branch: "main", commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by one" },
+        problem: null,
+        waitsForRestart: true,
+      },
+    ]);
+    expect(leftInStaging(plugins)).toEqual([]);
+    expect((await loadAppPlugins(plugins)).plugins.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
+  });
+
+  test("refuses a repo whose build fails, with the end of its output, and leaves nothing behind", async () => {
+    const repo = builtCounterRepo("failing-build-repo");
+    commit(repo, "build.ts", 'console.error("the bundler choked"); process.exit(3);\n', "Break the build");
+    const plugins = pluginsIn("failing-build");
+    const installed = new InstalledPlugins(plugins, []);
+
+    await expect(installed.add(repo, null)).rejects.toThrow("Its build command, bun build.ts, failed:\nthe bundler choked");
+    expect(readdirSync(plugins)).toEqual([]);
+    expect(leftInStaging(plugins)).toEqual([]);
+    expect(installed.restartNeeded).toBe(false);
+  });
+
+  test("refuses a repo without a plugin.json, a plugin whose name is taken, and a remote it can't reach, without showing its credentials", async () => {
+    const plugins = pluginsIn("refusals");
+    const installed = new InstalledPlugins(plugins, []);
+    const notAPlugin = join(root, "not-a-plugin-repo");
+    mkdirSync(notAPlugin);
+    writeFileSync(join(notAPlugin, "README.md"), "Hello\n");
+    git(notAPlugin, "init", "--quiet", "-b", "main");
+    git(notAPlugin, "add", ".");
+    git(notAPlugin, "commit", "--quiet", "-m", "Hello");
+    await expect(installed.add(notAPlugin, null)).rejects.toThrow("The repo isn't a plugin Mirador can load: there's no plugin.json at the top of its folder.");
+
+    cpSync(COUNTER, join(plugins, "my-counter"), { recursive: true });
+    await expect(installed.add(builtCounterRepo("taken-repo"), null)).rejects.toThrow("The plugin in my-counter is already named counter; remove it first.");
+
+    const unreachable = installed.add("https://me:s3cret@127.0.0.1:9/counter.git", null);
+    await expect(unreachable).rejects.toThrow("git clone failed:");
+    await expect(unreachable).rejects.not.toThrow("s3cret");
+    expect(leftInStaging(plugins)).toEqual([]);
+  });
+
+  test("an update lists the new commits, then swaps in the new build; a failed one leaves the plugin as it was", async () => {
+    const repo = builtCounterRepo("update-repo");
+    const plugins = pluginsIn("update");
+    await new InstalledPlugins(plugins, []).add(repo, null);
+    const installed = new InstalledPlugins(plugins, []);
+    expect(await installed.newCommits("counter")).toEqual([]);
+
+    commit(repo, "src/view.js", "document.body.textContent = 'Counting by two';\n", "Count by two");
+    const [newest] = await installed.newCommits("counter");
+    expect(newest).toEqual({ commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by two" });
+    await installed.update("counter");
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe("document.body.textContent = 'Counting by two';\n");
+    expect((await installed.list())[0]).toMatchObject({ source: { commit: newest!.commit, subject: "Count by two" }, waitsForRestart: true });
+
+    commit(repo, "build.ts", "process.exit(1);\n", "Break the build");
+    await expect(installed.update("counter")).rejects.toThrow("Its build command, bun build.ts, failed:");
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe("document.body.textContent = 'Counting by two';\n");
+    expect(git(join(plugins, "counter"), "log", "-1", "--format=%s")).toBe("Count by two");
+  });
+
+  test("only a plugin cloned from a git repo has updates", async () => {
+    const plugins = pluginsIn("no-updates");
+    cpSync(COUNTER, join(plugins, "copied"), { recursive: true });
+    const installed = new InstalledPlugins(plugins, []);
+    await expect(installed.newCommits("copied")).rejects.toThrow("copied wasn't installed from a git repo, so there's nothing to update it from.");
+    await expect(installed.update("elsewhere")).rejects.toThrow("No plugin is installed in elsewhere.");
+  });
+
+  test("removing a linked plugin removes the link and keeps its folder; removing a cloned one takes it out of the plugins folder", async () => {
+    const plugins = pluginsIn("remove");
+    const linkedFolder = join(root, "remove-linked-target");
+    cpSync(COUNTER, linkedFolder, { recursive: true });
+    writeFileSync(join(linkedFolder, "plugin.json"), JSON.stringify({ name: "linked-counter", title: "Linked counter", api: 1, app: { host: "host.ts", view: "view.js" } }));
+    symlinkSync(linkedFolder, join(plugins, "linked"));
+    const installed = new InstalledPlugins(plugins, []);
+    await installed.add(builtCounterRepo("remove-repo"), null);
+
+    expect(await installed.remove("counter")).toBe("counter");
+    expect(await installed.remove("linked")).toBe("linked-counter");
+    expect(readdirSync(plugins)).toEqual([]);
+    expect(existsSync(join(linkedFolder, "plugin.json"))).toBe(true);
+    expect(leftInStaging(plugins)).toHaveLength(1);
+    new InstalledPlugins(plugins, []);
+    expect(leftInStaging(plugins)).toEqual([]);
   });
 });

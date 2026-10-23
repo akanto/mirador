@@ -74,6 +74,13 @@ export const hints = {
     "Where a machine you gave a colour shows it: on its rail button only, or also as a strip along the top of its view, so you can tell at a glance which machine you work on. Give a machine a colour in Machines….",
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
+  addPlugin:
+    "Clones the repo into Mirador's plugins folder and runs the build command its plugin.json names. Mirador loads the plugin from its next start.",
+  checkPluginUpdates: "Fetches the plugin's branch and lists the commits it doesn't have yet. Nothing changes until you update.",
+  updatePlugin:
+    "Clones the branch as it is now and builds it, and only then replaces the plugin, so a failed update leaves it as it was. Mirador uses the new one from its next start.",
+  removePluginArmed: "Click again to remove this plugin. Mirador stops loading it from its next start.",
+  unlinkPluginArmed: "Click again to remove the link. The folder it points to stays as it is.",
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",
   terminalLink: (click: string) => `${click} to open the link in your browser.`,
   terminalPreset: "Built-in colours for terminals: background, foreground and ANSI palette.",

@@ -57,12 +57,24 @@ export async function loadAppPlugins(pluginsFolder: string): Promise<{ plugins: 
   return { plugins, problems };
 }
 
-async function loadAppPlugin(folder: string): Promise<AppPlugin> {
-  const manifest: unknown = await Bun.file(join(folder, "plugin.json")).json();
+/** The folder's plugin.json, held to what this Mirador loads; throws what is wrong with it. */
+export async function readManifest(folder: string): Promise<AppManifest> {
+  const file = join(folder, "plugin.json");
+  if (!existsSync(file)) throw new Error("there's no plugin.json at the top of its folder");
+  const manifest: unknown = await Bun.file(file).json();
   if (!isAppManifest(manifest)) throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, an api number and app.host and app.view");
   if (manifest.api !== APP_PLUGIN_API) throw new Error(`plugin.json is for plugin API ${manifest.api}; this Mirador speaks ${APP_PLUGIN_API}`);
-  const hostFile = insideFolder(folder, manifest.app.host);
-  const viewFile = insideFolder(folder, manifest.app.view);
+  return manifest;
+}
+
+/** The host and view files plugin.json names; throws when one is missing or outside the folder. */
+export function pluginFiles(folder: string, manifest: AppManifest) {
+  return { hostFile: insideFolder(folder, manifest.app.host), viewFile: insideFolder(folder, manifest.app.view) };
+}
+
+async function loadAppPlugin(folder: string): Promise<AppPlugin> {
+  const manifest = await readManifest(folder);
+  const { hostFile, viewFile } = pluginFiles(folder, manifest);
   const host = hostFrom(await import(hostFile));
   const code = await Bun.file(viewFile).bytes();
   return { manifest, folder, host, view: { code, hash: createHash("sha256").update(code).digest("hex").slice(0, 16) } };

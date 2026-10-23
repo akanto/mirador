@@ -332,6 +332,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "machine.join-answered":
     case "settings.saved":
     case "plugins.listed":
+    case "plugins.changed":
+    case "plugins.commits-found":
     case "conversation.revert-previewed":
     case "conversation.reverted":
     case "conversation.revert-failed":

@@ -37,7 +37,7 @@ test("Settings lists the installed plugins, where each came from, and why one di
   const settings = await openSettings(page, "Plugins");
   const plugins = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
   await expect(plugins).toHaveCount(2);
-  await expect(plugins.nth(0)).toHaveText(`Countercounter${counterRepo()} · main · ${git(counterRepo(), "rev-parse", "--short", "HEAD")} Count by one`);
-  await expect(plugins.nth(1)).toHaveText("UnbuiltunbuiltA folder put there by handDidn't load: host.ts doesn't exist; build the plugin first?");
+  await expect(plugins.nth(0)).toHaveText(`Countercounter${counterRepo()} · main · ${git(counterRepo(), "rev-parse", "--short", "HEAD")} Count by oneCheck for updatesRemove`);
+  await expect(plugins.nth(1)).toHaveText("UnbuiltunbuiltA folder put there by handDidn't load: host.ts doesn't exist; build the plugin first?Remove");
   await expect(settings.getByText(join(host.dataDir, "plugins"), { exact: true })).toBeVisible();
 });
