@@ -188,22 +188,35 @@ describe("a command said while keeping a spoken conversation going", () => {
   test("a command inside a longer message goes to the agent", () => {
     expect(voiceCommand("Stop the build and repeat the tests.")).toBeNull();
     expect(voiceCommand("Can you repeat that function for the other file?")).toBeNull();
+    expect(voiceCommand("Thank you, that works.")).toBeNull();
     expect(voiceCommand("")).toBeNull();
+  });
+
+  test("a lone thanks ends the conversation, said once or more, or before another stop", () => {
+    expect(voiceCommand("Thanks!")).toBe("stop");
+    expect(voiceCommand("Thank you. Thank you.")).toBe("stop");
+    expect(voiceCommand("Thank you. Stop.")).toBe("stop");
+  });
+
+  test("sentences that ask for different things go to the agent", () => {
+    expect(voiceCommand("Stop. Repeat that.")).toBeNull();
+    expect(voiceCommand("Thank you. Now run the tests.")).toBeNull();
   });
 });
 
 describe("what speech recognition makes up from silence", () => {
   test("its usual phrases, alone or repeated, and nothing at all, are not worth sending", () => {
-    expect(madeUpFromSilence("Thank you.")).toBe(true);
-    expect(madeUpFromSilence("Thank you. Thank you. Thank you.")).toBe(true);
     expect(madeUpFromSilence("Thanks for watching!")).toBe(true);
+    expect(madeUpFromSilence("Thank you for watching. Thank you for watching.")).toBe(true);
+    expect(madeUpFromSilence("You")).toBe(true);
     expect(madeUpFromSilence(" . ")).toBe(true);
     expect(madeUpFromSilence("")).toBe(true);
   });
 
-  test("anything more is what the user said", () => {
+  test("anything more is what the user said, and a lone thanks is a command", () => {
     expect(madeUpFromSilence("Thank you, that works.")).toBe(false);
-    expect(madeUpFromSilence("Thank you. Now run the tests.")).toBe(false);
+    expect(madeUpFromSilence("Thanks for watching. Now run the tests.")).toBe(false);
+    expect(madeUpFromSilence("Thank you.")).toBe(false);
     expect(madeUpFromSilence("Bye.")).toBe(false);
   });
 });

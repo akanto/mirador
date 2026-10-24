@@ -24,7 +24,7 @@ export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 export type VoiceCommand = "stop" | "repeat";
 
 const voiceCommands: Record<VoiceCommand, string[]> = {
-  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough", "bye", "bye bye", "goodbye"],
+  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough", "bye", "bye bye", "goodbye", "thank you", "thanks", "thank you very much", "thanks a lot"],
   repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
 };
 
@@ -40,11 +40,12 @@ const asCommand = (words: string) =>
     .replace(politeWords, "")
     .trim();
 
-/** What speech recognition, Whisper most of all, is known to write for silence, noise or music, as if a video were ending. */
+/**
+ * What speech recognition, Whisper most of all, is known to write for silence, noise or music, as if a video were
+ * ending. A lone "thank you" is one too, but it is taken for "stop": ending the conversation errs on the side of a
+ * closed microphone.
+ */
 const madeUpPhrases = new Set([
-  "thank you",
-  "thanks",
-  "thank you very much",
   "thank you for watching",
   "thanks for watching",
   "thank you so much for watching",
@@ -54,19 +55,22 @@ const madeUpPhrases = new Set([
   "subtitles by the amara org community",
 ]);
 
+const sentencesOf = (text: string) => text.split(/[.!?…\n]+/).map(asCommand).filter((sentence) => sentence !== "");
+
 /** Nothing but words that recognition makes up from silence, or no words at all: not worth sending. */
 export function madeUpFromSilence(text: string) {
-  const sentences = text.split(/[.!?…\n]+/).map(asCommand).filter((sentence) => sentence !== "");
-  return sentences.every((sentence) => madeUpPhrases.has(sentence));
+  return sentencesOf(text).every((sentence) => madeUpPhrases.has(sentence));
 }
 
-/** In English, after translation, so one set of phrases serves every language; only the whole of it counts: "stop the build" goes to the agent. */
+const commandIn = (sentence: string) => (Object.keys(voiceCommands) as VoiceCommand[]).find((command) => voiceCommands[command].includes(sentence)) ?? null;
+
+/**
+ * In English, after translation, so one set of phrases serves every language. Every sentence has to be the same
+ * command, as in "Thank you. Thank you.": "stop the build" goes to the agent.
+ */
 export function voiceCommand(text: string): VoiceCommand | null {
-  const said = asCommand(text);
-  for (const [command, phrases] of Object.entries(voiceCommands) as [VoiceCommand, string[]][]) {
-    if (phrases.includes(said)) return command;
-  }
-  return null;
+  const commands = new Set(sentencesOf(text).map(commandIn));
+  return commands.size === 1 ? ([...commands][0] ?? null) : null;
 }
 
 export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>) {
