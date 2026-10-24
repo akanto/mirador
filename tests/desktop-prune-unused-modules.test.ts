@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { MERMAID_FILES_KEPT, packagesOnlyMermaidNeeds, pruneUnusedModules } from "../desktop/scripts/prune-unused-modules.ts";
@@ -55,7 +55,9 @@ test("pruning keeps mermaid's served file and what the rest of the app needs, an
 });
 
 test("every file the canvas serves from a pruned package survives pruning", () => {
-  const servedFromModules = (pathname: string) => relative(join(import.meta.dir, "..", "node_modules"), resolveAsset(pathname)!);
+  // Packages resolve to their real path, and a worktree's node_modules can be a link to the checkout's.
+  const appModules = realpathSync(join(import.meta.dir, "..", "node_modules"));
+  const servedFromModules = (pathname: string) => relative(appModules, resolveAsset(pathname)!);
 
   expect(MERMAID_FILES_KEPT.map((file) => join("mermaid", file))).toContain(servedFromModules("/mermaid.min.js"));
   ["/three/build/three.module.js", "/three/addons/controls/OrbitControls.js"].forEach((pathname) => expect(servedFromModules(pathname)).not.toStartWith("three/src/"));
