@@ -188,7 +188,33 @@ test("a file a commit since the snapshot changed and that was edited after it st
   expect(await read("kept.txt")).toBe("pulled, then edited by the agent\n");
 });
 
+test("a file a switch of branch checks out with core.autocrlf's line endings is not counted as edited since, and one the agent edited after is", async () => {
+  await git(projectDir, ["config", "core.autocrlf", "true"]);
+  await git(projectDir, ["checkout", "-qb", "other"]);
+  await write("kept.txt", "on the other branch\n");
+  await write("doomed.txt", "the other branch's own\n");
+  await git(projectDir, ["commit", "-qam", "other"]);
+  await git(projectDir, ["checkout", "-q", "main"]);
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await git(projectDir, ["checkout", "-q", "other"]);
+  await write("doomed.txt", "the other branch's own, then edited by the agent\n");
+
+  expect(await read("kept.txt")).toBe("on the other branch\r\n");
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 0, removed: 0, committed: { files: 2, editedSince: 1, commits: 1 } });
+});
+
+test("a file a commit since the snapshot deleted and the agent made again is counted as edited since", async () => {
+  const snapshot = (await checkpoints.snapshot(workspace))!;
+  await git(projectDir, ["rm", "-q", "kept.txt"]);
+  await git(projectDir, ["commit", "-qm", "a pull"]);
+  await write("kept.txt", "made again by the agent\n");
+
+  expect(await checkpoints.restore(workspace, snapshot)).toEqual({ restored: 0, removed: 0, committed: { files: 1, editedSince: 1, commits: 1 } });
+  expect(await read("kept.txt")).toBe("made again by the agent\n");
+});
+
 test("after a switch to a branch that is not ahead of the snapshot's, the files that differ there stay as they are, with no count of commits", async () => {
+  await checkOutTextWithLF();
   await git(projectDir, ["checkout", "-qb", "other"]);
   await write("kept.txt", "on the other branch\n");
   await git(projectDir, ["commit", "-qam", "other"]);

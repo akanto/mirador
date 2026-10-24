@@ -261,10 +261,18 @@ export class Checkpoints {
     return Number((await this.git.mustRun(workspace, ["rev-list", "--count", then ? `${then}..${now}` : now])).stdout);
   }
 
-  /** How many of `paths` the files now hold otherwise than HEAD does, compared as git stores them. */
-  private async editedSinceHead(workspace: Workspace, { head }: Location, converted: string, paths: string[]) {
-    const differing = await this.git.mustRun(workspace, ["diff-tree", "-r", "-z", "--name-only", "--relative", "--no-renames", await this.treeOf(workspace, head), converted]);
-    const edited = new Set(differing.stdout.split("\0"));
+  /**
+   * How many of `paths` the files now hold otherwise than HEAD does. The user's git compares them, with the line endings
+   * their core.autocrlf converts, which our staging keeps as they are; a file HEAD doesn't have is told by our staging,
+   * which holds untracked files too.
+   */
+  private async editedSinceHead(workspace: Workspace, { head, usersIndex }: Location, converted: string, paths: string[]) {
+    const headTree = await this.treeOf(workspace, head);
+    const [changed, added] = await Promise.all([
+      this.git.mustRun(workspace, ["diff", "--name-only", "-z", "--relative", "--no-renames", headTree], { index: usersIndex }),
+      this.git.mustRun(workspace, ["diff-tree", "-r", "-z", "--name-only", "--relative", "--no-renames", "--diff-filter=A", headTree, converted]),
+    ]);
+    const edited = new Set([...changed.stdout.split("\0"), ...added.stdout.split("\0")]);
     return paths.filter((path) => edited.has(path)).length;
   }
 
