@@ -4,6 +4,7 @@ import type { Profile } from "../shared/model.ts";
 import { defaultVoiceSettings, speaksReplies, thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 import { Store } from "../host/store.ts";
 import { Voice, VoiceUnavailable, type ThisMac } from "../host/voice/voice.ts";
+import { toneWav } from "../e2e/wav.ts";
 
 interface Heard {
   path: string;
@@ -23,7 +24,8 @@ let translation = "";
 let failure: { status: number; text: string } | null = null;
 let chatChoice: Record<string, unknown> | null = null;
 let anthropicStopReason = "end_turn";
-let sound = new Uint8Array([82, 73, 70, 70]);
+const sentenceOfSound = () => new Uint8Array(toneWav(0.1));
+let sound = sentenceOfSound();
 
 const server = Bun.serve({
   port: 0,
@@ -57,7 +59,7 @@ beforeEach(() => {
   failure = null;
   chatChoice = null;
   anthropicStopReason = "end_turn";
-  sound = new Uint8Array([82, 73, 70, 70]);
+  sound = sentenceOfSound();
 });
 
 const origin = `http://127.0.0.1:${server.port}`;
@@ -236,8 +238,8 @@ describe("spoken replies", () => {
     expect((heard[0]!.json!.messages as { content: string }[])[1]!.content).toBe("<reply>Fixed `parse()` in **host/x.ts**. Push?</reply>");
 
     const spoken = await voice.spoken("It asks whether to push.");
-    expect(spoken.type).toBe("audio/wav");
-    expect(spoken.size).toBe(4);
+    expect(spoken.type).toBe("audio/mpeg");
+    expect(spoken.size).toBeLessThan(sound.length / 4);
     expect(heard[1]).toMatchObject({
       path: "/v1/audio/speech",
       authorization: "Bearer voice-key",
@@ -277,12 +279,14 @@ describe("spoken replies", () => {
     expect(heard).toEqual([]);
   });
 
-  test("a reply voice server's error comes back with what it said, and an answer without sound says so", async () => {
+  test("a reply voice server's error comes back with what it said, and an answer without sound or not WAV says so", async () => {
     failure = { status: 400, text: "unknown voice" };
     await expect(voiceWith(speaking).spoken("Done.")).rejects.toThrow("The reply voice server answered 400: unknown voice");
     failure = null;
     sound = new Uint8Array();
     await expect(voiceWith(speaking).spoken("Done.")).rejects.toThrow("The reply voice server answered without sound.");
+    sound = new TextEncoder().encode("ID3 an mp3 after all");
+    await expect(voiceWith(speaking).spoken("Done.")).rejects.toThrow("The reply voice server's answer isn't WAV.");
   });
 });
 

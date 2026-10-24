@@ -305,7 +305,7 @@ test("Voice on this Mac downloads each model where it is chosen, loads them when
     await expect(replies.getByRole("status")).toHaveText("Saved.");
     await expect(replies).toContainText("Spoken by Kokoro");
     await expect(lastCell(kokoroRow)).toHaveText("In use");
-    expect(await speakSentence(page, conversationId, "The tests passed.")).toEqual({ status: 200, type: "audio/wav" });
+    expect(await speakSentence(page, conversationId, "The tests passed.")).toEqual({ status: 200, type: "audio/mpeg" });
     const spoken = engineLogged().filter(({ event }) => event === "speech");
     expect(spoken.map(({ input }) => input)).toEqual(["Ready.", "The tests passed."]);
     expect(spoken.at(-1)!.voice).toMatch(/models\/Kokoro-82M-bf16\/voices\/am_fenrir\.safetensors$/);
@@ -325,7 +325,7 @@ test("Voice on this Mac downloads each model where it is chosen, loads them when
     await expect(lastCell(kokoroRow)).toHaveText("Kept");
     await expect(replyVoiceState).toHaveText("Unloaded");
 
-    expect(await speakSentence(page, conversationId, "Kész a javítás.")).toEqual({ status: 200, type: "audio/wav" });
+    expect(await speakSentence(page, conversationId, "Kész a javítás.")).toEqual({ status: 200, type: "audio/mpeg" });
     const spoken = engineLogged().filter(({ event }) => event === "speech").slice(-2);
     expect(spoken.map(({ input }) => input)).toEqual(["Ready.", "Kész a javítás."]);
     expect(spoken.at(-1)).toMatchObject({

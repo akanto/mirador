@@ -14,6 +14,7 @@ import {
 import { profileEnvironment } from "../acp/harnesses.ts";
 import { speakingVoice } from "./engine/catalog.ts";
 import { speak, transcribe, type ChatEndpoint, type Transcript } from "./endpoints.ts";
+import { mp3Of } from "./mp3.ts";
 import { spokenSummary } from "./reply-summary.ts";
 import { translated } from "./translation.ts";
 
@@ -92,8 +93,13 @@ export class Voice {
     return this.withVoiceModel(voiceModel, (endpoint) => spokenSummary(endpoint, reply, replyLanguage));
   }
 
-  /** A sentence of a reply's summary, spoken as WAV. */
+  /** A sentence of a reply's summary, spoken as MP3. */
   async spoken(sentence: string) {
+    const wav = await this.spokenAsWav(sentence);
+    return new Blob([await mp3Of(new Uint8Array(await wav.arrayBuffer()))], { type: "audio/mpeg" });
+  }
+
+  private async spokenAsWav(sentence: string) {
     const { replyVoice, replyLanguage } = this.settings();
     if (replyVoice.kind === "off") throw new VoiceUnavailable("Spoken replies are off. Settings → Voice can turn them on.");
     if (replyVoice.kind === "custom") return speak(replyVoice.endpoint, sentence, { voice: replyVoice.voice });

@@ -510,13 +510,13 @@ export function startServer(services: HostServices) {
     return voiceAnswer(async () => Response.json({ sentences: await voice.replySummary(reply) }));
   }
 
-  /** A sentence of a reply's summary, sent as text, spoken as WAV. */
+  /** A sentence of a reply's summary, sent as text, spoken as MP3. */
   async function speakSentence(request: Bun.BunRequest<"/conversations/:conversationId/spoken-sentence">) {
     const refused = refusedAttachmentRequest(request, request.params.conversationId);
     if (refused) return refused;
     const sentence = await textWithin(request, MAX_SPOKEN_SENTENCE_BYTES);
     if (sentence === null) return new Response("The sentence is too long to speak.", { status: 413 });
-    return voiceAnswer(async () => new Response(await voice.spoken(sentence), { headers: { "Content-Type": "audio/wav" } }));
+    return voiceAnswer(async () => new Response(await voice.spoken(sentence), { headers: { "Content-Type": "audio/mpeg" } }));
   }
 
   /** 409 when Settings → Voice can change what failed. */
