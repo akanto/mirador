@@ -3,7 +3,11 @@ import { addWorkspace, signIn, startConversation } from "./helpers.ts";
 import { countTo, echo, printRaw, shellTabName, sum } from "./terminal-shell.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost();
+/**
+ * Where sh is bash, as on Arch, /etc/profile reads /etc/bash.bashrc, whose prompt sets the terminal's title over the
+ * shell's name; it skips it with POSIXLY_CORRECT set.
+ */
+const host = new TestHost({ environment: { POSIXLY_CORRECT: "1" } });
 
 test.beforeAll(() => host.start());
 test.afterAll(async () => {
