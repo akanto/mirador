@@ -52,14 +52,17 @@ describe("an app's storage in a workspace", () => {
 
   test("outlives the host, and goes with its workspace", () => {
     const folder = mkdtempSync(join(tmpdir(), "app-storage-"));
+    const path = join(folder, "state.sqlite");
+    const stoppedHost = storeWithWorkspaces(new Store(path));
+    storageOf(stoppedHost).set("w1", "counter", "step", "2");
+    stoppedHost.close();
+    const reopened = new Store(path);
     try {
-      const path = join(folder, "state.sqlite");
-      storageOf(storeWithWorkspaces(new Store(path))).set("w1", "counter", "step", "2");
-      const reopened = new Store(path);
       expect(storageOf(reopened).items("w1", "counter")).toEqual({ step: "2" });
       reopened.deleteWorkspace("w1");
       expect(storageOf(reopened).items("w1", "counter")).toEqual({});
     } finally {
+      reopened.close();
       rmSync(folder, { recursive: true, force: true });
     }
   });

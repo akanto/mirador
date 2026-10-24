@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { Profile } from "../shared/model.ts";
 import { defaultVoiceSettings, speaksReplies, thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 import { Store } from "../host/store.ts";
@@ -259,7 +260,7 @@ describe("spoken replies", () => {
     await voice.replySummary("All green.");
     expect(heard[0]!.json).toMatchObject({ model: "/voice/models/gemma-4-12b", chat_template_kwargs: { enable_thinking: false } });
     await voice.spoken("The tests passed.");
-    expect(heard[1]!.json).toMatchObject({ model: "/voice/models/kokoro-82m", voice: "/voice/models/kokoro-82m/voices/am_fenrir.safetensors" });
+    expect(heard[1]!.json).toMatchObject({ model: "/voice/models/kokoro-82m", voice: join("/voice/models/kokoro-82m", "voices", "am_fenrir.safetensors") });
   });
 
   test("this Mac speaks Hungarian with OmniVoice, copying the voice of a clip that ships with Mirador", async () => {

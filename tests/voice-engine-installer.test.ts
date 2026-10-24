@@ -158,7 +158,10 @@ const settled = (installer: VoiceEngineInstaller) =>
 const uvCalls = () => readFileSync(join(root, "uv-calls.log"), "utf8").trim().split("\n");
 const modelFile = (folder: string, path: string) => join(voiceDir, "models", folder, path);
 
-describe("setting up voice on this Mac", () => {
+/** The fake uv is a shell script and setup sizes its folder with du, neither of which Windows has; voice on this Mac needs a Mac anyway. */
+const hasPosixTools = process.platform !== "win32";
+
+describe.if(hasPosixTools)("setting up voice on this Mac", () => {
   test("installs uv, Python and the speech servers, downloads the models the servers read, and a later host finds it set up", async () => {
     const installer = installerWith();
     installer.setUp([WHISPER]);

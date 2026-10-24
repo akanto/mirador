@@ -106,7 +106,10 @@ async function until(condition: () => boolean, timeoutMs = 5_000) {
 
 const silentClip = new Blob([new Uint8Array(44)], { type: "audio/wav" });
 
-describe("the engine's servers", () => {
+/** The fake python is a shell script, which Windows can't run; voice on this Mac needs a Mac anyway. */
+const hasPosixShell = process.platform !== "win32";
+
+describe.if(hasPosixShell)("the engine's servers", () => {
   test("start at their first use, once for uses at the same time, and lend their address and model", async () => {
     root = mkdtempSync(join(tmpdir(), "mirador-voice-servers-"));
     const { servers, states } = engineServers({ python: fakePython(300) });

@@ -186,13 +186,19 @@ test("clearing a terminal forgets the output above the cursor's line, in every w
   expect(replayed).not.toMatchObject({ data: expect.stringContaining("above-2-the-cursor") });
 });
 
+/**
+ * Windows' console carries a program's sequences out itself and passes on its own: a program's cursor key mode stays with
+ * the console, and no sequence reaches the host cut by a line break.
+ */
+const passesSequencesOnAsWritten = process.platform !== "win32";
+
 /** Application cursor keys, as a full-screen program switches them on once as it starts: the arrow keys then send ESC O A and so on. */
 const cursorKeysOn = "\x1b[?1h";
 /** The mode switches a replay starts with, ahead of the output it kept. */
 const leadingSwitches = (history: string) => history.match(/^(?:\x1b\[\?[\d;]*[hl]|\x1b[=>])*/)![0];
 const switchingCursorKeysOn = (marker: string) => shell.runningBun(`process.stdout.write('\\x1b[?1h'); console.log('${marker}-' + (2+3))`);
 
-test("a replay switches on again what the output the scrollback lost had switched on, as a full-screen program's cursor keys", async () => {
+test.if(passesSequencesOnAsWritten)("a replay switches on again what the output the scrollback lost had switched on, as a full-screen program's cursor keys", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
@@ -206,7 +212,7 @@ test("a replay switches on again what the output the scrollback lost had switche
   expect(leadingSwitches(history)).toContain(cursorKeysOn);
 }, 30_000);
 
-test("a replay after clearing a terminal switches on again what the cleared output had switched on", async () => {
+test.if(passesSequencesOnAsWritten)("a replay after clearing a terminal switches on again what the cleared output had switched on", async () => {
   const browser = fakeBrowser();
   terminals.attach(browser.socket, "c1");
   const { terminalId } = terminals.open("c1", 80, 24);
@@ -223,9 +229,6 @@ test("a replay after clearing a terminal switches on again what the cleared outp
 /** A colour whose sequence has a line break inside, which xterm.js carries out without ending the sequence: clearing cuts it there. */
 const printingAColourWithALineBreakInside = shell.runningBun("process.stdout.write('\\x1b[3\\n1mred-' + (2+3))");
 const colourWhole = "\x1b[3\r\n1mred-5";
-
-/** Windows' console carries a program's sequences out itself and passes on its own, so none reaches the host cut by a line break. */
-const passesSequencesOnAsWritten = process.platform !== "win32";
 
 test.if(passesSequencesOnAsWritten)("a replay after clearing a terminal in the middle of a sequence reads the sequence whole, not its rest as text", async () => {
   const browser = fakeBrowser();

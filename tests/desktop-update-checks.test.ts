@@ -99,6 +99,9 @@ test("the restart into an update stops the host the app started, and a backgroun
 const recordAt = (appBundle: string) => writeFileSync(join(channel, ".electrobun-uninstall.json"), JSON.stringify({ identifier: "com.sodre90.mirador", app_bundle_path: appBundle }));
 const recordedApp = () => JSON.parse(readFileSync(join(channel, ".electrobun-uninstall.json"), "utf8")).app_bundle_path;
 
+/** The helper stands in as a shell script, which Windows can't run; only macOS repairs the record anyway. */
+const hasPosixShell = process.platform !== "win32";
+
 /** An app whose bundled helper notes each run, and records the app the way Electrobun's --bootstrap-install does, unless told to fail. */
 function appWithHelper(records: boolean) {
   const app = join(channel, "Moved", "Mirador.app");
@@ -120,7 +123,7 @@ test("an install record naming another place than the app needs repair, and one 
   expect(installRecordNamesAnotherApp(channel, "/Users/me/Applications/Mirador.app")).toBe(false);
 });
 
-test("a record left at a place the app has moved from is rewritten by the helper inside the app, which then is not run again", async () => {
+test.if(hasPosixShell)("a record left at a place the app has moved from is rewritten by the helper inside the app, which then is not run again", async () => {
   const { app, runs } = appWithHelper(true);
   recordAt("/private/tmp/mount/Mirador.app");
 
@@ -131,7 +134,7 @@ test("a record left at a place the app has moved from is rewritten by the helper
   expect(runs()).toEqual([`--bootstrap-install ${channel} --quiet`]);
 });
 
-test("a helper that cannot rewrite the record leaves the app starting, and warns that it cannot update itself", async () => {
+test.if(hasPosixShell)("a helper that cannot rewrite the record leaves the app starting, and warns that it cannot update itself", async () => {
   const { app, runs } = appWithHelper(false);
   recordAt("/private/tmp/mount/Mirador.app");
   const warn = spyOn(console, "warn").mockImplementation(() => {});

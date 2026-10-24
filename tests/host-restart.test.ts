@@ -304,6 +304,9 @@ describe("openTurnTheAgentWorkedOn", () => {
   });
 });
 
+/** Windows tells a watch nothing when the folder it watches is renamed away. */
+const toldOfAReplacedWatchedFolder = process.platform !== "win32";
+
 describe("SourceWatcher", () => {
   test("an edit in web/ makes the UI stale, in host/ the host, and in shared/ both", async () => {
     const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
@@ -338,7 +341,7 @@ describe("SourceWatcher", () => {
     expect(isEdit(sourceDir, "acp")).toBe(false);
   });
 
-  test("replacing a watched folder, as a deploy can, makes the UI stale without failing the watcher", async () => {
+  test.if(toldOfAReplacedWatchedFolder)("replacing a watched folder, as a deploy can, makes the UI stale without failing the watcher", async () => {
     const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
     ["web", "shared", "host"].forEach((directory) => mkdirSync(join(sourceDir, directory)));
     await Bun.sleep(200);

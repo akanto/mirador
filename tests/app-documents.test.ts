@@ -399,7 +399,7 @@ describe("AppDocuments tasks", () => {
     store.insertWorkspace({ id: "w1", name: "p", path: workspacePath, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
     const apps = new AppDocuments(store, (await loadAppPlugins(plugins)).plugins, recordingPublisher().publisher);
     await apps.open("w1", "paths", "plan/paths.json");
-    const folder = realpathSync(join(workspacePath, "plan"));
+    const folder = realpathSync.native(join(workspacePath, "plan"));
     expect(JSON.parse(await apps.startTask("w1", undefined, "try", { kind: "you" }).ended)).toEqual([
       join(folder, "new.txt"),
       join(folder, "sub", "new.txt"),
@@ -420,7 +420,7 @@ describe("AppDocuments.mediaGrant", () => {
     utimesSync(clip, 1000, 1000);
     const { path } = apps.mediaGrant("w1", "counter", "my clip.webm");
     expect(path).toMatch(new RegExp(`^${APP_MEDIA_PATH}[A-Za-z0-9_-]{32}/my%20clip\\.webm\\?v=1000000$`));
-    expect(apps.mediaFile(new URL(path, "http://assets").pathname)).toBe(realpathSync(clip));
+    expect(apps.mediaFile(new URL(path, "http://assets").pathname)).toBe(realpathSync.native(clip));
     utimesSync(clip, 2000, 2000);
     const again = apps.mediaGrant("w1", "counter", "my clip.webm").path;
     expect(again.split("?")[0]).toBe(path.split("?")[0]);
