@@ -95,7 +95,7 @@ export function appFileFailedMessage(requestId: string, message: string) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "app-file-failed", requestId, message };
 }
 
-/** A view that waits longer than this for a file is told Mirador didn't answer, as on the phone, where nobody answers yet. */
+/** A view that waits longer than this for a file is told Mirador didn't answer. */
 export const APP_FILE_ANSWER_MS = 30_000;
 
 /**
