@@ -307,28 +307,39 @@ describe("openTurnTheAgentWorkedOn", () => {
 /** Windows tells a watch nothing when the folder it watches is renamed away. */
 const toldOfAReplacedWatchedFolder = process.platform !== "win32";
 
+/** Long enough for anything else an edit makes the watch tell of to show too, once what was expected has. */
+const SETTLE_MS = 200;
+
+/** Waits for the watch to tell of each of `expected`, which takes longer on a loaded machine, then gives all it told. */
+async function toldOnceExpected(edited: string[], expected: string[], timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!expected.every((listener) => edited.includes(listener)) && Date.now() < deadline) await Bun.sleep(20);
+  await Bun.sleep(SETTLE_MS);
+  return [...new Set(edited)].sort();
+}
+
+/** One file edited in a source folder of its own, under a watch of its own, so that nothing told late of another edit mixes in. */
+async function staleAfterEditing(file: string, expected: string[]) {
+  const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
+  ["web", "shared", "host/acp"].forEach((directory) => mkdirSync(join(sourceDir, directory), { recursive: true }));
+  // macOS reports writes from the last few milliseconds before a watch starts.
+  await Bun.sleep(200);
+  const edited: string[] = [];
+  const watcher = new SourceWatcher(sourceDir, { uiEdited: () => edited.push("ui"), hostEdited: () => edited.push("host") });
+  watcher.start();
+  try {
+    writeFileSync(join(sourceDir, file), "export {};\n");
+    return await toldOnceExpected(edited, expected);
+  } finally {
+    watcher.stop();
+  }
+}
+
 describe("SourceWatcher", () => {
   test("an edit in web/ makes the UI stale, in host/ the host, and in shared/ both", async () => {
-    const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
-    ["web", "shared", "host/acp"].forEach((directory) => mkdirSync(join(sourceDir, directory), { recursive: true }));
-    // macOS reports writes from the last few milliseconds before a watch starts.
-    await Bun.sleep(200);
-    const edited: string[] = [];
-    const watcher = new SourceWatcher(sourceDir, { uiEdited: () => edited.push("ui"), hostEdited: () => edited.push("host") });
-    watcher.start();
-    const editAndCollect = async (file: string) => {
-      edited.length = 0;
-      writeFileSync(join(sourceDir, file), "export {};\n");
-      await Bun.sleep(300);
-      return [...new Set(edited)].sort();
-    };
-    try {
-      expect(await editAndCollect("web/App.tsx")).toEqual(["ui"]);
-      expect(await editAndCollect("host/acp/harness.ts")).toEqual(["host"]);
-      expect(await editAndCollect("shared/model.ts")).toEqual(["host", "ui"]);
-    } finally {
-      watcher.stop();
-    }
+    expect(await staleAfterEditing("web/App.tsx", ["ui"])).toEqual(["ui"]);
+    expect(await staleAfterEditing("host/acp/harness.ts", ["host"])).toEqual(["host"]);
+    expect(await staleAfterEditing("shared/model.ts", ["host", "ui"])).toEqual(["host", "ui"]);
   });
 
   test("a change Linux tells of without a name is an edit", () => {
@@ -352,9 +363,7 @@ describe("SourceWatcher", () => {
       renameSync(join(sourceDir, "web"), join(sourceDir, "web.old"));
       mkdirSync(join(sourceDir, "web"));
       writeFileSync(join(sourceDir, "web", "App.tsx"), "export {};\n");
-      await Bun.sleep(300);
-      expect(edited).toContain("ui");
-      expect(edited).not.toContain("host");
+      expect(await toldOnceExpected(edited, ["ui"])).toEqual(["ui"]);
     } finally {
       watcher.stop();
     }
