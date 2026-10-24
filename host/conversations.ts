@@ -99,8 +99,6 @@ const OPTION_ANSWER_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
 const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
 const AUTOMATIC_CONTINUES_IN_A_ROW = 2;
-/** An autonomous (script-driven) turn that ends with no tool call and nothing to carry it on is nudged to continue, at most this many times in a row before it waits for the user, so a loop that is genuinely finished stops rather than being poked for ever. */
-const AUTONOMOUS_STALL_NUDGES = 2;
 /** setTimeout fires at once when asked to wait longer than this, about 24.8 days. */
 const LONGEST_TIMER_MS = 2 ** 31 - 1;
 
@@ -143,8 +141,6 @@ interface TurnInProgress {
   /** Until the turn's end shows whether the agent answered them. */
   steered: SteeredMessages[];
   ended: boolean;
-  /** The turn began with a script-driven message (a `mirador message`, or a job wait's resume), so it is part of an autonomous run that may need nudging on if it ends without carrying itself forward. */
-  fromScript?: boolean;
   /** The turn's own prompt, once handed to the agent, with the moment it went out. */
   promptSent?: { text: string; sentAt: number };
   /** The reply whose chunks last streamed, so the late chunks of a turn a stop cancelled can be recognised. */
@@ -211,8 +207,6 @@ interface Runtime {
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
   automaticContinues: number;
-  /** How many times in a row an autonomous turn was nudged to continue after ending with nothing to carry it on; reset the moment something does. */
-  stallNudges: number;
   /** The host kills the agent process this turn runs on on purpose, so the turn ends as a stop, not as a failure. */
   killedOnPurpose?: boolean;
   /** The reply the last stopped turn still owes: its late chunks are dropped, or held back until another reply's id or the next turn's end tells whether they were the orphan or that turn's answer. */
@@ -616,7 +610,7 @@ export class ConversationService {
     this.endUsageLimitWait(runtime);
     let endTurn = () => {};
     runtime.turnEnded = new Promise((resolve) => (endTurn = resolve));
-    const turn: TurnInProgress = { steered: [], ended: false, lastReplyMessageId: null, awaitedUser: false, fromScript };
+    const turn: TurnInProgress = { steered: [], ended: false, lastReplyMessageId: null, awaitedUser: false };
     runtime.turn = turn;
     runtime.openToolCalls.clear();
     this.forgetUnseenTurnEnd(conversationId);
@@ -670,26 +664,6 @@ export class ConversationService {
       endTurn();
     }
     this.sendNextQueuedMessage(conversationId);
-    this.nudgeAutonomousStall(conversationId, turn, response);
-  }
-
-  /**
-   * An autonomous turn (one a script drove) that ends with no tool call -- the model emitted its end token at a ":"
-   * preamble, say, or the `when_done` that was to resume it never fired -- would leave the loop idle for good. When
-   * nothing else will carry the conversation on (no queued message, no job wait it is resuming from), it is nudged to
-   * continue, capped so a loop that has genuinely finished stops after a try or two rather than being poked for ever.
-   * Anything that does carry it on resets the count, so a healthy loop is never nudged and so never capped.
-   */
-  private nudgeAutonomousStall(conversationId: string, turn: TurnInProgress, response: acp.PromptResponse | undefined) {
-    const runtime = this.runtime(conversationId);
-    if (this.stopping || response?.stopReason !== "end_turn" || !turn.fromScript || turn.awaitedUser) return;
-    if (runtime.running || runtime.queuedMessages.length > 0 || this.jobWaits.in(conversationId).length > 0) {
-      runtime.stallNudges = 0;
-      return;
-    }
-    if (runtime.stallNudges >= AUTONOMOUS_STALL_NUDGES) return;
-    runtime.stallNudges += 1;
-    this.send(conversationId, CONTINUE_AFTER_INTERRUPTION, [], { fromScript: true }).catch(() => {});
   }
 
   /**
@@ -1864,7 +1838,7 @@ export class ConversationService {
     let runtime = this.runtimes.get(conversationId);
     if (!runtime) {
       const queuedMessages = this.store.findConversation(conversationId)?.queuedMessages ?? [];
-      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new OpenToolCalls(), automaticContinues: 0, stallNudges: 0 };
+      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new OpenToolCalls(), automaticContinues: 0 };
       this.runtimes.set(conversationId, runtime);
     }
     return runtime;
