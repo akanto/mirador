@@ -325,6 +325,18 @@ describe("AppDocuments tasks", () => {
     apps.stop();
   });
 
+  test("a view asking for the task already running joins it, but is refused another one", async () => {
+    const { apps, taskStates } = await opened();
+    const waiting = apps.runFromView("w1", "counter", "wait");
+    const started = taskStates().length;
+    expect(() => apps.runFromView("w1", "counter", "wait")).not.toThrow();
+    expect(taskStates()).toHaveLength(started);
+    expect(() => apps.runFromView("w1", "counter", "count-up")).toThrow("Wait until stopped is still running");
+    apps.stopTask("w1", undefined);
+    await waiting;
+    apps.stop();
+  });
+
   test("a task the user stops ends as stopped, and whoever ran it hears so", async () => {
     const { apps, taskStates } = await opened();
     const { ended } = apps.startTask("w1", undefined, "wait", agent);

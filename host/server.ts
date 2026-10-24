@@ -1014,7 +1014,7 @@ export function startServer(services: HostServices) {
           .catch((error) => hub.send(socket, { type: "error", message: messageOf(error) }));
       case "app.run":
         try {
-          return void apps.startTask(message.workspaceId, message.app, message.task, { kind: "you" }).ended.catch(() => {});
+          return void apps.runFromView(message.workspaceId, message.app, message.task);
         } catch (error) {
           return hub.send(socket, { type: "error", message: messageOf(error) });
         }

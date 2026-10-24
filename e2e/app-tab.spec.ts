@@ -164,13 +164,22 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     expect(JSON.parse(readFileSync(counterFile(), "utf8"))).toEqual({ count: 46 });
   });
 
-  await test.step("the user stops a task under way, and the agent can't start another while one runs", async () => {
+  await test.step("the user stops a task under way; while one runs, the agent and the view can't start another, but the view may ask for the same one again", async () => {
     await view(page).getByRole("button", { name: "Wait" }).click();
     await expect(view(page).locator("#task")).toHaveText("wait running (waiting)");
     expect(await callCanvasTool(host, first, "app_run", { task: "count-up" })).toContain("Wait until stopped is still running");
+    const notices = page.locator(".notices .notice");
+    await view(page).getByRole("button", { name: "Wait" }).click();
+    await view(page).locator("body").evaluate(() => (window as unknown as { mirador: { run(task: string): void } }).mirador.run("sing"));
+    await expect(notices).toHaveText(["Counter has no task called sing; its tasks: count-up, write-count, wait, fail."]);
+    await notices.click();
+    await view(page).getByRole("button", { name: "Count up" }).click();
+    await expect(notices).toHaveText(["Wait until stopped is still running; wait for it to end, or stop it in the app."]);
+    await notices.click();
     await view(page).getByRole("button", { name: "Stop the task" }).click();
     await expect(view(page).locator("#task")).toHaveText("wait stopped (waiting)");
   });
+
   await test.step("the app's tab comes forward again when the agent opens another file in it", async () => {
     await appToggle(page).click();
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");

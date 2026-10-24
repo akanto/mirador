@@ -261,6 +261,15 @@ export class AppDocuments {
     return { ended };
   }
 
+  /**
+   * Starts a task a view asked for. Two views of one document may both ask for it, as a media view asks for its probe, so
+   * the same task already running is no problem: the views show it under way.
+   */
+  runFromView(workspaceId: string, appName: string, name: string): Promise<unknown> {
+    if (this.openIn(workspaceId, appName).running?.state.name === name) return Promise.resolve();
+    return this.startTask(workspaceId, appName, name, { kind: "you" }).ended.catch(() => {});
+  }
+
   stopTask(workspaceId: string, appName: string | undefined) {
     this.openIn(workspaceId, appName).running?.aborts.abort();
   }
