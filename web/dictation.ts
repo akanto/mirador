@@ -28,11 +28,12 @@ const voiceCommands: Record<VoiceCommand, string[]> = {
   repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
 };
 
-const politeWords = /^(please|ok|okay)\s+|\s+please$/g;
+const politeWords = /^((please|ok|okay)\s+)+|(\s+please)+$/g;
 
 const asCommand = (words: string) =>
   words
     .toLowerCase()
+    .replace(/[‘’]/g, "'")
     .replace(/[^\p{L}\p{N}'\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()

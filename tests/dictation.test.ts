@@ -174,6 +174,12 @@ describe("a command said while keeping a spoken conversation going", () => {
     expect(voiceCommand("Say that again?")).toBe("repeat");
   });
 
+  test("a typographic apostrophe, and more than one polite word, still make a command", () => {
+    expect(voiceCommand("That’s all.")).toBe("stop");
+    expect(voiceCommand("OK, please stop.")).toBe("stop");
+    expect(voiceCommand("Okay, please, repeat that, please.")).toBe("repeat");
+  });
+
   test("only English counts, as what was said in another language is translated first", () => {
     expect(voiceCommand("Elég.")).toBeNull();
     expect(voiceCommand("Enough.")).toBe("stop");
