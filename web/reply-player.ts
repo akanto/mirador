@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { StoredEvent } from "../shared/model.ts";
+import { lastReply, spokenTurn } from "../shared/spoken-replies.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
-import { speaksReplies, type VoiceSettings } from "../shared/voice.ts";
 
 /** A reply being read aloud, by its timeline block's key: summed up first, then spoken a sentence at a time. */
 export interface ReplyReading {
@@ -60,12 +60,6 @@ function keep(id: string, summary: KeptSummary) {
   if (keptSummaries.size > MAX_KEPT_SUMMARIES) keptSummaries.delete(keptSummaries.keys().next().value!);
   return summary;
 }
-
-/** What a reply's summary and sound depend on; null when replies aren't read aloud. */
-export const replyReadingOf = (settings: VoiceSettings) => {
-  const { voiceModel, replyVoice, replyLanguage } = settings;
-  return speaksReplies(settings) ? JSON.stringify({ voiceModel, replyVoice, replyLanguage }) : null;
-};
 
 function publish(next: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...next };
@@ -194,25 +188,6 @@ export function awaitSpokenReply(conversationId: string, events: StoredEvent[]) 
 /** As when a message the user typed starts the conversation's next turn; another pane's dictated message still gets its reply read. */
 export function forgetSpokenReply(conversationId: string) {
   if (awaited?.conversationId === conversationId) awaited = null;
-}
-
-export type SpokenTurn = "going-on" | "ended" | "stopped";
-
-/** How the first turn after the dictated message went, once it holds the message. */
-export function spokenTurn(events: StoredEvent[], afterSeq: number): SpokenTurn {
-  const since = events.filter(({ seq }) => seq > afterSeq);
-  const asked = since.findIndex(({ event }) => event.type === "user-message");
-  if (asked === -1) return "going-on";
-  const ended = since.slice(asked + 1).find(({ event }) => event.type === "turn-end" || event.type === "error");
-  if (!ended) return "going-on";
-  return ended.event.type === "turn-end" && ended.event.stopReason === "end_turn" ? "ended" : "stopped";
-}
-
-/** The turn's last reply, which its play button reads too; none when the agent wrote nothing after the user's last message. */
-export function lastReply(timeline: TimelineBlock[]) {
-  const lastAsked = timeline.findLastIndex(({ kind }) => kind === "user");
-  const reply = timeline.findLast((block, index) => index > lastAsked && block.kind === "agent");
-  return reply?.kind === "agent" ? reply : null;
 }
 
 /** Reads the last reply aloud once the turn a dictated message started ends, for the page that dictated it. */

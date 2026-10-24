@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
-import { lastReply, spokenTurn } from "../web/reply-player.ts";
+import { lastReply, spokenTurn } from "../shared/spoken-replies.ts";
 
 const stored = (...events: ConversationEvent[]): StoredEvent[] => events.map((event, index) => ({ seq: index + 1, at: index, event }));
 const asked: ConversationEvent = { type: "user-message", text: "Run the e2e tests." };

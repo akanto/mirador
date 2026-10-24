@@ -25,6 +25,7 @@ import {
 import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.ts";
 import { adjacentPlaceholder, placeholdersIn, type TextRange } from "../shared/prompt-templates.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
+import { replyReadingOf } from "../shared/spoken-replies.ts";
 import { awaitingDelivery, outputOf, type UserCommand } from "../shared/user-commands.ts";
 import { speaksReplies, type VoiceSettings } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
@@ -51,7 +52,7 @@ import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
 import { MarkdownText } from "./Markdown.tsx";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
-import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, replyReadingOf, stopReading, stopReadingIn } from "./reply-player.ts";
+import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
 import { useMentionMenu } from "./MentionMenu.tsx";
