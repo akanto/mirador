@@ -285,6 +285,8 @@ const clockBeats = {
 };
 
 let clickNoise: AudioBuffer | null = null;
+const beatsToCome = new Set<AudioBufferSourceNode>();
+let microphonesListening = 0;
 
 function noise() {
   if (clickNoise) return clickNoise;
@@ -318,13 +320,24 @@ function clockBeat({ click, body, loudness }: (typeof clockBeats)["tick"], at: n
   sound.connect(resonance(body, 12, at)).connect(decaying(at, loudness * CLOCK_VOLUME * 1.3, CLOCK_CLICK_SECONDS * 2.2));
   sound.start(at);
   sound.stop(at + CLOCK_CLICK_SECONDS * 3);
+  beatsToCome.add(sound);
+  sound.addEventListener("ended", () => beatsToCome.delete(sound));
 }
 
 /** Tick-tock, tick-tock, as the agent works on what was dictated. */
 function clockTicks() {
-  if (!soundPlays()) return;
+  if (!soundPlays() || microphonesListening > 0) return;
   const at = context!.currentTime;
   for (let beat = 0; beat < CLOCK_BEATS; beat++) clockBeat(beat % 2 === 0 ? clockBeats.tick : clockBeats.tock, at + beat * CLOCK_BEAT_SECONDS);
+}
+
+/** The microphone would hear the clock, so it keeps quiet while one listens, until what this gives back is called. */
+export function quietClock() {
+  microphonesListening++;
+  beatsToCome.forEach((beat) => beat.stop());
+  return () => {
+    microphonesListening--;
+  };
 }
 
 /** Two low falling tones: the page lost the host, so no reply is coming until it reconnects. */

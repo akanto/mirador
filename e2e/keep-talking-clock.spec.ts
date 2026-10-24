@@ -12,8 +12,8 @@ test.use(fakeMicrophone);
 
 const host = new TestHost({ fakePrograms: true });
 const firstDone = () => join(host.root, "first-done");
-/** Each dictated message holds the agent's turn until its file exists. */
-const said = () => [`WRITE [{"waitFor": ${JSON.stringify(firstDone())}}]`, `WRITE [{"waitFor": ${JSON.stringify(join(host.root, "never"))}}]`];
+/** Each dictated message holds the agent's turn until its file exists; the one in between is only dictated into the box. */
+const said = () => [`WRITE [{"waitFor": ${JSON.stringify(firstDone())}}]`, "Said while the clock waits.", `WRITE [{"waitFor": ${JSON.stringify(join(host.root, "never"))}}]`];
 
 let heard = 0;
 
@@ -104,14 +104,29 @@ test("with Keep talking, a clock ticks while the agent works on what was dictate
     await expect.poll(sounds, { timeout: 25_000 }).toEqual(["heard", "tick", "tock", "tick", "tock"]);
   });
 
+  await test.step("while the microphone listens, the clock keeps quiet, and it ticks again after", async () => {
+    const microphone = composer.getByRole("button", { name: "Dictate" });
+    await microphone.hover();
+    await page.mouse.down();
+    await expect(microphone).toHaveAttribute("aria-pressed", "true");
+    const ticksWhenListening = await ticks();
+    await page.waitForTimeout(16_000);
+    expect(await ticks(), "a beat of the clock fell while it listened").toBe(ticksWhenListening);
+    await page.mouse.up();
+    await expect(composer.locator("textarea")).toHaveValue(said()[1]!, { timeout: 30_000 });
+    await composer.locator("textarea").fill("");
+    await expect.poll(ticks, { timeout: 20_000 }).toBe(ticksWhenListening + 2);
+  });
+
   await test.step("it stops once the turn ends", async () => {
+    const ticksBeforeTheEnd = await ticks();
     writeFileSync(firstDone(), "");
     await page.waitForTimeout(17_000);
-    expect(await ticks()).toBe(2);
+    expect(await ticks()).toBe(ticksBeforeTheEnd);
   });
 
   await test.step("losing the host while the agent works plays two low tones, and the clock stops", async () => {
-    await dictate(said()[1]!);
+    await dictate(said()[2]!);
     await page.waitForTimeout(1_000);
     await host.stop();
     await expect.poll(sounds, { timeout: 15_000 }).toContain("connection lost");

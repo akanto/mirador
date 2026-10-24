@@ -9,7 +9,7 @@ import { hints } from "./hints.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
 import { KEEP_TALKING_WAIT_MS, pauseWatch, type PauseWatch, type SpeechSpan } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
-import { allowReplyAudio, chime, onSpokenReplyHeard, repeatLastReply, stopReading } from "./reply-player.ts";
+import { allowReplyAudio, chime, onSpokenReplyHeard, quietClock, repeatLastReply, stopReading } from "./reply-player.ts";
 import { dictates, shortcutKeys } from "./shortcuts.ts";
 
 const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
@@ -209,6 +209,9 @@ export function useDictation({
   latest.current = { onPress, onRelease, cancel, listenAgain, listenOn };
 
   useEffect(() => onSpokenReplyHeard((heardIn) => latest.current.listenAgain(heardIn)), []);
+
+  const microphoneOpen = phase === "starting" || phase === "listening";
+  useEffect(() => (microphoneOpen ? quietClock() : undefined), [microphoneOpen]);
 
   useEffect(() => {
     const pressFromKeys = () => {
