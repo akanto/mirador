@@ -69,10 +69,15 @@ export class JobWaits {
     this.store.listJobWaits().forEach(({ conversationId, wait }) => this.watch(conversationId, wait));
   }
 
-  /** Only for a job that runs now: a mistyped pid or container would otherwise end its wait at once. */
+  /**
+   * A job already gone can be a mistyped pid or container, but it can also be a fast job that finished before this wait
+   * registered -- a quick background round an agent meant to pick up from. Rather than refuse it, which would lose that
+   * follow-up and leave an autonomous loop idle, the wait is kept: its first check (a second later for a process) sees
+   * the job ended and delivers its message, so a fast job resumes like any other, and a mistyped one gets its message
+   * back at once to notice from. Only a check that cannot tell -- ssh down, Docker unreachable -- is refused.
+   */
   async add(conversationId: string, { job, sshHost, message, resume }: JobWaitRequest): Promise<JobWait> {
     const state = await this.check({ job, sshHost });
-    if (state === "ended") throw new JobWaitRefused(`There is no running ${describeJob({ job, sshHost })}.`);
     if (state === "unknown") throw new JobWaitRefused(`Mirador could not check ${describeJob({ job, sshHost })}${sshHost ? `: is ${sshHost} reachable with ssh, without a password prompt?` : "."}`);
     const wait: JobWait = { id: crypto.randomUUID(), job, sshHost, message: message ?? jobEndedMessage({ job, sshHost }), resume, since: Date.now() };
     this.store.addJobWait(conversationId, wait);
