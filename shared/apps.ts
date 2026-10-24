@@ -1,5 +1,8 @@
-/** The plugin API version this Mirador speaks; a plugin.json names the one it was written for. */
-export const APP_PLUGIN_API = 1;
+/**
+ * The plugin API version this Mirador speaks; a plugin.json names the one it was written for, and Mirador loads every
+ * version up to its own. API 2 brought host tasks, streamed files and images in a view's message.
+ */
+export const APP_PLUGIN_API = 2;
 
 /** A plugin's plugin.json, for a plugin that brings an app: a document that the agent and the user change together. */
 export interface AppManifest {
@@ -33,6 +36,50 @@ export interface AppHost<Document = unknown> {
   describe(document: Document): string;
   /** A new document, for opening the app on a file that doesn't exist yet. */
   create?(): Document;
+  /** Longer work than an operation, such as rendering a video, by name: the agent runs one with app_run, the view with `mirador.run`. */
+  tasks?: Record<string, AppTask<Document>>;
+}
+
+/** Runs outside the queue of operations, one task at a time for each document; whatever it throws is its problem, shown to whoever ran it. */
+export interface AppTask<Document = unknown> {
+  /** What it does, in a few words, for the agent and the view. */
+  title: string;
+  /** Resolves to a summary of what it did, for whoever ran it. */
+  run(context: AppTaskContext<Document>): Promise<string>;
+}
+
+export interface AppTaskContext<Document = unknown> {
+  /** The document as it was when the task started. */
+  document: Document;
+  /** The absolute path of a file in the folder of the document, or below it, which may not exist yet; a path that leads out of the folder throws. */
+  file(path: string): string;
+  documentFolder: string;
+  workspaceFolder: string;
+  pluginFolder: string;
+  /** Who ran the task, for the operations it applies. */
+  author: AppAuthor;
+  /** Applies an operation as `apply` does, in turn with the others, as made by whoever ran the task. */
+  apply(operation: unknown): Promise<AppChange>;
+  /** How far along it is, from 0 to 1, or null when it can't tell; the views show it. */
+  progress(done: number | null, text?: string): void;
+  /** Aborted when the user stops the task, the app closes or Mirador stops. */
+  signal: AbortSignal;
+}
+
+/** The latest task run on a document, as its views show it. */
+export interface AppTaskState {
+  name: string;
+  title: string;
+  runId: number;
+  state: "running" | "done" | "failed" | "stopped";
+  author: AppAuthor;
+  done: number | null;
+  text: string | null;
+  /** What the task said it did, once done. */
+  summary: string | null;
+  problem: string | null;
+  startedAt: number;
+  endedAt: number | null;
 }
 
 export type AppAuthor =
@@ -71,6 +118,7 @@ export interface AppDocumentState {
   lastChange: AppChange | null;
   /** Why the file's content isn't shown: it stopped parsing after an edit made outside Mirador. */
   problem: string | null;
+  task: AppTaskState | null;
 }
 
 /** Where a plugin's folder came from: a git clone (its remote shown without credentials), a link to a folder elsewhere, or a plain folder. */
@@ -111,6 +159,21 @@ export const appKey = ({ workspaceId, app }: { workspaceId: string; app: string 
 /** Where the host serves a file next to the app's document to signed-in pages and devices, `path` named from the document's folder. */
 export const appFileUrl = ({ workspaceId, app }: { workspaceId: string; app: string }, path: string) =>
   `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(app)}/file?path=${encodeURIComponent(path)}`;
+
+/** Where signed-in pages and devices ask for an address the view can stream a file next to the app's document from; POST, answered with an AppMediaGrant. */
+export const appMediaGrantUrl = ({ workspaceId, app }: { workspaceId: string; app: string }, path: string) =>
+  `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(app)}/media?path=${encodeURIComponent(path)}`;
+
+/** Where the canvas assets serve streamed files, so the canvas pages' policy lets media and images load from there. */
+export const APP_MEDIA_PATH = "/media/";
+
+/** The path on the canvas assets an app's view streams one file from, in ranges, for as long as the app stays open. */
+export interface AppMediaGrant {
+  path: string;
+}
+
+/** How many images one message from an app's view may carry. */
+export const MAX_APP_PROMPT_IMAGES = 4;
 
 /** The user's message from an app's view: it names the app and its file, so the agent knows what it is about. */
 export function appPromptText({ title, file }: OpenApp, text: string) {

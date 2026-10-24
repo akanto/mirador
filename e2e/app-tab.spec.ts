@@ -141,4 +141,34 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await showApp(page);
     await expect(view(page).locator("#remembered")).toHaveText("the count was 40");
   });
+
+  await test.step("the view streams a video next to the document, and sends the user's words with a frame of it", async () => {
+    cpSync(join(import.meta.dirname, "..", "tests", "fixtures", "red-clip.webm"), join(host.projectDir, "clip.webm"));
+    await view(page).getByRole("button", { name: "Show the clip" }).click();
+    await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
+    await view(page).getByRole("button", { name: "Ask about the frame" }).click();
+    await expect(view(page).locator("#prompt-state")).toHaveText("sent with the frame");
+    const sent = page.locator(".timeline:visible .message.user").last();
+    await expect(sent).toContainText("What is in this frame?");
+    await expect.poll(() => sent.locator(".message-images img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(64);
+    await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 60_000 });
+  });
+
+  await test.step("the user runs the app's task from the view and sees it end; the agent runs one with app_run and hears its summary", async () => {
+    await view(page).getByRole("button", { name: "Count up" }).click();
+    await expect(view(page).locator("#task")).toHaveText("count-up done 100% (step 3 of 3): Counted up from 40 to 43.");
+    await expect(view(page).locator("#last-change")).toHaveText("you: Added 1; the count is 43.");
+    expect(await callCanvasTool(host, first, "app_state", {})).toContain("- count-up: Count up three times");
+    expect(await callCanvasTool(host, first, "app_run", { task: "count-up" })).toBe("Counted up from 43 to 46.");
+    await expect(view(page).locator("#last-change")).toHaveText("agent: Added 1; the count is 46.");
+    expect(JSON.parse(readFileSync(counterFile(), "utf8"))).toEqual({ count: 46 });
+  });
+
+  await test.step("the user stops a task under way, and the agent can't start another while one runs", async () => {
+    await view(page).getByRole("button", { name: "Wait" }).click();
+    await expect(view(page).locator("#task")).toHaveText("wait running (waiting)");
+    expect(await callCanvasTool(host, first, "app_run", { task: "count-up" })).toContain("Wait until stopped is still running");
+    await view(page).getByRole("button", { name: "Stop the task" }).click();
+    await expect(view(page).locator("#task")).toHaveText("wait stopped (waiting)");
+  });
 });

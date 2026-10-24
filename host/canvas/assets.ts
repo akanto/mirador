@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { HERE_PATH } from "../addresses.ts";
+import { APP_MEDIA_PATH } from "../../shared/apps.ts";
 import { CANVAS_SHELL_PAGE, CANVAS_SHELL_PATH, canvasShellPolicy, CAPTURE_LIBRARY_PATH } from "../../shared/canvas-document.ts";
 
 const packageDir = (name: string) => dirname(Bun.resolveSync(`${name}/package.json`, import.meta.dir));
@@ -41,12 +42,17 @@ interface AssetsServing {
   knownOrigins?: string[];
   /** The code of an installed app's view, by the path it is served at; that path carries a hash of the code, so it never goes stale. */
   appViewCode?: (pathname: string) => Uint8Array<ArrayBuffer> | null;
+  /** The file an open app's view was granted to stream at this path, if any. */
+  appMediaFile?: (pathname: string) => string | null;
 }
 
 const appViewHeaders = { ...corsHeaders, "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=31536000, immutable" };
 
+/** Bun answers a Range request for a file with just those bytes, so a video plays and seeks without loading all of it. Not cached: a render writes the same file again. */
+const appMediaHeaders = { "Access-Control-Allow-Origin": "*", "Accept-Ranges": "bytes", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+
 /** On 127.0.0.1 for this machine's pages; with a certificate, on every network for other devices' pages. */
-export function serveCanvasAssets(port: number, { certificate = null, knownOrigins = [], appViewCode = () => null }: AssetsServing = {}) {
+export function serveCanvasAssets(port: number, { certificate = null, knownOrigins = [], appViewCode = () => null, appMediaFile = () => null }: AssetsServing = {}) {
   return Bun.serve({
     hostname: certificate ? "0.0.0.0" : "127.0.0.1",
     port,
@@ -61,6 +67,11 @@ export function serveCanvasAssets(port: number, { certificate = null, knownOrigi
       }
       const viewCode = pathname.startsWith("/apps/") ? appViewCode(pathname) : null;
       if (viewCode) return new Response(viewCode, { headers: appViewHeaders });
+      if (pathname.startsWith(APP_MEDIA_PATH)) {
+        const media = appMediaFile(pathname);
+        if (!media || !(await Bun.file(media).exists())) return new Response("not found", { status: 404, headers: corsHeaders });
+        return new Response(Bun.file(media), { headers: appMediaHeaders });
+      }
       const file = resolveAsset(pathname);
       if (!file || !(await Bun.file(file).exists())) return new Response("not found", { status: 404, headers: corsHeaders });
       return new Response(Bun.file(file), { headers: corsHeaders });

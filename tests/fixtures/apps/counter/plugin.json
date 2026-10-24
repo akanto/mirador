@@ -1,6 +1,6 @@
 {
   "name": "counter",
   "title": "Counter",
-  "api": 1,
+  "api": 2,
   "app": { "host": "host.ts", "view": "view.js" }
 }

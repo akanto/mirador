@@ -79,8 +79,9 @@ const apps = new AppDocuments(store, appPlugins.plugins, {
 await apps.reopenAll();
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin, apps);
 const appViewCode = (pathname: string) => apps.viewCode(pathname);
-const assetsServer = serveCanvasAssets(config.canvasAssetsPort, { knownOrigins: canvasAssetsOrigins, appViewCode });
-const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, { certificate, knownOrigins: canvasAssetsOrigins, appViewCode });
+const appMediaFile = (pathname: string) => apps.mediaFile(pathname);
+const assetsServer = serveCanvasAssets(config.canvasAssetsPort, { knownOrigins: canvasAssetsOrigins, appViewCode, appMediaFile });
+const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, { certificate, knownOrigins: canvasAssetsOrigins, appViewCode, appMediaFile });
 const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, store);

@@ -13,7 +13,7 @@ const loadedUpFront = { "anthropic/alwaysLoad": true };
 const appNameSchema = z.string().optional().describe("The app, when more than one is open in the workspace.");
 
 /**
- * The same three tools in every workspace, whichever apps are open there: the tool list never changes, so agents
+ * The same four tools in every workspace, whichever apps are open there: the tool list never changes, so agents
  * that cache it stay right. Registered only when the owner installed an app plugin.
  */
 export function registerAppTools(
@@ -66,6 +66,21 @@ export function registerAppTools(
         const change = await apps.apply(workspaceId, app, op, { kind: "agent", conversationId, turnSeq: conversations.latestTurnSeq(conversationId) });
         return change.summary;
       }),
+  );
+
+  server.registerTool(
+    "app_run",
+    {
+      description:
+        "Run one of the tasks of the app open in this workspace, such as a render, and wait until it ends; the user sees its progress in the app and can stop it. app_state lists the app's tasks. Run one when your operations are done and the user should see their result.",
+      inputSchema: z.object({
+        task: z.string().describe("The task's name, as app_state lists it."),
+        app: appNameSchema,
+      }),
+      _meta: loadedUpFront,
+    },
+    ({ task, app }, ctx) =>
+      answered(ctx, (workspaceId, conversationId) => apps.startTask(workspaceId, app, task, { kind: "agent", conversationId, turnSeq: conversations.latestTurnSeq(conversationId) }).ended),
   );
 
   server.registerTool(

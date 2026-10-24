@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppDocuments, AppFileRefused, type AppPublisher } from "../host/apps/documents.ts";
 import { AppProblem, loadAppPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
-import { appFileUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
+import { APP_MEDIA_PATH, appFileUrl, appMediaGrantUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
 const FIXTURE_APPS = join(import.meta.dir, "fixtures", "apps");
 
@@ -37,6 +37,9 @@ async function eventually(check: () => void, timeoutMs = 3000) {
   }
 }
 
+const COUNTER_TASKS =
+  "Tasks, which app_run runs:\n- count-up: Count up three times\n- write-count: Write the count to counted.txt\n- wait: Wait until stopped\n- fail: Fail on purpose";
+
 /** Longer than the watcher's settling time, so an edit it should ignore has had its chance to show. */
 const watcherHadItsChance = () => Bun.sleep(500);
 
@@ -66,6 +69,9 @@ describe("loadAppPlugins", () => {
     const folder = pluginFolder({
       "broken-json/plugin.json": "{",
       "old-api/plugin.json": JSON.stringify({ name: "old-api", title: "Old", api: 99, app: { host: "host.ts", view: "view.js" } }),
+      "taskless/plugin.json": JSON.stringify({ name: "taskless", title: "Taskless", api: 2, app: { host: "host.ts", view: "view.js" } }),
+      "taskless/host.ts": `export default { parse() {}, serialize() {}, apply() {}, describe() {}, create() {}, tasks: { render: { title: "Render" }, ok: { title: "Ok", run: async () => "" } } };`,
+      "taskless/view.js": "",
       "no-exports/plugin.json": JSON.stringify({ name: "no-exports", title: "None", api: 1, app: { host: "host.ts", view: "view.js" } }),
       "no-exports/host.ts": "export const parse = () => 1;",
       "no-exports/view.js": "",
@@ -78,11 +84,22 @@ describe("loadAppPlugins", () => {
     const { plugins, problems } = await loadAppPlugins(folder);
     expect(plugins.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
     const problemOf = (name: string) => problems.find((problem) => problem.folder.endsWith(name))?.message;
-    expect(problems).toHaveLength(5);
-    expect(problemOf("old-api")).toContain("plugin API 99");
+    expect(problems).toHaveLength(6);
+    expect(problemOf("old-api")).toContain("plugin API 99; this Mirador speaks plugin API 1 to 2, so the plugin needs a newer Mirador");
+    expect(problemOf("taskless")).toContain("the host module's tasks render need a title and a run function");
     expect(problemOf("no-exports")).toContain("serialize, apply, describe");
     expect(problemOf("unbuilt")).toContain("dist/view.js doesn't exist");
     expect(problemOf("escapes")).toContain("outside the plugin's folder");
+  });
+
+  test("loads a plugin for plugin API 1, as one written before tasks", async () => {
+    const folder = pluginFolder({});
+    cpSync(join(FIXTURE_APPS, "counter"), join(folder, "counter"), { recursive: true });
+    const manifest = join(folder, "counter", "plugin.json");
+    writeFileSync(manifest, readFileSync(manifest, "utf8").replace('"api": 2', '"api": 1'));
+    const { plugins, problems } = await loadAppPlugins(folder);
+    expect(problems).toEqual([]);
+    expect(plugins.map(({ manifest }) => manifest.api)).toEqual([1]);
   });
 
   test("finds nothing in a folder that doesn't exist", async () => {
@@ -96,7 +113,7 @@ describe("AppDocuments", () => {
     expect(await apps.open("w1", "counter", "counter.json")).toEqual({ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json" });
     expect(JSON.parse(fileText())).toEqual({ count: 0 });
     expect(openAppLists.at(-1)).toHaveLength(1);
-    expect(states.at(-1)).toEqual({ workspaceId: "w1", app: "counter", document: { count: 0 }, lastChange: null, problem: null });
+    expect(states.at(-1)).toEqual({ workspaceId: "w1", app: "counter", document: { count: 0 }, lastChange: null, problem: null, task: null });
     apps.stop();
   });
 
@@ -180,9 +197,9 @@ describe("AppDocuments", () => {
   test("describes the document in the plugin's words, with the latest changes", async () => {
     const { apps } = await setUp();
     await apps.open("w1", "counter", "counter.json");
-    expect(apps.describe("w1", undefined)).toBe("Counter on counter.json\n\nThe count is 0.\n\nNo changes yet since Mirador started.");
+    expect(apps.describe("w1", undefined)).toBe(`Counter on counter.json\n\nThe count is 0.\n\nNo changes yet since Mirador started.\n\n${COUNTER_TASKS}`);
     await apps.apply("w1", undefined, { op: "add", by: 3 }, { kind: "agent", conversationId: "c1", turnSeq: null });
-    expect(apps.describe("w1", "counter")).toBe("Counter on counter.json\n\nThe count is 3.\n\nLatest changes:\n1. agent: Added 3; the count is 3.");
+    expect(apps.describe("w1", "counter")).toBe(`Counter on counter.json\n\nThe count is 3.\n\nLatest changes:\n1. agent: Added 3; the count is 3.\n\n${COUNTER_TASKS}`);
     apps.stop();
   });
 });
@@ -258,6 +275,176 @@ describe("AppDocuments.fileNextToDocument", () => {
     expect(apps.fileNextToDocument("w1", "counter", "fits.txt")).toEndWith("fits.txt");
     expect(refusal("big.bin").status).toBe(413);
     apps.stop();
+  });
+});
+
+describe("AppDocuments tasks", () => {
+  const agent = { kind: "agent", conversationId: "c1", turnSeq: 4 } as const;
+
+  async function opened() {
+    const set = await setUp();
+    await set.apps.open("w1", "counter", "counter.json");
+    const taskStates = () => set.states.map(({ task }) => task).filter((task) => task !== null);
+    return { ...set, taskStates };
+  }
+
+  test("runs a task that applies operations as whoever ran it, and the views see it start and end with its summary", async () => {
+    const { apps, fileText, states, taskStates } = await opened();
+    expect(await apps.startTask("w1", undefined, "count-up", { kind: "you" }).ended).toBe("Counted up from 0 to 3.");
+    expect(JSON.parse(fileText())).toEqual({ count: 3 });
+    expect(states.at(-1)!.lastChange).toMatchObject({ author: { kind: "you" }, summary: "Added 1; the count is 3." });
+    expect(taskStates()[0]).toMatchObject({ name: "count-up", title: "Count up three times", state: "running", author: { kind: "you" }, done: null, endedAt: null });
+    expect(taskStates().at(-1)).toMatchObject({ name: "count-up", state: "done", done: 1, text: "step 3 of 3", summary: "Counted up from 0 to 3.", problem: null, endedAt: expect.any(Number) });
+    apps.stop();
+  });
+
+  test("app_state lists the tasks and says how the latest one went, and who ran it", async () => {
+    const { apps } = await opened();
+    await apps.startTask("w1", "counter", "count-up", agent).ended;
+    expect(apps.describe("w1", undefined)).toEndWith(`${COUNTER_TASKS}\n\nThe latest task, count-up, run by the agent: done: Counted up from 0 to 3.`);
+    expect(apps.describe("w1", undefined)).toContain("3. agent: Added 1; the count is 3.");
+    apps.stop();
+  });
+
+  test("a task writes a new file next to the document, the way a render writes its output beside its source", async () => {
+    const { apps, workspacePath } = await opened();
+    await apps.apply("w1", undefined, { op: "add", by: 5 }, { kind: "you" });
+    expect(await apps.startTask("w1", undefined, "write-count", agent).ended).toBe("Wrote 5 to counted.txt.");
+    expect(readFileSync(join(workspacePath, "counted.txt"), "utf8")).toBe("5\n");
+    apps.stop();
+  });
+
+  test("refuses a task the app doesn't have, naming those it has, and a second task while one runs", async () => {
+    const { apps } = await opened();
+    expect(() => apps.startTask("w1", undefined, "render", agent)).toThrow("Counter has no task called render; its tasks: count-up, write-count, wait, fail.");
+    expect(() => apps.startTask("w1", undefined, "toString", agent)).toThrow("Counter has no task called toString");
+    const waiting = apps.startTask("w1", undefined, "wait", agent).ended.catch(() => {});
+    expect(() => apps.startTask("w1", undefined, "count-up", { kind: "you" })).toThrow("Wait until stopped is still running; wait for it to end, or stop it in the app.");
+    apps.stopTask("w1", undefined);
+    await waiting;
+    apps.stop();
+  });
+
+  test("a task the user stops ends as stopped, and whoever ran it hears so", async () => {
+    const { apps, taskStates } = await opened();
+    const { ended } = apps.startTask("w1", undefined, "wait", agent);
+    apps.stopTask("w1", "counter");
+    await expect(ended).rejects.toThrow("Wait until stopped was stopped before it ended.");
+    expect(taskStates().at(-1)).toMatchObject({ name: "wait", state: "stopped", problem: null, text: "waiting" });
+    expect(apps.describe("w1", undefined)).toEndWith("The latest task, wait, run by the agent: stopped");
+    expect(await apps.startTask("w1", undefined, "count-up", agent).ended).toBe("Counted up from 0 to 3.");
+    apps.stop();
+  });
+
+  test("a task that throws ends as failed, with the plugin's reason", async () => {
+    const { apps, taskStates } = await opened();
+    await expect(apps.startTask("w1", undefined, "fail", { kind: "you" }).ended).rejects.toThrow("the counter can't do that");
+    expect(taskStates().at(-1)).toMatchObject({ name: "fail", state: "failed", problem: "the counter can't do that" });
+    expect(apps.describe("w1", undefined)).toEndWith("The latest task, fail, run by the user: failed: the counter can't do that");
+    apps.stop();
+  });
+
+  test("closing the app stops its task", async () => {
+    const { apps } = await opened();
+    const { ended } = apps.startTask("w1", undefined, "wait", agent);
+    apps.forgetWorkspace("w1");
+    await expect(ended).rejects.toThrow("Wait until stopped was stopped before it ended.");
+  });
+
+  test("progress a task reports after it ended, as a render's last output line, leaves it ended", async () => {
+    const plugins = pluginFolder({
+      "late/plugin.json": JSON.stringify({ name: "late", title: "Late", api: 2, app: { host: "host.ts", view: "view.js" } }),
+      "late/view.js": "",
+      "late/host.ts": `export default {
+        parse: () => ({}), serialize: () => "{}", apply() { throw new Error("no"); }, describe: () => "", create: () => ({}),
+        tasks: { render: { title: "Render", async run({ progress }) {
+          progress(0.5, "halfway");
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          setTimeout(() => progress(1, "after the end"), 20);
+          return "Rendered.";
+        } } },
+      };`,
+    });
+    const store = new Store(":memory:");
+    store.insertWorkspace({ id: "w1", name: "p", path: mkdtempSync(join(tmpdir(), "app-workspace-")), defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+    const recorded = recordingPublisher();
+    const apps = new AppDocuments(store, (await loadAppPlugins(plugins)).plugins, recorded.publisher);
+    await apps.open("w1", "late", "late.json");
+    expect(await apps.startTask("w1", undefined, "render", { kind: "you" }).ended).toBe("Rendered.");
+    await Bun.sleep(400);
+    const states = recorded.states.map(({ task }) => task?.state);
+    expect(states).toContain("running");
+    expect(states.slice(states.indexOf("done"))).toEqual(["done"]);
+    expect(apps.describe("w1", undefined)).toEndWith("The latest task, render, run by the user: done: Rendered.");
+    apps.stop();
+  });
+
+  test("a task's files stay in the document's folder: it may name one that doesn't exist yet, but not one outside", async () => {
+    const plugins = pluginFolder({
+      "paths/plugin.json": JSON.stringify({ name: "paths", title: "Paths", api: 2, app: { host: "host.ts", view: "view.js" } }),
+      "paths/view.js": "",
+      "paths/host.ts": `export default {
+        parse: () => ({}), serialize: () => "{}", apply() { throw new Error("no"); }, describe: () => "", create: () => ({}),
+        tasks: { try: { title: "Try paths", async run({ file }) {
+          const tried = ["new.txt", "sub/new.txt", "../outside.txt", "missing/new.txt", "/etc/passwd"].map((path) => {
+            try { return file(path); } catch (error) { return error.message; }
+          });
+          return JSON.stringify(tried);
+        } } },
+      };`,
+    });
+    const workspacePath = mkdtempSync(join(tmpdir(), "app-workspace-"));
+    mkdirSync(join(workspacePath, "plan", "sub"), { recursive: true });
+    const store = new Store(":memory:");
+    store.insertWorkspace({ id: "w1", name: "p", path: workspacePath, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+    const apps = new AppDocuments(store, (await loadAppPlugins(plugins)).plugins, recordingPublisher().publisher);
+    await apps.open("w1", "paths", "plan/paths.json");
+    const folder = realpathSync(join(workspacePath, "plan"));
+    expect(JSON.parse(await apps.startTask("w1", undefined, "try", { kind: "you" }).ended)).toEqual([
+      join(folder, "new.txt"),
+      join(folder, "sub", "new.txt"),
+      "../outside.txt is outside the document's folder.",
+      "The folder of missing/new.txt doesn't exist.",
+      "Give the file's path relative to the document's folder.",
+    ]);
+    apps.stop();
+  });
+});
+
+describe("AppDocuments.mediaGrant", () => {
+  test("gives an address on the canvas assets for a file next to the document, however large, that keeps its place and changes its version with the file", async () => {
+    const { apps, workspacePath } = await setUp(new Store(":memory:"), mkdtempSync(join(tmpdir(), "app-workspace-")), 10);
+    await apps.open("w1", "counter", "counter.json");
+    const clip = join(workspacePath, "my clip.webm");
+    writeFileSync(clip, "a video larger than the files a view may read");
+    utimesSync(clip, 1000, 1000);
+    const { path } = apps.mediaGrant("w1", "counter", "my clip.webm");
+    expect(path).toMatch(new RegExp(`^${APP_MEDIA_PATH}[A-Za-z0-9_-]{32}/my%20clip\\.webm\\?v=1000000$`));
+    expect(apps.mediaFile(new URL(path, "http://assets").pathname)).toBe(realpathSync(clip));
+    utimesSync(clip, 2000, 2000);
+    const again = apps.mediaGrant("w1", "counter", "my clip.webm").path;
+    expect(again.split("?")[0]).toBe(path.split("?")[0]);
+    expect(again).toEndWith("?v=2000000");
+    expect(apps.mediaFile(`${APP_MEDIA_PATH}not-a-token/my%20clip.webm`)).toBeNull();
+    apps.stop();
+  });
+
+  test("refuses a file outside the document's folder, and ends every address when the app closes", async () => {
+    const { apps, workspacePath } = await setUp();
+    mkdirSync(join(workspacePath, "plan"));
+    await apps.open("w1", "counter", "plan/counter.json");
+    writeFileSync(join(workspacePath, "outside.webm"), "secret");
+    writeFileSync(join(workspacePath, "plan", "clip.webm"), "clip");
+    expect(() => apps.mediaGrant("w1", "counter", "../outside.webm")).toThrow("../outside.webm is outside the document's folder.");
+    const { pathname } = new URL(apps.mediaGrant("w1", "counter", "clip.webm").path, "http://assets");
+    apps.forgetWorkspace("w1");
+    expect(apps.mediaFile(pathname)).toBeNull();
+  });
+});
+
+describe("appMediaGrantUrl", () => {
+  test("names the workspace, the app and the path, each escaped, as the host's route for media grants reads them", () => {
+    expect(appMediaGrantUrl({ workspaceId: "w 1", app: "media" }, "clips/a&b.mp4")).toBe("/workspaces/w%201/apps/media/media?path=clips%2Fa%26b.mp4");
   });
 });
 

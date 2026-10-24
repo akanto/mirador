@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { APP_PLUGIN_API, isAppManifest, type AppHost, type AppManifest, type InstalledApp } from "../../shared/apps.ts";
+import { APP_PLUGIN_API, isAppManifest, type AppHost, type AppManifest, type AppTask, type InstalledApp } from "../../shared/apps.ts";
 
 export interface AppPlugin {
   manifest: AppManifest;
@@ -63,7 +63,9 @@ export async function readManifest(folder: string): Promise<AppManifest> {
   if (!existsSync(file)) throw new Error("there's no plugin.json at the top of its folder");
   const manifest: unknown = await Bun.file(file).json();
   if (!isAppManifest(manifest)) throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, an api number and app.host and app.view");
-  if (manifest.api !== APP_PLUGIN_API) throw new Error(`plugin.json is for plugin API ${manifest.api}; this Mirador speaks ${APP_PLUGIN_API}`);
+  if (!Number.isInteger(manifest.api) || manifest.api < 1 || manifest.api > APP_PLUGIN_API) {
+    throw new Error(`plugin.json is for plugin API ${manifest.api}; this Mirador speaks plugin API 1 to ${APP_PLUGIN_API}, so the plugin needs a newer Mirador`);
+  }
   return manifest;
 }
 
@@ -91,5 +93,9 @@ function hostFrom(module: Record<string, unknown>): AppHost {
   const host = (typeof module.default === "object" && module.default !== null ? module.default : module) as Record<string, unknown>;
   const missing = HOST_FUNCTIONS.filter((name) => typeof host[name] !== "function");
   if (missing.length > 0) throw new Error(`the host module doesn't export ${missing.join(", ")}`);
+  const unusableTasks = Object.entries((host.tasks ?? {}) as Record<string, Partial<AppTask> | null>)
+    .filter(([, task]) => typeof task?.title !== "string" || typeof task.run !== "function")
+    .map(([name]) => name);
+  if (unusableTasks.length > 0) throw new Error(`the host module's tasks ${unusableTasks.join(", ")} need a title and a run function`);
   return host as unknown as AppHost;
 }

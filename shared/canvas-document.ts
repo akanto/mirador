@@ -1,4 +1,4 @@
-import { APP_STORAGE_CHARACTERS, type AppStorageItems } from "./apps.ts";
+import { APP_MEDIA_PATH, APP_STORAGE_CHARACTERS, type AppStorageItems } from "./apps.ts";
 
 export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
@@ -27,10 +27,18 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-ready" }
   /** An operation the user made in an app's view, for the host to apply. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-apply"; op: unknown }
-  /** Words the user wrote in an app's view, for the agent of the conversation whose canvas shows it. */
-  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-prompt"; text: unknown }
+  /**
+   * Words the user wrote in an app's view, and the pictures that go with them, for the agent of the conversation whose
+   * canvas shows it; the panel answers with an "app-answer" once the message went, or an "app-answer-failed".
+   */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-prompt"; requestId: string; text: unknown; images: unknown }
   /** A file next to the app's document that the view wants, named relative to the document's folder; the panel answers with an "app-file" or "app-file-failed" message. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-read-file"; requestId: string; path: unknown }
+  /** A file next to the app's document that the view streams; the panel answers with an "app-answer" holding its address, or an "app-answer-failed". */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-media-url"; requestId: string; path: unknown }
+  /** One of the app's tasks the user runs from its view; its progress and end come in the app's state. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-run"; task: unknown }
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-stop-task" }
   /** An item the view set in its storage, for the host to keep in the workspace; a null value removes it. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-storage-set"; key: unknown; value: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
@@ -95,24 +103,36 @@ export function appFileFailedMessage(requestId: string, message: string) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "app-file-failed", requestId, message };
 }
 
-/** A view that waits longer than this for a file is told Mirador didn't answer. */
-export const APP_FILE_ANSWER_MS = 30_000;
+/** What the view asked for, other than a file. */
+export function appAnswerMessage(requestId: string, value: unknown) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "app-answer", requestId, value };
+}
+
+/** Why what the view asked for can't be had. */
+export function appAnswerFailedMessage(requestId: string, message: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "app-answer-failed", requestId, message };
+}
+
+/** A view that waits longer than this for an answer is told Mirador didn't answer. */
+export const APP_ANSWER_MS = 30_000;
 
 /**
  * `window.mirador` for an app's view. The desktop's panel posts the state from the parent window; the phone's WebView,
  * where the parent is the page itself, injects it as an event with no source. A view gets the latest state as soon as
  * it listens, so it may start listening whenever its code is ready. `prompt` sends the user's words to the agent of the
- * conversation the view is open in, as the user's message. `readFile` reads a file in the folder of the view's document, or
- * below it, as a Blob. `storage` is a Storage the host keeps for the app in the workspace, starting as it was when the page
- * loaded; it is the view's localStorage too, in place of the page's own: a sandboxed frame's throws, and a WebView's is
- * the device's rather than the workspace's.
+ * conversation the view is open in, as the user's message, with up to MAX_APP_PROMPT_IMAGES pictures as Blobs, and
+ * resolves once it went. `readFile` reads a file in the folder of the view's document, or below it, as a Blob; `mediaUrl`
+ * resolves with an address a video, audio or img element streams it from, which changes when the file does. `run` starts
+ * one of the app's tasks and `stopTask` stops it. `storage` is a Storage the host keeps for the app in the workspace,
+ * starting as it was when the page loaded; it is the view's localStorage too, in place of the page's own: a sandboxed
+ * frame's throws, and a WebView's is the device's rather than the workspace's.
  */
 function appBridge(frameId: string, storage: AppStorageItems) {
   return `(() => {
   const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
   const itemId = ${JSON.stringify(frameId)};
   const listeners = new Set();
-  const fileRequests = new Map();
+  const requests = new Map();
   let latest;
   const stored = new Map(Object.entries(${JSON.stringify(storage).replace(/</g, "\\u003c")}));
   const charactersOf = (key) => (stored.has(key) ? key.length + stored.get(key).length : 0);
@@ -157,9 +177,23 @@ function appBridge(frameId: string, storage: AppStorageItems) {
       latest = data.state;
       listeners.forEach((listener) => listener(latest));
     }
-    if (data.kind === "app-file") fileRequests.get(data.requestId)?.resolve(new Blob([data.bytes], { type: data.type }));
-    if (data.kind === "app-file-failed") fileRequests.get(data.requestId)?.reject(new Error(data.message));
+    if (data.kind === "app-file") requests.get(data.requestId)?.resolve(new Blob([data.bytes], { type: data.type }));
+    if (data.kind === "app-answer") requests.get(data.requestId)?.resolve(data.value);
+    if (data.kind === "app-file-failed" || data.kind === "app-answer-failed") requests.get(data.requestId)?.reject(new Error(data.message));
   });
+  const ask = (message, what) => {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer " + what + ".")), ${APP_ANSWER_MS});
+      const settle = (finish, result) => {
+        clearTimeout(timer);
+        requests.delete(requestId);
+        finish(result);
+      };
+      requests.set(requestId, { resolve: (value) => settle(resolve, value), reject: (error) => settle(reject, error) });
+      parent.postMessage({ source, itemId, requestId, ...message }, "*");
+    });
+  };
   window.mirador = Object.freeze({
     onState(listener) {
       listeners.add(listener);
@@ -169,22 +203,21 @@ function appBridge(frameId: string, storage: AppStorageItems) {
     apply(op) {
       parent.postMessage({ source, itemId, kind: "app-apply", op }, "*");
     },
-    prompt(text) {
-      parent.postMessage({ source, itemId, kind: "app-prompt", text }, "*");
+    prompt(text, { images = [] } = {}) {
+      return ask({ kind: "app-prompt", text, images }, "the message").then(() => undefined);
     },
     storage,
     readFile(path) {
-      const requestId = crypto.randomUUID();
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer the request for " + path + ".")), ${APP_FILE_ANSWER_MS});
-        const settle = (finish, result) => {
-          clearTimeout(timer);
-          fileRequests.delete(requestId);
-          finish(result);
-        };
-        fileRequests.set(requestId, { resolve: (blob) => settle(resolve, blob), reject: (error) => settle(reject, error) });
-        parent.postMessage({ source, itemId, kind: "app-read-file", requestId, path }, "*");
-      });
+      return ask({ kind: "app-read-file", path }, "the request for " + path);
+    },
+    mediaUrl(path) {
+      return ask({ kind: "app-media-url", path }, "the request for " + path);
+    },
+    run(task) {
+      parent.postMessage({ source, itemId, kind: "app-run", task }, "*");
+    },
+    stopTask() {
+      parent.postMessage({ source, itemId, kind: "app-stop-task" }, "*");
     },
   });
   parent.postMessage({ source, itemId, kind: "app-ready" }, "*");
@@ -207,14 +240,15 @@ export function canvasImportMap(assetsOrigin: string) {
   };
 }
 
-export function canvasContentSecurityPolicy(assetsOrigin: string) {
+export function canvasContentSecurityPolicy(assetsOrigins: string[], scriptSources = assetsOrigins) {
+  const appMedia = assetsOrigins.map((origin) => `${origin}${APP_MEDIA_PATH}`).join(" ");
   return [
     "default-src 'none'",
-    `script-src 'unsafe-inline' 'unsafe-eval' blob: ${assetsOrigin}`,
+    `script-src 'unsafe-inline' 'unsafe-eval' blob: ${scriptSources.join(" ")}`,
     "style-src 'unsafe-inline'",
-    "img-src data: blob:",
+    `img-src data: blob: ${appMedia}`,
     "font-src data:",
-    "media-src data: blob:",
+    `media-src data: blob: ${appMedia}`,
     "worker-src blob:",
     "connect-src 'none'",
     "form-action 'none'",
@@ -228,7 +262,7 @@ export function canvasContentSecurityPolicy(assetsOrigin: string) {
  * assets are reached at beside 'self', so both engines let the page load them.
  */
 export const canvasShellPolicy = (assetsOrigins: string[]) =>
-  `${canvasContentSecurityPolicy(["'self'", ...assetsOrigins].join(" "))}; sandbox allow-scripts`;
+  `${canvasContentSecurityPolicy(assetsOrigins, ["'self'", ...assetsOrigins])}; sandbox allow-scripts`;
 
 /**
  * WebKit tells a frame of an opaque origin only "Script error." of what its own classic scripts throw. A syntax error
@@ -556,7 +590,7 @@ export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: 
   const withoutDoctype = html.replace(/^\s*<!doctype[^>]*>/i, "");
   return [
     "<!doctype html>",
-    `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy(assetsOrigin))}">`,
+    `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy([assetsOrigin]))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
     `<script>${frameReporter(itemId, theme, assetsOrigin)}</script>`,

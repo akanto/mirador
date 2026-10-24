@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveAsset, serveCanvasAssets } from "../host/canvas/assets.ts";
 import { APP_STORAGE_CHARACTERS, type AppStorageItems } from "../shared/apps.ts";
 import {
-  APP_FILE_ANSWER_MS,
+  APP_ANSWER_MS,
+  appAnswerFailedMessage,
+  appAnswerMessage,
   appFileFailedMessage,
   appFileMessage,
   appViewPage,
@@ -23,6 +27,13 @@ describe("buildCanvasDocument", () => {
     expect(document.startsWith("<!doctype html>\n<meta http-equiv=\"Content-Security-Policy\"")).toBe(true);
     expect(document.match(/<!doctype/gi)).toHaveLength(1);
     expect(document.indexOf("connect-src 'none'")).toBeLessThan(document.indexOf("evil()"));
+  });
+
+  test("lets images and media load from where the canvas assets stream an app's files, and from nowhere else on the network", () => {
+    const document = buildCanvasDocument("<p>", "item", assetsOrigin, "light");
+    expect(document).toContain(`img-src data: blob: ${assetsOrigin}/media/;`);
+    expect(document).toContain(`media-src data: blob: ${assetsOrigin}/media/;`);
+    expect(document).toContain("default-src 'none'");
   });
 
   test("maps three and its addons to the assets origin", () => {
@@ -142,6 +153,7 @@ describe("serveCanvasAssets", () => {
       // 'self' alone matches nothing in a sandboxed frame on WebKit, which there blocks every library: the address the request came in on is named beside it.
       expect(policy).toContain(`script-src 'unsafe-inline' 'unsafe-eval' blob: 'self' http://127.0.0.1:${server.port}`);
       expect(policy).toContain("connect-src 'none'");
+      expect(policy).toContain(`media-src data: blob: http://127.0.0.1:${server.port}/media/;`);
       expect(policy).toEndWith("sandbox allow-scripts");
       expect(response.headers.get("cache-control")).toBe("no-cache");
       expect(await response.text()).toBe(CANVAS_SHELL_PAGE);
@@ -160,10 +172,38 @@ describe("serveCanvasAssets", () => {
       server.stop(true);
     }
   });
+
+  test("streams the file an open app's view was granted, in the ranges asked for, to the sandboxed page, never from a cache", async () => {
+    const clip = join(mkdtempSync(join(tmpdir(), "media-")), "clip.webm");
+    writeFileSync(clip, "0123456789");
+    const granted = "/media/token/clip.webm";
+    const server = serveCanvasAssets(0, { appMediaFile: (pathname) => (pathname === granted ? clip : null) });
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}${granted}?v=1`, { headers: { Range: "bytes=2-5", Origin: "null" } });
+      expect(response.status).toBe(206);
+      expect(await response.text()).toBe("2345");
+      expect(response.headers.get("content-range")).toBe("bytes 2-5/10");
+      expect(response.headers.get("content-type")).toBe("video/webm");
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const whole = await fetch(`http://127.0.0.1:${server.port}${granted}`);
+      expect([whole.status, await whole.text(), whole.headers.get("accept-ranges")]).toEqual([200, "0123456789", "bytes"]);
+      expect((await fetch(`http://127.0.0.1:${server.port}/media/other/clip.webm`)).status).toBe(404);
+    } finally {
+      server.stop(true);
+    }
+  });
 });
 
 interface FrameWindow {
-  mirador: { readFile(path: string): Promise<Blob>; storage: Storage };
+  mirador: {
+    readFile(path: string): Promise<Blob>;
+    mediaUrl(path: string): Promise<string>;
+    prompt(text: string, options?: { images?: Blob[] }): Promise<void>;
+    run(task: string): void;
+    stopTask(): void;
+    storage: Storage;
+  };
   localStorage: Storage;
 }
 
@@ -278,16 +318,76 @@ describe("an app view's window.mirador.readFile", () => {
   test("rejects when Mirador doesn't answer in time, as on the phone", async () => {
     const { mirador, timers } = runAppBridge();
     const reading = mirador.readFile("a.txt");
-    expect(timers.map(({ delay }) => delay)).toEqual([APP_FILE_ANSWER_MS]);
+    expect(timers.map(({ delay }) => delay)).toEqual([APP_ANSWER_MS]);
     timers[0]!.fire();
     await expect(reading).rejects.toThrow("Mirador didn't answer the request for a.txt.");
   });
 });
 
-describe("the messages that answer an app view's file request", () => {
-  test("carry the request id with the bytes and their type, or with the reason", () => {
+describe("an app view's window.mirador.mediaUrl", () => {
+  test("asks for the path, and resolves with the address it is answered with", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const asking = mirador.mediaUrl("clips/a.mp4");
+    const request = posted.find(({ kind }) => kind === "app-media-url")!;
+    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-media-url", requestId: expect.any(String), path: "clips/a.mp4" });
+    answer(appAnswerMessage(request.requestId as string, "http://assets/media/t/a.mp4?v=1"));
+    expect(await asking).toBe("http://assets/media/t/a.mp4?v=1");
+  });
+
+  test("rejects with the reason it is answered with, or when Mirador doesn't answer in time", async () => {
+    const { mirador, posted, answer, timers } = runAppBridge();
+    const refused = mirador.mediaUrl("../a.mp4");
+    answer(appAnswerFailedMessage(posted.find(({ kind }) => kind === "app-media-url")!.requestId as string, "../a.mp4 is outside the document's folder."));
+    await expect(refused).rejects.toThrow("../a.mp4 is outside the document's folder.");
+    const unanswered = mirador.mediaUrl("b.mp4");
+    timers.at(-1)!.fire();
+    await expect(unanswered).rejects.toThrow("Mirador didn't answer the request for b.mp4.");
+  });
+});
+
+describe("an app view's window.mirador.prompt", () => {
+  test("posts the words with their pictures, and resolves once the panel says the message went", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const frame = new Blob(["png"], { type: "image/png" });
+    let sent = false;
+    const sending = mirador.prompt("What is here?", { images: [frame] }).then(() => (sent = true));
+    const request = posted.find(({ kind }) => kind === "app-prompt")!;
+    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-prompt", requestId: expect.any(String), text: "What is here?", images: [frame] });
+    await Bun.sleep(5);
+    expect(sent).toBe(false);
+    answer(appAnswerMessage(request.requestId as string, null));
+    await sending;
+    expect(sent).toBe(true);
+  });
+
+  test("sends words alone, and rejects with the reason the message can't go", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const sending = mirador.prompt("Hello");
+    const request = posted.find(({ kind }) => kind === "app-prompt")!;
+    expect(request.images).toEqual([]);
+    answer(appAnswerFailedMessage(request.requestId as string, "A message can carry at most 4 images."));
+    await expect(sending).rejects.toThrow("A message can carry at most 4 images.");
+  });
+});
+
+describe("an app view's window.mirador.run and stopTask", () => {
+  test("post the task to run, and the stop, for the panel to hand on", () => {
+    const { mirador, posted } = runAppBridge();
+    mirador.run("render");
+    mirador.stopTask();
+    expect(posted.filter(({ kind }) => kind === "app-run" || kind === "app-stop-task")).toEqual([
+      { source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-run", task: "render" },
+      { source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-stop-task" },
+    ]);
+  });
+});
+
+describe("the messages that answer what an app view asks for", () => {
+  test("carry the request id with the bytes and their type, the answer, or the reason", () => {
     const bytes = new ArrayBuffer(2);
     expect(appFileMessage("r1", bytes, "image/png")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-file", requestId: "r1", bytes, type: "image/png" });
     expect(appFileFailedMessage("r1", "nope")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-file-failed", requestId: "r1", message: "nope" });
+    expect(appAnswerMessage("r2", "http://assets/media/t/a.mp4")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-answer", requestId: "r2", value: "http://assets/media/t/a.mp4" });
+    expect(appAnswerFailedMessage("r2", "nope")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-answer-failed", requestId: "r2", message: "nope" });
   });
 });

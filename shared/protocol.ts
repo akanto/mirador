@@ -185,6 +185,10 @@ export type ClientMessage =
   | { type: "app.apply"; workspaceId: string; app: string; op: unknown }
   /** The app's view set an item of its storage in the workspace; a null value removes it. */
   | { type: "app.storage-set"; workspaceId: string; app: string; key: string; value: string | null }
+  /** The user runs one of the app's tasks from its view; its progress and end come in the app's state. */
+  | { type: "app.run"; workspaceId: string; app: string; task: string }
+  /** The user stops the app's task under way. */
+  | { type: "app.stop-task"; workspaceId: string; app: string }
   /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
   | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
   /** The user takes the checklist off the canvas; it stays gone until the agent publishes a new one. */

@@ -592,6 +592,18 @@ export function startServer(services: HostServices) {
     }
   }
 
+  /** An address the app's view streams a file next to its document from, on the canvas assets, where its sandboxed page may load media. */
+  function grantAppMedia(request: Bun.BunRequest<"/workspaces/:workspaceId/apps/:app/media">) {
+    const refused = refusedPageRequest(request);
+    if (refused) return refused;
+    const { workspaceId, app } = request.params;
+    try {
+      return Response.json(apps.mediaGrant(workspaceId, app, new URL(request.url).searchParams.get("path")));
+    } catch (error) {
+      return new Response(errorMessage(error), { status: error instanceof AppFileRefused ? error.status : 500 });
+    }
+  }
+
   /** An image an agent's tool returned, which the low-data form of its event links to. */
   function serveEventImage(request: Bun.BunRequest<"/conversations/:conversationId/events/:seq/images/:index">) {
     const { conversationId, seq, index } = request.params;
@@ -1000,6 +1012,18 @@ export function startServer(services: HostServices) {
         return void apps
           .apply(message.workspaceId, message.app, message.op, { kind: "you" })
           .catch((error) => hub.send(socket, { type: "error", message: messageOf(error) }));
+      case "app.run":
+        try {
+          return void apps.startTask(message.workspaceId, message.app, message.task, { kind: "you" }).ended.catch(() => {});
+        } catch (error) {
+          return hub.send(socket, { type: "error", message: messageOf(error) });
+        }
+      case "app.stop-task":
+        try {
+          return apps.stopTask(message.workspaceId, message.app);
+        } catch (error) {
+          return hub.send(socket, { type: "error", message: messageOf(error) });
+        }
       case "app.storage-set": {
         const { workspaceId, app } = message;
         try {
@@ -1222,6 +1246,7 @@ export function startServer(services: HostServices) {
     "/conversations/:conversationId/images/:imageId": { GET: serveImage },
     "/conversations/:conversationId/events/:seq/images/:index": { GET: serveEventImage },
     "/workspaces/:workspaceId/apps/:app/file": { GET: serveAppFile },
+    "/workspaces/:workspaceId/apps/:app/media": { POST: grantAppMedia },
     "/mirador-ca.pem": serveAuthority,
     "/mirador-here": here,
   };

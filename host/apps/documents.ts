@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type OpenApp } from "../../shared/apps.ts";
+import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type AppMediaGrant, type AppTaskContext, type AppTaskState, type OpenApp } from "../../shared/apps.ts";
 import type { Store } from "../store.ts";
+import { AppMediaGrants } from "./media.ts";
 import { AppProblem, appViewPath, installedApp, messageOf, type AppPlugin } from "./plugins.ts";
 
 /** Editors save in several writes; an edit made outside Mirador is read once the file has been quiet this long. */
 const OUTSIDE_EDIT_SETTLE_MS = 150;
 const CHANGES_DESCRIBED = 10;
 const MAX_APP_FILE_BYTES = 10 * 1024 * 1024;
+/** A task reports its progress as often as it likes; the views hear of it this often at most. */
+const TASK_PROGRESS_INTERVAL_MS = 250;
 
 /** Why a view can't have the file it asked for, with the HTTP status that says so. */
 export class AppFileRefused extends AppProblem {
@@ -31,9 +34,17 @@ interface LoggedChange extends AppChange {
   inverse: unknown;
 }
 
+/** A task under way, and how to stop it. */
+interface RunningTask {
+  state: AppTaskState;
+  aborts: AbortController;
+  progressFlush: ReturnType<typeof setTimeout> | undefined;
+}
+
 interface AppDocument {
   plugin: AppPlugin;
   workspaceId: string;
+  workspacePath: string;
   /** Relative to the workspace. */
   file: string;
   path: string;
@@ -47,6 +58,9 @@ interface AppDocument {
   queue: Promise<unknown>;
   watcher: FSWatcher | null;
   settling: ReturnType<typeof setTimeout> | undefined;
+  running: RunningTask | null;
+  /** The latest task run on it, under way or ended. */
+  task: AppTaskState | null;
 }
 
 const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -66,6 +80,7 @@ const stateOf = (opened: AppDocument): AppDocumentState => ({
   document: opened.document,
   lastChange: opened.changes.length > 0 ? publicChange(opened.changes.at(-1)!) : null,
   problem: opened.problem,
+  task: opened.task,
 });
 
 const authorWords = (author: AppAuthor) => ({ agent: "agent", you: "user", outside: "edited outside Mirador" })[author.kind];
@@ -87,9 +102,33 @@ const realPathOrNull = (path: string) => {
 
 const isInside = (folder: string, path: string) => path.startsWith(folder + sep);
 
+/** The real folder of a document, and a path in it or below it: links that lead out of the folder are refused, and so is a file that doesn't exist unless `mayBeNew`. */
+function pathInFolder(documentPath: string, path: unknown, { mayBeNew }: { mayBeNew: boolean }) {
+  if (typeof path !== "string" || path === "" || isAbsolute(path)) throw new AppFileRefused(400, "Give the file's path relative to the document's folder.");
+  const folder = realPathOrNull(dirname(documentPath));
+  if (!folder) throw new AppFileRefused(404, "The document's folder doesn't exist.");
+  const refusedAsOutside = new AppFileRefused(403, `${path} is outside the document's folder.`);
+  const wanted = resolve(folder, path);
+  if (!isInside(folder, wanted)) throw refusedAsOutside;
+  const real = realPathOrNull(wanted);
+  if (real) {
+    if (!isInside(folder, real)) throw refusedAsOutside;
+    return real;
+  }
+  if (!mayBeNew) throw new AppFileRefused(404, `${path} doesn't exist.`);
+  const parent = realPathOrNull(dirname(wanted));
+  if (!parent) throw new AppFileRefused(404, `The folder of ${path} doesn't exist.`);
+  if (parent !== folder && !isInside(folder, parent)) throw refusedAsOutside;
+  return join(parent, basename(wanted));
+}
+
+const taskNamesOf = (plugin: AppPlugin) => Object.keys(plugin.host.tasks ?? {});
+
 /** The document each workspace has open in each app: operations from the agent and the user change it one at a time, and the file stores it. */
 export class AppDocuments {
   private readonly documents = new Map<string, AppDocument>();
+  private readonly media = new AppMediaGrants();
+  private taskRuns = 0;
 
   constructor(
     private readonly store: Store,
@@ -108,22 +147,24 @@ export class AppDocuments {
   }
 
   /** The real path of a file in the folder of the app's open document, or below it: links that lead out of the folder are refused. */
-  fileNextToDocument(workspaceId: string, appName: string, path: unknown): string {
+  fileNextToDocument(workspaceId: string, appName: string, path: unknown, maxBytes = this.maxFileBytes): string {
     const opened = this.documents.get(appKey({ workspaceId, app: appName }));
     if (!opened) throw new AppFileRefused(404, `${appName} isn't open in this workspace.`);
-    if (typeof path !== "string" || path === "" || isAbsolute(path)) throw new AppFileRefused(400, "Give the file's path relative to the document's folder.");
-    const folder = realPathOrNull(dirname(opened.path));
-    if (!folder) throw new AppFileRefused(404, "The document's folder doesn't exist.");
-    const refusedAsOutside = new AppFileRefused(403, `${path} is outside the document's folder.`);
-    const wanted = resolve(folder, path);
-    if (!isInside(folder, wanted)) throw refusedAsOutside;
-    const file = realPathOrNull(wanted);
-    if (!file) throw new AppFileRefused(404, `${path} doesn't exist.`);
-    if (!isInside(folder, file)) throw refusedAsOutside;
+    const file = pathInFolder(opened.path, path, { mayBeNew: false });
     const stats = statSync(file);
     if (!stats.isFile()) throw new AppFileRefused(400, `${path} isn't a file.`);
-    if (stats.size > this.maxFileBytes) throw new AppFileRefused(413, `${path} is larger than ${this.maxFileBytes / 1024 / 1024} MB.`);
+    if (stats.size > maxBytes) throw new AppFileRefused(413, `${path} is larger than ${maxBytes / 1024 / 1024} MB.`);
     return file;
+  }
+
+  /** An address on the canvas assets that streams a file next to the app's document, of any size, while the app stays open. */
+  mediaGrant(workspaceId: string, appName: string, path: unknown): AppMediaGrant {
+    return this.media.grant(appKey({ workspaceId, app: appName }), this.fileNextToDocument(workspaceId, appName, path, Infinity));
+  }
+
+  /** The file a path on the canvas assets streams, while its app is open. */
+  mediaFile(pathname: string): string | null {
+    return this.media.fileAt(pathname);
   }
 
   openApps(): OpenApp[] {
@@ -158,6 +199,7 @@ export class AppDocuments {
     const opened: AppDocument = {
       plugin,
       workspaceId,
+      workspacePath: workspace.path,
       ...target,
       document,
       problem: null,
@@ -166,6 +208,8 @@ export class AppDocuments {
       queue: Promise.resolve(),
       watcher: null,
       settling: undefined,
+      running: null,
+      task: null,
     };
     if (text === null) await this.write(opened, this.guarded(() => plugin.host.serialize(document)));
     this.documents.set(appKey(openAppOf(opened)), opened);
@@ -177,8 +221,53 @@ export class AppDocuments {
   }
 
   apply(workspaceId: string, appName: string | undefined, operation: unknown, author: AppAuthor): Promise<AppChange> {
+    return this.applyTo(this.openIn(workspaceId, appName), operation, author);
+  }
+
+  /**
+   * Starts one of the app's tasks on the document as it is now, refusing when it can't start; `ended` resolves to the
+   * task's summary once it is done, or rejects with its problem.
+   */
+  startTask(workspaceId: string, appName: string | undefined, name: string, author: AppAuthor): { ended: Promise<string> } {
     const opened = this.openIn(workspaceId, appName);
+    const { manifest, host } = opened.plugin;
+    const task = Object.hasOwn(host.tasks ?? {}, name) ? host.tasks![name]! : null;
+    if (!task) {
+      const names = taskNamesOf(opened.plugin);
+      throw new AppProblem(`${manifest.title} has no task called ${name}; ${names.length > 0 ? `its tasks: ${names.join(", ")}` : "it has no tasks"}.`);
+    }
+    if (opened.running) throw new AppProblem(`${opened.running.state.title} is still running; wait for it to end, or stop it in the app.`);
+    if (opened.problem) throw new AppProblem(`${opened.file} can't be read: ${opened.problem}. Fix the file, or open it again with app_open.`);
+    const running: RunningTask = {
+      state: { name, title: task.title, runId: ++this.taskRuns, state: "running", author, done: null, text: null, summary: null, problem: null, startedAt: Date.now(), endedAt: null },
+      aborts: new AbortController(),
+      progressFlush: undefined,
+    };
+    opened.running = running;
+    this.showTask(opened, running.state);
+    const ended = (async () => {
+      try {
+        const summary = await task.run(this.taskContext(opened, running));
+        if (running.aborts.signal.aborted) throw new AppProblem("stopped");
+        if (typeof summary !== "string") throw new AppProblem(`${manifest.title} gave no summary of its ${name} task, which is a bug in the plugin.`);
+        this.endTask(opened, running, { state: "done", summary });
+        return summary;
+      } catch (error) {
+        const stopped = running.aborts.signal.aborted;
+        this.endTask(opened, running, stopped ? { state: "stopped" } : { state: "failed", problem: messageOf(error) });
+        throw new AppProblem(stopped ? `${task.title} was stopped before it ended.` : messageOf(error));
+      }
+    })();
+    return { ended };
+  }
+
+  stopTask(workspaceId: string, appName: string | undefined) {
+    this.openIn(workspaceId, appName).running?.aborts.abort();
+  }
+
+  private applyTo(opened: AppDocument, operation: unknown, author: AppAuthor): Promise<AppChange> {
     return this.queued(opened, async () => {
+      if (this.documents.get(appKey(openAppOf(opened))) !== opened) throw new AppProblem(`${opened.plugin.manifest.title} closed on ${opened.file}.`);
       if (opened.problem) throw new AppProblem(`${opened.file} can't be read: ${opened.problem}. Fix the file, or open it again with app_open.`);
       const { host, manifest } = opened.plugin;
       const applied = this.guarded(() => host.apply(opened.document, operation));
@@ -198,7 +287,56 @@ export class AppDocuments {
     if (opened.problem) return `${heading}\n\nThe file can't be read: ${opened.problem}`;
     const description = this.guarded(() => opened.plugin.host.describe(opened.document));
     const recent = opened.changes.slice(-CHANGES_DESCRIBED).map(({ seq, author, summary }) => `${seq}. ${authorWords(author)}: ${summary}`);
-    return [heading, description, recent.length > 0 ? `Latest changes:\n${recent.join("\n")}` : "No changes yet since Mirador started."].join("\n\n");
+    return [
+      heading,
+      description,
+      recent.length > 0 ? `Latest changes:\n${recent.join("\n")}` : "No changes yet since Mirador started.",
+      ...this.tasksDescribed(opened),
+    ].join("\n\n");
+  }
+
+  private tasksDescribed(opened: AppDocument): string[] {
+    const tasks = Object.entries(opened.plugin.host.tasks ?? {});
+    if (tasks.length === 0) return [];
+    const listed = `Tasks, which app_run runs:\n${tasks.map(([name, { title }]) => `- ${name}: ${title}`).join("\n")}`;
+    const last = opened.task;
+    if (!last) return [listed];
+    const how = { running: `running${last.done === null ? "" : `, ${Math.round(last.done * 100)}%`}${last.text ? `: ${last.text}` : ""}`, done: `done: ${last.summary}`, failed: `failed: ${last.problem}`, stopped: "stopped" }[last.state];
+    return [listed, `The latest task, ${last.name}, run by the ${authorWords(last.author)}: ${how}`];
+  }
+
+  private taskContext(opened: AppDocument, running: RunningTask): AppTaskContext {
+    return {
+      document: opened.document,
+      file: (path) => pathInFolder(opened.path, path, { mayBeNew: true }),
+      documentFolder: dirname(opened.path),
+      workspaceFolder: opened.workspacePath,
+      pluginFolder: opened.plugin.folder,
+      author: running.state.author,
+      apply: (operation) => this.applyTo(opened, operation, running.state.author),
+      progress: (done, text) => {
+        if (running.state.state !== "running") return;
+        running.state = { ...running.state, done: typeof done === "number" ? Math.min(1, Math.max(0, done)) : null, text: text ?? running.state.text };
+        running.progressFlush ??= setTimeout(() => {
+          running.progressFlush = undefined;
+          if (running.state.state === "running") this.showTask(opened, running.state);
+        }, TASK_PROGRESS_INTERVAL_MS);
+      },
+      signal: running.aborts.signal,
+    };
+  }
+
+  private endTask(opened: AppDocument, running: RunningTask, ending: Pick<AppTaskState, "state"> & Partial<AppTaskState>) {
+    clearTimeout(running.progressFlush);
+    running.progressFlush = undefined;
+    running.state = { ...running.state, ...ending, endedAt: Date.now() };
+    if (opened.running === running) opened.running = null;
+    this.showTask(opened, running.state);
+  }
+
+  private showTask(opened: AppDocument, task: AppTaskState) {
+    opened.task = task;
+    if (this.documents.get(appKey(openAppOf(opened))) === opened) this.publisher.stateChanged(stateOf(opened));
   }
 
   forgetWorkspace(workspaceId: string) {
@@ -300,6 +438,8 @@ export class AppDocuments {
     if (!opened) return;
     opened.watcher?.close();
     clearTimeout(opened.settling);
+    opened.running?.aborts.abort();
+    this.media.revoke(key);
     this.documents.delete(key);
   }
 }

@@ -1,9 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { appFileUrl, appKey, appPromptText, type AppDocumentState, type AppStorageItems, type InstalledApp, type OpenApp } from "../shared/apps.ts";
-import { appFileFailedMessage, appFileMessage, appStateMessage, appViewPage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
+import {
+  appFileUrl,
+  appKey,
+  appMediaGrantUrl,
+  appPromptText,
+  MAX_APP_PROMPT_IMAGES,
+  type AppDocumentState,
+  type AppMediaGrant,
+  type AppStorageItems,
+  type InstalledApp,
+  type OpenApp,
+} from "../shared/apps.ts";
+import {
+  appAnswerFailedMessage,
+  appAnswerMessage,
+  appFileFailedMessage,
+  appFileMessage,
+  appStateMessage,
+  appViewPage,
+  type CanvasFrameMessage,
+} from "../shared/canvas-document.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { CanvasFrame } from "./Canvas.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
+import { uploadImage } from "./pasted-images.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
 const SENT_NOTE_MS = 8000;
@@ -36,7 +56,15 @@ function useStorageAtLoad(openApp: OpenApp) {
   return atLoad?.key === key ? atLoad.items : null;
 }
 
-/** Sends what the user wrote in the view to the conversation's agent, and says for a while that it went. */
+/** The pictures a view sends with the user's words, or why they can't go. */
+function picturesFrom(images: unknown): Blob[] {
+  const pictures = Array.isArray(images) ? images : [];
+  if (!pictures.every((picture) => picture instanceof Blob && picture.type.startsWith("image/"))) throw new Error("Only images can go with a message.");
+  if (pictures.length > MAX_APP_PROMPT_IMAGES) throw new Error(`A message can carry at most ${MAX_APP_PROMPT_IMAGES} images.`);
+  return pictures;
+}
+
+/** Sends what the user wrote in the view, with its pictures, to the conversation's agent, and says for a while that it went. */
 function useAppPrompt(openApp: OpenApp, conversationId: string) {
   const enterWhileBusy = useEnterWhileBusy();
   const [sentAt, setSentAt] = useState<number | null>(null);
@@ -45,9 +73,11 @@ function useAppPrompt(openApp: OpenApp, conversationId: string) {
     const timer = setTimeout(() => setSentAt(null), SENT_NOTE_MS);
     return () => clearTimeout(timer);
   }, [sentAt]);
-  const prompt = (text: unknown) => {
-    if (typeof text !== "string" || !text.trim()) return;
-    if (!connection.send({ type: "conversation.prompt", conversationId, text: appPromptText(openApp, text), imageIds: [], afterTurn: enterWhileBusy === "after-turn" })) return;
+  const prompt = async (text: unknown, images: unknown) => {
+    if (typeof text !== "string" || !text.trim()) throw new Error("There is nothing to send.");
+    const imageIds = await Promise.all(picturesFrom(images).map((picture) => uploadImage(conversationId, picture)));
+    const message = { type: "conversation.prompt", conversationId, text: appPromptText(openApp, text), imageIds, afterTurn: enterWhileBusy === "after-turn" } as const;
+    if (!connection.send(message)) throw new Error("Mirador is not connected.");
     setSentAt(Date.now());
   };
   return { prompt, sent: sentAt !== null };
@@ -58,6 +88,14 @@ async function fileForView(openApp: OpenApp, path: string) {
   const response = await fetch(appFileUrl(openApp, path));
   if (!response.ok) throw new Error((await response.text()) || `Mirador answered ${response.status}.`);
   return { bytes: await response.arrayBuffer(), type: response.headers.get("content-type") ?? "" };
+}
+
+/** The address on the canvas assets the view streams a file next to the app's document from. */
+async function mediaUrlForView(openApp: OpenApp, path: string, assetsOrigin: string) {
+  const response = await fetch(appMediaGrantUrl(openApp, path), { method: "POST" });
+  if (!response.ok) throw new Error((await response.text()) || `Mirador answered ${response.status}.`);
+  const grant: AppMediaGrant = await response.json();
+  return `${assetsOrigin}${grant.path}`;
 }
 
 /** An app's view, live: its page loads once and every change to the document reaches it as a message. */
@@ -98,13 +136,29 @@ export function AppView({
     }
   };
 
+  const answer = async (requestId: string, answering: () => Promise<unknown>) => {
+    const answerTo = frame.current?.contentWindow;
+    try {
+      answerTo?.postMessage(appAnswerMessage(requestId, (await answering()) ?? null), "*");
+    } catch (error) {
+      answerTo?.postMessage(appAnswerFailedMessage(requestId, error instanceof Error ? error.message : String(error)), "*");
+    }
+  };
+
+  const { workspaceId, app } = openApp;
   const received = (message: CanvasFrameMessage) => {
     if (message.kind === "app-ready") postState();
-    if (message.kind === "app-apply") connection.send({ type: "app.apply", workspaceId: openApp.workspaceId, app: openApp.app, op: message.op });
-    if (message.kind === "app-prompt") prompt(message.text);
+    if (message.kind === "app-apply") connection.send({ type: "app.apply", workspaceId, app, op: message.op });
+    if (message.kind === "app-prompt" && typeof message.requestId === "string") void answer(message.requestId, () => prompt(message.text, message.images));
     if (message.kind === "app-read-file" && typeof message.path === "string" && typeof message.requestId === "string") void sendFile(message.requestId, message.path);
+    if (message.kind === "app-media-url" && typeof message.path === "string" && typeof message.requestId === "string") {
+      const { path } = message;
+      void answer(message.requestId, () => mediaUrlForView(openApp, path, assetsOrigin));
+    }
+    if (message.kind === "app-run" && typeof message.task === "string") connection.send({ type: "app.run", workspaceId, app, task: message.task });
+    if (message.kind === "app-stop-task") connection.send({ type: "app.stop-task", workspaceId, app });
     if (message.kind === "app-storage-set" && typeof message.key === "string" && (typeof message.value === "string" || message.value === null)) {
-      connection.send({ type: "app.storage-set", workspaceId: openApp.workspaceId, app: openApp.app, key: message.key, value: message.value });
+      connection.send({ type: "app.storage-set", workspaceId, app, key: message.key, value: message.value });
     }
   };
 
