@@ -14,7 +14,7 @@ export const isEdit = (directory: string, name: string | null | undefined) => !n
 
 const inodeOf = (path: string) => statSync(path, { throwIfNoEntry: false })?.ino;
 
-/** Linux keeps a watch on the folder it was started on, even after a deploy moves that folder away and puts a new one in its place. */
+/** A deploy can move a watched folder away and put a new one in its place: Linux keeps watching the old folder, and Windows tells that watch nothing. */
 type FolderWatch = { watcher: FSWatcher; ino: number };
 
 /** Watches Mirador's own source, so a page reload gets fresh UI code and the page can tell that the host runs old code. */
