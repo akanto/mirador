@@ -6,7 +6,7 @@ import { join } from "node:path";
 const desktop = join(import.meta.dir, "..");
 const checkout = join(desktop, "..");
 const stage = join(desktop, "release", "mirador");
-const STAGED_FILES = ["host", "web", "shared", "bin", "package.json", "bun.lock", "patches", "tsconfig.json"];
+const STAGED_FILES = ["host", "web", "shared", "plugins", "bin", "package.json", "bun.lock", "patches", "tsconfig.json"];
 
 function run(command: string[], cwd: string) {
   const { exitCode } = Bun.spawnSync(command, { cwd, stdio: ["inherit", "inherit", "inherit"] });

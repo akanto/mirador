@@ -121,13 +121,17 @@ export interface AppDocumentState {
   task: AppTaskState | null;
 }
 
-/** Where a plugin's folder came from: a git clone (its remote shown without credentials), a link to a folder elsewhere, or a plain folder. */
+/**
+ * Where a plugin's folder came from: Mirador's own plugins folder, a git clone (its remote shown without credentials), a
+ * link to a folder elsewhere, or a plain folder.
+ */
 export type PluginSource =
+  | { kind: "shipped" }
   | { kind: "git"; remote: string | null; branch: string | null; commit: string; subject: string }
   | { kind: "linked"; target: string }
   | { kind: "folder" };
 
-/** A folder in the plugins folder that holds a plugin.json, as the Plugins settings list it. */
+/** A folder in Mirador's own or the owner's plugins folder that holds a plugin.json, as the Plugins settings list it. */
 export interface PluginInfo {
   folder: string;
   /** From its plugin.json, while that can be read. */

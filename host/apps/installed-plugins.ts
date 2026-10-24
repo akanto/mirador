@@ -78,8 +78,8 @@ async function manifestNames(folder: string): Promise<{ name: string | null; tit
 const isLink = (folder: string) => lstatSync(folder).isSymbolicLink();
 
 /**
- * The plugins folder: what the Plugins settings list, and the plugins they add from a git repo, update and remove. A
- * change takes effect at Mirador's next start, which is when plugins load.
+ * The plugins folder: what the Plugins settings list, after the plugins Mirador comes with, and the plugins they add from
+ * a git repo, update and remove. A change takes effect at Mirador's next start, which is when plugins load.
  */
 export class InstalledPlugins {
   /**
@@ -93,6 +93,7 @@ export class InstalledPlugins {
   constructor(
     readonly folder: string,
     private readonly loadProblems: PluginLoadProblem[],
+    private readonly shippedFolder: string | null = null,
   ) {
     this.staging = `${folder}-staging`;
     rmSync(this.staging, { recursive: true, force: true });
@@ -103,15 +104,23 @@ export class InstalledPlugins {
   }
 
   async list(): Promise<PluginInfo[]> {
-    return Promise.all(
-      pluginFolders(this.folder).map(async (folder) => ({
-        folder: basename(folder),
-        ...(await manifestNames(folder)),
-        source: await sourceOf(folder).catch((): PluginSource => ({ kind: "folder" })),
-        problem: this.loadProblems.find((problem) => problem.folder === folder)?.message ?? null,
-        waitsForRestart: this.changed.has(basename(folder)),
-      })),
-    );
+    const shipped = this.shippedFolders().map(async (folder) => this.info(folder, { kind: "shipped" }));
+    const installed = pluginFolders(this.folder).map(async (folder) => this.info(folder, await sourceOf(folder).catch((): PluginSource => ({ kind: "folder" }))));
+    return Promise.all([...shipped, ...installed]);
+  }
+
+  private async info(folder: string, source: PluginSource): Promise<PluginInfo> {
+    return {
+      folder: basename(folder),
+      ...(await manifestNames(folder)),
+      source,
+      problem: this.loadProblems.find((problem) => problem.folder === folder)?.message ?? null,
+      waitsForRestart: source.kind !== "shipped" && this.changed.has(basename(folder)),
+    };
+  }
+
+  private shippedFolders() {
+    return this.shippedFolder ? pluginFolders(this.shippedFolder) : [];
   }
 
   /** Clones the repo, builds it and puts it in the plugins folder, in a folder named as the plugin. */
@@ -221,6 +230,9 @@ export class InstalledPlugins {
   }
 
   private async refuseTakenName(name: string) {
+    for (const folder of this.shippedFolders()) {
+      if ((await manifestNames(folder)).name === name) throw new AppProblem(`Mirador comes with a plugin named ${name}; give yours another name.`);
+    }
     if (existsSync(join(this.folder, name))) throw new AppProblem(`The plugins folder already has a ${name} folder; update or remove that plugin first.`);
     for (const folder of pluginFolders(this.folder)) {
       if ((await manifestNames(folder)).name === name) throw new AppProblem(`The plugin in ${basename(folder)} is already named ${name}; remove it first.`);

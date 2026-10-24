@@ -192,7 +192,7 @@ export class TestHost {
   /** start() does it too; a spec calls it first to prepare the copy, making it a git checkout for one. */
   copySource() {
     if (existsSync(this.sourceDir)) return;
-    ["host", "shared", "web"].forEach((directory) => cpSync(join(repoRoot, directory), join(this.sourceDir, directory), { recursive: true }));
+    ["host", "shared", "web", "plugins"].forEach((directory) => cpSync(join(repoRoot, directory), join(this.sourceDir, directory), { recursive: true }));
     ["package.json", "tsconfig.json", "bun.lock"].forEach((file) => cpSync(join(repoRoot, file), join(this.sourceDir, file)));
     symlinkSync(join(repoRoot, "node_modules"), join(this.sourceDir, "node_modules"));
   }

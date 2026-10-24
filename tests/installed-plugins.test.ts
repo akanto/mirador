@@ -6,6 +6,7 @@ import { InstalledPlugins, withoutCredentials } from "../host/apps/installed-plu
 import { loadAppPlugins } from "../host/apps/plugins.ts";
 
 const COUNTER = join(import.meta.dir, "fixtures", "apps", "counter");
+const SHIPPED = join(import.meta.dir, "fixtures", "shipped-plugins");
 /** The counter's view as git stores it: a checkout with core.autocrlf, as on the Windows runner, gives it CRLF. */
 const counterViewAsCommitted = () => readFileSync(join(COUNTER, "view.js"), "utf8").replaceAll("\r\n", "\n");
 const root = mkdtempSync(join(tmpdir(), "mirador-installed-plugins-"));
@@ -70,6 +71,22 @@ describe("InstalledPlugins", () => {
       },
       { folder: "linked", name: "linked-counter", title: "Linked counter", source: { kind: "linked", target: elsewhere }, problem: null, waitsForRestart: false },
     ]);
+  });
+
+  test("lists the plugins Mirador comes with first, which have no updates and can't be removed", async () => {
+    const plugins = join(root, "beside-shipped");
+    mkdirSync(plugins);
+    cpSync(COUNTER, join(plugins, "tally"), { recursive: true });
+    const installed = new InstalledPlugins(plugins, [], SHIPPED);
+    expect(await installed.list()).toEqual([
+      { folder: "tally", name: "tally", title: "Tally", source: { kind: "shipped" }, problem: null, waitsForRestart: false },
+      { folder: "tally", name: "counter", title: "Counter", source: { kind: "folder" }, problem: null, waitsForRestart: false },
+    ]);
+    expect(await installed.remove("tally")).toBe("counter");
+    await expect(installed.remove("tally")).rejects.toThrow("No plugin is installed in tally.");
+    await expect(installed.newCommits("tally")).rejects.toThrow("No plugin is installed in tally.");
+    await expect(installed.update("tally")).rejects.toThrow("No plugin is installed in tally.");
+    expect(await installed.list()).toEqual([{ folder: "tally", name: "tally", title: "Tally", source: { kind: "shipped" }, problem: null, waitsForRestart: false }]);
   });
 });
 
@@ -153,6 +170,17 @@ describe("adding, updating and removing plugins", () => {
     const unreachable = installed.add("https://me:s3cret@127.0.0.1:9/counter.git", null);
     await expect(unreachable).rejects.toThrow("git clone failed:");
     await expect(unreachable).rejects.not.toThrow("s3cret");
+    expect(leftInStaging(plugins)).toEqual([]);
+  });
+
+  test("refuses a plugin named as one Mirador comes with", async () => {
+    const shipped = join(root, "shipped-counter");
+    cpSync(COUNTER, join(shipped, "counter"), { recursive: true });
+    const plugins = pluginsIn("shipped-name");
+    const installed = new InstalledPlugins(plugins, [], shipped);
+
+    await expect(installed.add(builtCounterRepo("shipped-name-repo"), null)).rejects.toThrow("Mirador comes with a plugin named counter; give yours another name.");
+    expect(readdirSync(plugins)).toEqual([]);
     expect(leftInStaging(plugins)).toEqual([]);
   });
 

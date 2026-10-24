@@ -1,0 +1,6 @@
+{
+  "name": "tally",
+  "title": "Tally",
+  "api": 2,
+  "app": { "host": "host.ts", "view": "view.ts" }
+}

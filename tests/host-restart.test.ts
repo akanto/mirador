@@ -318,7 +318,7 @@ async function toldOnceExpected(edited: string[], expected: string[], timeoutMs 
 /** One file edited in a source folder of its own, under a watch of its own, so that nothing told late of another edit mixes in. */
 async function staleAfterEditing(file: string, expected: string[]) {
   const sourceDir = mkdtempSync(join(tmpdir(), "mirador-source-"));
-  ["web", "shared", "host/acp"].forEach((directory) => mkdirSync(join(sourceDir, directory), { recursive: true }));
+  ["web", "shared", "host/acp", "plugins/tally"].forEach((directory) => mkdirSync(join(sourceDir, directory), { recursive: true }));
   // macOS reports writes from the last few milliseconds before a watch starts.
   await Bun.sleep(200);
   const edited: string[] = [];
@@ -333,9 +333,10 @@ async function staleAfterEditing(file: string, expected: string[]) {
 }
 
 describe("SourceWatcher", () => {
-  test("an edit in web/ makes the UI stale, in host/ the host, and in shared/ both", async () => {
+  test("an edit in web/ makes the UI stale, in host/ or plugins/ the host, and in shared/ both", async () => {
     expect(await staleAfterEditing("web/App.tsx", ["ui"])).toEqual(["ui"]);
     expect(await staleAfterEditing("host/acp/harness.ts", ["host"])).toEqual(["host"]);
+    expect(await staleAfterEditing("plugins/tally/view.ts", ["host"])).toEqual(["host"]);
     expect(await staleAfterEditing("shared/model.ts", ["host", "ui"])).toEqual(["host", "ui"]);
   });
 

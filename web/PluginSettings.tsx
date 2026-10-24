@@ -29,6 +29,8 @@ async function findCommits(folder: string): Promise<{ commits: PluginCommit[]; p
 
 function sourceLine(source: PluginSource) {
   switch (source.kind) {
+    case "shipped":
+      return "Comes with Mirador";
     case "git":
       return [source.remote ?? "no remote", source.branch ?? "no branch", `${source.commit} ${source.subject}`].join(" · ");
     case "linked":
@@ -117,18 +119,20 @@ function PluginRow({ plugin }: { plugin: PluginInfo }) {
       {plugin.waitsForRestart && <span className="plugin-waits">used from the next start</span>}
       <span className="plugin-source">{sourceLine(plugin.source)}</span>
       {plugin.problem && <span className="plugin-problem">Didn't load: {plugin.problem}</span>}
-      <span className="plugin-actions">
-        {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} />}
-        <ConfirmButton
-          className="danger"
-          label={`Remove ${title}`}
-          armedText={linked ? "Remove the link?" : "Remove?"}
-          armedHint={linked ? hints.unlinkPluginArmed : hints.removePluginArmed}
-          onConfirm={remove}
-        >
-          Remove
-        </ConfirmButton>
-      </span>
+      {plugin.source.kind !== "shipped" && (
+        <span className="plugin-actions">
+          {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} />}
+          <ConfirmButton
+            className="danger"
+            label={`Remove ${title}`}
+            armedText={linked ? "Remove the link?" : "Remove?"}
+            armedHint={linked ? hints.unlinkPluginArmed : hints.removePluginArmed}
+            onConfirm={remove}
+          >
+            Remove
+          </ConfirmButton>
+        </span>
+      )}
       {problem && <pre className="plugin-output">{problem}</pre>}
     </li>
   );
@@ -187,8 +191,8 @@ export function PluginSettings() {
     <>
       <h3>Plugins</h3>
       <p className="hint">
-        A plugin brings an app: a document that you and the agent change together in the canvas. Plugins are the folders in{" "}
-        {listed ? <code>{listed.folder}</code> : "Mirador's plugins folder"}, and load when Mirador starts.
+        A plugin brings an app: a document that you and the agent change together in the canvas. Plugins are the ones Mirador comes with and the
+        folders in {listed ? <code>{listed.folder}</code> : "Mirador's plugins folder"}, and load when Mirador starts.
       </p>
       {listed?.restartNeeded && (
         <p className="restart-needed">
@@ -199,7 +203,7 @@ export function PluginSettings() {
         </p>
       )}
       <ul className="plugin-list" aria-label="Plugins">
-        {listed?.plugins.map((plugin) => <PluginRow key={plugin.folder} plugin={plugin} />)}
+        {listed?.plugins.map((plugin) => <PluginRow key={`${plugin.source.kind === "shipped" ? "shipped" : "installed"}/${plugin.folder}`} plugin={plugin} />)}
         {listed?.plugins.length === 0 && <li className="plugin-none">No plugin is installed.</li>}
       </ul>
       <h3>Add a plugin from a git repo</h3>

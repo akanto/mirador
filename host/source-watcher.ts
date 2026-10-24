@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 type EditListener = "uiEdited" | "hostEdited";
 
-/** The page bundle is built from web/ and shared/; the host process runs host/ and shared/. */
-const listenersByDirectory: Record<string, EditListener[]> = { web: ["uiEdited"], shared: ["uiEdited", "hostEdited"], host: ["hostEdited"] };
+/** The page bundle is built from web/ and shared/; the host process runs host/ and shared/, and loads plugins/ when it starts. */
+const listenersByDirectory: Record<string, EditListener[]> = { web: ["uiEdited"], shared: ["uiEdited", "hostEdited"], host: ["hostEdited"], plugins: ["hostEdited"] };
 
 /** Windows tells of a folder whenever Bun loads a module from it; an edit tells of the file. */
 const isFolder = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;

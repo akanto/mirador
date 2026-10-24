@@ -68,10 +68,12 @@ const canvasAssetsOrigins = [
 ];
 const canvas = new CanvasService(store, hub, conversations, notifications, canvasAssetsOrigins);
 conversations.hearCanvasNotesFrom((conversationId) => canvas.notesForAgent(conversationId));
+const sourceDir = dirname(import.meta.dir);
 const pluginsFolder = join(config.dataDir, "plugins");
-const appPlugins = await loadAppPlugins(pluginsFolder);
+const shippedPluginsFolder = join(sourceDir, "plugins");
+const appPlugins = await loadAppPlugins(pluginsFolder, shippedPluginsFolder);
 for (const { folder, message } of appPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
-const plugins = new InstalledPlugins(pluginsFolder, appPlugins.problems);
+const plugins = new InstalledPlugins(pluginsFolder, appPlugins.problems, shippedPluginsFolder);
 const apps = new AppDocuments(store, appPlugins.plugins, {
   openAppsChanged: (openApps) => hub.broadcast({ type: "apps.open", openApps }),
   stateChanged: (state) => hub.publishAppState(state),
@@ -86,7 +88,6 @@ const profiles = new ProfileService(store, hub, conversations);
 const statusline = new StatuslineService(store, conversations, config.runsUserStatusLine);
 const terminals = new TerminalService(hub, store);
 const restart = new HostRestart(hub, conversations, config.dataDir, stopServices, relaunchHow && (() => relaunch(relaunchHow)));
-const sourceDir = dirname(import.meta.dir);
 const desktopApp = new DesktopAppCheck(
   () => desktopAppCode(join(sourceDir, "desktop")),
   (outdated) => hub.broadcast({ type: "desktop-app.outdated", outdated }),

@@ -8,6 +8,7 @@ import { Store } from "../host/store.ts";
 import { APP_MEDIA_PATH, appFileUrl, appMediaGrantUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
 const FIXTURE_APPS = join(import.meta.dir, "fixtures", "apps");
+const FIXTURE_SHIPPED = join(import.meta.dir, "fixtures", "shipped-plugins");
 
 function recordingPublisher() {
   const states: AppDocumentState[] = [];
@@ -104,6 +105,42 @@ describe("loadAppPlugins", () => {
 
   test("finds nothing in a folder that doesn't exist", async () => {
     expect(await loadAppPlugins(join(tmpdir(), "no-such-plugins-folder"))).toEqual({ plugins: [], problems: [] });
+  });
+
+  test("loads the plugins Mirador comes with first, their views bundled into one module with what they import", async () => {
+    const { plugins, problems } = await loadAppPlugins(FIXTURE_APPS, FIXTURE_SHIPPED);
+    expect(problems).toEqual([]);
+    expect(plugins.map(({ manifest, shipped }) => [manifest.name, shipped])).toEqual([
+      ["tally", true],
+      ["counter", false],
+    ]);
+    const view = new TextDecoder().decode(plugins[0]!.view.code);
+    expect(view).toContain("Tally: ");
+    expect(view).not.toMatch(/\bimport\b/);
+    expect(new TextDecoder().decode(plugins[1]!.view.code)).toBe(readFileSync(join(FIXTURE_APPS, "counter", "view.js"), "utf8"));
+  });
+
+  test("keeps the name of a plugin Mirador comes with from a plugin installed under it", async () => {
+    const folder = pluginFolder({});
+    cpSync(join(FIXTURE_APPS, "counter"), join(folder, "my-tally"), { recursive: true });
+    const manifest = join(folder, "my-tally", "plugin.json");
+    writeFileSync(manifest, readFileSync(manifest, "utf8").replace('"name": "counter"', '"name": "tally"'));
+    const { plugins, problems } = await loadAppPlugins(folder, FIXTURE_SHIPPED);
+    expect(plugins.map(({ manifest, shipped }) => [manifest.name, shipped])).toEqual([["tally", true]]);
+    expect(problems).toEqual([{ folder: join(folder, "my-tally"), message: "Mirador comes with a plugin named tally" }]);
+  });
+
+  test("reports a plugin Mirador comes with whose view doesn't bundle", async () => {
+    const shipped = pluginFolder({
+      "unbundled/plugin.json": JSON.stringify({ name: "unbundled", title: "Unbundled", api: 2, app: { host: "host.ts", view: "view.ts" } }),
+      "unbundled/host.ts": "export default { parse() {}, serialize() {}, apply() {}, describe() {} };",
+      "unbundled/view.ts": 'import "./missing.ts";',
+    });
+    const { plugins, problems } = await loadAppPlugins(join(tmpdir(), "no-such-plugins-folder"), shipped);
+    expect(plugins).toEqual([]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.message).toStartWith("its view didn't bundle: ");
+    expect(problems[0]!.message).toContain("./missing.ts");
   });
 });
 

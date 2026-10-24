@@ -6,6 +6,8 @@ import { APP_PLUGIN_API, isAppManifest, type AppHost, type AppManifest, type App
 export interface AppPlugin {
   manifest: AppManifest;
   folder: string;
+  /** In Mirador's own plugins folder, rather than one the owner installed. */
+  shipped: boolean;
   host: AppHost;
   /** Held in memory, so the code served under a hash is always the code that hash was made from. */
   view: { code: Uint8Array<ArrayBuffer>; hash: string };
@@ -41,14 +43,22 @@ export function pluginFolders(pluginsFolder: string): string[] {
     .sort();
 }
 
-/** Every folder in `pluginsFolder` with a plugin.json that brings an app; one that fails to load is reported and the rest still load. */
-export async function loadAppPlugins(pluginsFolder: string): Promise<{ plugins: AppPlugin[]; problems: PluginLoadProblem[] }> {
+/**
+ * The plugins in Mirador's own `shippedFolder`, then every folder in `pluginsFolder` with a plugin.json that brings an
+ * app; one that fails to load is reported and the rest still load.
+ */
+export async function loadAppPlugins(pluginsFolder: string, shippedFolder: string | null = null): Promise<{ plugins: AppPlugin[]; problems: PluginLoadProblem[] }> {
   const plugins: AppPlugin[] = [];
   const problems: PluginLoadProblem[] = [];
-  for (const folder of pluginFolders(pluginsFolder)) {
+  const foldersToLoad = [
+    ...(shippedFolder ? pluginFolders(shippedFolder).map((folder) => ({ folder, shipped: true })) : []),
+    ...pluginFolders(pluginsFolder).map((folder) => ({ folder, shipped: false })),
+  ];
+  for (const { folder, shipped } of foldersToLoad) {
     try {
-      const plugin = await loadAppPlugin(folder);
-      if (plugins.some(({ manifest }) => manifest.name === plugin.manifest.name)) throw new Error(`another plugin is already named ${plugin.manifest.name}`);
+      const plugin = await loadAppPlugin(folder, shipped);
+      const namesake = plugins.find(({ manifest }) => manifest.name === plugin.manifest.name);
+      if (namesake) throw new Error(namesake.shipped ? `Mirador comes with a plugin named ${plugin.manifest.name}` : `another plugin is already named ${plugin.manifest.name}`);
       plugins.push(plugin);
     } catch (error) {
       problems.push({ folder, message: messageOf(error) });
@@ -74,12 +84,20 @@ export function pluginFiles(folder: string, manifest: AppManifest) {
   return { hostFile: insideFolder(folder, manifest.app.host), viewFile: insideFolder(folder, manifest.app.view) };
 }
 
-async function loadAppPlugin(folder: string): Promise<AppPlugin> {
+async function loadAppPlugin(folder: string, shipped: boolean): Promise<AppPlugin> {
   const manifest = await readManifest(folder);
   const { hostFile, viewFile } = pluginFiles(folder, manifest);
   const host = hostFrom(await import(hostFile));
-  const code = await Bun.file(viewFile).bytes();
-  return { manifest, folder, host, view: { code, hash: createHash("sha256").update(code).digest("hex").slice(0, 16) } };
+  const code = shipped ? await bundledView(viewFile) : await Bun.file(viewFile).bytes();
+  return { manifest, folder, shipped, host, view: { code, hash: createHash("sha256").update(code).digest("hex").slice(0, 16) } };
+}
+
+/** A shipped plugin has no build step of its own, so its view is bundled into one module here, as Bun bundles the page. */
+async function bundledView(viewFile: string): Promise<Uint8Array<ArrayBuffer>> {
+  const built = await Bun.build({ entrypoints: [viewFile], minify: true, define: { "process.env.NODE_ENV": JSON.stringify("production") }, throw: false });
+  const bundle = built.outputs.find((output) => output.kind === "entry-point");
+  if (!built.success || !bundle) throw new Error(`its view didn't bundle: ${built.logs.map(String).join("; ")}`);
+  return new Uint8Array(await bundle.arrayBuffer());
 }
 
 function insideFolder(folder: string, relativePath: string) {
