@@ -615,14 +615,19 @@ export interface WorkspaceApps {
   documents: Record<string, AppDocumentState>;
 }
 
-/** Opens an app's tab when the app opens in the workspace while the panel is up, as the agent's app_open says the user will see it. */
+const openedDocument = ({ app, file }: OpenApp) => `${app}:${file}`;
+
+/**
+ * Opens an app's tab when the app opens in the workspace, or opens another file, while the panel is up, as the agent's
+ * app_open says the user will see it.
+ */
 function useAppTabOnOpen(open: OpenApp[], showTab: (tab: AppTab) => void) {
-  const known = useRef(new Set(open.map(({ app }) => app)));
+  const known = useRef(new Set(open.map(openedDocument)));
   useEffect(() => {
-    const opened = open.find(({ app }) => !known.current.has(app));
-    known.current = new Set(open.map(({ app }) => app));
+    const opened = open.find((app) => !known.current.has(openedDocument(app)));
+    known.current = new Set(open.map(openedDocument));
     if (opened) showTab(appTab(opened.app));
-  }, [open.map(({ app }) => app).join(" ")]);
+  }, [open.map(openedDocument).join("\n")]);
 }
 
 /** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */

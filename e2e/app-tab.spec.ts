@@ -171,4 +171,11 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await view(page).getByRole("button", { name: "Stop the task" }).click();
     await expect(view(page).locator("#task")).toHaveText("wait stopped (waiting)");
   });
+  await test.step("the app's tab comes forward again when the agent opens another file in it", async () => {
+    await appToggle(page).click();
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    expect(await callCanvasTool(host, first, "app_open", { app: "counter", file: "second.json" })).toContain("Counter is open on second.json");
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(view(page).locator("#count")).toHaveText("0");
+  });
 });
