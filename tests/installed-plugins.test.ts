@@ -6,6 +6,8 @@ import { InstalledPlugins, withoutCredentials } from "../host/apps/installed-plu
 import { loadAppPlugins } from "../host/apps/plugins.ts";
 
 const COUNTER = join(import.meta.dir, "fixtures", "apps", "counter");
+/** The counter's view as git stores it: a checkout with core.autocrlf, as on the Windows runner, gives it CRLF. */
+const counterViewAsCommitted = () => readFileSync(join(COUNTER, "view.js"), "utf8").replaceAll("\r\n", "\n");
 const root = mkdtempSync(join(tmpdir(), "mirador-installed-plugins-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -106,7 +108,7 @@ describe("adding, updating and removing plugins", () => {
     const installed = new InstalledPlugins(plugins, []);
     await installed.add(` ${repo} `, "main");
 
-    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe(readFileSync(join(COUNTER, "view.js"), "utf8"));
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe(counterViewAsCommitted());
     expect(installed.restartNeeded).toBe(true);
     expect(await installed.list()).toEqual([
       {
@@ -172,6 +174,23 @@ describe("adding, updating and removing plugins", () => {
     await expect(installed.update("counter")).rejects.toThrow("Its build command, bun build.ts, failed:");
     expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe("document.body.textContent = 'Counting by two';\n");
     expect(git(join(plugins, "counter"), "log", "-1", "--format=%s")).toBe("Count by two");
+  });
+
+  test("a plugin's files install as committed where the user's git checks text out with CRLF, as Git for Windows does", async () => {
+    const repo = builtCounterRepo("crlf-repo");
+    const plugins = pluginsIn("crlf");
+    const crlfConfig = join(root, "crlf.gitconfig");
+    writeFileSync(crlfConfig, "[core]\n\tautocrlf = true\n");
+    const usersConfig = process.env.GIT_CONFIG_GLOBAL;
+    process.env.GIT_CONFIG_GLOBAL = crlfConfig;
+    try {
+      await new InstalledPlugins(plugins, []).add(repo, null);
+    } finally {
+      if (usersConfig === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = usersConfig;
+    }
+
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe(counterViewAsCommitted());
   });
 
   test("only a plugin cloned from a git repo has updates", async () => {

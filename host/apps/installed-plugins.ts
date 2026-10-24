@@ -9,6 +9,8 @@ const GIT_GIVES_UP_AFTER_MS = 5 * 60_000;
 const BUILD_GIVES_UP_AFTER_MS = 10 * 60_000;
 /** The end of a failed build's output is where its error is. */
 const OUTPUT_SHOWN_CHARACTERS = 4000;
+/** A plugin's files install as committed, on every OS: Git for Windows checks text out with CRLF by default. */
+const WITH_FILES_AS_COMMITTED = "--config=core.autocrlf=false";
 
 /** Text that may hold a remote, as it may be shown: `https://user:token@host/…` loses its user and token. */
 export const withoutCredentials = (text: string) => text.replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1");
@@ -193,7 +195,7 @@ export class InstalledPlugins {
     const staged = join(this.staging, crypto.randomUUID());
     try {
       const cloned = await run(
-        ["git", "clone", "--quiet", ...(branch ? [`--branch=${branch}`] : []), "--", url, staged],
+        ["git", "clone", "--quiet", WITH_FILES_AS_COMMITTED, ...(branch ? [`--branch=${branch}`] : []), "--", url, staged],
         this.staging,
         environmentWithoutPrompts(),
         GIT_GIVES_UP_AFTER_MS,
