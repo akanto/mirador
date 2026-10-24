@@ -12,6 +12,9 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     channel: process.platform === "darwin" ? "chrome" : undefined,
     viewport: { width: 1600, height: 1000 },
+    // Pages play their sounds to no speakers, so no run depends on this machine's output device, or is heard on it. A
+    // spec's own launchOptions replace these, so it repeats the flag, as e2e/fake-microphone.ts does.
+    launchOptions: { args: ["--disable-audio-output"] },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
