@@ -187,4 +187,18 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(view(page).locator("#count")).toHaveText("0");
   });
+
+  await test.step("an app the agent opens while the user is in another conversation is in front when they come back", async () => {
+    await appToggle(page).click();
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    const { hash } = new URL(page.url());
+    await startConversationWithoutModel(page);
+    await sendAndWait(page, "Start");
+    expect(await callCanvasTool(host, first, "app_open", { app: "counter", file: "third.json" })).toContain("Counter is open on third.json");
+    await callCanvasTool(host, hash.slice("#/c/".length), "show", { title: "A page shown meanwhile", html: "<p>Meanwhile</p>" });
+    await page.evaluate((back) => (location.hash = back), hash);
+    await expect(page).toHaveURL(new RegExp(`${hash}$`));
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(view(page).locator("#count")).toHaveText("0");
+  });
 });

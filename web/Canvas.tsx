@@ -617,17 +617,21 @@ export interface WorkspaceApps {
 
 const openedDocument = ({ app, file }: OpenApp) => `${app}:${file}`;
 
+/** The app documents each conversation's canvas last saw open, kept while the panel is made again for another conversation. */
+const seenOpenApps = new Map<string, Set<string>>();
+
 /**
- * Opens an app's tab when the app opens in the workspace, or opens another file, while the panel is up, as the agent's
- * app_open says the user will see it.
+ * Opens an app's tab when the app opens in the workspace, or opens another file, as the agent's app_open says the user
+ * will see it: at once while the panel is up, or when the user comes back to the conversation.
  */
-function useAppTabOnOpen(open: OpenApp[], showTab: (tab: AppTab) => void) {
-  const known = useRef(new Set(open.map(openedDocument)));
+function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab: AppTab) => void) {
+  const openNow = open.map(openedDocument);
   useEffect(() => {
-    const opened = open.find((app) => !known.current.has(openedDocument(app)));
-    known.current = new Set(open.map(openedDocument));
+    const seen = seenOpenApps.get(conversationId) ?? new Set(openNow);
+    const opened = open.find((app) => !seen.has(openedDocument(app)));
+    seenOpenApps.set(conversationId, new Set(openNow));
     if (opened) showTab(appTab(opened.app));
-  }, [open.map(openedDocument).join("\n")]);
+  }, [conversationId, openNow.join("\n")]);
 }
 
 /** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */
@@ -680,7 +684,6 @@ export function CanvasPanel({
   const toggleTab = (toggled: Exclude<CoveringTab, null>) => setTab((open) => (open === toggled ? null : toggled));
   const shownApp = apps.open.find(({ app }) => tab === appTab(app));
   const shownAppInstalled = shownApp && apps.installed.find(({ name }) => name === shownApp.app);
-  useAppTabOnOpen(apps.open, setTab);
   const editAt = checklist?.checklist.agentEdit?.at;
   const seenEdit = useRef<SeenEdit>(left ? left.seenEdit : { checklistId: checklist?.id, at: editAt });
   const checklistFlashing = useFlashOnAgentEdit(checklist?.id, editAt, !checklistOpen);
@@ -694,6 +697,8 @@ export function CanvasPanel({
     keptSinceLeft.current = false;
     if (takeArrivedReview(newest)) placeForReview(newest);
   }, [latestId]);
+  // After the reset to the newest item, so that an app the agent opened while the user was away stays in front.
+  useAppTabOnOpen(conversationId, apps.open, setTab);
   useEffect(() => {
     if (checklistOpen || seenEdit.current.checklistId !== checklist?.id) seenEdit.current = { checklistId: checklist?.id, at: editAt };
   }, [checklistOpen, checklist?.id, editAt]);
