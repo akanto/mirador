@@ -104,7 +104,8 @@ export const APP_FILE_ANSWER_MS = 30_000;
  * it listens, so it may start listening whenever its code is ready. `prompt` sends the user's words to the agent of the
  * conversation the view is open in, as the user's message. `readFile` reads a file in the folder of the view's document, or
  * below it, as a Blob. `storage` is a Storage the host keeps for the app in the workspace, starting as it was when the page
- * loaded; it is the view's localStorage too, since a sandboxed frame's own throws.
+ * loaded; it is the view's localStorage too, in place of the page's own: a sandboxed frame's throws, and a WebView's is
+ * the device's rather than the workspace's.
  */
 function appBridge(frameId: string, storage: AppStorageItems) {
   return `(() => {
@@ -148,11 +149,7 @@ function appBridge(frameId: string, storage: AppStorageItems) {
       [...stored.keys()].forEach((key) => storage.removeItem(key));
     },
   });
-  try {
-    window.localStorage;
-  } catch {
-    Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
-  }
+  Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
   addEventListener("message", (event) => {
     const data = event.data;
     if ((event.source !== parent && event.source !== null) || !data || data.source !== source) return;

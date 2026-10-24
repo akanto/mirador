@@ -229,11 +229,11 @@ describe("an app view's window.mirador.storage", () => {
     expect(storageSets(posted)).toEqual([["b", "y"], ["b", null], ["c", "z"]]);
   });
 
-  test("is the view's localStorage where the frame's own throws, and leaves a working one alone", () => {
+  test("is the view's localStorage, both where the frame's own throws and where the page has a working one, as a WebView does", () => {
     const sandboxed = runAppBridge({ frameWindow: sandboxedWindow() });
     expect(sandboxed.frameWindow.localStorage).toBe(sandboxed.mirador.storage);
-    const own = { getItem: () => "own" };
-    expect(runAppBridge({ frameWindow: { localStorage: own } }).frameWindow.localStorage).toBe(own as unknown as Storage);
+    const inAWebView = runAppBridge({ frameWindow: { localStorage: { getItem: () => "the device's" } } });
+    expect(inAWebView.frameWindow.localStorage).toBe(inAWebView.mirador.storage);
   });
 
   test("starts with values that hold a closing script tag", () => {
