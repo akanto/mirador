@@ -115,6 +115,7 @@ test("what the user pastes or types while a terminal's history replays reaches t
 });
 
 test("a full-screen program's arrow keys still reach it after its terminal replays more output than the scrollback keeps", async ({ page }) => {
+  test.skip(process.platform === "win32", "Windows' console keeps a program's cursor key mode to itself, so the terminal sends ^[[A for the up arrow before a replay too");
   await signIn(page, host);
   const addProject = page.getByRole("button", { name: "+ Add a project directory" });
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();

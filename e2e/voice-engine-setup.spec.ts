@@ -110,6 +110,7 @@ async function dictate(page: Page, conversationId: string) {
 }
 
 test.describe.configure({ mode: "serial" });
+test.skip(process.platform === "win32", "Voice on this Mac needs a Mac with Apple silicon, and its setup sizes its folder with du, which Windows lacks");
 test.beforeAll(async () => {
   writeCompiledBunProgram(scratch, "python", join(import.meta.dirname, "fake-voice-engine.ts"), { FAKE_VOICE_ENGINE_LOG: engineLog, FAKE_VOICE_ENGINE_LOAD_MS: "2000" });
   await new Promise<void>((resolve) => huggingFace.listen(0, "127.0.0.1", resolve));
