@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AppDocuments, AppFileRefused, type AppPublisher } from "../host/apps/documents.ts";
 import { AppProblem, loadAppPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
-import { appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
+import { appFileUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
 const FIXTURE_APPS = join(import.meta.dir, "fixtures", "apps");
 
@@ -265,5 +265,11 @@ describe("appPromptText", () => {
   test("names the app and its file before the user's words, so the agent knows what they are about", () => {
     const counter: OpenApp = { workspaceId: "w1", app: "counter", title: "Counter", file: "notes/counter.json" };
     expect(appPromptText(counter, "  Make it 10\n")).toBe("About notes/counter.json, open in Counter (app_state reads it, apply changes it):\n\nMake it 10");
+  });
+});
+
+describe("appFileUrl", () => {
+  test("names the workspace, the app and the path, each escaped, as the host's route for a file next to the document reads them", () => {
+    expect(appFileUrl({ workspaceId: "w 1", app: "counter" }, "../plans/a&b.json")).toBe("/workspaces/w%201/apps/counter/file?path=..%2Fplans%2Fa%26b.json");
   });
 });

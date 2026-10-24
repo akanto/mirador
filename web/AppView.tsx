@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { appKey, appPromptText, type AppDocumentState, type AppStorageItems, type InstalledApp, type OpenApp } from "../shared/apps.ts";
+import { appFileUrl, appKey, appPromptText, type AppDocumentState, type AppStorageItems, type InstalledApp, type OpenApp } from "../shared/apps.ts";
 import { appFileFailedMessage, appFileMessage, appStateMessage, appViewPage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { CanvasFrame } from "./Canvas.tsx";
@@ -52,8 +52,6 @@ function useAppPrompt(openApp: OpenApp, conversationId: string) {
   };
   return { prompt, sent: sentAt !== null };
 }
-
-const appFileUrl = ({ workspaceId, app }: OpenApp, path: string) => `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(app)}/file?path=${encodeURIComponent(path)}`;
 
 /** The bytes of a file next to the app's document, or the host's reason it can't be had. */
 async function fileForView(openApp: OpenApp, path: string) {

@@ -108,6 +108,10 @@ export const storageCharacters = (items: AppStorageItems) => Object.entries(item
 
 export const appKey = ({ workspaceId, app }: { workspaceId: string; app: string }) => `${workspaceId}/${app}`;
 
+/** Where the host serves a file next to the app's document to signed-in pages and devices, `path` named from the document's folder. */
+export const appFileUrl = ({ workspaceId, app }: { workspaceId: string; app: string }, path: string) =>
+  `/workspaces/${encodeURIComponent(workspaceId)}/apps/${encodeURIComponent(app)}/file?path=${encodeURIComponent(path)}`;
+
 /** The user's message from an app's view: it names the app and its file, so the agent knows what it is about. */
 export function appPromptText({ title, file }: OpenApp, text: string) {
   return `About ${file}, open in ${title} (app_state reads it, apply changes it):\n\n${text.trim()}`;
