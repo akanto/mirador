@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { appPromptText, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { appKey, appPromptText, type AppDocumentState, type AppStorageItems, type InstalledApp, type OpenApp } from "../shared/apps.ts";
 import { appFileFailedMessage, appFileMessage, appStateMessage, appViewPage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { CanvasFrame } from "./Canvas.tsx";
@@ -17,6 +17,23 @@ function useAppSubscribed({ workspaceId, app }: OpenApp) {
     connection.send({ type: "app.subscribe", workspaceId, app });
     return () => void connection.send({ type: "app.unsubscribe", workspaceId, app });
   }, [status, workspaceId, app]);
+}
+
+/**
+ * The app's storage in the workspace as the host sends it after this view mounts, for the view's page to start with. A
+ * later change reaches the next page: the page that made it holds it already.
+ */
+function useStorageAtLoad(openApp: OpenApp) {
+  const [atLoad, setAtLoad] = useState<{ key: string; items: AppStorageItems } | null>(null);
+  const key = appKey(openApp);
+  useEffect(
+    () =>
+      connection.onMessage((message) => {
+        if (message.type === "app.storage" && appKey(message) === key) setAtLoad((known) => (known?.key === key ? known : { key, items: message.items }));
+      }),
+    [key],
+  );
+  return atLoad?.key === key ? atLoad.items : null;
 }
 
 /** Sends what the user wrote in the view to the conversation's agent, and says for a while that it went. */
@@ -59,6 +76,7 @@ export function AppView({
   assetsOrigin: string;
   conversationId: string;
 }) {
+  const storageAtLoad = useStorageAtLoad(openApp);
   useAppSubscribed(openApp);
   const { prompt, sent } = useAppPrompt(openApp, conversationId);
   const fullscreen = usePaneFullscreen("canvas");
@@ -66,6 +84,8 @@ export function AppView({
   const latest = useRef(documentState);
   latest.current = documentState;
   const frameId = `app:${openApp.workspaceId}/${openApp.app}`;
+  const viewUrl = `${assetsOrigin}${installed.viewPath}`;
+  const page = useMemo(() => storageAtLoad && appViewPage(viewUrl, frameId, storageAtLoad), [viewUrl, frameId, storageAtLoad]);
   const postState = () => latest.current && frame.current?.contentWindow?.postMessage(appStateMessage(latest.current), "*");
 
   useEffect(postState, [documentState]);
@@ -85,6 +105,9 @@ export function AppView({
     if (message.kind === "app-apply") connection.send({ type: "app.apply", workspaceId: openApp.workspaceId, app: openApp.app, op: message.op });
     if (message.kind === "app-prompt") prompt(message.text);
     if (message.kind === "app-read-file" && typeof message.path === "string" && typeof message.requestId === "string") void sendFile(message.requestId, message.path);
+    if (message.kind === "app-storage-set" && typeof message.key === "string" && (typeof message.value === "string" || message.value === null)) {
+      connection.send({ type: "app.storage-set", workspaceId: openApp.workspaceId, app: openApp.app, key: message.key, value: message.value });
+    }
   };
 
   return (
@@ -94,7 +117,7 @@ export function AppView({
           {openApp.file} can't be read: {documentState.problem}. This is how it was before.
         </p>
       )}
-      <CanvasFrame frameId={frameId} html={appViewPage(`${assetsOrigin}${installed.viewPath}`, frameId)} assetsOrigin={assetsOrigin} className="app" frameRef={frame} onMessage={received} />
+      {page && <CanvasFrame frameId={frameId} html={page} assetsOrigin={assetsOrigin} className="app" frameRef={frame} onMessage={received} />}
       {sent && (
         <div className="app-sent" role="status">
           Sent to the agent. The answer comes in the chat.

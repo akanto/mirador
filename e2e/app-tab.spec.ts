@@ -1,7 +1,7 @@
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -32,6 +32,11 @@ const appToggle = (page: Page) => page.locator(".canvas-header:visible .app-togg
 const canvasTitle = (page: Page) => page.locator(".canvas-header:visible .canvas-title");
 const view = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-frame.app iframe");
 const counterFile = () => join(host.projectDir, "counter.json");
+
+async function showApp(page: Page) {
+  await expect(appToggle(page)).toBeVisible({ timeout: 30_000 });
+  if ((await appToggle(page).getAttribute("aria-pressed")) !== "true") await appToggle(page).click();
+}
 
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
 async function startConversationWithoutModel(page: Page) {
@@ -120,5 +125,20 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     const state = await callCanvasTool(host, second, "app_state", {});
     expect(state).toContain("The count is 40.");
     expect(state).toContain("1. agent: Added 2; the count is 2.\n2. user: Added 1; the count is 3.\n3. edited outside Mirador: Edited outside Mirador");
+  });
+
+  await test.step("what the view keeps in localStorage stays in the workspace, through a reload and a restart of the host", async () => {
+    await expect(view(page).locator("#same-storage")).toHaveText("localStorage is the app's storage");
+    await expect(view(page).locator("#remembered")).toHaveText("nothing remembered");
+    await view(page).getByRole("button", { name: "Remember the count" }).click();
+    await expect(async () => {
+      await page.reload();
+      await showApp(page);
+      await expect(view(page).locator("#remembered")).toHaveText("the count was 40", { timeout: 2000 });
+    }).toPass();
+    await host.restart();
+    await reloadFromRestartedHost(page);
+    await showApp(page);
+    await expect(view(page).locator("#remembered")).toHaveText("the count was 40");
   });
 });

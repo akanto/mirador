@@ -98,6 +98,14 @@ export interface PluginCommit {
   subject: string;
 }
 
+/** What an app's view keeps in a workspace, as its localStorage: text by key. */
+export type AppStorageItems = Record<string, string>;
+
+/** How much an app's view may keep in a workspace, counted as localStorage counts it: the characters of its keys and values. */
+export const APP_STORAGE_CHARACTERS = 1024 * 1024;
+
+export const storageCharacters = (items: AppStorageItems) => Object.entries(items).reduce((sum, [key, value]) => sum + key.length + value.length, 0);
+
 export const appKey = ({ workspaceId, app }: { workspaceId: string; app: string }) => `${workspaceId}/${app}`;
 
 /** The user's message from an app's view: it names the app and its file, so the agent knows what it is about. */

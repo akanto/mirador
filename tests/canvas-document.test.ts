@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { resolveAsset, serveCanvasAssets } from "../host/canvas/assets.ts";
+import { APP_STORAGE_CHARACTERS, type AppStorageItems } from "../shared/apps.ts";
 import {
   APP_FILE_ANSWER_MS,
   appFileFailedMessage,
@@ -162,22 +163,85 @@ describe("serveCanvasAssets", () => {
 });
 
 interface FrameWindow {
-  mirador: { readFile(path: string): Promise<Blob> };
+  mirador: { readFile(path: string): Promise<Blob>; storage: Storage };
+  localStorage: Storage;
 }
 
-/** The app page's bridge, run against a stand-in window whose parent records what the view posts and whose clock the test turns. */
-function runAppBridge() {
+/** A sandboxed frame's: reading its localStorage throws. */
+const sandboxedWindow = () => Object.defineProperty({}, "localStorage", { configurable: true, get: () => { throw new DOMException("The document is sandboxed", "SecurityError"); } });
+
+/**
+ * The app page's bridge, run against a stand-in window whose parent records what the view posts and whose clock the test
+ * turns; the page starts with `storage` kept.
+ */
+function runAppBridge({ storage = {} as AppStorageItems, frameWindow = {} as object } = {}) {
   const posted: Record<string, unknown>[] = [];
   const listeners: ((event: { source: unknown; data: unknown }) => void)[] = [];
   const timers: { fire: () => void; delay: number }[] = [];
   const parent = { postMessage: (message: Record<string, unknown>) => posted.push(message) };
-  const frameWindow = {} as FrameWindow;
   const setTimer = (fire: () => void, delay: number) => timers.push({ fire, delay });
-  const bridge = appViewPage("http://assets/view.js", "app:w1/counter").match(/^<script>([\s\S]*?)<\/script>/)![1]!;
+  const bridge = appViewPage("http://assets/view.js", "app:w1/counter", storage).match(/^<script>([\s\S]*?)<\/script>/)![1]!;
   new Function("window", "parent", "addEventListener", "setTimeout", "clearTimeout", bridge)(frameWindow, parent, (_: string, listener: (typeof listeners)[number]) => listeners.push(listener), setTimer, () => {});
   const answer = (data: unknown, source: unknown = parent) => listeners.forEach((listener) => listener({ source, data }));
-  return { mirador: frameWindow.mirador, posted, answer, timers };
+  const frame = frameWindow as FrameWindow;
+  return { mirador: frame.mirador, frameWindow: frame, posted, answer, timers };
 }
+
+const storageSets = (posted: Record<string, unknown>[]) => posted.filter(({ kind }) => kind === "app-storage-set").map(({ key, value }) => [key, value]);
+
+describe("an app view's window.mirador.storage", () => {
+  test("starts with what the workspace kept, and reads like localStorage", () => {
+    const { storage } = runAppBridge({ storage: { step: "2", panel: "closed" } }).mirador;
+    expect([storage.getItem("step"), storage.getItem("missing"), storage.length, storage.key(1), storage.key(5)]).toEqual(["2", null, 2, "panel", null]);
+  });
+
+  test("posts each change for the host to keep, as text, and nothing for a change that changes nothing", () => {
+    const { mirador, posted } = runAppBridge({ storage: { step: "2" } });
+    mirador.storage.setItem("step", "2");
+    mirador.storage.setItem("count", 3 as unknown as string);
+    mirador.storage.removeItem("step");
+    mirador.storage.removeItem("missing");
+    expect(mirador.storage.getItem("count")).toBe("3");
+    expect(posted.find(({ kind }) => kind === "app-storage-set")).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-storage-set", key: "count", value: "3" });
+    expect(storageSets(posted)).toEqual([["count", "3"], ["step", null]]);
+  });
+
+  test("clears item by item", () => {
+    const { mirador, posted } = runAppBridge({ storage: { a: "1", b: "2" } });
+    mirador.storage.clear();
+    expect(mirador.storage.length).toBe(0);
+    expect(storageSets(posted)).toEqual([["a", null], ["b", null]]);
+  });
+
+  test("throws QuotaExceededError for an item that doesn't fit, as localStorage does, and keeps nothing of it", () => {
+    const { mirador, posted } = runAppBridge({ storage: { a: "x".repeat(APP_STORAGE_CHARACTERS - 3) } });
+    mirador.storage.setItem("b", "y");
+    const refusal = (() => {
+      try {
+        mirador.storage.setItem("c", "z");
+      } catch (error) {
+        return error as DOMException;
+      }
+    })();
+    expect(refusal?.name).toBe("QuotaExceededError");
+    mirador.storage.removeItem("b");
+    mirador.storage.setItem("c", "z");
+    expect(storageSets(posted)).toEqual([["b", "y"], ["b", null], ["c", "z"]]);
+  });
+
+  test("is the view's localStorage where the frame's own throws, and leaves a working one alone", () => {
+    const sandboxed = runAppBridge({ frameWindow: sandboxedWindow() });
+    expect(sandboxed.frameWindow.localStorage).toBe(sandboxed.mirador.storage);
+    const own = { getItem: () => "own" };
+    expect(runAppBridge({ frameWindow: { localStorage: own } }).frameWindow.localStorage).toBe(own as unknown as Storage);
+  });
+
+  test("starts with values that hold a closing script tag", () => {
+    const page = appViewPage("http://assets/view.js", "app:w1/counter", { note: "</script><script>alert(1)</script>" });
+    expect(page.match(/<\/script>/g)).toHaveLength(2);
+    expect(runAppBridge({ storage: { note: "</script>" } }).mirador.storage.getItem("note")).toBe("</script>");
+  });
+});
 
 describe("an app view's window.mirador.readFile", () => {
   test("posts the request for the path, and resolves with the bytes it is answered with, typed", async () => {

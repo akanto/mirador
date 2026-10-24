@@ -26,6 +26,7 @@ import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { AppFileRefused, type AppDocuments } from "./apps/documents.ts";
 import { withoutCredentials, type InstalledPlugins } from "./apps/installed-plugins.ts";
+import { AppStorage } from "./apps/storage.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
@@ -168,6 +169,7 @@ export function startServer(services: HostServices) {
     watch,
     certificate,
   } = services;
+  const appStorage = new AppStorage(store, (name) => apps.installed().some((app) => app.name === name));
   const { network } = config.reachability;
   const localHosts = [`127.0.0.1:${config.port}`, `localhost:${config.port}`];
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
@@ -986,6 +988,7 @@ export function startServer(services: HostServices) {
         return canvas.answer(message.itemId, message.label, message.note, message.answers);
       case "app.subscribe": {
         socket.data.appSubscriptions.add(appKey(message));
+        hub.send(socket, { type: "app.storage", workspaceId: message.workspaceId, app: message.app, items: appStorage.items(message.workspaceId, message.app) });
         const state = apps.state(message.workspaceId, message.app);
         if (state) hub.send(socket, { type: "app.state", state });
         return;
@@ -997,6 +1000,15 @@ export function startServer(services: HostServices) {
         return void apps
           .apply(message.workspaceId, message.app, message.op, { kind: "you" })
           .catch((error) => hub.send(socket, { type: "error", message: messageOf(error) }));
+      case "app.storage-set": {
+        const { workspaceId, app } = message;
+        try {
+          const items = appStorage.set(workspaceId, app, message.key, message.value);
+          return hub.publishWhere((each) => each.data.appSubscriptions.has(appKey(message)), { type: "app.storage", workspaceId, app, items });
+        } catch (error) {
+          return hub.send(socket, { type: "error", message: messageOf(error) });
+        }
+      }
       case "canvas.report":
         return canvas.reportRender(message.itemId, { errors: message.errors });
       case "checklist.tick":

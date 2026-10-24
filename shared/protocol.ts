@@ -34,7 +34,7 @@ import type {
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { FindingDecision, GitHubCliProblem } from "./review.ts";
 import type { PageLibraries } from "./canvas-export.ts";
-import type { AppDocumentState, InstalledApp, OpenApp, PluginCommit, PluginInfo } from "./apps.ts";
+import type { AppDocumentState, AppStorageItems, InstalledApp, OpenApp, PluginCommit, PluginInfo } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -183,6 +183,8 @@ export type ClientMessage =
   | { type: "app.unsubscribe"; workspaceId: string; app: string }
   /** An operation the user made in the app's view. */
   | { type: "app.apply"; workspaceId: string; app: string; op: unknown }
+  /** The app's view set an item of its storage in the workspace; a null value removes it. */
+  | { type: "app.storage-set"; workspaceId: string; app: string; key: string; value: string | null }
   /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
   | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
   /** The user takes the checklist off the canvas; it stays gone until the agent publishes a new one. */
@@ -305,6 +307,8 @@ export type ServerMessage =
   | { type: "apps.open"; openApps: OpenApp[] }
   /** Only to the pages subscribed to the app: a whole document, on every change. */
   | { type: "app.state"; state: AppDocumentState }
+  /** What the app's view keeps in the workspace: to a page when it subscribes, and to the subscribed pages after each change. */
+  | { type: "app.storage"; workspaceId: string; app: string; items: AppStorageItems }
   | { type: "profile.upserted"; profile: Profile }
   | { type: "profile.deleted"; profileId: string }
   | { type: "profile.saved"; requestId: string; profileId: string }

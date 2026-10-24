@@ -1,3 +1,5 @@
+import { APP_STORAGE_CHARACTERS, type AppStorageItems } from "./apps.ts";
+
 export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
 export type CanvasFrameMessage =
@@ -29,6 +31,8 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-prompt"; text: unknown }
   /** A file next to the app's document that the view wants, named relative to the document's folder; the panel answers with an "app-file" or "app-file-failed" message. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-read-file"; requestId: string; path: unknown }
+  /** An item the view set in its storage, for the host to keep in the workspace; a null value removes it. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-storage-set"; key: unknown; value: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -99,15 +103,56 @@ export const APP_FILE_ANSWER_MS = 30_000;
  * where the parent is the page itself, injects it as an event with no source. A view gets the latest state as soon as
  * it listens, so it may start listening whenever its code is ready. `prompt` sends the user's words to the agent of the
  * conversation the view is open in, as the user's message. `readFile` reads a file in the folder of the view's document, or
- * below it, as a Blob.
+ * below it, as a Blob. `storage` is a Storage the host keeps for the app in the workspace, starting as it was when the page
+ * loaded; it is the view's localStorage too, since a sandboxed frame's own throws.
  */
-function appBridge(frameId: string) {
+function appBridge(frameId: string, storage: AppStorageItems) {
   return `(() => {
   const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
   const itemId = ${JSON.stringify(frameId)};
   const listeners = new Set();
   const fileRequests = new Map();
   let latest;
+  const stored = new Map(Object.entries(${JSON.stringify(storage).replace(/</g, "\\u003c")}));
+  const charactersOf = (key) => (stored.has(key) ? key.length + stored.get(key).length : 0);
+  let storedCharacters = [...stored.keys()].reduce((sum, key) => sum + charactersOf(key), 0);
+  const keep = (key, value) => parent.postMessage({ source, itemId, kind: "app-storage-set", key, value }, "*");
+  const storage = Object.freeze({
+    get length() {
+      return stored.size;
+    },
+    key(index) {
+      return [...stored.keys()][index] ?? null;
+    },
+    getItem(key) {
+      return stored.get(String(key)) ?? null;
+    },
+    setItem(key, value) {
+      key = String(key);
+      value = String(value);
+      if (stored.get(key) === value) return;
+      const characters = storedCharacters - charactersOf(key) + key.length + value.length;
+      if (characters > ${APP_STORAGE_CHARACTERS}) throw new DOMException("The app's storage in this workspace is full.", "QuotaExceededError");
+      stored.set(key, value);
+      storedCharacters = characters;
+      keep(key, value);
+    },
+    removeItem(key) {
+      key = String(key);
+      if (!stored.has(key)) return;
+      storedCharacters -= charactersOf(key);
+      stored.delete(key);
+      keep(key, null);
+    },
+    clear() {
+      [...stored.keys()].forEach((key) => storage.removeItem(key));
+    },
+  });
+  try {
+    window.localStorage;
+  } catch {
+    Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+  }
   addEventListener("message", (event) => {
     const data = event.data;
     if ((event.source !== parent && event.source !== null) || !data || data.source !== source) return;
@@ -130,6 +175,7 @@ function appBridge(frameId: string) {
     prompt(text) {
       parent.postMessage({ source, itemId, kind: "app-prompt", text }, "*");
     },
+    storage,
     readFile(path) {
       const requestId = crypto.randomUUID();
       return new Promise((resolve, reject) => {
@@ -149,8 +195,8 @@ function appBridge(frameId: string) {
 }
 
 /** The page of an app's view: the bridge first, then the view's code, which the canvas assets serve. */
-export function appViewPage(viewUrl: string, frameId: string) {
-  return `<script>${appBridge(frameId)}</script>\n<script type="module" src="${escapeAttribute(viewUrl)}"></script>`;
+export function appViewPage(viewUrl: string, frameId: string, storage: AppStorageItems = {}) {
+  return `<script>${appBridge(frameId, storage)}</script>\n<script type="module" src="${escapeAttribute(viewUrl)}"></script>`;
 }
 
 export function canvasImportMap(assetsOrigin: string) {

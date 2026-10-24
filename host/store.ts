@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import type { AppStorageItems } from "../shared/apps.ts";
 import type { AvailableCommand } from "@agentclientprotocol/sdk";
 import type {
   AskMode,
@@ -89,6 +90,9 @@ const schema = `
   CREATE TABLE IF NOT EXISTS open_apps (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, file TEXT NOT NULL,
     PRIMARY KEY (workspace_id, app));
+  CREATE TABLE IF NOT EXISTS app_storage (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, app, key));
 `;
 
 /** A conversation's terminal tab as the host left it, with what each of its terminals showed by then. */
@@ -379,6 +383,19 @@ export class Store {
 
   saveOpenApp(workspaceId: string, app: string, file: string) {
     this.db.query("INSERT INTO open_apps (workspace_id, app, file) VALUES (?, ?, ?) ON CONFLICT (workspace_id, app) DO UPDATE SET file = excluded.file").run(workspaceId, app, file);
+  }
+
+  appStorage(workspaceId: string, app: string): AppStorageItems {
+    const rows = this.db.query("SELECT key, value FROM app_storage WHERE workspace_id = ? AND app = ?").all(workspaceId, app) as { key: string; value: string }[];
+    return Object.fromEntries(rows.map(({ key, value }) => [key, value]));
+  }
+
+  /** A null value removes the item. */
+  saveAppStorageItem(workspaceId: string, app: string, key: string, value: string | null) {
+    if (value === null) return void this.db.query("DELETE FROM app_storage WHERE workspace_id = ? AND app = ? AND key = ?").run(workspaceId, app, key);
+    this.db
+      .query("INSERT INTO app_storage (workspace_id, app, key, value) VALUES (?, ?, ?, ?) ON CONFLICT (workspace_id, app, key) DO UPDATE SET value = excluded.value")
+      .run(workspaceId, app, key, value);
   }
 
   listConversations(): Conversation[] {
