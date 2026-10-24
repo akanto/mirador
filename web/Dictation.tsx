@@ -72,6 +72,8 @@ export function useDictation({
   const dictatedIntoDraft = useRef(false);
   /** Listening again after a reply was read aloud sends what is heard, so that the conversation goes on hands-free. */
   const sendsWhatIsHeard = useRef(false);
+  /** The two minutes Keep talking waits for words run from the reply, however many rounds hear only noise meanwhile. */
+  const keepTalkingUntil = useRef(0);
   const available = settings.recognition.kind !== "off";
 
   const put = (dictated: Dictated) => {
@@ -119,13 +121,10 @@ export function useDictation({
     setPhase("idle");
   };
 
-  /** What was heard was no message, so the conversation goes on as if nothing had been. */
+  /** What was heard was no message, so the conversation goes on as if nothing had been, with the settings as they are now. */
   const listenOnAfterNoise = () => {
     setPhase("idle");
-    press.current = { kind: "tapped" };
-    void chime("listening").then(() => {
-      if (!listening.current && press.current.kind === "tapped") begin({ listeningAgain: true });
-    });
+    latest.current.listenOn();
   };
 
   const onLevel = (watch: PauseWatch, level: number) => {
@@ -144,7 +143,8 @@ export function useDictation({
     let watch: PauseWatch | null = null;
     const recordingStarted = () => {
       if (listening.current !== started) return;
-      watch = listeningAgain ? pauseWatch(performance.now(), KEEP_TALKING_WAIT_MS) : pauseWatch(performance.now());
+      const now = performance.now();
+      watch = listeningAgain ? pauseWatch(now, keepTalkingUntil.current - now) : pauseWatch(now);
       setPhase("listening");
     };
     const started: Listening = {
@@ -187,9 +187,16 @@ export function useDictation({
     if (next.action === "finish") void finish();
   };
 
-  /** Takes up the conversation only when nothing else is going on in it and the page is in view; the chime ends before the microphone could hear it. */
+  /** Takes up the conversation only when nothing else is going on in it. */
   const listenAgain = (heardIn: string) => {
-    if (heardIn !== conversationId || !settings.keepTalking || !available || listening.current || phase !== "idle") return false;
+    if (heardIn !== conversationId || listening.current || phase !== "idle") return false;
+    keepTalkingUntil.current = performance.now() + KEEP_TALKING_WAIT_MS;
+    return listenOn();
+  };
+
+  /** Only while Keep talking is on, its two minutes aren't up and the page is in view; the chime ends before the microphone could hear it. */
+  const listenOn = () => {
+    if (!settings.keepTalking || !available || performance.now() >= keepTalkingUntil.current) return false;
     if (document.hidden || aDialogIsOpen()) return false;
     press.current = { kind: "tapped" };
     void chime("listening").then(() => {
@@ -198,8 +205,8 @@ export function useDictation({
     return true;
   };
 
-  const latest = useRef({ onPress, onRelease, cancel, listenAgain });
-  latest.current = { onPress, onRelease, cancel, listenAgain };
+  const latest = useRef({ onPress, onRelease, cancel, listenAgain, listenOn });
+  latest.current = { onPress, onRelease, cancel, listenAgain, listenOn };
 
   useEffect(() => onSpokenReplyHeard((heardIn) => latest.current.listenAgain(heardIn)), []);
 
