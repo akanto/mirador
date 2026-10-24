@@ -30,8 +30,12 @@ if (!existsSync(microphoneFile)) {
   renameSync(partial, microphoneFile);
 }
 
-/** For test.use: Chrome's fake microphone plays the sound, and its question is answered as allowed. */
+/**
+ * For test.use: Chrome's fake microphone plays the sound, and its question is answered as allowed. Its audio goes to no
+ * speakers: a recording gets samples only while its audio context plays, which would otherwise run on this machine's
+ * output device, shared by every browser on it.
+ */
 export const fakeMicrophone = {
-  launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-audio-capture=${microphoneFile}`] },
+  launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-audio-capture=${microphoneFile}`, "--disable-audio-output"] },
   permissions: ["microphone"],
 };
