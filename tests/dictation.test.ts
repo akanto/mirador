@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { defaultVoiceSettings, type VoiceSettings } from "../shared/voice.ts";
 import type { EngineServerState } from "../shared/voice-engine.ts";
-import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, spacedAtCaret, type MicrophonePlace, type Press } from "../web/dictation.ts";
-import { NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
+import { dictationStatus, HOLD_MS, microphoneProblem, NO_MICROPHONE_API, pressed, released, madeUpFromSilence, spacedAtCaret, voiceCommand, type MicrophonePlace, type Press } from "../web/dictation.ts";
+import { KEEP_TALKING_WAIT_MS, NOTHING_HEARD_MS, PAUSE_ENDS_MS, pauseWatch } from "../web/pause-watch.ts";
 import { wavOf } from "../web/wav.ts";
 
 const up: Press = { kind: "up" };
@@ -50,6 +50,27 @@ describe("the pause watch", () => {
     const watch = pauseWatch(1_000);
     expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS - 1)).toBe("go-on");
     expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS)).toBe("nothing-heard");
+  });
+
+  test("tells where speech was heard, with half a second around it, so that only that part is sent", () => {
+    const watch = pauseWatch(1_000, KEEP_TALKING_WAIT_MS);
+    expect(watch.speechSpan()).toBeNull();
+    watch.hear(room, 30_000);
+    watch.hear(speech, 31_000);
+    watch.hear(speech, 33_000);
+    watch.hear(room, 34_000);
+    expect(watch.speechSpan()).toEqual({ fromMs: 29_500, toMs: 32_500 });
+    const early = pauseWatch(1_000);
+    early.hear(room, 1_100);
+    early.hear(speech, 1_200);
+    expect(early.speechSpan(), "never before listening began").toEqual({ fromMs: 0, toMs: 700 });
+  });
+
+  test("keeping a spoken conversation going waits two minutes for the first word", () => {
+    const watch = pauseWatch(1_000, KEEP_TALKING_WAIT_MS);
+    expect(watch.hear(room, 1_000 + NOTHING_HEARD_MS)).toBe("go-on");
+    expect(watch.hear(room, 1_000 + KEEP_TALKING_WAIT_MS - 1)).toBe("go-on");
+    expect(watch.hear(room, 1_000 + KEEP_TALKING_WAIT_MS)).toBe("nothing-heard");
   });
 
   test("a noisy room is not speech, but speaking over it is", () => {
@@ -142,5 +163,41 @@ describe("a clip in WAV", () => {
     expect(view.getUint16(34, true)).toBe(16);
     expect(view.getUint32(40, true)).toBe(10);
     expect([0, 1, 2, 3, 4].map((index) => view.getInt16(44 + index * 2, true))).toEqual([0, 32767, -32767, 32767, 16384]);
+  });
+});
+
+describe("a command said while keeping a spoken conversation going", () => {
+  test("stop and repeat are heard in their usual wordings, whatever the case, punctuation or politeness", () => {
+    expect(voiceCommand("Stop.")).toBe("stop");
+    expect(voiceCommand("Stop listening, please!")).toBe("stop");
+    expect(voiceCommand("Please repeat that.")).toBe("repeat");
+    expect(voiceCommand("Say that again?")).toBe("repeat");
+  });
+
+  test("only English counts, as what was said in another language is translated first", () => {
+    expect(voiceCommand("Elég.")).toBeNull();
+    expect(voiceCommand("Enough.")).toBe("stop");
+  });
+
+  test("a command inside a longer message goes to the agent", () => {
+    expect(voiceCommand("Stop the build and repeat the tests.")).toBeNull();
+    expect(voiceCommand("Can you repeat that function for the other file?")).toBeNull();
+    expect(voiceCommand("")).toBeNull();
+  });
+});
+
+describe("what speech recognition makes up from silence", () => {
+  test("its usual phrases, alone or repeated, and nothing at all, are not worth sending", () => {
+    expect(madeUpFromSilence("Thank you.")).toBe(true);
+    expect(madeUpFromSilence("Thank you. Thank you. Thank you.")).toBe(true);
+    expect(madeUpFromSilence("Thanks for watching!")).toBe(true);
+    expect(madeUpFromSilence(" . ")).toBe(true);
+    expect(madeUpFromSilence("")).toBe(true);
+  });
+
+  test("anything more is what the user said", () => {
+    expect(madeUpFromSilence("Thank you, that works.")).toBe(false);
+    expect(madeUpFromSilence("Thank you. Now run the tests.")).toBe(false);
+    expect(madeUpFromSilence("Bye.")).toBe(false);
   });
 });

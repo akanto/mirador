@@ -20,6 +20,54 @@ export function released(press: Press, at: number): { press: Press; action: Pres
 
 export type DictationPhase = "idle" | "starting" | "listening" | "transcribing";
 
+/** Said on its own while keeping a spoken conversation going, these go to Mirador instead of the agent. */
+export type VoiceCommand = "stop" | "repeat";
+
+const voiceCommands: Record<VoiceCommand, string[]> = {
+  stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough", "bye", "bye bye", "goodbye"],
+  repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
+};
+
+const politeWords = /^(please|ok|okay)\s+|\s+please$/g;
+
+const asCommand = (words: string) =>
+  words
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(politeWords, "")
+    .trim();
+
+/** What speech recognition, Whisper most of all, is known to write for silence, noise or music, as if a video were ending. */
+const madeUpPhrases = new Set([
+  "thank you",
+  "thanks",
+  "thank you very much",
+  "thank you for watching",
+  "thanks for watching",
+  "thank you so much for watching",
+  "please subscribe",
+  "subscribe",
+  "you",
+  "subtitles by the amara org community",
+]);
+
+/** Nothing but words that recognition makes up from silence, or no words at all: not worth sending. */
+export function madeUpFromSilence(text: string) {
+  const sentences = text.split(/[.!?…\n]+/).map(asCommand).filter((sentence) => sentence !== "");
+  return sentences.every((sentence) => madeUpPhrases.has(sentence));
+}
+
+/** In English, after translation, so one set of phrases serves every language; only the whole of it counts: "stop the build" goes to the agent. */
+export function voiceCommand(text: string): VoiceCommand | null {
+  const said = asCommand(text);
+  for (const [command, phrases] of Object.entries(voiceCommands) as [VoiceCommand, string[]][]) {
+    if (phrases.includes(said)) return command;
+  }
+  return null;
+}
+
 export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>) {
   if (phase === "idle") return null;
   if (phase === "starting") return "Starting the microphone…";
