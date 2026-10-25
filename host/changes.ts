@@ -2,14 +2,14 @@ import { realpathSync } from "node:fs";
 import { lstat, readlink, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, normalize, posix, resolve, sep } from "node:path";
 import type { ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
-import type { ChangedFile, ChangeList, ChangeScope, ChangesBase, FileChanges } from "../shared/changes.ts";
+import type { ChangedFile, ChangeList, ChangeScope, ChangesBase, FileChanges, ProjectFiles } from "../shared/changes.ts";
 import type { StoredEvent, Workspace } from "../shared/model.ts";
 import type { Checkpoints } from "./checkpoints.ts";
 import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.ts";
 import type { FileBefore } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
 import { looksLikeText, openingOf } from "./system-open.ts";
-import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredFilesWrittenSince, isRepository, MAX_SCANNED_FILES, uncommittedChanges, type TreeChange } from "./working-tree.ts";
+import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredFilesWrittenSince, isRepository, MAX_SCANNED_FILES, projectFiles, uncommittedChanges, type TreeChange } from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
 
@@ -181,6 +181,11 @@ export class Changes {
       outside: outside.sort(byPath),
       ...(truncated && { filesCheckedAtMost: MAX_SCANNED_FILES }),
     };
+  }
+
+  async files(conversationId: string): Promise<ProjectFiles> {
+    const { files, truncated } = await projectFiles(this.workspaceOf(conversationId).path);
+    return { paths: files, ...(truncated && { filesListedAtMost: MAX_SCANNED_FILES }) };
   }
 
   async diff(conversationId: string, scope: ChangeScope, path: string): Promise<FileChanges> {

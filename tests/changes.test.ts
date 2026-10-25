@@ -7,7 +7,7 @@ import type { ToolKind } from "@agentclientprotocol/sdk";
 import { agentEditsIn, Changes, OutsideWorkspace } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
 import { Store } from "../host/store.ts";
-import { createdSince, filesWrittenSince, ignoredFilesWrittenSince, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
+import { createdSince, filesWrittenSince, ignoredFilesWrittenSince, projectFiles, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
 import type { StoredEvent } from "../shared/model.ts";
 import { changesRefreshPoint, firstChangedLine } from "../web/changes.ts";
 
@@ -147,6 +147,31 @@ test("in a folder below the repository's top, paths are the folder's own and fil
   await write("kept.txt", "changed\n");
 
   expect(await uncommittedChanges(join(projectDir, "sub"))).toEqual([{ path: "inner.txt", status: "modified", added: 1, removed: 0 }]);
+});
+
+test("a repository's project files are the ones git tracks and the untracked ones it does not ignore, without the folders tools keep their state in", async () => {
+  await mkdir(join(projectDir, "src"));
+  await write("src/new.ts", "new\n");
+  await mkdir(join(projectDir, "build"));
+  await write("build/out.js", "ignored\n");
+  await mkdir(join(projectDir, ".beads"));
+  await write(".beads/issues.jsonl", "{}\n");
+
+  expect((await projectFiles(projectDir)).files.toSorted()).toEqual([".gitignore", "doomed.txt", "kept.txt", "src/new.ts"]);
+  expect(await changes.files("c1")).toEqual({ paths: expect.arrayContaining(["src/new.ts", "kept.txt"]) });
+});
+
+test("a folder that is no repository lists every file but the tools' state, and a project of more files than the limit says it was cut short", async () => {
+  await mkdir(join(outsideDir, "notes"));
+  await writeFile(join(outsideDir, "notes", "a.md"), "a\n");
+  await writeFile(join(outsideDir, "b.md"), "b\n");
+  await mkdir(join(outsideDir, ".idea"));
+  await writeFile(join(outsideDir, ".idea", "workspace.xml"), "<x/>\n");
+
+  expect(await projectFiles(outsideDir)).toEqual({ files: expect.arrayContaining(["notes/a.md", "b.md"]), truncated: false });
+  expect((await projectFiles(outsideDir)).files).toHaveLength(2);
+  expect(await projectFiles(projectDir, 2)).toEqual({ files: expect.any(Array), truncated: true });
+  expect((await projectFiles(projectDir, 2)).files).toHaveLength(2);
 });
 
 test("the agent's edits come from its finished edit tool calls, each file with the last and fullest diff of each call", () => {

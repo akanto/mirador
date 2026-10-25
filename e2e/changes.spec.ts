@@ -30,6 +30,9 @@ test.beforeAll(async () => {
   fakeOpencode();
   mkdirSync(join(host.projectDir, "src"), { recursive: true });
   writeFileSync(appFile, numbered(30));
+  writeFileSync(join(host.projectDir, "src", "stable.ts"), "stays as it is\n");
+  mkdirSync(join(host.projectDir, "lib"));
+  writeFileSync(join(host.projectDir, "lib", "kept.ts"), "never changed\n");
   git("init", "-q");
   git("add", "-A");
   git("commit", "-qm", "base");
@@ -48,7 +51,7 @@ const section = (page: Page, name: string) => changes(page).getByRole("region", 
 /** The files a section lists, in either view: the tree orders them by folder, so the order is not compared. */
 const expectListed = (page: Page, sectionName: string, paths: string[], message?: string) =>
   expect
-    .poll(() => section(page, sectionName).locator(".changed-file").evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.path!).toSorted()), message)
+    .poll(() => section(page, sectionName).locator(".changed-file:not(.status-unchanged)").evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.path!).toSorted()), message)
     .toEqual(paths.toSorted());
 const writeFiles = (page: Page, steps: Record<string, string>[]) => sendMessage(page, `WRITE ${JSON.stringify(steps)}`);
 
@@ -83,7 +86,7 @@ test("the empty canvas lists the files this turn changed as the agent works, wit
     await expect(changes(page)).toContainText("No file changed in this turn.");
     writeFileSync(editNow, "");
     await expect(fileRow(page, "src/app.ts")).toContainText("+1 −1");
-    await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
+    await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
     await expect(page.locator(".chat-header:visible .badge")).not.toHaveText("idle");
   });
 
@@ -94,7 +97,7 @@ test("the empty canvas lists the files this turn changed as the agent works, wit
   await expect(fileRow(page, "src/generated.txt").locator(".change-status")).toHaveText("A");
   await expect(fileRow(page, "src/generated.txt").locator(".by-agent")).toHaveCount(0);
   await expectListed(page, "Outside the project", [outsideFileShown]);
-  await expect(fileRow(page, outsideFileShown).locator(".by-agent")).toHaveText("● agent");
+  await expect(fileRow(page, outsideFileShown).locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
 });
 
 test("clicking a file opens its line changes under its row, with the file's line numbers, unified or split, and Open in IDEA", async ({ page }) => {
@@ -158,7 +161,7 @@ test("a new turn starts with an empty list, while Uncommitted keeps git status a
 
   await changes(page).getByRole("button", { name: "Uncommitted" }).click();
   await expectListed(page, "Project", ["src/app.ts", "src/generated.txt"]);
-  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
+  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
   await expectListed(page, "Outside the project", [outsideFileShown]);
 
   await test.step("a change made by hand shows after Refresh", async () => {
@@ -175,6 +178,45 @@ test("a new turn starts with an empty list, while Uncommitted keeps git status a
   });
 });
 
+test("All files shows every file of the project in its folders, the changed ones marked, and only the folders holding a change open", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  await changes(page).getByRole("button", { name: "Uncommitted" }).click();
+  await expect(changes(page).getByRole("button", { name: "All files" })).toHaveAttribute("aria-pressed", "true");
+
+  const lib = folderRow(page, "lib");
+  await expect(lib).toHaveAttribute("aria-expanded", "false");
+  await expect(lib.locator(".folder-file-count")).toHaveCount(0);
+  await expect(folderRow(page, "src")).toHaveAttribute("aria-expanded", "true");
+  await expect(fileRow(page, "src/app.ts").locator(".change-status")).toHaveText("M");
+  await expect(fileRow(page, "src/stable.ts")).toHaveClass(/status-unchanged/);
+  await expect(fileRow(page, "src/stable.ts").locator(".change-status")).toHaveText("");
+
+  await test.step("folding a folder with a change says how many changed", async () => {
+    await folderRow(page, "src").click();
+    await expect(folderRow(page, "src").locator(".folder-file-count")).toHaveText("2 changed");
+    await folderRow(page, "src").click();
+  });
+
+  await test.step("an unchanged file opens under its row with Open in IDEA", async () => {
+    await lib.click();
+    await fileRow(page, "lib/kept.ts").click();
+    const opened = fileRow(page, "lib/kept.ts").locator("xpath=..").locator(".changes-diff");
+    await expect(opened).toContainText("No changes in this file.");
+    await expect(opened.getByRole("button", { name: "Open in IDEA" })).toBeVisible();
+    await fileRow(page, "lib/kept.ts").click();
+  });
+
+  await test.step("Tree leaves the unchanged files out", async () => {
+    await changes(page).getByRole("button", { name: "Tree" }).click();
+    await expect(folderRow(page, "lib")).toHaveCount(0);
+    await expect(fileRow(page, "src/stable.ts")).toHaveCount(0);
+    await expect(fileRow(page, "src/app.ts")).toBeVisible();
+    await changes(page).getByRole("button", { name: "All files" }).click();
+    await changes(page).getByRole("button", { name: "This turn" }).click();
+  });
+});
+
 test("the tree shows the changed files in their folders, a folder holding one folder on one row, folds a folder with its counts, and List shows whole paths again", async ({ page }) => {
   const nested = join(host.projectDir, "pkg", "core");
   mkdirSync(nested, { recursive: true });
@@ -183,7 +225,7 @@ test("the tree shows the changed files in their folders, a folder holding one fo
   await signIn(page, host);
   await page.goto(`${host.origin}/#/c/${conversationId}`);
   await changes(page).getByRole("button", { name: "Uncommitted" }).click();
-  await expect(changes(page).getByRole("button", { name: "Tree" })).toHaveAttribute("aria-pressed", "true");
+  await changes(page).getByRole("button", { name: "Tree" }).click();
 
   const pkgCore = folderRow(page, "pkg/core");
   await expect(pkgCore).toHaveAttribute("aria-expanded", "true");
@@ -386,7 +428,7 @@ test("This session lists the agent's edits and the git-ignored files written sin
   ]);
   await waitForTurnToEnd(page);
   await expectListed(page, "Project", ["build/new.js", "src/app.ts"]);
-  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
+  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
   await expect(fileRow(page, "build/new.js").locator(".by-agent")).toHaveCount(0);
 });
 
@@ -425,10 +467,21 @@ test("This turn lists the files commits since the turn began changed in a sectio
   git("commit", "-qm", "a pull and the agent's commit");
   writeFileSync(join(host.projectDir, "by-hand.txt"), "typed after the commits\n");
   await changes(page).getByRole("button", { name: "Refresh" }).click();
+  await changes(page).getByRole("button", { name: "Tree" }).click();
   await expectListed(page, "From commits since the turn began", ["pulled.txt", "src/app.ts"]);
-  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
+  await expect(section(page, "From commits since the turn began").locator(".from-commit")).toHaveCount(0);
+  await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
   await expectListed(page, "Project", ["by-hand.txt"]);
 
   await fileRow(page, "src/app.ts").click();
   await expect(changes(page).locator(".changes-diff")).toContainText("committed by the agent");
+
+  await test.step("All files marks the commits' files in the project's tree, tagged, in place of their own section", async () => {
+    await changes(page).getByRole("button", { name: "All files" }).click();
+    await expect(section(page, "From commits since the turn began")).toHaveCount(0);
+    await expectListed(page, "Project", ["by-hand.txt", "pulled.txt", "src/app.ts"]);
+    await expect(fileRow(page, "pulled.txt").locator(".from-commit")).toHaveText("commit");
+    await expect(fileRow(page, "by-hand.txt").locator(".from-commit")).toHaveCount(0);
+    await expect(changes(page).locator(".changes-diff")).toContainText("committed by the agent");
+  });
 });

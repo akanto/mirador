@@ -36,6 +36,13 @@ export interface ChangeList {
   filesCheckedAtMost?: number;
 }
 
+/** Every file of the project, changed or not, relative to the workspace with / between folders. */
+export interface ProjectFiles {
+  paths: string[];
+  /** Set when the project held more files than were listed, to how many were. */
+  filesListedAtMost?: number;
+}
+
 /** A file's line changes: the file compared with the scope's base, or else the agent's edits to it, one by one. */
 export interface FileChanges {
   path: string;

@@ -4,6 +4,8 @@ export interface TreeFolder<T> {
   name: string;
   path: string;
   children: TreeNode<T>[];
+  /** Every item under the folder, however deep, gathered once as the tree is built. */
+  items: T[];
 }
 
 export interface TreeFile<T> {
@@ -25,13 +27,17 @@ const joined = (parent: string, name: string, separator: string) => (parent === 
 
 /** The items nested in the folders of their paths, folders before files and each sorted by name. Paths may be relative or absolute, with / or \ between their parts. */
 export function fileTree<T>(items: readonly T[], pathOf: (item: T) => string): TreeNode<T>[] {
-  const root: TreeFolder<T> = { kind: "folder", name: "", path: "", children: [] };
+  const root: TreeFolder<T> = { kind: "folder", name: "", path: "", children: [], items: [] };
   for (const item of items) {
     const path = pathOf(item);
     const separator = separatorOf(path);
     const segments = pathSegments(path, separator);
     const fileName = segments.pop()!;
-    const folder = segments.reduce((parent, name) => childFolder(parent, name, separator), root);
+    const folder = segments.reduce((parent, name) => {
+      const child = childFolder(parent, name, separator);
+      child.items.push(item);
+      return child;
+    }, root);
     folder.children.push({ kind: "file", name: fileName, item });
   }
   return compacted(sorted(root.children));
@@ -40,7 +46,7 @@ export function fileTree<T>(items: readonly T[], pathOf: (item: T) => string): T
 function childFolder<T>(parent: TreeFolder<T>, name: string, separator: string): TreeFolder<T> {
   const existing = parent.children.find((child): child is TreeFolder<T> => child.kind === "folder" && child.name === name);
   if (existing) return existing;
-  const created: TreeFolder<T> = { kind: "folder", name, path: joined(parent.path, name, separator), children: [] };
+  const created: TreeFolder<T> = { kind: "folder", name, path: joined(parent.path, name, separator), children: [], items: [] };
   parent.children.push(created);
   return created;
 }
@@ -59,8 +65,4 @@ function compactedFolder<T>(folder: TreeFolder<T>): TreeFolder<T> {
   const [only, ...others] = folder.children;
   if (only?.kind === "folder" && others.length === 0) return compactedFolder({ ...only, name: joined(folder.name, only.name, separatorOf(only.path)) });
   return { ...folder, children: compacted(folder.children) };
-}
-
-export function filesUnder<T>(folder: TreeFolder<T>): T[] {
-  return folder.children.flatMap((child) => (child.kind === "folder" ? filesUnder(child) : [child.item]));
 }

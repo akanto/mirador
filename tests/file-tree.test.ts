@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { filesUnder, fileTree, type TreeNode } from "../shared/file-tree.ts";
+import type { ChangedFile, ChangeList } from "../shared/changes.ts";
+import { fileTree, type TreeFolder, type TreeNode } from "../shared/file-tree.ts";
+import { projectFilesWithChanges, startsFolded, type ListedFile } from "../web/changes.ts";
 
 const treeOf = (paths: string[]) => fileTree(paths, (path) => path);
 
@@ -63,12 +65,36 @@ test("Windows paths keep their backslashes", () => {
   ]);
 });
 
-test("a folder's files are every file under it, however deep", () => {
-  const [web] = treeOf(["web/a.ts", "web/deep/b.ts", "web/deep/er/c.ts", "other.ts"]);
-  expect(web?.kind === "folder" && filesUnder(web).toSorted()).toEqual(["web/a.ts", "web/deep/b.ts", "web/deep/er/c.ts"]);
+test("a folder's items are every file under it, however deep, a compacted folder's those of its deepest part", () => {
+  const [solo, web] = treeOf(["web/a.ts", "web/deep/b.ts", "web/deep/er/c.ts", "solo/only/d.ts", "other.ts"]);
+  expect(web?.kind === "folder" && web.items.toSorted()).toEqual(["web/a.ts", "web/deep/b.ts", "web/deep/er/c.ts"]);
+  expect(solo?.kind === "folder" && [solo.name, solo.items]).toEqual(["solo/only", ["solo/only/d.ts"]]);
 });
 
 test("keeps each file's own item", () => {
   const tree = fileTree([{ path: "a/b.ts", added: 3 }], ({ path }) => path);
   expect(tree[0]?.kind === "folder" && tree[0].children[0]).toEqual({ kind: "file", name: "b.ts", item: { path: "a/b.ts", added: 3 } });
+});
+
+const change = (path: string): ChangedFile => ({ path, status: "modified", added: 1, removed: 0, byAgent: false });
+const list = (project: string[], committed: string[] = []): ChangeList => ({ scope: "turn", base: "turn-start", project: project.map(change), committed: committed.map(change), outside: [] });
+
+test("every project file shows once: the changed ones with their changes, a commit's tagged, a deleted one though git no longer lists it", () => {
+  const files = projectFilesWithChanges(list(["src/a.ts", "gone.ts"], ["pulled.ts"]), ["src/a.ts", "src/b.ts", "pulled.ts", "README.md"]);
+  expect(files.map(({ path, change, fromCommit }) => [path, change !== null, fromCommit])).toEqual([
+    ["src/a.ts", true, false],
+    ["gone.ts", true, false],
+    ["pulled.ts", true, true],
+    ["src/b.ts", false, false],
+    ["README.md", false, false],
+  ]);
+});
+
+test("with every file shown only the folders holding a change start open; the changed files' tree starts all open", () => {
+  const tree = fileTree(projectFilesWithChanges(list(["src/a.ts"]), ["src/a.ts", "docs/guide.md"]), ({ path }) => path);
+  const folders = tree.filter((node): node is TreeFolder<ListedFile> => node.kind === "folder");
+  expect(folders.map((folder) => [folder.name, startsFolded(folder, true), startsFolded(folder, false)])).toEqual([
+    ["docs", true, false],
+    ["src", false, false],
+  ]);
 });

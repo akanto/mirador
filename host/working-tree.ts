@@ -133,6 +133,18 @@ async function scannedFiles(directory: string, limit: number, { folders = [""], 
   return { files: files.slice(0, limit), truncated: files.length > limit };
 }
 
+/**
+ * Every file of the project, relative to `directory` with / as git writes them: in a repository the files git tracks
+ * and the untracked ones it does not ignore, in any other folder every file, leaving out the folders tools keep their
+ * own state in. It stops after `limit` of them, and says so.
+ */
+export async function projectFiles(directory: string, limit = MAX_SCANNED_FILES): Promise<{ files: string[]; truncated: boolean }> {
+  const listed = await git(directory, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]);
+  if (listed.exitCode !== 0) return scannedFiles(directory, limit);
+  const files = [...new Set(listed.stdout.split("\0"))].filter((path) => path !== "" && isScannedPath(path));
+  return { files: files.slice(0, limit), truncated: files.length > limit };
+}
+
 /** Not the change time: opening a file in Finder moves that, and a file made with an old modified time still has its birth. */
 const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(stats.mtimeMs, stats.birthtimeMs);
 

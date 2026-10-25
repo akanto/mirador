@@ -1086,6 +1086,12 @@ export function startServer(services: HostServices) {
           .then((changes) => reply({ type: "changes.diffed", requestId: message.requestId, changes }))
           .catch((error) => reply({ type: "changes.failed", requestId: message.requestId, message: errorMessage(error) }));
         return;
+      case "changes.files":
+        conversations.changes
+          .files(message.conversationId)
+          .then((files) => reply({ type: "changes.files-listed", requestId: message.requestId, files }))
+          .catch((error) => reply({ type: "changes.failed", requestId: message.requestId, message: errorMessage(error) }));
+        return;
       case "changes.open-in-editor":
         return conversations.changes.openInEditor(message.conversationId, message.path, message.line);
       case "files.open":

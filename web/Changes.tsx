@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { changeScopes, type ChangedFile, type ChangeList, type ChangeScope, type ChangesBase, type FileChanges } from "../shared/changes.ts";
-import { filesUnder, fileTree, type TreeFolder, type TreeNode } from "../shared/file-tree.ts";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { changeScopes, type ChangedFile, type ChangeList, type ChangeScope, type ChangesBase, type FileChanges, type ProjectFiles } from "../shared/changes.ts";
+import { fileTree, type TreeFolder, type TreeNode } from "../shared/file-tree.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
-import { firstChangedLine } from "./changes.ts";
+import { changedFiles, firstChangedLine, projectFilesWithChanges, startsFolded, type ListedFile } from "./changes.ts";
 import { connection } from "./connection.ts";
 import { DiffStyleChoice, diffStyle, EditedFile } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
@@ -12,10 +12,10 @@ import { withHomeAsTilde } from "./workspace-folder.ts";
 const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted", session: "This session" };
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
-const listViews = ["list", "tree"] as const;
+const listViews = ["list", "tree", "all"] as const;
 type ListView = (typeof listViews)[number];
-const listViewLabels: Record<ListView, string> = { list: "List", tree: "Tree" };
-const listView = storedChoice<ListView>("mirador-changes-view", listViews, "tree");
+const listViewLabels: Record<ListView, string> = { list: "List", tree: "Tree", all: "All files" };
+const listView = storedChoice<ListView>("mirador-changes-view", listViews, "all");
 
 const listNotes: Partial<Record<ChangesBase, string>> = {
   session: "The files the agent changed with its edit tools in this conversation, and the git-ignored files written since its first message. In a folder that is not a git repository, every file written since then.",
@@ -45,13 +45,19 @@ const fileChanges = (conversationId: string, scope: ChangeScope, path: string) =
     (message) => (message.type === "changes.diffed" ? message.changes : undefined),
   );
 
+const listProjectFiles = (conversationId: string) =>
+  changesRequest(
+    (requestId) => ({ type: "changes.files", requestId, conversationId }),
+    (message) => (message.type === "changes.files-listed" ? message.files : undefined),
+  );
+
 type Loaded<T> = { value: T } | { error: string };
 
 const LOADS_KEPT = 100;
 const keptLoads = new Map<string, Loaded<unknown>>();
 const keptLoadListeners = new Set<() => void>();
 const selectedPaths = new Map<string, string | null>();
-const foldedFolders = new Map<string, ReadonlySet<string>>();
+const foldOverrides = new Map<string, ReadonlyMap<string, boolean>>();
 
 function keepLoad(key: string, loaded: Loaded<unknown>) {
   keptLoads.delete(key);
@@ -110,8 +116,9 @@ interface RowContext {
 }
 
 interface Folding {
-  isFolded: (folderPath: string) => boolean;
-  toggle: (folderPath: string) => void;
+  everyFile: boolean;
+  isFolded: (folder: TreeFolder<ListedFile>) => boolean;
+  toggle: (folder: TreeFolder<ListedFile>) => void;
 }
 
 const indentedBy = (depth: number) => ({ "--depth": depth }) as CSSProperties;
@@ -129,26 +136,32 @@ function LineCounts({ files }: { files: ChangedFile[] }) {
   );
 }
 
-function FileRow({ file, name, depth, rows }: { file: ChangedFile; name: string; depth: number; rows: RowContext }) {
+function FileRow({ file, name, depth, rows }: { file: ListedFile; name: string; depth: number; rows: RowContext }) {
   const selected = file.path === rows.selectedPath;
+  const { change } = file;
   return (
     <li>
       <button
         type="button"
-        className={`changed-file status-${file.status} ${selected ? "selected" : ""}`}
+        className={`changed-file status-${change?.status ?? "unchanged"} ${selected ? "selected" : ""}`}
         style={indentedBy(depth)}
         data-path={withHomeAsTilde(file.path, rows.homeDir)}
         aria-pressed={selected}
         onClick={() => rows.onSelect(file.path)}
       >
-        <span className="change-status" title={file.status}>
-          {statusLetters[file.status]}
+        <span className="change-status" title={change?.status}>
+          {change && statusLetters[change.status]}
         </span>
         <span className="changed-path">{name}</span>
-        <LineCounts files={[file]} />
-        {file.byAgent && (
-          <span className="by-agent" data-hint={hints.changesByAgent}>
-            ● agent
+        {change && <LineCounts files={[change]} />}
+        {change?.byAgent && (
+          <span className="by-agent" aria-label="Changed by the agent" data-hint={hints.changesByAgent}>
+            ●
+          </span>
+        )}
+        {file.fromCommit && (
+          <span className="from-commit" data-hint={hints.changesFromCommit}>
+            commit
           </span>
         )}
       </button>
@@ -157,18 +170,19 @@ function FileRow({ file, name, depth, rows }: { file: ChangedFile; name: string;
   );
 }
 
-function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<ChangedFile>; depth: number; rows: RowContext; folding: Folding }) {
-  const folded = folding.isFolded(folder.path);
-  const files = filesUnder(folder);
+function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<ListedFile>; depth: number; rows: RowContext; folding: Folding }) {
+  const folded = folding.isFolded(folder);
+  const changes = folder.items.flatMap(({ change }) => (change ? [change] : []));
+  const summary = folding.everyFile ? (changes.length > 0 ? `${changes.length} changed` : null) : changes.length === 1 ? "1 file" : `${changes.length} files`;
   return (
     <li>
-      <button type="button" className="changed-folder" style={indentedBy(depth)} aria-expanded={!folded} onClick={() => folding.toggle(folder.path)}>
+      <button type="button" className={`changed-folder ${changes.length === 0 ? "unchanged" : ""}`} style={indentedBy(depth)} aria-expanded={!folded} onClick={() => folding.toggle(folder)}>
         <span className="fold-mark">{folded ? "▸" : "▾"}</span>
         <span className="folder-name">{folder.name}</span>
-        {folded && (
+        {folded && summary && (
           <>
-            <span className="folder-file-count">{files.length === 1 ? "1 file" : `${files.length} files`}</span>
-            <LineCounts files={files} />
+            <span className="folder-file-count">{summary}</span>
+            <LineCounts files={changes} />
           </>
         )}
       </button>
@@ -181,7 +195,7 @@ function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<Change
   );
 }
 
-function TreeRows({ nodes, depth, rows, folding }: { nodes: TreeNode<ChangedFile>[]; depth: number; rows: RowContext; folding: Folding }) {
+function TreeRows({ nodes, depth, rows, folding }: { nodes: TreeNode<ListedFile>[]; depth: number; rows: RowContext; folding: Folding }) {
   return nodes.map((node) =>
     node.kind === "folder" ? (
       <FolderRow key={node.path} folder={node} depth={depth} rows={rows} folding={folding} />
@@ -192,19 +206,34 @@ function TreeRows({ nodes, depth, rows, folding }: { nodes: TreeNode<ChangedFile
 }
 
 /** A section of the list, as whole paths or as a tree of folders; the selected file's line changes open under its row. */
-function FileSection({ title, files, view, rows, folding }: { title: string; files: ChangedFile[]; view: ListView; rows: RowContext; folding: Folding }) {
+function FileSection({ title, files, asTree, rows, folding }: { title: string; files: ListedFile[]; asTree: boolean; rows: RowContext; folding: Folding }) {
+  const tree = useMemo(() => (asTree ? fileTree(files, ({ path }) => withHomeAsTilde(path, rows.homeDir)) : []), [asTree, files, rows.homeDir]);
   if (files.length === 0) return null;
   return (
     <section className="changes-section" aria-label={title}>
       <h3>{title}</h3>
       <ul>
-        {view === "tree" ? (
-          <TreeRows nodes={fileTree(files, ({ path }) => withHomeAsTilde(path, rows.homeDir))} depth={0} rows={rows} folding={folding} />
+        {asTree ? (
+          <TreeRows nodes={tree} depth={0} rows={rows} folding={folding} />
         ) : (
           files.map((file) => <FileRow key={file.path} file={file} name={withHomeAsTilde(file.path, rows.homeDir)} depth={0} rows={rows} />)
         )}
       </ul>
     </section>
+  );
+}
+
+function UnchangedFile({ conversationId, path }: { conversationId: string; path: string }) {
+  return (
+    <div className="changes-diff">
+      <div className="edit-approval-bar">
+        <span className="review-empty">No changes in this file.</span>
+        <span className="spacer" />
+        <button type="button" className="link" data-hint={hints.changesOpenInIdea} onClick={() => connection.send({ type: "changes.open-in-editor", conversationId, path, line: 1 })}>
+          Open in IDEA
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -252,25 +281,49 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
     () => (selected ? fileChanges(conversationId, scope, selected.path) : Promise.resolve(null)),
     reloadWhen,
   );
+  const view = listView.use();
+  const everyFile = view === "all";
+  const loadedProjectFiles = useKeptLoad<ProjectFiles | null>(
+    `files ${conversationId} ${everyFile}`,
+    () => (everyFile ? listProjectFiles(conversationId) : Promise.resolve(null)),
+    reloadWhen,
+  );
+  const projectFiles = everyFile && loadedProjectFiles && "value" in loadedProjectFiles ? loadedProjectFiles.value : null;
+  const sections = useMemo(
+    () =>
+      list && {
+        project: projectFiles ? projectFilesWithChanges(list, projectFiles.paths) : changedFiles(list.project),
+        committed: projectFiles ? [] : changedFiles(list.committed),
+        outside: changedFiles(list.outside),
+      },
+    [list, projectFiles],
+  );
+  const unchangedSelected = !selected && selectedPath !== null && Boolean(sections?.project.some(({ path, change }) => path === selectedPath && !change));
   const toggle = (path: string) => {
     const next = path === selectedPath ? null : path;
     selectedPaths.set(conversationId, next);
     setSelectedPath(next);
   };
-  const selectedFile = selected && <SelectedFile conversationId={conversationId} file={selected} loaded={loadedDiff} homeDir={homeDir} />;
+  const selectedFile = selected ? (
+    <SelectedFile conversationId={conversationId} file={selected} loaded={loadedDiff} homeDir={homeDir} />
+  ) : (
+    unchangedSelected && <UnchangedFile conversationId={conversationId} path={selectedPath!} />
+  );
   const rows: RowContext = { selectedPath, onSelect: toggle, selectedFile, homeDir };
-  const view = listView.use();
-  const [folded, setFolded] = useState(foldedFolders.get(conversationId) ?? new Set<string>());
-  const foldingOf = (section: string): Folding => ({
-    isFolded: (folderPath) => folded.has(`${section} ${folderPath}`),
-    toggle: (folderPath) => {
-      const key = `${section} ${folderPath}`;
-      const next = new Set(folded);
-      if (!next.delete(key)) next.add(key);
-      foldedFolders.set(conversationId, next);
-      setFolded(next);
-    },
-  });
+  const [overrides, setOverrides] = useState(foldOverrides.get(conversationId) ?? new Map<string, boolean>());
+  const foldingOf = (section: string): Folding => {
+    const keyOf = (folder: TreeFolder<ListedFile>) => `${view} ${section} ${folder.path}`;
+    const isFolded = (folder: TreeFolder<ListedFile>) => overrides.get(keyOf(folder)) ?? startsFolded(folder, everyFile);
+    return {
+      everyFile,
+      isFolded,
+      toggle: (folder) => {
+        const next = new Map(overrides).set(keyOf(folder), !isFolded(folder));
+        foldOverrides.set(conversationId, next);
+        setOverrides(next);
+      },
+    };
+  };
 
   return (
     <div className="changes">
@@ -300,11 +353,15 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
         <p className="review-empty">This folder holds more than {list.filesCheckedAtMost.toLocaleString("en")} files, so only that many were checked and some changed files may be missing.</p>
       )}
       {list && files.length === 0 && <p className="changes-none">{nothingChanged(list)}</p>}
-      {list && (
+      {everyFile && loadedProjectFiles && "error" in loadedProjectFiles && <p className="review-empty">{loadedProjectFiles.error}</p>}
+      {projectFiles?.filesListedAtMost !== undefined && (
+        <p className="review-empty">This project holds more than {projectFiles.filesListedAtMost.toLocaleString("en")} files, so only that many are shown.</p>
+      )}
+      {sections && (
         <>
-          <FileSection title="Project" files={list.project} view={view} rows={rows} folding={foldingOf("project")} />
-          <FileSection title="From commits since the turn began" files={list.committed} view={view} rows={rows} folding={foldingOf("committed")} />
-          <FileSection title="Outside the project" files={list.outside} view={view} rows={rows} folding={foldingOf("outside")} />
+          <FileSection title="Project" files={sections.project} asTree={view !== "list"} rows={rows} folding={foldingOf("project")} />
+          <FileSection title="From commits since the turn began" files={sections.committed} asTree={view !== "list"} rows={rows} folding={foldingOf("committed")} />
+          <FileSection title="Outside the project" files={sections.outside} asTree={view !== "list"} rows={rows} folding={foldingOf("outside")} />
         </>
       )}
     </div>

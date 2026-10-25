@@ -308,6 +308,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "canvas.export-failed":
     case "changes.listed":
     case "changes.diffed":
+    case "changes.files-listed":
     case "changes.failed":
     case "slash-commands.listed":
     case "prompt-history.listed":

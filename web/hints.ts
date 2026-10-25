@@ -286,7 +286,9 @@ export const hints = {
   changesView: {
     list: "Each changed file on its own row, with its whole path. Remembered in this browser.",
     tree: "The changed files in their folders. Click a folder to fold it. Remembered in this browser.",
+    all: "Every file of the project in its folders, the changed ones marked. Only the folders holding a change start open. Remembered in this browser.",
   },
+  changesFromCommit: "A commit since the turn began changed this file, such as a pull's or the agent's own.",
   changesRefresh: "Load the list again. It also loads after each tool call the agent finishes and when the turn ends.",
   changesByAgent: "This conversation's agent changed this file with its edit tools.",
   changesOpenInIdea: "Open the file in IntelliJ IDEA at its first changed line.",

@@ -3307,14 +3307,16 @@ button.edits-waiting {
 .changed-file,
 .changed-folder {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   width: 100%;
+  min-height: 24px;
   border: none;
+  border-radius: 4px;
   background: none;
-  padding: 3px 8px 3px calc(8px + var(--depth, 0) * 16px);
+  padding: 2px 8px 2px calc(8px + var(--depth, 0) * 16px);
   text-align: left;
-  font-size: calc(12.5px * var(--font-scale));
+  font-size: calc(13px * var(--font-scale));
   font-weight: normal;
 }
 
@@ -3323,40 +3325,31 @@ button.edits-waiting {
   background: var(--row-hover);
 }
 
-.fold-mark {
-  flex-shrink: 0;
-  width: 1.2ch;
-  color: var(--muted);
-}
-
-.folder-name {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--mono);
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
-.folder-file-count,
-.changed-folder .edit-counts {
-  flex-shrink: 0;
-  font-size: calc(12px * var(--font-scale));
-}
-
-.folder-file-count {
-  color: var(--muted);
-}
-
 .changed-file.selected {
   background: var(--accent-soft);
 }
 
+.fold-mark,
 .change-status {
   flex-shrink: 0;
-  width: 1.2ch;
-  font-family: var(--mono);
-  font-weight: 600;
+  width: 1.4ch;
+  text-align: center;
   color: var(--muted);
+}
+
+.fold-mark {
+  font-size: calc(14px * var(--font-scale));
+  line-height: 1;
+}
+
+.change-status {
+  font-family: var(--mono);
+  font-size: calc(11.5px * var(--font-scale));
+  font-weight: 600;
+}
+
+.changed-file.status-modified .change-status {
+  color: var(--warn);
 }
 
 .changed-file.status-added .change-status {
@@ -3367,21 +3360,49 @@ button.edits-waiting {
   color: var(--danger);
 }
 
-.changed-path {
-  flex: 1;
+.changed-path,
+.folder-name {
   min-width: 0;
-  font-family: var(--mono);
   overflow-wrap: anywhere;
 }
 
+.folder-name {
+  font-weight: 600;
+}
+
+.changed-folder.unchanged .folder-name,
+.changed-file.status-unchanged .changed-path {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.changed-file.status-deleted .changed-path {
+  text-decoration: line-through;
+}
+
 .changed-file .edit-counts,
-.by-agent {
+.changed-folder .edit-counts,
+.folder-file-count,
+.from-commit {
   flex-shrink: 0;
-  font-size: calc(12px * var(--font-scale));
+  font-size: calc(11.5px * var(--font-scale));
+}
+
+.folder-file-count {
+  color: var(--muted);
 }
 
 .by-agent {
+  flex-shrink: 0;
+  font-size: calc(9px * var(--font-scale));
   color: var(--accent);
+}
+
+.from-commit {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
 }
 
 .changes-diff {

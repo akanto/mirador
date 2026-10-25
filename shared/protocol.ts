@@ -31,7 +31,7 @@ import type {
   WorkspaceGroup,
   Pastel,
 } from "./model.ts";
-import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
+import type { ChangeList, ChangeScope, FileChanges, ProjectFiles } from "./changes.ts";
 import type { PageLibraries } from "./canvas-export.ts";
 import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
@@ -201,6 +201,7 @@ export type ClientMessage =
   | { type: "canvas.save-image-to-project"; requestId: string; itemId: string; path: string; image: string; replace: boolean }
   | { type: "changes.list"; requestId: string; conversationId: string; scope: ChangeScope }
   | { type: "changes.diff"; requestId: string; conversationId: string; scope: ChangeScope; path: string }
+  | { type: "changes.files"; requestId: string; conversationId: string }
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
   /**
    * Opens a file in the program the host's system uses for it, when it is in the workspace or the agent changed it, or
@@ -388,6 +389,7 @@ export type ServerMessage =
   | { type: "mentions.suggested"; requestId: string; suggestions: MentionSuggestion[] }
   | { type: "changes.listed"; requestId: string; list: ChangeList }
   | { type: "changes.diffed"; requestId: string; changes: FileChanges }
+  | { type: "changes.files-listed"; requestId: string; files: ProjectFiles }
   | { type: "changes.failed"; requestId: string; message: string }
   | { type: "terminals.listed"; conversationId: string; tabs: TerminalTab[] }
   | { type: "terminal.opened"; requestId: string; tabId: string; terminalId: string }
