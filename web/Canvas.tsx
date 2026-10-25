@@ -847,7 +847,7 @@ export function CanvasPanel({
             <span className="canvas-kind">{iconOf(selected)}</span>
             <span className="canvas-title">{selected.title}</span>
             {outcome && (
-              <span className={`canvas-outcome status-${selected.status}${isVerdict(selected) ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
+              <span className={`canvas-outcome status-${selected.status}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
                 {outcome}
               </span>
             )}

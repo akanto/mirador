@@ -1,5 +1,5 @@
 import type { CanvasItemBase, PluginCanvasItem } from "../shared/model.ts";
-import type { Review, Tour } from "../shared/review.ts";
+import { verdictInBrief, type Review, type Tour } from "../shared/review.ts";
 
 /** A tour as Mirador saved it before tours came from the code review plugin. */
 export interface SavedTour extends Omit<CanvasItemBase, "kind"> {
@@ -22,5 +22,5 @@ export function pluginItemOfSavedWalkthrough(saved: SavedTour | SavedReview, now
     return { ...rest, ...plugin, type: "tour", icon: "↯", data };
   }
   const { review, ...rest } = base as Omit<SavedReview, "kind">;
-  return { ...rest, ...plugin, type: "review", icon: "⇄", data: { ...review, posting: false }, outcome: review.verdict, opensWithRoom: true };
+  return { ...rest, ...plugin, type: "review", icon: "⇄", data: { ...review, posting: false }, outcome: verdictInBrief(review.verdict), opensWithRoom: true };
 }

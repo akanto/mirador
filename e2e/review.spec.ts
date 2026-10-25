@@ -210,7 +210,8 @@ test("a review opens full screen; the user tours the flow, moves through changes
     };
     expect(await fullyShown(bar.locator(".canvas-title"))).toBe(true);
     expect(await rightEdge(bar.getByRole("button", { name: "Hide" }))).toBeLessThanOrEqual(await rightEdge(bar));
-    await expect(bar.locator(".canvas-outcome")).toHaveAttribute("title", "Request changes: the anonymous fallback skips authentication.");
+    await expect(bar.locator(".canvas-outcome")).toHaveText("Request changes");
+    await expect(bar.locator(".canvas-outcome")).toHaveCSS("font-weight", "400");
     await view.getByRole("button", { name: "Full screen" }).click();
   });
 
@@ -723,4 +724,21 @@ test("a post that fails as a whole says why above Post on every page showing the
     await expect(postPanel(showing).getByRole("alert")).toHaveCount(0);
   }
   await otherPage.close();
+});
+
+test("a review with nothing to comment on says so on its Findings tab, with no Post panel", async ({ page }) => {
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "review", review({ verdict: "Approve: a small, correct fix.", findings: [] }));
+  const view = walkthroughView(page);
+  await expect(canvasPane(page).locator(".canvas-header .canvas-outcome")).toHaveText("Approve");
+  await view.getByRole("tab", { name: /Findings/ }).click();
+  await expect(view.locator(".findings-view")).toContainText("The agent found nothing to comment on.");
+  await expect(view.locator(".post-panel")).toHaveCount(0);
+  await view.getByRole("tab", { name: /Overview/ }).click();
+  await expect(view.locator(".verdict")).toHaveText("Approve: a small, correct fix.");
+  await expect(view.locator(".post-panel")).toHaveCount(0);
 });

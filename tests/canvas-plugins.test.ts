@@ -102,6 +102,14 @@ describe("CanvasPlugins", () => {
     expect(items()[1]).toMatchObject({ data: { holding: true } });
   });
 
+  test("the canvas lists an item with what came of it as its plugin says now, such as one saved before the plugin changed how it says it", async () => {
+    const { plugins, callTool, items } = await setUp();
+    await callTool("show_report", { title: "Report", verdict: "Approve" });
+    const item = items()[0]!;
+    expect(plugins.listed(item)).toBe(item);
+    expect(plugins.listed({ ...item, outcome: "Approve, said at length" })).toMatchObject({ outcome: "Approve", updatedAt: item.updatedAt });
+  });
+
   test("a plugin keeps what it stores across conversations and restarts, apart from other plugins", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "canvas-storage-")), "state.sqlite");
     const first = await canvasPluginHost(FIXTURES, null, storeWithConversation(path));

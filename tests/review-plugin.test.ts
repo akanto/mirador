@@ -8,7 +8,7 @@ import type { GitHubCli } from "../host/review/github.ts";
 import { pluginItemOfSavedWalkthrough, type SavedReview, type SavedTour } from "../host/saved-walkthroughs.ts";
 import { Store } from "../host/store.ts";
 import type { CanvasItem, PluginCanvasItem } from "../shared/model.ts";
-import type { Review, ReviewAnswer, ReviewFinding, Tour } from "../shared/review.ts";
+import { verdictInBrief, type Review, type ReviewAnswer, type ReviewFinding, type Tour } from "../shared/review.ts";
 import type { PlaceInWalkthrough } from "../shared/walkthrough-actions.ts";
 import { canvasPluginHost, storeWithConversation } from "./canvas-plugin-host.ts";
 import { codeReviewPlugin } from "../plugins/review/host.ts";
@@ -88,6 +88,15 @@ const savedTour: SavedTour = {
   createdAt: 5,
   tour: { folder: "/tmp/p", changes: null, summary: "Serves.", flow: [{ title: "Entry", at: { path: "a.ts", line: 1, endLine: 1 }, say: "Starts.", excerpt: [] }], files: [] } as unknown as Tour,
 };
+
+describe("a review's verdict in brief, as the canvas bar shows it", () => {
+  test("is its first words, before the reason after a colon or a dash", () => {
+    expect(verdictInBrief('Request changes: "Not recommended" is read as the recommended option.')).toBe("Request changes");
+    expect(verdictInBrief("Approve — a small, correct CSS fix.")).toBe("Approve");
+    expect(verdictInBrief("Approve.")).toBe("Approve.");
+    expect(verdictInBrief(": nothing before the colon")).toBe(": nothing before the colon");
+  });
+});
 
 describe("tours saved before tours came from the review plugin", () => {
   test("become the plugin's items, as they were, changed now", () => {

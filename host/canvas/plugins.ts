@@ -138,12 +138,13 @@ export class CanvasPlugins {
   /** An item as the canvas lists it: what its plugin makes of it, e.g. without a run Mirador's restart cut short. */
   listed(item: PluginCanvasItem): PluginCanvasItem {
     const type = this.plugins.find(({ manifest }) => manifest.name === item.plugin)?.host.items[item.type];
-    if (!type?.listed) return item;
+    if (!type) return item;
     try {
-      const data = type.listed(pluginItemOf(item));
-      if (data === item.data) return item;
+      const data = type.listed ? type.listed(pluginItemOf(item)) : item.data;
       const { outcome: _, ...withoutOutcome } = item;
-      return { ...withoutOutcome, data, ...shownOf(type, data), updatedAt: Date.now() };
+      const shown = { ...withoutOutcome, data, ...shownOf(type, data) };
+      if (data !== item.data) return { ...shown, updatedAt: Date.now() };
+      return shown.outcome === item.outcome && shown.count === item.count ? item : shown;
     } catch (error) {
       console.error(`${new Date().toISOString()} the ${item.plugin} plugin failed to list ${item.id}:`, error);
       return item;

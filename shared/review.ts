@@ -194,6 +194,9 @@ export interface TourChanges {
 
 export const answersOf = (review: Review) => review.answers ?? [];
 
+/** The verdict's first words, before its reason: "Request changes" of "Request changes: the fallback skips auth.". */
+export const verdictInBrief = (verdict: string) => verdict.split(/:|\s[—–]\s/)[0]!.trim() || verdict;
+
 const shortCommit = (commit: string) => commit.slice(0, 10);
 
 /** Why the review cannot be posted once its pull request moved on to another head. */

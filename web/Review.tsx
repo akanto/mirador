@@ -510,11 +510,14 @@ function GitHubCliHint({ problem, host, checking, onCheckAgain }: { problem: Git
   );
 }
 
+/** No finding or answer to post, now or later, and nothing posted yet to point to. */
+const hasNothingToPost = (review: Review) => review.findings.length === 0 && answersOf(review).length === 0 && !review.pendingReviewUrl;
+
 function PostPanel({ item }: { item: ReviewItem }) {
   const { review } = item;
   const gitHubCli = useGitHubCliProblem(item.id, review.pullRequest !== null);
   const host = useWalkthroughHost();
-  if (!review.pullRequest) return null;
+  if (!review.pullRequest || hasNothingToPost(review)) return null;
   const kept = review.findings.filter((finding) => finding.decision === "keep" && !finding.postedAs);
   const toPost = kept.filter((finding) => isCommentable(fileOf(review, finding.at.path), finding.at));
   const posted = review.findings.filter((finding) => finding.postedAs).length;

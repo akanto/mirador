@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import type { CanvasActionContext, CanvasPluginContext, CanvasTool, PluginItem, PluginItemType } from "../../shared/canvas-plugins.ts";
-import { anchorLabel, answersOf, findingSeverities, isCommentable, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
+import { anchorLabel, answersOf, findingSeverities, isCommentable, verdictInBrief, type Review, type ReviewAnswer, type ReviewFinding } from "../../shared/review.ts";
 import type { WalkthroughAction } from "../../shared/walkthrough-actions.ts";
 import { answersToConversations } from "../../host/review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../../host/review/carry-over.ts";
@@ -303,7 +303,7 @@ export function codeReviews(gh: GitHubCli) {
   const reviewType: PluginItemType<Review> = {
     icon: "⇄",
     placement: "page",
-    outcome: (review) => review.verdict,
+    outcome: (review) => (review.verdict ? verdictInBrief(review.verdict) : undefined),
     opensWithRoom: true,
     /** A host that stopped while posting a review left it marked as posting; a client may still hold it so. */
     listed: ({ id, data: review }) => (review.posting && !beingPosted.has(id) ? { ...review, posting: false } : review),
