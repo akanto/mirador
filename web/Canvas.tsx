@@ -804,7 +804,7 @@ export function CanvasPanel({
       ? [
           { label: `History (${pages.length})`, checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
           { label: "Clear", disabled: !somethingElseShown && !checklistOpen, onChoose: clear },
-          ...(shownPage ? [{ label: "Point", checked: pageMarks.pointing, separatorBefore: true, onChoose: () => pageMarks.point(!pageMarks.pointing) }] : []),
+          ...(shownPage ? [{ label: "Point and ask", checked: pageMarks.pointing, separatorBefore: true, onChoose: () => pageMarks.point(!pageMarks.pointing) }] : []),
           ...pageExport.entries.map((entry, index) => (index === 0 ? { ...entry, separatorBefore: true } : entry)),
         ]
       : []),
@@ -887,7 +887,7 @@ export function CanvasPanel({
             data-hint={hints.canvasPoint}
             onClick={() => pageMarks.point(!pageMarks.pointing)}
           >
-            Point
+            Point and ask
           </button>
         )}
         {shownPage && <BarMenu className="page-export" label="Export ▾" menuName="Export the page" hint={hints.canvasPageExport} entries={pageExport.entries} />}

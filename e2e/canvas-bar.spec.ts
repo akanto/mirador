@@ -47,15 +47,16 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
   await expect(bar(page).locator(".canvas-title")).toHaveText("Sales by region, quarter by quarter");
 
   await test.step("with room, every button shows and there is no More", async () => {
-    expect(await barState(page)).toMatchObject({ fold: 0, fits: true });
+    await moveDividerBy(page, -2 * 80);
+    await expect.poll(async () => await barState(page)).toMatchObject({ fold: 0, fits: true });
     await expect(more(page)).toBeHidden();
     await expect(bar(page).getByRole("button", { name: "Export ▾" })).toBeVisible();
-    await expect(bar(page).getByRole("button", { name: "Point" })).toBeVisible();
+    await expect(bar(page).getByRole("button", { name: "Point and ask" })).toBeVisible();
   });
 
   const seen: Awaited<ReturnType<typeof barState>>[] = [];
   await test.step("narrowing the pane down to its least width folds the least used buttons first, and the bar always fits", async () => {
-    for (let step = 0; step < 12; step++) {
+    for (let step = 0; step < 14; step++) {
       await moveDividerBy(page, 80);
       seen.push(await barState(page));
     }
@@ -77,7 +78,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
       "Checklist 0/1",
       "History (1)",
       "Clear",
-      "Point",
+      "Point and ask",
       "Copy as image",
       "Copy HTML",
       "Ask agent for Markdown",
@@ -98,12 +99,12 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
     await page.keyboard.press("Escape");
     await expect(page.locator(".page-save")).toHaveCount(0);
 
-    await chooseFromMore(page, "Point");
+    await chooseFromMore(page, "Point and ask");
     await more(page).click();
-    await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Point" })).toHaveAttribute("aria-checked", "true");
-    await moreMenu(page).getByRole("menuitemcheckbox", { name: "Point" }).click();
+    await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Point and ask" })).toHaveAttribute("aria-checked", "true");
+    await moreMenu(page).getByRole("menuitemcheckbox", { name: "Point and ask" }).click();
     await more(page).click();
-    await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Point" })).toHaveAttribute("aria-checked", "false");
+    await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Point and ask" })).toHaveAttribute("aria-checked", "false");
     await page.keyboard.press("Escape");
 
     await chooseFromMore(page, "History (1)");
@@ -134,7 +135,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
   });
 
   await test.step("widening the pane again unfolds them", async () => {
-    await moveDividerBy(page, -12 * 80);
+    await moveDividerBy(page, -14 * 80);
     await expect.poll(async () => (await barState(page)).fold).toBe(0);
     await expect(more(page)).toBeHidden();
     await expect(bar(page).locator(".checklist-toggle")).toHaveText("Checklist 1/1");
