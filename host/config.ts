@@ -5,6 +5,8 @@ import type { PublicAddress } from "../shared/model.ts";
 import { RELEASES_REPOSITORY } from "../shared/newer-version.ts";
 import { relayPorts } from "../shared/relay-ports.ts";
 
+const PLUGIN_CATALOG_URL = "https://raw.githubusercontent.com/sodre90/mirador-plugins/main/index.json";
+
 /** Other devices reach the host over HTTPS on these ports of every network it is on. */
 export interface NetworkListening {
   port: number;
@@ -52,6 +54,8 @@ export interface HostConfig {
   checksForNewerVersion: boolean;
   /** Where a release finds the latest published release; e2e points it at a fake. */
   latestReleaseUrl: string;
+  /** Where the catalog of official plugins is; MIRADOR_PLUGIN_CATALOG=off, as test hosts have it unless a spec gives one, fetches none. */
+  pluginCatalogUrl: string | null;
   /** Where setting up voice on this Mac downloads its models: Hugging Face, or e2e's fake of it. */
   voiceModelsUrl: string;
   /** e2e's stand-in for the speech engine's Python, on machines without MLX. */
@@ -200,6 +204,7 @@ export function loadConfig(env = process.env): HostConfig {
     runsUserStatusLine: env.MIRADOR_STATUSLINE !== "off",
     checksForNewerVersion: env.MIRADOR_NEWER_VERSION_CHECK !== "off",
     latestReleaseUrl: env.MIRADOR_LATEST_RELEASE_URL ?? `https://api.github.com/repos/${RELEASES_REPOSITORY}/releases/latest`,
+    pluginCatalogUrl: env.MIRADOR_PLUGIN_CATALOG === "off" ? null : (env.MIRADOR_PLUGIN_CATALOG ?? PLUGIN_CATALOG_URL),
     voiceModelsUrl: env.MIRADOR_VOICE_MODELS_URL ?? "https://huggingface.co",
     voiceEnginePython: env.MIRADOR_VOICE_PYTHON ?? null,
     voiceEngineMemoryBytes: env.MIRADOR_VOICE_MEMORY_GB ? Number(env.MIRADOR_VOICE_MEMORY_GB) * 2 ** 30 : null,

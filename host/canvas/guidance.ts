@@ -1,3 +1,5 @@
+import type { CatalogPlugin } from "../../shared/apps.ts";
+
 /** What the loaded canvas plugins add to what agents are told and allowed: their tools, and a line each of guidance. */
 export interface CanvasPluginGuidance {
   toolNames: string[];
@@ -6,6 +8,18 @@ export interface CanvasPluginGuidance {
 }
 
 export const NO_CANVAS_PLUGINS: CanvasPluginGuidance = { toolNames: [], instructions: [], often: [] };
+
+/** The tool through which the agent installs an official plugin it recommended, once the user says yes. */
+export const PLUGIN_INSTALL_TOOL = "plugin_install";
+
+/** Official plugins not installed yet, for the agent to recommend when one would help. */
+export const offeredPluginsGuidance = (offered: CatalogPlugin[]) =>
+  offered.length === 0
+    ? []
+    : [
+        `- ${PLUGIN_INSTALL_TOOL}: official Mirador plugins the user hasn't installed. When one would help with what the user is doing, recommend it in a sentence; if they want it, call ${PLUGIN_INSTALL_TOOL}, which asks them before installing anything:`,
+        ...offered.map(({ name, title, description, recommendWhen }) => `  - ${name} (${title}): ${description} Recommend it when ${recommendWhen}.`),
+      ];
 
 const linesAfter = (lines: string[]) => lines.map((line) => `\n${line}`).join("");
 

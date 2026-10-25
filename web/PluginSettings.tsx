@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { settingValue, type PluginCommit, type PluginInfo, type PluginSettings as SettingsOfPlugin, type PluginSource } from "../shared/apps.ts";
+import { settingValue, type CatalogPlugin, type PluginCommit, type PluginInfo, type PluginSettings as SettingsOfPlugin, type PluginSource } from "../shared/apps.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
@@ -160,6 +160,37 @@ function PluginRow({ plugin }: { plugin: PluginInfo }) {
   );
 }
 
+function OfficialPluginRow({ plugin, installed }: { plugin: CatalogPlugin; installed: boolean }) {
+  const [installing, setInstalling] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const { repo } = plugin;
+  const install = async () => {
+    if (!repo) return;
+    setInstalling(true);
+    setProblem(await changePlugins((requestId) => ({ type: "plugins.add", requestId, url: repo, branch: plugin.branch ?? null })));
+    setInstalling(false);
+  };
+  return (
+    <li>
+      <span className="plugin-title">{plugin.title}</span>
+      <span className="plugin-name">{plugin.name}</span>
+      <span className="plugin-source">{plugin.description}</span>
+      <span className="plugin-actions">
+        {plugin.comesWithMirador ? (
+          <span className="plugin-status">Comes with Mirador</span>
+        ) : installed ? (
+          <span className="plugin-status">Installed</span>
+        ) : (
+          <button type="button" data-hint={hints.installOfficialPlugin} disabled={installing} onClick={install}>
+            {installing ? "Cloning and building…" : "Install"}
+          </button>
+        )}
+      </span>
+      {problem && <pre className="plugin-output">{problem}</pre>}
+    </li>
+  );
+}
+
 function AddPlugin() {
   const [url, setUrl] = useState("");
   const [branch, setBranch] = useState("");
@@ -228,6 +259,17 @@ export function PluginSettings() {
         {listed?.plugins.map((plugin) => <PluginRow key={`${plugin.source.kind === "shipped" ? "shipped" : "installed"}/${plugin.folder}`} plugin={plugin} />)}
         {listed?.plugins.length === 0 && <li className="plugin-none">No plugin is installed.</li>}
       </ul>
+      {listed?.official && listed.official.length > 0 && (
+        <>
+          <h3>Official plugins</h3>
+          <p className="hint">The plugins made for Mirador. An agent recommends one when it would help, and installs it only when you say so.</p>
+          <ul className="plugin-list" aria-label="Official plugins">
+            {listed.official.map((plugin) => (
+              <OfficialPluginRow key={plugin.name} plugin={plugin} installed={listed.plugins.some(({ name }) => name === plugin.name)} />
+            ))}
+          </ul>
+        </>
+      )}
       <h3>Add a plugin from a git repo</h3>
       <p className="hint">
         Its code runs inside Mirador with your permissions, and adding it runs the build command its plugin.json names. Add only repos you trust. A

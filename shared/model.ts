@@ -606,6 +606,8 @@ export interface AskItem extends CanvasItemBase {
   answer?: CanvasAnswer;
   /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */
   shownBefore?: string[];
+  /** The official plugin Mirador installs when the user answers Install. */
+  installsPlugin?: string;
 }
 
 /** A review as the walkthrough view draws it; the code review plugin keeps reviews as its items. */

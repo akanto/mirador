@@ -70,7 +70,7 @@ export class CanvasService {
     return { item, render };
   }
 
-  openAsk(conversationId: string, request: AskRequest): AskItem {
+  openAsk(conversationId: string, request: AskRequest, { installsPlugin }: { installsPlugin?: string } = {}): AskItem {
     const shownBefore = this.pagesShownSinceUserSpoke(conversationId).map(({ id }) => id);
     const asked = "questions" in request ? severalQuestionsAsked(request.questions) : singleQuestionAsked(request);
     const item = this.save({
@@ -79,6 +79,7 @@ export class CanvasService {
       kind: "ask",
       ...asked,
       ...(shownBefore.length > 0 && { shownBefore }),
+      ...(installsPlugin && { installsPlugin }),
       status: "waiting",
       createdAt: Date.now(),
     });
@@ -117,7 +118,20 @@ export class CanvasService {
     this.answerWaiters.delete(itemId);
     this.save({ ...item, status: "answered", answer: { ...given, deliveredAs: waiter ? "tool-result" : "next-message" } });
     if (waiter) waiter.answered(given);
+    else if (item.installsPlugin) void this.installThenTell(item, item.installsPlugin, given);
     else this.conversations.send(item.conversationId, answerAsMessage(item, given)).catch(() => {});
+  }
+
+  private installPlugin: (name: string) => Promise<string> = async () => "Mirador can't install plugins here.";
+
+  /** How an official plugin is installed once the user says so: resolves to what came of it, in words for the agent. */
+  installsPluginsWith(install: (name: string) => Promise<string>) {
+    this.installPlugin = install;
+  }
+
+  private async installThenTell(item: AskItem, plugin: string, given: GivenAnswer) {
+    const outcome = given.label === INSTALL_ANSWER ? await this.installPlugin(plugin) : "Nothing was installed.";
+    await this.conversations.send(item.conversationId, `${answerAsMessage(item, given)}\n${outcome}`).catch(() => {});
   }
 
   /** What the canvas has for the agent to hear of with the user's next message. */
@@ -259,6 +273,9 @@ export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
   }
   return [`The user chose: ${label}`, ...noteLine(note, "Their note: ")].join("\n");
 }
+
+/** The answer to an install question that has Mirador install the plugin. */
+export const INSTALL_ANSWER = "Install";
 
 function answerAsMessage(item: AskItem, { label, note, answers }: GivenAnswer) {
   if (answers) {

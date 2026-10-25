@@ -7,6 +7,7 @@ import { loadPlugins } from "../host/apps/plugins.ts";
 import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.ts";
 import type { PluginCanvasItem } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
+import type { PluginCatalog } from "../host/plugin-catalog.ts";
 import { canvasPluginHost, storeWithConversation } from "./canvas-plugin-host.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "canvas-plugins");
@@ -25,6 +26,19 @@ describe("CanvasPlugins", () => {
     expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("\"change some answers\" as options.\n- show_card: show a card the user can press.\n\nRendering environment:");
     expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- show_card: when a card says it better than words.\n- Keep pages lean");
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__show_card");
+  });
+
+  test("official plugins not installed join the guidance, with the tool that installs one, pre-allowed since it asks the user first", async () => {
+    const { plugins } = await setUp();
+    const offered = [{ name: "media", title: "Media", description: "Edit a video.", recommendWhen: "the user edits a video", repo: "https://example.com/media.git" }];
+    plugins.offersFrom({ notInstalled: () => offered } as unknown as PluginCatalog);
+    const { guidance } = plugins;
+    expect(guidance.toolNames.at(-1)).toBe("plugin_install");
+    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("- show_card: show a card the user can press.\n- plugin_install: official Mirador plugins");
+    expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__plugin_install");
+
+    plugins.offersFrom({ notInstalled: () => [] } as unknown as PluginCatalog);
+    expect(plugins.guidance.toolNames).not.toContain("plugin_install");
   });
 
   test("a tool publishes an item, and another changes it in place as the agent's change", async () => {

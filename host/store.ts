@@ -434,6 +434,16 @@ export class Store {
     this.db.query("INSERT INTO plugin_settings (plugin, id, value) VALUES (?, ?, ?) ON CONFLICT (plugin, id) DO UPDATE SET value = excluded.value").run(plugin, id, value);
   }
 
+  /** The last catalog of official plugins Mirador fetched, for while it can't fetch one. */
+  pluginCatalog(): unknown {
+    const saved = this.setting("plugin_catalog");
+    return saved === null ? null : JSON.parse(saved);
+  }
+
+  savePluginCatalog(catalog: unknown) {
+    this.setSetting("plugin_catalog", JSON.stringify(catalog));
+  }
+
   saveAppConversation(workspaceId: string, app: string, conversationId: string) {
     this.db.query("INSERT OR IGNORE INTO app_conversations (workspace_id, app, conversation_id) VALUES (?, ?, ?)").run(workspaceId, app, conversationId);
   }

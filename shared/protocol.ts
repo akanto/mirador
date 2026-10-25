@@ -33,7 +33,7 @@ import type {
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { PageLibraries } from "./canvas-export.ts";
-import type { AppDocumentState, AppStorageItems, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings } from "./apps.ts";
+import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -414,7 +414,8 @@ export type ServerMessage =
   /** thisDeviceId is the device the receiving page signed in as; null when it signed in with the host's own link. */
   | { type: "devices.listed"; devices: ListedDevice[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
   /** `folder` is where plugins are installed; `restartNeeded` once a plugin was added, updated or removed since Mirador started. */
-  | { type: "plugins.listed"; folder: string; plugins: PluginInfo[]; restartNeeded: boolean }
+  /** `official` is the catalog of official plugins; missing from a host older than it. */
+  | { type: "plugins.listed"; folder: string; plugins: PluginInfo[]; official?: CatalogPlugin[]; restartNeeded: boolean }
   /** Where the views are served now, after an installed plugin's view was built again. */
   | { type: "plugins.views"; installedApps: InstalledApp[]; canvasViews: Record<string, string> }
   /** Every plugin's settings, whenever the user chooses one. */

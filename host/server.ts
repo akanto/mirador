@@ -31,6 +31,7 @@ import { AppStorage } from "./apps/storage.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
 import type { PluginSettingsStore } from "./plugin-settings.ts";
+import { pluginsListed as listedPlugins, type PluginCatalog } from "./plugin-catalog.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
 import { OutsideWorkspace } from "./changes.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
@@ -81,6 +82,7 @@ export interface HostServices {
   plugins: InstalledPlugins;
   canvasPlugins: CanvasPlugins;
   pluginSettings: PluginSettingsStore;
+  catalog: PluginCatalog;
   profiles: ProfileService;
   statusline: StatuslineService;
   terminals: TerminalService;
@@ -157,6 +159,7 @@ export function startServer(services: HostServices) {
     plugins,
     canvasPlugins,
     pluginSettings,
+    catalog,
     profiles,
     statusline,
     terminals,
@@ -341,7 +344,7 @@ export function startServer(services: HostServices) {
     reachability: reachabilitySettings(),
   });
   const sendDevicesToEveryPage = () => hub.sendEach(devicesListed);
-  const pluginsListed = async (): Promise<ServerMessage> => ({ type: "plugins.listed", folder: plugins.folder, plugins: await plugins.list(), restartNeeded: plugins.restartNeeded });
+  const pluginsListed = () => listedPlugins(plugins, catalog);
 
   /** Answers whoever asked for the change, then shows the plugins as they are now on every page. */
   async function changePlugins(socket: BrowserSocket, requestId: string, change: () => Promise<unknown>) {
@@ -1156,6 +1159,9 @@ export function startServer(services: HostServices) {
         }
       case "plugins.list":
         return void pluginsListed()
+          .then((listed) => hub.send(socket, listed))
+          .then(() => catalog.refresh())
+          .then(pluginsListed)
           .then((listed) => hub.send(socket, listed))
           .catch((error) => console.warn(`Listing the plugins failed: ${messageOf(error)}`));
       case "plugins.add":

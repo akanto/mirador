@@ -372,7 +372,8 @@ Windows support is new and experimental: expect rough edges, and please report w
 - **Conversations**: *Sending while the agent works* (Enter or ⌥Enter to steer), prompt templates, macOS typing aids, and the program scripts open in from file links.
 - **Agents**: which Claude Code program the host runs, when not the one it finds.
 - **Terminal**: font size and copy on select.
-- **Canvas**: how often Claude Code uses it, where reviews open, and whether edits waiting for approval show on it.
+- **Canvas**: how often Claude Code uses it, and whether edits waiting for approval show on it.
+- **Plugins**: the plugins Mirador comes with and the ones you installed, each with its own settings, such as where reviews open, kept on the host. *Official plugins* lists the plugins of [mirador-plugins](https://github.com/sodre90/mirador-plugins), fetched when the page opens, with *Install* for the ones you don't have. An agent recommends one when it would help, and installs it only once you answer *Install* to its question; Mirador uses a new plugin from its next start.
 - **Voice**: speech recognition, the voice model and the reply voice, each on this Mac, on a server of your own, or off (the voice model can also go through a profile); the language you speak, *Translate into English*, *Send right away* and *Keep talking*; the models on this Mac. See [Voice](#voice).
 - **Layout**: the default arrangement for new conversations, and whether the canvas and terminals start hidden.
 - **Devices** and **Notifications**, as above.

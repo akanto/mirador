@@ -4,7 +4,8 @@ import type { PluginCanvasItem } from "../../shared/model.ts";
 import { canvasViewPath, messageOf, type CanvasPlugin } from "../apps/plugins.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
-import type { CanvasPluginGuidance } from "./guidance.ts";
+import type { PluginCatalog } from "../plugin-catalog.ts";
+import { offeredPluginsGuidance, PLUGIN_INSTALL_TOOL, type CanvasPluginGuidance } from "./guidance.ts";
 import type { CanvasNote } from "./notes.ts";
 
 /** With tool search on, Claude Code hides MCP tools until the agent searches for them; a plugin's tools are offered as the canvas's own are. */
@@ -47,10 +48,19 @@ export class CanvasPlugins {
     this.sendPrompt = send;
   }
 
+  private catalog: PluginCatalog | null = null;
+
+  /** Official plugins not installed yet join the guidance, for the agent to recommend. */
+  offersFrom(catalog: PluginCatalog) {
+    this.catalog = catalog;
+  }
+
+  /** As it is when asked: a conversation started after the catalog came, or after an install, hears of it so. */
   get guidance(): CanvasPluginGuidance {
+    const offered = this.catalog?.notInstalled() ?? [];
     return {
-      toolNames: this.plugins.flatMap(({ host }) => Object.keys(host.tools)),
-      instructions: this.plugins.flatMap(({ host }) => host.guidance?.instructions ?? []),
+      toolNames: [...this.plugins.flatMap(({ host }) => Object.keys(host.tools)), ...(offered.length > 0 ? [PLUGIN_INSTALL_TOOL] : [])],
+      instructions: [...this.plugins.flatMap(({ host }) => host.guidance?.instructions ?? []), ...offeredPluginsGuidance(offered)],
       often: this.plugins.flatMap(({ host }) => host.guidance?.often ?? []),
     };
   }

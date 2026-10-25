@@ -166,6 +166,37 @@ export interface PluginInfo {
   waitsForRestart: boolean;
 }
 
+/** An official plugin, as the catalog of Mirador's plugins lists it. */
+export interface CatalogPlugin {
+  name: string;
+  title: string;
+  description: string;
+  /** When an agent should offer it, completing "Recommend it when …". */
+  recommendWhen: string;
+  /** What git clones, which the catalog's README asks to be an https URL anyone can clone; none for a plugin that comes with Mirador. */
+  repo?: string;
+  branch?: string;
+  comesWithMirador?: boolean;
+}
+
+function isCatalogPlugin(value: unknown): value is CatalogPlugin {
+  if (typeof value !== "object" || value === null) return false;
+  const { name, title, description, recommendWhen, repo, branch, comesWithMirador } = value as Partial<CatalogPlugin>;
+  return (
+    typeof name === "string" &&
+    /^[a-z0-9][a-z0-9-]*$/.test(name) &&
+    [title, description, recommendWhen].every((text) => typeof text === "string" && text !== "") &&
+    (comesWithMirador === true ? repo === undefined : typeof repo === "string" && repo !== "") &&
+    (branch === undefined || typeof branch === "string")
+  );
+}
+
+/** The catalog's plugins, leaving out entries this Mirador can't read, as a newer catalog may have. */
+export function catalogPluginsOf(catalog: unknown): CatalogPlugin[] | null {
+  const plugins = (catalog as { plugins?: unknown } | null)?.plugins;
+  return Array.isArray(plugins) ? plugins.filter(isCatalogPlugin) : null;
+}
+
 /** A commit an update would bring. */
 export interface PluginCommit {
   commit: string;

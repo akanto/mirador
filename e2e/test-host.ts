@@ -281,6 +281,7 @@ export class TestHost {
       MIRADOR_TAILSCALE: join(this.root, "no-tailscale-on-this-machine"),
       MIRADOR_STATUSLINE: this.options.runsUserStatusLine ? "on" : "off",
       MIRADOR_NEWER_VERSION_CHECK: "off",
+      MIRADOR_PLUGIN_CATALOG: "off",
       SHELL: this.options.shell ?? defaultShell,
       ...(process.platform === "win32" && { [HOST_RELAUNCH.restartExitCode]: String(HOST_RESTART_EXIT_CODE) }),
       ...(this.options.fakePrograms && withFirstOnPath(this.baseEnvironment(), this.fakeProgramsDir)),
