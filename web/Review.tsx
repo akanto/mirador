@@ -27,8 +27,6 @@ import {
   type Tour,
   type Walkthrough,
 } from "../shared/review.ts";
-import { useEnterWhileBusy } from "./busy-sending.ts";
-import { connection } from "./connection.ts";
 import { highlightRows, type CodeSpan } from "./highlight.ts";
 import { hints } from "./hints.ts";
 import { MarkdownText } from "./Markdown.tsx";
@@ -46,18 +44,17 @@ import {
   type RevealChange,
   type ShownContext,
 } from "./review-context.ts";
-import { DEFAULT_FLOW_BAND_SHARE, DEFAULT_REVIEW_LIST_SHARE, useReviewPaneShares, type ReviewPaneShares } from "./paneLayouts.ts";
+import { DEFAULT_FLOW_BAND_SHARE, DEFAULT_REVIEW_LIST_SHARE } from "./paneLayouts.ts";
 import { ReviewFindBar, useReviewFind } from "./ReviewFind.tsx";
 import { isMac, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { Splitter, type SplitAxis } from "./Splitter.tsx";
-import { useTypingAidAttributes } from "./typing-aids.ts";
-import { usePaneFullscreen } from "./Workspace.tsx";
+import { useWalkthroughHost, WalkthroughHostContext, type PlaceInWalkthrough, type WalkthroughHost, type WalkthroughPaneShares, type WalkthroughTab } from "./walkthrough-host.ts";
 
 type WalkthroughItem = ReviewItem | TourItem;
 
 const isReviewItem = (item: WalkthroughItem) => item.kind === "review";
 
-type Tab = "overview" | "flow" | "files" | "findings" | "conversations";
+type Tab = WalkthroughTab;
 
 const tabs: { id: Tab; label: string; key: string }[] = [
   { id: "overview", label: "Overview", key: "1" },
@@ -170,10 +167,6 @@ export function CodeText({ text, spans }: { text: string; spans: CodeSpan[] | un
   );
 }
 
-function openInEditor(itemId: string, path: string, line: number) {
-  connection.send({ type: "review.open-in-editor", itemId, path, line });
-}
-
 function CodeBlock({
   blockId,
   path,
@@ -264,9 +257,9 @@ function FindingCard({
   const { review } = item;
   const [editing, setEditing] = useState(false);
   const agentEdited = useAgentEdited(review.agentEdit, finding.id);
+  const host = useWalkthroughHost();
   const file = fileOf(review, finding.at.path);
-  const update = (change: { decision?: FindingDecision; body?: string }) =>
-    connection.send({ type: "review.update-finding", itemId: item.id, findingId: finding.id, ...change });
+  const update = (change: { decision?: FindingDecision; body?: string }) => host.updateFinding(finding.id, change);
   const posted = Boolean(finding.postedAs);
   const save = (body: string) => {
     update({ body });
@@ -330,7 +323,7 @@ function FindingCard({
         <button type="button" className="link" onClick={onAsk}>
           Ask
         </button>
-        <button type="button" className="link" onClick={() => openInEditor(item.id, finding.at.path, finding.at.line)}>
+        <button type="button" className="link" onClick={() => host.openInEditor(finding.at.path, finding.at.line)}>
           Open in IDEA
         </button>
       </footer>
@@ -342,7 +335,7 @@ function FindingCard({
 function BodyEditor({ body, onSave, onCancel }: { body: string; onSave: (body: string) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState(body);
   const [startedFrom, setStartedFrom] = useState(body);
-  const typingAidAttributes = useTypingAidAttributes();
+  const typingAidAttributes = useWalkthroughHost().typingAidAttributes;
   const startFrom = (text: string) => {
     setDraft(text);
     setStartedFrom(text);
@@ -376,8 +369,8 @@ function BodyEditor({ body, onSave, onCancel }: { body: string; onSave: (body: s
 function AnswerCard({ item, answer, selected }: { item: ReviewItem; answer: ReviewAnswer; selected: boolean }) {
   const [editing, setEditing] = useState(false);
   const agentEdited = useAgentEdited(item.review.agentEdit, answer.id);
-  const update = (change: { decision?: FindingDecision; body?: string; resolve?: boolean }) =>
-    connection.send({ type: "review.update-answer", itemId: item.id, answerId: answer.id, ...change });
+  const host = useWalkthroughHost();
+  const update = (change: { decision?: FindingDecision; body?: string; resolve?: boolean }) => host.updateAnswer(answer.id, change);
   const posted = Boolean(answer.postedAs);
   const save = (body: string) => {
     update({ body });
@@ -458,12 +451,9 @@ function FindingStatus({ review, finding, file }: { review: Review; finding: Rev
 const gitHubCliChecks = new Map<string, Promise<GitHubCliProblem | null>>();
 
 /** Whether gh can post this review, asked of the host once per review until the user checks again. */
-function gitHubCliCheck(itemId: string) {
+function gitHubCliCheck(itemId: string, host: WalkthroughHost) {
   if (!gitHubCliChecks.has(itemId)) {
-    const check = connection.sendAndAwait(
-      (requestId) => ({ type: "review.check-github-cli", requestId, itemId }),
-      (message, requestId) => (message.type === "review.github-cli-checked" && message.requestId === requestId ? message.problem : undefined),
-    );
+    const check = host.checkGitHubCli();
     check.catch(() => gitHubCliChecks.delete(itemId));
     gitHubCliChecks.set(itemId, check);
   }
@@ -471,6 +461,7 @@ function gitHubCliCheck(itemId: string) {
 }
 
 function useGitHubCliProblem(itemId: string, postsToGitHub: boolean) {
+  const host = useWalkthroughHost();
   const [problem, setProblem] = useState<GitHubCliProblem | null>(null);
   const [checking, setChecking] = useState(false);
   const [round, setRound] = useState(0);
@@ -478,7 +469,7 @@ function useGitHubCliProblem(itemId: string, postsToGitHub: boolean) {
     if (!postsToGitHub) return;
     let current = true;
     setChecking(true);
-    gitHubCliCheck(itemId)
+    gitHubCliCheck(itemId, host)
       .then((found) => current && setProblem(found))
       .catch(() => {})
       .finally(() => current && setChecking(false));
@@ -521,6 +512,7 @@ function GitHubCliHint({ problem, host, checking, onCheckAgain }: { problem: Git
 function PostPanel({ item }: { item: ReviewItem }) {
   const { review } = item;
   const gitHubCli = useGitHubCliProblem(item.id, review.pullRequest !== null);
+  const host = useWalkthroughHost();
   if (!review.pullRequest) return null;
   const kept = review.findings.filter((finding) => finding.decision === "keep" && !finding.postedAs);
   const toPost = kept.filter((finding) => isCommentable(fileOf(review, finding.at.path), finding.at));
@@ -568,7 +560,7 @@ function PostPanel({ item }: { item: ReviewItem }) {
       {review.pullRequestMovedOn ? (
         <PullRequestMovedOnNote item={item} pullRequest={review.pullRequest} movedOn={review.pullRequestMovedOn} />
       ) : toPost.length + answersToPost.length > 0 || review.posting ? (
-        <button type="button" className="primary" disabled={review.posting || gitHubCli.problem !== null} onClick={() => connection.send({ type: "review.post", itemId: item.id })}>
+        <button type="button" className="primary" disabled={review.posting || gitHubCli.problem !== null} onClick={() => host.post()}>
           {review.posting ? "Posting…" : `Post ${findingsAndAnswers(toPost.length, answersToPost.length)} to the pull request`}
         </button>
       ) : (
@@ -589,6 +581,7 @@ function PostPanel({ item }: { item: ReviewItem }) {
 
 /** In place of Post, which GitHub would refuse: the agent can review the head the pull request moved on to. */
 function PullRequestMovedOnNote({ item, pullRequest, movedOn }: { item: ReviewItem; pullRequest: PullRequestRef; movedOn: PullRequestMovedOn }) {
+  const host = useWalkthroughHost();
   return (
     <>
       <p className="hint">
@@ -600,7 +593,7 @@ function PullRequestMovedOnNote({ item, pullRequest, movedOn }: { item: ReviewIt
       {movedOn.askedToReviewAgain ? (
         <p className="posted-note">{ASKED_TO_REVIEW_AGAIN}</p>
       ) : (
-        <button type="button" className="primary" onClick={() => connection.send({ type: "review.review-again", itemId: item.id })}>
+        <button type="button" className="primary" onClick={() => host.reviewAgain()}>
           Review again
         </button>
       )}
@@ -744,7 +737,7 @@ function ReviewSplit({
   children: [list, main],
 }: {
   className: string;
-  shares: ReviewPaneShares;
+  shares: WalkthroughPaneShares;
   resizesBand?: boolean;
   children: [ReactNode, ReactNode];
 }) {
@@ -799,7 +792,7 @@ function FlowTour({
 }: {
   itemId: string;
   walk: Walkthrough;
-  shares: ReviewPaneShares;
+  shares: WalkthroughPaneShares;
   agentEdit: Review["agentEdit"];
   stepIndex: number;
   onStep: (index: number) => void;
@@ -809,6 +802,7 @@ function FlowTour({
 }) {
   const step = walk.flow[stepIndex];
   const tourEdited = useAgentEdited(agentEdit, "flow");
+  const host = useWalkthroughHost();
   if (!step) return <p className="review-empty">The agent described no code flow.</p>;
   return (
     <ReviewSplit className={`flow-tour ${tourEdited ? "agent-edited" : ""}`} shares={shares} resizesBand>
@@ -835,7 +829,7 @@ function FlowTour({
             <button type="button" className="link anchor" onClick={() => onGoToCode(step.at)}>
               {anchorLabel(step.at)}
             </button>
-            <button type="button" className="link" onClick={() => openInEditor(itemId, step.at.path, step.at.line)}>
+            <button type="button" className="link" onClick={() => host.openInEditor(step.at.path, step.at.line)}>
               Open in IDEA
             </button>
           </header>
@@ -883,7 +877,7 @@ function FileList({
   matchCounts: Map<string, number>;
 }) {
   const [filter, setFilter] = useState("");
-  const typingAidAttributes = useTypingAidAttributes();
+  const typingAidAttributes = useWalkthroughHost().typingAidAttributes;
   const tourPaths = new Set(walk.flow.map((step) => step.at.path));
   const shown = files.filter((file) => file.path.toLowerCase().includes(filter.trim().toLowerCase()));
   const openFirstOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -943,17 +937,10 @@ function FileList({
 export const reviewedFiles = new Map<string, Promise<string[]>>();
 
 /** The reviewed version of a changed file, asked of the host once per review and file. */
-export function reviewedFile(itemId: string, path: string) {
+export function reviewedFile(itemId: string, path: string, read: (path: string) => Promise<string[]>) {
   const key = `${itemId}:${path}`;
   if (!reviewedFiles.has(key)) {
-    const request = connection.sendAndAwait(
-      (requestId) => ({ type: "review.read-file", requestId, itemId, path }),
-      (message, requestId) => {
-        if (message.type === "review.file-read" && message.requestId === requestId) return message.lines;
-        if (message.type === "review.file-failed" && message.requestId === requestId) throw new Error(message.message);
-        return undefined;
-      },
-    );
+    const request = read(path);
     request.catch(() => reviewedFiles.delete(key));
     reviewedFiles.set(key, request);
   }
@@ -1025,6 +1012,7 @@ export function evictStaleReviewCaches(currentItemId: string) {
 }
 
 function useRevealedContext(itemId: string, file: ReviewFile, onRevealed: () => void) {
+  const host = useWalkthroughHost();
   const key = `${itemId}:${file.path}`;
   const gaps = useMemo(() => gapsOf(file), [file]);
   const [shown, setShown] = useState<ShownContext | null>(() => shownContexts.get(key) ?? null);
@@ -1034,7 +1022,7 @@ function useRevealedContext(itemId: string, file: ReviewFile, onRevealed: () => 
 
   const reveal = async (gapIndex: number, change: RevealChange) => {
     try {
-      const lines = await reviewedFile(itemId, file.path);
+      const lines = await reviewedFile(itemId, file.path, host.readFile);
       const next = {
         fileLines: lines,
         revealed: revealed.map((current, index) => (index === gapIndex ? change(current, hiddenCount(gaps[index]!, current, lines.length) ?? 0) : current)),
@@ -1090,6 +1078,7 @@ function FileDiff({
   onSelect: (selection: LineSelection) => void;
   onRevealed: () => void;
 }) {
+  const host = useWalkthroughHost();
   const { hunkRows, gapRow, lastGap } = useRevealedContext(itemId, file, onRevealed);
   const findings = allFindings.filter((finding) => finding.at.path === file.path);
   const shownLines = new Set(hunkRows.flat().map((row) => row.newLine));
@@ -1117,7 +1106,7 @@ function FileDiff({
         <span className="removed-count">−{file.removed}</span>
         <span className="spacer" />
         {file.change !== "deleted" && (
-          <button type="button" className="link" onClick={() => openInEditor(itemId, file.path, lineToOpen(file.hunks[hunkIndex]?.rows ?? []))}>
+          <button type="button" className="link" onClick={() => host.openInEditor(file.path, lineToOpen(file.hunks[hunkIndex]?.rows ?? []))}>
             Open in IDEA
           </button>
         )}
@@ -1153,7 +1142,7 @@ function AskAboutLines({
   onClose: () => void;
 }) {
   const [question, setQuestion] = useState("");
-  const typingAidAttributes = useTypingAidAttributes();
+  const typingAidAttributes = useWalkthroughHost().typingAidAttributes;
   const { primary } = keyLabels();
   const sendOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -1219,25 +1208,22 @@ function useScrollIntoView(
   }, [when]);
 }
 
-/** Where the user was in a review or tour: its conversation shows it as they left it when they come back, while the page stays open. */
-type PlaceInWalkthrough = {
-  tab: Tab;
-  stepIndex: number;
-  path: string | null;
-  hunkIndex: number;
-  findingId: string | null;
-  answerId: string | null;
-  /** How far each scrolling part of a tab was scrolled, by its class. */
-  scrolled: Partial<Record<Tab, Record<string, number>>>;
-};
-const placesInWalkthroughs = new Map<string, PlaceInWalkthrough>();
 
 /**
  * A review or a tour as a guided read: the agent's summary, a tour of the code flow and the diff; a review adds the
  * findings on their lines, to keep, drop, edit and post. Keys: 1-5 tabs, ←/→ tour steps, j/k changes, n/p findings,
  * f files, o open in IDEA, a ask the agent about the selected lines.
  */
-export function WalkthroughView({ item, conversationId }: { item: WalkthroughItem; conversationId: string }) {
+export function WalkthroughView({ item, host }: { item: WalkthroughItem; host: WalkthroughHost }) {
+  return (
+    <WalkthroughHostContext.Provider value={host}>
+      <Walkthrough item={item} />
+    </WalkthroughHostContext.Provider>
+  );
+}
+
+function Walkthrough({ item }: { item: WalkthroughItem }) {
+  const host = useWalkthroughHost();
   const reviewItem = isReviewItem(item) ? item : null;
   const review = reviewItem?.review ?? null;
   const walk: Walkthrough = isReviewItem(item) ? item.review : item.tour;
@@ -1246,11 +1232,11 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   const root = useRef<HTMLDivElement>(null);
   const filterField = useRef<HTMLInputElement>(null);
   const files = useMemo(() => filesInReadingOrder(walk), [walk.files, walk.flow]);
-  const [placeLeft] = useState(() => placesInWalkthroughs.get(item.id));
+  const [placeLeft] = useState(host.placeLeft);
   const [scrolled] = useState(() => placeLeft?.scrolled ?? {});
   const [tab, setTab] = useState<Tab>(placeLeft?.tab ?? "overview");
   const [chosenStep, setStepIndex] = useState(placeLeft?.stepIndex ?? 0);
-  const paneShares = useReviewPaneShares();
+  const paneShares = host.paneShares;
   const stepIndex = Math.min(chosenStep, Math.max(walk.flow.length - 1, 0));
   const [path, setPath] = useState<string | null>(placeLeft?.path ?? files[0]?.path ?? null);
   const [hunkIndex, setHunkIndex] = useState(placeLeft?.hunkIndex ?? 0);
@@ -1263,8 +1249,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   const [asking, setAsking] = useState<AskingAbout | null>(null);
   const [sentNote, setSentNote] = useState<string | null>(null);
   const [shownAgentEdits] = useState(() => ({ openedWith: review?.agentEdit?.at, flashed: new Map<string, number>() }));
-  const enterWhileBusy = useEnterWhileBusy();
-  const fullscreen = usePaneFullscreen("canvas");
+  const fullscreen = host.fullscreen;
   const file = files.find((each) => each.path === path) ?? files[0];
   const finding = findings.find(({ id }) => id === findingId);
 
@@ -1277,7 +1262,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
     if (!typingElsewhere) root.current?.focus({ preventScroll: true });
   }, []);
   useEffect(() => {
-    placesInWalkthroughs.set(item.id, { tab, stepIndex: chosenStep, path, hunkIndex, findingId, answerId, scrolled });
+    host.leavePlace({ tab, stepIndex: chosenStep, path, hunkIndex, findingId, answerId, scrolled });
   }, [tab, chosenStep, path, hunkIndex, findingId, answerId]);
   useEffect(() => {
     const view = root.current;
@@ -1319,7 +1304,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   };
   const goToCode = (anchor: CodeAnchor) => {
     const target = fileOf(walk, anchor.path);
-    if (!target) return openInEditor(item.id, anchor.path, anchor.line);
+    if (!target) return host.openInEditor(anchor.path, anchor.line);
     const hunk = target.hunks.findIndex((each) => each.rows.some((row) => isWithin(row.newLine, anchor)));
     showFile(anchor.path, Math.max(0, hunk));
   };
@@ -1393,13 +1378,13 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
   };
   const openCurrentPlace = () => {
     const place = currentPlace();
-    if (place) openInEditor(item.id, place.path, lineToOpen(place.rows));
+    if (place) host.openInEditor(place.path, lineToOpen(place.rows));
   };
-  const send = (question: string, updatesReview: boolean) => {
+  const send = async (question: string, updatesReview: boolean) => {
     if (!asking) return;
     const askedFinding = findings.find(({ id }) => id === asking.findingId);
     const text = questionAbout(item, asking, askedFinding, question, updatesReview);
-    if (!connection.send({ type: "conversation.prompt", conversationId, text, imageIds: [], afterTurn: enterWhileBusy === "after-turn" })) return;
+    if (!(await host.ask(text))) return;
     const updating = updatesReview ? ", and the agent updates the parts of the review it changes" : "";
     setSentNote(`Asked about ${askingLabel(asking)}. The answer comes in the chat${updating}.`);
     setAsking(null);
@@ -1463,7 +1448,7 @@ export function WalkthroughView({ item, conversationId }: { item: WalkthroughIte
               <button type="button" onClick={() => setAsking(selection)}>
                 Ask (a)
               </button>
-              <button type="button" onClick={() => openInEditor(item.id, selection.path, lineToOpen(selection.rows))}>
+              <button type="button" onClick={() => host.openInEditor(selection.path, lineToOpen(selection.rows))}>
                 Open in IDEA (o)
               </button>
             </span>

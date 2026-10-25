@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { connection } from "../web/connection.ts";
 import { evictStaleReviewCaches, reviewedFile, reviewedFiles, shownContexts } from "../web/Review.tsx";
 
 describe("review caches and eviction", () => {
@@ -22,36 +21,20 @@ describe("review caches and eviction", () => {
     expect(Array.from(reviewedFiles.keys())).toEqual(["current:file.ts"]);
   });
 
-  test("reviewedFile caches the in-flight promise and clears it on failure so retrying works", async () => {
-    // When connection is not open, reviewedFile immediately rejects
-    connection.setStatus("connecting");
-
-    const failed = reviewedFile("item-1", "src/index.ts");
+  test("reviewedFile caches the in-flight read and clears it on failure so retrying works", async () => {
+    const failed = reviewedFile("item-1", "src/index.ts", () => Promise.reject(new Error("Not connected to the host.")));
     await expect(failed).rejects.toThrow("Not connected to the host.");
-
-    // The key should have been evicted from reviewedFiles on rejection
     expect(reviewedFiles.has("item-1:src/index.ts")).toBe(false);
 
-    // If connection opens, next call gets a new request instead of the dead rejected promise
-    (connection as unknown as { socket: { readyState: number; send: (raw: string) => void } }).socket = {
-      readyState: 1,
-      send: (raw) => {
-        const message = JSON.parse(raw);
-        if (message.type === "review.read-file") {
-          setTimeout(() => {
-            connection.dispatchMessage({
-              type: "review.file-read",
-              requestId: message.requestId,
-              lines: ["first line", "second line"],
-            });
-          }, 0);
-        }
-      },
+    let reads = 0;
+    const read = async () => {
+      reads += 1;
+      return ["first line", "second line"];
     };
-    connection.setStatus("open");
-
-    const retried = reviewedFile("item-1", "src/index.ts");
+    const retried = reviewedFile("item-1", "src/index.ts", read);
     expect(reviewedFiles.has("item-1:src/index.ts")).toBe(true);
     expect(await retried).toEqual(["first line", "second line"]);
+    expect(await reviewedFile("item-1", "src/index.ts", read)).toEqual(["first line", "second line"]);
+    expect(reads).toBe(1);
   });
 });

@@ -19,7 +19,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
-import { WalkthroughView } from "./Review.tsx";
+import { PanelWalkthrough } from "./PanelWalkthrough.tsx";
 import { currentReviewPlacement, opensWithRoom, takeArrivedReview } from "./review-placement.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
 
@@ -978,10 +978,10 @@ export function CanvasPanel({
         )}
         {!tab && selected?.kind === "plugin" && <PluginItemView key={selected.id} item={selected} viewPath={canvasViews[selected.plugin]} assetsOrigin={assetsOrigin} />}
         {!tab && selected?.kind === "review" && (
-          <WalkthroughView key={selected.id} item={selected} conversationId={selected.conversationId} />
+          <PanelWalkthrough key={selected.id} item={selected} />
         )}
         {!tab && selected?.kind === "tour" && (
-          <WalkthroughView key={selected.id} item={selected} conversationId={selected.conversationId} />
+          <PanelWalkthrough key={selected.id} item={selected} />
         )}
         {!tab && selected?.kind === "ask" && (
           <AskView
