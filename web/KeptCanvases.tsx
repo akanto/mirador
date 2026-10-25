@@ -13,10 +13,10 @@ interface AppsState {
   appDocuments: Record<string, AppDocumentState>;
 }
 
-/** The conversations whose canvas was shown since the canvas pane last appeared, the one shown now included. */
-function useShownSincePaneAppeared(shownId: string) {
-  const [shown, setShown] = useState<ReadonlySet<string>>(() => new Set([shownId]));
-  if (!shown.has(shownId)) setShown(new Set(shown).add(shownId));
+/** The conversations whose canvas was shown, the one shown now included. */
+function useShownOnce(shownId: string | null) {
+  const [shown, setShown] = useState<ReadonlySet<string>>(() => new Set(shownId ? [shownId] : []));
+  if (shownId && !shown.has(shownId)) setShown(new Set(shown).add(shownId));
   return shown;
 }
 
@@ -36,7 +36,7 @@ export function KeptCanvases({
   onHide,
 }: {
   kept: OpenConversation[];
-  shownId: string;
+  shownId: string | null;
   workspaceOf: (conversationId: string) => string | undefined;
   apps: AppsState;
   assetsOrigin: string;
@@ -44,10 +44,10 @@ export function KeptCanvases({
   canvasViews: Record<string, string>;
   onHide: () => void;
 }) {
-  const shownSincePaneAppeared = useShownSincePaneAppeared(shownId);
+  const shownOnce = useShownOnce(shownId);
   const editsInCanvas = useEditsInCanvas();
   return kept
-    .filter(({ conversationId }) => shownSincePaneAppeared.has(conversationId))
+    .filter(({ conversationId }) => shownOnce.has(conversationId))
     .map((open) => (
       <KeptCanvas
         key={open.conversationId}

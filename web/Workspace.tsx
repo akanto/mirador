@@ -154,16 +154,19 @@ function useMovePane(onChange: (update: (layout: PaneLayout) => PaneLayout) => v
 
 /**
  * The workspace's three panes in three places: left, right top and right bottom. They are rendered in a fixed order
- * and only their grid areas change, so moving or hiding one never reloads another (the canvas page, a terminal).
+ * and only their grid areas change, so moving or hiding one never reloads another (the canvas page, a terminal). A pane
+ * hidden with something kept out of sight stays in its place, so showing it again doesn't reload that either.
  */
 export function WorkspaceArea({
   layout,
   onChange,
   content,
+  keptOutOfSight = {},
 }: {
   layout: PaneLayout;
   onChange: (update: (layout: PaneLayout) => PaneLayout) => void;
   content: Record<PaneId, ReactNode | null>;
+  keptOutOfSight?: Partial<Record<PaneId, ReactNode>>;
 }) {
   const area = useRef<HTMLDivElement>(null);
   const shown = { conversation: content.conversation !== null, canvas: content.canvas !== null, terminals: content.terminals !== null };
@@ -196,13 +199,18 @@ export function WorkspaceArea({
   return (
     <PaneControlsContext.Provider value={{ fullscreen, toggleFullscreen, setFullscreen, startMove }}>
       <div ref={area} className="workspace-area" style={{ gridTemplateColumns: columns, gridTemplateRows: rows }} onDoubleClick={fullscreenFromBar}>
-        {paneOrder.map(
-          (pane) =>
-            content[pane] !== null && (
-              <div key={pane} data-pane={pane} className={paneClass(pane)} style={{ gridArea: areas[pane] }} inert={fullscreen !== null && fullscreen !== pane}>
-                {content[pane]}
+        {paneOrder.map((pane) =>
+          content[pane] !== null ? (
+            <div key={pane} data-pane={pane} className={paneClass(pane)} style={{ gridArea: areas[pane] }} inert={fullscreen !== null && fullscreen !== pane}>
+              {content[pane]}
+            </div>
+          ) : (
+            keptOutOfSight[pane] && (
+              <div key={pane} data-pane={pane} className="pane" style={{ display: "none" }} inert>
+                {keptOutOfSight[pane]}
               </div>
-            ),
+            )
+          ),
         )}
         {columnDivider && (
           <Splitter

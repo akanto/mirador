@@ -239,4 +239,21 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#count")).toHaveText("5");
     await expect(view(page).locator("#page-load")).toHaveText(loaded);
   });
+
+  await test.step("hiding the canvas pane and showing it again finds the app's page as it was, its video paused while hidden", async () => {
+    const loaded = (await view(page).locator("#page-load").textContent())!;
+    await view(page).getByRole("button", { name: "Show the clip" }).click();
+    const clip = view(page).locator("#clip");
+    await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
+    await clip.evaluate((video: HTMLVideoElement) => {
+      video.loop = true;
+      return video.play();
+    });
+    await expect.poll(() => clip.evaluate((video: HTMLVideoElement) => video.paused)).toBe(false);
+    await page.locator(".chat-header:visible").getByRole("button", { name: "Hide canvas" }).click();
+    await expect(page.locator(".canvas-panel:visible")).toHaveCount(0);
+    await page.locator(".chat-header:visible").getByRole("button", { name: "Show canvas" }).click();
+    await expect(view(page).locator("#page-load")).toHaveText(loaded);
+    expect(await clip.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+  });
 });

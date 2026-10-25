@@ -12,7 +12,7 @@ test.afterAll(async () => {
 
 type PaneId = "conversation" | "canvas" | "terminals";
 
-const pane = (page: Page, id: PaneId) => page.locator(`[data-pane="${id}"]`);
+const pane = (page: Page, id: PaneId) => page.locator(`[data-pane="${id}"]:visible`);
 const boxOf = async (page: Page, id: PaneId) => (await pane(page, id).boundingBox())!;
 const workspaceBox = async (page: Page) => (await page.locator(".workspace-area").boundingBox())!;
 

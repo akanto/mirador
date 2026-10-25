@@ -449,6 +449,18 @@ export function App() {
   const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId) ?? null;
   const showCanvas = canvasVisible && conversation !== null && open !== null;
   const showTerminals = terminalVisible && conversation !== null && workspace !== undefined;
+  const keptCanvases = (
+    <KeptCanvases
+      kept={inFixedOrder(state.kept)}
+      shownId={showCanvas ? conversation!.id : null}
+      workspaceOf={(conversationId) => state.conversations.find(({ id }) => id === conversationId)?.workspaceId}
+      apps={apps}
+      assetsOrigin={state.canvasAssetsOrigin}
+      homeDir={state.homeDir}
+      canvasViews={state.canvasViews}
+      onHide={hideCanvas}
+    />
+  );
   const overlay = state.overlay;
   const sessionsWorkspace = overlay?.kind === "sessions" ? state.workspaces.find(({ id }) => id === overlay.workspaceId) : undefined;
   const conversationPane = (
@@ -522,20 +534,10 @@ export function App() {
         <WorkspaceArea
           layout={layout}
           onChange={changeLayout}
+          keptOutOfSight={{ canvas: keptCanvases }}
           content={{
             conversation: conversationPane,
-            canvas: showCanvas ? (
-              <KeptCanvases
-                kept={inFixedOrder(state.kept)}
-                shownId={conversation!.id}
-                workspaceOf={(conversationId) => state.conversations.find(({ id }) => id === conversationId)?.workspaceId}
-                apps={apps}
-                assetsOrigin={state.canvasAssetsOrigin}
-                homeDir={state.homeDir}
-                canvasViews={state.canvasViews}
-                onHide={hideCanvas}
-              />
-            ) : null,
+            canvas: showCanvas ? keptCanvases : null,
             terminals: showTerminals ? (
               <TerminalPane key={conversation!.id} conversationId={conversation!.id} workspace={workspace!} status={status} onHide={toggleTerminal} />
             ) : null,
