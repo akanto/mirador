@@ -208,6 +208,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await sendAndWait(page, "Start");
     await expect(appToggle(page)).toHaveCount(0);
     await page.locator(".canvas-header:visible").getByRole("button", { name: "More" }).click();
+    await expect(page.getByRole("menu").locator("li").first(), "a menu doesn't start with a line").not.toHaveAttribute("role", "separator");
     await page.getByRole("menuitem", { name: "Show Counter" }).click();
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(view(page).locator("#count")).toHaveText("40");
@@ -260,7 +261,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     const notices = page.locator(".notices .notice");
     await view(page).getByRole("button", { name: "Wait" }).click();
     await view(page).locator("body").evaluate(() => (window as unknown as { mirador: { run(task: string): void } }).mirador.run("sing"));
-    await expect(notices).toHaveText(["Counter has no task called sing; its tasks: count-up, write-count, wait, fail."]);
+    await expect(notices).toHaveText(["Counter has no task called sing; its tasks: count-up, sign, write-count, wait, fail."]);
     await notices.click();
     await view(page).getByRole("button", { name: "Count up" }).click();
     await expect(notices).toHaveText(["Wait until stopped is still running; wait for it to end, or stop it in the app."]);

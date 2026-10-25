@@ -80,9 +80,9 @@ export function BarMenu({
       </button>
       {open && (
         <ul role="menu" aria-label={menuName} style={placement}>
-          {entries.map((entry) => (
+          {entries.map((entry, index) => (
             <Fragment key={entry.label}>
-              {entry.separatorBefore && <li role="separator" />}
+              {entry.separatorBefore && index > 0 && <li role="separator" />}
               <li role="none">
                 <button
                   type="button"
