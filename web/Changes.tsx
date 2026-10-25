@@ -311,17 +311,19 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
   );
   const rows: RowContext = { selectedPath, onSelect: toggle, selectedFile, homeDir };
   const [overrides, setOverrides] = useState(foldOverrides.get(conversationId) ?? new Map<string, boolean>());
+  const keepOverrides = (next: Map<string, boolean>) => {
+    foldOverrides.set(conversationId, next);
+    setOverrides(next);
+  };
+  const everyFolderFoldedKey = `${view} every folder`;
+  const foldEveryFolder = () => keepOverrides(new Map([...overrides].filter(([key]) => !key.startsWith(`${view} `))).set(everyFolderFoldedKey, true));
   const foldingOf = (section: string): Folding => {
     const keyOf = (folder: TreeFolder<ListedFile>) => `${view} ${section} ${folder.path}`;
-    const isFolded = (folder: TreeFolder<ListedFile>) => overrides.get(keyOf(folder)) ?? startsFolded(folder, everyFile);
+    const isFolded = (folder: TreeFolder<ListedFile>) => overrides.get(keyOf(folder)) ?? (overrides.get(everyFolderFoldedKey) || startsFolded(folder, everyFile));
     return {
       everyFile,
       isFolded,
-      toggle: (folder) => {
-        const next = new Map(overrides).set(keyOf(folder), !isFolded(folder));
-        foldOverrides.set(conversationId, next);
-        setOverrides(next);
-      },
+      toggle: (folder) => keepOverrides(new Map(overrides).set(keyOf(folder), !isFolded(folder))),
     };
   };
 
@@ -336,6 +338,11 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
           ))}
         </div>
         <span className="spacer" />
+        {view !== "list" && (
+          <button type="button" className="link" data-hint={hints.changesFoldAll} onClick={foldEveryFolder}>
+            Fold all
+          </button>
+        )}
         <div className="diff-style" role="group" aria-label="Show as">
           {listViews.map((each) => (
             <button key={each} type="button" className={view === each ? "on" : ""} aria-pressed={view === each} data-hint={hints.changesView[each]} onClick={() => listView.set(each)}>

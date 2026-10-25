@@ -249,8 +249,19 @@ test("the tree shows the changed files in their folders, a folder holding one fo
     await expect(fileRow(page, "pkg/core/util.ts").locator("xpath=..").locator(".changes-diff .edited-file h3")).toHaveText("pkg/core/util.ts");
   });
 
+  await test.step("Fold all folds every folder, and a folder opens again on its own", async () => {
+    await changes(page).getByRole("button", { name: "Fold all" }).click();
+    await expect(pkgCore).toHaveAttribute("aria-expanded", "false");
+    await expect(folderRow(page, "src")).toHaveAttribute("aria-expanded", "false");
+    await expect(folderRow(page, join("~", "elsewhere"))).toHaveAttribute("aria-expanded", "false");
+    await folderRow(page, "src").click();
+    await expect(folderRow(page, "src")).toHaveAttribute("aria-expanded", "true");
+    await expect(pkgCore).toHaveAttribute("aria-expanded", "false");
+  });
+
   await test.step("List shows every file with its whole path, and stays chosen after a reload", async () => {
     await changes(page).getByRole("button", { name: "List" }).click();
+    await expect(changes(page).getByRole("button", { name: "Fold all" })).toHaveCount(0);
     await expect(changes(page).locator(".changed-folder")).toHaveCount(0);
     await expect(fileRow(page, "pkg/core/util.ts").locator(".changed-path")).toHaveText("pkg/core/util.ts");
     await expect(fileRow(page, outsideFileShown).locator(".changed-path")).toHaveText(outsideFileShown);

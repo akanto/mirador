@@ -288,6 +288,7 @@ export const hints = {
     tree: "The changed files in their folders. Click a folder to fold it. Remembered in this browser.",
     all: "Every file of the project in its folders, the changed ones marked. Only the folders holding a change start open. Remembered in this browser.",
   },
+  changesFoldAll: "Fold every folder, so only the top level shows. Click a folder to open it again.",
   changesFromCommit: "A commit since the turn began changed this file, such as a pull's or the agent's own.",
   changesRefresh: "Load the list again. It also loads after each tool call the agent finishes and when the turn ends.",
   changesByAgent: "This conversation's agent changed this file with its edit tools.",
