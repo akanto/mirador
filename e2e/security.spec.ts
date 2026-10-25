@@ -159,7 +159,7 @@ test("a hostile canvas page cannot reach the host, the parent page or the networ
   expect(result).toContain("connect-src");
   expect(result).toContain("img-src");
   expect(result).not.toContain("LEAK");
-  await expect(page.locator(".canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "hostile" })).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "hostile" })).toBeVisible();
   expect(new URL(page.url()).origin).toBe(host.origin);
   expect(page.context().pages()).toHaveLength(1);
 });
@@ -184,7 +184,7 @@ test("canvas pages can load the bundled three.js, D3 and Mermaid", async ({ page
   const result = await callCanvasTool(host, conversationId, "show", { title: "Libraries", html });
 
   expect(result).toContain("rendered without script errors");
-  const frame = page.locator(".canvas-frame.show iframe").contentFrame();
+  const frame = page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame();
   await expect(frame.locator("#out")).toContainText(/three \d+ \| function \| d3 7/);
   await expect(frame.locator("pre.mermaid svg")).toBeVisible();
 });

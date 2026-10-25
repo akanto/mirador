@@ -77,7 +77,7 @@ test("a canvas page cannot open, show, hide or focus a terminal, by the websocke
   });
 </script>`;
   expect(await callCanvasTool(host, conversationId, "show", { title: "Hostile", html: hostile })).toContain("connect-src");
-  const hostilePage = page.locator(".canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "hostile" });
+  const hostilePage = page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "hostile" });
 
   await test.step("with the terminal hidden, its keys from the page leave it hidden", async () => {
     await hostilePage.click();

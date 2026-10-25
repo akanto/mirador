@@ -29,8 +29,8 @@ test.afterAll(async () => {
 
 const edit = (title: string, oldText: string | null, newText: string) => ({ title, path: appFile, oldText, newText });
 const askToEdit = (page: Page, ...edits: ReturnType<typeof edit>[]) => sendMessage(page, `EDIT ${JSON.stringify(edits)}`);
-const canvas = (page: Page) => page.locator(".canvas-panel");
-const editView = (page: Page) => page.locator(".canvas-panel .edit-approval");
+const canvas = (page: Page) => page.locator(".canvas-panel:visible");
+const editView = (page: Page) => page.locator(".canvas-panel:visible .edit-approval");
 const pendingCard = (page: Page) => page.locator(".timeline:visible .permission.pending");
 
 async function startConversation(page: Page) {

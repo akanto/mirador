@@ -38,7 +38,7 @@ test.afterAll(async () => {
   model.stop();
 });
 
-const canvasHeading = () => page.frameLocator(".canvas-frame.show iframe").locator("h1");
+const canvasHeading = () => page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe").locator("h1");
 const CANVAS_RENDERING_RULES = "Rendering environment: every page renders in a sandboxed iframe with NO network access";
 const OWN_APPENDED_INSTRUCTIONS = "Instructions from the user's own APPEND_SYSTEM.md";
 

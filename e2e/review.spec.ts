@@ -538,7 +538,7 @@ test("coming back to a review's conversation shows the review as the user left i
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = page.locator(".review");
+  const view = page.locator(".review:visible");
   const findingsTab = view.getByRole("tab", { name: /Findings/ });
   const manyFindings = Array.from({ length: 12 }, (_, index) => ({
     severity: "nit",

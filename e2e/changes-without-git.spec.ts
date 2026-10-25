@@ -17,7 +17,7 @@ test.afterAll(async () => {
   await host.cleanUp();
 });
 
-const changes = (page: Page) => page.locator(".canvas-panel .changes");
+const changes = (page: Page) => page.locator(".canvas-panel:visible .changes");
 
 test("in a folder that is no git repository, a file a script wrote shows in Changes", async ({ page }) => {
   await signIn(page, host);

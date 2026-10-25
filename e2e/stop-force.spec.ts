@@ -260,10 +260,10 @@ test("Stop withdraws the question the turn waits on, and the canvas notes it pla
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
   const conversationId = await wedgedConversation(page, "WEDGE asking");
   void callCanvasTool(host, conversationId, "ask", { question: "Keep going?", options: [{ label: "Yes" }, { label: "No" }] }).catch(() => {});
-  await expect(page.locator(".canvas-panel .ask-option")).toHaveCount(2);
+  await expect(page.locator(".canvas-panel:visible .ask-option")).toHaveCount(2);
 
   await page.locator(".composer:visible .stop").click();
-  const note = page.locator(".canvas-panel .settled-note");
+  const note = page.locator(".canvas-panel:visible .settled-note");
   await expect(note).toHaveText("The agent withdrew its question.");
   await expect(note).toHaveClass(/neutral/);
 });

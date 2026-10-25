@@ -153,7 +153,7 @@ test("the laptop joins the server with an invite link and shows its own Mirador 
   await test.step("its canvas pages load their libraries from this computer, whose browser need not trust the server's certificate", async () => {
     const html = `<div id="out"></div><script src="${publicCanvasOrigin()}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
     void callCanvasTool(host, serverConversation, "show", { title: "Chart", html }).catch(() => {});
-    const canvasPage = frame.locator(".canvas-frame.show iframe");
+    const canvasPage = frame.locator(".canvas-panel:visible .canvas-frame.show iframe");
     await expect(canvasPage.contentFrame().locator("#out")).toHaveText(/^d3 7/);
     const laptopAssets = `http://127.0.0.1:${laptop.port + 1}`;
     expect(await canvasPage.getAttribute("src")).toBe(`${laptopAssets}${CANVAS_SHELL_PATH}`);

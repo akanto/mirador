@@ -99,7 +99,7 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await expect(page.getByRole("tooltip")).toContainText("Context window: 42,500 of 100,000 tokens in use (43%).");
 
   await sendMessage(page, "SHOW Scripted page");
-  await expect(page.frameLocator(".canvas-frame.show iframe").locator("h1")).toHaveText("Scripted page", { timeout: 60_000 });
+  await expect(page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe").locator("h1")).toHaveText("Scripted page", { timeout: 60_000 });
   await waitForTurnToEnd(page);
 
   await sendMessage(page, "ASK Pick a color");
@@ -125,7 +125,7 @@ test("an opencode conversation asks for permission in the browser and uses the c
   await expect(page.locator(".ask").getByRole("radio", { name: "Blue" })).toBeChecked();
   await page.getByRole("button", { name: "Older" }).click();
   await expect(page.locator(".canvas-title")).toHaveText("Scripted page");
-  await expect(page.frameLocator(".canvas-frame.show iframe").locator("h1")).toHaveText("Scripted page");
+  await expect(page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe").locator("h1")).toHaveText("Scripted page");
   await expect(page.getByRole("button", { name: "Older" })).toBeDisabled();
   await page.getByRole("button", { name: "Newer" }).click();
   await expect(page.locator(".canvas-title")).toHaveText("Pick a color");

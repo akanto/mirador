@@ -82,13 +82,13 @@ test("conversations, workspaces, the canvas and the dialogs are all reachable fr
   await expectSelected(page, inSecondProject);
 
   await callCanvasTool(host, inSecondProject, "show", { title: "Page", html: "<p>canvas page</p>" });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
   await page.keyboard.press(`${primary}+Backslash`);
-  await expect(page.locator(".canvas-panel")).toHaveCount(0);
+  await expect(page.locator(".canvas-panel:visible")).toHaveCount(0);
   await page.keyboard.press(`${primary}+Shift+ArrowRight`);
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
   await expect.poll(() => focusedTag(page)).toBe("IFRAME");
-  await expect(page.frameLocator(".canvas-frame.show iframe").getByText("canvas page")).toBeVisible();
+  await expect(page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe").getByText("canvas page")).toBeVisible();
   await page.keyboard.press(`${primary}+Shift+ArrowLeft`);
   await expect.poll(() => focusedTag(page)).toBe("TEXTAREA");
 
@@ -120,7 +120,7 @@ test("keys pressed inside a focused canvas page navigate, but cannot create conv
   const primary = await primaryModifier(page);
   await page.locator(".workspace").nth(1).locator("li").first().click();
   const conversationsBefore = await page.locator(".workspace li").count();
-  const canvasPage = page.locator(".canvas-frame.show iframe");
+  const canvasPage = page.locator(".canvas-panel:visible .canvas-frame.show iframe");
   await expect(canvasPage).toBeVisible();
 
   await page.keyboard.press(`${primary}+Shift+ArrowRight`);

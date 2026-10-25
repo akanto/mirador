@@ -23,13 +23,13 @@ test("a wheel turn over a canvas page scrolls the page, once", async ({ page }) 
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Tall", html: tallPage });
 
-  const canvasPage = page.locator(".canvas-frame.show iframe");
+  const canvasPage = page.locator(".canvas-panel:visible .canvas-frame.show iframe");
   await expect(canvasPage).toBeVisible();
   const box = (await canvasPage.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, 200);
 
-  const inside = page.locator(".canvas-frame.show iframe").contentFrame().locator("body");
+  const inside = page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().locator("body");
   await expect.poll(() => inside.evaluate((node) => node.ownerDocument.scrollingElement!.scrollTop)).toBe(200);
 });
 
@@ -43,7 +43,7 @@ test("a wheel turn over a scrolling box in a tall page scrolls the box, not the 
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Box", html: boxInTallPage });
 
-  const inside = page.locator(".canvas-frame.show iframe").contentFrame().locator("body");
+  const inside = page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().locator("body");
   const box = (await inside.locator("#box").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, 200);
@@ -64,7 +64,7 @@ test("a touchpad's stream of small wheel turns scrolls by every one of them, whe
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Touchpad", html: pageTheEngineDoesNotScroll });
 
-  const canvasPage = page.locator(".canvas-frame.show iframe");
+  const canvasPage = page.locator(".canvas-panel:visible .canvas-frame.show iframe");
   const inside = canvasPage.contentFrame().locator("body");
   await expect(inside).toContainText("tall page");
   const frame = (await canvasPage.boundingBox())!;

@@ -392,7 +392,7 @@ test("the README's screenshots", async ({ page }) => {
   await test.step("the canvas next to the conversation", async () => {
     await openConversation(page, ids.explainCheckout);
     await callCanvasTool(host, ids.explainCheckout, "show", { title: "Checkout, end to end", html: checkoutDiagram() });
-    await expect(page.locator(".canvas-frame.show iframe").contentFrame().locator(".mermaid svg")).toBeVisible();
+    await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().locator(".mermaid svg")).toBeVisible();
     await save(page, "canvas");
   });
 

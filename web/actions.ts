@@ -31,7 +31,7 @@ export function startRenamingOpenConversation() {
 /** The canvas takes focus on the control the user most likely wants: an answer button, else the page itself. */
 export function focusPane(pane: "chat" | "canvas") {
   if (pane === "chat") return onScreen<HTMLTextAreaElement>(".composer textarea")?.focus();
-  const panel = document.querySelector(".canvas-panel");
+  const panel = onScreen(".canvas-panel");
   const target =
     panel?.querySelector<HTMLElement>(".canvas-body .choose") ??
     panel?.querySelector<HTMLElement>(".canvas-body iframe") ??

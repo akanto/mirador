@@ -23,7 +23,7 @@ const chart = () => ({
 <script>document.getElementById("drawn").textContent = "Drawn with d3 " + d3.version;</script>`,
 });
 
-const canvasPage = (page: Page) => page.locator(".canvas-frame.show iframe").contentFrame();
+const canvasPage = (page: Page) => page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame();
 const exportToggle = (page: Page) => page.locator(".canvas-header:visible .page-export .bar-menu-toggle");
 const exportStatus = (page: Page) => page.locator(".page-export-status");
 const saveForm = (page: Page) => page.locator(".page-save");

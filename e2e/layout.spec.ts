@@ -28,15 +28,15 @@ test("chat and canvas can be resized, stay above a minimum width and remember th
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Big", html: "<div style='height:2000px'>canvas</div>" });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
 
-  const canvasBefore = await widthOf(page, ".canvas-panel");
+  const canvasBefore = await widthOf(page, ".canvas-panel:visible");
   await dragSplitterBy(page, 300);
-  const canvasAfterDraggingOverIframe = await widthOf(page, ".canvas-panel");
+  const canvasAfterDraggingOverIframe = await widthOf(page, ".canvas-panel:visible");
   expect(canvasBefore - canvasAfterDraggingOverIframe).toBeGreaterThan(250);
 
   await dragSplitterBy(page, 5000);
-  expect(await widthOf(page, ".canvas-panel")).toBeGreaterThanOrEqual(239);
+  expect(await widthOf(page, ".canvas-panel:visible")).toBeGreaterThanOrEqual(239);
   await dragSplitterBy(page, -5000);
   expect(await widthOf(page, ".chat-column")).toBeGreaterThanOrEqual(239);
   const chatAtMinimum = await widthOf(page, ".chat-column");
@@ -46,7 +46,7 @@ test("chat and canvas can be resized, stay above a minimum width and remember th
   expect(Math.abs((await widthOf(page, ".chat-column")) - chatAtMinimum)).toBeLessThan(2);
 
   await paneSplitter(page).dblclick();
-  expect(Math.abs((await widthOf(page, ".canvas-panel")) - canvasBefore)).toBeLessThan(2);
+  expect(Math.abs((await widthOf(page, ".canvas-panel:visible")) - canvasBefore)).toBeLessThan(2);
 });
 
 test.describe("on a system in dark mode", () => {
@@ -83,7 +83,7 @@ test("a narrow conversation pane keeps its title readable and moves the header's
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Wide", html: "<p>canvas</p>" });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
 
   await dragSplitterBy(page, -5000);
   expect(await widthOf(page, ".chat-header")).toBeLessThan(400);

@@ -46,7 +46,7 @@ test("resizing the window and the panes with the terminal and canvas open raises
   await page.getByRole("button", { name: "Show terminal" }).click();
   await expect(page.locator(".terminal-pane .xterm")).toBeVisible();
   await callCanvasTool(host, conversationId, "show", { title: "Wide", html: "<div style='width:1800px;height:900px'>wide</div>" });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
 
   await test.step("the window changes width and height", async () => {
     for (const [width, height] of [[1600, 1000], [1200, 800], [900, 700], [700, 600], [1100, 900], [1600, 1000]] as const) {

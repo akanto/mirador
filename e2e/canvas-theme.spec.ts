@@ -32,9 +32,9 @@ const pageColouredForLightOnly = `<style>code { background: #f4f4f5; } .muted { 
 const lightThemeText = "rgb(23, 23, 23)";
 const darkThemeText = "rgb(236, 236, 236)";
 
-const canvasPage = (page: Page) => page.locator(".canvas-frame.show iframe").contentFrame().locator("body");
+const canvasPage = (page: Page) => page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().locator("body");
 const rootBackground = (page: Page) => canvasPage(page).evaluate((node) => getComputedStyle(node.ownerDocument.documentElement).backgroundColor);
-const frameBackground = (page: Page) => page.locator(".canvas-frame.show iframe").evaluate((frame) => getComputedStyle(frame).backgroundColor);
+const frameBackground = (page: Page) => page.locator(".canvas-panel:visible .canvas-frame.show iframe").evaluate((frame) => getComputedStyle(frame).backgroundColor);
 const whileParsing = (page: Page) => canvasPage(page).evaluate(() => (window as unknown as { whileParsing: unknown }).whileParsing);
 
 const textColor = (page: Page, selector: string) => canvasPage(page).locator(selector).first().evaluate((node) => getComputedStyle(node).color);

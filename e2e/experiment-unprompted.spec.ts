@@ -65,6 +65,6 @@ async function answerQuestionsUntilIdle(page: import("@playwright/test").Page) {
 }
 
 async function canvasTitles(page: import("@playwright/test").Page) {
-  if ((await page.locator(".history-toggle").isDisabled())) return [];
+  if ((await page.locator(".history-toggle:visible").isDisabled())) return [];
   return (await openCanvasHistory(page)).locator(".entry-title").allInnerTexts();
 }

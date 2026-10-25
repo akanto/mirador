@@ -208,8 +208,8 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
 
   await test.step("the key taps from a focused canvas page too, and what was said goes into the message box", async () => {
     await callCanvasTool(host, conversationId, "show", { title: "Page", html: "<p>canvas page</p>" });
-    const canvasPage = page.locator(".canvas-frame.show iframe");
-    await expect(page.frameLocator(".canvas-frame.show iframe").getByText("canvas page")).toBeVisible();
+    const canvasPage = page.locator(".canvas-panel:visible .canvas-frame.show iframe");
+    await expect(page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe").getByText("canvas page")).toBeVisible();
     await canvasPage.focus();
     await page.keyboard.press(`${primary}+Shift+Space`);
     await expect(mic).toHaveAttribute("aria-pressed", "true");

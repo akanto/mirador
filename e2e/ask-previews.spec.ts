@@ -210,7 +210,7 @@ test("a question's page and previews keep space from the box's edge even when th
   await answerCanvasQuestion(page, "Drop-in");
 
   await callCanvasTool(host, conversationId, "show", { title: "Flush page", html: flush("Edge to edge") });
-  const shown = page.locator(".canvas-frame.show iframe");
+  const shown = page.locator(".canvas-panel:visible .canvas-frame.show iframe");
   await expect(shown.contentFrame().getByText("Edge to edge")).toBeVisible();
   expect(await listLeft(shown)).toBe(0);
 });

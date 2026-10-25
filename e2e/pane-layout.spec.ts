@@ -63,7 +63,7 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Drawing", html: "<h1>canvas</h1>" });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
   await page.getByRole("button", { name: "Show terminal" }).click();
   await expect(page.locator(".terminal-pane .xterm")).toBeVisible();
   expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right top", terminals: "right bottom" });
@@ -120,7 +120,7 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
 
   const second = await startConversation(page);
   await callCanvasTool(host, second, "show", { title: "Second drawing", html: '<h1>canvas</h1><input aria-label="Note">' });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
   expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right", terminals: "hidden" });
   await page.getByRole("button", { name: "Fullscreen canvas" }).click();
   expect(await boxOf(page, "canvas")).toEqual(area);
@@ -135,7 +135,7 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   await page.reload();
   await expect(page.locator(".canvas-title")).toHaveText("Second drawing");
   expect(await boxOf(page, "canvas")).toEqual(area);
-  const canvasPage = page.frameLocator(".canvas-frame.show iframe");
+  const canvasPage = page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe");
   await canvasPage.getByLabel("Note").click();
   await page.keyboard.press("Escape");
   expect(await boxOf(page, "canvas")).toEqual(area);

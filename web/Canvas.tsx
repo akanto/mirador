@@ -1,6 +1,6 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
-import { buildCanvasDocument, canvasPageMessage, canvasShellUrl, canvasThemeMessage, isCanvasFrameMessage, type CanvasFrameMessage, type CanvasPagePolicy } from "../shared/canvas-document.ts";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
+import { buildCanvasDocument, canvasHiddenMessage, canvasPageMessage, canvasShellUrl, canvasThemeMessage, isCanvasFrameMessage, type CanvasFrameMessage, type CanvasPagePolicy } from "../shared/canvas-document.ts";
 import { appKey, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
 import type { AskItem, AskQuestion, CanvasItem, ShowItem } from "../shared/model.ts";
@@ -83,6 +83,9 @@ function fittedStyles(contentSize: ContentSize | undefined, roomWidth: number): 
   };
 }
 
+/** Whether the canvas is in sight, or kept live behind another conversation's canvas. */
+export const CanvasShown = createContext(true);
+
 export function CanvasFrame({
   frameId,
   html,
@@ -159,6 +162,11 @@ export function CanvasFrame({
   }, [contentSize?.width]);
 
   useEffect(() => onShownThemeChange(() => postThemeTo(frame)), []);
+
+  const shown = useContext(CanvasShown);
+  useEffect(() => {
+    if (!shown) frame.current?.contentWindow?.postMessage(canvasHiddenMessage(), "*");
+  }, [shown]);
 
   const fitted = fitsContent ? fittedStyles(contentSize, roomWidth) : {};
   return (
@@ -641,16 +649,18 @@ const seenOpenApps = new Map<string, Set<string>>();
 
 /**
  * Opens an app's tab when the app opens in the workspace, or opens another file, as the agent's app_open says the user
- * will see it: at once while the panel is up, or when the user comes back to the conversation.
+ * will see it: at once while the panel is up, or when the user comes back to the conversation, its canvas kept hidden
+ * or made again.
  */
-function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab: AppTab) => void) {
+function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab: AppTab) => void, shown: boolean) {
   const openNow = open.map(openedDocument);
   useEffect(() => {
+    if (!shown) return;
     const seen = seenOpenApps.get(conversationId) ?? new Set(openNow);
     const opened = open.find((app) => !seen.has(openedDocument(app)));
     seenOpenApps.set(conversationId, new Set(openNow));
     if (opened) showTab(appTab(opened.app));
-  }, [conversationId, openNow.join("\n")]);
+  }, [conversationId, openNow.join("\n"), shown]);
 }
 
 /** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */
@@ -711,16 +721,19 @@ export function CanvasPanel({
   const checklistFlashing = useFlashOnAgentEdit(tabItem?.id, editAt, !checklistOpen);
   const placeForReview = useReviewPlacement();
   const keptSinceLeft = useRef(nothingNewSinceLeft);
+  const shown = useContext(CanvasShown);
   useEffect(() => {
     if (!keptSinceLeft.current) {
       setSelectedId(onCanvasByDefault);
       setTab(tabByDefault);
     }
     keptSinceLeft.current = false;
-    if (takeArrivedReview(newest)) placeForReview(newest);
   }, [latestId]);
+  useEffect(() => {
+    if (shown && takeArrivedReview(newest)) placeForReview(newest);
+  }, [latestId, shown]);
   // After the reset to the newest item, so that an app the agent opened while the user was away stays in front.
-  useAppTabOnOpen(conversationId, apps.open, setTab);
+  useAppTabOnOpen(conversationId, apps.open, setTab, shown);
   useEffect(() => {
     if (checklistOpen || seenEdit.current.tabItemId !== tabItem?.id) seenEdit.current = { tabItemId: tabItem?.id, at: editAt };
   }, [checklistOpen, tabItem?.id, editAt]);

@@ -75,6 +75,11 @@ export function canvasThemeMessage(theme: CanvasTheme) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "theme", theme };
 }
 
+/** Tells a canvas page it went out of sight behind another conversation's canvas, where its videos and sounds must not play on. */
+export function canvasHiddenMessage() {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "hidden" };
+}
+
 /**
  * Where a canvas frame loads from on the canvas assets origin, and the page it is then given to show. A srcdoc, data: or
  * blob: frame would answer to the app page's Content-Security-Policy as well as its own, which refuses the page's scripts;
@@ -594,6 +599,7 @@ ${TEXT_CONTRAST_SCRIPT}
       checkText();
     }
     if (data.kind === "capture") capture(data.requestId);
+    if (data.kind === "hidden") document.querySelectorAll("video, audio").forEach((media) => media.pause());
   });
   const record = (message) => {
     if (errors.length >= 20 || /ResizeObserver loop/.test(message)) return;

@@ -187,7 +187,8 @@ kbd {
   overflow: hidden;
 }
 
-.pane > * {
+.pane > *,
+.pane > .kept-canvas > * {
   flex: 1 1 auto;
 }
 

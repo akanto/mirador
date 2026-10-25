@@ -197,7 +197,7 @@ export async function answerCanvasQuestion(page: Page, label: string) {
 }
 
 export async function openCanvasHistory(page: Page) {
-  const toggle = page.locator(".history-toggle");
+  const toggle = page.locator(".history-toggle:visible");
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   return page.getByRole("list", { name: "Canvas history" });
 }

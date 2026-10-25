@@ -60,6 +60,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
   const first = await startConversationWithoutModel(page);
   await sendAndWait(page, "Start");
   let pageLoad = "";
+  let second = "";
 
   await test.step("app_open starts the file and shows the app in its tab", async () => {
     const opened = await callCanvasTool(host, first, "app_open", { app: "counter", file: "counter.json" });
@@ -117,7 +118,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
   });
 
   await test.step("another conversation of the workspace has the same app, and its agent reads every change", async () => {
-    const second = await startConversationWithoutModel(page);
+    second = await startConversationWithoutModel(page);
     await sendAndWait(page, "Start");
     await expect(appToggle(page)).toHaveText("Counter");
     await appToggle(page).click();
@@ -200,5 +201,42 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(page).toHaveURL(new RegExp(`${hash}$`));
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(view(page).locator("#count")).toHaveText("0");
+  });
+
+  await test.step("going to another conversation and back finds the app's page as it was, its video paused while out of sight", async () => {
+    const { hash } = new URL(page.url());
+    const elsewhere = hash.endsWith(first) ? second : first;
+    const loaded = (await view(page).locator("#page-load").textContent())!;
+    await view(page).getByRole("button", { name: "Show the clip" }).click();
+    await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
+    const clip = view(page).locator("#clip");
+    await clip.evaluate((video: HTMLVideoElement) => {
+      video.loop = true;
+      return video.play();
+    });
+    await expect.poll(() => clip.evaluate((video: HTMLVideoElement) => video.paused)).toBe(false);
+    await page.evaluate((other) => (location.hash = other), `#/c/${elsewhere}`);
+    await expect(page).toHaveURL(new RegExp(`#/c/${elsewhere}$`));
+    await expect(appToggle(page)).toBeVisible();
+    await page.evaluate((back) => (location.hash = back), hash);
+    await expect(page).toHaveURL(new RegExp(`${hash}$`));
+    await expect(view(page).locator("#page-load")).toHaveText(loaded);
+    await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
+    expect(await clip.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+  });
+
+  await test.step("a view kept behind another conversation still gets the changes after that conversation closes its own view", async () => {
+    const { hash } = new URL(page.url());
+    const elsewhere = hash.endsWith(first) ? second : first;
+    const loaded = (await view(page).locator("#page-load").textContent())!;
+    await page.evaluate((other) => (location.hash = other), `#/c/${elsewhere}`);
+    await showApp(page);
+    await expect(view(page).locator("#count")).toHaveText("0");
+    await appToggle(page).click();
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    expect(await callCanvasTool(host, first, "apply", { op: { op: "add", by: 5 } })).toBe("Added 5; the count is 5.");
+    await page.evaluate((back) => (location.hash = back), hash);
+    await expect(view(page).locator("#count")).toHaveText("5");
+    await expect(view(page).locator("#page-load")).toHaveText(loaded);
   });
 });

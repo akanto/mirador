@@ -93,7 +93,7 @@ test("the host's own page loads canvas libraries from this machine, though agent
   const result = await callCanvasTool(host, conversationId, "show", { title: "Chart", html });
 
   expect(result, "this browser does not trust the host's own certificate authority").toContain("rendered without script errors");
-  await expect(page.locator(".canvas-frame.show iframe").contentFrame().locator("#out")).toHaveText(/^d3 7/);
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().locator("#out")).toHaveText(/^d3 7/);
 });
 
 test("turning the network on in Settings takes effect when the host restarts", async ({ page }) => {

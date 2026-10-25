@@ -25,7 +25,7 @@ test("a terminal opens under the canvas in the workspace folder, keeps its shell
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "show", { title: "Drawing", html: "<h1>canvas</h1>" });
-  await expect(page.locator(".canvas-frame.show iframe")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe")).toBeVisible();
 
   await page.getByRole("button", { name: "Show terminal" }).click();
   await runInTerminal(page, `pwd; ${echo(`marker-${sum("6*7")}`)}`);
@@ -39,7 +39,7 @@ test("a terminal opens under the canvas in the workspace folder, keeps its shell
   await expect(page.getByPlaceholder(/Go to a conversation/)).toHaveCount(0);
   await expect(screen(page)).not.toContainText("$ k");
 
-  const canvasBox = (await page.locator(".canvas-panel").boundingBox())!;
+  const canvasBox = (await page.locator(".canvas-panel:visible").boundingBox())!;
   const terminalBox = (await page.locator(".terminal-pane").boundingBox())!;
   expect(terminalBox.y).toBeGreaterThanOrEqual(canvasBox.y + canvasBox.height - 1);
   expect(Math.abs(terminalBox.x - canvasBox.x)).toBeLessThan(2);

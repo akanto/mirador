@@ -81,7 +81,7 @@ test("shows a page and returns an ask answer as the tool result", async () => {
   await expect(page.locator(".ask-answer")).toContainText("returned to the agent");
 
   await openFromCanvasHistory(page, "Greeting");
-  await expect(page.locator(".canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "Hello canvas" })).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().getByRole("heading", { name: "Hello canvas" })).toBeVisible();
 });
 
 test("keeps the history across a page refresh", async () => {
@@ -101,7 +101,7 @@ test("resumes the agent session and canvas tools after a host restart", async ()
   );
   await waitForTurnToEnd(page);
   await expect(lastAgentMessage(page)).toContainText("Blue");
-  await expect(page.locator(".canvas-frame.show iframe").contentFrame().getByText("The color was Blue")).toBeVisible();
+  await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().getByText("The color was Blue")).toBeVisible();
   await expect(page.getByLabel("Model", { exact: true }).filter({ visible: true })).toHaveValue("haiku");
   await expect(page.getByLabel("Mode", { exact: true })).toHaveValue("acceptEdits");
 });

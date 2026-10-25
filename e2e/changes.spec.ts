@@ -41,7 +41,7 @@ test.afterAll(async () => {
   rmSync(home, { recursive: true, force: true });
 });
 
-const changes = (page: Page) => page.locator(".canvas-panel .changes");
+const changes = (page: Page) => page.locator(".canvas-panel:visible .changes");
 const fileRow = (page: Page, path: string) => changes(page).locator(".changed-file").filter({ has: page.locator(".changed-path", { hasText: new RegExp(`^${literally(path)}$`) }) });
 const section = (page: Page, name: string) => changes(page).getByRole("region", { name, exact: true });
 const writeFiles = (page: Page, steps: Record<string, string>[]) => sendMessage(page, `WRITE ${JSON.stringify(steps)}`);
@@ -172,7 +172,7 @@ test("a new turn starts with an empty list, while Uncommitted keeps git status a
 test("Changes opens over a page, and a new page takes the canvas back", async ({ page }) => {
   await signIn(page, host);
   await page.goto(`${host.origin}/#/c/${conversationId}`);
-  const canvas = page.locator(".canvas-panel");
+  const canvas = page.locator(".canvas-panel:visible");
   const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
   await expect(changesButton).toBeDisabled();
 
@@ -207,7 +207,7 @@ test("Changes opens over a page, and a new page takes the canvas back", async ({
 test("a conversation's canvas comes back as it was left: Changes still open, or the page still shown", async ({ page }) => {
   await signIn(page, host);
   await page.goto(`${host.origin}/#/c/${conversationId}`);
-  const canvas = page.locator(".canvas-panel");
+  const canvas = page.locator(".canvas-panel:visible");
   const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
   await callCanvasTool(host, conversationId, "show", { title: "Third page", html: "<p>third</p>" });
   await expect(canvas.locator(".canvas-title")).toHaveText("Third page");
@@ -244,7 +244,7 @@ test("Changes shows the files it listed last as soon as it opens again, and stil
   });
   await signIn(page, host);
   await page.goto(`${host.origin}/#/c/${conversationId}`);
-  const canvas = page.locator(".canvas-panel");
+  const canvas = page.locator(".canvas-panel:visible");
   const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
   await changesButton.click();
   await changes(page).getByRole("button", { name: "Uncommitted" }).click();
@@ -298,7 +298,7 @@ test("Changes closed and opened again while its list is on the way shows the lis
   });
   await signIn(page, host);
   await page.goto(`${host.origin}/#/c/${conversationId}`);
-  const canvas = page.locator(".canvas-panel");
+  const canvas = page.locator(".canvas-panel:visible");
   const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
   await callCanvasTool(host, conversationId, "show", { title: "Fifth page", html: "<p>fifth</p>" });
   await expect(canvas.locator(".canvas-title")).toHaveText("Fifth page");

@@ -28,14 +28,28 @@ import { usePaneFullscreen } from "./Workspace.tsx";
 
 const SENT_NOTE_MS = 8000;
 
-/** The page gets the app's document only while it shows the app, and again after it reconnects. */
-function useAppSubscribed({ workspaceId, app }: OpenApp) {
+/** How many views of each app the page shows, kept conversations' hidden canvases included. */
+const viewsShowing = new Map<string, number>();
+
+/**
+ * The page gets the app's document while any of its views shows the app, and again after it reconnects. Each view
+ * subscribes, for the host to send it the app's storage, but only the last one to go unsubscribes.
+ */
+function useAppSubscribed(openApp: OpenApp) {
+  const { workspaceId, app } = openApp;
   const [status, setStatus] = useState<ConnectionStatus>(connection.status);
   useEffect(() => connection.onStatus(setStatus), []);
   useEffect(() => {
     if (status !== "open") return;
+    const key = appKey(openApp);
+    viewsShowing.set(key, (viewsShowing.get(key) ?? 0) + 1);
     connection.send({ type: "app.subscribe", workspaceId, app });
-    return () => void connection.send({ type: "app.unsubscribe", workspaceId, app });
+    return () => {
+      const left = viewsShowing.get(key)! - 1;
+      if (left) return void viewsShowing.set(key, left);
+      viewsShowing.delete(key);
+      connection.send({ type: "app.unsubscribe", workspaceId, app });
+    };
   }, [status, workspaceId, app]);
 }
 

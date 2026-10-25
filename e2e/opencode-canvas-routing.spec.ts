@@ -18,7 +18,7 @@ test.afterAll(async () => {
 });
 
 const open = (page: Page, conversationId: string) => page.locator(`li[data-reorder-id="${conversationId}"]`).click();
-const shownTitle = (page: Page) => page.frameLocator(".canvas-frame.show iframe").locator("h1");
+const shownTitle = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-frame.show iframe").locator("h1");
 
 async function startedConversation(page: Page) {
   const conversationId = await startConversation(page);

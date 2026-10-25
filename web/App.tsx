@@ -2,18 +2,14 @@ import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, us
 import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { sidebarItems } from "../shared/sidebar-order.ts";
-import { latestPlan } from "../shared/timeline.ts";
 import { countWaiting } from "../shared/waiting.ts";
 import { findInFocusedReview, findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
-import { CanvasPanel } from "./Canvas.tsx";
-import { changesRefreshPoint } from "./changes.ts";
-import { editRequestsIn } from "./edit-approval.ts";
-import { useEditsInCanvas } from "./edits-in-canvas.ts";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { useClosesAsDialog } from "./desktop-close.ts";
 import { JoinMachine } from "./Devices.tsx";
 import { JoinRequestPrompts } from "./JoinRequests.tsx";
+import { KeptCanvases } from "./KeptCanvases.tsx";
 import { FileToOpenPrompt } from "./FileToOpenPrompt.tsx";
 import { tellTheRailThePlace } from "./machine-place.ts";
 import { MachineFrames, MachineRail, showsMachinesHere, useShownMachine } from "./MachineRail.tsx";
@@ -313,9 +309,9 @@ export function App() {
   const showSidebarWidth = (share: number) =>
     layoutElement.current?.style.setProperty("--sidebar-width", `${sidebarWidthWithinLimits(share * layoutArea().size)}px`);
   const workspace = currentWorkspace(state);
-  const workspaceApps = useMemo(
-    () => ({ open: state.openApps.filter(({ workspaceId }) => workspaceId === workspace?.id), installed: state.installedApps, documents: state.appDocuments }),
-    [state.openApps, state.installedApps, state.appDocuments, workspace?.id],
+  const apps = useMemo(
+    () => ({ openApps: state.openApps, installedApps: state.installedApps, appDocuments: state.appDocuments }),
+    [state.openApps, state.installedApps, state.appDocuments],
   );
   const layout = conversationLayouts.layoutOf(state.selectedConversationId);
   const changeLayout = (update: (layout: PaneLayout) => PaneLayout) => conversationLayouts.change(state.selectedConversationId, update);
@@ -326,6 +322,9 @@ export function App() {
   const canvasInView = inView(layout, "canvas");
   const terminalInView = inView(layout, "terminals");
   const toggleCanvas = () => changeLayout((current) => toggledInView(current, "canvas"));
+  const latestToggleCanvas = useRef(toggleCanvas);
+  latestToggleCanvas.current = toggleCanvas;
+  const hideCanvas = useCallback(() => latestToggleCanvas.current(), []);
   const toggleTerminal = () => changeLayout((current) => toggledInView(current, "terminals"));
   const askTerminals = (request: TerminalPaneRequest) => {
     changeLayout((current) => (inView(current, "terminals") ? current : toggledInView(current, "terminals")));
@@ -339,10 +338,6 @@ export function App() {
     if (programRequest) setHidden("terminals", () => false);
   }, [programRequest]);
   useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
-  const editsInCanvas = useEditsInCanvas();
-  const editRequests = useMemo(() => (open && editsInCanvas ? editRequestsIn(open.events) : []), [open?.events, editsInCanvas]);
-  const changesRefresh = useMemo(() => (open ? changesRefreshPoint(open.events) : 0), [open?.events]);
-  const agentPlan = useMemo(() => (open ? latestPlan(open.events) : null), [open?.events]);
 
   const closeOverlay = useCallback(() => {
     dispatch({ type: "close-overlay" });
@@ -530,18 +525,15 @@ export function App() {
           content={{
             conversation: conversationPane,
             canvas: showCanvas ? (
-              <CanvasPanel
-                key={conversation!.id}
-                conversationId={conversation!.id}
-                items={open!.canvas}
-                plan={agentPlan}
-                edits={editRequests}
+              <KeptCanvases
+                kept={inFixedOrder(state.kept)}
+                shownId={conversation!.id}
+                workspaceOf={(conversationId) => state.conversations.find(({ id }) => id === conversationId)?.workspaceId}
+                apps={apps}
                 assetsOrigin={state.canvasAssetsOrigin}
                 homeDir={state.homeDir}
-                changesRefreshPoint={changesRefresh}
-                apps={workspaceApps}
                 canvasViews={state.canvasViews}
-                onHide={toggleCanvas}
+                onHide={hideCanvas}
               />
             ) : null,
             terminals: showTerminals ? (
