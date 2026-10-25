@@ -315,7 +315,7 @@ export class AppDocuments {
       if (this.documents.get(keyOf(opened)) !== opened) throw new AppProblem(`${opened.plugin.manifest.title} closed on ${opened.file}.`);
       if (opened.problem) throw new AppProblem(`${opened.file} can't be read: ${opened.problem}. Fix the file, or open it again with app_open.`);
       const { host, manifest } = opened.plugin;
-      const applied = this.guarded(() => host.apply(opened.document, operation));
+      const applied = this.guarded(() => host.apply(opened.document, operation, author));
       if (typeof applied?.summary !== "string") throw new AppProblem(`${manifest.title} gave no summary of that operation, which is a bug in the plugin.`);
       await this.write(opened, this.guarded(() => host.serialize(applied.document)));
       opened.document = applied.document;

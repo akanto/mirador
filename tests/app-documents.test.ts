@@ -6,7 +6,7 @@ import { AppDocuments, AppFileRefused, type AppPublisher } from "../host/apps/do
 import { AppProblem, loadPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
 import { storeWithConversation } from "./canvas-plugin-host.ts";
-import { APP_MEDIA_PATH, appFileUrl, appMediaGrantUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
+import { APP_MEDIA_PATH, appFileUrl, appMediaGrantUrl, appPromptText, type AppAuthor, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
 const FIXTURE_APPS = join(import.meta.dir, "fixtures", "apps");
 const FIXTURE_SHIPPED = join(import.meta.dir, "fixtures", "shipped-plugins");
@@ -40,7 +40,7 @@ async function eventually(check: () => void, timeoutMs = 3000) {
 }
 
 const COUNTER_TASKS =
-  "Tasks, which app_run runs:\n- count-up: Count up three times\n- write-count: Write the count to counted.txt\n- wait: Wait until stopped\n- fail: Fail on purpose";
+  "Tasks, which app_run runs:\n- count-up: Count up three times\n- sign: Sign as whoever ran it\n- write-count: Write the count to counted.txt\n- wait: Wait until stopped\n- fail: Fail on purpose";
 
 /** Longer than the watcher's settling time, so an edit it should ignore has had its chance to show. */
 const watcherHadItsChance = () => Bun.sleep(500);
@@ -87,7 +87,7 @@ describe("loadPlugins", () => {
     expect(plugins.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
     const problemOf = (name: string) => problems.find((problem) => problem.folder.endsWith(name))?.message;
     expect(problems).toHaveLength(6);
-    expect(problemOf("old-api")).toContain("plugin API 99; this Mirador speaks plugin API 1 to 3, so the plugin needs a newer Mirador");
+    expect(problemOf("old-api")).toContain("plugin API 99; this Mirador speaks plugin API 1 to 4, so the plugin needs a newer Mirador");
     expect(problemOf("taskless")).toContain("the host module's tasks render need a title and a run function");
     expect(problemOf("no-exports")).toContain("serialize, apply, describe");
     expect(problemOf("unbuilt")).toContain("dist/view.js doesn't exist");
@@ -182,6 +182,18 @@ describe("AppDocuments", () => {
     ]);
     expect(changes[0]!.author).toEqual(agent);
     expect(JSON.parse(fileText())).toEqual({ count: 3 });
+    apps.stop();
+  });
+
+  test("tells the plugin who made each operation: the agent, the user in the view, or whoever ran the task that applied it", async () => {
+    const { apps } = await setUp();
+    await apps.open("w1", "counter", "counter.json");
+    const signed = async (author: AppAuthor) => (await apps.apply("w1", undefined, { op: "sign" }, author)).summary;
+    expect(await signed({ kind: "agent", conversationId: "c1", turnSeq: 4 })).toBe("Signed by agent.");
+    expect(await signed({ kind: "you" })).toBe("Signed by you.");
+    expect(await apps.startTask("w1", undefined, "sign", { kind: "agent", conversationId: "c1", turnSeq: 5 }).ended).toBe("Signed by agent.");
+    expect(await apps.startTask("w1", undefined, "sign", { kind: "you" }).ended).toBe("Signed by you.");
+    expect(apps.state("w1", "counter")!.document).toEqual({ count: 0, signedBy: "you" });
     apps.stop();
   });
 
@@ -370,7 +382,7 @@ describe("AppDocuments tasks", () => {
 
   test("refuses a task the app doesn't have, naming those it has, and a second task while one runs", async () => {
     const { apps } = await opened();
-    expect(() => apps.startTask("w1", undefined, "render", agent)).toThrow("Counter has no task called render; its tasks: count-up, write-count, wait, fail.");
+    expect(() => apps.startTask("w1", undefined, "render", agent)).toThrow("Counter has no task called render; its tasks: count-up, sign, write-count, wait, fail.");
     expect(() => apps.startTask("w1", undefined, "toString", agent)).toThrow("Counter has no task called toString");
     const waiting = apps.startTask("w1", undefined, "wait", agent).ended.catch(() => {});
     expect(() => apps.startTask("w1", undefined, "count-up", { kind: "you" })).toThrow("Wait until stopped is still running; wait for it to end, or stop it in the app.");

@@ -1,10 +1,12 @@
-import type { AppHost } from "../../../../shared/apps.ts";
+import type { AppAuthor, AppHost } from "../../../../shared/apps.ts";
 
 /** The smallest app for testing Mirador's app platform: a number that operations add to. */
 interface Counter {
   count: number;
   /** The file app_open was given, when it started the counter through documentFor. */
   startedFor?: string;
+  /** Who made the latest sign operation, as apply was told. */
+  signedBy?: AppAuthor["kind"];
 }
 
 const added = (counter: Counter, by: number) => ({
@@ -21,9 +23,10 @@ const host: AppHost<Counter> = {
     return value as Counter;
   },
   serialize: (counter) => `${JSON.stringify(counter, null, 2)}\n`,
-  apply(counter, operation) {
+  apply(counter, operation, author) {
     const { op, by } = operation as { op?: unknown; by?: unknown };
     if (op === "add" && typeof by === "number") return added(counter, by);
+    if (op === "sign") return { document: { ...counter, signedBy: author.kind }, inverse: { op: "sign" }, summary: `Signed by ${author.kind}.` };
     if (op === "crash") return (undefined as unknown as { boom: () => never }).boom();
     throw new Error('Unknown operation; use { op: "add", by: <number> }.');
   },
@@ -39,6 +42,12 @@ const host: AppHost<Counter> = {
           progress(step / 3, `step ${step} of 3`);
         }
         return `Counted up from ${document.count} to ${document.count + 3}.`;
+      },
+    },
+    sign: {
+      title: "Sign as whoever ran it",
+      async run({ apply }) {
+        return (await apply({ op: "sign" })).summary;
       },
     },
     "write-count": {

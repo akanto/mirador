@@ -1,9 +1,9 @@
 /**
  * The plugin API version this Mirador speaks; a plugin.json names the one it was written for, and Mirador loads every
  * version up to its own. API 2 brought host tasks, streamed files and images in a view's message; API 3 brought canvas
- * tools and items.
+ * tools and items; API 4 tells apply who made the change.
  */
-export const APP_PLUGIN_API = 3;
+export const APP_PLUGIN_API = 4;
 
 /** The first plugin API whose plugin.json may have a canvas part. */
 export const CANVAS_PLUGIN_API = 3;
@@ -45,8 +45,11 @@ export interface AppHost<Document = unknown> {
   /** Reads the document's file, bringing an older format up to date. */
   parse(text: string): Document;
   serialize(document: Document): string;
-  /** Applies one operation. The inverse is the operation that undoes it; touched names what it changed, for the view to show. */
-  apply(document: Document, operation: unknown): { document: Document; inverse: unknown; summary: string; touched?: string[] };
+  /**
+   * Applies one operation, made by the author, so a plugin can keep an operation for the user alone. The inverse is the
+   * operation that undoes it; touched names what it changed, for the view to show.
+   */
+  apply(document: Document, operation: unknown, author: AppAuthor): { document: Document; inverse: unknown; summary: string; touched?: string[] };
   /** The document in words, for the agent. */
   describe(document: Document): string;
   /**
