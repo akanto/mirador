@@ -1,0 +1,52 @@
+import { useSyncExternalStore } from "react";
+import { settingValue, type PluginSettings } from "../shared/apps.ts";
+import type { CanvasItem } from "../shared/model.ts";
+import { itemRooms, type ItemRoom } from "../shared/canvas-plugins.ts";
+import { connection } from "./connection.ts";
+
+let current: PluginSettings[] = [];
+const listeners = new Set<() => void>();
+
+function receive(pluginSettings: PluginSettings[]) {
+  current = pluginSettings;
+  listeners.forEach((listener) => listener());
+  moveReviewPlacementFromThisBrowser();
+}
+
+connection.onMessage((message) => {
+  if (message.type === "snapshot") receive(message.pluginSettings ?? []);
+  if (message.type === "plugins.settings") receive(message.pluginSettings);
+});
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+};
+
+export const usePluginSettings = () => useSyncExternalStore(subscribe, () => current);
+
+export const choosePluginSetting = (plugin: string, setting: string, value: string) => connection.send({ type: "plugins.choose-setting", plugin, setting, value });
+
+/** Before plugins had settings, this browser remembered where reviews open. */
+const LEGACY_REVIEW_PLACEMENT_KEY = "mirador-review-placement";
+
+function moveReviewPlacementFromThisBrowser() {
+  try {
+    const remembered = localStorage.getItem(LEGACY_REVIEW_PLACEMENT_KEY);
+    if (remembered === null) return;
+    const review = current.find(({ plugin }) => plugin === "review");
+    if (!review?.settings.some(({ id }) => id === "open-reviews")) return;
+    if (review.chosen["open-reviews"] === undefined && itemRooms.some((room) => room === remembered)) choosePluginSetting("review", "open-reviews", remembered);
+    localStorage.removeItem(LEGACY_REVIEW_PLACEMENT_KEY);
+  } catch {}
+}
+
+/** The room a plugin's item takes when it opens: what its plugin's setting says, else full screen. */
+export function roomOf(item: CanvasItem): ItemRoom {
+  if (item.kind !== "plugin" || !item.roomSetting) return "fullscreen";
+  const chosen = settingValue(
+    current.find(({ plugin }) => plugin === item.plugin),
+    item.roomSetting,
+  );
+  return itemRooms.find((room) => room === chosen) ?? "fullscreen";
+}

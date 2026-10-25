@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, watch } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { APP_PLUGIN_API, CANVAS_PLUGIN_API, isPluginManifest, type AppHost, type AppTask, type InstalledApp, type PluginManifest } from "../../shared/apps.ts";
-import { pluginItemPlacements, type CanvasHost } from "../../shared/canvas-plugins.ts";
+import { APP_PLUGIN_API, CANVAS_PLUGIN_API, isPluginManifest, type AppHost, type AppTask, type InstalledApp, type PluginManifest, type PluginSetting } from "../../shared/apps.ts";
+import { itemRooms, pluginItemPlacements, type CanvasHost } from "../../shared/canvas-plugins.ts";
 import { BUILT_IN_CANVAS_TOOLS } from "../canvas/tool-names.ts";
 
 /** Held in memory, so the code served under a hash is always the code that hash was made from. */
@@ -112,7 +112,7 @@ export async function readManifest(folder: string): Promise<PluginManifest> {
   if (!existsSync(file)) throw new Error("there's no plugin.json at the top of its folder");
   const manifest: unknown = await Bun.file(file).json();
   if (!isPluginManifest(manifest)) {
-    throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, an api number, and app.host and app.view, canvas.host and canvas.view, or both");
+    throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, an api number, and app.host and app.view, canvas.host and canvas.view, or both; each of its settings, if any, an id of its own (lower case, digits and dashes), a label, choices with a value and a label each, and one of them as its default");
   }
   if (!Number.isInteger(manifest.api) || manifest.api < 1 || manifest.api > APP_PLUGIN_API) {
     throw new Error(`plugin.json is for plugin API ${manifest.api}; this Mirador speaks plugin API 1 to ${APP_PLUGIN_API}, so the plugin needs a newer Mirador`);
@@ -133,7 +133,7 @@ async function loadPlugin(folder: string, shipped: boolean): Promise<{ app: AppP
   const loaded = { manifest, folder, shipped };
   return {
     app: files.app ? { ...loaded, host: hostFrom(await import(files.app.hostFile)), view: await viewCode(files.app.viewFile, shipped) } : null,
-    canvas: files.canvas ? { ...loaded, host: canvasHostFrom(await import(files.canvas.hostFile)), view: await viewCode(files.canvas.viewFile, shipped) } : null,
+    canvas: files.canvas ? { ...loaded, host: canvasHostFrom(await import(files.canvas.hostFile), manifest.settings ?? []), view: await viewCode(files.canvas.viewFile, shipped) } : null,
   };
 }
 
@@ -217,7 +217,13 @@ function hostFrom(module: Record<string, unknown>): AppHost {
 const isFunction = (value: unknown) => typeof value === "function";
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
-function canvasHostFrom(module: Record<string, unknown>): CanvasHost {
+/** One of the plugin's settings whose choices are exactly the rooms an item opens in. */
+const isRoomSetting = (settings: PluginSetting[], id: unknown) => {
+  const values = settings.find((setting) => setting.id === id)?.choices.map(({ value }) => value);
+  return values !== undefined && values.length === itemRooms.length && itemRooms.every((room) => values.includes(room));
+};
+
+function canvasHostFrom(module: Record<string, unknown>, settings: PluginSetting[]): CanvasHost {
   const host = exportsOf(module);
   const problems: string[] = [];
   if (!isObject(host.items)) problems.push("items, by name");
@@ -230,7 +236,10 @@ function canvasHostFrom(module: Record<string, unknown>): CanvasHost {
     if (typeof icon !== "string" || !pluginItemPlacements.includes(placement as never) || optionalFunctions.some((value) => value !== undefined && !isFunction(value))) {
       problems.push(`items.${name} with an icon, a placement of ${pluginItemPlacements.join(" or ")}, and count, outcome and listed only as functions`);
     }
-    if (opensWithRoom !== undefined && typeof opensWithRoom !== "boolean") problems.push(`items.${name} with opensWithRoom only as true or false`);
+    const namesRoomSetting = isObject(opensWithRoom) && isRoomSetting(settings, opensWithRoom.setting);
+    if (opensWithRoom !== undefined && typeof opensWithRoom !== "boolean" && !namesRoomSetting) {
+      problems.push(`items.${name} with opensWithRoom only as true or false, or as { setting } naming a setting of plugin.json whose choices are ${itemRooms.join(" and ")}`);
+    }
   }
   for (const [name, tool] of Object.entries(tools)) {
     const { description, input, run } = (isObject(tool) ? tool : {}) as Record<string, unknown>;

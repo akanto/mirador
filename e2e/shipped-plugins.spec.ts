@@ -56,10 +56,26 @@ test("Settings lists the plugins Mirador comes with first, without update or rem
   const plugins = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
   await expect(plugins).toHaveCount(4);
   await expect(plugins.nth(0)).toHaveText("ChecklistchecklistComes with Mirador");
-  await expect(plugins.nth(1)).toHaveText("Code reviewreviewComes with Mirador");
+  await expect(plugins.nth(1)).toHaveText("Code reviewreviewComes with MiradorOpen reviewsFull screen, over the chatIn the canvas pane, beside the chat");
   await expect(plugins.nth(2)).toHaveText("TallytallyComes with Mirador");
   await expect(plugins.nth(2).getByRole("button")).toHaveCount(0);
   await expect(plugins.nth(3)).toHaveText("CountertallyA folder put there by handDidn't load: Mirador comes with a plugin named tallyRemove");
+});
+
+test("where this browser opened reviews before plugins had settings moves to the code review plugin's setting, once", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("moved")) localStorage.setItem("mirador-review-placement", "beside");
+    sessionStorage.setItem("moved", "yes");
+  });
+  await signIn(page, host);
+  const settings = await openSettings(page, "Plugins");
+  const codeReview = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem").filter({ hasText: "Code review" });
+  await expect(codeReview.getByLabel("Open reviews")).toHaveValue("beside");
+  expect(await page.evaluate(() => localStorage.getItem("mirador-review-placement"))).toBeNull();
+  await codeReview.getByLabel("Open reviews").selectOption("fullscreen");
+  await page.reload();
+  const again = await openSettings(page, "Plugins");
+  await expect(again.getByRole("list", { name: "Plugins" }).getByRole("listitem").filter({ hasText: "Code review" }).getByLabel("Open reviews")).toHaveValue("fullscreen");
 });
 
 test("the agent opens a plugin Mirador comes with, whose view Mirador bundled", async ({ page }) => {

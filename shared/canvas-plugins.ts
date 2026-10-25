@@ -8,6 +8,11 @@ export type PluginItemPlacement = "page" | "tab";
 
 export const pluginItemPlacements: PluginItemPlacement[] = ["page", "tab"];
 
+/** Where an item that opens with room goes: the canvas pane full screen, over the chat, or beside it. */
+export type ItemRoom = "fullscreen" | "beside";
+
+export const itemRooms: ItemRoom[] = ["fullscreen", "beside"];
+
 /** A kind of item a plugin's canvas view draws. */
 export interface PluginItemType<Data = unknown> {
   /** A character or two, for the canvas's list of pages and its header. */
@@ -17,8 +22,11 @@ export interface PluginItemType<Data = unknown> {
   count?(data: Data): string;
   /** What came of the item in a few words, such as a review's verdict, shown beside its title in the canvas's bar and list. */
   outcome?(data: Data): string | undefined;
-  /** A new item takes the room Settings give reviews: full screen, or beside the chat, and shows the canvas if it was hidden. */
-  opensWithRoom?: boolean;
+  /**
+   * A new item takes room and shows the canvas if it was hidden: full screen, or with `setting`, where that setting of
+   * the plugin's says, whose choices are the rooms, "fullscreen" and "beside" the chat.
+   */
+  opensWithRoom?: boolean | { setting: string };
   /**
    * The item's data as the canvas lists it, e.g. without a run of the plugin's that Mirador's restart cut short, which
    * the plugin's host code would otherwise still show as running.

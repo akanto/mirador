@@ -2,5 +2,17 @@
   "name": "review",
   "title": "Code review",
   "api": 3,
-  "canvas": { "host": "host.ts", "view": "view.tsx" }
+  "canvas": { "host": "host.ts", "view": "view.tsx" },
+  "settings": [
+    {
+      "id": "open-reviews",
+      "label": "Open reviews",
+      "hint": "Where a code review from the agent opens. Either way, the button in the review's bar switches between the two.",
+      "choices": [
+        { "value": "fullscreen", "label": "Full screen, over the chat" },
+        { "value": "beside", "label": "In the canvas pane, beside the chat" }
+      ],
+      "default": "fullscreen"
+    }
+  ]
 }

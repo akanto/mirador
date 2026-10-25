@@ -15,7 +15,6 @@ import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export.ts";
 import { setPageLibraries, usePageLibraries } from "./page-libraries.ts";
-import { reviewPlacementLabels, setReviewPlacement, useReviewPlacement, type ReviewPlacement } from "./review-placement.ts";
 import { hints } from "./hints.ts";
 import { NewerVersionNote } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
@@ -164,7 +163,6 @@ export function SettingsDialog({
     canvas: () => (
       <>
         <CanvasSettings canvasUse={canvasUse} />
-        <ReviewSettings />
         <EditApprovalSettings />
         <SavedPageSettings />
       </>
@@ -704,28 +702,6 @@ function CanvasSettings({ canvasUse }: { canvasUse: CanvasUse }) {
           Claude Code and pi use the canvas
           <select value={canvasUse} onChange={(event) => connection.send({ type: "settings.set-canvas-use", canvasUse: event.target.value as CanvasUse })}>
             {Object.entries(canvasUseLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </>
-  );
-}
-
-function ReviewSettings() {
-  const placement = useReviewPlacement();
-  return (
-    <>
-      <h3>Code reviews</h3>
-      <p className="hint">The button in a review's bar switches between the two at any time. Remembered in this browser.</p>
-      <div className="sending-settings">
-        <label data-hint={hints.reviewPlacementSetting}>
-          Open reviews
-          <select value={placement} onChange={(event) => setReviewPlacement(event.target.value as ReviewPlacement)}>
-            {Object.entries(reviewPlacementLabels).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>

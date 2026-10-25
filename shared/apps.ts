@@ -33,6 +33,8 @@ export interface PluginManifest {
    * cloning the plugin's repo and after each update, with the Bun it runs on first on the PATH.
    */
   build?: string;
+  /** What the user can set for the plugin, listed under it in Settings. */
+  settings?: PluginSetting[];
 }
 
 /**
@@ -207,9 +209,47 @@ export function appPromptText({ title, file }: OpenApp, text: string) {
 const isHostAndView = (part: unknown) =>
   typeof part === "object" && part !== null && typeof (part as { host?: unknown }).host === "string" && typeof (part as { view?: unknown }).view === "string";
 
+/** A setting a plugin declares in its plugin.json: one of a few choices, stored by Mirador and the same in every browser. */
+export interface PluginSetting {
+  id: string;
+  label: string;
+  /** A sentence on what it does, its tooltip in Settings. */
+  hint?: string;
+  choices: { value: string; label: string }[];
+  default: string;
+}
+
+/** A loaded plugin's settings, with the values the user chose; a setting not chosen yet has its default. */
+export interface PluginSettings {
+  plugin: string;
+  settings: PluginSetting[];
+  chosen: Record<string, string>;
+}
+
+export const settingValue = (settings: PluginSettings | undefined, id: string): string | undefined =>
+  settings?.chosen[id] ?? settings?.settings.find((setting) => setting.id === id)?.default;
+
+const isText = (value: unknown): value is string => typeof value === "string" && value !== "";
+
+function isPluginSetting(value: unknown): value is PluginSetting {
+  if (typeof value !== "object" || value === null) return false;
+  const { id, label, hint, choices, default: fallback } = value as Partial<PluginSetting>;
+  const isChoice = (choice: unknown) => typeof choice === "object" && choice !== null && isText((choice as { value?: unknown }).value) && isText((choice as { label?: unknown }).label);
+  return (
+    isText(id) &&
+    /^[a-z0-9][a-z0-9-]*$/.test(id) &&
+    isText(label) &&
+    (hint === undefined || typeof hint === "string") &&
+    Array.isArray(choices) &&
+    choices.length > 0 &&
+    choices.every(isChoice) &&
+    choices.some((choice) => choice.value === fallback)
+  );
+}
+
 export function isPluginManifest(value: unknown): value is PluginManifest {
   if (typeof value !== "object" || value === null) return false;
-  const { name, title, api, app, canvas, build } = value as Partial<PluginManifest>;
+  const { name, title, api, app, canvas, build, settings } = value as Partial<PluginManifest>;
   return (
     typeof name === "string" &&
     /^[a-z0-9][a-z0-9-]*$/.test(name) &&
@@ -218,6 +258,7 @@ export function isPluginManifest(value: unknown): value is PluginManifest {
     (app !== undefined || canvas !== undefined) &&
     (app === undefined || isHostAndView(app)) &&
     (canvas === undefined || isHostAndView(canvas)) &&
-    (build === undefined || typeof build === "string")
+    (build === undefined || typeof build === "string") &&
+    (settings === undefined || (Array.isArray(settings) && settings.every(isPluginSetting) && new Set(settings.map(({ id }) => id)).size === settings.length))
   );
 }

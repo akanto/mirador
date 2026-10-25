@@ -338,6 +338,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "plugins.listed":
     case "plugins.changed":
     case "plugins.commits-found":
+    case "plugins.settings":
     case "canvas.item-acted":
     case "conversation.revert-previewed":
     case "conversation.reverted":

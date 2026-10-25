@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { PluginCommit, PluginInfo, PluginSource } from "../shared/apps.ts";
+import { settingValue, type PluginCommit, type PluginInfo, type PluginSettings as SettingsOfPlugin, type PluginSource } from "../shared/apps.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { choosePluginSetting, usePluginSettings } from "./plugin-settings.ts";
 
 type PluginsListed = Extract<ServerMessage, { type: "plugins.listed" }>;
 
@@ -107,7 +108,27 @@ function PluginUpdate({ plugin }: { plugin: PluginInfo }) {
   }
 }
 
+function SettingsOf({ settings }: { settings: SettingsOfPlugin }) {
+  return (
+    <span className="plugin-settings">
+      {settings.settings.map((setting) => (
+        <label key={setting.id} data-hint={setting.hint}>
+          {setting.label}
+          <select value={settingValue(settings, setting.id)} onChange={(event) => choosePluginSetting(settings.plugin, setting.id, event.target.value)}>
+            {setting.choices.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+    </span>
+  );
+}
+
 function PluginRow({ plugin }: { plugin: PluginInfo }) {
+  const settings = usePluginSettings().find(({ plugin: name }) => name === plugin.name);
   const [problem, setProblem] = useState<string | null>(null);
   const title = plugin.title ?? plugin.folder;
   const linked = plugin.source.kind === "linked";
@@ -119,6 +140,7 @@ function PluginRow({ plugin }: { plugin: PluginInfo }) {
       {plugin.waitsForRestart && <span className="plugin-waits">used from the next start</span>}
       <span className="plugin-source">{sourceLine(plugin.source)}</span>
       {plugin.problem && <span className="plugin-problem">Didn't load: {plugin.problem}</span>}
+      {settings && settings.settings.length > 0 && <SettingsOf settings={settings} />}
       {plugin.source.kind !== "shipped" && (
         <span className="plugin-actions">
           {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} />}

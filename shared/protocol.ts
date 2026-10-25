@@ -33,7 +33,7 @@ import type {
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
 import type { PageLibraries } from "./canvas-export.ts";
-import type { AppDocumentState, AppStorageItems, InstalledApp, OpenApp, PluginCommit, PluginInfo } from "./apps.ts";
+import type { AppDocumentState, AppStorageItems, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -231,6 +231,8 @@ export type ClientMessage =
   | { type: "host.restart" }
   | { type: "devices.list" }
   | { type: "plugins.list" }
+  /** The user's choice for one of a plugin's settings. */
+  | { type: "plugins.choose-setting"; plugin: string; setting: string; value: string }
   /** `url` is anything git clones, a local path too; without a branch, the repo's default one. */
   | { type: "plugins.add"; requestId: string; url: string; branch: string | null }
   | { type: "plugins.find-commits"; requestId: string; folder: string }
@@ -298,6 +300,8 @@ export type ServerMessage =
       openApps: OpenApp[];
       /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
       canvasViews: Record<string, string>;
+      /** Missing from a host older than plugin settings. */
+      pluginSettings?: PluginSettings[];
     }
   /** Every app open in every workspace, whenever one opens or closes. */
   | { type: "apps.open"; openApps: OpenApp[] }
@@ -413,6 +417,8 @@ export type ServerMessage =
   | { type: "plugins.listed"; folder: string; plugins: PluginInfo[]; restartNeeded: boolean }
   /** Where the views are served now, after an installed plugin's view was built again. */
   | { type: "plugins.views"; installedApps: InstalledApp[]; canvasViews: Record<string, string> }
+  /** Every plugin's settings, whenever the user chooses one. */
+  | { type: "plugins.settings"; pluginSettings: PluginSettings[] }
   /** The answer to plugins.add, plugins.update and plugins.remove. */
   | { type: "plugins.changed"; requestId: string; problem: string | null }
   /** The plugin's reply to an item's action, or why there is none. */

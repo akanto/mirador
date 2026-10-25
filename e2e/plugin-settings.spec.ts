@@ -38,7 +38,7 @@ test("Settings lists the installed plugins, where each came from, and why one di
   const plugins = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
   await expect(plugins).toHaveCount(4);
   await expect(plugins.nth(0)).toHaveText("ChecklistchecklistComes with Mirador");
-  await expect(plugins.nth(1)).toHaveText("Code reviewreviewComes with Mirador");
+  await expect(plugins.nth(1)).toHaveText("Code reviewreviewComes with MiradorOpen reviewsFull screen, over the chatIn the canvas pane, beside the chat");
   await expect(plugins.nth(2)).toHaveText(`Countercounter${counterRepo()} · main · ${git(counterRepo(), "rev-parse", "--short", "HEAD")} Count by oneCheck for updatesRemove`);
   await expect(plugins.nth(3)).toHaveText("UnbuiltunbuiltA folder put there by handDidn't load: host.ts doesn't exist; build the plugin first?Remove");
   await expect(settings.getByText(join(host.dataDir, "plugins"), { exact: true })).toBeVisible();

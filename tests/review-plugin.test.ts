@@ -154,7 +154,7 @@ describe("the review plugin Mirador comes with: reviews", () => {
     const { directory } = gitRepository();
     const shown = await callTool("review", reviewRequest(directory));
     const [review] = items();
-    expect(review).toMatchObject({ plugin: "review", type: "review", icon: "⇄", placement: "page", title: "Serve one more", outcome: "Approve.", opensWithRoom: true });
+    expect(review).toMatchObject({ plugin: "review", type: "review", icon: "⇄", placement: "page", title: "Serve one more", outcome: "Approve.", opensWithRoom: true, roomSetting: "open-reviews" });
     expect(shown).toEqual({
       text: `Shown to the user as review ${review!.id}: 1 changed files, 1 flow steps and 1 findings. To change parts of it later, call update_review with these ids: finding-1 "Magic number" at service.ts:2.`,
       isError: false,

@@ -304,7 +304,7 @@ export function codeReviews(gh: GitHubCli) {
     icon: "⇄",
     placement: "page",
     outcome: (review) => (review.verdict ? verdictInBrief(review.verdict) : undefined),
-    opensWithRoom: true,
+    opensWithRoom: { setting: "open-reviews" },
     /** A host that stopped while posting a review left it marked as posting; a client may still hold it so. */
     listed: ({ id, data: review }) => (review.posting && !beingPosted.has(id) ? { ...review, posting: false } : review),
   };

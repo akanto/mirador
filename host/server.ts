@@ -30,6 +30,7 @@ import type { CanvasPlugins } from "./canvas/plugins.ts";
 import { AppStorage } from "./apps/storage.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
+import type { PluginSettingsStore } from "./plugin-settings.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
 import { OutsideWorkspace } from "./changes.ts";
 import { extensionFor, isImageId } from "../shared/images.ts";
@@ -79,6 +80,7 @@ export interface HostServices {
   apps: AppDocuments;
   plugins: InstalledPlugins;
   canvasPlugins: CanvasPlugins;
+  pluginSettings: PluginSettingsStore;
   profiles: ProfileService;
   statusline: StatuslineService;
   terminals: TerminalService;
@@ -154,6 +156,7 @@ export function startServer(services: HostServices) {
     apps,
     plugins,
     canvasPlugins,
+    pluginSettings,
     profiles,
     statusline,
     terminals,
@@ -1144,6 +1147,13 @@ export function startServer(services: HostServices) {
         return restart.restart();
       case "devices.list":
         return hub.send(socket, devicesListed(socket));
+      case "plugins.choose-setting":
+        try {
+          pluginSettings.choose(message.plugin, message.setting, message.value);
+          return hub.broadcast({ type: "plugins.settings", pluginSettings: pluginSettings.all() });
+        } catch (error) {
+          return hub.send(socket, { type: "error", message: messageOf(error) });
+        }
       case "plugins.list":
         return void pluginsListed()
           .then((listed) => hub.send(socket, listed))
@@ -1278,6 +1288,7 @@ export function startServer(services: HostServices) {
       installedApps: apps.installed(),
       openApps: apps.openApps(),
       canvasViews: canvasPlugins.viewPaths(),
+      pluginSettings: pluginSettings.all(),
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
     hub.send(socket, voiceSettingsFor(socket));

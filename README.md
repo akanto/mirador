@@ -223,7 +223,7 @@ Windows support is new and experimental: expect rough edges, and please report w
 
 - **`review`**: the agent publishes a review of `base...head` in a checkout, like a pull request: a title, a verdict, a summary, a tour of the code flow and findings. The diff comes from git, so the agent never pastes code.
 - **Checked before shown**: anchors outside the diff, or unknown conversations, send the whole list of problems back to the agent, and nothing half-wrong is shown.
-- **Full screen or beside the chat**: *Settings → Canvas → Open reviews* sets the default, and a button switches it. A new review brings a hidden canvas back.
+- **Full screen or beside the chat**: *Settings → Plugins → Code review → Open reviews* sets the default for every browser, and a button switches it. A new review brings a hidden canvas back.
 - **Overview**: verdict, `+`/`−` counts, commit range, the summary (Markdown, tables included), the flow as a list and the findings by severity.
 - **Flow**: the tour in the order the code runs, one step at a time, with the step's lines marked. ←/→ move between steps.
 - **Files**: a filter box, the tour's files first, every diff with syntax colours, and the lines between changes shown 20 at a time or all at once.

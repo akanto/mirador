@@ -103,6 +103,7 @@ const schema = `
   CREATE TABLE IF NOT EXISTS app_storage (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
     PRIMARY KEY (workspace_id, app, key));
+  CREATE TABLE IF NOT EXISTS plugin_settings (plugin TEXT NOT NULL, id TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (plugin, id));
   CREATE TABLE IF NOT EXISTS canvas_plugin_storage (plugin TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (plugin, key));
 `;
 
@@ -421,6 +422,16 @@ export class Store {
       app: string;
       conversationId: string;
     }[];
+  }
+
+  /** The values the user chose, by plugin and setting. */
+  listPluginSettings(): Record<string, Record<string, string>> {
+    const rows = this.db.query("SELECT plugin, id, value FROM plugin_settings").all() as { plugin: string; id: string; value: string }[];
+    return rows.reduce<Record<string, Record<string, string>>>((chosen, { plugin, id, value }) => ({ ...chosen, [plugin]: { ...chosen[plugin], [id]: value } }), {});
+  }
+
+  savePluginSetting(plugin: string, id: string, value: string) {
+    this.db.query("INSERT INTO plugin_settings (plugin, id, value) VALUES (?, ?, ?) ON CONFLICT (plugin, id) DO UPDATE SET value = excluded.value").run(plugin, id, value);
   }
 
   saveAppConversation(workspaceId: string, app: string, conversationId: string) {

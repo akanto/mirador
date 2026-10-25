@@ -191,4 +191,31 @@ describe("loading canvas plugins", () => {
       "the canvas host module needs items.card with an icon, a placement of page or tab, and count, outcome and listed only as functions; tools named in lower case, digits and underscores, not Show-Card; tools.Show-Card with a description, an input schema and a run function; note only as a function",
     ]);
   });
+
+  const roomSetting = { id: "open-reports", label: "Open reports", choices: [{ value: "fullscreen", label: "Full screen" }, { value: "beside", label: "Beside" }], default: "beside" };
+  const reportOpeningWith = (opensWithRoom: string) =>
+    `export default { items: { report: { icon: "▥", placement: "page", opensWithRoom: ${opensWithRoom} } }, tools: { show_report: { description: "d", input: { type: "object" }, run: (_input, context) => (context.publish({ type: "report", title: "Report", data: {} }), "") } } };`;
+
+  test("refuses settings in plugin.json without a default among their choices, or with an id twice", async () => {
+    const withoutDefault = boardCopy((manifest) => ({ ...manifest, settings: [{ ...roomSetting, default: "elsewhere" }] }));
+    const twice = boardCopy((manifest) => ({ ...manifest, settings: [roomSetting, roomSetting] }));
+    for (const folder of [withoutDefault, twice]) {
+      const { canvases, problems } = await loadPlugins(folder);
+      expect(canvases).toEqual([]);
+      expect(problems[0]!.message).toContain("each of its settings, if any, an id of its own");
+    }
+  });
+
+  test("an item opens with the room a setting of its plugin says only if that setting's choices are the rooms", async () => {
+    const elsewhere = boardCopy((manifest) => ({ ...manifest, settings: [{ ...roomSetting, choices: [...roomSetting.choices, { value: "elsewhere", label: "Elsewhere" }] }] }), reportOpeningWith('{ setting: "open-reports" }'));
+    expect((await loadPlugins(elsewhere)).problems.map(({ message }) => message)).toEqual([
+      "the canvas host module needs items.report with opensWithRoom only as true or false, or as { setting } naming a setting of plugin.json whose choices are fullscreen and beside",
+    ]);
+    const unnamed = boardCopy((manifest) => ({ ...manifest, settings: [roomSetting] }), reportOpeningWith('{ setting: "open-cards" }'));
+    expect((await loadPlugins(unnamed)).problems).toHaveLength(1);
+
+    const { callTool, items } = await canvasPluginHost(boardCopy((manifest) => ({ ...manifest, settings: [roomSetting] }), reportOpeningWith('{ setting: "open-reports" }')));
+    await callTool("show_report", {});
+    expect(items()[0]).toMatchObject({ opensWithRoom: true, roomSetting: "open-reports" });
+  });
 });

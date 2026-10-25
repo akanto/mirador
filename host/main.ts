@@ -6,6 +6,7 @@ import { AppDocuments } from "./apps/documents.ts";
 import { InstalledPlugins } from "./apps/installed-plugins.ts";
 import { loadPlugins, watchViews } from "./apps/plugins.ts";
 import { CanvasPlugins } from "./canvas/plugins.ts";
+import { PluginSettingsStore } from "./plugin-settings.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { agentLogsDirectory, loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
@@ -65,6 +66,7 @@ const shippedPluginsFolder = join(sourceDir, "plugins");
 const loadedPlugins = await loadPlugins(pluginsFolder, shippedPluginsFolder);
 for (const { folder, message } of loadedPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
 const canvasPlugins = new CanvasPlugins(store, hub, loadedPlugins.canvases);
+const pluginSettings = new PluginSettingsStore(store, [...loadedPlugins.canvases, ...loadedPlugins.apps].map(({ manifest }) => manifest));
 const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications, canvasPlugins.guidance);
 canvasPlugins.sendsPromptsWith((conversationId, text, { afterTurn }) => conversations.send(conversationId, text, [], { afterTurn }));
 const canvasAssetsOrigins = [
@@ -146,7 +148,7 @@ const voiceEngine = new VoiceEngine(
 );
 voiceEngineInstaller.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();

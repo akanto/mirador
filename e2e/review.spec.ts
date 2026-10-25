@@ -343,14 +343,23 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await expect(view.getByRole("button", { name: "Post 1 finding to the pull request" })).toBeVisible();
   });
 
-  await test.step("with Settings set to open reviews beside the chat, the next review leaves the chat in view", async () => {
-    const settings = await openSettings(page, "Canvas");
-    await settings.getByLabel("Open reviews").selectOption({ label: "In the canvas pane, beside the chat" });
+  await test.step("with the code review plugin set to open reviews beside the chat, the next review leaves the chat in view", async () => {
+    const settings = await openSettings(page, "Plugins");
+    const codeReview = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem").filter({ hasText: "Code review" });
+    await codeReview.getByLabel("Open reviews").selectOption({ label: "In the canvas pane, beside the chat" });
     await settings.getByRole("button", { name: "Close" }).click();
     await callCanvasTool(host, conversationId, "review", review({ title: "Second look", pullRequest: undefined, findings: [] }));
     await expect(page.locator(".canvas-title")).toHaveText("Second look");
     await expect(view.locator(".verdict")).toBeVisible();
     await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
+  });
+
+  await test.step("Mirador keeps the setting, so a reloaded page still has it", async () => {
+    await page.reload();
+    const settings = await openSettings(page, "Plugins");
+    const codeReview = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem").filter({ hasText: "Code review" });
+    await expect(codeReview.getByLabel("Open reviews")).toHaveValue("beside");
+    await settings.getByRole("button", { name: "Close" }).click();
   });
 });
 

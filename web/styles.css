@@ -6606,6 +6606,20 @@ body.reordering * {
   margin-top: 4px;
 }
 
+.plugin-settings {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 4px;
+}
+
+.plugin-settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .plugin-status {
   color: var(--muted);
   font-size: calc(12px * var(--font-scale));

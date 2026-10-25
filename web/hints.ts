@@ -107,9 +107,8 @@ export const hints = {
   revealUnderPrevious: "Shows the next lines of the file, under the change above.",
   revealOverNext: "Shows the lines of the file right above the change below.",
   revealAll: "Shows every line of the file between the two changes (or up to the file's start or end).",
-  reviewPlacement: "Show the review over the whole workspace, or in the canvas pane next to the chat. Settings picks where reviews open.",
+  reviewPlacement: "Show the review over the whole workspace, or in the canvas pane next to the chat. The code review plugin's setting in Settings picks where reviews open.",
   tourPlacement: "Show the tour over the whole workspace, or in the canvas pane next to the chat.",
-  reviewPlacementSetting: "Where a code review from the agent opens. Either way, the button in the review's bar switches between the two.",
   pageLibrariesSetting:
     "Where a page you copy or save out of the canvas loads D3, Mermaid and three.js from. The canvas serves them itself, which a page outside Mirador cannot reach. three.js always comes from the CDN.",
   editsInCanvasSetting:

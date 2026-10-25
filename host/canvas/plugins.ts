@@ -17,8 +17,13 @@ const outcomeOf = (type: PluginItemType | undefined, data: unknown) => {
   return outcome ? { outcome } : {};
 };
 
-/** What the type says of the item's data, kept with the item for the page and the phone, which have no host code. */
-const shownOf = (type: PluginItemType | undefined, data: unknown) => ({ ...countOf(type, data), ...outcomeOf(type, data) });
+const roomOf = (type: PluginItemType | undefined) => {
+  if (!type?.opensWithRoom) return {};
+  return typeof type.opensWithRoom === "object" ? { opensWithRoom: true, roomSetting: type.opensWithRoom.setting } : { opensWithRoom: true };
+};
+
+/** What the type says of the item, kept with it for the page and the phone, which have no host code. */
+const shownOf = (type: PluginItemType | undefined, data: unknown) => ({ ...countOf(type, data), ...outcomeOf(type, data), ...roomOf(type) });
 
 export type SendPrompt = (conversationId: string, text: string, options: { afterTurn: boolean }) => Promise<void>;
 
@@ -144,7 +149,7 @@ export class CanvasPlugins {
       const { outcome: _, ...withoutOutcome } = item;
       const shown = { ...withoutOutcome, data, ...shownOf(type, data) };
       if (data !== item.data) return { ...shown, updatedAt: Date.now() };
-      return shown.outcome === item.outcome && shown.count === item.count ? item : shown;
+      return shown.outcome === item.outcome && shown.count === item.count && shown.roomSetting === item.roomSetting ? item : shown;
     } catch (error) {
       console.error(`${new Date().toISOString()} the ${item.plugin} plugin failed to list ${item.id}:`, error);
       return item;
@@ -166,7 +171,6 @@ export class CanvasPlugins {
       title,
       data,
       ...shownOf(itemType, data),
-      ...(itemType.opensWithRoom && { opensWithRoom: true }),
       status: "shown",
       createdAt: Date.now(),
     });

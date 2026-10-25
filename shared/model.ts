@@ -637,8 +637,9 @@ export interface PluginCanvasItem extends CanvasItemBase {
   agentEditedAt?: number;
   /** What came of it, in a few words, beside its title. */
   outcome?: string;
-  /** A new one takes the room Settings give reviews. */
+  /** A new one takes room: full screen, or where its plugin's setting of `roomSetting` says. */
   opensWithRoom?: boolean;
+  roomSetting?: string;
 }
 
 export type CanvasItem = ShowItem | AskItem | PluginCanvasItem;

@@ -20,7 +20,8 @@ import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
-import { currentReviewPlacement, opensWithRoom, takeArrivedReview } from "./review-placement.ts";
+import { opensWithRoom, takeArrivedReview } from "./review-placement.ts";
+import { roomOf } from "./plugin-settings.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
 
 /** Content as wide as the viewport would otherwise widen the frame that measures it without end. */
@@ -573,14 +574,14 @@ function CanvasHistory({ items, selectedId, onPick }: { items: CanvasItem[]; sel
   );
 }
 
-/** Opens a review full screen or beside the chat, as Settings say; moving on from it gives back the layout it took. */
+/** Opens a review full screen or beside the chat, as its plugin's setting says; moving on from it gives back the layout it took. */
 function useReviewPlacement() {
   const fullscreen = usePaneFullscreen("canvas");
   const tookFullscreen = useRef(false);
   return (item: CanvasItem | undefined) => {
     if (!fullscreen) return;
-    if (opensWithRoom(item)) {
-      const wanted = currentReviewPlacement() === "fullscreen";
+    if (item && opensWithRoom(item)) {
+      const wanted = roomOf(item) === "fullscreen";
       fullscreen.setFullscreen(wanted);
       tookFullscreen.current = wanted;
     } else if (tookFullscreen.current) {
