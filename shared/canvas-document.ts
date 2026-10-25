@@ -709,11 +709,12 @@ ${pageDrawing(assetsOrigin)}
   };
   let pressing = false;
   addEventListener("pointerdown", () => (pressing = true), true);
-  addEventListener("pointercancel", () => (pressing = false), true);
-  addEventListener("pointerup", (event) => {
+  const pressEnded = (event) => {
     pressing = false;
     if (event.target !== host) setTimeout(offerToAsk, 0);
-  }, true);
+  };
+  addEventListener("pointerup", pressEnded, true);
+  addEventListener("pointercancel", pressEnded, true);
   addEventListener("keyup", offerToAsk, true);
   // A touch screen selects by a long press, which cancels the touch, and by handles the page never hears of.
   document.addEventListener("selectionchange", () => {
