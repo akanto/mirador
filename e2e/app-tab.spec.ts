@@ -190,15 +190,29 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#file-text")).toHaveText("../outside.txt is outside the document's folder.");
   });
 
-  await test.step("another conversation of the workspace has the same app, and its agent reads every change", async () => {
+  await test.step("another conversation of the workspace shows the app once its agent uses it, and reads every change", async () => {
     second = await startConversationWithoutModel(page);
     await sendAndWait(page, "Start");
-    await expect(appToggle(page)).toHaveText("Counter");
-    await appToggle(page).click();
-    await expect(view(page).locator("#count")).toHaveText("40");
+    await expect(page.locator(".canvas-header:visible")).toBeVisible();
+    await expect(appToggle(page)).toHaveCount(0);
     const state = await callCanvasTool(host, second, "app_state", {});
+    await expect(appToggle(page)).toHaveText("Counter");
+    await expect(view(page).locator("#count")).toHaveText("40");
     expect(state).toContain("The count is 40.");
     expect(state).toContain("1. agent: Added 2; the count is 2.\n2. user: Added 1; the count is 3.\n3. edited outside Mirador: Edited outside Mirador");
+  });
+
+  await test.step("a conversation whose agent never used the app shows it once the user adds it from the bar's More menu", async () => {
+    const { hash } = new URL(page.url());
+    await startConversationWithoutModel(page);
+    await sendAndWait(page, "Start");
+    await expect(appToggle(page)).toHaveCount(0);
+    await page.locator(".canvas-header:visible").getByRole("button", { name: "More" }).click();
+    await page.getByRole("menuitem", { name: "Show Counter" }).click();
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(view(page).locator("#count")).toHaveText("40");
+    await page.evaluate((back) => (location.hash = back), hash);
+    await expect(page).toHaveURL(new RegExp(`${hash}$`));
   });
 
   await test.step("what the view keeps in localStorage stays in the workspace, through a reload and a restart of the host", async () => {

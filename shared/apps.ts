@@ -126,6 +126,8 @@ export interface OpenApp {
   app: string;
   title: string;
   file: string;
+  /** The conversations whose agent used the app, or whose user added it; its tab shows only in those. */
+  conversationIds: string[];
 }
 
 /** What a view shows: sent to the pages that have the app open, on every change. */

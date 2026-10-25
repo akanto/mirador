@@ -1017,6 +1017,12 @@ export function startServer(services: HostServices) {
         return void apps
           .apply(message.workspaceId, message.app, message.op, { kind: "you" })
           .catch((error) => hub.send(socket, { type: "error", message: messageOf(error) }));
+      case "app.use-in":
+        try {
+          return apps.useIn(message.workspaceId, message.app, message.conversationId);
+        } catch (error) {
+          return hub.send(socket, { type: "error", message: messageOf(error) });
+        }
       case "app.run":
         try {
           return void apps.runFromView(message.workspaceId, message.app, message.task);

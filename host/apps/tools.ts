@@ -45,8 +45,8 @@ export function registerAppTools(
       _meta: loadedUpFront,
     },
     ({ app, file }, ctx) =>
-      answered(ctx, async (workspaceId) => {
-        const opened = await apps.open(workspaceId, app, file);
+      answered(ctx, async (workspaceId, conversationId) => {
+        const opened = await apps.open(workspaceId, app, file, conversationId);
         const forFile = opened.file === normalize(file) ? "" : `, the document for ${normalize(file)}`;
         return `${opened.title} is open on ${opened.file}${forFile}; the user sees it in the canvas.\n\n${apps.describe(workspaceId, opened.app)}`;
       }),
@@ -66,6 +66,7 @@ export function registerAppTools(
     ({ op, app }, ctx) =>
       answered(ctx, async (workspaceId, conversationId) => {
         const change = await apps.apply(workspaceId, app, op, { kind: "agent", conversationId, turnSeq: conversations.latestTurnSeq(conversationId) });
+        apps.useIn(workspaceId, app, conversationId);
         return change.summary;
       }),
   );
@@ -82,7 +83,11 @@ export function registerAppTools(
       _meta: loadedUpFront,
     },
     ({ task, app }, ctx) =>
-      answered(ctx, (workspaceId, conversationId) => apps.startTask(workspaceId, app, task, { kind: "agent", conversationId, turnSeq: conversations.latestTurnSeq(conversationId) }).ended),
+      answered(ctx, (workspaceId, conversationId) => {
+        const { ended } = apps.startTask(workspaceId, app, task, { kind: "agent", conversationId, turnSeq: conversations.latestTurnSeq(conversationId) });
+        apps.useIn(workspaceId, app, conversationId);
+        return ended;
+      }),
   );
 
   server.registerTool(
@@ -92,6 +97,11 @@ export function registerAppTools(
       inputSchema: z.object({ app: appNameSchema }),
       _meta: loadedUpFront,
     },
-    ({ app }, ctx) => answered(ctx, (workspaceId) => apps.describe(workspaceId, app)),
+    ({ app }, ctx) =>
+      answered(ctx, (workspaceId, conversationId) => {
+        const described = apps.describe(workspaceId, app);
+        apps.useIn(workspaceId, app, conversationId);
+        return described;
+      }),
   );
 }

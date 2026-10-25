@@ -481,6 +481,28 @@ describe("Store", () => {
     store.close();
   });
 
+  test("notes, once, the apps each conversation's Claude Code agent used before Mirador kept track of them", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const { conversation } = seededStore();
+    const before = new Store(path);
+    before.insertWorkspace({ id: "w1", name: "project", path: "/tmp/project", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+    ["c1", "c2", "c3"].forEach((id) => before.insertConversation({ ...conversation, id }));
+    before.saveOpenApp("w1", "counter", "counter.json");
+    before.saveOpenApp("w1", "notes", "notes.json");
+    const toolCall = (toolName: string, rawInput: object) =>
+      ({ type: "acp", update: { sessionUpdate: "tool_call", toolCallId: toolName, title: toolName, rawInput, _meta: { claudeCode: { toolName } } } }) as unknown as ConversationEvent;
+    before.appendEvent("c1", toolCall("mcp__canvas__app_open", { app: "counter", file: "counter.json" }));
+    before.appendEvent("c2", toolCall("mcp__canvas__app_state", {}));
+    before.appendEvent("c3", toolCall("Bash", { command: "grep app_open host" }));
+    before.close();
+    new Database(path).run("DROP TABLE app_conversations");
+
+    const store = new Store(path);
+    const used = store.listAppConversations().map(({ app, conversationId }) => `${conversationId} ${app}`);
+    expect(used.sort()).toEqual(["c1 counter", "c2 counter", "c2 notes"]);
+    store.close();
+  });
+
   test("a conversation's slash commands are its agent's last list, else the latest of another with its agent and profile, its workspace first", () => {
     const { store, conversation } = seededStore();
     store.insertWorkspace({ id: "w2", name: "other", path: "/tmp/other", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });

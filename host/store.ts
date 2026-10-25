@@ -23,6 +23,7 @@ import type {
 } from "../shared/model.ts";
 import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
+import { APP_TOOLS } from "./canvas/tool-names.ts";
 import { pluginItemOfSavedChecklist, type SavedChecklist } from "./saved-checklists.ts";
 import { pluginItemOfSavedWalkthrough, type SavedReview, type SavedTour } from "./saved-walkthroughs.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
@@ -33,6 +34,9 @@ const TYPED_IN_WORKSPACE_LIMIT = 100;
 
 /** A host made before hosts kept track was offered these when it was created, so one the user deleted since stays deleted. */
 const TEMPLATES_OFFERED_BEFORE_TRACKING = ["default-deep-pr-review"];
+
+/** The app tools as Claude Code names them in a tool call's metadata, as an SQL list. */
+const APP_TOOL_NAMES = `(${APP_TOOLS.map((tool) => `'mcp__canvas__${tool}'`).join(", ")})`;
 const deviceColumns = "id, name, joined_at AS joinedAt, last_seen_at AS lastSeenAt";
 const joinRequestColumns = `id, secret_hash AS secretHash, name, from_address AS fromAddress, tailscale_user AS tailscaleUser,
   authority_fingerprint AS authorityFingerprint, commitment, machine_nonce AS machineNonce, requester_nonce AS requesterNonce, answer, expires_at AS expiresAt`;
@@ -92,6 +96,10 @@ const schema = `
   CREATE TABLE IF NOT EXISTS open_apps (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, file TEXT NOT NULL,
     PRIMARY KEY (workspace_id, app));
+  CREATE TABLE IF NOT EXISTS app_conversations (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    PRIMARY KEY (workspace_id, app, conversation_id));
   CREATE TABLE IF NOT EXISTS app_storage (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
     PRIMARY KEY (workspace_id, app, key));
@@ -262,11 +270,13 @@ export class Store {
   private bringUpToDate() {
     const hadPromptTemplates = this.hasTable("prompt_templates");
     const keptTrackOfOfferedTemplates = this.hasTable("offered_prompt_templates");
+    const keptTrackOfAppConversations = this.hasTable("app_conversations");
     this.db.run(schema);
     this.addMissingColumns();
     this.shareSidebarOrder();
     this.handSavedChecklistsToThePlugin();
     this.handSavedWalkthroughsToThePlugin();
+    if (!keptTrackOfAppConversations) this.noteAppsUsedBeforeTracking();
     if (hadPromptTemplates && !keptTrackOfOfferedTemplates) this.markTemplatesOffered(TEMPLATES_OFFERED_BEFORE_TRACKING);
     this.offerNewDefaultTemplates();
   }
@@ -279,6 +289,24 @@ export class Store {
         this.db.query("INSERT INTO prompt_templates (id, name, text, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING").run(id, name, text, Date.now());
         this.markTemplatesOffered([id]);
       });
+  }
+
+  /**
+   * Each conversation whose Claude Code agent called an app tool before Mirador kept track, for the app it named, or
+   * every app open in its workspace when it named none. Other agents' tool calls don't record the tool's name.
+   */
+  private noteAppsUsedBeforeTracking() {
+    this.db.run(`
+      INSERT OR IGNORE INTO app_conversations (workspace_id, app, conversation_id)
+      SELECT DISTINCT c.workspace_id, o.app, c.id
+      FROM events e
+      JOIN conversations c ON c.id = e.conversation_id
+      JOIN open_apps o ON o.workspace_id = c.workspace_id
+      WHERE json_extract(e.event, '$.type') = 'acp'
+        AND json_extract(e.event, '$.update.sessionUpdate') = 'tool_call'
+        AND json_extract(e.event, '$.update._meta.claudeCode.toolName') IN ${APP_TOOL_NAMES}
+        AND coalesce(json_extract(e.event, '$.update.rawInput.app'), o.app) = o.app
+    `);
   }
 
   private markTemplatesOffered(ids: string[]) {
@@ -384,6 +412,19 @@ export class Store {
 
   forgetOpenApps(app: string) {
     this.db.query("DELETE FROM open_apps WHERE app = ?").run(app);
+    this.db.query("DELETE FROM app_conversations WHERE app = ?").run(app);
+  }
+
+  listAppConversations(): { workspaceId: string; app: string; conversationId: string }[] {
+    return this.db.query("SELECT workspace_id AS workspaceId, app, conversation_id AS conversationId FROM app_conversations").all() as {
+      workspaceId: string;
+      app: string;
+      conversationId: string;
+    }[];
+  }
+
+  saveAppConversation(workspaceId: string, app: string, conversationId: string) {
+    this.db.query("INSERT OR IGNORE INTO app_conversations (workspace_id, app, conversation_id) VALUES (?, ?, ?)").run(workspaceId, app, conversationId);
   }
 
   saveOpenApp(workspaceId: string, app: string, file: string) {

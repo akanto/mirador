@@ -65,12 +65,7 @@ interface AppDocument {
 
 const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
 
-const openAppOf = (opened: AppDocument): OpenApp => ({
-  workspaceId: opened.workspaceId,
-  app: opened.plugin.manifest.name,
-  title: opened.plugin.manifest.title,
-  file: opened.file,
-});
+const keyOf = (opened: AppDocument) => appKey({ workspaceId: opened.workspaceId, app: opened.plugin.manifest.name });
 
 const publicChange = ({ operation: _, inverse: __, ...change }: LoggedChange): AppChange => change;
 
@@ -129,13 +124,47 @@ export class AppDocuments {
   private readonly documents = new Map<string, AppDocument>();
   private readonly media = new AppMediaGrants();
   private taskRuns = 0;
+  /** By app key; kept while the app opens other files, as the store keeps it across restarts. */
+  private readonly usedIn = new Map<string, Set<string>>();
 
   constructor(
     private readonly store: Store,
     private readonly plugins: AppPlugin[],
     private readonly publisher: AppPublisher,
     private readonly maxFileBytes = MAX_APP_FILE_BYTES,
-  ) {}
+  ) {
+    for (const { workspaceId, app, conversationId } of store.listAppConversations()) this.conversationsUsing(appKey({ workspaceId, app })).add(conversationId);
+  }
+
+  private conversationsUsing(key: string) {
+    const conversations = this.usedIn.get(key) ?? new Set<string>();
+    this.usedIn.set(key, conversations);
+    return conversations;
+  }
+
+  private openAppOf(opened: AppDocument): OpenApp {
+    return {
+      workspaceId: opened.workspaceId,
+      app: opened.plugin.manifest.name,
+      title: opened.plugin.manifest.title,
+      file: opened.file,
+      conversationIds: [...(this.usedIn.get(keyOf(opened)) ?? [])],
+    };
+  }
+
+  /** Shows the app's tab in the conversation from now on, as its agent used the app or its user added it. */
+  useIn(workspaceId: string, appName: string | undefined, conversationId: string) {
+    if (this.noteUsedIn(this.openIn(workspaceId, appName), conversationId)) this.publisher.openAppsChanged(this.openApps());
+  }
+
+  /** Whether the conversation is new to the app. */
+  private noteUsedIn(opened: AppDocument, conversationId: string) {
+    const conversations = this.conversationsUsing(keyOf(opened));
+    if (conversations.has(conversationId)) return false;
+    conversations.add(conversationId);
+    this.store.saveAppConversation(opened.workspaceId, opened.plugin.manifest.name, conversationId);
+    return true;
+  }
 
   installed() {
     return this.plugins.map(installedApp);
@@ -168,7 +197,7 @@ export class AppDocuments {
   }
 
   openApps(): OpenApp[] {
-    return [...this.documents.values()].map(openAppOf);
+    return [...this.documents.values()].map((opened) => this.openAppOf(opened));
   }
 
   state(workspaceId: string, app: string): AppDocumentState | null {
@@ -186,7 +215,8 @@ export class AppDocuments {
     }
   }
 
-  async open(workspaceId: string, appName: string, file: string): Promise<OpenApp> {
+  /** Opens the app on the file, shown in the conversation that opens it, if any. */
+  async open(workspaceId: string, appName: string, file: string, conversationId?: string): Promise<OpenApp> {
     const plugin = this.plugin(appName);
     const workspace = this.store.findWorkspace(workspaceId);
     if (!workspace) throw new AppProblem("That workspace no longer exists.");
@@ -194,7 +224,10 @@ export class AppDocuments {
     const target = fileInWorkspace(workspace.path, documentFile);
     const openedFile = documentFile === file ? undefined : relative(dirname(target.path), fileInWorkspace(workspace.path, file).path);
     const already = this.documents.get(appKey({ workspaceId, app: appName }));
-    if (already?.file === target.file && !already.problem) return openAppOf(already);
+    if (already?.file === target.file && !already.problem) {
+      if (conversationId) this.useIn(workspaceId, appName, conversationId);
+      return this.openAppOf(already);
+    }
     const text = existsSync(target.path) ? readFileSync(target.path, "utf8") : null;
     const document = text === null ? this.created(plugin, target.file, openedFile) : this.guarded(() => plugin.host.parse(text));
     this.close(workspaceId, appName);
@@ -214,12 +247,13 @@ export class AppDocuments {
       task: null,
     };
     if (text === null) await this.write(opened, this.guarded(() => plugin.host.serialize(document)));
-    this.documents.set(appKey(openAppOf(opened)), opened);
+    this.documents.set(keyOf(opened), opened);
     this.store.saveOpenApp(workspaceId, appName, opened.file);
+    if (conversationId) this.noteUsedIn(opened, conversationId);
     this.watch(opened);
     this.publisher.openAppsChanged(this.openApps());
     this.publisher.stateChanged(stateOf(opened));
-    return openAppOf(opened);
+    return this.openAppOf(opened);
   }
 
   apply(workspaceId: string, appName: string | undefined, operation: unknown, author: AppAuthor): Promise<AppChange> {
@@ -278,7 +312,7 @@ export class AppDocuments {
 
   private applyTo(opened: AppDocument, operation: unknown, author: AppAuthor): Promise<AppChange> {
     return this.queued(opened, async () => {
-      if (this.documents.get(appKey(openAppOf(opened))) !== opened) throw new AppProblem(`${opened.plugin.manifest.title} closed on ${opened.file}.`);
+      if (this.documents.get(keyOf(opened)) !== opened) throw new AppProblem(`${opened.plugin.manifest.title} closed on ${opened.file}.`);
       if (opened.problem) throw new AppProblem(`${opened.file} can't be read: ${opened.problem}. Fix the file, or open it again with app_open.`);
       const { host, manifest } = opened.plugin;
       const applied = this.guarded(() => host.apply(opened.document, operation));
@@ -347,7 +381,7 @@ export class AppDocuments {
 
   private showTask(opened: AppDocument, task: AppTaskState) {
     opened.task = task;
-    if (this.documents.get(appKey(openAppOf(opened))) === opened) this.publisher.stateChanged(stateOf(opened));
+    if (this.documents.get(keyOf(opened)) === opened) this.publisher.stateChanged(stateOf(opened));
   }
 
   forgetWorkspace(workspaceId: string) {
@@ -427,7 +461,7 @@ export class AppDocuments {
 
   private readOutsideEdit(opened: AppDocument) {
     return this.queued(opened, async () => {
-      if (this.documents.get(appKey(openAppOf(opened))) !== opened || !existsSync(opened.path)) return;
+      if (this.documents.get(keyOf(opened)) !== opened || !existsSync(opened.path)) return;
       const text = readFileSync(opened.path, "utf8");
       const hash = hashOf(text);
       if (hash === opened.knownHash) return;

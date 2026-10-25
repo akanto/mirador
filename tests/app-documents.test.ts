@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { AppDocuments, AppFileRefused, type AppPublisher } from "../host/apps/documents.ts";
 import { AppProblem, loadPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
+import { storeWithConversation } from "./canvas-plugin-host.ts";
 import { APP_MEDIA_PATH, appFileUrl, appMediaGrantUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
 const FIXTURE_APPS = join(import.meta.dir, "fixtures", "apps");
@@ -147,7 +148,7 @@ describe("loadPlugins", () => {
 describe("AppDocuments", () => {
   test("opens an app on a new file, which it creates", async () => {
     const { apps, fileText, openAppLists, states } = await setUp();
-    expect(await apps.open("w1", "counter", "counter.json")).toEqual({ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json" });
+    expect(await apps.open("w1", "counter", "counter.json")).toEqual({ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json", conversationIds: [] });
     expect(JSON.parse(fileText())).toEqual({ count: 0 });
     expect(openAppLists.at(-1)).toHaveLength(1);
     expect(states.at(-1)).toEqual({ workspaceId: "w1", app: "counter", document: { count: 0 }, lastChange: null, problem: null, task: null });
@@ -158,7 +159,7 @@ describe("AppDocuments", () => {
     const { apps, workspacePath, store } = await setUp();
     mkdirSync(join(workspacePath, "trip"));
     writeFileSync(join(workspacePath, "trip", "day1.tally"), "");
-    expect(await apps.open("w1", "counter", "trip/day1.tally")).toEqual({ workspaceId: "w1", app: "counter", title: "Counter", file: "trip/day1.json" });
+    expect(await apps.open("w1", "counter", "trip/day1.tally")).toEqual({ workspaceId: "w1", app: "counter", title: "Counter", file: "trip/day1.json", conversationIds: [] });
     expect(JSON.parse(readFileSync(join(workspacePath, "trip", "day1.json"), "utf8"))).toEqual({ count: 0, startedFor: "day1.tally" });
     await apps.apply("w1", undefined, { op: "add", by: 2 }, { kind: "you" });
     expect(await apps.open("w1", "counter", "trip/day1.tally")).toMatchObject({ file: "trip/day1.json" });
@@ -232,7 +233,7 @@ describe("AppDocuments", () => {
     first.apps.stop();
     const second = await setUp(first.store, first.workspacePath);
     await second.apps.reopenAll();
-    expect(second.apps.openApps()).toEqual([{ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json" }]);
+    expect(second.apps.openApps()).toEqual([{ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json", conversationIds: [] }]);
     expect(second.apps.state("w1", "counter")!.document).toEqual({ count: 4 });
     second.apps.stop();
   });
@@ -507,6 +508,57 @@ describe("AppDocuments.mediaGrant", () => {
   });
 });
 
+describe("the conversations an app shows in", () => {
+  /** Workspace w1, in a folder of its own, with conversations c1 and c2. */
+  async function setUpWithTwoConversations() {
+    const setup = await setUp();
+    const { position: _, ...conversation } = storeWithConversation().findConversation("c1")!;
+    for (const id of ["c1", "c2"]) setup.store.insertConversation({ ...conversation, id });
+    return setup;
+  }
+
+  test("an app shows only in the conversations that used it, each noted once, also once it opens another file", async () => {
+    const { apps, openAppLists } = await setUpWithTwoConversations();
+    await apps.open("w1", "counter", "counter.json");
+    apps.useIn("w1", undefined, "c1");
+    const listsSoFar = openAppLists.length;
+    apps.useIn("w1", "counter", "c1");
+    expect(openAppLists).toHaveLength(listsSoFar);
+    await apps.open("w1", "counter", "second.json");
+    expect(apps.openApps()).toEqual([{ workspaceId: "w1", app: "counter", title: "Counter", file: "second.json", conversationIds: ["c1"] }]);
+    apps.useIn("w1", "counter", "c2");
+    expect(openAppLists.at(-1)![0]!.conversationIds).toEqual(["c1", "c2"]);
+    apps.stop();
+  });
+
+  test("the conversation that opens the app shows it with the same news of the opening", async () => {
+    const { apps, openAppLists } = await setUpWithTwoConversations();
+    await apps.open("w1", "counter", "counter.json", "c1");
+    expect(openAppLists).toEqual([[{ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json", conversationIds: ["c1"] }]]);
+    await apps.open("w1", "counter", "counter.json", "c2");
+    expect(openAppLists.at(-1)![0]!.conversationIds).toEqual(["c1", "c2"]);
+    apps.stop();
+  });
+
+  test("keeps them when the host starts again, and forgets a conversation that is deleted", async () => {
+    const first = await setUpWithTwoConversations();
+    await first.apps.open("w1", "counter", "counter.json");
+    first.apps.useIn("w1", "counter", "c1");
+    first.apps.useIn("w1", "counter", "c2");
+    first.apps.stop();
+    first.store.deleteConversation("c2");
+    const second = await setUp(first.store, first.workspacePath);
+    await second.apps.reopenAll();
+    expect(second.apps.openApps()[0]!.conversationIds).toEqual(["c1"]);
+    second.apps.stop();
+  });
+
+  test("an app that isn't open in the workspace is shown nowhere", async () => {
+    const { apps } = await setUpWithTwoConversations();
+    expect(() => apps.useIn("w1", "counter", "c1")).toThrow("No app is open in this workspace.");
+  });
+});
+
 describe("appMediaGrantUrl", () => {
   test("names the workspace, the app and the path, each escaped, as the host's route for media grants reads them", () => {
     expect(appMediaGrantUrl({ workspaceId: "w 1", app: "media" }, "clips/a&b.mp4")).toBe("/workspaces/w%201/apps/media/media?path=clips%2Fa%26b.mp4");
@@ -515,7 +567,7 @@ describe("appMediaGrantUrl", () => {
 
 describe("appPromptText", () => {
   test("names the app and its file before the user's words, so the agent knows what they are about", () => {
-    const counter: OpenApp = { workspaceId: "w1", app: "counter", title: "Counter", file: "notes/counter.json" };
+    const counter: OpenApp = { workspaceId: "w1", app: "counter", title: "Counter", file: "notes/counter.json", conversationIds: [] };
     expect(appPromptText(counter, "  Make it 10\n")).toBe("About notes/counter.json, open in Counter (app_state reads it, apply changes it):\n\nMake it 10");
   });
 });

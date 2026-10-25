@@ -639,7 +639,10 @@ const appTab = (app: string): AppTab => `app:${app}`;
 
 /** The apps open in the conversation's workspace, with what the panel needs to show them. */
 export interface WorkspaceApps {
+  /** Those the conversation uses, each with its tab. */
   open: OpenApp[];
+  /** Those only other conversations of the workspace use, which the user can add here. */
+  elsewhere: OpenApp[];
   installed: InstalledApp[];
   documents: Record<string, AppDocumentState>;
 }
@@ -797,6 +800,11 @@ export function CanvasPanel({
           ...pageExport.entries.map((entry, index) => (index === 0 ? { ...entry, separatorBefore: true } : entry)),
         ]
       : []),
+    ...apps.elsewhere.map(({ workspaceId, app, title }, index) => ({
+      label: `Show ${title}`,
+      separatorBefore: index === 0,
+      onChoose: () => connection.send({ type: "app.use-in", workspaceId, app, conversationId }),
+    })),
   ];
   const closeHistoryOnEscape = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || !historyOpen) return;
@@ -921,7 +929,7 @@ export function CanvasPanel({
           Clear
         </button>
         <BarMenu
-          className="canvas-more"
+          className={apps.elsewhere.length > 0 ? "canvas-more offers-apps" : "canvas-more"}
           label="⋯"
           buttonName="More"
           menuName="More of the canvas bar"

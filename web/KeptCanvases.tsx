@@ -89,8 +89,12 @@ const KeptCanvas = memo(function KeptCanvas({
   const edits = useMemo(() => (editsInCanvas ? editRequestsIn(open.events) : []), [open.events, editsInCanvas]);
   const refreshPoint = useMemo(() => changesRefreshPoint(open.events), [open.events]);
   const workspaceApps = useMemo(
-    () => ({ open: openApps.filter((app) => app.workspaceId === workspaceId), installed: installedApps, documents: appDocuments }),
-    [openApps, installedApps, appDocuments, workspaceId],
+    () => {
+      const inWorkspace = openApps.filter((app) => app.workspaceId === workspaceId);
+      const usedHere = (app: OpenApp) => app.conversationIds.includes(open.conversationId);
+      return { open: inWorkspace.filter(usedHere), elsewhere: inWorkspace.filter((app) => !usedHere(app)), installed: installedApps, documents: appDocuments };
+    },
+    [openApps, installedApps, appDocuments, workspaceId, open.conversationId],
   );
   return (
     <div className="kept-canvas" style={{ display: shown ? "contents" : "none" }}>

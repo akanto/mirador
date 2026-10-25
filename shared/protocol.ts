@@ -182,6 +182,8 @@ export type ClientMessage =
   | { type: "app.unsubscribe"; workspaceId: string; app: string }
   /** An operation the user made in the app's view. */
   | { type: "app.apply"; workspaceId: string; app: string; op: unknown }
+  /** Shows an app open in the conversation's workspace in its canvas too. */
+  | { type: "app.use-in"; workspaceId: string; app: string; conversationId: string }
   /** The app's view set an item of its storage in the workspace; a null value removes it. */
   | { type: "app.storage-set"; workspaceId: string; app: string; key: string; value: string | null }
   /** The user runs one of the app's tasks from its view; its progress and end come in the app's state. */
