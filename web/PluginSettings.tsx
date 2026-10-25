@@ -127,7 +127,7 @@ function SettingsOf({ settings }: { settings: SettingsOfPlugin }) {
   );
 }
 
-function PluginRow({ plugin }: { plugin: PluginInfo }) {
+function PluginRow({ plugin, official }: { plugin: PluginInfo; official?: CatalogPlugin }) {
   const settings = usePluginSettings().find(({ plugin: name }) => name === plugin.name);
   const [problem, setProblem] = useState<string | null>(null);
   const title = plugin.title ?? plugin.folder;
@@ -137,7 +137,13 @@ function PluginRow({ plugin }: { plugin: PluginInfo }) {
     <li className={plugin.problem ? "failed" : undefined}>
       <span className="plugin-title">{title}</span>
       {plugin.name && <span className="plugin-name">{plugin.name}</span>}
+      {official && (
+        <span className="plugin-official" data-hint={hints.officialPlugin}>
+          Official
+        </span>
+      )}
       {plugin.waitsForRestart && <span className="plugin-waits">used from the next start</span>}
+      {official && <span className="plugin-description">{official.description}</span>}
       <span className="plugin-source">{sourceLine(plugin.source)}</span>
       {plugin.problem && <span className="plugin-problem">Didn't load: {plugin.problem}</span>}
       {settings && settings.settings.length > 0 && <SettingsOf settings={settings} />}
@@ -160,36 +166,31 @@ function PluginRow({ plugin }: { plugin: PluginInfo }) {
   );
 }
 
-function OfficialPluginRow({ plugin, installed }: { plugin: CatalogPlugin; installed: boolean }) {
+function OfficialPluginToInstall({ plugin }: { plugin: CatalogPlugin & { repo: string } }) {
   const [installing, setInstalling] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const { repo } = plugin;
   const install = async () => {
-    if (!repo) return;
     setInstalling(true);
-    setProblem(await changePlugins((requestId) => ({ type: "plugins.add", requestId, url: repo, branch: plugin.branch ?? null })));
+    setProblem(await changePlugins((requestId) => ({ type: "plugins.add", requestId, url: plugin.repo, branch: plugin.branch ?? null })));
     setInstalling(false);
   };
   return (
     <li>
       <span className="plugin-title">{plugin.title}</span>
       <span className="plugin-name">{plugin.name}</span>
-      <span className="plugin-source">{plugin.description}</span>
+      <span className="plugin-description">{plugin.description}</span>
       <span className="plugin-actions">
-        {plugin.comesWithMirador ? (
-          <span className="plugin-status">Comes with Mirador</span>
-        ) : installed ? (
-          <span className="plugin-status">Installed</span>
-        ) : (
-          <button type="button" data-hint={hints.installOfficialPlugin} disabled={installing} onClick={install}>
-            {installing ? "Cloning and building…" : "Install"}
-          </button>
-        )}
+        <button type="button" data-hint={hints.installOfficialPlugin} disabled={installing} onClick={install}>
+          {installing ? "Cloning and building…" : "Install"}
+        </button>
       </span>
       {problem && <pre className="plugin-output">{problem}</pre>}
     </li>
   );
 }
+
+const toInstall = (official: CatalogPlugin[], installed: PluginInfo[]) =>
+  official.filter((plugin): plugin is CatalogPlugin & { repo: string } => plugin.repo !== undefined && !installed.some(({ name }) => name === plugin.name));
 
 function AddPlugin() {
   const [url, setUrl] = useState("");
@@ -256,16 +257,22 @@ export function PluginSettings() {
         </p>
       )}
       <ul className="plugin-list" aria-label="Plugins">
-        {listed?.plugins.map((plugin) => <PluginRow key={`${plugin.source.kind === "shipped" ? "shipped" : "installed"}/${plugin.folder}`} plugin={plugin} />)}
+        {listed?.plugins.map((plugin) => (
+          <PluginRow
+            key={`${plugin.source.kind === "shipped" ? "shipped" : "installed"}/${plugin.folder}`}
+            plugin={plugin}
+            official={listed.official?.find(({ name }) => name === plugin.name)}
+          />
+        ))}
         {listed?.plugins.length === 0 && <li className="plugin-none">No plugin is installed.</li>}
       </ul>
-      {listed?.official && listed.official.length > 0 && (
+      {listed && toInstall(listed.official ?? [], listed.plugins).length > 0 && (
         <>
-          <h3>Official plugins</h3>
-          <p className="hint">The plugins made for Mirador. An agent recommends one when it would help, and installs it only when you say so.</p>
-          <ul className="plugin-list" aria-label="Official plugins">
-            {listed.official.map((plugin) => (
-              <OfficialPluginRow key={plugin.name} plugin={plugin} installed={listed.plugins.some(({ name }) => name === plugin.name)} />
+          <h3>More official plugins</h3>
+          <p className="hint">Made for Mirador. An agent recommends one when it would help, and installs it only when you say so.</p>
+          <ul className="plugin-list" aria-label="More official plugins">
+            {toInstall(listed.official ?? [], listed.plugins).map((plugin) => (
+              <OfficialPluginToInstall key={plugin.name} plugin={plugin} />
             ))}
           </ul>
         </>

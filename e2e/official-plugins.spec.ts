@@ -44,7 +44,8 @@ test.afterAll(async () => {
   await host.cleanUp();
 });
 
-const officialPlugins = async (page: Page) => (await openSettings(page, "Plugins")).getByRole("list", { name: "Official plugins" }).getByRole("listitem");
+const pluginRows = (page: Page) => page.getByRole("list", { name: "Plugins", exact: true }).getByRole("listitem");
+const moreOfficialPlugins = (page: Page) => page.getByRole("list", { name: "More official plugins" });
 
 test("the agent recommends an official plugin, and Mirador installs it only once the user answers Install", async ({ page }) => {
   await signIn(page, host);
@@ -74,16 +75,20 @@ test("the agent recommends an official plugin, and Mirador installs it only once
     await expect(page.locator(".message.user:visible").last()).toContainText("Mirador installed the Counter plugin and uses it from its next restart.", { timeout: 30_000 });
   });
 
-  await test.step("Settings lists the official plugins: the installed one as such, one to install, and the one that comes with Mirador", async () => {
-    const official = await officialPlugins(page);
-    await expect(official).toHaveText(["CountercounterCounts by one.Installed", "TallytallyKeeps a tally.Install", "ChecklistchecklistSteps, ticked.Comes with Mirador"]);
+  await test.step("Settings lists each plugin once: an official one in the plugins list with its tag and description, and those to install apart", async () => {
+    await openSettings(page, "Plugins");
+    await expect(pluginRows(page).filter({ hasText: "Checklist" })).toContainText("checklistOfficialSteps, ticked.Comes with Mirador");
+    await expect(pluginRows(page).filter({ hasText: "Counter" }).locator(".plugin-official")).toHaveText("Official");
+    await expect(pluginRows(page).filter({ hasText: "Counter" }).locator(".plugin-description")).toHaveText("Counts by one.");
+    await expect(pluginRows(page).filter({ hasText: "Code review" })).not.toContainText("Official");
+    await expect(moreOfficialPlugins(page).getByRole("listitem")).toHaveText(["TallytallyKeeps a tally.Install"]);
     await expect(page.locator(".restart-needed")).toBeVisible();
   });
 
-  await test.step("Install in Settings clones the plugin too", async () => {
-    const official = page.getByRole("list", { name: "Official plugins" }).getByRole("listitem");
-    await official.filter({ hasText: "Tally" }).getByRole("button", { name: "Install" }).click();
-    await expect(official.filter({ hasText: "Tally" })).toHaveText("TallytallyKeeps a tally.Installed", { timeout: 30_000 });
-    await expect(page.getByRole("list", { name: "Plugins", exact: true }).getByRole("listitem").filter({ hasText: "Tally" })).toBeVisible();
+  await test.step("Install in Settings clones the plugin too, which then leaves the plugins to install", async () => {
+    await moreOfficialPlugins(page).getByRole("button", { name: "Install" }).click();
+    await expect(pluginRows(page).filter({ hasText: "Tally" }).locator(".plugin-description")).toHaveText("Keeps a tally.", { timeout: 30_000 });
+    await expect(pluginRows(page).filter({ hasText: "Tally" }).locator(".plugin-official")).toHaveText("Official");
+    await expect(moreOfficialPlugins(page)).toHaveCount(0);
   });
 });

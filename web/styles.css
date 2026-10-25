@@ -6594,6 +6594,15 @@ body.reordering * {
   font-size: calc(12px * var(--font-scale));
 }
 
+.plugin-official {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+}
+
+.plugin-description,
 .plugin-source,
 .plugin-problem {
   flex-basis: 100%;
