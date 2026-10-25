@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { MAX_MARKED_HTML, MAX_MARKED_PATH, MAX_MARKED_TEXT, pageMarkFrom, pageMarkLabel, pageMarkPrompt, type PageMark } from "../shared/page-marks.ts";
 
+const png = "data:image/png;base64,iVBORw0KGgo=";
 const cell = { path: "main > table > tr:nth-of-type(2) > td.pro", html: '<td class="pro">Split conversation panes</td>' };
 
 describe("pageMarkPrompt", () => {
@@ -39,6 +40,21 @@ describe("pageMarkPrompt", () => {
     );
   });
 
+  test("for an area, names the page and the element that holds the box, and says the picture shows it", () => {
+    const mark: PageMark = { kind: "area", element: { path: "div#chart > svg", html: '<svg width="300">…</svg>' }, image: png };
+    expect(pageMarkPrompt("Sales", mark, "Why does it dip here?", "ask")).toBe(
+      [
+        'About the area of the canvas page "Sales" in the attached picture. It is in `div#chart > svg`:',
+        "",
+        "```html",
+        '<svg width="300">…</svg>',
+        "```",
+        "",
+        "Why does it dip here?",
+      ].join("\n"),
+    );
+  });
+
   test("Change asks the agent to show the page again under the same title", () => {
     const mark: PageMark = { kind: "element", element: cell };
     expect(pageMarkPrompt("Plan", mark, "Bold this", "change")).toEndWith(
@@ -56,6 +72,7 @@ describe("pageMarkFrom", () => {
   test("takes a text mark or an element mark as the page posted it", () => {
     expect(pageMarkFrom({ kind: "text", text: "  panes ", element: cell })).toEqual({ kind: "text", text: "panes", element: cell });
     expect(pageMarkFrom({ kind: "element", element: cell, extra: 1 })).toEqual({ kind: "element", element: cell });
+    expect(pageMarkFrom({ kind: "area", element: cell, image: png })).toEqual({ kind: "area", element: cell, image: png });
   });
 
   test("refuses what is not a mark", () => {
@@ -64,6 +81,8 @@ describe("pageMarkFrom", () => {
     expect(pageMarkFrom({ kind: "text", text: "x" })).toBeNull();
     expect(pageMarkFrom({ kind: "element", element: { path: "", html: "<b>" } })).toBeNull();
     expect(pageMarkFrom({ kind: "area", element: cell })).toBeNull();
+    expect(pageMarkFrom({ kind: "area", element: cell, image: "data:image/svg+xml;base64,PHN2Zz4=" })).toBeNull();
+    expect(pageMarkFrom({ kind: "area", element: cell, image: "javascript:alert(1)" })).toBeNull();
   });
 
   test("cuts text, HTML and the element's path longer than a message should carry", () => {
@@ -75,9 +94,10 @@ describe("pageMarkFrom", () => {
 });
 
 describe("pageMarkLabel", () => {
-  test("quotes the start of the text on one line, or names the element by its last step", () => {
+  test("quotes the start of the text on one line, names the element by its last step, or says an area was marked", () => {
     expect(pageMarkLabel({ kind: "text", text: "Split\nconversation panes", element: cell })).toBe("“Split conversation panes”");
     expect(pageMarkLabel({ kind: "text", text: "x".repeat(80), element: cell })).toBe(`“${"x".repeat(59)}…”`);
     expect(pageMarkLabel({ kind: "element", element: cell })).toBe("the element td.pro");
+    expect(pageMarkLabel({ kind: "area", element: cell, image: png })).toBe("the marked area");
   });
 });

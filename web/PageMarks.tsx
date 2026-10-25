@@ -5,14 +5,20 @@ import { pageMarkFrom, pageMarkLabel, pageMarkPrompt, type MarkIntent, type Page
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { uploadImage } from "./pasted-images.ts";
 import { isMac, keyLabels } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
 const SENT_NOTE_MS = 8000;
 
-function useFadingSentNote() {
-  const [note, setNote] = useState<string | null>(null);
+interface Note {
+  text: string;
+  failed?: boolean;
+}
+
+function useFadingNote() {
+  const [note, setNote] = useState<Note | null>(null);
   useEffect(() => {
     if (note === null) return;
     const timer = setTimeout(() => setNote(null), SENT_NOTE_MS);
@@ -20,6 +26,17 @@ function useFadingSentNote() {
   }, [note]);
   return [note, setNote] as const;
 }
+
+const failureText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+function blobOfDataUrl(dataUrl: string) {
+  const [header, base64] = dataUrl.split(",");
+  const bytes = Uint8Array.from(atob(base64 ?? ""), (character) => character.charCodeAt(0));
+  return new Blob([bytes], { type: header?.slice("data:".length, header.indexOf(";")) });
+}
+
+/** The picture of a marked area, stored with the conversation for the message to carry. */
+const picturesOf = async (conversationId: string, mark: PageMark) => (mark.kind === "area" ? [await uploadImage(conversationId, blobOfDataUrl(mark.image))] : []);
 
 const sentNoteFor = (label: string, intent: MarkIntent) =>
   intent === "change" ? `Asked the agent to change ${label}. The new page comes on the canvas.` : `Asked about ${label}. The answer comes in the chat.`;
@@ -36,7 +53,8 @@ export function usePageMarks(page: ShowItem | undefined, frame: RefObject<HTMLIF
 } {
   const [pointing, setPointing] = useState(false);
   const [mark, setMark] = useState<PageMark | null>(null);
-  const [sentNote, setSentNote] = useFadingSentNote();
+  const [marksMade, setMarksMade] = useState(0);
+  const [note, setNote] = useFadingNote();
   const enterWhileBusy = useEnterWhileBusy();
   const fullscreen = usePaneFullscreen("canvas");
   useEffect(() => {
@@ -45,37 +63,41 @@ export function usePageMarks(page: ShowItem | undefined, frame: RefObject<HTMLIF
   }, [page?.id]);
 
   const postToPage = (message: object) => frame.current?.contentWindow?.postMessage(message, "*");
-  const point = (on: boolean) => {
-    setPointing(on);
-    postToPage(canvasPointMessage(on));
-  };
   const finishMark = () => {
     setMark(null);
     postToPage(canvasMarkDoneMessage());
   };
+  const point = (on: boolean) => {
+    if (on && mark) finishMark();
+    setPointing(on);
+    postToPage(canvasPointMessage(on));
+  };
   const received = (message: CanvasFrameMessage) => {
     if (message.kind === "pointing") setPointing(false);
+    if (message.kind === "mark-failed") setNote({ text: `The marked area could not be drawn as a picture: ${String(message.message)}`, failed: true });
     if (message.kind !== "mark") return;
     const reported = pageMarkFrom(message.mark);
     if (!reported) return;
     setPointing(false);
-    setSentNote(null);
+    setNote(null);
     setMark(reported);
+    setMarksMade((count) => count + 1);
   };
-  const send = (words: string, intent: MarkIntent) => {
+  const send = async (words: string, intent: MarkIntent) => {
     if (!page || !mark) return;
     const text = pageMarkPrompt(page.title, mark, words, intent);
-    if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds: [], afterTurn: enterWhileBusy === "after-turn" })) return;
-    setSentNote(sentNoteFor(pageMarkLabel(mark), intent));
+    const imageIds = await picturesOf(page.conversationId, mark);
+    if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds, afterTurn: enterWhileBusy === "after-turn" })) throw new Error("Mirador is not connected.");
+    setNote({ text: sentNoteFor(pageMarkLabel(mark), intent) });
     finishMark();
   };
 
   const opened = page && (
     <>
-      {mark && <MarkWordsBox key={JSON.stringify(mark)} label={pageMarkLabel(mark)} onSend={send} onClose={finishMark} />}
-      {sentNote && (
-        <div className="page-mark-sent" role="status">
-          {sentNote}
+      {mark && <MarkWordsBox key={marksMade} mark={mark} onSend={send} onClose={finishMark} />}
+      {note && (
+        <div className={`page-mark-sent ${note.failed ? "failed" : ""}`} role="status">
+          {note.text}
           {fullscreen?.isFullscreen && (
             <button type="button" className="link" onClick={() => fullscreen.setFullscreen(false)}>
               Show the chat
@@ -88,14 +110,27 @@ export function usePageMarks(page: ShowItem | undefined, frame: RefObject<HTMLIF
   return { pointing, point, received, opened };
 }
 
-function MarkWordsBox({ label, onSend, onClose }: { label: string; onSend: (words: string, intent: MarkIntent) => void; onClose: () => void }) {
+function MarkWordsBox({ mark, onSend, onClose }: { mark: PageMark; onSend: (words: string, intent: MarkIntent) => Promise<void>; onClose: () => void }) {
   const [words, setWords] = useState("");
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const typingAidAttributes = useTypingAidAttributes();
   const { primary } = keyLabels();
+  const canSend = words.trim() !== "" && !sending;
+  const send = async (intent: MarkIntent) => {
+    setSending(true);
+    setProblem(null);
+    try {
+      await onSend(words, intent);
+    } catch (error) {
+      setProblem(failureText(error));
+      setSending(false);
+    }
+  };
   const sendOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      if (words.trim()) onSend(words, (isMac ? event.metaKey : event.ctrlKey) ? "change" : "ask");
+      if (canSend) send((isMac ? event.metaKey : event.ctrlKey) ? "change" : "ask");
     }
     if (event.key === "Escape") {
       event.preventDefault();
@@ -105,7 +140,8 @@ function MarkWordsBox({ label, onSend, onClose }: { label: string; onSend: (word
   };
   return (
     <div className="page-mark-box" role="dialog" aria-label="Ask the agent about what you marked">
-      <div className="ask-about-label">Ask the agent about {label}, or tell it what to change there</div>
+      <div className="ask-about-label">Ask the agent about {pageMarkLabel(mark)}, or tell it what to change there</div>
+      {mark.kind === "area" && <img className="page-mark-area" src={mark.image} alt="The marked area" />}
       <textarea
         {...typingAidAttributes}
         autoFocus
@@ -116,16 +152,21 @@ function MarkWordsBox({ label, onSend, onClose }: { label: string; onSend: (word
         onKeyDown={sendOnEnter}
       />
       <div className="ask-about-actions">
-        <button type="button" className="primary" disabled={!words.trim()} onClick={() => onSend(words, "ask")}>
+        <button type="button" className="primary" disabled={!canSend} onClick={() => send("ask")}>
           Ask
         </button>
-        <button type="button" disabled={!words.trim()} onClick={() => onSend(words, "change")} data-hint={hints.pageMarkChange}>
+        <button type="button" disabled={!canSend} onClick={() => send("change")} data-hint={hints.pageMarkChange}>
           Change
         </button>
         <button type="button" onClick={onClose}>
           Cancel
         </button>
       </div>
+      {problem && (
+        <p className="page-mark-problem" role="alert">
+          {problem}
+        </p>
+      )}
     </div>
   );
 }

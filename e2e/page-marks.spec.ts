@@ -29,6 +29,16 @@ const layouts = {
 </table>
 <button id="save" class="primary">Save</button>
 <p>Clicks: <span id="clicks">0</span></p>
+<canvas id="scene" width="240" height="120"></canvas>
+<script type="module">
+  import * as THREE from "three";
+  const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("scene") });
+  renderer.setClearColor(0x00ff00);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera();
+  renderer.setAnimationLoop(() => renderer.render(scene, camera));
+  document.getElementById("scene").dataset.drawing = "yes";
+</script>
 <script>
   document.getElementById("save").addEventListener("click", () => {
     const clicks = document.getElementById("clicks");
@@ -54,9 +64,24 @@ async function waitForIdle(page: Page) {
   await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 60_000 });
 }
 
+const shownFrameBox = async (page: Page) => (await page.locator(".canvas-panel:visible .canvas-frame.show iframe").boundingBox())!;
+
+/** How much of a picture is clearly green, as three.js clears the scene to. */
+const greenShare = (picture: Locator) =>
+  picture.evaluate(async (image: HTMLImageElement) => {
+    const bitmap = await createImageBitmap(image);
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    let green = 0;
+    for (let index = 0; index < pixels.length; index += 4) if (pixels[index + 1]! > 200 && pixels[index]! < 60 && pixels[index + 2]! < 60) green++;
+    return green / (pixels.length / 4);
+  });
+
 /** Drags across the element's text with the mouse, from the padding before it to the padding after it. */
 async function selectTextOf(page: Page, element: Locator) {
-  const frameBox = (await page.locator(".canvas-panel:visible .canvas-frame.show iframe").boundingBox())!;
+  const frameBox = await shownFrameBox(page);
   const text = await element.evaluate((node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
@@ -137,6 +162,32 @@ test("the user selects text or points at an element on a page the agent showed, 
       ].join("\n"),
     );
     await waitForIdle(page);
+  });
+
+  await test.step("in point mode a drag draws a box, and its area of the 3D scene goes with the message as a picture", async () => {
+    await expect(shown.locator("#scene")).toHaveAttribute("data-drawing", "yes");
+    await pointToggle(page).click();
+    const frameBox = await shownFrameBox(page);
+    const scene = (await shown.locator("#scene").boundingBox())!;
+    await page.mouse.move(scene.x + 20, scene.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(scene.x + 140, scene.y + 90, { steps: 8 });
+    await page.mouse.up();
+    expect(frameBox.width).toBeGreaterThan(0);
+    await expect(pointToggle(page)).toHaveAttribute("aria-pressed", "false");
+    await expect(wordsBox(page)).toContainText("Ask the agent about the marked area");
+    const picture = wordsBox(page).getByRole("img", { name: "The marked area" });
+    await expect.poll(() => picture.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    expect(await greenShare(picture)).toBeGreaterThan(0.9);
+    await wordsBox(page).getByRole("textbox").fill("Why is it all green?");
+    await wordsBox(page).getByRole("button", { name: "Ask" }).click();
+    await expect(sentNote(page)).toHaveText("Asked about the marked area. The answer comes in the chat.");
+    await expect.poll(recordedPrompts).toContain('About the area of the canvas page "Workspace layout options" in the attached picture. It is in `canvas#scene`:');
+    await expect.poll(recordedPrompts).toContain("Why is it all green?");
+    await waitForIdle(page);
+    const sent = page.locator(".timeline:visible .message.user").last();
+    await expect(sent).toContainText("Why is it all green?");
+    await expect.poll(() => sent.locator(".message-images img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   });
 
   await test.step("Esc leaves point mode and Cancel sends nothing; the page's own clicks work again", async () => {

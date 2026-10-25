@@ -26,8 +26,8 @@ describe("buildCanvasDocument", () => {
   test("only a markable page lets the user mark part of it, with the marking script before the agent's markup", () => {
     const marked = buildCanvasDocument("<p>plan</p>", "item", assetsOrigin, "light", { markable: true });
     expect(marked).toContain('document.createElement("mirador-marks")');
-    expect(marked.indexOf("mirador-marks")).toBeLessThan(marked.indexOf("<p>plan</p>"));
-    expect(buildCanvasDocument("<p>plan</p>", "item", assetsOrigin, "light")).not.toContain("mirador-marks");
+    expect(marked.indexOf('document.createElement("mirador-marks")')).toBeLessThan(marked.indexOf("<p>plan</p>"));
+    expect(buildCanvasDocument("<p>plan</p>", "item", assetsOrigin, "light")).not.toContain('document.createElement("mirador-marks")');
   });
 
   test("puts the CSP before any agent markup, even for a full document with its own doctype", () => {

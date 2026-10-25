@@ -185,6 +185,28 @@ test("Copy as image draws shapes a page reuses with <use> in the page's own styl
   expect(image.bluePixels, "the square in the blue its <use> gives it").toBeGreaterThan(5_000);
 });
 
+test("Copy as image draws a three.js scene as it shows, though WebGL keeps a frame's drawing only until it is on screen", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const conversationId = await startConversationInProject(page);
+  await callCanvasTool(host, conversationId, "show", {
+    title: "A scene",
+    html: `<canvas id="scene" width="300" height="150"></canvas>
+<script type="module">
+  import * as THREE from "three";
+  const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("scene") });
+  renderer.setClearColor(0x00ff00);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera();
+  renderer.setAnimationLoop(() => renderer.render(scene, camera));
+  document.getElementById("scene").dataset.drawing = "yes";
+</script>`,
+  });
+  await expect(canvasPage(page).locator("#scene")).toHaveAttribute("data-drawing", "yes");
+
+  const image = await copyAsImage(page);
+  expect(image.greenPixels, "the scene's green, not a blank canvas").toBeGreaterThan(30_000);
+});
+
 test("Export asks the agent for the page as Markdown, in the chat or also as a file in the project, with the page's HTML in the request", async ({ page }) => {
   const conversationId = await startConversationInProject(page);
   await callCanvasTool(host, conversationId, "show", {

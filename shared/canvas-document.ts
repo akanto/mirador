@@ -1,6 +1,6 @@
 import { APP_MEDIA_PATH, APP_STORAGE_CHARACTERS, type AppStorageItems } from "./apps.ts";
 import type { PluginItem } from "./canvas-plugins.ts";
-import { MAX_MARKED_HTML, MAX_MARKED_TEXT } from "./page-marks.ts";
+import { MAX_AREA_SIDE, MAX_MARKED_HTML, MAX_MARKED_TEXT } from "./page-marks.ts";
 
 export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
@@ -58,8 +58,10 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-prompt"; requestId: string; text: unknown }
   /** What the user marked on a page that takes marks, a PageMark as the page posted it, for the panel to ask the agent about. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "mark"; mark: unknown }
-  /** The page left point mode by itself, as on Esc. */
+  /** The page left point mode by itself, as on Esc or once a box is drawn. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "pointing"; on: false }
+  /** Why the area the user boxed could not be drawn as a picture. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "mark-failed"; message: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -529,19 +531,100 @@ export const TEXT_CONTRAST_SCRIPT = `
 `;
 
 /**
+ * `drawnPage()` draws the whole page, not only what the frame shows, in the colours it is shown in and without Mirador's
+ * marks on it, as plain JS for the frame: it resolves to a canvas at the screen's pixel density.
+ */
+function pageDrawing(assetsOrigin: string) {
+  return `
+  // The library puts a bare copy of each <use> target, without the page's styles, in front of the page, where it wins
+  // over the page's own copy. That copy has all its computed styles written out, so the bare one goes, and the page's copy
+  // gives up the values it only inherited where it sits, to inherit them from each <use> as the browser does.
+  // A value it set itself that happens to equal the inherited one goes too: a rare loss.
+  const drawUseTargetsInPageStyles = (svg) => {
+    const page = svg.querySelector("foreignObject");
+    const bareCopies = svg.querySelector(":scope > defs");
+    if (!page || !bareCopies) return;
+    for (const bareCopy of [...bareCopies.children]) {
+      const pageCopy = bareCopy.id && page.querySelector("svg #" + CSS.escape(bareCopy.id));
+      if (!pageCopy) continue;
+      bareCopy.remove();
+      inheritFromEachUse(pageCopy);
+    }
+  };
+  const inheritFromEachUse = (target) => {
+    const outside = target.parentElement.style;
+    const inheritedValues = [];
+    const collect = (element, names) => {
+      const unchanged = names.filter((name) => element.style.getPropertyValue(name) === outside.getPropertyValue(name));
+      inheritedValues.push([element, unchanged]);
+      for (const child of element.children) collect(child, unchanged);
+    };
+    collect(target, Array.from(outside));
+    inheritedValues.forEach(([element, names]) => names.forEach((name) => element.style.removeProperty(name)));
+  };
+  // A WebGL or WebGPU canvas holds what it drew only until the frame is shown, so each canvas is read in a frame callback,
+  // after the page's own has drawn it, and the library is handed those readings. A page that draws only now and then,
+  // not every frame, may still come out blank; a frame out of sight gets no callbacks, so then the canvases are read as they are.
+  const canvasReadings = () =>
+    [...document.querySelectorAll("canvas")].flatMap((canvas) => {
+      try {
+        return [[canvas, canvas.toDataURL()]];
+      } catch {
+        return [];
+      }
+    });
+  const canvasesAsDrawn = () =>
+    new Promise((resolve) => {
+      const unseen = setTimeout(() => resolve(canvasReadings()), 300);
+      requestAnimationFrame(() => {
+        clearTimeout(unseen);
+        resolve(canvasReadings());
+      });
+    });
+  const isMiradorMarks = (node) => node instanceof Element && node.localName === "mirador-marks";
+  const drawnPage = async () => {
+    const { domToCanvas } = await import(${JSON.stringify(assetsOrigin + CAPTURE_LIBRARY_PATH)});
+    const readings = await canvasesAsDrawn();
+    readings.forEach(([canvas, reading]) => Object.defineProperty(canvas, "toDataURL", { value: () => reading, configurable: true }));
+    const root = document.documentElement;
+    try {
+      return await domToCanvas(root, {
+        width: root.scrollWidth,
+        height: root.scrollHeight,
+        scale: devicePixelRatio,
+        backgroundColor: getComputedStyle(root).backgroundColor,
+        font: false,
+        filter: (node) => !isMiradorMarks(node),
+        // The library works out the browser's default styles in a frame of its own, which a sandboxed page cannot reach;
+        // with a stand-in that has no window, it writes out every style of each element instead.
+        sandbox: { remove() {} },
+        onCreateForeignObjectSvg: drawUseTargetsInPageStyles,
+      });
+    } finally {
+      readings.forEach(([canvas]) => delete canvas.toDataURL);
+    }
+  };
+`;
+}
+
+/**
  * What lets the user mark part of a page to ask the agent about: selected text gets an "Ask about this" pill, and in point
- * mode the element under the pointer is outlined and a click picks it, before the page's own handlers see the click. Its
+ * mode the element under the pointer is outlined and a click picks it, or a drag draws a box whose area goes as a picture,
+ * before the page's own handlers see the click or the drag. Its
  * outlines and pill live in a shadow root, out of reach of the page's styles. Like the app bridge, it takes the
  * phone's injected messages, which have no source.
  */
-function pageMarking(itemId: string) {
+function pageMarking(itemId: string, assetsOrigin: string) {
   return `(() => {
   const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
   const itemId = ${JSON.stringify(itemId)};
   const MAX_TEXT = ${MAX_MARKED_TEXT};
   const MAX_HTML = ${MAX_MARKED_HTML};
   const SUMMARY_CHARACTERS = 200;
+  const DRAG_PIXELS = 6;
+  const MAX_AREA_SIDE = ${MAX_AREA_SIDE};
   const post = (message) => parent.postMessage({ source, itemId, ...message }, "*");
+${pageDrawing(assetsOrigin)}
   const host = document.createElement("mirador-marks");
   host.style.cssText = "all:initial!important;position:absolute!important;left:0!important;top:0!important;width:0!important;height:0!important;z-index:2147483647!important;pointer-events:none!important;display:block!important";
   const shadow = host.attachShadow({ mode: "open" });
@@ -559,13 +642,14 @@ function pageMarking(itemId: string) {
   document.head.append(crosshair);
   crosshair.sheet.disabled = true;
 
-  const placeOver = (box, rect) => {
+  const placeAt = (box, area) => {
     box.style.display = "block";
-    box.style.left = rect.left + scrollX + "px";
-    box.style.top = rect.top + scrollY + "px";
-    box.style.width = rect.width + "px";
-    box.style.height = rect.height + "px";
+    box.style.left = area.left + "px";
+    box.style.top = area.top + "px";
+    box.style.width = area.width + "px";
+    box.style.height = area.height + "px";
   };
+  const placeOver = (box, rect) => placeAt(box, { left: rect.left + scrollX, top: rect.top + scrollY, width: rect.width, height: rect.height });
   const hide = (box) => (box.style.display = "none");
   const clipped = (text, most) => (text.length > most ? text.slice(0, most - 1) + "…" : text);
   const stepTo = (element) => {
@@ -649,6 +733,9 @@ function pageMarking(itemId: string) {
   let pointing = false;
   let hovered = null;
   let picked = null;
+  let pressedAt = null;
+  let boxed = null;
+  let swallowNextClick = false;
   const startPointing = () => {
     pointing = true;
     selected = null;
@@ -658,6 +745,7 @@ function pageMarking(itemId: string) {
   const stopPointing = () => {
     pointing = false;
     hovered = null;
+    pressedAt = null;
     hide(outline);
     crosshair.sheet.disabled = true;
   };
@@ -667,10 +755,59 @@ function pageMarking(itemId: string) {
     event.stopImmediatePropagation();
     return true;
   };
-  ["pointerdown", "mousedown", "pointerup", "mouseup", "dblclick", "auxclick", "contextmenu", "touchstart", "touchmove", "touchend"].forEach((type) =>
+  const atPage = (event) => ({ x: event.clientX + scrollX, y: event.clientY + scrollY });
+  const areaBetween = (from, to) => ({ left: Math.min(from.x, to.x), top: Math.min(from.y, to.y), width: Math.abs(to.x - from.x), height: Math.abs(to.y - from.y) });
+  const contains = (rect, area) =>
+    rect.left + scrollX <= area.left + 1 && rect.top + scrollY <= area.top + 1 && rect.right + scrollX >= area.left + area.width - 1 && rect.bottom + scrollY >= area.top + area.height - 1;
+  const holderOf = (area) => {
+    let element = document.elementFromPoint(area.left - scrollX + area.width / 2, area.top - scrollY + area.height / 2);
+    while (element && element.parentElement && !contains(element.getBoundingClientRect(), area)) element = element.parentElement;
+    return element || document.body;
+  };
+  const drawnArea = async (area) => {
+    const page = await drawnPage();
+    const scale = page.width / document.documentElement.scrollWidth;
+    const shrink = Math.min(1, MAX_AREA_SIDE / (Math.max(area.width, area.height) * scale));
+    const picture = document.createElement("canvas");
+    picture.width = Math.max(1, Math.round(area.width * scale * shrink));
+    picture.height = Math.max(1, Math.round(area.height * scale * shrink));
+    picture.getContext("2d").drawImage(page, area.left * scale, area.top * scale, area.width * scale, area.height * scale, 0, 0, picture.width, picture.height);
+    return picture.toDataURL("image/png");
+  };
+  const markArea = async (area) => {
+    stopPointing();
+    swallowNextClick = true;
+    post({ kind: "pointing", on: false });
+    const element = described(holderOf(area));
+    try {
+      post({ kind: "mark", mark: { kind: "area", element, image: await drawnArea(area) } });
+    } catch (error) {
+      hide(chosen);
+      post({ kind: "mark-failed", message: String((error && error.message) || error) });
+    }
+  };
+  ["mousedown", "mouseup", "dblclick", "auxclick", "contextmenu", "touchstart", "touchmove", "touchend"].forEach((type) =>
     addEventListener(type, swallowed, { capture: true, passive: false }),
   );
+  addEventListener("pointerdown", (event) => {
+    swallowNextClick = false;
+    if (!swallowed(event) || event.button !== 0) return;
+    pressedAt = atPage(event);
+    boxed = null;
+  }, true);
+  addEventListener("pointerup", (event) => {
+    if (!swallowed(event)) return;
+    pressedAt = null;
+    if (boxed) markArea(boxed);
+  }, true);
+  // A drag's click is swallowed even though the drag already ended point mode.
   addEventListener("click", (event) => {
+    if (swallowNextClick && event.isTrusted) {
+      swallowNextClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (!swallowed(event) || !(event.target instanceof Element)) return;
     picked = event.target;
     stopPointing();
@@ -678,13 +815,22 @@ function pageMarking(itemId: string) {
     post({ kind: "mark", mark: { kind: "element", element: described(picked) } });
   }, true);
   addEventListener("pointermove", (event) => {
-    if (!pointing || event.target === hovered) return;
+    if (!pointing) return;
+    if (pressedAt) {
+      const area = areaBetween(pressedAt, atPage(event));
+      if (!boxed && Math.max(area.width, area.height) < DRAG_PIXELS) return;
+      boxed = area;
+      hide(outline);
+      placeAt(chosen, area);
+      return;
+    }
+    if (event.target === hovered) return;
     hovered = event.target instanceof Element ? event.target : null;
     if (hovered) placeOver(outline, hovered.getBoundingClientRect());
     else hide(outline);
   }, true);
   addEventListener("pointerout", (event) => {
-    if (!pointing || event.relatedTarget) return;
+    if (!pointing || pressedAt || event.relatedTarget) return;
     hovered = null;
     hide(outline);
   }, true);
@@ -692,6 +838,7 @@ function pageMarking(itemId: string) {
     if (!pointing || event.key !== "Escape") return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    hide(chosen);
     stopPointing();
     post({ kind: "pointing", on: false });
   }, true);
@@ -784,48 +931,11 @@ ${TEXT_CONTRAST_SCRIPT}
   };
   addEventListener("DOMContentLoaded", checkText);
   addEventListener("load", checkText);
-  // The library puts a bare copy of each <use> target, without the page's styles, in front of the page, where it wins
-  // over the page's own copy. That copy has all its computed styles written out, so the bare one goes, and the page's copy
-  // gives up the values it only inherited where it sits, to inherit them from each <use> as the browser does.
-  // A value it set itself that happens to equal the inherited one goes too: a rare loss.
-  const drawUseTargetsInPageStyles = (svg) => {
-    const page = svg.querySelector("foreignObject");
-    const bareCopies = svg.querySelector(":scope > defs");
-    if (!page || !bareCopies) return;
-    for (const bareCopy of [...bareCopies.children]) {
-      const pageCopy = bareCopy.id && page.querySelector("svg #" + CSS.escape(bareCopy.id));
-      if (!pageCopy) continue;
-      bareCopy.remove();
-      inheritFromEachUse(pageCopy);
-    }
-  };
-  const inheritFromEachUse = (target) => {
-    const outside = target.parentElement.style;
-    const inheritedValues = [];
-    const collect = (element, names) => {
-      const unchanged = names.filter((name) => element.style.getPropertyValue(name) === outside.getPropertyValue(name));
-      inheritedValues.push([element, unchanged]);
-      for (const child of element.children) collect(child, unchanged);
-    };
-    collect(target, Array.from(outside));
-    inheritedValues.forEach(([element, names]) => names.forEach((name) => element.style.removeProperty(name)));
-  };
-  // The whole page, not only what the frame shows, in the colours it is shown in.
+${pageDrawing(assetsOrigin)}
   const capture = async (requestId) => {
     try {
-      const { domToBlob } = await import(${JSON.stringify(assetsOrigin + CAPTURE_LIBRARY_PATH)});
-      const root = document.documentElement;
-      const image = await domToBlob(root, {
-        width: root.scrollWidth,
-        height: root.scrollHeight,
-        scale: devicePixelRatio,
-        backgroundColor: getComputedStyle(root).backgroundColor,
-        font: false,
-        // The library works out the browser's default styles in a frame of its own, which a sandboxed page cannot reach;
-        // with a stand-in that has no window, it writes out every style of each element instead.
-        sandbox: { remove() {} },
-        onCreateForeignObjectSvg: drawUseTargetsInPageStyles,
-      });
+      const drawn = await drawnPage();
+      const image = await new Promise((resolve, reject) => drawn.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("the browser made no PNG of it"))), "image/png"));
       post({ kind: "captured", requestId, image });
     } catch (error) {
       post({ kind: "capture-failed", requestId, message: String((error && error.message) || error) });
@@ -987,7 +1097,7 @@ export function buildCanvasDocument(
     `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy([assetsOrigin], [assetsOrigin], policy))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
-    ...(markable ? [`<script>${pageMarking(itemId)}</script>`] : []),
+    ...(markable ? [`<script>${pageMarking(itemId, assetsOrigin)}</script>`] : []),
     `<script>${frameReporter(itemId, theme, assetsOrigin)}</script>`,
     "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif;overflow-wrap:break-word}</style>",
     ...(padded ? [PADDED_PAGE_STYLE] : []),
