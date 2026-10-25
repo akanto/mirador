@@ -1,4 +1,5 @@
 import type { AskOption, AskQuestion } from "./model.ts";
+import { spokenWords, withoutPoliteness } from "./spoken-words.ts";
 
 /** Which of a question's options were read aloud: the recommended one alone, or all of them. */
 export type OfferedOptions = "recommended" | "all";
@@ -58,16 +59,6 @@ export function otherOptionsSentences(question: AskQuestion) {
   const others = question.options.map((_, index) => index).filter((index) => index !== recommended);
   return ["The others are:", ...numbered(question.options, others), "Which one?"];
 }
-
-const words = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const withoutPoliteness = (said: string) => said.replace(/^((please|ok|okay|um|uh|well)\s+)+|(\s+(please|then|thanks|thank you))+$/g, "").trim();
 
 const accepting = new Set([
   "yes",
@@ -134,7 +125,7 @@ const fillers = new Set(["the", "a", "an", "one", "option", "i", "want", "take",
 /** The one option whose label the words name: all of it said, or every word said in it. */
 function labelSaid(said: string, options: AskOption[]) {
   const named = (option: AskOption) => {
-    const label = words(spokenLabel(option.label));
+    const label = spokenWords(spokenLabel(option.label));
     if (label === "") return false;
     if (` ${said} `.includes(` ${label} `)) return true;
     const meant = said.split(" ").filter((word) => !fillers.has(word));
@@ -147,7 +138,7 @@ function labelSaid(said: string, options: AskOption[]) {
 
 /** What the words say, in English after translation: yes to what was offered, the others, a number, or a label's words. */
 export function heardChoice(text: string, question: AskQuestion, offered: OfferedOptions): HeardChoice {
-  const said = withoutPoliteness(words(text));
+  const said = withoutPoliteness(spokenWords(text));
   const recommended = recommendedIndex(question.options);
   if (offered === "recommended" && recommended !== null && accepting.has(said)) return { kind: "pick", index: recommended };
   const hasOthers = question.options.length > 1;

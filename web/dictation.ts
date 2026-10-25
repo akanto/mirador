@@ -1,5 +1,6 @@
 import type { VoiceSettings } from "../shared/voice.ts";
 import type { EngineServer, EngineServerState } from "../shared/voice-engine.ts";
+import { spokenWords, withoutPoliteness } from "../shared/spoken-words.ts";
 
 /** A press let go of sooner than this is a tap: listening goes on until a pause or the next press. */
 export const HOLD_MS = 400;
@@ -25,21 +26,11 @@ export type VoiceCommand = "stop" | "repeat" | "help";
 
 const voiceCommands: Record<VoiceCommand, string[]> = {
   stop: ["stop", "stop listening", "stop talking", "be quiet", "that's all", "that is all", "enough", "bye", "bye bye", "goodbye", "thank you", "thanks", "thank you very much", "thanks a lot"],
-  repeat: ["repeat", "repeat that", "repeat it", "say that again", "say it again", "again", "once more"],
+  repeat: ["repeat", "repeat that", "repeat it", "repeat this", "repeat that again", "say that again", "say it again", "say this again", "again", "once more"],
   help: ["help", "what can i say", "what do i say", "what can i say here", "commands", "voice commands"],
 };
 
-const politeWords = /^((please|ok|okay)\s+)+|(\s+please)+$/g;
-
-const asCommand = (words: string) =>
-  words
-    .toLowerCase()
-    .replace(/[‘’]/g, "'")
-    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(politeWords, "")
-    .trim();
+const asCommand = (words: string) => withoutPoliteness(spokenWords(words));
 
 /**
  * What speech recognition, Whisper most of all, is known to write for silence, noise or music, as if a video were

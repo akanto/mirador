@@ -180,6 +180,12 @@ describe("a command said while keeping a spoken conversation going", () => {
     expect(voiceCommand("Say that again?")).toBe("repeat");
   });
 
+  test("repeat asked for as a question, or with this or again, is still repeat", () => {
+    for (const said of ["Repeat this, please.", "Can you repeat that?", "Could you say that again?", "Repeat that again.", "Um, repeat it, thanks."]) {
+      expect(voiceCommand(said), said).toBe("repeat");
+    }
+  });
+
   test("a typographic apostrophe, and more than one polite word, still make a command", () => {
     expect(voiceCommand("That’s all.")).toBe("stop");
     expect(voiceCommand("OK, please stop.")).toBe("stop");
