@@ -222,62 +222,69 @@ describe("the review plugin Mirador comes with: reviews", () => {
     expect((await callTool("update_review", { review: "r9", summary: "?" })).text).toContain("- review: r9 is not a review in this conversation.");
   });
 
+  /** GitHub, with the pull request's head, and the commit of the user's pending review if they have one, where the test puts them; every comment taken. */
+  function movingPullRequest() {
+    const pullRequest = { head: "", pendingReviewCommit: null as string | null, unreachable: false, answered: Promise.resolve(), threadsAdded: 0 };
+    const gh: GitHubCli = async (args, body: any) => {
+      await pullRequest.answered;
+      if (pullRequest.unreachable) throw new Error("error connecting to api.github.com");
+      if (args[3] === "repos/team/shop/pulls/7") return { node_id: "PR_7", head: { sha: pullRequest.head } };
+      if (body.query.includes("states: PENDING")) {
+        const nodes = pullRequest.pendingReviewCommit === null ? [] : [{ id: "PRR_1", url: "https://github.com/review/1", commit: { oid: pullRequest.pendingReviewCommit } }];
+        return { data: { repository: { pullRequest: { reviews: { nodes } } } } };
+      }
+      if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_2", url: "https://github.com/review/2" } } } };
+      pullRequest.threadsAdded++;
+    return { data: { addPullRequestReviewThread: { thread: { id: "thread-1" } } } };
+    };
+    return { pullRequest, gh };
+  }
+
+  async function reviewOfPullRequest() {
+    const { pullRequest, gh } = movingPullRequest();
+    const setup = await setUp(undefined, gh);
+    const { directory } = gitRepository();
+    await setup.callTool("review", reviewRequest(directory, { pullRequest: "https://github.com/team/shop/pull/7" }));
+    const item = setup.items()[0]!;
+    const review = () => reviewOf(setup.store.findCanvasItem(item.id))!;
+    const act = (action: Record<string, unknown>) => setup.plugins.act(item.id, action);
+    const post = async () => {
+      await act({ kind: "post" });
+      while (review().posting) await Bun.sleep(1);
+    };
+    return { ...setup, pullRequest, item, headCommit: review().headCommit, review, act, post, movedOn: () => review().pullRequestMovedOn };
+  }
+
   describe("a pull request that moved on since the review", () => {
-    /** GitHub, with the pull request's head, and the commit of the user's pending review if they have one, where the test puts them; every comment taken. */
-    function movingPullRequest() {
-      const pullRequest = { head: "", pendingReviewCommit: null as string | null };
-      const gh: GitHubCli = async (args, body: any) => {
-        if (args[3] === "repos/team/shop/pulls/7") return { node_id: "PR_7", head: { sha: pullRequest.head } };
-        if (body.query.includes("states: PENDING")) {
-          const nodes = pullRequest.pendingReviewCommit === null ? [] : [{ id: "PRR_1", url: "https://github.com/review/1", commit: { oid: pullRequest.pendingReviewCommit } }];
-          return { data: { repository: { pullRequest: { reviews: { nodes } } } } };
-        }
-        if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_2", url: "https://github.com/review/2" } } } };
-        return { data: { addPullRequestReviewThread: { thread: { id: "thread-1" } } } };
-      };
-      return { pullRequest, gh };
-    }
-
-    async function reviewOfPullRequest() {
-      const { pullRequest, gh } = movingPullRequest();
-      const setup = await setUp(undefined, gh);
-      const { directory } = gitRepository();
-      await setup.callTool("review", reviewRequest(directory, { pullRequest: "https://github.com/team/shop/pull/7" }));
-      const item = setup.items()[0]!;
-      const review = () => reviewOf(setup.store.findCanvasItem(item.id))!;
-      const act = (action: Record<string, unknown>) => setup.plugins.act(item.id, action);
-      return { ...setup, pullRequest, item, headCommit: review().headCommit, review, act, movedOn: () => review().pullRequestMovedOn };
-    }
-
     test("a pending review the user started on another commit is named on the review, until a post goes through once it is gone", async () => {
-      const { pullRequest, headCommit, review, act } = await reviewOfPullRequest();
+      const { pullRequest, headCommit, review, post } = await reviewOfPullRequest();
       pullRequest.head = headCommit;
       pullRequest.pendingReviewCommit = "d".repeat(40);
-      await act({ kind: "post" });
+      await post();
       expect(review().pendingReviewOfOtherCommit).toEqual({ url: "https://github.com/review/1", commit: "d".repeat(40) });
       expect(review().findings[0]?.postedAs).toBeUndefined();
       expect(review().posting).toBe(false);
 
       pullRequest.pendingReviewCommit = null;
-      await act({ kind: "post" });
+      await post();
       expect(review().pendingReviewOfOtherCommit).toBeUndefined();
       expect(review().pendingReviewUrl).toBe("https://github.com/review/2");
       expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
     });
 
     test("posting says so on the review, with the new head, rather than failing", async () => {
-      const { pullRequest, act, movedOn, review, prompts } = await reviewOfPullRequest();
+      const { pullRequest, post, movedOn, review, prompts } = await reviewOfPullRequest();
       pullRequest.head = "f".repeat(40);
-      await act({ kind: "post" });
+      await post();
       expect(movedOn()).toEqual({ headCommit: "f".repeat(40), askedToReviewAgain: false });
       expect(review().posting).toBe(false);
       expect(prompts).toEqual([]);
     });
 
     test("Review again asks the agent once, after its turn, naming the pull request and both heads; a later push lets it ask again", async () => {
-      const { pullRequest, headCommit, act, movedOn, prompts } = await reviewOfPullRequest();
+      const { pullRequest, headCommit, act, post, movedOn, prompts } = await reviewOfPullRequest();
       pullRequest.head = "a".repeat(40);
-      await act({ kind: "post" });
+      await post();
       await Promise.all([act({ kind: "review-again" }), act({ kind: "review-again" })]);
       expect(prompts).toEqual([
         {
@@ -288,17 +295,17 @@ describe("the review plugin Mirador comes with: reviews", () => {
       ]);
       expect(movedOn()?.askedToReviewAgain).toBe(true);
 
-      await act({ kind: "post" });
+      await post();
       expect(movedOn()?.askedToReviewAgain).toBe(true);
       pullRequest.head = "b".repeat(40);
-      await act({ kind: "post" });
+      await post();
       expect(movedOn()).toEqual({ headCommit: "b".repeat(40), askedToReviewAgain: false });
     });
 
     test("Review again that couldn't reach the agent can be asked again", async () => {
-      const { pullRequest, act, movedOn, plugins } = await reviewOfPullRequest();
+      const { pullRequest, act, post, movedOn, plugins } = await reviewOfPullRequest();
       pullRequest.head = "a".repeat(40);
-      await act({ kind: "post" });
+      await post();
       plugins.sendsPromptsWith(async () => {
         throw new Error("The conversation is gone.");
       });
@@ -307,11 +314,11 @@ describe("the review plugin Mirador comes with: reviews", () => {
     });
 
     test("a post that goes through, once the head is the reviewed one again, takes the note away", async () => {
-      const { pullRequest, headCommit, act, movedOn, review } = await reviewOfPullRequest();
+      const { pullRequest, headCommit, post, movedOn, review } = await reviewOfPullRequest();
       pullRequest.head = "c".repeat(40);
-      await act({ kind: "post" });
+      await post();
       pullRequest.head = headCommit;
-      await act({ kind: "post" });
+      await post();
       expect(movedOn()).toBeUndefined();
       expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
     });
@@ -320,6 +327,38 @@ describe("the review plugin Mirador comes with: reviews", () => {
       const { act, prompts } = await reviewOfPullRequest();
       await act({ kind: "review-again" });
       expect(prompts).toEqual([]);
+    });
+  });
+
+  describe("posting", () => {
+    test("Post answers as soon as posting starts, however long GitHub takes, and a second Post meanwhile posts nothing more", async () => {
+      const { pullRequest, headCommit, review, act, post } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      const github = Promise.withResolvers<void>();
+      pullRequest.answered = github.promise;
+      await act({ kind: "post" });
+      expect(review().posting).toBe(true);
+      await act({ kind: "post" });
+
+      github.resolve();
+      await post();
+      expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
+      expect(review().pendingReviewUrl).toBe("https://github.com/review/2");
+      expect(pullRequest.threadsAdded).toBe(1);
+    });
+
+    test("a post that fails as a whole says why on the review, until the user posts again", async () => {
+      const { pullRequest, headCommit, review, post } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      pullRequest.unreachable = true;
+      await post();
+      expect(review().postFailure).toBe("error connecting to api.github.com");
+      expect(review().findings[0]?.postedAs).toBeUndefined();
+
+      pullRequest.unreachable = false;
+      await post();
+      expect(review().postFailure).toBeUndefined();
+      expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
     });
   });
 });

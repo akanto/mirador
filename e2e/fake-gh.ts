@@ -1,7 +1,7 @@
 /** Stands in for gh in review.spec.ts: it logs how it was called, and answers like GitHub for pull 7 of team/shop. */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
-const { FAKE_GH_LOG, FAKE_GH_AUTH_LOG, FAKE_GH_LOGGED_OUT, FAKE_GH_HEAD, FAKE_GH_PENDING_REVIEW_COMMIT, FAKE_GH_THREADS, FAKE_GH_PULL_REQUEST } = process.env;
+const { FAKE_GH_LOG, FAKE_GH_AUTH_LOG, FAKE_GH_LOGGED_OUT, FAKE_GH_UNREACHABLE, FAKE_GH_HEAD, FAKE_GH_PENDING_REVIEW_COMMIT, FAKE_GH_THREADS, FAKE_GH_PULL_REQUEST } = process.env;
 const args = process.argv.slice(2);
 const called = args.join(" ");
 
@@ -12,6 +12,11 @@ if (args[0] === "auth" && args[1] === "status") {
 
 const input = ` ${called} `.includes(" --input - ") ? (await Bun.stdin.text()).replace(/\n+$/, "") : "";
 appendFileSync(FAKE_GH_LOG!, `${called}\t${input}\n`);
+
+if (existsSync(FAKE_GH_UNREACHABLE!)) {
+  process.stderr.write("error connecting to ghe.example.com\n");
+  process.exit(1);
+}
 
 function graphqlAnswer() {
   if (input.includes("states: PENDING")) {

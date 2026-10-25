@@ -6280,6 +6280,11 @@ button.picture-option.chosen {
   margin-top: 8px !important;
 }
 
+.post-failure {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+
 .ask-about-lines {
   position: absolute;
   left: 12px;

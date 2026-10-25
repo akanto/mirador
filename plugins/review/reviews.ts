@@ -256,10 +256,9 @@ export function codeReviews(gh: GitHubCli) {
 
   /** Adds the kept findings and answers to the user's pending review on the pull request; each records how that went. */
   async function post(context: ReviewContext, itemId: string) {
-    if (beingPosted.has(itemId)) return;
     beingPosted.add(itemId);
     try {
-      const { data: review } = changeReview(context, itemId, { posting: true });
+      const { data: review } = changeReview(context, itemId, { posting: true, postFailure: undefined });
       const outcome = await postPendingReview(review, gh);
       const latest = reviewNamed(context, itemId).data;
       const findings = latest.findings.map((finding) => {
@@ -284,11 +283,21 @@ export function codeReviews(gh: GitHubCli) {
     } catch (error) {
       if (error instanceof PullRequestMovedOn) notePullRequestMovedOn(context, itemId, error.headCommit);
       else if (error instanceof PendingReviewOfOtherCommit) changeReview(context, itemId, { pendingReviewOfOtherCommit: error.pendingReview });
-      else throw error;
+      else changeReview(context, itemId, { postFailure: error instanceof Error ? error.message : String(error) });
     } finally {
       beingPosted.delete(itemId);
       changeReview(context, itemId, { posting: false });
     }
+  }
+
+  /**
+   * Answers the view once posting starts, however long GitHub takes; every page showing the review follows the post
+   * through the review's own changes, a failure included.
+   */
+  function startPosting(context: ReviewContext, itemId: string) {
+    reviewNamed(context, itemId);
+    if (beingPosted.has(itemId)) return;
+    void post(context, itemId).catch((error) => console.error(`${new Date().toISOString()} posting review ${itemId} failed:`, error));
   }
 
   const reviewType: PluginItemType<Review> = {
@@ -352,7 +361,7 @@ export function codeReviews(gh: GitHubCli) {
       case "check-github-cli":
         return item.data.pullRequest ? gitHubCliProblemOn(item.data.pullRequest.host).catch(() => null) : null;
       case "post":
-        return post(context, item.id);
+        return startPosting(context, item.id);
       case "review-again":
         return reviewAgain(context, item);
     }

@@ -10,6 +10,7 @@ const fakeProgramsDir = host.fakeProgramsDir;
 const ghLog = join(host.root, "gh.log");
 const ghAuthLog = join(host.root, "gh-auth.log");
 const ghLoggedOut = join(host.root, "gh-logged-out");
+const ghUnreachable = join(host.root, "gh-unreachable");
 const ghThreads = join(host.root, "gh-review-threads.json");
 const ideaLog = join(host.root, "idea.log");
 const PULL_REQUEST = "https://ghe.example.com/team/shop/pull/7";
@@ -102,6 +103,7 @@ function writeFakePrograms(head: string, pendingReviewCommit = "") {
     FAKE_GH_LOG: ghLog,
     FAKE_GH_AUTH_LOG: ghAuthLog,
     FAKE_GH_LOGGED_OUT: ghLoggedOut,
+    FAKE_GH_UNREACHABLE: ghUnreachable,
     FAKE_GH_HEAD: head,
     FAKE_GH_PENDING_REVIEW_COMMIT: pendingReviewCommit,
     FAKE_GH_THREADS: ghThreads,
@@ -688,4 +690,37 @@ test("a pending review the user started on another commit is named above Post wi
     await expect(postPanel.locator(".posted-note")).toContainText("2 findings are on your pending review");
     await expect(postPanel).not.toContainText(note);
   });
+});
+
+test("a post that fails as a whole says why above Post on every page showing the review, until a post goes through", async ({ page }) => {
+  rmSync(ghLoggedOut, { force: true });
+  await signIn(page, host);
+  const addProject = page.getByRole("button", { name: "+ Add a project directory" });
+  await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  await callCanvasTool(host, conversationId, "review", review());
+  const otherPage = await page.context().newPage();
+  await otherPage.goto(page.url());
+  const postPanel = (showing: Page) => walkthroughView(showing).locator(".review .post-panel");
+  const post = postPanel(page).getByRole("button", { name: "Post 2 findings to the pull request" });
+
+  writeFileSync(ghUnreachable, "");
+  try {
+    await post.click();
+    for (const showing of [page, otherPage]) {
+      await expect(postPanel(showing).getByRole("alert")).toHaveText("The last post failed: error connecting to ghe.example.com");
+      await expect(postPanel(showing).getByRole("button", { name: "Post 2 findings to the pull request" })).toBeEnabled();
+    }
+    await expect(page.locator(".notice")).toHaveCount(0);
+  } finally {
+    rmSync(ghUnreachable, { force: true });
+  }
+
+  await post.click();
+  for (const showing of [page, otherPage]) {
+    await expect(postPanel(showing).locator(".posted-note")).toContainText("2 findings are on your pending review");
+    await expect(postPanel(showing).getByRole("alert")).toHaveCount(0);
+  }
+  await otherPage.close();
 });

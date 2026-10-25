@@ -169,6 +169,8 @@ export interface Review extends Walkthrough {
   pullRequestMovedOn?: PullRequestMovedOn;
   /** Set once posting found the user's pending review on the pull request started on another commit, until a post goes through. */
   pendingReviewOfOtherCommit?: PendingReviewOfOtherCommit;
+  /** Why the last post failed as a whole, e.g. gh couldn't reach GitHub, until the user posts again. */
+  postFailure?: string;
   /** The agent's latest change to parts of the review in place: finding and answer ids, "summary", "verdict" or "flow". */
   agentEdit?: { at: number; parts: string[] };
   /** The highest finding number handed out so far, so a removed finding's id never names another one; missing until the agent changes the review. */

@@ -558,6 +558,11 @@ function PostPanel({ item }: { item: ReviewItem }) {
           </a>
         </p>
       )}
+      {review.postFailure && (
+        <p className="post-failure" role="alert">
+          The last post failed: {review.postFailure}
+        </p>
+      )}
       {review.pullRequestMovedOn ? (
         <PullRequestMovedOnNote item={item} pullRequest={review.pullRequest} movedOn={review.pullRequestMovedOn} />
       ) : toPost.length + answersToPost.length > 0 || review.posting ? (
