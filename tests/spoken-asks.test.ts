@@ -22,6 +22,10 @@ describe("reading a question aloud", () => {
     expect(spokenLabel("Ship it — recommended")).toBe("Ship it");
   });
 
+  test("the agent's flag wins over a mark in another label", () => {
+    expect(recommendedIndex([{ label: "Chimes (recommended)" }, { label: "Lights", recommended: true }])).toBe(1);
+  });
+
   test("the word alone is no mark: an option advised against, or one about recommended things, isn't the recommended one", () => {
     for (const label of ["Not recommended: drop it now", "Keep the recommended defaults", "Drop it (not recommended)"]) {
       expect(recommendedIndex([{ label }, { label: "Wait a week" }]), label).toBeNull();

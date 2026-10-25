@@ -17,6 +17,7 @@ const optionSchema = z.object({
   label: z.string().min(1).describe("Short name of the option; returned verbatim when chosen."),
   description: z.string().optional().describe("One or two sentences on the trade-off."),
   html: z.string().optional().describe("Optional HTML preview of this option (mockup, diagram, code sample)."),
+  recommended: z.boolean().optional().describe("True on the one option you recommend, rather than a mark in its label. The user sees it marked, and in a spoken conversation it is read first."),
 });
 
 const askQuestionShape = {
@@ -106,6 +107,8 @@ function buildCanvasServer(
       if (!questions && (!question || !options)) return toolError("Give question and options, or questions.");
       if (questions && Object.values(rest).some((value) => value !== undefined))
         return toolError("With questions, give html, allowOther and optionWidth on each question, not next to questions.");
+      if ((questions ?? [{ options: options! }]).some((asked) => asked.options.filter((option) => option.recommended).length > 1))
+        return toolError("Recommend at most one option of each question.");
       const caller = await callingConversation(ctx);
       const item = canvas.openAsk(caller, questions ? { questions } : { question: question!, options: options!, ...rest });
       if (conversations.get(caller).askMode === "next-message") {

@@ -280,6 +280,7 @@ function AskQuestionFields({
                 onChange={() => onChange({ choice: option.label })}
               />
               <span className="ask-option-label">{option.label}</span>
+              {option.recommended && <span className="ask-option-recommended">Recommended</span>}
             </span>
             {option.description && <span className="ask-option-description">{option.description}</span>}
             {option.html && (

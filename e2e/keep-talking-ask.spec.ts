@@ -90,7 +90,7 @@ test("with Keep talking, a question the agent asks is read aloud, recommended op
     spoken = [];
     const answered = callCanvasTool(host, conversationId, "ask", {
       question: "What should signal the microphone's state?",
-      options: [{ label: "Visual only" }, { label: "Short sounds (recommended)", description: "A chime as it opens." }, { label: "Sounds plus a stronger visual" }],
+      options: [{ label: "Visual only" }, { label: "Short sounds", description: "A chime as it opens.", recommended: true }, { label: "Sounds plus a stronger visual" }],
     });
     expect(await answered).toContain("Sounds plus a stronger visual");
     await expect.poll(() => spoken).toEqual([

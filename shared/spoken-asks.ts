@@ -9,9 +9,10 @@ export type HeardChoice = { kind: "pick"; index: number } | { kind: "others" } |
 /** Only where a mark sits, as "(recommended)", "Recommended: …" or "… — recommended", so "Not recommended: …" isn't one. */
 const RECOMMENDED = /\s*[([]recommended[)\]]\s*|^\s*recommended\s*[:–—-]\s*|\s*[:,–—-]\s*recommended\s*$/i;
 
-/** The option the agent marked as the one it recommends, as in "Short sounds (recommended)". */
+/** The option the agent recommends: by its flag, or else by a mark in its label, as in "Short sounds (recommended)". */
 export const recommendedIndex = (options: AskOption[]) => {
-  const index = options.findIndex(({ label }) => RECOMMENDED.test(label));
+  const flagged = options.findIndex(({ recommended }) => recommended);
+  const index = flagged === -1 ? options.findIndex(({ label }) => RECOMMENDED.test(label)) : flagged;
   return index === -1 ? null : index;
 };
 

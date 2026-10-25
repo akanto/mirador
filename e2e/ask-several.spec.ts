@@ -258,3 +258,20 @@ test("an answer the user takes their time over still reaches the agent", async (
   await ask.getByRole("button", { name: "Submit" }).click();
   expect(await toolResult).toBe("The user chose: Yes");
 });
+
+test("the option the agent recommends shows a Recommended tag, and recommending two of one question is refused", async ({ page }) => {
+  await signIn(page, host);
+  await page.goto(host.origin);
+  const conversationId = await startConversation(page);
+  const twoRecommended = { question: "Which?", options: [{ label: "A", recommended: true }, { label: "B", recommended: true }] };
+  expect(await callCanvasTool(host, conversationId, "ask", twoRecommended)).toBe("Recommend at most one option of each question.");
+
+  const ask = page.locator(".ask");
+  const toolResult = callCanvasTool(host, conversationId, "ask", { question: "Which database?", options: [{ label: "SQLite" }, { label: "Postgres", recommended: true }] });
+  const options = ask.locator(".ask-option");
+  await expect(options.nth(1).locator(".ask-option-recommended")).toHaveText("Recommended");
+  await expect(options.nth(0).locator(".ask-option-recommended")).toHaveCount(0);
+  await ask.getByRole("radio", { name: "Postgres", exact: true }).check();
+  await ask.getByRole("button", { name: "Submit" }).click();
+  expect(await toolResult, "the tag isn't part of the answer").toBe("The user chose: Postgres");
+});

@@ -537,6 +537,8 @@ export interface AskOption {
   label: string;
   description?: string;
   html?: string;
+  /** The one the agent recommends: marked on the canvas, and read first in a spoken conversation. */
+  recommended?: boolean;
 }
 
 /** One question of an ask: what the user is asked, and what they can choose from. */
