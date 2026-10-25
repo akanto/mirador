@@ -213,7 +213,7 @@ export function contentText(content: ContentBlock): string {
 }
 
 /** claude-agent-acp tags hook output and similar notices this way; they are not part of the reply. */
-function isInformational(meta: { [key: string]: unknown } | null | undefined) {
+export function isInformational(meta: { [key: string]: unknown } | null | undefined) {
   const claudeCode = meta?.claudeCode as { kind?: unknown } | undefined;
   return claudeCode?.kind === "informational";
 }

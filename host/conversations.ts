@@ -37,6 +37,7 @@ import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
 import { lastWordsOf } from "../shared/last-words.ts";
 import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
+import { isInformational } from "../shared/timeline.ts";
 import { canTryAgain } from "../shared/try-again.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
@@ -99,6 +100,12 @@ const OPTION_ANSWER_TIMEOUT_MS = 10_000;
 /** Like Claude Code: the agent continues a minute after its usage limit resets, at most twice in a row by itself. */
 const USAGE_LIMIT_RESET_MARGIN_MS = 60_000;
 const AUTOMATIC_CONTINUES_IN_A_ROW = 2;
+/** A script-driven turn whose reply stops at a step it announced is nudged on at most this many times in a row, so a run that keeps stopping there waits for the user rather than being poked for ever. */
+const STALL_NUDGES_IN_A_ROW = 2;
+/** What the nudge says: the agent ended its turn on a ":", meaning to go on. */
+const CONTINUE_AFTER_STALL = "Continue where you left off: your reply ended announcing a next step without taking it.";
+/** How much of the end of a turn's reply is kept, to tell whether it stopped at a ":". */
+const REPLY_END_KEPT = 200;
 /** setTimeout fires at once when asked to wait longer than this, about 24.8 days. */
 const LONGEST_TIMER_MS = 2 ** 31 - 1;
 
@@ -147,6 +154,10 @@ interface TurnInProgress {
   lastReplyMessageId: string | null;
   /** The turn waits on the user, so no reply of its own can still be on its way. */
   awaitedUser: boolean;
+  /** The turn began with a script's message (`mirador message`, or a job wait's resume): part of a run nobody may be watching. */
+  fromScript: boolean;
+  /** The end of the turn's own reply since its last tool call, to tell a turn that stopped at a step it announced from one that finished. */
+  replyEnd: string;
   /** What kept queued messages out of the turn when the host last tried to steer them in, as the host log says it. */
   queuedMessagesKeptOutBy?: string | null;
 }
@@ -207,6 +218,8 @@ interface Runtime {
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
   automaticContinues: number;
+  /** How many times in a row a script-driven turn that stopped at a step it announced was nudged on; any other turn's end resets it. */
+  stallNudges: number;
   /** The host kills the agent process this turn runs on on purpose, so the turn ends as a stop, not as a failure. */
   killedOnPurpose?: boolean;
   /** The reply the last stopped turn still owes: its late chunks are dropped, or held back until another reply's id or the next turn's end tells whether they were the orphan or that turn's answer. */
@@ -610,7 +623,7 @@ export class ConversationService {
     this.endUsageLimitWait(runtime);
     let endTurn = () => {};
     runtime.turnEnded = new Promise((resolve) => (endTurn = resolve));
-    const turn: TurnInProgress = { steered: [], ended: false, lastReplyMessageId: null, awaitedUser: false };
+    const turn: TurnInProgress = { steered: [], ended: false, lastReplyMessageId: null, awaitedUser: false, fromScript, replyEnd: "" };
     runtime.turn = turn;
     runtime.openToolCalls.clear();
     this.forgetUnseenTurnEnd(conversationId);
@@ -664,6 +677,26 @@ export class ConversationService {
       endTurn();
     }
     this.sendNextQueuedMessage(conversationId);
+    this.nudgeAfterStall(conversationId, turn, response);
+  }
+
+  /**
+   * Deep in a long run a model can end its turn on a ":" -- "Closing the round, step (a), verify:" -- without the tool call
+   * it announced. When a script drove the turn nobody may be there to notice, and the run would sit idle for good. If
+   * nothing else will carry the conversation on, it is nudged to take that step, a couple of times in a row at most; a
+   * turn that ends any other way, the user's own included, resets the count.
+   */
+  private nudgeAfterStall(conversationId: string, turn: TurnInProgress, response: acp.PromptResponse | undefined) {
+    const runtime = this.runtime(conversationId);
+    const stalled = response?.stopReason === "end_turn" && turn.fromScript && !turn.awaitedUser && stopsAtAnnouncedStep(turn.replyEnd);
+    if (!stalled) {
+      runtime.stallNudges = 0;
+      return;
+    }
+    if (this.stopping || runtime.running || runtime.queuedMessages.length > 0 || this.jobWaits.in(conversationId).length > 0) return;
+    if (runtime.stallNudges >= STALL_NUDGES_IN_A_ROW) return;
+    runtime.stallNudges += 1;
+    this.send(conversationId, CONTINUE_AFTER_STALL, [], { fromScript: true }).catch(() => {});
   }
 
   /**
@@ -1520,12 +1553,17 @@ export class ConversationService {
     return drop;
   }
 
-  /** Which reply the running turn has streamed, so its stop can tell a late chunk of it from the next turn's. */
+  /** Which reply the running turn has streamed, so its stop can tell a late chunk of it from the next turn's, and how that reply ends since the turn's last tool call. */
   private trackReplyProgress(conversationId: string, update: acp.SessionUpdate) {
     const turn = this.runtime(conversationId).turn;
-    if (!turn || turn.ended || !isAgentReplyChunk(update) || isSubagentReport(update)) return;
+    if (!turn || turn.ended) return;
+    if (isTurnsOwnToolCall(update)) turn.replyEnd = "";
+    if (!isAgentReplyChunk(update) || isSubagentReport(update)) return;
     turn.awaitedUser = false;
     if (typeof update.messageId === "string") turn.lastReplyMessageId = update.messageId;
+    if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text" && !isInformational(update._meta)) {
+      turn.replyEnd = (turn.replyEnd + update.content.text).slice(-REPLY_END_KEPT);
+    }
   }
 
   private followToolCalls(conversationId: string, update: acp.SessionUpdate) {
@@ -1838,7 +1876,7 @@ export class ConversationService {
     let runtime = this.runtimes.get(conversationId);
     if (!runtime) {
       const queuedMessages = this.store.findConversation(conversationId)?.queuedMessages ?? [];
-      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new OpenToolCalls(), automaticContinues: 0 };
+      runtime = { running: false, holdingQueue: false, pendingPermissions: new Map(), queuedMessages, openToolCalls: new OpenToolCalls(), automaticContinues: 0, stallNudges: 0 };
       this.runtimes.set(conversationId, runtime);
     }
     return runtime;
@@ -2037,6 +2075,11 @@ export function unfinishedTurnRequest(events: StoredEvent[]): TurnRequest | null
   const open = turnRequestWithin(events.slice(events.findLastIndex(endsTurn) + 1), events);
   if (open) return open;
   return agentFinishedItsTurn(events) ? null : lastTurnRequest(events);
+}
+
+/** Whether a reply stops where it announces its next step: its last words end in a ":", past any closing emphasis. */
+export function stopsAtAnnouncedStep(replyEnd: string): boolean {
+  return /:[*_\s]*$/.test(replyEnd);
 }
 
 /** Whether the last turn in the log is over because the agent finished it, and not because a stop cut it short, it failed, or it is still open. */

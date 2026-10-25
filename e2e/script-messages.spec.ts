@@ -80,4 +80,15 @@ test("a script the agent starts, or anything with the agent's session, messages 
     expect((await postMessage(sessionId, "x".repeat(64 * 1024 + 1))).status).toBe(413);
     await expect(messagesFromScripts(page)).toHaveCount(2);
   });
+
+  await test.step("a script's turn whose reply stops at a step it announced is nudged on, a couple of times in a row at most", async () => {
+    const nudges = messagesFromScripts(page).filter({ hasText: "your reply ended announcing a next step" });
+    expect(await runMiradorMessage(["--session", sessionId, "Reply with exactly this line, and nothing else: Next I check the logs:"])).toEqual({ exitCode: 0, stderr: "" });
+    await expect(nudges.first()).toBeVisible({ timeout: 120_000 });
+    // A nudge starts its turn as the stopped one ends, so idle can flash between them: settle before counting.
+    await waitForTurnToEnd(page);
+    await page.waitForTimeout(5_000);
+    await waitForTurnToEnd(page);
+    expect(await nudges.count()).toBeLessThanOrEqual(2);
+  });
 });
