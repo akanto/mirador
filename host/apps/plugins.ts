@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { existsSync, readdirSync, watch } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { APP_PLUGIN_API, CANVAS_PLUGIN_API, isPluginManifest, type AppHost, type AppTask, type InstalledApp, type PluginManifest } from "../../shared/apps.ts";
 import { pluginItemPlacements, type CanvasHost } from "../../shared/canvas-plugins.ts";
 import { BUILT_IN_CANVAS_TOOLS } from "../canvas/tool-names.ts";
@@ -134,6 +134,50 @@ async function loadPlugin(folder: string, shipped: boolean): Promise<{ app: AppP
   return {
     app: files.app ? { ...loaded, host: hostFrom(await import(files.app.hostFile)), view: await viewCode(files.app.viewFile, shipped) } : null,
     canvas: files.canvas ? { ...loaded, host: canvasHostFrom(await import(files.canvas.hostFile)), view: await viewCode(files.canvas.viewFile, shipped) } : null,
+  };
+}
+
+const VIEW_SETTLES_MS = 100;
+
+/**
+ * Follows the views of the plugins the owner installed: a view built again is read again under its new hash, and
+ * `onChange` hears of it, for the pages to load it. Mirador's own plugins are left out: their views are bundled from
+ * sources that a change of one file doesn't cover. Each view's folder is watched rather than the file, which a build
+ * may replace. Returns the function that stops it.
+ */
+export function watchViews({ apps, canvases }: Pick<LoadedPlugins, "apps" | "canvases">, onChange: () => void): () => void {
+  const installed = (plugin: LoadedPlugin) => !plugin.shipped;
+  const views = [
+    ...apps.filter(installed).map((plugin) => ({ plugin, viewFile: pluginFiles(plugin.folder, plugin.manifest).app!.viewFile })),
+    ...canvases.filter(installed).map((plugin) => ({ plugin, viewFile: pluginFiles(plugin.folder, plugin.manifest).canvas!.viewFile })),
+  ];
+  const timers = new Set<Timer>();
+  const watchers = views.map(({ plugin, viewFile }) => {
+    let settling: Timer | undefined;
+    const readAgain = async () => {
+      timers.delete(settling!);
+      const view = await viewCode(viewFile, false).catch(() => null);
+      if (!view || view.hash === plugin.view.hash) return;
+      plugin.view = view;
+      onChange();
+    };
+    const settle = (_event: string, file: string | null) => {
+      if (file !== basename(viewFile)) return;
+      clearTimeout(settling);
+      timers.delete(settling!);
+      settling = setTimeout(readAgain, VIEW_SETTLES_MS);
+      timers.add(settling);
+    };
+    try {
+      return watch(dirname(viewFile), settle);
+    } catch (error) {
+      console.warn(`A new build of ${viewFile} shows only after a restart: ${messageOf(error)}`);
+      return null;
+    }
+  });
+  return () => {
+    for (const watcher of watchers) watcher?.close();
+    for (const timer of timers) clearTimeout(timer);
   };
 }
 

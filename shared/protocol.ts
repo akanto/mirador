@@ -425,6 +425,8 @@ export type ServerMessage =
   | { type: "devices.listed"; devices: ListedDevice[]; thisDeviceId: string | null; reachability: ReachabilitySettings }
   /** `folder` is where plugins are installed; `restartNeeded` once a plugin was added, updated or removed since Mirador started. */
   | { type: "plugins.listed"; folder: string; plugins: PluginInfo[]; restartNeeded: boolean }
+  /** Where the views are served now, after an installed plugin's view was built again. */
+  | { type: "plugins.views"; installedApps: InstalledApp[]; canvasViews: Record<string, string> }
   /** The answer to plugins.add, plugins.update and plugins.remove. */
   | { type: "plugins.changed"; requestId: string; problem: string | null }
   /** The plugin's reply to an item's action, or why there is none. */

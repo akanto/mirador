@@ -224,6 +224,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     }
     case "apps.open":
       return { ...state, openApps: message.openApps };
+    case "plugins.views":
+      return { ...state, installedApps: message.installedApps, canvasViews: message.canvasViews };
     case "app.state":
       return { ...state, appDocuments: { ...state.appDocuments, [appKey(message.state)]: message.state } };
     case "workspace.upserted":

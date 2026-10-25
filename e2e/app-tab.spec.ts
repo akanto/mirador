@@ -1,4 +1,4 @@
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
@@ -255,5 +255,14 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await page.locator(".chat-header:visible").getByRole("button", { name: "Show canvas" }).click();
     await expect(view(page).locator("#page-load")).toHaveText(loaded);
     expect(await clip.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+  });
+
+  await test.step("the app's view built again shows at once, on the document as it is, without a restart of the host", async () => {
+    const loaded = (await view(page).locator("#page-load").textContent())!;
+    const count = (await view(page).locator("#count").textContent())!;
+    appendFileSync(join(host.dataDir, "plugins", "counter", "view.js"), '\ndocument.body.insertAdjacentHTML("beforeend", "<p id=\\"rebuilt\\">built again</p>");\n');
+    await expect(view(page).locator("#rebuilt")).toHaveText("built again");
+    await expect(view(page).locator("#page-load")).not.toHaveText(loaded);
+    await expect(view(page).locator("#count")).toHaveText(count);
   });
 });

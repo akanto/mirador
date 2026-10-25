@@ -4,7 +4,7 @@ import { authorityFingerprint, namesToCover, servingCertificate } from "./certif
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { AppDocuments } from "./apps/documents.ts";
 import { InstalledPlugins } from "./apps/installed-plugins.ts";
-import { loadPlugins } from "./apps/plugins.ts";
+import { loadPlugins, watchViews } from "./apps/plugins.ts";
 import { CanvasPlugins } from "./canvas/plugins.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { agentLogsDirectory, loadConfig } from "./config.ts";
@@ -82,6 +82,9 @@ const apps = new AppDocuments(store, loadedPlugins.apps, {
   stateChanged: (state) => hub.publishAppState(state),
 });
 await apps.reopenAll();
+const stopWatchingViews = watchViews(loadedPlugins, () =>
+  hub.broadcast({ type: "plugins.views", installedApps: apps.installed(), canvasViews: canvasPlugins.viewPaths() }),
+);
 const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin, apps, canvasPlugins);
 const appViewCode = (pathname: string) => apps.viewCode(pathname) ?? canvasPlugins.viewCode(pathname);
 const appMediaFile = (pathname: string) => apps.mediaFile(pathname);
@@ -174,6 +177,7 @@ function machineSignedOut(machineId: string) {
 }
 
 async function stopServices() {
+  stopWatchingViews();
   const voiceEngineStopped = voiceEngine.stop();
   terminalSessions.stop();
   sourceWatcher.stop();
