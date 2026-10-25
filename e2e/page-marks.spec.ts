@@ -219,13 +219,18 @@ test("the user selects text or points at an element on a page the agent showed, 
     expect(recordedPrompts()).toBe(promptsBefore);
   });
 
-  await test.step("on a touch screen a tap in point mode picks the element instead of pressing it, and a finger's drag draws a box", async () => {
+  await test.step("on a touch screen a selection made without lifting a finger offers to ask about it, a tap in point mode picks the element instead of pressing it, and a finger's drag draws a box", async () => {
     const touchScreen = await browser.newContext({ hasTouch: true });
     const tablet = await touchScreen.newPage();
     await signIn(tablet, host);
     await tablet.goto(page.url());
     const shownOnTablet = canvasPage(tablet);
     await expect(shownOnTablet.locator("#save")).toBeVisible();
+    await shownOnTablet.locator("#splits").evaluate((cell) => getSelection()!.selectAllChildren(cell));
+    await shownOnTablet.getByRole("button", { name: "Ask about this" }).tap();
+    await expect(wordsBox(tablet)).toContainText("Ask the agent about “Split conversation panes”");
+    await wordsBox(tablet).getByRole("button", { name: "Cancel" }).tap();
+    await shownOnTablet.locator("#splits").evaluate(() => getSelection()!.removeAllRanges());
     await pointToggle(tablet).tap();
     const save = (await shownOnTablet.locator("#save").boundingBox())!;
     await tablet.touchscreen.tap(save.x + save.width / 2, save.y + save.height / 2);

@@ -707,13 +707,20 @@ ${pageDrawing(assetsOrigin)}
     if (selected) placePill();
     else hide(pill);
   };
-  addEventListener("pointerup", (event) => event.target !== host && setTimeout(offerToAsk, 0), true);
+  let pressing = false;
+  addEventListener("pointerdown", () => (pressing = true), true);
+  addEventListener("pointercancel", () => (pressing = false), true);
+  addEventListener("pointerup", (event) => {
+    pressing = false;
+    if (event.target !== host) setTimeout(offerToAsk, 0);
+  }, true);
   addEventListener("keyup", offerToAsk, true);
+  // A touch screen selects by a long press, which cancels the touch, and by handles the page never hears of.
   document.addEventListener("selectionchange", () => {
     if (selected && !selectedRange()) {
       selected = null;
       hide(pill);
-    }
+    } else if (!pressing) offerToAsk();
   });
   const keepSelection = (event) => {
     event.preventDefault();
