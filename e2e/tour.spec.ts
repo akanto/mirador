@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, signIn, startConversation, walkthroughView } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -57,7 +57,6 @@ const tour = (change: Record<string, unknown> = {}) => ({
 });
 
 const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
-const tourView = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin iframe");
 
 async function dragBy(page: Page, handle: Locator, deltaX: number, deltaY: number) {
   const box = (await handle.boundingBox())!;
@@ -83,7 +82,7 @@ test("a tour walks through the code as it is, or through what the task changed w
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = tourView(page).locator(".review");
+  const view = walkthroughView(page).locator(".review");
 
   await test.step("wrong anchors are all sent back to the agent, and nothing is shown", async () => {
     const result = await callCanvasTool(host, conversationId, "tour", tour({ flow: [{ title: "Nowhere", at: "service.ts:99", say: "?" }] }));
@@ -194,7 +193,7 @@ test("a tour walks through the code as it is, or through what the task changed w
     await page.keyboard.press("2");
     await view.locator(".code-row.added .line-number").click();
     await page.keyboard.press("a");
-    const dialog = tourView(page).getByRole("dialog", { name: "Ask the agent about these lines" });
+    const dialog = walkthroughView(page).getByRole("dialog", { name: "Ask the agent about these lines" });
     await expect(dialog.getByRole("button", { name: "Ask and update the review" })).toHaveCount(0);
     await dialog.locator("textarea").fill("Reply with just the word NOTED.");
     await dialog.locator("textarea").press("Enter");

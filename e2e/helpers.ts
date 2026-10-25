@@ -136,6 +136,9 @@ export async function startConversation(page: Page) {
 }
 
 /** `text` to match as it is in a regular expression, as a Windows path with its backslashes: Playwright's Node has no RegExp.escape. */
+/** The view of the code review plugin's review or tour on the canvas, in its frame. */
+export const walkthroughView = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin iframe");
+
 export const literally = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const primaryModifier = async (page: Page) => ((await page.evaluate(() => navigator.userAgent.includes("Mac"))) ? "Meta" : "Control");

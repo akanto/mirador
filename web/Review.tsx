@@ -48,7 +48,8 @@ import { DEFAULT_FLOW_BAND_SHARE, DEFAULT_REVIEW_LIST_SHARE } from "./paneLayout
 import { ReviewFindBar, useReviewFind } from "./ReviewFind.tsx";
 import { isMac, keyLabels, shortcutKeys } from "./shortcuts.ts";
 import { Splitter, type SplitAxis } from "./Splitter.tsx";
-import { useWalkthroughHost, WalkthroughHostContext, type PlaceInWalkthrough, type WalkthroughHost, type WalkthroughPaneShares, type WalkthroughTab } from "./walkthrough-host.ts";
+import type { PlaceInWalkthrough, WalkthroughTab } from "../shared/walkthrough-actions.ts";
+import { useWalkthroughHost, WalkthroughHostContext, type WalkthroughHost, type WalkthroughPaneShares } from "./walkthrough-host.ts";
 
 type WalkthroughItem = ReviewItem | TourItem;
 

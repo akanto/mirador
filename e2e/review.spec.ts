@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openCanvasHistory, openSettings, primaryModifier, signIn, startConversation, waitForTurnToEnd, workspaceCard, walkthroughView } from "./helpers.ts";
 import { bunProgramPath, programOnRegistryPath, TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -156,14 +156,14 @@ test("a review opens full screen; the user tours the flow, moves through changes
     const result = await callCanvasTool(host, conversationId, "review", review({ flow: [{ title: "Nowhere", at: "service.ts:99", say: "?" }] }));
     expect(result).toContain("The review was not shown");
     expect(result).toContain('flow step 1 ("Nowhere"): service.ts:99 is outside the file, which has 12 lines.');
-    await expect(page.locator(".review")).toHaveCount(0);
+    await expect(walkthroughView(page).locator(".review")).toHaveCount(0);
   });
 
   writeFileSync(ghLoggedOut, "");
   const result = await callCanvasTool(host, conversationId, "review", review());
   expect(result).toContain("2 changed files, 2 flow steps and 3 findings");
   expect(result).toContain("cannot be posted as line comments: finding 2");
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   await expect(view.locator(".verdict")).toHaveText("Request changes: the anonymous fallback skips authentication.");
   await expect(canvasPane(page)).toHaveClass(/fullscreen/);
 
@@ -265,8 +265,8 @@ test("a review opens full screen; the user tours the flow, moves through changes
     await page.keyboard.press("o");
     await expect.poll(() => logLines(ideaLog).at(-1)).toMatch(/^--line 2 .*[\\/]service\.ts$/);
     await page.keyboard.press("a");
-    const question = page.getByRole("dialog", { name: "Ask the agent about these lines" }).locator("textarea");
-    await expect(page.getByRole("button", { name: "Ask and update the review" })).toBeDisabled();
+    const question = walkthroughView(page).getByRole("dialog", { name: "Ask the agent about these lines" }).locator("textarea");
+    await expect(walkthroughView(page).getByRole("button", { name: "Ask and update the review" })).toBeDisabled();
     await question.fill("Reply with just the word NOTED.");
     await question.press(`${await primaryModifier(page)}+Enter`);
     await expect(view.locator(".review-sent")).toContainText("Asked about service.ts:2-4");
@@ -357,7 +357,7 @@ test("a re-review answers the pull request's conversations; the user resolves on
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
 
   await test.step("an answer to a conversation that is not on the pull request is sent back to the agent, and nothing is shown", async () => {
     const result = await callCanvasTool(host, conversationId, "review", review({ findings: [], answers: [{ conversation: `${PULL_REQUEST}#discussion_r99`, body: "?" }] }));
@@ -415,7 +415,7 @@ test("the agent rewords one comment in place: the user stays on the finding they
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   const finding = (title: string) => view.locator(".finding", { hasText: title });
 
   const published = await callCanvasTool(host, conversationId, "review", review());
@@ -487,7 +487,7 @@ test("the agent rewords one comment in place: the user stays on the finding they
 
   await test.step("asked from a finding, the question names it and quotes its comment as it now reads", async () => {
     await finding("Empty items").getByRole("button", { name: "Ask" }).click();
-    const dialog = page.getByRole("dialog", { name: "Ask the agent about these lines" });
+    const dialog = walkthroughView(page).getByRole("dialog", { name: "Ask the agent about these lines" });
     await expect(dialog).toContainText('Ask the agent about the finding "Empty items" at items.ts:2');
     await dialog.locator("textarea").fill("Reply with just the word NOTED.");
     await dialog.locator("textarea").press(`${await primaryModifier(page)}+Enter`);
@@ -506,7 +506,7 @@ test("each finding shows the number the agent knows it by, with a gap where one 
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   await callCanvasTool(host, conversationId, "review", review());
   await callCanvasTool(host, conversationId, "update_review", {
     removeFindings: ["finding-2"],
@@ -538,7 +538,7 @@ test("coming back to a review's conversation shows the review as the user left i
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = page.locator(".review:visible");
+  const view = walkthroughView(page).locator(".review");
   const findingsTab = view.getByRole("tab", { name: /Findings/ });
   const manyFindings = Array.from({ length: 12 }, (_, index) => ({
     severity: "nit",
@@ -599,7 +599,7 @@ test("with no gh on the machine, the Post panel says to install it, and Post wai
   await expect(addProject.or(workspaceCard(page, host.projectDir))).toBeVisible();
   if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   const hint = view.locator(".github-cli-problem");
   const post = view.getByRole("button", { name: "Post 2 findings to the pull request" });
   const fakeGh = bunProgramPath(fakeProgramsDir, "gh");
@@ -632,7 +632,7 @@ test("once the pull request moved on, every page showing the review says so in p
   await otherPage.goto(page.url());
   const reviewed = git("rev-parse", "HEAD");
   const pushed = "5c14edd6b1a2b3c4d5e6f708192a3b4c5d6e7f80";
-  const postPanel = (showing: Page) => showing.locator(".review .post-panel");
+  const postPanel = (showing: Page) => walkthroughView(showing).locator(".review .post-panel");
 
   writeFakePrograms(pushed);
   try {
@@ -667,7 +667,7 @@ test("a pending review the user started on another commit is named above Post wi
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "review", review());
   const reviewed = git("rev-parse", "HEAD");
-  const postPanel = page.locator(".review .post-panel");
+  const postPanel = walkthroughView(page).locator(".review .post-panel");
   const post = postPanel.getByRole("button", { name: "Post 2 findings to the pull request" });
   const note = `Your pending review on the pull request was started on 0a1b2c3d4e, not on ${reviewed.slice(0, 10)}, the commit this review is of. Submit or discard it on GitHub, then post again.`;
 

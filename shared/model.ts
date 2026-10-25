@@ -606,12 +606,13 @@ export interface AskItem extends CanvasItemBase {
   shownBefore?: string[];
 }
 
+/** A review as the walkthrough view draws it; the code review plugin keeps reviews as its items. */
 export interface ReviewItem extends CanvasItemBase {
   kind: "review";
   review: Review;
 }
 
-/** A tour as the walkthrough view draws it; the review plugin keeps tours as its items. */
+/** A tour as the walkthrough view draws it; the code review plugin keeps tours as its items. */
 export interface TourItem extends CanvasItemBase {
   kind: "tour";
   tour: Tour;
@@ -638,4 +639,4 @@ export interface PluginCanvasItem extends CanvasItemBase {
   opensWithRoom?: boolean;
 }
 
-export type CanvasItem = ShowItem | AskItem | ReviewItem | PluginCanvasItem;
+export type CanvasItem = ShowItem | AskItem | PluginCanvasItem;

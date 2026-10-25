@@ -1,21 +1,27 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeSessionMeta } from "../host/acp/harnesses.ts";
 import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.ts";
-import { pluginItemOfSavedTour, type SavedTour } from "../host/saved-tours.ts";
+import type { GitHubCli } from "../host/review/github.ts";
+import { pluginItemOfSavedWalkthrough, type SavedReview, type SavedTour } from "../host/saved-walkthroughs.ts";
 import { Store } from "../host/store.ts";
 import type { CanvasItem, PluginCanvasItem } from "../shared/model.ts";
-import type { Tour } from "../shared/review.ts";
-import type { PlaceInWalkthrough } from "../web/walkthrough-host.ts";
+import type { Review, ReviewAnswer, ReviewFinding, Tour } from "../shared/review.ts";
+import type { PlaceInWalkthrough } from "../shared/walkthrough-actions.ts";
 import { canvasPluginHost, storeWithConversation } from "./canvas-plugin-host.ts";
-import { gitRepository } from "./review-repository.ts";
+import { codeReviewPlugin } from "../plugins/review/host.ts";
+import { gitRepository, reviewRequest } from "./review-repository.ts";
 
 const SHIPPED = join(import.meta.dir, "..", "plugins");
 const NO_PLUGINS_OF_THE_OWNER = join(tmpdir(), "mirador-no-plugins-here");
 
-const setUp = (store?: Store) => canvasPluginHost(NO_PLUGINS_OF_THE_OWNER, SHIPPED, store);
+const NO_GH: GitHubCli = async () => {
+  throw new Error("No gh in this test.");
+};
+
+const setUp = (store?: Store, gh = NO_GH) => canvasPluginHost(NO_PLUGINS_OF_THE_OWNER, SHIPPED, store, { review: codeReviewPlugin(gh) });
 
 const place = (tab: PlaceInWalkthrough["tab"]): PlaceInWalkthrough => ({ tab, stepIndex: 1, path: null, hunkIndex: 0, findingId: null, answerId: null, scrolled: {} });
 
@@ -85,7 +91,7 @@ const savedTour: SavedTour = {
 
 describe("tours saved before tours came from the review plugin", () => {
   test("become the plugin's items, as they were, changed now", () => {
-    expect(pluginItemOfSavedTour(savedTour, 100)).toEqual({
+    expect(pluginItemOfSavedWalkthrough(savedTour, 100)).toEqual({
       id: "saved-tour",
       conversationId: "c1",
       kind: "plugin",
@@ -108,5 +114,256 @@ describe("tours saved before tours came from the review plugin", () => {
     before.close();
     const opened = new Store(path);
     expect(opened.listCanvasItems("c1") as PluginCanvasItem[]).toMatchObject([{ id: "saved-tour", kind: "plugin", plugin: "review", type: "tour", data: savedTour.tour }]);
+  });
+});
+
+/** A review the plugin published in c1, as its item. */
+function savedReview(store: Store, review: Partial<Review>, id = "r1") {
+  const item: PluginCanvasItem = { id, conversationId: "c1", kind: "plugin", plugin: "review", type: "review", icon: "⇄", placement: "page", title: "PR", data: review, status: "shown", createdAt: 1 };
+  store.saveCanvasItem(item);
+  return item;
+}
+
+const reviewOf = (item: CanvasItem | undefined) => (item as PluginCanvasItem | undefined)?.data as Review | undefined;
+
+describe("the review plugin Mirador comes with: reviews", () => {
+  test("review and update_review are pre-allowed and offered up front, with their lines of guidance after the checklist's", async () => {
+    const { plugins, mcpRequest } = await setUp();
+    const { tools } = await mcpRequest("tools/list", {});
+    for (const name of ["review", "update_review"]) {
+      expect(tools.find((tool: { name: string }) => tool.name === name)).toMatchObject({ _meta: { "anthropic/alwaysLoad": true } });
+      expect(claudeSessionMeta("often", { canvasPlugins: plugins.guidance }).claudeCode.options.allowedTools).toContain(`mcp__canvas__${name}`);
+    }
+    expect(canvasInstructions("http://127.0.0.1:4601", plugins.guidance)).toContain(
+      "or in update_checklist's result.\n- review: when you review code changes (a pull request or a branch),",
+    );
+    expect(canvasInstructions("http://127.0.0.1:4601", plugins.guidance)).toContain("only when the code under review changed.\n- tour: when you explain how code works,");
+  });
+
+  test("a review is the plugin's item that opens with room, its verdict its outcome, and the agent hears the ids to change it by", async () => {
+    const { callTool, items, plugins } = await setUp();
+    const { directory } = gitRepository();
+    const shown = await callTool("review", reviewRequest(directory));
+    const [review] = items();
+    expect(review).toMatchObject({ plugin: "review", type: "review", icon: "⇄", placement: "page", title: "Serve one more", outcome: "Approve.", opensWithRoom: true });
+    expect(shown).toEqual({
+      text: `Shown to the user as review ${review!.id}: 1 changed files, 1 flow steps and 1 findings. To change parts of it later, call update_review with these ids: finding-1 "Magic number" at service.ts:2.`,
+      isError: false,
+    });
+    expect(await plugins.act(review!.id, { kind: "read-file", path: "service.ts" })).toContain("export function serve() {");
+    expect(await plugins.act(review!.id, { kind: "check-github-cli" })).toBeNull();
+  });
+
+  test("a finding the user rewords remembers what the agent wrote, however often the user rewords it", async () => {
+    const { store, plugins } = await setUp();
+    savedReview(store, { findings: [{ id: "finding-1", body: "The agent's words.", decision: "keep" } as ReviewFinding] });
+    await plugins.act("r1", { kind: "update-finding", findingId: "finding-1", body: " The user's words. " });
+    await plugins.act("r1", { kind: "update-finding", findingId: "finding-1", body: "The user's second words." });
+    await plugins.act("r1", { kind: "update-finding", findingId: "finding-1", decision: "drop" });
+    expect(reviewOf(store.findCanvasItem("r1"))!.findings[0]).toMatchObject({ body: "The user's second words.", agentBody: "The agent's words.", decision: "drop" });
+    expect(store.findCanvasItem("r1")).not.toHaveProperty("agentEditedAt");
+  });
+
+  test("a review a stopped host left posting is listed as not posting, and counts as changed", async () => {
+    const { store, plugins } = await setUp();
+    const item = savedReview(store, { findings: [], posting: true });
+    setSystemTime(new Date(5_000));
+    expect(plugins.listed(item)).toMatchObject({ data: { posting: false }, updatedAt: 5_000 });
+    setSystemTime();
+  });
+
+  test("an answer the user rewords or marks to resolve remembers it, unless GitHub would not let them resolve it", async () => {
+    const { store, plugins } = await setUp();
+    const answer = (id: string, canResolve: boolean) => ({ id, body: "The agent's words.", decision: "keep", resolve: false, canResolve }) as ReviewAnswer;
+    savedReview(store, { findings: [], answers: [answer("answer-1", true), answer("answer-2", false)] });
+    await plugins.act("r1", { kind: "update-answer", answerId: "answer-1", body: "The user's words.", resolve: true });
+    expect(reviewOf(store.findCanvasItem("r1"))!.answers![0]).toMatchObject({ body: "The user's words.", agentBody: "The agent's words.", resolve: true });
+    await expect(plugins.act("r1", { kind: "update-answer", answerId: "answer-2", resolve: true })).rejects.toThrow("does not let you resolve");
+  });
+
+  test("a tour takes none of a review's actions", async () => {
+    const { callTool, items, plugins } = await setUp();
+    const { directory } = gitRepository();
+    await callTool("tour", { title: "Serve", folder: directory, summary: "s", flow: [{ title: "Entry", at: "service.ts:2", say: "Adds." }] });
+    await expect(plugins.act(items()[0]!.id, { kind: "post" })).rejects.toThrow("Only a review takes that action.");
+  });
+
+  test("the agent's edit changes the newest review in its own canvas item, names what changed, and keeps a choice the user made meanwhile", async () => {
+    const { callTool, items, plugins } = await setUp();
+    const { directory } = gitRepository();
+    const findings = [
+      { severity: "nit" as const, checked: "confirmed" as const, at: "service.ts:2", title: "Magic number", body: "Name the 1?" },
+      { severity: "issue" as const, checked: "plausible" as const, at: "service.ts:5-7", title: "Unused", body: "Is load() still needed?" },
+    ];
+    await callTool("review", reviewRequest(directory, { findings }));
+    await callTool("review", reviewRequest(directory, { findings }));
+    const newest = items()[1]!;
+
+    const editing = callTool("update_review", { findings: [{ id: "finding-1", body: "Name it." }] });
+    await plugins.act(newest.id, { kind: "update-finding", findingId: "finding-2", decision: "drop" });
+    expect((await editing).text).toBe(`In review ${newest.id}, updated finding-1 in place; the user sees the change where they are in the review.`);
+
+    expect(items()).toHaveLength(2);
+    const edited = items()[1]!;
+    expect(reviewOf(edited)!.findings.map(({ id, body, decision }) => [id, body, decision])).toEqual([
+      ["finding-1", "Name it.", "keep"],
+      ["finding-2", "Is load() still needed?", "drop"],
+    ]);
+    expect(reviewOf(edited)!.agentEdit).toEqual({ at: expect.any(Number), parts: ["finding-1"] });
+    expect(edited.agentEditedAt).toEqual(expect.any(Number));
+  });
+
+  test("the agent's edit names a review this conversation does not have", async () => {
+    const { callTool } = await setUp();
+    expect(await callTool("update_review", { summary: "?" })).toEqual({
+      text: "The review was not changed. Fix these and call update_review again:\n- This conversation has no review to change; publish one with the review tool.",
+      isError: true,
+    });
+    expect((await callTool("update_review", { review: "r9", summary: "?" })).text).toContain("- review: r9 is not a review in this conversation.");
+  });
+
+  describe("a pull request that moved on since the review", () => {
+    /** GitHub, with the pull request's head, and the commit of the user's pending review if they have one, where the test puts them; every comment taken. */
+    function movingPullRequest() {
+      const pullRequest = { head: "", pendingReviewCommit: null as string | null };
+      const gh: GitHubCli = async (args, body: any) => {
+        if (args[3] === "repos/team/shop/pulls/7") return { node_id: "PR_7", head: { sha: pullRequest.head } };
+        if (body.query.includes("states: PENDING")) {
+          const nodes = pullRequest.pendingReviewCommit === null ? [] : [{ id: "PRR_1", url: "https://github.com/review/1", commit: { oid: pullRequest.pendingReviewCommit } }];
+          return { data: { repository: { pullRequest: { reviews: { nodes } } } } };
+        }
+        if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_2", url: "https://github.com/review/2" } } } };
+        return { data: { addPullRequestReviewThread: { thread: { id: "thread-1" } } } };
+      };
+      return { pullRequest, gh };
+    }
+
+    async function reviewOfPullRequest() {
+      const { pullRequest, gh } = movingPullRequest();
+      const setup = await setUp(undefined, gh);
+      const { directory } = gitRepository();
+      await setup.callTool("review", reviewRequest(directory, { pullRequest: "https://github.com/team/shop/pull/7" }));
+      const item = setup.items()[0]!;
+      const review = () => reviewOf(setup.store.findCanvasItem(item.id))!;
+      const act = (action: Record<string, unknown>) => setup.plugins.act(item.id, action);
+      return { ...setup, pullRequest, item, headCommit: review().headCommit, review, act, movedOn: () => review().pullRequestMovedOn };
+    }
+
+    test("a pending review the user started on another commit is named on the review, until a post goes through once it is gone", async () => {
+      const { pullRequest, headCommit, review, act } = await reviewOfPullRequest();
+      pullRequest.head = headCommit;
+      pullRequest.pendingReviewCommit = "d".repeat(40);
+      await act({ kind: "post" });
+      expect(review().pendingReviewOfOtherCommit).toEqual({ url: "https://github.com/review/1", commit: "d".repeat(40) });
+      expect(review().findings[0]?.postedAs).toBeUndefined();
+      expect(review().posting).toBe(false);
+
+      pullRequest.pendingReviewCommit = null;
+      await act({ kind: "post" });
+      expect(review().pendingReviewOfOtherCommit).toBeUndefined();
+      expect(review().pendingReviewUrl).toBe("https://github.com/review/2");
+      expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
+    });
+
+    test("posting says so on the review, with the new head, rather than failing", async () => {
+      const { pullRequest, act, movedOn, review, prompts } = await reviewOfPullRequest();
+      pullRequest.head = "f".repeat(40);
+      await act({ kind: "post" });
+      expect(movedOn()).toEqual({ headCommit: "f".repeat(40), askedToReviewAgain: false });
+      expect(review().posting).toBe(false);
+      expect(prompts).toEqual([]);
+    });
+
+    test("Review again asks the agent once, after its turn, naming the pull request and both heads; a later push lets it ask again", async () => {
+      const { pullRequest, headCommit, act, movedOn, prompts } = await reviewOfPullRequest();
+      pullRequest.head = "a".repeat(40);
+      await act({ kind: "post" });
+      await Promise.all([act({ kind: "review-again" }), act({ kind: "review-again" })]);
+      expect(prompts).toEqual([
+        {
+          conversationId: "c1",
+          text: `The pull request https://github.com/team/shop/pull/7 changed since your review: its head is ${"a".repeat(40)}, your review is of ${headCommit}. Fetch the new head and review it again with ${"a".repeat(40)} as the review's head: keep the findings that still apply, drop the ones it fixed, and add new ones.`,
+          afterTurn: true,
+        },
+      ]);
+      expect(movedOn()?.askedToReviewAgain).toBe(true);
+
+      await act({ kind: "post" });
+      expect(movedOn()?.askedToReviewAgain).toBe(true);
+      pullRequest.head = "b".repeat(40);
+      await act({ kind: "post" });
+      expect(movedOn()).toEqual({ headCommit: "b".repeat(40), askedToReviewAgain: false });
+    });
+
+    test("Review again that couldn't reach the agent can be asked again", async () => {
+      const { pullRequest, act, movedOn, plugins } = await reviewOfPullRequest();
+      pullRequest.head = "a".repeat(40);
+      await act({ kind: "post" });
+      plugins.sendsPromptsWith(async () => {
+        throw new Error("The conversation is gone.");
+      });
+      await expect(act({ kind: "review-again" })).rejects.toThrow("The conversation is gone.");
+      expect(movedOn()?.askedToReviewAgain).toBe(false);
+    });
+
+    test("a post that goes through, once the head is the reviewed one again, takes the note away", async () => {
+      const { pullRequest, headCommit, act, movedOn, review } = await reviewOfPullRequest();
+      pullRequest.head = "c".repeat(40);
+      await act({ kind: "post" });
+      pullRequest.head = headCommit;
+      await act({ kind: "post" });
+      expect(movedOn()).toBeUndefined();
+      expect(review().findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
+    });
+
+    test("Review again does nothing while the pull request is where the review left it", async () => {
+      const { act, prompts } = await reviewOfPullRequest();
+      await act({ kind: "review-again" });
+      expect(prompts).toEqual([]);
+    });
+  });
+});
+
+const savedReviewRow: SavedReview = {
+  id: "saved-review",
+  conversationId: "c1",
+  kind: "review",
+  title: "PR 7",
+  status: "shown",
+  createdAt: 5,
+  review: { verdict: "Request changes.", findings: [], posting: true } as unknown as Review,
+};
+
+describe("reviews saved before reviews came from the review plugin", () => {
+  test("become the plugin's items that open with room, with their verdict, not posting, changed now", () => {
+    expect(pluginItemOfSavedWalkthrough(savedReviewRow, 100)).toEqual({
+      id: "saved-review",
+      conversationId: "c1",
+      kind: "plugin",
+      plugin: "review",
+      type: "review",
+      icon: "⇄",
+      placement: "page",
+      title: "PR 7",
+      status: "shown",
+      createdAt: 5,
+      updatedAt: 100,
+      data: { ...savedReviewRow.review, posting: false },
+      outcome: "Request changes.",
+      opensWithRoom: true,
+    });
+  });
+
+  test("are handed to the plugin when Mirador opens its database, with the tours", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "saved-reviews-")), "state.sqlite");
+    const before = storeWithConversation(path);
+    before.saveCanvasItem(savedReviewRow as unknown as CanvasItem);
+    before.saveCanvasItem(savedTour as unknown as CanvasItem);
+    before.close();
+    const opened = new Store(path);
+    expect(opened.listCanvasItems("c1") as PluginCanvasItem[]).toMatchObject([
+      { id: "saved-review", kind: "plugin", type: "review", outcome: "Request changes." },
+      { id: "saved-tour", kind: "plugin", type: "tour" },
+    ]);
   });
 });

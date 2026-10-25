@@ -26,8 +26,8 @@ describe("the checklist plugin Mirador comes with", () => {
     const { guidance } = plugins;
     expect(guidance.toolNames).toEqual(expect.arrayContaining(["checklist", "update_checklist"]));
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toEqual(expect.arrayContaining(["mcp__canvas__checklist", "mcp__canvas__update_checklist"]));
-    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("only when the code under review changed.\n- checklist: when you work through several steps,");
-    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("or in update_checklist's result.\n- tour:");
+    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("\"change some answers\" as options.\n- checklist: when you work through several steps,");
+    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("or in update_checklist's result.\n- review:");
     expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- checklist: work with several steps,");
     expect(canvasUseGuidance(guidance)).toContain("don't keep the same steps in your to-do list too.\n- tour:");
   });

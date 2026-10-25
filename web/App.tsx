@@ -3,7 +3,7 @@ import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conver
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { sidebarItems } from "../shared/sidebar-order.ts";
 import { countWaiting } from "../shared/waiting.ts";
-import { findInFocusedReview, findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
+import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { useClosesAsDialog } from "./desktop-close.ts";
@@ -387,7 +387,7 @@ export function App() {
       case "toggle-terminal":
         return toggleTerminal();
       case "find":
-        return findInFocusedReview() || findInOpenConversation();
+        return findInOpenConversation();
       case "mark-unread": {
         const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId);
         return conversation && canMarkUnread(conversation) && markUnread(conversation.id, dispatch);

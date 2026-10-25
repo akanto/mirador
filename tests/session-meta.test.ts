@@ -7,8 +7,6 @@ test("Claude Code runs every tool of the canvas's own without a permission promp
   expect(claudeSessionMeta("often").claudeCode.options.allowedTools).toEqual([
     "mcp__canvas__show",
     "mcp__canvas__ask",
-    "mcp__canvas__review",
-    "mcp__canvas__update_review",
     "mcp__canvas__when_done",
   ]);
 });

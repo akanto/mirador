@@ -83,12 +83,12 @@ scripts/test-spec.sh e2e/<spec>.spec.ts   # just those specs, in Docker
 - **`bunx playwright test` runs from the checkout itself:** its hosts pick up edits to `web/` and `host/` mid-run, and two such runs wipe each other's test-results. Keep it for retaking the README screenshots (`MIRADOR_SCREENSHOTS=1`), which it writes into `docs/`.
 - **E2E hosts take free ports:** `new TestHost()` takes four ports in a row in 20000–31999 at its first start (its own, canvas assets, and two for the network) and keeps them across restarts. Read `host.port` and `host.origin` in hooks and tests, not as the spec loads; an `environment` that depends on the port is a function of it. mirador-mobile's e2e uses 5800 and up.
 - **Serial specs:** run the whole file, not `-g`.
-- **Canvas selectors need `:visible`:** each kept conversation keeps its canvas in the page, hidden, so `.canvas-panel`, `.canvas-frame` and `.review` can match several, and `[data-pane="canvas"]` matches the canvas pane while it is hidden.
+- **Canvas selectors need `:visible`:** each kept conversation keeps its canvas in the page, hidden, so `.canvas-panel` and `.canvas-frame` can match several, and `[data-pane="canvas"]` matches the canvas pane while it is hidden. Reviews and tours draw in the code review plugin's frame: reach them with `walkthroughView(page)` from `e2e/helpers.ts`.
 - **Real Claude replies:** specs that wait for one get it from the owner's model server, never a Claude login: `LLM_SERVER_URL` and `LLM_SERVER_KEY`, exported or in `~/.config/mirador/e2e-model-server.env` (mode 600), natively and in Docker alike. Without them those specs fail. Each test host gives Claude Code its own `CLAUDE_CONFIG_DIR`, so e2e sessions stay out of `~/.claude`; only `usesClaudeLogin` hosts use it. The model server wins over an `ANTHROPIC_BASE_URL` the run inherits, but a spec that sets its own keeps it. Two `linux-test.sh` full-suite runs can't overlap (shared results dir).
 
 ## Architecture Overview
 
-Mirador is a localhost web app that drives coding agents (Claude Code through `claude-agent-acp`, opencode, and pi through a patched `pi-acp`) over ACP, and gives them a canvas with the `show`, `ask` and `review` tools.
+Mirador is a localhost web app that drives coding agents (Claude Code through `claude-agent-acp`, opencode, and pi through a patched `pi-acp`) over ACP, and gives them a canvas with the `show` and `ask` tools, plus the tools of canvas plugins, such as `review`, `tour` and `checklist` from the plugins in `plugins/` that ship with it.
 
 - **`host/`** is the Bun server:
   - the ACP client, with one agent process per profile and many sessions on it;

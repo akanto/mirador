@@ -2,40 +2,50 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { PluginItemContext, PluginViewBridge } from "../../shared/canvas-document.ts";
 import type { PluginItem } from "../../shared/canvas-plugins.ts";
-import type { TourItem } from "../../shared/model.ts";
-import type { Tour } from "../../shared/review.ts";
+import type { ReviewItem, TourItem } from "../../shared/model.ts";
+import type { GitHubCliProblem, Review, Tour } from "../../shared/review.ts";
+import type { Recalled, WalkthroughAction } from "../../shared/walkthrough-actions.ts";
 import { DEFAULT_FLOW_BAND_SHARE, DEFAULT_REVIEW_LIST_SHARE } from "../../web/paneLayouts.ts";
 import { WalkthroughView } from "../../web/Review.tsx";
 import { isMac } from "../../web/shortcuts.ts";
 import mirador from "../../web/styles.css" with { type: "text" };
 import type { WalkthroughHost } from "../../web/walkthrough-host.ts";
 import viewStyles from "./view.css" with { type: "text" };
-import type { Recalled, WalkthroughAction } from "./walkthrough-actions.ts";
 
-const bridge = (window as unknown as { mirador: PluginViewBridge<Tour> }).mirador;
+type Walkthrough = Review | Tour;
+
+const bridge = (window as unknown as { mirador: PluginViewBridge<Walkthrough> }).mirador;
 
 const send = (action: WalkthroughAction) => bridge.send(action);
 
 const NOT_IN_A_TOUR = "A tour has no findings to post.";
 
-/** The tour as the walkthrough view draws it, which it shares with Mirador's reviews. */
-const tourItem = (item: PluginItem<Tour>): TourItem => ({ id: item.id, conversationId: "", kind: "tour", title: item.title, tour: item.data, status: "shown", createdAt: item.createdAt });
+/** The review or tour as the walkthrough view draws it. */
+function walkthroughItem(item: PluginItem<Walkthrough>): ReviewItem | TourItem {
+  const shared = { id: item.id, conversationId: "", title: item.title, status: "shown" as const, createdAt: item.createdAt };
+  return item.type === "review" ? { ...shared, kind: "review", review: item.data as Review } : { ...shared, kind: "tour", tour: item.data as Tour };
+}
 
-/** What a tour does through the plugin's bridge: the plugin's host code reads its files, keeps its layout and opens the editor. */
-function useBridgedHost(item: PluginItem<Tour>, context: PluginItemContext, recalled: Recalled, onProblem: (problem: string) => void): WalkthroughHost {
+/**
+ * What a review or tour does through the plugin's bridge: the plugin's host code reads its files, keeps its layout,
+ * opens the editor, and keeps the user's choices on a review and posts it.
+ */
+function useBridgedHost(item: PluginItem<Walkthrough>, context: PluginItemContext, recalled: Recalled, onProblem: (problem: string) => void): WalkthroughHost {
   const [listShare, setListShare] = useState(recalled.paneShares?.listShare ?? DEFAULT_REVIEW_LIST_SHARE);
   const [bandShare, setBandShare] = useState(recalled.paneShares?.bandShare ?? DEFAULT_FLOW_BAND_SHARE);
   useEffect(() => void send({ kind: "remember-pane-shares", shares: { listShare, bandShare } }), [listShare, bandShare]);
   const failed = (error: unknown) => onProblem(error instanceof Error ? error.message : String(error));
   const typing = context.typingAids;
+  const isReview = item.type === "review";
+  const reviewOnly = (action: WalkthroughAction) => (isReview ? void send(action).catch(failed) : failed(NOT_IN_A_TOUR));
   return {
     openInEditor: (path, line) => void send({ kind: "open-in-editor", path, line }).catch(failed),
-    updateFinding: () => failed(NOT_IN_A_TOUR),
-    updateAnswer: () => failed(NOT_IN_A_TOUR),
-    post: () => failed(NOT_IN_A_TOUR),
-    reviewAgain: () => failed(NOT_IN_A_TOUR),
+    updateFinding: (findingId, change) => reviewOnly({ kind: "update-finding", findingId, ...change }),
+    updateAnswer: (answerId, change) => reviewOnly({ kind: "update-answer", answerId, ...change }),
+    post: () => reviewOnly({ kind: "post" }),
+    reviewAgain: () => reviewOnly({ kind: "review-again" }),
     readFile: async (path) => (await send({ kind: "read-file", path })) as string[],
-    checkGitHubCli: async () => null,
+    checkGitHubCli: async () => (isReview ? ((await send({ kind: "check-github-cli" })) as GitHubCliProblem | null) : null),
     ask: (text) =>
       bridge.prompt(text).then(
         () => true,
@@ -52,7 +62,7 @@ function useBridgedHost(item: PluginItem<Tour>, context: PluginItemContext, reca
   };
 }
 
-function BridgedWalkthrough({ item, context, recalled }: { item: PluginItem<Tour>; context: PluginItemContext; recalled: Recalled }) {
+function BridgedWalkthrough({ item, context, recalled }: { item: PluginItem<Walkthrough>; context: PluginItemContext; recalled: Recalled }) {
   const [problem, setProblem] = useState<string | null>(null);
   const host = useBridgedHost(item, context, recalled, setProblem);
   return (
@@ -62,14 +72,14 @@ function BridgedWalkthrough({ item, context, recalled }: { item: PluginItem<Tour
           {problem}
         </p>
       )}
-      <WalkthroughView item={tourItem(item)} host={host} />
+      <WalkthroughView item={walkthroughItem(item)} host={host} />
     </>
   );
 }
 
 /** The view waits for what it recalls before its first paint, so the layout the user left doesn't jump into place. */
 function WalkthroughPage() {
-  const [shown, setShown] = useState<{ item: PluginItem<Tour>; context: PluginItemContext }>();
+  const [shown, setShown] = useState<{ item: PluginItem<Walkthrough>; context: PluginItemContext }>();
   const [recalled, setRecalled] = useState<Recalled>();
   useEffect(() => bridge.onItem((item, context) => setShown({ item, context })), []);
   useEffect(() => {

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, primaryModifier, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, primaryModifier, signIn, startConversation, walkthroughView } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -43,29 +43,31 @@ test.afterAll(async () => {
 
 /** The current match as highlighted: its text, the file and row it is in, and whether it is in view. */
 const currentMatch = (page: Page) =>
-  page.evaluate(() => {
-    const range = [...(CSS.highlights.get("review-find-current") ?? [])][0] as Range | undefined;
-    if (!range) return null;
-    const diff = range.startContainer.parentElement!.closest(".file-diff")!;
-    const box = range.getBoundingClientRect();
-    const view = diff.getBoundingClientRect();
-    return {
-      text: range.toString(),
-      file: diff.querySelector("h3")!.textContent,
-      row: range.startContainer.parentElement!.closest(".code-row")!.querySelector(".code-text")!.textContent,
-      connected: range.startContainer.isConnected && range.endContainer.isConnected,
-      acrossElements: range.startContainer !== range.endContainer,
-      inView: box.top >= view.top && box.bottom <= view.bottom,
-    };
-  });
-const highlightedCount = (page: Page) => page.evaluate(() => CSS.highlights.get("review-find-match")?.size ?? 0);
+  walkthroughView(page)
+    .locator("body")
+    .evaluate(() => {
+      const range = [...(CSS.highlights.get("review-find-current") ?? [])][0] as Range | undefined;
+      if (!range) return null;
+      const diff = range.startContainer.parentElement!.closest(".file-diff")!;
+      const box = range.getBoundingClientRect();
+      const view = diff.getBoundingClientRect();
+      return {
+        text: range.toString(),
+        file: diff.querySelector("h3")!.textContent,
+        row: range.startContainer.parentElement!.closest(".code-row")!.querySelector(".code-text")!.textContent,
+        connected: range.startContainer.isConnected && range.endContainer.isConnected,
+        acrossElements: range.startContainer !== range.endContainer,
+        inView: box.top >= view.top && box.bottom <= view.bottom,
+      };
+    });
+const highlightedCount = (page: Page) => walkthroughView(page).locator("body").evaluate(() => CSS.highlights.get("review-find-match")?.size ?? 0);
 
 test("Cmd+F in a review finds in the code of every changed file, stepping on from file to file", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "review", { title: "Needles", repository: host.projectDir, base: "main", verdict: "Approve.", summary: "Adds needles.", flow: [], findings: [] });
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   const bar = view.getByRole("search");
   const query = bar.getByRole("textbox", { name: "Find in the changed files" });
   const tally = bar.locator(".find-tally");

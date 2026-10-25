@@ -6,6 +6,7 @@ import { CanvasPlugins } from "../host/canvas/plugins.ts";
 import type { CanvasService } from "../host/canvas/service.ts";
 import type { Hub } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
+import type { CanvasHost } from "../shared/canvas-plugins.ts";
 import type { PluginCanvasItem } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 
@@ -42,13 +43,22 @@ export function storeWithConversation(path = ":memory:") {
   return store;
 }
 
-/** Conversation c1's canvas server with the canvas plugins of `pluginsFolder` and Mirador's own `shippedFolder`, and nothing else behind it. */
-export async function canvasPluginHost(pluginsFolder: string, shippedFolder: string | null = null, store = storeWithConversation()) {
+/**
+ * Conversation c1's canvas server with the canvas plugins of `pluginsFolder` and Mirador's own `shippedFolder`, and nothing
+ * else behind it. `hosts` stand in for the host code of plugins by name; the prompts plugins send are kept in `prompts`.
+ */
+export async function canvasPluginHost(pluginsFolder: string, shippedFolder: string | null = null, store = storeWithConversation(), hosts: Record<string, CanvasHost> = {}) {
   const published: ServerMessage[] = [];
   const hub = { publishToConversation: (_conversationId: string, message: ServerMessage) => void published.push(message) } as unknown as Hub;
   const loaded = await loadPlugins(pluginsFolder, shippedFolder);
   expect(loaded.problems).toEqual([]);
-  const plugins = new CanvasPlugins(store, hub, loaded.canvases);
+  const plugins = new CanvasPlugins(
+    store,
+    hub,
+    loaded.canvases.map((plugin) => ({ ...plugin, host: hosts[plugin.manifest.name] ?? plugin.host })),
+  );
+  const prompts: { conversationId: string; text: string; afterTurn: boolean }[] = [];
+  plugins.sendsPromptsWith(async (conversationId, text, { afterTurn }) => void prompts.push({ conversationId, text, afterTurn }));
   const endpoints = new CanvasMcpEndpoints({} as CanvasService, {} as ConversationService, "http://127.0.0.1:4601", null, plugins);
   const items = () => store.listCanvasItems("c1") as PluginCanvasItem[];
 
@@ -69,10 +79,10 @@ export async function canvasPluginHost(pluginsFolder: string, shippedFolder: str
     return JSON.parse(payload ?? body).result;
   };
 
-  const callTool = async (name: string, args: Record<string, unknown>) => {
+  const callTool = async (name: string, args: object) => {
     const result = await mcpRequest("tools/call", { name, arguments: args });
     return { text: result.content[0].text as string, isError: result.isError === true };
   };
 
-  return { store, plugins, published, items, mcpRequest, callTool };
+  return { store, plugins, published, prompts, items, mcpRequest, callTool };
 }

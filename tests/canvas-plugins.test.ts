@@ -22,7 +22,7 @@ describe("CanvasPlugins", () => {
 
     const { guidance } = plugins;
     expect(guidance.toolNames).toEqual(["show_card", "change_card", "show_report", "change_verdict", "track_steps", "finish_step"]);
-    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("only when the code under review changed.\n- show_card: show a card the user can press.\n\nRendering environment:");
+    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("\"change some answers\" as options.\n- show_card: show a card the user can press.\n\nRendering environment:");
     expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- show_card: when a card says it better than words.\n- Keep pages lean");
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__show_card");
   });

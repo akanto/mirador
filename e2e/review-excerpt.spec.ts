@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, callCanvasTool, primaryModifier, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, primaryModifier, signIn, startConversation, workspaceCard, walkthroughView } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -50,7 +50,7 @@ test("a finding anchored past the excerpt cap keeps both ends of its range and m
   });
   expect(result).toContain("2 findings");
 
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   await view.getByRole("tab", { name: /Findings/ }).click();
   const wholeFile = view.locator(".finding", { hasText: "Whole file" });
   const block = wholeFile.locator(".code-block");
@@ -92,10 +92,10 @@ test("a question about an anchor with a gap writes the gap as a hunk-style line,
     findings: [longRange],
   });
 
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   await view.getByRole("tab", { name: /Findings/ }).click();
   await view.locator(".finding", { hasText: "Whole file" }).getByRole("button", { name: "Ask" }).click();
-  const dialog = page.getByRole("dialog", { name: "Ask the agent about these lines" });
+  const dialog = walkthroughView(page).getByRole("dialog", { name: "Ask the agent about these lines" });
   await dialog.locator("textarea").fill("Reply with just the word NOTED.");
   await dialog.locator("textarea").press(`${await primaryModifier(page)}+Enter`);
 

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, signIn, startConversation, walkthroughView } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -37,7 +37,7 @@ test("the lines above a file's first change can all be shown, a few at a time or
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
   await callCanvasTool(host, conversationId, "review", { title: "Changed lines", repository: host.projectDir, base: "main", verdict: "Approve.", summary: "Changes a line in each file.", flow: [], findings: [] });
-  const view = page.locator(".review");
+  const view = walkthroughView(page).locator(".review");
   await view.getByRole("tab", { name: /Files/ }).click();
   const firstHunk = view.locator(".hunk").first();
   /** The gap row above the change, first in the hunk; a file's last hunk also has one under it. */

@@ -1062,28 +1062,6 @@ export function startServer(services: HostServices) {
             reply({ type: "canvas.export-failed", requestId: message.requestId, message: errorMessage(error), alreadyThere: error instanceof FileAlreadyThere }),
           );
         return;
-      case "review.update-finding":
-        return canvas.updateFinding(message.itemId, message.findingId, { decision: message.decision, body: message.body });
-      case "review.update-answer":
-        return canvas.updateAnswer(message.itemId, message.answerId, { decision: message.decision, body: message.body, resolve: message.resolve });
-      case "review.post":
-        return canvas.postReview(message.itemId);
-      case "review.review-again":
-        return canvas.reviewAgain(message.itemId);
-      case "review.open-in-editor":
-        return canvas.openInEditor(message.itemId, message.path, message.line);
-      case "review.read-file":
-        canvas
-          .readReviewedFile(message.itemId, message.path)
-          .then((lines) => reply({ type: "review.file-read", requestId: message.requestId, lines }))
-          .catch((error) => reply({ type: "review.file-failed", requestId: message.requestId, message: errorMessage(error) }));
-        return;
-      case "review.check-github-cli":
-        canvas
-          .gitHubCliProblem(message.itemId)
-          .catch(() => null)
-          .then((problem) => reply({ type: "review.github-cli-checked", requestId: message.requestId, problem }));
-        return;
       case "changes.list":
         conversations.changes
           .list(message.conversationId, message.scope)

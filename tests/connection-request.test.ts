@@ -53,15 +53,15 @@ describe("Connection.sendAndAwait", () => {
     const { connection, sentMessages } = openConnection();
 
     const pending = connection.sendAndAwait(
-      (requestId) => ({ type: "review.read-file", requestId, itemId: "rev-1", path: "a.ts" }),
+      (requestId) => ({ type: "changes.list", requestId, conversationId: "c1", scope: "turn" }),
       (message, id) => {
-        if (message.type === "review.file-failed" && message.requestId === id) throw new Error(message.message);
+        if (message.type === "changes.failed" && message.requestId === id) throw new Error(message.message);
         return undefined;
       },
     );
 
-    const sent = sentMessages[0] as Extract<ClientMessage, { type: "review.read-file" }>;
-    connection.dispatchMessage({ type: "review.file-failed", requestId: sent.requestId, message: "File not found" });
+    const sent = sentMessages[0] as Extract<ClientMessage, { type: "changes.list" }>;
+    connection.dispatchMessage({ type: "changes.failed", requestId: sent.requestId, message: "File not found" });
 
     await expect(pending).rejects.toThrow("File not found");
     expect(connection.listenerCount).toEqual({ messages: 0, statuses: 0 });

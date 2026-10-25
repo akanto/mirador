@@ -19,7 +19,6 @@ import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
-import { PanelWalkthrough } from "./PanelWalkthrough.tsx";
 import { currentReviewPlacement, opensWithRoom, takeArrivedReview } from "./review-placement.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
 
@@ -472,7 +471,7 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
   );
 }
 
-const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?", review: "⇄" };
+const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?" };
 
 /** The tab's header with only the agent's plan in it. */
 const PLAN_ICON = "☑";
@@ -480,7 +479,6 @@ const PLAN_ICON = "☑";
 const iconOf = (item: CanvasItem) => (item.kind === "plugin" ? item.icon : kindIcons[item.kind]);
 
 function outcomeOf(item: CanvasItem) {
-  if (item.kind === "review") return item.review.verdict;
   if (item.kind === "plugin" && item.outcome) return item.outcome;
   if (item.status === "waiting") return "needs your answer";
   if (item.status === "cancelled") return "withdrawn";
@@ -488,8 +486,8 @@ function outcomeOf(item: CanvasItem) {
   return "";
 }
 
-/** A review's verdict, or what a plugin says came of its item, in the agent's or the plugin's own words. */
-const isVerdict = (item: CanvasItem) => item.kind === "review" || (item.kind === "plugin" && Boolean(item.outcome));
+/** What a plugin says came of its item, such as a review's verdict, in the agent's or the plugin's own words. */
+const isVerdict = (item: CanvasItem) => item.kind === "plugin" && Boolean(item.outcome);
 
 const outcomeIsFreeText = (item: CanvasItem) => isVerdict(item) || item.status === "answered";
 
@@ -977,9 +975,6 @@ export function CanvasPanel({
           />
         )}
         {!tab && selected?.kind === "plugin" && <PluginItemView key={selected.id} item={selected} viewPath={canvasViews[selected.plugin]} assetsOrigin={assetsOrigin} />}
-        {!tab && selected?.kind === "review" && (
-          <PanelWalkthrough key={selected.id} item={selected} />
-        )}
         {!tab && selected?.kind === "ask" && (
           <AskView
             key={selected.id}

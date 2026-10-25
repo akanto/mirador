@@ -1,19 +1,6 @@
 import { createContext, useContext } from "react";
 import type { FindingDecision, GitHubCliProblem } from "../shared/review.ts";
-
-export type WalkthroughTab = "overview" | "flow" | "files" | "findings" | "conversations";
-
-/** Where the user was in a review or tour: shown as they left it when they come back to it. */
-export interface PlaceInWalkthrough {
-  tab: WalkthroughTab;
-  stepIndex: number;
-  path: string | null;
-  hunkIndex: number;
-  findingId: string | null;
-  answerId: string | null;
-  /** How far each scrolling part of a tab was scrolled, by its class. */
-  scrolled: Partial<Record<WalkthroughTab, Record<string, number>>>;
-}
+import type { PlaceInWalkthrough } from "../shared/walkthrough-actions.ts";
 
 /** The review's list as a part of its width, and the Flow tab's steps as a part of its height, with their setters. */
 export interface WalkthroughPaneShares {

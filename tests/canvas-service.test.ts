@@ -8,25 +8,16 @@ import { Hub } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
 import type { SystemNotifications } from "../host/system-notifications.ts";
 import { questionsOf } from "../shared/ask.ts";
-import type { AskItem, CanvasItem, ReviewItem } from "../shared/model.ts";
-import type { Review, ReviewAnswer, ReviewFinding } from "../shared/review.ts";
+import type { AskItem, CanvasItem } from "../shared/model.ts";
 import type { NotificationReason } from "../shared/system-notifications.ts";
 import { completeDirectories } from "../host/paths.ts";
-import type { GitHubCli } from "../host/review/github.ts";
-import type { ReviewProblems } from "../host/review/snapshot.ts";
-import { gitRepository, reviewRequest } from "./review-repository.ts";
 
 function asAsk(item: CanvasItem | undefined) {
   expect(item?.kind).toBe("ask");
   return item as AskItem | undefined;
 }
 
-function asReview(item: CanvasItem | undefined) {
-  expect(item?.kind).toBe("review");
-  return (item as ReviewItem | undefined)?.review;
-}
-
-function setUp(hub = new Hub(), gh?: GitHubCli) {
+function setUp(hub = new Hub()) {
   const store = new Store(":memory:");
   store.insertWorkspace({ id: "w1", name: "p", path: "/tmp/p", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
   store.insertConversation({
@@ -67,7 +58,7 @@ function setUp(hub = new Hub(), gh?: GitHubCli) {
   } as unknown as ConversationService;
   const notified: [string, NotificationReason][] = [];
   const notifications = { notify: (conversationId: string, reason: NotificationReason) => void notified.push([conversationId, reason]) } as SystemNotifications;
-  const canvas = new CanvasService(store, hub, conversations, notifications, ["http://127.0.0.1:4601"], gh);
+  const canvas = new CanvasService(store, hub, conversations, notifications, ["http://127.0.0.1:4601"]);
   const ask = () => canvas.openAsk("c1", { question: "Color?", options: [{ label: "Red" }, { label: "Blue" }] });
   const askSeveral = () =>
     canvas.openAsk("c1", {
@@ -206,154 +197,6 @@ describe("CanvasService", () => {
     const { canvas } = setUp();
     const { render } = await canvas.show("c1", { title: "x", html: "<p>" });
     expect(render).toBe("no-viewer");
-  });
-
-  test("a finding the user rewords remembers what the agent wrote, however often the user rewords it", () => {
-    const { store, canvas } = setUp();
-    const finding = { id: "finding-1", body: "The agent's words.", decision: "keep" } as ReviewFinding;
-    store.saveCanvasItem({ id: "r1", conversationId: "c1", kind: "review", title: "PR", review: { findings: [finding] } as Review, status: "shown", createdAt: 1 });
-    const stored = () => asReview(store.findCanvasItem("r1"))!.findings[0]!;
-    canvas.updateFinding("r1", "finding-1", { body: " The user's words. " });
-    canvas.updateFinding("r1", "finding-1", { body: "The user's second words." });
-    canvas.updateFinding("r1", "finding-1", { decision: "drop" });
-    expect(stored()).toMatchObject({ body: "The user's second words.", agentBody: "The agent's words.", decision: "drop" });
-  });
-
-  test("each change to an item stamps when it changed, and a review a stopped host left posting counts as changed when listed", () => {
-    const { store, canvas } = setUp();
-    const finding = { id: "finding-1", body: "The agent's words.", decision: "keep" } as ReviewFinding;
-    store.saveCanvasItem({ id: "r1", conversationId: "c1", kind: "review", title: "PR", review: { findings: [finding], posting: true } as Review, status: "shown", createdAt: 1 });
-    setSystemTime(new Date(5_000));
-    expect(canvas.list("c1")[0]).toMatchObject({ review: { posting: false }, updatedAt: 5_000 });
-    setSystemTime(new Date(6_000));
-    canvas.updateFinding("r1", "finding-1", { decision: "drop" });
-    expect(store.findCanvasItem("r1")!.updatedAt).toBe(6_000);
-    setSystemTime();
-  });
-
-  test("an answer the user rewords or marks to resolve remembers it, unless GitHub would not let them resolve it", () => {
-    const { store, canvas } = setUp();
-    const answer = (id: string, canResolve: boolean) => ({ id, body: "The agent's words.", decision: "keep", resolve: false, canResolve }) as ReviewAnswer;
-    const review = { findings: [], answers: [answer("answer-1", true), answer("answer-2", false)] } as unknown as Review;
-    store.saveCanvasItem({ id: "r1", conversationId: "c1", kind: "review", title: "PR", review, status: "shown", createdAt: 1 });
-    canvas.updateAnswer("r1", "answer-1", { body: "The user's words.", resolve: true });
-    expect(asReview(store.findCanvasItem("r1"))!.answers![0]).toMatchObject({ body: "The user's words.", agentBody: "The agent's words.", resolve: true });
-    expect(() => canvas.updateAnswer("r1", "answer-2", { resolve: true })).toThrow("does not let you resolve");
-  });
-
-  test("the agent's edit changes the newest review in its own canvas item, names what changed, and keeps a choice the user made meanwhile", async () => {
-    const { store, canvas } = setUp();
-    const { directory } = gitRepository();
-    const findings = [
-      { severity: "nit" as const, checked: "confirmed" as const, at: "service.ts:2", title: "Magic number", body: "Name the 1?" },
-      { severity: "issue" as const, checked: "plausible" as const, at: "service.ts:5-7", title: "Unused", body: "Is load() still needed?" },
-    ];
-    await canvas.review("c1", reviewRequest(directory, { findings }));
-    const newest = await canvas.review("c1", reviewRequest(directory, { findings }));
-
-    const editing = canvas.editReview("c1", { findings: [{ id: "finding-1", body: "Name it." }] });
-    canvas.updateFinding(newest.id, "finding-2", { decision: "drop" });
-    const { item } = await editing;
-
-    expect(item.id).toBe(newest.id);
-    expect(store.listCanvasItems("c1")).toHaveLength(2);
-    expect(item.review.findings.map(({ id, body, decision }) => [id, body, decision])).toEqual([
-      ["finding-1", "Name it.", "keep"],
-      ["finding-2", "Is load() still needed?", "drop"],
-    ]);
-    expect(item.review.agentEdit).toEqual({ at: expect.any(Number), parts: ["finding-1"] });
-  });
-
-  describe("a pull request that moved on since the review", () => {
-    /** GitHub, with the pull request's head, and the commit of the user's pending review if they have one, where the test puts them; every comment taken. */
-    function movingPullRequest() {
-      const pullRequest = { head: "", pendingReviewCommit: null as string | null };
-      const gh: GitHubCli = async (args, body: any) => {
-        if (args[3] === "repos/team/shop/pulls/7") return { node_id: "PR_7", head: { sha: pullRequest.head } };
-        if (body.query.includes("states: PENDING")) {
-          const nodes = pullRequest.pendingReviewCommit === null ? [] : [{ id: "PRR_1", url: "https://github.com/review/1", commit: { oid: pullRequest.pendingReviewCommit } }];
-          return { data: { repository: { pullRequest: { reviews: { nodes } } } } };
-        }
-        if (body.query.includes("addPullRequestReview(")) return { data: { addPullRequestReview: { pullRequestReview: { id: "PRR_2", url: "https://github.com/review/2" } } } };
-        return { data: { addPullRequestReviewThread: { thread: { id: "thread-1" } } } };
-      };
-      return { pullRequest, gh };
-    }
-
-    async function reviewOfPullRequest() {
-      const { pullRequest, gh } = movingPullRequest();
-      const setup = setUp(new Hub(), gh);
-      const { directory } = gitRepository();
-      const item = await setup.canvas.review("c1", reviewRequest(directory, { pullRequest: "https://github.com/team/shop/pull/7" }));
-      return { ...setup, pullRequest, item, movedOn: () => asReview(setup.store.findCanvasItem(item.id))?.pullRequestMovedOn };
-    }
-
-    test("a pending review the user started on another commit is named on the review, until a post goes through once it is gone", async () => {
-      const { canvas, store, pullRequest, item } = await reviewOfPullRequest();
-      const posted = () => asReview(store.findCanvasItem(item.id));
-      pullRequest.head = item.review.headCommit;
-      pullRequest.pendingReviewCommit = "d".repeat(40);
-      await canvas.postReview(item.id);
-      expect(posted()?.pendingReviewOfOtherCommit).toEqual({ url: "https://github.com/review/1", commit: "d".repeat(40) });
-      expect(posted()?.findings[0]?.postedAs).toBeUndefined();
-      expect(posted()?.posting).toBe(false);
-
-      pullRequest.pendingReviewCommit = null;
-      await canvas.postReview(item.id);
-      expect(posted()?.pendingReviewOfOtherCommit).toBeUndefined();
-      expect(posted()?.pendingReviewUrl).toBe("https://github.com/review/2");
-      expect(posted()?.findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
-    });
-
-    test("posting says so on the review, with the new head, rather than failing", async () => {
-      const { canvas, pullRequest, item, movedOn, nextMessages } = await reviewOfPullRequest();
-      pullRequest.head = "f".repeat(40);
-      await canvas.postReview(item.id);
-      expect(movedOn()).toEqual({ headCommit: "f".repeat(40), askedToReviewAgain: false });
-      expect(asReview(canvas.list("c1")[0])?.posting).toBe(false);
-      expect(nextMessages).toEqual([]);
-    });
-
-    test("Review again asks the agent once, after its turn, naming the pull request and both heads; a later push lets it ask again", async () => {
-      const { canvas, pullRequest, item, movedOn, nextMessages, sendOptions } = await reviewOfPullRequest();
-      pullRequest.head = "a".repeat(40);
-      await canvas.postReview(item.id);
-      await Promise.all([canvas.reviewAgain(item.id), canvas.reviewAgain(item.id)]);
-      expect(nextMessages).toEqual([
-        `The pull request https://github.com/team/shop/pull/7 changed since your review: its head is ${"a".repeat(40)}, your review is of ${item.review.headCommit}. Fetch the new head and review it again with ${"a".repeat(40)} as the review's head: keep the findings that still apply, drop the ones it fixed, and add new ones.`,
-      ]);
-      expect(sendOptions).toEqual([{ afterTurn: true }]);
-      expect(movedOn()?.askedToReviewAgain).toBe(true);
-
-      await canvas.postReview(item.id);
-      expect(movedOn()?.askedToReviewAgain).toBe(true);
-      pullRequest.head = "b".repeat(40);
-      await canvas.postReview(item.id);
-      expect(movedOn()).toEqual({ headCommit: "b".repeat(40), askedToReviewAgain: false });
-    });
-
-    test("a post that goes through, once the head is the reviewed one again, takes the note away", async () => {
-      const { canvas, pullRequest, item, movedOn } = await reviewOfPullRequest();
-      pullRequest.head = "c".repeat(40);
-      await canvas.postReview(item.id);
-      pullRequest.head = item.review.headCommit;
-      await canvas.postReview(item.id);
-      expect(movedOn()).toBeUndefined();
-      expect(asReview(canvas.list("c1")[0])?.findings[0]?.postedAs).toEqual({ threadId: "thread-1" });
-    });
-
-    test("Review again does nothing while the pull request is where the review left it", async () => {
-      const { canvas, item, nextMessages } = await reviewOfPullRequest();
-      await canvas.reviewAgain(item.id);
-      expect(nextMessages).toEqual([]);
-    });
-  });
-
-  test("the agent's edit names a review this conversation does not have", async () => {
-    const { canvas } = setUp();
-    const problems = (edit: Parameters<CanvasService["editReview"]>[1]) => canvas.editReview("c1", edit).then(() => [], (error: ReviewProblems) => error.problems);
-    expect(await problems({ summary: "?" })).toEqual(["This conversation has no review to change; publish one with the review tool."]);
-    expect(await problems({ review: "r9", summary: "?" })).toEqual(["review: r9 is not a review in this conversation."]);
   });
 });
 

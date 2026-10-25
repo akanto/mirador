@@ -32,7 +32,6 @@ import type {
   Pastel,
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges } from "./changes.ts";
-import type { FindingDecision, GitHubCliProblem } from "./review.ts";
 import type { PageLibraries } from "./canvas-export.ts";
 import type { AppDocumentState, AppStorageItems, InstalledApp, OpenApp, PluginCommit, PluginInfo } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
@@ -198,17 +197,6 @@ export type ClientMessage =
   | { type: "canvas.save-to-project"; requestId: string; itemId: string; path: string; libraries: PageLibraries; replace: boolean }
   /** The page drawn as a PNG by its own frame, sent as base64 for the host to write into the project. */
   | { type: "canvas.save-image-to-project"; requestId: string; itemId: string; path: string; image: string; replace: boolean }
-  | { type: "review.update-finding"; itemId: string; findingId: string; decision?: FindingDecision; body?: string }
-  | { type: "review.update-answer"; itemId: string; answerId: string; decision?: FindingDecision; body?: string; resolve?: boolean }
-  /** Adds the kept findings to the user's pending review on the pull request; the user submits it on GitHub. */
-  | { type: "review.post"; itemId: string }
-  /** Once posting found the pull request moved on: asks the agent, after its turn, to review the new head. */
-  | { type: "review.review-again"; itemId: string }
-  | { type: "review.open-in-editor"; itemId: string; path: string; line: number }
-  /** The reviewed version of a changed file, for showing the lines around the diff's hunks. */
-  | { type: "review.read-file"; requestId: string; itemId: string; path: string }
-  /** Whether gh can post this review to its pull request, asked before the user clicks Post. */
-  | { type: "review.check-github-cli"; requestId: string; itemId: string }
   | { type: "changes.list"; requestId: string; conversationId: string; scope: ChangeScope }
   | { type: "changes.diff"; requestId: string; conversationId: string; scope: ChangeScope; path: string }
   | { type: "changes.open-in-editor"; conversationId: string; path: string; line: number }
@@ -389,13 +377,9 @@ export type ServerMessage =
   | { type: "sessions.listed"; requestId: string; sessions: ExternalSession[] }
   | { type: "sessions.searched"; requestId: string; sessions: SessionSearchHit[] }
   | { type: "sessions.failed"; requestId: string; message: string }
-  | { type: "review.file-read"; requestId: string; lines: string[] }
   | { type: "slash-commands.listed"; requestId: string; commands: SlashCommand[] }
   | { type: "prompt-history.listed"; requestId: string; prompts: string[]; ownEarlier?: PromptHistoryEntry[] }
   | { type: "mentions.suggested"; requestId: string; suggestions: MentionSuggestion[] }
-  | { type: "review.file-failed"; requestId: string; message: string }
-  /** Null when gh can post, or when the check could not tell. */
-  | { type: "review.github-cli-checked"; requestId: string; problem: GitHubCliProblem | null }
   | { type: "changes.listed"; requestId: string; list: ChangeList }
   | { type: "changes.diffed"; requestId: string; changes: FileChanges }
   | { type: "changes.failed"; requestId: string; message: string }

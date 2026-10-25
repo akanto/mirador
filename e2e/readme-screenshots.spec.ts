@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspaceFromSidebar, callCanvasTool, reloadFromRestartedHost, signIn, workspaceCard } from "./helpers.ts";
+import { addWorkspaceFromSidebar, callCanvasTool, reloadFromRestartedHost, signIn, workspaceCard, walkthroughView } from "./helpers.ts";
 import type { Demo, DemoConversation } from "./seed-demo.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -412,7 +412,7 @@ test("the README's screenshots", async ({ page }) => {
   await test.step("a review, as a tour of the code and its findings", async () => {
     await openConversation(page, ids.reviewRetries);
     await callCanvasTool(host, ids.reviewRetries, "review", review);
-    const view = page.locator(".review");
+    const view = walkthroughView(page).locator(".review");
     await expect(view.locator(".verdict")).toBeVisible();
     await view.getByRole("tab", { name: /Flow/ }).click();
     await view.getByRole("navigation", { name: "Flow steps" }).getByText("The capture is retried").click();
@@ -445,7 +445,7 @@ test("the README's screenshots", async ({ page }) => {
 
   await test.step("a tour of what the agent changed", async () => {
     await callCanvasTool(host, ids.stopDoubleCharge, "tour", fixTour);
-    const view = page.frameLocator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin iframe").locator(".review");
+    const view = walkthroughView(page).locator(".review");
     await view.getByRole("tab", { name: /Flow/ }).click();
     await expect(view.locator(".code-row.added")).toContainText(["idempotencyKey: cart.id"]);
     await save(page, "tour");

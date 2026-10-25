@@ -6,11 +6,8 @@ import type {
   CanvasAnswer,
   CanvasItem,
   CanvasItemBase,
-  ReviewItem,
   ShowItem,
-  TourItem,
 } from "../../shared/model.ts";
-import { answersOf, type FindingDecision, type Review } from "../../shared/review.ts";
 import type { ConversationService } from "../conversations.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
@@ -19,12 +16,6 @@ import type { PageLibraries } from "../../shared/canvas-export.ts";
 import { standalonePage } from "./export.ts";
 import { saveIntoWorkspace } from "./save-to-project.ts";
 import { noteOfPageErrors, type CanvasNote } from "./notes.ts";
-import { answersToConversations } from "../review/answers.ts";
-import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
-import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit } from "../review/edit.ts";
-import { openInIdea } from "../review/editor.ts";
-import { ghCli, gitHubCliProblemOn, PendingReviewOfOtherCommit, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../review/github.ts";
-import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
 
 const RENDER_REPORT_TIMEOUT_MS = 6000;
 
@@ -42,17 +33,6 @@ export interface RenderReport {
 
 export type RenderOutcome = RenderReport | "no-viewer";
 
-const UNKNOWN_WALKTHROUGH = "Unknown review or tour.";
-
-export interface FindingChange {
-  decision?: FindingDecision;
-  body?: string;
-}
-
-export interface AnswerChange extends FindingChange {
-  resolve?: boolean;
-}
-
 interface AnswerWaiter {
   answered(answer: Pick<CanvasAnswer, "label" | "note">): void;
   withdrawn(): void;
@@ -61,7 +41,6 @@ interface AnswerWaiter {
 export class CanvasService {
   private readonly answerWaiters = new Map<string, AnswerWaiter>();
   private readonly renderWaiters = new Map<string, (report: RenderReport) => void>();
-  private readonly reviewsBeingPosted = new Set<string>();
 
   constructor(
     private readonly store: Store,
@@ -70,11 +49,10 @@ export class CanvasService {
     private readonly notifications: SystemNotifications,
     /** Every address the canvas libraries are served at, as a page may name any of them; the first is the one agents were given. */
     private readonly assetsOrigins: string[],
-    private readonly gh: GitHubCli = ghCli,
   ) {}
 
   list(conversationId: string): CanvasItem[] {
-    return this.store.listCanvasItems(conversationId).map((item) => this.withoutInterruptedPost(item));
+    return this.store.listCanvasItems(conversationId);
   }
 
   async show(conversationId: string, request: ShowRequest): Promise<{ item: CanvasItem; render: RenderOutcome }> {
@@ -142,120 +120,9 @@ export class CanvasService {
     else this.conversations.send(item.conversationId, answerAsMessage(item, given)).catch(() => {});
   }
 
-  async review(conversationId: string, request: ReviewRequest): Promise<ReviewItem> {
-    const [snapshot, answers] = await allOrEveryProblem(snapshotReview(request), answersToConversations(request, this.gh));
-    const earlier = this.latestReviewOf(conversationId, snapshot);
-    const review = earlier
-      ? { ...snapshot, findings: carryOverChoices(earlier.findings, snapshot.findings, ofSamePullRequest(earlier, snapshot)), answers: carryOverAnswerChoices(answersOf(earlier), answers) }
-      : { ...snapshot, answers };
-    return this.save({
-      id: crypto.randomUUID(),
-      conversationId,
-      kind: "review",
-      title: request.title,
-      review,
-      status: "shown",
-      createdAt: Date.now(),
-    });
-  }
-
   /** What the canvas has for the agent to hear of with the user's next message. */
   notesForAgent(conversationId: string): CanvasNote[] {
     return [this.pageErrorsNote(conversationId)].filter((note) => note !== null);
-  }
-
-  /**
-   * Changes parts of a review already shown, in the same canvas item, so the user keeps their place in it. The edit is
-   * applied to the review as it is once git has been read, so a choice the user made meanwhile stays.
-   */
-  async editReview(conversationId: string, edit: ReviewEdit & { review?: string }) {
-    const target = this.reviewToEdit(conversationId, edit.review);
-    const anchors = await readEditAnchors(target.review, edit);
-    const latest = this.reviewItem(target.id);
-    const { review, changed, removed } = applyReviewEdit(latest.review, edit, anchors);
-    const item = this.save({ ...latest, review: { ...review, agentEdit: { at: Date.now(), parts: changed } } });
-    return { item, changed, removed };
-  }
-
-  updateFinding(itemId: string, findingId: string, change: FindingChange) {
-    const item = this.reviewItem(itemId);
-    const finding = item.review.findings.find(({ id }) => id === findingId);
-    if (!finding) throw new Error("Unknown finding.");
-    if (finding.postedAs) throw new Error("This finding is already on the pull request; change it there.");
-    const body = change.body?.trim();
-    const reworded = body && body !== finding.body && { body, agentBody: finding.agentBody ?? finding.body };
-    const changed = { ...finding, ...(change.decision && { decision: change.decision }), ...reworded };
-    this.saveReview(item, { findings: item.review.findings.map((each) => (each.id === findingId ? changed : each)) });
-  }
-
-  updateAnswer(itemId: string, answerId: string, change: AnswerChange) {
-    const item = this.reviewItem(itemId);
-    const answer = answersOf(item.review).find(({ id }) => id === answerId);
-    if (!answer) throw new Error("Unknown answer.");
-    if (answer.postedAs) throw new Error("This answer is already on the pull request; change it there.");
-    if (change.resolve && !answer.canResolve) throw new Error("GitHub does not let you resolve this conversation.");
-    const body = change.body?.trim();
-    const reworded = body && body !== answer.body && { body, agentBody: answer.agentBody ?? answer.body };
-    const changed = { ...answer, ...(change.decision && { decision: change.decision }), ...(change.resolve !== undefined && { resolve: change.resolve }), ...reworded };
-    this.saveReview(item, { answers: answersOf(item.review).map((each) => (each.id === answerId ? changed : each)) });
-  }
-
-  /** What keeps gh from posting this review to its pull request, if anything. */
-  async gitHubCliProblem(itemId: string) {
-    const { pullRequest } = this.reviewItem(itemId).review;
-    return pullRequest ? gitHubCliProblemOn(pullRequest.host) : null;
-  }
-
-  /** Adds the kept findings and answers to the user's pending review on the pull request; each records how that went. */
-  async postReview(itemId: string) {
-    if (this.reviewsBeingPosted.has(itemId)) return;
-    this.reviewsBeingPosted.add(itemId);
-    const item = this.reviewItem(itemId);
-    this.saveReview(item, { posting: true });
-    try {
-      const outcome = await postPendingReview(item.review, this.gh);
-      const latest = this.reviewItem(itemId);
-      const findings = latest.review.findings.map((finding) => {
-        const threadId = outcome.threadIds.get(finding.id);
-        if (threadId) return { ...finding, postedAs: { threadId }, postError: undefined };
-        const postError = outcome.errors.get(finding.id);
-        return postError ? { ...finding, postError } : finding;
-      });
-      const answers = answersOf(latest.review).map((answer) => {
-        const url = outcome.answerUrls.get(answer.id);
-        const postError = outcome.errors.get(answer.id);
-        const resolved = answer.resolved || outcome.resolvedAnswerIds.has(answer.id);
-        return url ? { ...answer, postedAs: { url }, resolved, postError } : postError ? { ...answer, postError } : answer;
-      });
-      this.saveReview(latest, { findings, answers, pendingReviewUrl: outcome.pendingReviewUrl, pullRequestMovedOn: undefined, pendingReviewOfOtherCommit: undefined });
-    } catch (error) {
-      if (error instanceof PullRequestMovedOn) this.notePullRequestMovedOn(this.reviewItem(itemId), error.headCommit);
-      else if (error instanceof PendingReviewOfOtherCommit) this.saveReview(this.reviewItem(itemId), { pendingReviewOfOtherCommit: error.pendingReview });
-      else throw error;
-    } finally {
-      this.reviewsBeingPosted.delete(itemId);
-      this.saveReview(this.reviewItem(itemId), { posting: false });
-    }
-  }
-
-  /** The review says so where Post was, for every page showing it; a head it already knew of keeps whether the agent was asked. */
-  private notePullRequestMovedOn(item: ReviewItem, headCommit: string) {
-    if (item.review.pullRequestMovedOn?.headCommit === headCommit) return;
-    this.saveReview(item, { pullRequestMovedOn: { headCommit, askedToReviewAgain: false } });
-  }
-
-  /** Asks the agent, once its turn is over, to review the pull request again from the head it moved on to; once per head. */
-  async reviewAgain(itemId: string) {
-    const item = this.reviewItem(itemId);
-    const movedOn = item.review.pullRequestMovedOn;
-    if (!movedOn || movedOn.askedToReviewAgain) return;
-    this.saveReview(item, { pullRequestMovedOn: { ...movedOn, askedToReviewAgain: true } });
-    try {
-      await this.conversations.send(item.conversationId, reviewAgainRequest(item.review, movedOn.headCommit), [], { afterTurn: true });
-    } catch (error) {
-      this.saveReview(this.reviewItem(itemId), { pullRequestMovedOn: movedOn });
-      throw error;
-    }
   }
 
   /** A page the agent showed, as a file of its own that draws outside Mirador. */
@@ -273,18 +140,6 @@ export class CanvasService {
     const workspace = this.store.findWorkspace(this.conversations.get(page.conversationId).workspaceId);
     if (!workspace) throw new Error("The workspace no longer exists.");
     return saveIntoWorkspace(workspace.path, path, file, { replace });
-  }
-
-  openInEditor(itemId: string, path: string, line: number) {
-    const item = this.store.findCanvasItem(itemId);
-    if (item?.kind !== "review") throw new Error(UNKNOWN_WALKTHROUGH);
-    openInIdea(item.review.repository, path, line);
-  }
-
-  async readReviewedFile(itemId: string, path: string) {
-    const item = this.store.findCanvasItem(itemId);
-    if (item?.kind === "review") return reviewedFileLines(item.review, path);
-    throw new Error(UNKNOWN_WALKTHROUGH);
   }
 
   withdrawWaitingAsks(conversationId: string) {
@@ -353,35 +208,6 @@ export class CanvasService {
     return sinceLastQuestion.filter((item) => item.kind === "show" && item.createdAt >= userSpokeAt);
   }
 
-  private reviewItem(itemId: string): ReviewItem {
-    const item = this.store.findCanvasItem(itemId);
-    if (item?.kind !== "review") throw new Error("Unknown review.");
-    return item;
-  }
-
-  private reviewToEdit(conversationId: string, itemId: string | undefined): ReviewItem {
-    const reviews = this.store.listCanvasItems(conversationId).filter((item) => item.kind === "review");
-    const item = itemId === undefined ? reviews.at(-1) : reviews.find(({ id }) => id === itemId);
-    if (item) return item;
-    const problem = itemId === undefined ? "This conversation has no review to change; publish one with the review tool." : `review: ${itemId} is not a review in this conversation.`;
-    throw new ReviewProblems([problem], REVIEW_NOT_CHANGED);
-  }
-
-  private latestReviewOf(conversationId: string, change: Review) {
-    const reviews = this.store.listCanvasItems(conversationId).filter((item) => item.kind === "review").map(({ review }) => review);
-    return reviewToCarryOverFrom(reviews, change);
-  }
-
-  private saveReview(item: ReviewItem, change: Partial<Review>) {
-    this.save({ ...item, review: { ...item.review, ...change } });
-  }
-
-  /** A host that stopped while posting a review left it marked as posting; a client may still hold it so. */
-  private withoutInterruptedPost(item: CanvasItem): CanvasItem {
-    if (item.kind !== "review" || !item.review.posting || this.reviewsBeingPosted.has(item.id)) return item;
-    return { ...item, review: { ...item.review, posting: false }, updatedAt: Date.now() };
-  }
-
   private save<T extends CanvasItem>(change: T): T {
     const item = { ...change, updatedAt: Date.now() };
     this.store.saveCanvasItem(item);
@@ -432,14 +258,6 @@ export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
     return [`The user answered ${answers.length} questions:`, ...each, ...noteLine(note, "Their note on all the answers: ")].join("\n");
   }
   return [`The user chose: ${label}`, ...noteLine(note, "Their note: ")].join("\n");
-}
-
-/** The pull request's url tells which review it is; the full head is what the agent fetches and reviews, as a stale checkout would make the same review again. */
-export function reviewAgainRequest({ pullRequest, headCommit }: Review, newHead: string) {
-  return [
-    `The pull request ${pullRequest?.url} changed since your review: its head is ${newHead}, your review is of ${headCommit}.`,
-    `Fetch the new head and review it again with ${newHead} as the review's head: keep the findings that still apply, drop the ones it fixed, and add new ones.`,
-  ].join(" ");
 }
 
 function answerAsMessage(item: AskItem, { label, note, answers }: GivenAnswer) {
