@@ -3329,7 +3329,6 @@ button.edits-waiting {
   background: var(--accent-soft);
 }
 
-.fold-mark,
 .change-status {
   flex-shrink: 0;
   width: 1.4ch;
@@ -3337,9 +3336,34 @@ button.edits-waiting {
   color: var(--muted);
 }
 
-.fold-mark {
-  font-size: calc(14px * var(--font-scale));
-  line-height: 1;
+.folder-icon {
+  flex-shrink: 0;
+  width: calc(15px * var(--font-scale));
+  height: calc(15px * var(--font-scale));
+  color: var(--accent);
+}
+
+.changed-folder.unchanged .folder-icon {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.folder-children {
+  position: relative;
+}
+
+.folder-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(8px + var(--depth, 0) * 16px + 7.5px * var(--font-scale));
+  border-left: 1px solid var(--border);
+  pointer-events: none;
+}
+
+.changes-section:hover .folder-children::before {
+  border-left-color: color-mix(in srgb, var(--muted) 45%, transparent);
 }
 
 .change-status {

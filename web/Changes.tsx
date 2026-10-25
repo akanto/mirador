@@ -177,7 +177,7 @@ function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<Listed
   return (
     <li>
       <button type="button" className={`changed-folder ${changes.length === 0 ? "unchanged" : ""}`} style={indentedBy(depth)} aria-expanded={!folded} onClick={() => folding.toggle(folder)}>
-        <span className="fold-mark">{folded ? "▸" : "▾"}</span>
+        <FolderIcon open={!folded} />
         <span className="folder-name">{folder.name}</span>
         {folded && summary && (
           <>
@@ -187,11 +187,26 @@ function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<Listed
         )}
       </button>
       {!folded && (
-        <ul>
+        <ul className="folder-children" style={indentedBy(depth)}>
           <TreeRows nodes={folder.children} depth={depth + 1} rows={rows} folding={folding} />
         </ul>
       )}
     </li>
+  );
+}
+
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="folder-icon" viewBox="0 0 16 16" aria-hidden="true">
+      {open ? (
+        <>
+          <path d="M1.5 4a1 1 0 0 1 1-1h3.4l1.5 1.5h5.1a1 1 0 0 1 1 1V7H4.4a1 1 0 0 0-.93.63L1.5 12.5z" fill="currentColor" opacity="0.55" />
+          <path d="M3.6 7.8h11.2l-2.1 5.2H1.5z" fill="currentColor" />
+        </>
+      ) : (
+        <path d="M1.5 4a1 1 0 0 1 1-1h3.4l1.5 1.5h6.1a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="currentColor" />
+      )}
+    </svg>
   );
 }
 

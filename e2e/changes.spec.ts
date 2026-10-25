@@ -192,6 +192,16 @@ test("All files shows every file of the project in its folders, the changed ones
   await expect(fileRow(page, "src/stable.ts")).toHaveClass(/status-unchanged/);
   await expect(fileRow(page, "src/stable.ts").locator(".change-status")).toHaveText("");
 
+  await test.step("a folder shows an open or closed folder icon, and an open folder's files hang from a guide line", async () => {
+    await expect(folderRow(page, "src").locator(".folder-icon path")).toHaveCount(2);
+    await expect(lib.locator(".folder-icon path")).toHaveCount(1);
+    const guide = await folderRow(page, "src")
+      .locator("xpath=..")
+      .locator("> .folder-children")
+      .evaluate((list) => getComputedStyle(list, "::before").borderLeftStyle);
+    expect(guide).toBe("solid");
+  });
+
   await test.step("folding a folder with a change says how many changed", async () => {
     await folderRow(page, "src").click();
     await expect(folderRow(page, "src").locator(".folder-file-count")).toHaveText("2 changed");
