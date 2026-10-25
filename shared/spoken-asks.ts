@@ -149,7 +149,8 @@ export function heardChoice(text: string, question: AskQuestion, offered: Offere
   const said = withoutPoliteness(words(text));
   const recommended = recommendedIndex(question.options);
   if (offered === "recommended" && recommended !== null && accepting.has(said)) return { kind: "pick", index: recommended };
-  if (askingForOthers.has(said) || (offered === "recommended" && mentionsTheOthers.test(said))) return { kind: "others" };
+  const hasOthers = question.options.length > 1;
+  if (hasOthers && (askingForOthers.has(said) || (offered === "recommended" && mentionsTheOthers.test(said)))) return { kind: "others" };
   const index = numberSaid(said, question.options.length) ?? labelSaid(said, question.options);
   return index === null ? { kind: "unclear" } : { kind: "pick", index };
 }

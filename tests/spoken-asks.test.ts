@@ -62,6 +62,12 @@ describe("what a spoken answer chooses", () => {
     expect(heardChoice("What are the alternatives?", sounds, "recommended")).toEqual({ kind: "others" });
   });
 
+  test("with no others to hear, a no goes to the agent as the answer", () => {
+    const lone: AskQuestion = { question: "Ship it?", options: [{ label: "Ship it (recommended)" }] };
+    expect(heardChoice("No.", lone, "recommended")).toEqual({ kind: "unclear" });
+    expect(heardChoice("Hear the others.", lone, "recommended")).toEqual({ kind: "unclear" });
+  });
+
   test("a number, as a word, a digit or an ordinal", () => {
     expect(heardChoice("Three.", sounds, "all")).toEqual({ kind: "pick", index: 2 });
     expect(heardChoice("The first one.", sounds, "all")).toEqual({ kind: "pick", index: 0 });
