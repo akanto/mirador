@@ -50,6 +50,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
     expect(await barState(page)).toMatchObject({ fold: 0, fits: true });
     await expect(more(page)).toBeHidden();
     await expect(bar(page).getByRole("button", { name: "Export ▾" })).toBeVisible();
+    await expect(bar(page).getByRole("button", { name: "Point" })).toBeVisible();
   });
 
   const seen: Awaited<ReturnType<typeof barState>>[] = [];
@@ -76,6 +77,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
       "Checklist 0/1",
       "History (1)",
       "Clear",
+      "Point",
       "Copy as image",
       "Copy HTML",
       "Ask agent for Markdown",
@@ -95,6 +97,14 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
     await expect(page.locator(".page-save").getByLabel("Save in the project as")).toHaveValue("docs/sales-by-region-quarter-by-quarter.html");
     await page.keyboard.press("Escape");
     await expect(page.locator(".page-save")).toHaveCount(0);
+
+    await chooseFromMore(page, "Point");
+    await more(page).click();
+    await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Point" })).toHaveAttribute("aria-checked", "true");
+    await moreMenu(page).getByRole("menuitemcheckbox", { name: "Point" }).click();
+    await more(page).click();
+    await expect(moreMenu(page).getByRole("menuitemcheckbox", { name: "Point" })).toHaveAttribute("aria-checked", "false");
+    await page.keyboard.press("Escape");
 
     await chooseFromMore(page, "History (1)");
     await expect(page.locator(".canvas-history")).toBeVisible();

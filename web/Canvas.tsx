@@ -13,6 +13,7 @@ import { ChecklistView, currentTabItem, isTabItem, tabCount, useFlashOnAgentEdit
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { usePageExport } from "./PageExport.tsx";
+import { usePageMarks } from "./PageMarks.tsx";
 import { PluginItemView } from "./PluginItemView.tsx";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { shortcutKeys } from "./shortcuts.ts";
@@ -93,6 +94,7 @@ export function CanvasFrame({
   fitsContent = false,
   padded = fitsContent,
   policy,
+  markable = false,
   allow,
   onRendered,
   onContentWidth,
@@ -107,6 +109,8 @@ export function CanvasFrame({
   /** A little room at the page's sides; a page that fits its content has it unless it says otherwise. */
   padded?: boolean;
   policy?: CanvasPagePolicy;
+  /** Whether the user may mark part of the page to ask the agent about; fixed for the frame's life, as a change reloads the page. */
+  markable?: boolean;
   /** Browser features the page may use, as the iframe's allow attribute names them. */
   allow?: string;
   onRendered?: (errors: string[]) => void;
@@ -125,8 +129,8 @@ export function CanvasFrame({
   // The theme is not a dependency: changing it would reload the page, so it reaches a shown page by message instead.
   const imagesFromOtherSites = policy?.imagesFromOtherSites ?? false;
   const document = useMemo(
-    () => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme(), { padded, policy: { imagesFromOtherSites } }),
-    [html, frameId, assetsOrigin, padded, imagesFromOtherSites],
+    () => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme(), { padded, policy: { imagesFromOtherSites }, markable }),
+    [html, frameId, assetsOrigin, padded, imagesFromOtherSites, markable],
   );
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
@@ -780,6 +784,7 @@ export function CanvasPanel({
   const toggleHistory = () => setHistoryOpen((open) => !open);
   const shownPage = !tab && selected?.kind === "show" ? selected : undefined;
   const pageExport = usePageExport(shownPage, shownPageFrame);
+  const pageMarks = usePageMarks(shownPage, shownPageFrame);
   const bar = useRef<HTMLDivElement>(null);
   const foldLevel = useFoldLevel(bar);
   const checklistCountText = (tabItem || plan) && `Checklist ${tabCount(tabItem, plan)}`;
@@ -798,6 +803,7 @@ export function CanvasPanel({
       ? [
           { label: `History (${pages.length})`, checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
           { label: "Clear", disabled: !somethingElseShown && !checklistOpen, onChoose: clear },
+          ...(shownPage ? [{ label: "Point", checked: pageMarks.pointing, separatorBefore: true, onChoose: () => pageMarks.point(!pageMarks.pointing) }] : []),
           ...pageExport.entries.map((entry, index) => (index === 0 ? { ...entry, separatorBefore: true } : entry)),
         ]
       : []),
@@ -807,14 +813,16 @@ export function CanvasPanel({
       onChoose: () => connection.send({ type: "app.use-in", workspaceId, app, conversationId }),
     })),
   ];
-  const closeHistoryOnEscape = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Escape" || !historyOpen) return;
+  const closeOnEscape = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Escape") return;
+    if (historyOpen) setHistoryOpen(false);
+    else if (pageMarks.pointing) pageMarks.point(false);
+    else return;
     event.preventDefault();
-    setHistoryOpen(false);
   };
 
   return (
-    <aside className="canvas-panel" onKeyDown={closeHistoryOnEscape}>
+    <aside className="canvas-panel" onKeyDown={closeOnEscape}>
       <div className="canvas-header" data-pane-bar ref={bar} data-fold={foldLevel}>
         <PaneGrip pane="canvas" />
         {changesOpen ? (
@@ -870,6 +878,17 @@ export function CanvasPanel({
           </button>
         )}
         <span className="spacer" />
+        {shownPage && (
+          <button
+            type="button"
+            className={`point-toggle ${pageMarks.pointing ? "on" : ""}`}
+            aria-pressed={pageMarks.pointing}
+            data-hint={hints.canvasPoint}
+            onClick={() => pageMarks.point(!pageMarks.pointing)}
+          >
+            Point
+          </button>
+        )}
         {shownPage && <BarMenu className="page-export" label="Export ▾" menuName="Export the page" hint={hints.canvasPageExport} entries={pageExport.entries} />}
         <button type="button" className="icon canvas-nav" aria-label="Older" data-hint={hints.canvasOlder} disabled={!older} onClick={() => older && pick(older.id)}>
           ‹
@@ -979,10 +998,13 @@ export function CanvasPanel({
             html={selected.html ?? ""}
             assetsOrigin={assetsOrigin}
             className="show"
+            markable
             frameRef={shownPageFrame}
             onRendered={reportRender(selected.id)}
+            onMessage={pageMarks.received}
           />
         )}
+        {pageMarks.opened}
         {!tab && selected?.kind === "plugin" && <PluginItemView key={selected.id} item={selected} viewPath={canvasViews[selected.plugin]} assetsOrigin={assetsOrigin} />}
         {!tab && selected?.kind === "ask" && (
           <AskView

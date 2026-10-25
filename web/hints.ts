@@ -265,6 +265,9 @@ export const hints = {
   canvasClear: "Empty the canvas. Nothing is deleted: the item stays in History.",
   canvasMore: "The bar's other buttons, which a narrow pane has no room for, and the apps other conversations of this workspace use, to show here too.",
   canvasPageExport: "Copy this page as an image or as HTML, ask the agent to write it as Markdown, or save it as a file of its own.",
+  canvasPoint:
+    "Point at something on the page: the element under the mouse is outlined, and a click picks it to ask the agent about or have it changed, instead of doing what the page does. Esc stops. To ask about text, just select it.",
+  pageMarkChange: "Tell the agent what to change there: it shows the page again with the change made.",
   canvasEditsWaiting: "Show the edit the agent waits for you to allow or reject.",
   canvasChanges: "The files this turn changed, or all uncommitted changes, with their line changes.",
   canvasApp: "The app open in this workspace, which you and the agent change together. Every conversation that shows it works on the same document.",

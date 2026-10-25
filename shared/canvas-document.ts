@@ -1,5 +1,6 @@
 import { APP_MEDIA_PATH, APP_STORAGE_CHARACTERS, type AppStorageItems } from "./apps.ts";
 import type { PluginItem } from "./canvas-plugins.ts";
+import { MAX_MARKED_HTML, MAX_MARKED_TEXT } from "./page-marks.ts";
 
 export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
@@ -55,6 +56,10 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-fullscreen"; on: unknown }
   /** A message the user wrote in the view for the agent, sent as the composer sends; answered as "item-send" is. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-prompt"; requestId: string; text: unknown }
+  /** What the user marked on a page that takes marks, a PageMark as the page posted it, for the panel to ask the agent about. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "mark"; mark: unknown }
+  /** The page left point mode by itself, as on Esc. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "pointing"; on: false }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -77,6 +82,16 @@ export const CAPTURE_LIBRARY_PATH = "/modern-screenshot.mjs";
 /** Tells a canvas page the panel's theme changed, since a sandboxed frame does not inherit the panel's color-scheme. */
 export function canvasThemeMessage(theme: CanvasTheme) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "theme", theme };
+}
+
+/** Turns point mode on or off on a page that takes marks: the page outlines what is under the pointer, and a click picks it instead of doing what the page does. */
+export function canvasPointMessage(on: boolean) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "point", on };
+}
+
+/** The panel is done with the page's last mark, sent or cancelled, so the page stops showing it. */
+export function canvasMarkDoneMessage() {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "mark-done" };
 }
 
 /** Tells a canvas page it went out of sight behind another conversation's canvas, where its videos and sounds must not play on. */
@@ -513,6 +528,192 @@ export const TEXT_CONTRAST_SCRIPT = `
   };
 `;
 
+/**
+ * What lets the user mark part of a page to ask the agent about: selected text gets an "Ask about this" pill, and in point
+ * mode the element under the pointer is outlined and a click picks it, before the page's own handlers see the click. Its
+ * outlines and pill live in a shadow root, out of reach of the page's styles. Like the app bridge, it takes the
+ * phone's injected messages, which have no source.
+ */
+function pageMarking(itemId: string) {
+  return `(() => {
+  const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
+  const itemId = ${JSON.stringify(itemId)};
+  const MAX_TEXT = ${MAX_MARKED_TEXT};
+  const MAX_HTML = ${MAX_MARKED_HTML};
+  const SUMMARY_CHARACTERS = 200;
+  const post = (message) => parent.postMessage({ source, itemId, ...message }, "*");
+  const host = document.createElement("mirador-marks");
+  host.style.cssText = "all:initial!important;position:absolute!important;left:0!important;top:0!important;width:0!important;height:0!important;z-index:2147483647!important;pointer-events:none!important;display:block!important";
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = '<style>' +
+    '.outline,.chosen{position:absolute;box-sizing:border-box;border:2px solid #2563eb;border-radius:3px;background:rgb(37 99 235/0.08);display:none}' +
+    '.chosen{border-color:#d97706;background:rgb(217 119 6/0.1)}' +
+    '.pill{position:absolute;display:none;pointer-events:auto;font:500 12px/1.4 system-ui,sans-serif;padding:4px 10px;border:none;border-radius:999px;background:#2563eb;color:#fff;box-shadow:0 2px 8px rgb(0 0 0/0.25);cursor:pointer;white-space:nowrap}' +
+    '</style><div class="outline"></div><div class="chosen"></div><button class="pill" type="button">Ask about this</button>';
+  const [outline, chosen, pill] = ["outline", "chosen", "pill"].map((name) => shadow.querySelector("." + name));
+  const attach = () => document.documentElement.append(host);
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", attach);
+  else attach();
+  const crosshair = document.createElement("style");
+  crosshair.textContent = "*,*::before,*::after{cursor:crosshair!important;touch-action:none!important}";
+  document.head.append(crosshair);
+  crosshair.sheet.disabled = true;
+
+  const placeOver = (box, rect) => {
+    box.style.display = "block";
+    box.style.left = rect.left + scrollX + "px";
+    box.style.top = rect.top + scrollY + "px";
+    box.style.width = rect.width + "px";
+    box.style.height = rect.height + "px";
+  };
+  const hide = (box) => (box.style.display = "none");
+  const clipped = (text, most) => (text.length > most ? text.slice(0, most - 1) + "…" : text);
+  const stepTo = (element) => {
+    const tag = element.localName;
+    if (element.id) return tag + "#" + CSS.escape(element.id);
+    const firstClass = element.classList.length ? "." + CSS.escape(element.classList[0]) : "";
+    const sameTag = element.parentElement ? [...element.parentElement.children].filter((sibling) => sibling.localName === tag) : [];
+    return tag + firstClass + (sameTag.length > 1 ? ":nth-of-type(" + (sameTag.indexOf(element) + 1) + ")" : "");
+  };
+  const pathTo = (element) => {
+    const steps = [];
+    for (let node = element; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      steps.unshift(stepTo(node));
+      if (node.id) break;
+    }
+    return steps.join(" > ") || element.localName;
+  };
+  const withShortAttributes = (element) => {
+    const shell = element.cloneNode(false);
+    [...shell.attributes].forEach((attribute) => (attribute.value = clipped(attribute.value, SUMMARY_CHARACTERS)));
+    return shell.outerHTML;
+  };
+  const htmlOf = (element) => {
+    const html = element.outerHTML;
+    if (html.length <= MAX_HTML) return html;
+    const shell = withShortAttributes(element);
+    const close = "</" + element.localName + ">";
+    if (!shell.endsWith(close)) return clipped(shell, MAX_HTML);
+    const text = (element.textContent || "").replace(/\\s+/g, " ").trim();
+    return clipped(shell.slice(0, -close.length), MAX_HTML - SUMMARY_CHARACTERS - close.length - 1) + clipped(text, SUMMARY_CHARACTERS) + "…" + close;
+  };
+  const described = (element) => ({ path: pathTo(element), html: htmlOf(element) });
+
+  let selected = null;
+  const typingInAField = () => {
+    const focused = document.activeElement;
+    return Boolean(focused && (focused.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName)));
+  };
+  const selectedRange = () => {
+    const selection = getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || typingInAField() || !selection.toString().trim()) return null;
+    return selection.getRangeAt(0);
+  };
+  const placePill = () => {
+    const rects = [...selected.getClientRects()].filter((rect) => rect.width || rect.height);
+    const end = rects[rects.length - 1] || selected.getBoundingClientRect();
+    pill.style.display = "block";
+    const room = document.documentElement.scrollWidth - pill.offsetWidth - 4;
+    pill.style.left = Math.max(4, Math.min(room, end.right + scrollX - pill.offsetWidth / 2)) + "px";
+    pill.style.top = end.bottom + scrollY + 6 + "px";
+  };
+  const offerToAsk = () => {
+    if (pointing) return;
+    selected = selectedRange();
+    if (selected) placePill();
+    else hide(pill);
+  };
+  addEventListener("pointerup", (event) => event.target !== host && setTimeout(offerToAsk, 0), true);
+  addEventListener("keyup", offerToAsk, true);
+  document.addEventListener("selectionchange", () => {
+    if (selected && !selectedRange()) {
+      selected = null;
+      hide(pill);
+    }
+  });
+  const keepSelection = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  pill.addEventListener("pointerdown", keepSelection);
+  pill.addEventListener("mousedown", keepSelection);
+  pill.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!selected) return;
+    const holder = selected.commonAncestorContainer;
+    const element = holder instanceof Element ? holder : holder.parentElement;
+    post({ kind: "mark", mark: { kind: "text", text: clipped(selected.toString().trim(), MAX_TEXT), element: described(element) } });
+    hide(pill);
+  });
+
+  let pointing = false;
+  let hovered = null;
+  let picked = null;
+  const startPointing = () => {
+    pointing = true;
+    selected = null;
+    hide(pill);
+    crosshair.sheet.disabled = false;
+  };
+  const stopPointing = () => {
+    pointing = false;
+    hovered = null;
+    hide(outline);
+    crosshair.sheet.disabled = true;
+  };
+  const swallowed = (event) => {
+    if (!pointing || !event.isTrusted) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return true;
+  };
+  ["pointerdown", "mousedown", "pointerup", "mouseup", "dblclick", "auxclick", "contextmenu", "touchstart", "touchmove", "touchend"].forEach((type) =>
+    addEventListener(type, swallowed, { capture: true, passive: false }),
+  );
+  addEventListener("click", (event) => {
+    if (!swallowed(event) || !(event.target instanceof Element)) return;
+    picked = event.target;
+    stopPointing();
+    placeOver(chosen, picked.getBoundingClientRect());
+    post({ kind: "mark", mark: { kind: "element", element: described(picked) } });
+  }, true);
+  addEventListener("pointermove", (event) => {
+    if (!pointing || event.target === hovered) return;
+    hovered = event.target instanceof Element ? event.target : null;
+    if (hovered) placeOver(outline, hovered.getBoundingClientRect());
+    else hide(outline);
+  }, true);
+  addEventListener("pointerout", (event) => {
+    if (!pointing || event.relatedTarget) return;
+    hovered = null;
+    hide(outline);
+  }, true);
+  addEventListener("keydown", (event) => {
+    if (!pointing || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    stopPointing();
+    post({ kind: "pointing", on: false });
+  }, true);
+  const followScrolling = () => {
+    if (selected && pill.style.display === "block") placePill();
+    if (picked) placeOver(chosen, picked.getBoundingClientRect());
+    if (hovered) placeOver(outline, hovered.getBoundingClientRect());
+  };
+  addEventListener("scroll", followScrolling, true);
+  addEventListener("resize", followScrolling);
+  addEventListener("message", (event) => {
+    const data = event.data;
+    if ((event.source !== parent && event.source !== null) || !data || data.source !== source) return;
+    if (data.kind === "point") (data.on ? startPointing : stopPointing)();
+    if (data.kind === "mark-done") {
+      picked = null;
+      hide(chosen);
+    }
+  });
+})();`;
+}
+
 function frameReporter(itemId: string, theme: CanvasTheme, assetsOrigin: string) {
   return `(() => {
   const itemId = ${JSON.stringify(itemId)};
@@ -770,15 +971,23 @@ const PADDED_PAGE_STYLE = "<style>html{padding:0 8px}body{margin-left:0;margin-r
 /**
  * Wraps agent HTML (a fragment or a full document) so our CSP, import map and error
  * reporter come before anything the agent wrote; the parser folds the agent's own
- * <html>/<head> tags into the already-open elements.
+ * <html>/<head> tags into the already-open elements. A `markable` page, the agent's
+ * shown page, also lets the user mark part of it to ask about.
  */
-export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string, theme: CanvasTheme, { padded = false, policy = {} }: { padded?: boolean; policy?: CanvasPagePolicy } = {}) {
+export function buildCanvasDocument(
+  html: string,
+  itemId: string,
+  assetsOrigin: string,
+  theme: CanvasTheme,
+  { padded = false, policy = {}, markable = false }: { padded?: boolean; policy?: CanvasPagePolicy; markable?: boolean } = {},
+) {
   const withoutDoctype = html.replace(/^\s*<!doctype[^>]*>/i, "");
   return [
     "<!doctype html>",
     `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy([assetsOrigin], [assetsOrigin], policy))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
+    ...(markable ? [`<script>${pageMarking(itemId)}</script>`] : []),
     `<script>${frameReporter(itemId, theme, assetsOrigin)}</script>`,
     "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif;overflow-wrap:break-word}</style>",
     ...(padded ? [PADDED_PAGE_STYLE] : []),
