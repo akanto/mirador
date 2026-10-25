@@ -24,6 +24,7 @@ import type {
 import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { pluginItemOfSavedChecklist, type SavedChecklist } from "./saved-checklists.ts";
+import { pluginItemOfSavedTour, type SavedTour } from "./saved-tours.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
 import type { TerminalLayout } from "../shared/terminal-layout.ts";
 import { defaultVoiceSettings, withThisMacModels, type VoiceSettings } from "../shared/voice.ts";
@@ -265,6 +266,7 @@ export class Store {
     this.addMissingColumns();
     this.shareSidebarOrder();
     this.handSavedChecklistsToThePlugin();
+    this.handSavedToursToThePlugin();
     if (hadPromptTemplates && !keptTrackOfOfferedTemplates) this.markTemplatesOffered(TEMPLATES_OFFERED_BEFORE_TRACKING);
     this.offerNewDefaultTemplates();
   }
@@ -1139,6 +1141,15 @@ export class Store {
     const now = Date.now();
     saved.forEach((row) => {
       const item = pluginItemOfSavedChecklist(JSON.parse(row.item) as SavedChecklist, now);
+      this.db.query("UPDATE canvas_items SET item = ? WHERE id = ?").run(JSON.stringify(item), item.id);
+    });
+  }
+
+  private handSavedToursToThePlugin() {
+    const saved = this.db.query("SELECT item FROM canvas_items WHERE json_extract(item, '$.kind') = 'tour'").all() as { item: string }[];
+    const now = Date.now();
+    saved.forEach((row) => {
+      const item = pluginItemOfSavedTour(JSON.parse(row.item) as SavedTour, now);
       this.db.query("UPDATE canvas_items SET item = ? WHERE id = ?").run(JSON.stringify(item), item.id);
     });
   }

@@ -15,7 +15,6 @@ export function canvasInstructions(assetsOrigin: string, plugins = NO_CANVAS_PLU
 
 - show: render an HTML page: architecture or flow diagrams, UI mockups, side-by-side comparisons, charts, 3D scenes, visual explanations, code-review walkthroughs.
 - ask: whenever you need the user to decide between options (design choices, approaches, trade-offs), ask here instead of in plain text. Give each option a short label and, when it helps, an HTML preview. A question takes the canvas's place of what you showed before, so to ask about a page, pass it as the question's html rather than calling show first. When you have more than one thing to ask, ask them all in one call with questions, one entry each; never fold several questions into one, or offer \"accept all\" or \"change some answers\" as options.
-- tour: when you explain how code works, or walk the user through code you changed, publish a guided tour of its flow with this tool rather than show: steps anchored to lines, which the page shows with the code. Pass since to mark what you changed and show its diff.
 - review: when you review code changes (a pull request or a branch), publish the review with this tool rather than show. The user reads it as a guided tour of the code flow, the diff with your findings on it, and posts the findings they keep to the pull request.
 - update_review: to change parts of a review already shown (reword a finding, add or take one out, a new verdict), change just those parts with this tool; the user keeps their place in the review. Publish the whole review again only when the code under review changed.${linesAfter(plugins.instructions)}
 
@@ -29,7 +28,6 @@ When someone is viewing the conversation, show reports back script errors from t
 /** Appended to Claude Code's and pi's system prompt when Settings ask for the canvas often; the canvas server's own instructions stay the reference for how pages render. */
 export const canvasUseGuidance = (plugins = NO_CANVAS_PLUGINS) => `# Canvas
 This conversation runs in Mirador, where the user reads a canvas panel next to the chat. Pages there are much easier for them to read than long terminal text, so reach for the canvas server's show, tour, ask and checklist tools whenever a page would be clearer:
-- tour: explaining how code works, and at the end of a substantial coding task, walking the user through what you changed (pass since) instead of a summary page. Keep the chat reply to a few lines that point at the tour.
 - show: explaining how a system works (architecture, sequences); comparing two or more options; results that are tables, timelines or before/after; and the summary at the end of a substantial piece of work that is not a code change. Keep the chat reply to a few lines that point at the page.
 - ask: every choice you would otherwise put to the user in text, including "which approach?", "help me decide" and "should I go ahead?". Give the options, mark the one you recommend, and add a preview when it helps.${linesAfter(plugins.often)}
 - Keep pages lean: plain semantic HTML and a little CSS, no decoration for its own sake.

@@ -355,20 +355,6 @@ describe("CanvasService", () => {
     expect(await problems({ summary: "?" })).toEqual(["This conversation has no review to change; publish one with the review tool."]);
     expect(await problems({ review: "r9", summary: "?" })).toEqual(["review: r9 is not a review in this conversation."]);
   });
-
-  test("a tour is a canvas item of its own, and a changed file reads as it was when the tour was published, not as it is now", async () => {
-    const { store, canvas } = setUp();
-    const { directory } = gitRepository();
-    writeFileSync(join(directory, "service.ts"), "export function serve() {\n  return load() + 2;\n}\n");
-
-    const item = await canvas.tour("c1", { title: "Serve", folder: directory, since: "main", summary: "Adds two.", flow: [{ title: "Entry", at: "service.ts:2", say: "Adds." }] });
-    writeFileSync(join(directory, "service.ts"), "changed again\n");
-
-    expect(store.listCanvasItems("c1").map(({ kind, title }) => [kind, title])).toEqual([["tour", "Serve"]]);
-    expect(item.tour.files.map(({ path }) => path)).toEqual(["service.ts"]);
-    expect(await canvas.readReviewedFile(item.id, "service.ts")).toEqual(["export function serve() {", "  return load() + 2;", "}"]);
-    await expect(canvas.readReviewedFile(item.id, "other.ts")).rejects.toThrow("other.ts is not a file this tour shows changes of.");
-  });
 });
 
 describe("CanvasService pages shown while nobody viewed them", () => {

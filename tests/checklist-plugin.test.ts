@@ -24,12 +24,12 @@ describe("the checklist plugin Mirador comes with", () => {
   test("its tools are pre-allowed, and its lines of guidance stand where the checklist's always stood", async () => {
     const { plugins } = await setUp();
     const { guidance } = plugins;
-    expect(guidance.toolNames).toEqual(["checklist", "update_checklist"]);
+    expect(guidance.toolNames).toEqual(expect.arrayContaining(["checklist", "update_checklist"]));
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toEqual(expect.arrayContaining(["mcp__canvas__checklist", "mcp__canvas__update_checklist"]));
     expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("only when the code under review changed.\n- checklist: when you work through several steps,");
-    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("or in update_checklist's result.\n\nRendering environment:");
+    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("or in update_checklist's result.\n- tour:");
     expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- checklist: work with several steps,");
-    expect(canvasUseGuidance(guidance)).toContain("don't keep the same steps in your to-do list too.\n- Keep pages lean");
+    expect(canvasUseGuidance(guidance)).toContain("don't keep the same steps in your to-do list too.\n- tour:");
   });
 
   test("a published checklist goes in the tab with its count; the agent's ticks change it in place, as the agent's change", async () => {

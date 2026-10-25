@@ -25,7 +25,6 @@ import { applyReviewEdit, readEditAnchors, REVIEW_NOT_CHANGED, type ReviewEdit }
 import { openInIdea } from "../review/editor.ts";
 import { ghCli, gitHubCliProblemOn, PendingReviewOfOtherCommit, postPendingReview, PullRequestMovedOn, type GitHubCli } from "../review/github.ts";
 import { allOrEveryProblem, reviewedFileLines, ReviewProblems, snapshotReview, type ReviewRequest } from "../review/snapshot.ts";
-import { snapshotTour, touredFileLines, type TourRequest } from "../review/tour.ts";
 
 const RENDER_REPORT_TIMEOUT_MS = 6000;
 
@@ -160,19 +159,6 @@ export class CanvasService {
     });
   }
 
-  async tour(conversationId: string, request: TourRequest): Promise<TourItem> {
-    const tour = await snapshotTour(request);
-    return this.save({
-      id: crypto.randomUUID(),
-      conversationId,
-      kind: "tour",
-      title: request.title,
-      tour,
-      status: "shown",
-      createdAt: Date.now(),
-    });
-  }
-
   /** What the canvas has for the agent to hear of with the user's next message. */
   notesForAgent(conversationId: string): CanvasNote[] {
     return [this.pageErrorsNote(conversationId)].filter((note) => note !== null);
@@ -291,15 +277,13 @@ export class CanvasService {
 
   openInEditor(itemId: string, path: string, line: number) {
     const item = this.store.findCanvasItem(itemId);
-    const root = item?.kind === "review" ? item.review.repository : item?.kind === "tour" ? item.tour.folder : undefined;
-    if (!root) throw new Error(UNKNOWN_WALKTHROUGH);
-    openInIdea(root, path, line);
+    if (item?.kind !== "review") throw new Error(UNKNOWN_WALKTHROUGH);
+    openInIdea(item.review.repository, path, line);
   }
 
   async readReviewedFile(itemId: string, path: string) {
     const item = this.store.findCanvasItem(itemId);
     if (item?.kind === "review") return reviewedFileLines(item.review, path);
-    if (item?.kind === "tour") return touredFileLines(item.tour, path);
     throw new Error(UNKNOWN_WALKTHROUGH);
   }
 

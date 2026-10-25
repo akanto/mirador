@@ -1,4 +1,4 @@
-import type { ReviewItem, TourItem } from "../shared/model.ts";
+import type { ReviewItem } from "../shared/model.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { useReviewPaneShares } from "./paneLayouts.ts";
@@ -45,6 +45,6 @@ function usePanelWalkthroughHost(itemId: string, conversationId: string): Walkth
   };
 }
 
-export function PanelWalkthrough({ item }: { item: ReviewItem | TourItem }) {
+export function PanelWalkthrough({ item }: { item: ReviewItem }) {
   return <WalkthroughView item={item} host={usePanelWalkthroughHost(item.id, item.conversationId)} />;
 }

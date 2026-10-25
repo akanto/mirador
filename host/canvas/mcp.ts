@@ -24,26 +24,6 @@ const flowStepSchema = z.object({
   say: z.string().min(1).describe("Markdown: what happens here and why it matters, in a few sentences."),
 });
 
-const tourStepSchema = flowStepSchema.extend({
-  at: z
-    .string()
-    .min(3)
-    .describe('Where this step happens; a range for a whole method. Written "path:line" or "path:start-end": the path relative to folder, lines of the file as it is now.'),
-});
-
-const tourSchema = z.object({
-  title: z.string().min(1).describe('What the tour is about, e.g. "How a message reaches the agent".'),
-  folder: z.string().min(1).describe("Absolute path of the folder the steps' paths are relative to, usually your working directory."),
-  since: z
-    .string()
-    .optional()
-    .describe(
-      "To walk the user through what you changed: the git ref the changes count from, e.g. HEAD for uncommitted work, or the commit the task started from. Changed lines are marked in the steps and the diff gets a tab. Leave it out to show the code as it is.",
-    ),
-  summary: z.string().min(1).describe("Markdown for the user: what the code does, or what you changed, and how it flows, in plain words, so they understand it fast."),
-  flow: z.array(tourStepSchema).min(1).describe("The tour, in the order the code runs: the entry point first, then each place control or data goes."),
-});
-
 const findingSchema = z.object({
   severity: z.enum(findingSeverities).describe("blocker: must change before merging; issue: should change; question: needs the author's answer; nit: optional polish."),
   checked: z.enum(["confirmed", "plausible"]).describe("confirmed: you verified it (ran, traced or tested it); plausible: suspected, not verified."),
@@ -290,26 +270,6 @@ function buildCanvasServer(
         return { content: [{ type: "text", text: answerAsToolResult(answer) }] };
       } finally {
         clearInterval(heartbeat);
-      }
-    },
-  );
-
-  server.registerTool(
-    "tour",
-    {
-      description:
-        "Publish a guided tour of the code flow to the user's canvas: a summary, then steps in the order the code runs, each anchored to lines the page shows with the code around them (read from the files, so do not paste code). Use it to explain how code works, or with since to walk the user through what you changed: changed lines are marked and the diff gets a tab. The user can ask you about any lines. Anchors are checked; if any are wrong, nothing is shown and the result lists them all. To change a tour, publish it again.",
-      inputSchema: tourSchema,
-      _meta: loadedUpFront,
-    },
-    async (request, ctx) => {
-      try {
-        const { id, tour } = await canvas.tour(await callingConversation(ctx), request);
-        const changes = tour.changes ? `, ${tour.files.length} files changed since ${tour.changes.since}` : "";
-        return { content: [{ type: "text", text: `Shown to the user as tour ${id}: ${tour.flow.length} flow steps${changes}.` }] };
-      } catch (error) {
-        if (error instanceof ReviewProblems) return toolError(error.message);
-        throw error;
       }
     },
   );

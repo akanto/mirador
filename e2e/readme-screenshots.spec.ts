@@ -445,7 +445,7 @@ test("the README's screenshots", async ({ page }) => {
 
   await test.step("a tour of what the agent changed", async () => {
     await callCanvasTool(host, ids.stopDoubleCharge, "tour", fixTour);
-    const view = page.locator(".review");
+    const view = page.frameLocator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin iframe").locator(".review");
     await view.getByRole("tab", { name: /Flow/ }).click();
     await expect(view.locator(".code-row.added")).toContainText(["idempotencyKey: cart.id"]);
     await save(page, "tour");

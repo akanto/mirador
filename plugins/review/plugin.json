@@ -1,0 +1,6 @@
+{
+  "name": "review",
+  "title": "Code review",
+  "api": 3,
+  "canvas": { "host": "host.ts", "view": "view.tsx" }
+}

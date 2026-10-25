@@ -472,7 +472,7 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
   );
 }
 
-const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?", review: "⇄", tour: "↯" };
+const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?", review: "⇄" };
 
 /** The tab's header with only the agent's plan in it. */
 const PLAN_ICON = "☑";
@@ -978,9 +978,6 @@ export function CanvasPanel({
         )}
         {!tab && selected?.kind === "plugin" && <PluginItemView key={selected.id} item={selected} viewPath={canvasViews[selected.plugin]} assetsOrigin={assetsOrigin} />}
         {!tab && selected?.kind === "review" && (
-          <PanelWalkthrough key={selected.id} item={selected} />
-        )}
-        {!tab && selected?.kind === "tour" && (
           <PanelWalkthrough key={selected.id} item={selected} />
         )}
         {!tab && selected?.kind === "ask" && (
