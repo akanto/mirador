@@ -159,6 +159,8 @@ export interface Profile {
   prelaunch: string;
   /** The agent's mode a conversation takes when it starts with the profile or moves to it; null leaves the agent's own. */
   mode: string | null;
+  /** The agent's effort level, taken like the mode; skipped when the conversation's model does not offer it. */
+  effort: string | null;
   /** YOLO, taken like the mode. */
   bypassPermissions: boolean;
   /** Questions, taken like the mode. */

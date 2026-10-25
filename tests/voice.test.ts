@@ -79,6 +79,7 @@ const profile = (environment: string): Profile => ({
   environment,
   prelaunch: "",
   mode: null,
+  effort: null,
   bypassPermissions: false,
   askMode: "wait",
   color: null,

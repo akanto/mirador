@@ -29,6 +29,7 @@ import {
   type WaitingFor,
   type Workspace,
 } from "../shared/model.ts";
+import { offersValue } from "../shared/config-options.ts";
 import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
 import { messageAtEnd, type JobWaitRequest } from "../shared/job-waits.ts";
 import { panelCommandRun } from "../shared/panel-commands.ts";
@@ -541,7 +542,7 @@ export class ConversationService {
       this.setStatus(conversationId, "starting", "Switching profile…");
       await released;
       const sessionId = await this.openSession(conversationId);
-      await this.applyProfileMode(conversationId, sessionId);
+      await this.applyProfileChoices(conversationId, sessionId);
       this.setStatus(conversationId, "idle");
       return sessionId;
     })
@@ -1279,7 +1280,7 @@ export class ConversationService {
     this.muteNotifier(conversation, created.sessionId);
     this.bindSession(conversationId, created.sessionId, created.configOptions);
     await this.restoreConfigChoices(conversationId, created.sessionId, conversation.configOptions);
-    if (isFirstSession) await this.applyProfileMode(conversationId, created.sessionId);
+    if (isFirstSession) await this.applyProfileChoices(conversationId, created.sessionId);
     if (this.onUsersOwnSetup(conversation)) await this.applyTestModelOverride(conversationId, created.sessionId);
     return created.sessionId;
   }
@@ -1312,7 +1313,7 @@ export class ConversationService {
     this.closeSessionIfConversationDeleted(conversationId, harness, loadedId);
     this.bindSession(conversationId, loadedId, loaded.configOptions);
     if (conversation.harness === "claude") await this.restoreTranscriptModel(conversationId, loadedId, sessionId);
-    await this.applyProfileMode(conversationId, loadedId);
+    await this.applyProfileChoices(conversationId, loadedId);
     this.setStatus(conversationId, "idle");
     return loadedId;
   }
@@ -1376,12 +1377,16 @@ export class ConversationService {
     return claudeConfigDir(profileEnvironment(profileId === null ? null : (this.store.findProfile(profileId) ?? null)));
   }
 
-  /** A conversation takes its profile's mode when it starts with the profile or moves to it; after that its own choice stands. */
-  private async applyProfileMode(conversationId: string, sessionId: string) {
-    const { profileId, configOptions } = this.get(conversationId);
-    const mode = profileId === null ? null : this.store.findProfile(profileId)?.mode;
-    const modeOption = configOptions.find(({ category }) => category === "mode");
-    if (mode && modeOption) await this.trySetConfigOption(conversationId, sessionId, modeOption.id, mode);
+  /** A conversation takes its profile's mode and effort when it starts with the profile or moves to it; after that its own choice stands. */
+  private async applyProfileChoices(conversationId: string, sessionId: string) {
+    const { profileId } = this.get(conversationId);
+    const profile = profileId === null ? undefined : this.store.findProfile(profileId);
+    const modeOption = this.get(conversationId).configOptions.find(({ category }) => category === "mode");
+    if (profile?.mode && modeOption) await this.trySetConfigOption(conversationId, sessionId, modeOption.id, profile.mode);
+    const effortOption = this.get(conversationId).configOptions.find(({ category }) => category === "thought_level");
+    if (profile?.effort && effortOption && offersValue(effortOption, profile.effort)) {
+      await this.trySetConfigOption(conversationId, sessionId, effortOption.id, profile.effort);
+    }
   }
 
   /** A resumed or replacement session starts from the agent's defaults, so re-apply what the user had chosen. */

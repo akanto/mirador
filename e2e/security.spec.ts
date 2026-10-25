@@ -120,7 +120,7 @@ test("a profile's environment and prelaunch command reach a joined device only w
         socket.onopen = () => socket.send(JSON.stringify({ type: "profile.save", requestId: "save-work", profile }));
         socket.onmessage = ({ data }) => JSON.parse(String(data)).type === "profile.saved" && resolve(socket.close());
       }),
-    { name: "Work", harness: "claude", ...launch, mode: null, bypassPermissions: false, askMode: "wait", color: null },
+    { name: "Work", harness: "claude", ...launch, mode: null, effort: null, bypassPermissions: false, askMode: "wait", color: null },
   );
 
   const code = /Invite code: (\S+)/.exec(host.mirador("invite"))![1]!;

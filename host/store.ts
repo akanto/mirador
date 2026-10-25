@@ -138,6 +138,7 @@ const addedColumns = [
   { table: "workspaces", column: "group_id", definition: "TEXT" },
   { table: "conversations", column: "rewound_through_seq", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "conversations", column: "context_usage", definition: "TEXT" },
+  { table: "profiles", column: "effort", definition: "TEXT" },
 ];
 
 /** A turn that ended while nobody looked at its conversation, or the owner's Unread mark, until someone opens it. */
@@ -162,6 +163,7 @@ type ProfileRow = {
   environment: string;
   prelaunch: string;
   mode: string | null;
+  effort: string | null;
   bypass_permissions: number;
   ask_mode: AskMode;
   color: string | null;
@@ -209,6 +211,7 @@ const toProfile = (row: ProfileRow): Profile => ({
   environment: row.environment,
   prelaunch: row.prelaunch,
   mode: row.mode,
+  effort: row.effort,
   bypassPermissions: row.bypass_permissions === 1,
   askMode: row.ask_mode,
   color: isPastel(row.color) ? row.color : null,
@@ -603,9 +606,9 @@ export class Store {
   saveProfile(profile: Profile) {
     this.db
       .query(
-        `INSERT INTO profiles (id, name, harness, environment, prelaunch, mode, bypass_permissions, ask_mode, color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO profiles (id, name, harness, environment, prelaunch, mode, effort, bypass_permissions, ask_mode, color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, environment = excluded.environment, prelaunch = excluded.prelaunch,
-           mode = excluded.mode, bypass_permissions = excluded.bypass_permissions, ask_mode = excluded.ask_mode, color = excluded.color`,
+           mode = excluded.mode, effort = excluded.effort, bypass_permissions = excluded.bypass_permissions, ask_mode = excluded.ask_mode, color = excluded.color`,
       )
       .run(
         profile.id,
@@ -614,6 +617,7 @@ export class Store {
         profile.environment,
         profile.prelaunch,
         profile.mode,
+        profile.effort,
         Number(profile.bypassPermissions),
         profile.askMode,
         profile.color,

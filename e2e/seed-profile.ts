@@ -15,6 +15,7 @@ if (store.listProfiles().length === 0) {
     environment: "",
     prelaunch: "",
     mode: null,
+    effort: null,
     bypassPermissions: false,
     askMode: "wait",
     color: null,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { knownModes } from "../shared/config-options.ts";
+import { knownChoices } from "../shared/config-options.ts";
 import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Pastel, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
@@ -80,13 +80,13 @@ function EnvironmentField({
   );
 }
 
-const AGENTS_OWN_MODE = "";
+const AGENTS_OWN_CHOICE = "";
 
-/** Agent's default first, then the modes the agent listed last, and the profile's own if the agent has not listed it yet. */
-function modeChoices(conversations: Conversation[], harness: HarnessId, saved: string) {
-  const known = knownModes(conversations, harness).map(({ value, name }) => ({ value, name }));
-  const savedButUnknown = saved !== AGENTS_OWN_MODE && !known.some(({ value }) => value === saved) ? [{ value: saved, name: saved }] : [];
-  return [{ value: AGENTS_OWN_MODE, name: "Agent's default" }, ...known, ...savedButUnknown];
+/** Agent's default first, then the choices the agent listed last, and the profile's own if the agent has not listed it yet. */
+function profileChoices(conversations: Conversation[], harness: HarnessId, category: "mode" | "thought_level", saved: string) {
+  const known = knownChoices(conversations, harness, category).map(({ value, name }) => ({ value, name }));
+  const savedButUnknown = saved !== AGENTS_OWN_CHOICE && !known.some(({ value }) => value === saved) ? [{ value: saved, name: saved }] : [];
+  return [{ value: AGENTS_OWN_CHOICE, name: "Agent's default" }, ...known, ...savedButUnknown];
 }
 
 /** A new profile runs an agent this machine has; one named after its agent keeps following the agent picked until it is renamed. */
@@ -110,7 +110,8 @@ function ProfileEditor({
   const [harness, setHarness] = useState<HarnessId>(firstHarness);
   const [environment, setEnvironment] = useState(profile?.environment ?? "");
   const [prelaunch, setPrelaunch] = useState(profile?.prelaunch ?? "");
-  const [mode, setMode] = useState(profile?.mode ?? AGENTS_OWN_MODE);
+  const [mode, setMode] = useState(profile?.mode ?? AGENTS_OWN_CHOICE);
+  const [effort, setEffort] = useState(profile?.effort ?? AGENTS_OWN_CHOICE);
   const [bypassPermissions, setBypassPermissions] = useState(profile?.bypassPermissions ?? false);
   const [askMode, setAskMode] = useState<AskMode>(profile?.askMode ?? "wait");
   const [color, setColor] = useState<Pastel | null>(profile?.color ?? null);
@@ -126,7 +127,8 @@ function ProfileEditor({
     name === profile.name &&
     environment === profile.environment &&
     prelaunch === profile.prelaunch &&
-    mode === (profile.mode ?? AGENTS_OWN_MODE) &&
+    mode === (profile.mode ?? AGENTS_OWN_CHOICE) &&
+    effort === (profile.effort ?? AGENTS_OWN_CHOICE) &&
     bypassPermissions === profile.bypassPermissions &&
     askMode === profile.askMode &&
     color === profile.color;
@@ -138,7 +140,7 @@ function ProfileEditor({
       className="profile-editor"
       onSubmit={(event) => {
         event.preventDefault();
-        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, bypassPermissions, askMode, color });
+        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, effort: effort || null, bypassPermissions, askMode, color });
       }}
     >
       <label>
@@ -156,7 +158,8 @@ function ProfileEditor({
             const picked = event.target.value as HarnessId;
             if (name === harnessLabels[harness]) setName(harnessLabels[picked]);
             setHarness(picked);
-            setMode(AGENTS_OWN_MODE);
+            setMode(AGENTS_OWN_CHOICE);
+            setEffort(AGENTS_OWN_CHOICE);
           }}
         >
           {harnessIds.map((id) => (
@@ -172,7 +175,17 @@ function ProfileEditor({
       <label>
         <span>Mode</span>
         <select aria-label="Profile mode" value={mode} onChange={(event) => setMode(event.target.value)}>
-          {modeChoices(conversations, harness, mode).map((choice) => (
+          {profileChoices(conversations, harness, "mode", mode).map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Effort</span>
+        <select aria-label="Profile effort" value={effort} onChange={(event) => setEffort(event.target.value)}>
+          {profileChoices(conversations, harness, "thought_level", effort).map((choice) => (
             <option key={choice.value} value={choice.value}>
               {choice.name}
             </option>
@@ -194,8 +207,9 @@ function ProfileEditor({
         </select>
       </label>
       <div className="hint">
-        A conversation takes the mode, YOLO and Questions when it starts with this profile or moves to it; its own menus change them
-        after that. The modes are the ones the agent last listed, so they show once one of its conversations has run.
+        A conversation takes the mode, effort, YOLO and Questions when it starts with this profile or moves to it; its own menus
+        change them after that. The modes and effort levels are the ones the agent last listed, so they show once one of its
+        conversations has run. A conversation whose model does not offer the level keeps its own effort.
       </div>
       <div className="field-label">Environment</div>
       <EnvironmentField value={environment} harness={harness} onChange={setEnvironment} startRevealed={!profile} />
