@@ -631,6 +631,10 @@ export interface PluginCanvasItem extends CanvasItemBase {
   dismissed?: boolean;
   /** When the agent last changed it in place, for the tab's toggle to flash. */
   agentEditedAt?: number;
+  /** What came of it, in a few words, beside its title. */
+  outcome?: string;
+  /** A new one takes the room Settings give reviews. */
+  opensWithRoom?: boolean;
 }
 
 export type CanvasItem = ShowItem | AskItem | ReviewItem | TourItem | PluginCanvasItem;

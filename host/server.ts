@@ -620,10 +620,12 @@ export function startServer(services: HostServices) {
     });
   }
 
+  const listedCanvas = (conversationId: string) => canvas.list(conversationId).map((item) => (item.kind === "plugin" ? canvasPlugins.listed(item) : item));
+
   /** A phone that held events before gets only the ones after them, unless a rewind took the last of them away; otherwise the latest turns, and earlier ones when it asks. */
   function lowDataHistory(conversationId: string, { latestTurns, afterSeq, canvasChangedAfter }: LowDataSubscription): ServerMessage {
     const inLowData = (events: StoredEvent[]) => events.map((event) => lowDataEvent(conversationId, event));
-    const history = { type: "conversation.history", conversationId, canvas: canvas.list(conversationId) } as const;
+    const history = { type: "conversation.history", conversationId, canvas: listedCanvas(conversationId) } as const;
     const missed = afterSeq === undefined ? null : store.eventsMissedAfter(conversationId, afterSeq);
     if (missed) {
       const changedCanvas = canvasChangedAfter === undefined ? history.canvas : canvasChangedSince(history.canvas, canvasChangedAfter);
@@ -636,7 +638,7 @@ export function startServer(services: HostServices) {
   /** A page gets the newest turns first, about as much of them at a time as PAGE_HISTORY_SIZE, and earlier ones as it asks. */
   function pageHistory(conversationId: string): ServerMessage {
     const { events, hasEarlier } = pageHistoryBefore(conversationId, Number.MAX_SAFE_INTEGER);
-    return { type: "conversation.history", conversationId, events, canvas: canvas.list(conversationId), hasEarlier };
+    return { type: "conversation.history", conversationId, events, canvas: listedCanvas(conversationId), hasEarlier };
   }
 
   /** The turns before `beforeSeq` that make up the next part of the history, or more to reach back to an event the page wants. */

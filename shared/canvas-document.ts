@@ -51,6 +51,10 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-hint-gone" }
   /** A link the user followed in a plugin item's view, which the sandbox keeps from opening there. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-open"; href: unknown }
+  /** The view asks for the canvas to fill the workspace, or to sit beside the chat again. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-fullscreen"; on: unknown }
+  /** A message the user wrote in the view for the agent, sent as the composer sends; answered as "item-send" is. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-prompt"; requestId: string; text: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -222,6 +226,19 @@ function appBridge(frameId: string, storage: AppStorageItems) {
       parent.postMessage({ source, itemId, requestId, ...message }, "*");
     });
   };
+  const request = (message) => {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer the action.")), ${APP_ANSWER_MS});
+      const settle = (finish, result) => {
+        clearTimeout(timer);
+        replies.delete(requestId);
+        finish(result);
+      };
+      replies.set(requestId, { resolve: (reply) => settle(resolve, reply), reject: (error) => settle(reject, error) });
+      post({ ...message, requestId });
+    });
+  };
   window.mirador = Object.freeze({
     onState(listener) {
       listeners.add(listener);
@@ -258,6 +275,10 @@ export interface PluginItemContext {
   seenAgentEditAt: number | null;
   /** Settings let images from other sites load, so the view may show them rather than link to them. */
   imagesFromOtherSites: boolean;
+  /** Whether the canvas fills the workspace; absent where it can't, as in the tab or on the phone. */
+  fullscreen?: boolean;
+  /** What Settings say text fields do as the user types. */
+  typingAids?: { autocorrect: boolean; predictions: boolean };
 }
 
 /** A plugin's item for its view, posted by the panel on every change. */
@@ -268,6 +289,14 @@ export function pluginItemMessage(item: PluginItem, context: PluginItemContext) 
 /** Mirador's colours, as the panel shows them now, its font and its font scale, as CSS variables named --mirador-…, for a plugin's view to look like the rest of Mirador. */
 export function pluginThemeMessage(variables: Record<string, string>) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "item-theme", variables };
+}
+
+/** `window.mirador` in a plugin's canvas view, as its bridge makes it. */
+export interface PluginViewBridge<Data = unknown> {
+  onItem(listener: (item: PluginItem<Data>, context: PluginItemContext) => void): () => void;
+  send(action: unknown): Promise<unknown>;
+  prompt(text: string): Promise<void>;
+  setFullscreen(on: boolean): void;
 }
 
 /** The plugin's reply to an action the view sent. */
@@ -283,7 +312,8 @@ export function pluginItemReplyFailedMessage(requestId: string, message: string)
 /**
  * `window.mirador` for a plugin's canvas view. `onItem` hands the listener the item the view draws and its context, at
  * once when they are known and again on every change, so the view may start listening whenever its code is ready. `send`
- * hands an action to the plugin's host code and resolves to its reply, or rejects with the reason there is none.
+ * hands an action to the plugin's host code and resolves to its reply, or rejects with the reason there is none; `prompt`
+ * sends the agent a message as the composer would, and `setFullscreen` asks for the canvas to fill the workspace or not.
  * Mirador's look arrives as CSS variables on the page's root, `data-hint` shows as Mirador's own hints, and links open in
  * a new tab, as the sandbox would not let them.
  */
@@ -338,6 +368,19 @@ function pluginItemBridge(frameId: string) {
     event.preventDefault();
     post({ kind: "item-open", href: link.href });
   });
+  const request = (message) => {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer the action.")), ${APP_ANSWER_MS});
+      const settle = (finish, result) => {
+        clearTimeout(timer);
+        replies.delete(requestId);
+        finish(result);
+      };
+      replies.set(requestId, { resolve: (reply) => settle(resolve, reply), reject: (error) => settle(reject, error) });
+      post({ ...message, requestId });
+    });
+  };
   window.mirador = Object.freeze({
     onItem(listener) {
       listeners.add(listener);
@@ -345,17 +388,13 @@ function pluginItemBridge(frameId: string) {
       return () => listeners.delete(listener);
     },
     send(action) {
-      const requestId = crypto.randomUUID();
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer the action.")), ${APP_ANSWER_MS});
-        const settle = (finish, result) => {
-          clearTimeout(timer);
-          replies.delete(requestId);
-          finish(result);
-        };
-        replies.set(requestId, { resolve: (reply) => settle(resolve, reply), reject: (error) => settle(reject, error) });
-        post({ kind: "item-send", requestId, action });
-      });
+      return request({ kind: "item-send", action });
+    },
+    prompt(text) {
+      return request({ kind: "item-prompt", text }).then(() => undefined);
+    },
+    setFullscreen(on) {
+      post({ kind: "item-fullscreen", on: Boolean(on) });
     },
   });
   post({ kind: "item-ready" });

@@ -6,13 +6,24 @@ import type { CanvasHost, CanvasPluginContext } from "../../../../shared/canvas-
  */
 type Card = { text: string; presses: number; heardPresses: number };
 type Steps = { steps: string[]; done: number };
-type BoardData = Card | Steps;
+type Report = { verdict: string; holding?: boolean };
+type BoardData = Card | Steps | Report;
+
+/** Reports held in this run of Mirador; one that says it's held but isn't here was held before a restart. */
+const held = new Set<string>();
 
 const newest = (context: CanvasPluginContext<BoardData>, type: string) => context.items().findLast((item) => item.type === type && !item.dismissed);
 
 const host: CanvasHost<BoardData> = {
   items: {
     card: { icon: "▤", placement: "page" },
+    report: {
+      icon: "▥",
+      placement: "page",
+      opensWithRoom: true,
+      outcome: (data) => (data as Report).verdict || undefined,
+      listed: ({ id, data }) => ((data as Report).holding && !held.has(id) ? { ...(data as Report), holding: false } : data),
+    },
     steps: { icon: "◔", placement: "tab", count: (data) => `${(data as Steps).done}/${(data as Steps).steps.length}` },
   },
   tools: {
@@ -31,6 +42,24 @@ const host: CanvasHost<BoardData> = {
         const card = newest(context, "card");
         if (!card) throw new Error("There is no card to change; show one with show_card.");
         context.change(card.id, { data: { ...(card.data as Card), text: (input as { text: string }).text } });
+        return "Changed.";
+      },
+    },
+    show_report: {
+      description: "Show a report with a verdict, which takes the room reviews take.",
+      input: { type: "object", properties: { title: { type: "string" }, verdict: { type: "string" } }, required: ["title", "verdict"] },
+      run(input, { publish }) {
+        const { title, verdict } = input as { title: string; verdict: string };
+        return `Shown as ${publish({ type: "report", title, data: { verdict } }).id}.`;
+      },
+    },
+    change_verdict: {
+      description: "Change the verdict of the newest report.",
+      input: { type: "object", properties: { verdict: { type: "string" } }, required: ["verdict"] },
+      run(input, context) {
+        const report = newest(context, "report");
+        if (!report) throw new Error("There is no report; show one with show_report.");
+        context.change(report.id, { data: { ...(report.data as Report), verdict: (input as { verdict: string }).verdict } });
         return "Changed.";
       },
     },
@@ -59,8 +88,18 @@ const host: CanvasHost<BoardData> = {
     instructions: "- show_card: show a card the user can press.",
     often: "- show_card: when a card says it better than words.",
   },
-  action(item, action, context) {
-    if ((action as { kind?: unknown }).kind !== "press" || item.type !== "card") throw new Error("A card can only be pressed.");
+  async action(item, action, context) {
+    const { kind, key, value, text, afterTurn, inThisRun } = action as Record<string, unknown>;
+    if (kind === "remember") {
+      context.storage.set(key as string, value);
+      return context.storage.get(key as string) ?? null;
+    }
+    if (kind === "ask") return void (await context.prompt(text as string, { afterTurn: afterTurn as boolean }));
+    if (kind === "hold") {
+      if (inThisRun) held.add(item.id);
+      return void context.change(item.id, { data: { ...(item.data as Report), holding: true } });
+    }
+    if (kind !== "press" || item.type !== "card") throw new Error("A card can only be pressed.");
     const card = item.data as Card;
     const pressed = context.change(item.id, { data: { ...card, presses: card.presses + 1 } });
     return { presses: (pressed.data as Card).presses };

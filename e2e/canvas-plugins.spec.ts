@@ -1,7 +1,7 @@
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, primaryModifier, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -30,6 +30,7 @@ const canvasTitle = (page: Page) => page.locator(".canvas-header:visible .canvas
 const canvasKind = (page: Page) => page.locator(".canvas-header:visible .canvas-kind");
 const toggle = (page: Page) => page.locator(".checklist-toggle:visible");
 const pageView = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin iframe");
+const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
 const tabView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
 
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
@@ -139,12 +140,56 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(canvasKind(page)).toHaveText("▤");
   });
 
-  await test.step("with the plugin gone, its card shows what it published instead of a blank page", async () => {
+  await test.step("an item that opens with room takes the full screen as a review does, with what came of it in the bar", async () => {
+    await callCanvasTool(host, conversationId, "show_report", { title: "Report", verdict: "Approve" });
+    await expect(canvasPane(page)).toHaveClass(/fullscreen/);
+    await expect(pageView(page).locator("#text")).toHaveText("Verdict: Approve");
+    await expect(page.locator(".canvas-header:visible .canvas-outcome")).toHaveText("Approve");
+    await callCanvasTool(host, conversationId, "change_verdict", { verdict: "Request changes" });
+    await expect(page.locator(".canvas-header:visible .canvas-outcome")).toHaveText("Request changes");
+  });
+
+  await test.step("the view knows whether the canvas fills the workspace, and changes that", async () => {
+    await expect(pageView(page).locator("#fullscreen")).toHaveText("Full screen");
+    await pageView(page).getByRole("button", { name: "Toggle full screen" }).click();
+    await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
+    await expect(pageView(page).locator("#fullscreen")).toHaveText("Beside the chat");
+    await pageView(page).getByRole("button", { name: "Toggle full screen" }).click();
+    await expect(canvasPane(page)).toHaveClass(/fullscreen/);
+    await pageView(page).getByRole("button", { name: "Toggle full screen" }).click();
+    await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
+  });
+
+  await test.step("the find shortcut reaches the view that has focus, and finds in the conversation elsewhere", async () => {
+    const mod = await primaryModifier(page);
+    await pageView(page).locator("#title").click();
+    await page.keyboard.press(`${mod}+KeyF`);
+    await expect(pageView(page).locator("#found")).toHaveText("Found 1 times");
+    await expect(page.getByRole("textbox", { name: "Find in this conversation" })).toHaveCount(0);
+    await page.locator(".composer:visible textarea").click();
+    await page.keyboard.press(`${mod}+KeyF`);
+    await expect(page.getByRole("textbox", { name: "Find in this conversation" })).toBeFocused();
+    await expect(pageView(page).locator("#found")).toHaveText("Found 1 times");
+    await page.keyboard.press("Escape");
+  });
+
+  await test.step("the view sends the agent a message as the composer does, and follows Settings for typing", async () => {
+    await pageView(page).getByRole("textbox", { name: "Question" }).fill("What about the cache?");
+    await pageView(page).getByRole("button", { name: "Ask the agent" }).click();
+    await expect(pageView(page).locator("#asked")).toHaveText("Asked");
+    await expect.poll(agentSaw).toContain("What about the cache?\n");
+    await expect(pageView(page).locator("#typing")).toHaveText("Autocorrect off");
+    await page.evaluate(() => localStorage.setItem("mirador-typing-aids", JSON.stringify({ autocorrect: true, predictions: false })));
+    await page.reload();
+    await expect(pageView(page).locator("#typing")).toHaveText("Autocorrect on");
+  });
+
+  await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {
     rmSync(boardFolder, { recursive: true });
     await host.restart();
     await page.reload();
-    await expect(canvasTitle(page)).toHaveText("Hello");
+    await expect(canvasTitle(page)).toHaveText("Report");
     await expect(page.locator(".canvas-panel:visible .plugin-item-missing")).toContainText("The board plugin isn't installed, so this is what it published, as it is.");
-    await expect(page.locator(".canvas-panel:visible .plugin-item-missing pre")).toContainText('"text": "Second"');
+    await expect(page.locator(".canvas-panel:visible .plugin-item-missing pre")).toContainText('"verdict": "Request changes"');
   });
 });

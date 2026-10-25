@@ -94,6 +94,7 @@ const schema = `
   CREATE TABLE IF NOT EXISTS app_storage (
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, app TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
     PRIMARY KEY (workspace_id, app, key));
+  CREATE TABLE IF NOT EXISTS canvas_plugin_storage (plugin TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (plugin, key));
 `;
 
 /** A conversation's terminal tab as the host left it, with what each of its terminals showed by then. */
@@ -393,6 +394,16 @@ export class Store {
   }
 
   /** A null value removes the item. */
+  canvasPluginStorageItem(plugin: string, key: string): unknown {
+    const row = this.db.query("SELECT value FROM canvas_plugin_storage WHERE plugin = ? AND key = ?").get(plugin, key) as { value: string } | null;
+    return row ? JSON.parse(row.value) : undefined;
+  }
+
+  saveCanvasPluginStorageItem(plugin: string, key: string, value: unknown) {
+    if (value === undefined) return void this.db.query("DELETE FROM canvas_plugin_storage WHERE plugin = ? AND key = ?").run(plugin, key);
+    this.db.query("INSERT INTO canvas_plugin_storage (plugin, key, value) VALUES (?, ?, ?) ON CONFLICT(plugin, key) DO UPDATE SET value = excluded.value").run(plugin, key, JSON.stringify(value));
+  }
+
   saveAppStorageItem(workspaceId: string, app: string, key: string, value: string | null) {
     if (value === null) return void this.db.query("DELETE FROM app_storage WHERE workspace_id = ? AND app = ? AND key = ?").run(workspaceId, app, key);
     this.db

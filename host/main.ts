@@ -66,6 +66,7 @@ const loadedPlugins = await loadPlugins(pluginsFolder, shippedPluginsFolder);
 for (const { folder, message } of loadedPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
 const canvasPlugins = new CanvasPlugins(store, hub, loadedPlugins.canvases);
 const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications, canvasPlugins.guidance);
+canvasPlugins.sendsPromptsWith((conversationId, text, { afterTurn }) => conversations.send(conversationId, text, [], { afterTurn }));
 const canvasAssetsOrigins = [
   ...new Set([
     config.canvasAssetsOrigin,

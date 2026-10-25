@@ -225,10 +225,12 @@ function canvasHostFrom(module: Record<string, unknown>): CanvasHost {
   const items = isObject(host.items) ? host.items : {};
   const tools = isObject(host.tools) ? host.tools : {};
   for (const [name, item] of Object.entries(items)) {
-    const { icon, placement, count } = (isObject(item) ? item : {}) as Record<string, unknown>;
-    if (typeof icon !== "string" || !pluginItemPlacements.includes(placement as never) || (count !== undefined && !isFunction(count))) {
-      problems.push(`items.${name} with an icon, a placement of ${pluginItemPlacements.join(" or ")}, and count only as a function`);
+    const { icon, placement, opensWithRoom, ...functions } = (isObject(item) ? item : {}) as Record<string, unknown>;
+    const optionalFunctions = (["count", "outcome", "listed"] as const).map((key) => functions[key]);
+    if (typeof icon !== "string" || !pluginItemPlacements.includes(placement as never) || optionalFunctions.some((value) => value !== undefined && !isFunction(value))) {
+      problems.push(`items.${name} with an icon, a placement of ${pluginItemPlacements.join(" or ")}, and count, outcome and listed only as functions`);
     }
+    if (opensWithRoom !== undefined && typeof opensWithRoom !== "boolean") problems.push(`items.${name} with opensWithRoom only as true or false`);
   }
   for (const [name, tool] of Object.entries(tools)) {
     const { description, input, run } = (isObject(tool) ? tool : {}) as Record<string, unknown>;

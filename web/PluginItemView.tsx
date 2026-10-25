@@ -12,10 +12,13 @@ import {
 import type { PluginCanvasItem } from "../shared/model.ts";
 import { CanvasFrame } from "./Canvas.tsx";
 import { connection } from "./connection.ts";
+import { useEnterWhileBusy } from "./busy-sending.ts";
 import { useExternalImagesBlocked } from "./external-images.ts";
 import { useFontScale } from "./font-scale.ts";
 import { showFramedHint } from "./Hint.tsx";
 import { useShownTheme } from "./theme.ts";
+import { useTypingAids } from "./typing-aids.ts";
+import { usePaneFullscreen } from "./Workspace.tsx";
 
 /** Hands the user's action to the item's plugin on the host and waits for its reply. */
 async function replyTo(itemId: string, action: unknown): Promise<unknown> {
@@ -56,6 +59,12 @@ function onPage(frame: HTMLIFrameElement, anchor: unknown): DOMRect | null {
   return new DOMRect(shown.left + (left as number) * scale, shown.top + (top as number) * scale, (width as number) * scale, (height as number) * scale);
 }
 
+/** Sends what the user wrote in the view to the agent, as the composer sends. */
+function promptFrom(conversationId: string, text: string, afterTurn: boolean) {
+  if (!text.trim()) throw new Error("The message is empty.");
+  if (!connection.send({ type: "conversation.prompt", conversationId, text, imageIds: [], afterTurn })) throw new Error("Mirador is not connected.");
+}
+
 const openable = (href: unknown): href is string => typeof href === "string" && /^(https?|mailto):/i.test(href);
 
 /** What a plugin published, when its plugin isn't installed to draw it: never a blank page. */
@@ -91,11 +100,20 @@ export function PluginItemView({
   latest.current = item;
   const [seenWhenShown] = useState(seenAgentEditAt);
   const imagesFromOtherSites = !useExternalImagesBlocked();
+  const typingAids = useTypingAids();
+  const enterWhileBusy = useEnterWhileBusy();
+  const paneFullscreen = usePaneFullscreen("canvas");
+  const fullscreen = fitsContent ? undefined : paneFullscreen;
   const shownTheme = useShownTheme();
   const [fontScale] = useFontScale();
   const viewUrl = viewPath && `${assetsOrigin}${viewPath}`;
   const page = useMemo(() => viewUrl && pluginItemPage(viewUrl, item.id, { inTab: fitsContent }), [viewUrl, item.id, fitsContent]);
-  const context: PluginItemContext = { seenAgentEditAt: seenWhenShown, imagesFromOtherSites };
+  const context: PluginItemContext = {
+    seenAgentEditAt: seenWhenShown,
+    imagesFromOtherSites,
+    typingAids,
+    ...(fullscreen && { fullscreen: fullscreen.isFullscreen }),
+  };
   const post = (message: unknown) => frame.current?.contentWindow?.postMessage(message, "*");
   const postItem = () => post(pluginItemMessage(pluginItemOf(latest.current), context));
   const postTheme = () => {
@@ -103,14 +121,14 @@ export function PluginItemView({
     if (where) post(pluginThemeMessage(themeVariables(where)));
   };
 
-  useEffect(postItem, [item, imagesFromOtherSites]);
+  useEffect(postItem, [item, imagesFromOtherSites, typingAids, fullscreen?.isFullscreen]);
   useEffect(postTheme, [shownTheme, fontScale]);
   useEffect(() => () => showFramedHint(null), []);
 
-  const answer = async (requestId: string, action: unknown) => {
+  const answer = async (requestId: string, reply: () => unknown) => {
     const answerTo = frame.current?.contentWindow;
     try {
-      answerTo?.postMessage(pluginItemReplyMessage(requestId, await replyTo(item.id, action)), "*");
+      answerTo?.postMessage(pluginItemReplyMessage(requestId, (await reply()) ?? null), "*");
     } catch (error) {
       answerTo?.postMessage(pluginItemReplyFailedMessage(requestId, error instanceof Error ? error.message : String(error)), "*");
     }
@@ -121,7 +139,11 @@ export function PluginItemView({
       postTheme();
       postItem();
     }
-    if (message.kind === "item-send" && typeof message.requestId === "string") void answer(message.requestId, message.action);
+    if (message.kind === "item-send" && typeof message.requestId === "string") void answer(message.requestId, () => replyTo(item.id, message.action));
+    if (message.kind === "item-prompt" && typeof message.requestId === "string") {
+      void answer(message.requestId, () => promptFrom(item.conversationId, String(message.text), enterWhileBusy === "after-turn"));
+    }
+    if (message.kind === "item-fullscreen") fullscreen?.setFullscreen(message.on === true);
     if (message.kind === "item-hint" && typeof message.text === "string" && frame.current) {
       const anchor = onPage(frame.current, message.anchor);
       showFramedHint(anchor && { text: message.text, anchor });

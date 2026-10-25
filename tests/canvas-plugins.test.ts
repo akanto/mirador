@@ -6,7 +6,8 @@ import { claudeSessionMeta } from "../host/acp/harnesses.ts";
 import { loadPlugins } from "../host/apps/plugins.ts";
 import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.ts";
 import type { PluginCanvasItem } from "../shared/model.ts";
-import { canvasPluginHost } from "./canvas-plugin-host.ts";
+import { Store } from "../host/store.ts";
+import { canvasPluginHost, storeWithConversation } from "./canvas-plugin-host.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "canvas-plugins");
 
@@ -16,11 +17,11 @@ describe("CanvasPlugins", () => {
   test("a plugin's tools join the canvas server, pre-allowed, with its lines of guidance", async () => {
     const { plugins, mcpRequest } = await setUp();
     const { tools } = await mcpRequest("tools/list", {});
-    expect(tools.map(({ name }: { name: string }) => name)).toEqual(expect.arrayContaining(["show", "show_card", "change_card", "track_steps", "finish_step"]));
+    expect(tools.map(({ name }: { name: string }) => name)).toEqual(expect.arrayContaining(["show", "show_card", "change_card", "show_report", "change_verdict", "track_steps", "finish_step"]));
     expect(tools.find(({ name }: { name: string }) => name === "show_card")).toMatchObject({ description: "Show a card the user can press.", _meta: { "anthropic/alwaysLoad": true } });
 
     const { guidance } = plugins;
-    expect(guidance.toolNames).toEqual(["show_card", "change_card", "track_steps", "finish_step"]);
+    expect(guidance.toolNames).toEqual(["show_card", "change_card", "show_report", "change_verdict", "track_steps", "finish_step"]);
     expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("only when the code under review changed.\n- show_card: show a card the user can press.\n\nRendering environment:");
     expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- show_card: when a card says it better than words.\n- Keep pages lean");
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__show_card");
@@ -77,6 +78,58 @@ describe("CanvasPlugins", () => {
     expect(plugins.notesForAgent("c1")).toEqual([]);
   });
 
+  test("an item carries what came of it, kept up to date, and whether it opens with room", async () => {
+    const { callTool, items } = await setUp();
+    await callTool("show_report", { title: "Report", verdict: "" });
+    expect(items()[0]).toMatchObject({ opensWithRoom: true });
+    expect(items()[0]).not.toHaveProperty("outcome");
+    await callTool("change_verdict", { verdict: "Approve" });
+    expect(items()[0]).toMatchObject({ outcome: "Approve" });
+    await callTool("change_verdict", { verdict: "" });
+    expect(items()[0]).not.toHaveProperty("outcome");
+    await callTool("show_card", { title: "Hello", text: "First" });
+    expect(items()[1]).not.toHaveProperty("opensWithRoom");
+  });
+
+  test("the canvas lists an item as its plugin makes of it, such as without a hold a restart cut short", async () => {
+    const { plugins, callTool, items } = await setUp();
+    await callTool("show_report", { title: "Held now", verdict: "Approve" });
+    await callTool("show_report", { title: "Held before", verdict: "Approve" });
+    const [now, before] = items();
+    await plugins.act(now!.id, { kind: "hold", inThisRun: true });
+    await plugins.act(before!.id, { kind: "hold", inThisRun: false });
+    expect(items().map((item) => plugins.listed(item).data)).toMatchObject([{ holding: true }, { holding: false }]);
+    expect(items()[1]).toMatchObject({ data: { holding: true } });
+  });
+
+  test("a plugin keeps what it stores across conversations and restarts, apart from other plugins", async () => {
+    const path = join(mkdtempSync(join(tmpdir(), "canvas-storage-")), "state.sqlite");
+    const first = await canvasPluginHost(FIXTURES, null, storeWithConversation(path));
+    await first.callTool("show_card", { title: "Hello", text: "First" });
+    const cardId = first.items()[0]!.id;
+    expect(await first.plugins.act(cardId, { kind: "remember", key: "split", value: { list: 0.3 } })).toEqual({ list: 0.3 });
+    first.store.close();
+
+    const second = new Store(path);
+    expect(second.canvasPluginStorageItem("board", "split")).toEqual({ list: 0.3 });
+    expect(second.canvasPluginStorageItem("other", "split")).toBeUndefined();
+    second.saveCanvasPluginStorageItem("board", "split", undefined);
+    expect(second.canvasPluginStorageItem("board", "split")).toBeUndefined();
+  });
+
+  test("the user's action can send the agent a message, after its turn if asked", async () => {
+    const { plugins, callTool, items } = await setUp();
+    const sent: unknown[] = [];
+    plugins.sendsPromptsWith(async (conversationId, text, options) => void sent.push({ conversationId, text, options }));
+    await callTool("show_card", { title: "Hello", text: "First" });
+    await plugins.act(items()[0]!.id, { kind: "ask", text: "Look again", afterTurn: true });
+    await plugins.act(items()[0]!.id, { kind: "ask", text: "Now" });
+    expect(sent).toEqual([
+      { conversationId: "c1", text: "Look again", options: { afterTurn: true } },
+      { conversationId: "c1", text: "Now", options: { afterTurn: false } },
+    ]);
+  });
+
   test("the user dismisses an item in the tab, and its plugin knows; a page can't be dismissed", async () => {
     const { plugins, callTool, items } = await setUp();
     await callTool("track_steps", { title: "Release", steps: ["Build"] });
@@ -127,7 +180,7 @@ describe("loading canvas plugins", () => {
 
     const lacking = boardCopy((manifest) => manifest, `export default { items: { card: { icon: "▤", placement: "floating" } }, tools: { "Show-Card": { description: "d" } }, note: "later" };`);
     expect((await loadPlugins(lacking)).problems.map(({ message }) => message)).toEqual([
-      "the canvas host module needs items.card with an icon, a placement of page or tab, and count only as a function; tools named in lower case, digits and underscores, not Show-Card; tools.Show-Card with a description, an input schema and a run function; note only as a function",
+      "the canvas host module needs items.card with an icon, a placement of page or tab, and count, outcome and listed only as functions; tools named in lower case, digits and underscores, not Show-Card; tools.Show-Card with a description, an input schema and a run function; note only as a function",
     ]);
   });
 });

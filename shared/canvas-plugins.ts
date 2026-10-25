@@ -15,6 +15,15 @@ export interface PluginItemType<Data = unknown> {
   placement: PluginItemPlacement;
   /** An item in the tab: how far along it is in a few characters, e.g. "3/5", for the tab's toggle. */
   count?(data: Data): string;
+  /** What came of the item in a few words, such as a review's verdict, shown beside its title in the canvas's bar and list. */
+  outcome?(data: Data): string | undefined;
+  /** A new item takes the room Settings give reviews: full screen, or beside the chat, and shows the canvas if it was hidden. */
+  opensWithRoom?: boolean;
+  /**
+   * The item's data as the canvas lists it, e.g. without a run of the plugin's that Mirador's restart cut short, which
+   * the plugin's host code would otherwise still show as running.
+   */
+  listed?(item: PluginItem<Data>): Data;
 }
 
 /** An item a plugin published in a conversation's canvas, as its host code sees it. */
@@ -48,6 +57,19 @@ export interface CanvasPluginContext<Data = unknown> {
   items(): PluginItem<Data>[];
   /** Changes one of them in place. Made while a tool runs, it is the agent's change, and the tab's toggle flashes for it. */
   change(itemId: string, change: { title?: string; data?: Data }): PluginItem<Data>;
+  /** What the plugin keeps across conversations and restarts, such as how its views were laid out; values are JSON. */
+  storage: CanvasPluginStorage;
+}
+
+export interface CanvasPluginStorage {
+  get(key: string): unknown;
+  /** Undefined takes the key out. */
+  set(key: string, value: unknown): void;
+}
+
+export interface CanvasActionContext<Data = unknown> extends CanvasPluginContext<Data> {
+  /** Sends the agent a message, as if the user wrote it; `afterTurn` keeps it queued until the agent's turn ends. */
+  prompt(text: string, options?: { afterTurn?: boolean }): Promise<void>;
 }
 
 export interface CanvasToolContext<Data = unknown> extends CanvasPluginContext<Data> {
@@ -85,7 +107,7 @@ export interface CanvasHost<Data = unknown> {
    */
   guidance?: { instructions?: string; often?: string };
   /** The user's action in an item's view, sent with `mirador.send`; resolves to what send resolves to in the view. */
-  action?(item: PluginItem<Data>, action: unknown, context: CanvasPluginContext<Data>): unknown;
+  action?(item: PluginItem<Data>, action: unknown, context: CanvasActionContext<Data>): unknown;
   /** What the agent should hear of with the user's next message, such as what the user did in an item. */
   note?(context: CanvasPluginContext<Data>): CanvasPluginNote | null;
 }

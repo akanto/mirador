@@ -20,7 +20,7 @@ import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { WalkthroughView } from "./Review.tsx";
-import { currentReviewPlacement, takeArrivedReview } from "./review-placement.ts";
+import { currentReviewPlacement, opensWithRoom, takeArrivedReview } from "./review-placement.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
 
 /** Content as wide as the viewport would otherwise widen the frame that measures it without end. */
@@ -481,13 +481,17 @@ const iconOf = (item: CanvasItem) => (item.kind === "plugin" ? item.icon : kindI
 
 function outcomeOf(item: CanvasItem) {
   if (item.kind === "review") return item.review.verdict;
+  if (item.kind === "plugin" && item.outcome) return item.outcome;
   if (item.status === "waiting") return "needs your answer";
   if (item.status === "cancelled") return "withdrawn";
   if (item.kind === "ask" && item.status === "answered" && item.answer) return `→ ${item.answer.label}`;
   return "";
 }
 
-const outcomeIsFreeText = (item: CanvasItem) => item.kind === "review" || item.status === "answered";
+/** A review's verdict, or what a plugin says came of its item, in the agent's or the plugin's own words. */
+const isVerdict = (item: CanvasItem) => item.kind === "review" || (item.kind === "plugin" && Boolean(item.outcome));
+
+const outcomeIsFreeText = (item: CanvasItem) => isVerdict(item) || item.status === "answered";
 
 /** Once a question is answered or withdrawn, it has had its turn on the canvas. */
 const isSettledQuestion = (item: CanvasItem): item is AskItem => item.kind === "ask" && item.status !== "waiting";
@@ -572,7 +576,7 @@ function useReviewPlacement() {
   const tookFullscreen = useRef(false);
   return (item: CanvasItem | undefined) => {
     if (!fullscreen) return;
-    if (item?.kind === "review") {
+    if (opensWithRoom(item)) {
       const wanted = currentReviewPlacement() === "fullscreen";
       fullscreen.setFullscreen(wanted);
       tookFullscreen.current = wanted;
@@ -837,7 +841,7 @@ export function CanvasPanel({
             <span className="canvas-kind">{iconOf(selected)}</span>
             <span className="canvas-title">{selected.title}</span>
             {outcome && (
-              <span className={`canvas-outcome status-${selected.status}${selected.kind === "review" ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
+              <span className={`canvas-outcome status-${selected.status}${isVerdict(selected) ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
                 {outcome}
               </span>
             )}

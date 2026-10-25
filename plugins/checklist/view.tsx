@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { PluginItemContext } from "../../shared/canvas-document.ts";
+import type { PluginItemContext, PluginViewBridge } from "../../shared/canvas-document.ts";
 import type { PluginItem } from "../../shared/canvas-plugins.ts";
 import { hints } from "../../web/hints.ts";
 import { ExternalImagesBlocked, MarkdownText } from "../../web/Markdown.tsx";
@@ -9,10 +9,7 @@ import viewStyles from "./view.css" with { type: "text" };
 
 declare global {
   interface Window {
-    mirador: {
-      onItem(listener: (item: PluginItem<Checklist>, context: PluginItemContext) => void): () => void;
-      send(action: unknown): Promise<unknown>;
-    };
+    mirador: PluginViewBridge<Checklist>;
   }
 }
 

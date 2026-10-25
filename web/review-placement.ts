@@ -18,11 +18,14 @@ export const currentReviewPlacement = reviewPlacement.get;
 const FRESH_REVIEW_MS = 30_000;
 const placedOnArrival = new Set<string>();
 
+/** A review, or a plugin's item that asks for the room Settings give reviews. */
+export const opensWithRoom = (item: CanvasItem | undefined) => item?.kind === "review" || (item?.kind === "plugin" && item.opensWithRoom === true);
+
 /** A review that just arrived opens where the setting says, once; one opened again later stays where the user put the pane. */
 export function takeArrivedReview(item: CanvasItem | undefined) {
-  if (item?.kind !== "review" || Date.now() - item.createdAt > FRESH_REVIEW_MS || placedOnArrival.has(item.id)) return false;
+  if (!item || !opensWithRoom(item) || Date.now() - item.createdAt > FRESH_REVIEW_MS || placedOnArrival.has(item.id)) return false;
   placedOnArrival.add(item.id);
   return true;
 }
 
-export const isFreshReview = (item: CanvasItem | undefined) => item?.kind === "review" && Date.now() - item.createdAt <= FRESH_REVIEW_MS;
+export const isFreshReview = (item: CanvasItem | undefined) => item !== undefined && opensWithRoom(item) && Date.now() - item.createdAt <= FRESH_REVIEW_MS;

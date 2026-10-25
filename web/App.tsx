@@ -26,7 +26,7 @@ import { DEFAULT_SIDEBAR_WIDTH, inView, paneLabels, sidebarWidthWithinLimits, sw
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { FirstProfile, ProfilesDialog } from "./Profiles.tsx";
 import { AskToRevert, RevertDialog } from "./Revert.tsx";
-import { isFreshReview } from "./review-placement.ts";
+import { isFreshReview, opensWithRoom } from "./review-placement.ts";
 import { SessionsDialog } from "./Sessions.tsx";
 import { SettingsDialog } from "./Settings.tsx";
 import { shortcutKeys, typingStateOf, type ShortcutCommand } from "./shortcuts.ts";
@@ -252,7 +252,7 @@ const outOfCanvasPagesReach = (command: ShortcutCommand) =>
   ["new-conversation", "new-workspace", "restart-host", "reload-page", "toggle-terminal"].includes(command.type) || (command.type === "focus" && command.pane === "terminals");
 
 function useShowCanvasForNewReview(items: CanvasItem[] | undefined, canvasVisible: boolean, showCanvas: () => void) {
-  const newestReview = items?.filter((item) => item.kind === "review").at(-1);
+  const newestReview = items?.filter(opensWithRoom).at(-1);
   useEffect(() => {
     if (!canvasVisible && isFreshReview(newestReview)) showCanvas();
   }, [newestReview?.id]);
