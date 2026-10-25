@@ -38,6 +38,7 @@ test.afterAll(async () => {
 });
 
 const pluginRows = (settings: ReturnType<Page["getByRole"]>) => settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
+const counterRow = (settings: ReturnType<Page["getByRole"]>) => pluginRows(settings).filter({ hasText: "Counter" });
 const view = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-frame.app iframe");
 const appToggle = (page: Page) => page.locator(".canvas-header:visible .app-toggle");
 
@@ -87,7 +88,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await settings.getByLabel("Git URL or path").fill(join(host.root, "no-such-repo"));
     await settings.getByRole("button", { name: "Add" }).click();
     await expect(settings.getByRole("form", { name: "Add a plugin" }).locator(".plugin-output")).toContainText("git clone failed:");
-    await expect(pluginRows(settings)).toHaveText(["No plugin is installed."]);
+    await expect(pluginRows(settings)).toHaveText(["ChecklistchecklistComes with Mirador"]);
   });
 
   await test.step("adding clones and builds the repo, and the app works from the next start", async () => {
@@ -95,7 +96,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await settings.getByLabel("Git URL or path").fill(repo());
     await settings.getByLabel("Branch").fill("main");
     await settings.getByRole("button", { name: "Add" }).click();
-    await expect(pluginRows(settings).first()).toContainText(`Countercounterused from the next start${repo()} · main · ${git(repo(), "rev-parse", "--short", "HEAD")} Count by one`);
+    await expect(counterRow(settings)).toContainText(`Countercounterused from the next start${repo()} · main · ${git(repo(), "rev-parse", "--short", "HEAD")} Count by one`);
     await expect(settings.getByText("Mirador uses the changed plugins from its next start.")).toBeVisible();
     await expect(settings.getByLabel("Git URL or path")).toHaveValue("");
     await restartFromSettings(page);
@@ -114,8 +115,8 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await settings.getByRole("button", { name: "Check again" }).click();
     await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by two`);
     await settings.getByRole("button", { name: "Update" }).click();
-    await expect(pluginRows(settings).first()).toContainText("used from the next start");
-    await expect(pluginRows(settings).first()).toContainText("Count by two");
+    await expect(counterRow(settings)).toContainText("used from the next start");
+    await expect(counterRow(settings)).toContainText("Count by two");
     await restartFromSettings(page);
     await appToggle(page).click();
     await expect(view(page).locator("#count")).toHaveText("Counting by two");
@@ -125,7 +126,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     const settings = await openSettings(page, "Plugins");
     await settings.getByRole("button", { name: "Remove Counter" }).click();
     await settings.getByRole("button", { name: "Confirm: Remove Counter" }).click();
-    await expect(pluginRows(settings)).toHaveText(["No plugin is installed."]);
+    await expect(pluginRows(settings)).toHaveText(["ChecklistchecklistComes with Mirador"]);
     await restartFromSettings(page);
     await expect(appToggle(page)).toHaveCount(0);
     expect(await canvasToolNames(conversation)).not.toContain("app_open");
