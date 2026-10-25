@@ -28,6 +28,79 @@ test.afterAll(async () => {
   await host.cleanUp();
 });
 
+/**
+ * What reached the page around the app's view, written to app-trace.txt in a failed test's results: the host's app messages,
+ * every message an app frame posted and which frame it came from, frame loads, media requests and the spec's marks.
+ * For the "Show the clip" click that sometimes gets no answer (vcs-3arc).
+ */
+class AppTrace {
+  private readonly started = Date.now();
+  private readonly lines: string[] = [];
+
+  async record(page: Page) {
+    page.on("websocket", (socket) => {
+      socket.on("framereceived", ({ payload }) => this.hostMessage("got", String(payload)));
+      socket.on("framesent", ({ payload }) => this.hostMessage("sent", String(payload)));
+    });
+    page.on("framenavigated", (frame) => this.add(`frame loaded ${frame === page.mainFrame() ? "main" : "child"} ${withoutQuery(frame.url())}`));
+    page.on("request", (request) => {
+      if (/\/media/.test(request.url())) this.add(`request ${request.method()} ${withoutQuery(request.url())}`);
+    });
+    await page.exposeFunction("recordAppTrace", (line: string) => this.add(line));
+    await page.addInitScript(() => {
+      if (window !== window.top) return;
+      const record = (window as unknown as { recordAppTrace: (line: string) => void }).recordAppTrace;
+      window.addEventListener("message", (event) => {
+        const kind = String(event.data?.kind ?? "");
+        if (!kind.startsWith("app-") && kind !== "shell-ready") return;
+        const frames = [...document.querySelectorAll("iframe")];
+        const sender = frames.find((frame) => frame.contentWindow === event.source);
+        const where = sender ? `iframe ${frames.indexOf(sender)} of ${frames.length}, ${sender.checkVisibility() ? "visible" : "hidden"}` : "unknown sender";
+        record(`frame posted ${kind} from ${where}`);
+      });
+    });
+  }
+
+  async markVisibleView(page: Page, what: string) {
+    const where = await page.evaluate(() => {
+      const frames = [...document.querySelectorAll("iframe")];
+      const shown = frames.filter((frame) => frame.closest(".canvas-frame.app") && frame.checkVisibility());
+      return shown.map((frame) => `iframe ${frames.indexOf(frame)} of ${frames.length}`).join(", ") || "no visible app frame";
+    });
+    const pageLoad = await view(page).locator("#page-load").textContent({ timeout: 1000 }).catch(() => "unknown");
+    this.add(`${what} on page ${pageLoad}, app view in ${where}`);
+  }
+
+  add(line: string) {
+    this.lines.push(`${String(Date.now() - this.started).padStart(6)} ms  ${line}`);
+  }
+
+  text() {
+    return this.lines.join("\n");
+  }
+
+  private hostMessage(direction: string, payload: string) {
+    const type = /"type":"([^"]+)"/.exec(payload)?.[1];
+    if (!type || !/^(apps?\.|plugins\.)/.test(type)) return;
+    const file = /"file":"([^"]+)"/.exec(payload)?.[1];
+    this.add(`host ${direction} ${type}${file ? ` ${file}` : ""}`);
+  }
+}
+
+const withoutQuery = (url: string) => url.split("?")[0]!.replace(/\/media\/[^/]+\//, "/media/<token>/");
+
+let trace = new AppTrace();
+test.beforeEach(async ({ page }) => {
+  trace = new AppTrace();
+  await trace.record(page);
+});
+test.afterEach(async ({}, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  const tracePath = testInfo.outputPath("app-trace.txt");
+  writeFileSync(tracePath, trace.text());
+  await testInfo.attach("app-trace", { path: tracePath, contentType: "text/plain" });
+});
+
 const appToggle = (page: Page) => page.locator(".canvas-header:visible .app-toggle");
 const canvasTitle = (page: Page) => page.locator(".canvas-header:visible .canvas-title");
 const view = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-frame.app iframe");
@@ -145,6 +218,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
 
   await test.step("the view streams a video next to the document, and sends the user's words with a frame of it", async () => {
     cpSync(join(import.meta.dirname, "..", "tests", "fixtures", "red-clip.webm"), join(host.projectDir, "clip.webm"));
+    await trace.markVisibleView(page, "clicking Show the clip");
     await view(page).getByRole("button", { name: "Show the clip" }).click();
     await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
     await view(page).getByRole("button", { name: "Ask about the frame" }).click();
@@ -207,6 +281,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     const { hash } = new URL(page.url());
     const elsewhere = hash.endsWith(first) ? second : first;
     const loaded = (await view(page).locator("#page-load").textContent())!;
+    await trace.markVisibleView(page, "clicking Show the clip");
     await view(page).getByRole("button", { name: "Show the clip" }).click();
     await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
     const clip = view(page).locator("#clip");
@@ -242,6 +317,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
 
   await test.step("hiding the canvas pane and showing it again finds the app's page as it was, its video paused while hidden", async () => {
     const loaded = (await view(page).locator("#page-load").textContent())!;
+    await trace.markVisibleView(page, "clicking Show the clip");
     await view(page).getByRole("button", { name: "Show the clip" }).click();
     const clip = view(page).locator("#clip");
     await expect(view(page).locator("#clip-state")).toHaveText("showing 64×48");
