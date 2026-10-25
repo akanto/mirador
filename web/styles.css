@@ -3280,6 +3280,7 @@ button.edits-waiting {
 
 .changes-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -3303,21 +3304,47 @@ button.edits-waiting {
   padding: 0;
 }
 
-.changed-file {
+.changed-file,
+.changed-folder {
   display: flex;
   align-items: baseline;
   gap: 8px;
   width: 100%;
   border: none;
   background: none;
-  padding: 3px 8px;
+  padding: 3px 8px 3px calc(8px + var(--depth, 0) * 16px);
   text-align: left;
   font-size: calc(12.5px * var(--font-scale));
   font-weight: normal;
 }
 
-.changed-file:where(:hover) {
+.changed-file:where(:hover),
+.changed-folder:where(:hover) {
   background: var(--row-hover);
+}
+
+.fold-mark {
+  flex-shrink: 0;
+  width: 1.2ch;
+  color: var(--muted);
+}
+
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.folder-file-count,
+.changed-folder .edit-counts {
+  flex-shrink: 0;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.folder-file-count {
+  color: var(--muted);
 }
 
 .changed-file.selected {

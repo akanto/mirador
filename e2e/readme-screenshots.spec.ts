@@ -438,7 +438,7 @@ test("the README's screenshots", async ({ page }) => {
     await openConversation(page, ids.stopDoubleCharge);
     const changes = page.locator(".changes");
     await changes.getByRole("button", { name: "Uncommitted" }).click();
-    await changes.getByRole("button", { name: /src\/checkout\.ts/ }).click();
+    await changes.locator(`.changed-file[data-path="src/checkout.ts"]`).click();
     await expect(changes.locator(".changes-diff")).toContainText("idempotencyKey");
     await save(page, "changes");
   });

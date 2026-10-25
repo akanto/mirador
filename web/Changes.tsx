@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { changeScopes, type ChangedFile, type ChangeList, type ChangeScope, type ChangesBase, type FileChanges } from "../shared/changes.ts";
+import { filesUnder, fileTree, type TreeFolder, type TreeNode } from "../shared/file-tree.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { firstChangedLine } from "./changes.ts";
 import { connection } from "./connection.ts";
@@ -11,6 +12,10 @@ import { withHomeAsTilde } from "./workspace-folder.ts";
 const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted", session: "This session" };
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
+const listViews = ["list", "tree"] as const;
+type ListView = (typeof listViews)[number];
+const listViewLabels: Record<ListView, string> = { list: "List", tree: "Tree" };
+const listView = storedChoice<ListView>("mirador-changes-view", listViews, "tree");
 
 const listNotes: Partial<Record<ChangesBase, string>> = {
   session: "The files the agent changed with its edit tools in this conversation, and the git-ignored files written since its first message. In a folder that is not a git repository, every file written since then.",
@@ -46,6 +51,7 @@ const LOADS_KEPT = 100;
 const keptLoads = new Map<string, Loaded<unknown>>();
 const keptLoadListeners = new Set<() => void>();
 const selectedPaths = new Map<string, string | null>();
+const foldedFolders = new Map<string, ReadonlySet<string>>();
 
 function keepLoad(key: string, loaded: Loaded<unknown>) {
   keptLoads.delete(key);
@@ -95,56 +101,108 @@ function useKeptLoad<T>(key: string, load: () => Promise<T>, trigger: string): L
   return (kept as Loaded<T> | undefined) ?? null;
 }
 
-function FileRow({ file, homeDir, selected, onSelect, children }: { file: ChangedFile; homeDir: string; selected: boolean; onSelect: () => void; children: ReactNode }) {
+/** What every row of the list needs: which file is open, the open file's line changes, and how to open another. */
+interface RowContext {
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
+  selectedFile: ReactNode;
+  homeDir: string;
+}
+
+interface Folding {
+  isFolded: (folderPath: string) => boolean;
+  toggle: (folderPath: string) => void;
+}
+
+const indentedBy = (depth: number) => ({ "--depth": depth }) as CSSProperties;
+
+/** The files' added and removed lines together, leaving out binary files and those only the agent's snippets describe. */
+function LineCounts({ files }: { files: ChangedFile[] }) {
+  const counted = files.filter(({ added }) => added !== null);
+  if (counted.length === 0) return null;
+  const added = counted.reduce((total, file) => total + file.added!, 0);
+  const removed = counted.reduce((total, file) => total + file.removed!, 0);
+  return (
+    <span className="edit-counts">
+      <span className="added-count">+{added}</span> <span className="removed-count">−{removed}</span>
+    </span>
+  );
+}
+
+function FileRow({ file, name, depth, rows }: { file: ChangedFile; name: string; depth: number; rows: RowContext }) {
+  const selected = file.path === rows.selectedPath;
   return (
     <li>
-      <button type="button" className={`changed-file status-${file.status} ${selected ? "selected" : ""}`} aria-pressed={selected} onClick={onSelect}>
+      <button
+        type="button"
+        className={`changed-file status-${file.status} ${selected ? "selected" : ""}`}
+        style={indentedBy(depth)}
+        data-path={withHomeAsTilde(file.path, rows.homeDir)}
+        aria-pressed={selected}
+        onClick={() => rows.onSelect(file.path)}
+      >
         <span className="change-status" title={file.status}>
           {statusLetters[file.status]}
         </span>
-        <span className="changed-path">{withHomeAsTilde(file.path, homeDir)}</span>
-        {file.added !== null && (
-          <span className="edit-counts">
-            <span className="added-count">+{file.added}</span> <span className="removed-count">−{file.removed}</span>
-          </span>
-        )}
+        <span className="changed-path">{name}</span>
+        <LineCounts files={[file]} />
         {file.byAgent && (
           <span className="by-agent" data-hint={hints.changesByAgent}>
             ● agent
           </span>
         )}
       </button>
-      {selected && children}
+      {selected && rows.selectedFile}
     </li>
   );
 }
 
-/** A section of the list; the selected file's line changes open under its row. */
-function FileSection({
-  title,
-  files,
-  selectedPath,
-  onSelect,
-  selectedFile,
-  homeDir,
-}: {
-  title: string;
-  files: ChangedFile[];
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
-  selectedFile: ReactNode;
-  homeDir: string;
-}) {
+function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<ChangedFile>; depth: number; rows: RowContext; folding: Folding }) {
+  const folded = folding.isFolded(folder.path);
+  const files = filesUnder(folder);
+  return (
+    <li>
+      <button type="button" className="changed-folder" style={indentedBy(depth)} aria-expanded={!folded} onClick={() => folding.toggle(folder.path)}>
+        <span className="fold-mark">{folded ? "▸" : "▾"}</span>
+        <span className="folder-name">{folder.name}</span>
+        {folded && (
+          <>
+            <span className="folder-file-count">{files.length === 1 ? "1 file" : `${files.length} files`}</span>
+            <LineCounts files={files} />
+          </>
+        )}
+      </button>
+      {!folded && (
+        <ul>
+          <TreeRows nodes={folder.children} depth={depth + 1} rows={rows} folding={folding} />
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function TreeRows({ nodes, depth, rows, folding }: { nodes: TreeNode<ChangedFile>[]; depth: number; rows: RowContext; folding: Folding }) {
+  return nodes.map((node) =>
+    node.kind === "folder" ? (
+      <FolderRow key={node.path} folder={node} depth={depth} rows={rows} folding={folding} />
+    ) : (
+      <FileRow key={node.item.path} file={node.item} name={node.name} depth={depth} rows={rows} />
+    ),
+  );
+}
+
+/** A section of the list, as whole paths or as a tree of folders; the selected file's line changes open under its row. */
+function FileSection({ title, files, view, rows, folding }: { title: string; files: ChangedFile[]; view: ListView; rows: RowContext; folding: Folding }) {
   if (files.length === 0) return null;
   return (
     <section className="changes-section" aria-label={title}>
       <h3>{title}</h3>
       <ul>
-        {files.map((file) => (
-          <FileRow key={file.path} file={file} homeDir={homeDir} selected={file.path === selectedPath} onSelect={() => onSelect(file.path)}>
-            {selectedFile}
-          </FileRow>
-        ))}
+        {view === "tree" ? (
+          <TreeRows nodes={fileTree(files, ({ path }) => withHomeAsTilde(path, rows.homeDir))} depth={0} rows={rows} folding={folding} />
+        ) : (
+          files.map((file) => <FileRow key={file.path} file={file} name={withHomeAsTilde(file.path, rows.homeDir)} depth={0} rows={rows} />)
+        )}
       </ul>
     </section>
   );
@@ -200,6 +258,19 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
     setSelectedPath(next);
   };
   const selectedFile = selected && <SelectedFile conversationId={conversationId} file={selected} loaded={loadedDiff} homeDir={homeDir} />;
+  const rows: RowContext = { selectedPath, onSelect: toggle, selectedFile, homeDir };
+  const view = listView.use();
+  const [folded, setFolded] = useState(foldedFolders.get(conversationId) ?? new Set<string>());
+  const foldingOf = (section: string): Folding => ({
+    isFolded: (folderPath) => folded.has(`${section} ${folderPath}`),
+    toggle: (folderPath) => {
+      const key = `${section} ${folderPath}`;
+      const next = new Set(folded);
+      if (!next.delete(key)) next.add(key);
+      foldedFolders.set(conversationId, next);
+      setFolded(next);
+    },
+  });
 
   return (
     <div className="changes">
@@ -212,6 +283,13 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
           ))}
         </div>
         <span className="spacer" />
+        <div className="diff-style" role="group" aria-label="Show as">
+          {listViews.map((each) => (
+            <button key={each} type="button" className={view === each ? "on" : ""} aria-pressed={view === each} data-hint={hints.changesView[each]} onClick={() => listView.set(each)}>
+              {listViewLabels[each]}
+            </button>
+          ))}
+        </div>
         <button type="button" className="link" data-hint={hints.changesRefresh} onClick={() => setRefreshes((count) => count + 1)}>
           Refresh
         </button>
@@ -224,9 +302,9 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
       {list && files.length === 0 && <p className="changes-none">{nothingChanged(list)}</p>}
       {list && (
         <>
-          <FileSection title="Project" files={list.project} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
-          <FileSection title="From commits since the turn began" files={list.committed} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
-          <FileSection title="Outside the project" files={list.outside} selectedPath={selectedPath} onSelect={toggle} selectedFile={selectedFile} homeDir={homeDir} />
+          <FileSection title="Project" files={list.project} view={view} rows={rows} folding={foldingOf("project")} />
+          <FileSection title="From commits since the turn began" files={list.committed} view={view} rows={rows} folding={foldingOf("committed")} />
+          <FileSection title="Outside the project" files={list.outside} view={view} rows={rows} folding={foldingOf("outside")} />
         </>
       )}
     </div>

@@ -42,8 +42,14 @@ test.afterAll(async () => {
 });
 
 const changes = (page: Page) => page.locator(".canvas-panel:visible .changes");
-const fileRow = (page: Page, path: string) => changes(page).locator(".changed-file").filter({ has: page.locator(".changed-path", { hasText: new RegExp(`^${literally(path)}$`) }) });
+const fileRow = (page: Page, path: string) => changes(page).locator(`.changed-file[data-path=${JSON.stringify(path)}]`);
+const folderRow = (page: Page, name: string) => changes(page).locator(".changed-folder").filter({ has: page.locator(".folder-name", { hasText: new RegExp(`^${literally(name)}$`) }) });
 const section = (page: Page, name: string) => changes(page).getByRole("region", { name, exact: true });
+/** The files a section lists, in either view: the tree orders them by folder, so the order is not compared. */
+const expectListed = (page: Page, sectionName: string, paths: string[], message?: string) =>
+  expect
+    .poll(() => section(page, sectionName).locator(".changed-file").evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.path!).toSorted()), message)
+    .toEqual(paths.toSorted());
 const writeFiles = (page: Page, steps: Record<string, string>[]) => sendMessage(page, `WRITE ${JSON.stringify(steps)}`);
 
 async function startConversation(page: Page) {
@@ -84,10 +90,10 @@ test("the empty canvas lists the files this turn changed as the agent works, wit
   writeFileSync(finishNow, "");
   await waitForTurnToEnd(page);
 
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["src/app.ts", "src/generated.txt"]);
+  await expectListed(page, "Project", ["src/app.ts", "src/generated.txt"]);
   await expect(fileRow(page, "src/generated.txt").locator(".change-status")).toHaveText("A");
   await expect(fileRow(page, "src/generated.txt").locator(".by-agent")).toHaveCount(0);
-  await expect(section(page, "Outside the project").locator(".changed-path")).toHaveText([outsideFileShown]);
+  await expectListed(page, "Outside the project", [outsideFileShown]);
   await expect(fileRow(page, outsideFileShown).locator(".by-agent")).toHaveText("● agent");
 });
 
@@ -97,7 +103,7 @@ test("clicking a file opens its line changes under its row, with the file's line
   await fileRow(page, "src/app.ts").click();
 
   const diff = changes(page).locator(".changes-diff");
-  const appItem = changes(page).locator("li", { has: page.locator(".changed-path", { hasText: /^src\/app\.ts$/ }) });
+  const appItem = fileRow(page, "src/app.ts").locator("xpath=..");
   await expect(appItem.locator(".changes-diff")).toBeVisible();
   const [diffBox, nextRowBox] = await Promise.all([diff.boundingBox(), fileRow(page, "src/generated.txt").boundingBox()]);
   expect(diffBox!.y + diffBox!.height, "the next file's row comes after the open file's line changes").toBeLessThanOrEqual(nextRowBox!.y);
@@ -151,9 +157,9 @@ test("a new turn starts with an empty list, while Uncommitted keeps git status a
   await expect(changes(page)).toContainText("No file changed in this turn.");
 
   await changes(page).getByRole("button", { name: "Uncommitted" }).click();
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["src/app.ts", "src/generated.txt"]);
+  await expectListed(page, "Project", ["src/app.ts", "src/generated.txt"]);
   await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
-  await expect(section(page, "Outside the project").locator(".changed-path")).toHaveText([outsideFileShown]);
+  await expectListed(page, "Outside the project", [outsideFileShown]);
 
   await test.step("a change made by hand shows after Refresh", async () => {
     writeFileSync(join(host.projectDir, "by-hand.txt"), "typed\n");
@@ -169,6 +175,51 @@ test("a new turn starts with an empty list, while Uncommitted keeps git status a
   });
 });
 
+test("the tree shows the changed files in their folders, a folder holding one folder on one row, folds a folder with its counts, and List shows whole paths again", async ({ page }) => {
+  const nested = join(host.projectDir, "pkg", "core");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "util.ts"), "one\ntwo\n");
+  writeFileSync(join(nested, "types.ts"), "three\n");
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  await changes(page).getByRole("button", { name: "Uncommitted" }).click();
+  await expect(changes(page).getByRole("button", { name: "Tree" })).toHaveAttribute("aria-pressed", "true");
+
+  const pkgCore = folderRow(page, "pkg/core");
+  await expect(pkgCore).toHaveAttribute("aria-expanded", "true");
+  await expect(folderRow(page, "pkg")).toHaveCount(0);
+  await expect(fileRow(page, "pkg/core/util.ts").locator(".changed-path")).toHaveText("util.ts");
+  await expect(fileRow(page, "pkg/core/types.ts").locator(".changed-path")).toHaveText("types.ts");
+  await expect(fileRow(page, "src/app.ts").locator(".changed-path")).toHaveText("app.ts");
+  await expect(folderRow(page, join("~", "elsewhere"))).toBeVisible();
+
+  await test.step("folding a folder hides its files and shows how many it holds, with their line counts", async () => {
+    await pkgCore.click();
+    await expect(pkgCore).toHaveAttribute("aria-expanded", "false");
+    await expect(fileRow(page, "pkg/core/util.ts")).toHaveCount(0);
+    await expect(pkgCore.locator(".folder-file-count")).toHaveText("2 files");
+    await expect(pkgCore.locator(".edit-counts")).toHaveText("+3 −0");
+    await pkgCore.click();
+  });
+
+  await test.step("a file in a folder opens its line changes under its row", async () => {
+    await fileRow(page, "pkg/core/util.ts").click();
+    await expect(fileRow(page, "pkg/core/util.ts").locator("xpath=..").locator(".changes-diff .edited-file h3")).toHaveText("pkg/core/util.ts");
+  });
+
+  await test.step("List shows every file with its whole path, and stays chosen after a reload", async () => {
+    await changes(page).getByRole("button", { name: "List" }).click();
+    await expect(changes(page).locator(".changed-folder")).toHaveCount(0);
+    await expect(fileRow(page, "pkg/core/util.ts").locator(".changed-path")).toHaveText("pkg/core/util.ts");
+    await expect(fileRow(page, outsideFileShown).locator(".changed-path")).toHaveText(outsideFileShown);
+    await page.reload();
+    await expect(changes(page).getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    await changes(page).getByRole("button", { name: "Tree" }).click();
+    await changes(page).getByRole("button", { name: "This turn" }).click();
+  });
+  rmSync(join(host.projectDir, "pkg"), { recursive: true });
+});
+
 test("Changes opens over a page, and a new page takes the canvas back", async ({ page }) => {
   await signIn(page, host);
   await page.goto(`${host.origin}/#/c/${conversationId}`);
@@ -182,7 +233,7 @@ test("Changes opens over a page, and a new page takes the canvas back", async ({
 
   await changesButton.click();
   await expect(canvas.locator(".canvas-title")).toHaveText("Changes");
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt"]);
+  await expectListed(page, "Project", ["by-hand.txt"]);
   await expect(canvas.locator("iframe")).toHaveCount(0);
 
   await changesButton.click();
@@ -248,7 +299,7 @@ test("Changes shows the files it listed last as soon as it opens again, and stil
   const changesButton = canvas.locator(".canvas-header").getByRole("button", { name: "Changes", exact: true });
   await changesButton.click();
   await changes(page).getByRole("button", { name: "Uncommitted" }).click();
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt", "src/app.ts", "src/generated.txt"]);
+  await expectListed(page, "Project", ["by-hand.txt", "src/app.ts", "src/generated.txt"]);
   await fileRow(page, "src/app.ts").click();
   await expect(changes(page).locator(".changes-diff .code-row.added")).toContainText("line fifteen");
 
@@ -257,18 +308,14 @@ test("Changes shows the files it listed last as soon as it opens again, and stil
   heldLists = [];
   await changesButton.click();
   await expect.poll(() => heldLists?.length, "the list and the open file's changes are asked for again").toBe(2);
-  await expect(section(page, "Project").locator(".changed-path"), "the list from before, while the host has not answered").toHaveText([
-    "by-hand.txt",
-    "src/app.ts",
-    "src/generated.txt",
-  ]);
+  await expectListed(page, "Project", ["by-hand.txt", "src/app.ts", "src/generated.txt"], "the list from before, while the host has not answered");
   await expect(changes(page).locator(".changes-diff .code-row.added"), "with the file that was open still open").toContainText("line fifteen");
   await expect(changes(page)).not.toContainText("Loading…");
 
   writeFileSync(join(host.projectDir, "later.txt"), "later\n");
   sendHeldLists();
   await changes(page).getByRole("button", { name: "Refresh" }).click();
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt", "later.txt", "src/app.ts", "src/generated.txt"]);
+  await expectListed(page, "Project", ["by-hand.txt", "later.txt", "src/app.ts", "src/generated.txt"]);
 
   await test.step("when the host comes back after a restart, an empty canvas lists the files again", async () => {
     await startConversation(page);
@@ -314,7 +361,7 @@ test("Changes closed and opened again while its list is on the way shows the lis
     sendToHost(message);
     await expect.poll(() => listsAnswered, "the lists are answered in the order they were asked for").toBe(index + 1);
   }
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["later.txt", "while-away.txt"]);
+  await expectListed(page, "Project", ["later.txt", "while-away.txt"]);
 });
 
 test("This session lists the agent's edits and the git-ignored files written since the conversation's first message, and no older ones", async ({ page }) => {
@@ -338,7 +385,7 @@ test("This session lists the agent's edits and the git-ignored files written sin
     { shell: builtInSession, content: "built by a script in this session\n" },
   ]);
   await waitForTurnToEnd(page);
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["build/new.js", "src/app.ts"]);
+  await expectListed(page, "Project", ["build/new.js", "src/app.ts"]);
   await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
   await expect(fileRow(page, "build/new.js").locator(".by-agent")).toHaveCount(0);
 });
@@ -357,7 +404,7 @@ test("This session lists the git-ignored files written since the conversation be
 
   await changes(page).getByRole("button", { name: "This session" }).click();
   await expect(changes(page)).toContainText("and the git-ignored files written since its first message");
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["build/cache.txt", "build/out.txt"]);
+  await expectListed(page, "Project", ["build/cache.txt", "build/out.txt"]);
   await expect(fileRow(page, "build/cache.txt").locator(".change-status")).toHaveText("M");
   await expect(fileRow(page, "build/out.txt").locator(".change-status")).toHaveText("A");
   await fileRow(page, "build/cache.txt").click();
@@ -371,16 +418,16 @@ test("This turn lists the files commits since the turn began changed in a sectio
   await changes(page).getByRole("button", { name: "This turn" }).click();
   await writeFiles(page, [{ edit: appFile, content: withLine15("committed by the agent") }]);
   await waitForTurnToEnd(page);
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["src/app.ts"]);
+  await expectListed(page, "Project", ["src/app.ts"]);
 
   writeFileSync(join(host.projectDir, "pulled.txt"), "from a pull\n");
   git("add", "pulled.txt", "src/app.ts");
   git("commit", "-qm", "a pull and the agent's commit");
   writeFileSync(join(host.projectDir, "by-hand.txt"), "typed after the commits\n");
   await changes(page).getByRole("button", { name: "Refresh" }).click();
-  await expect(section(page, "From commits since the turn began").locator(".changed-path")).toHaveText(["pulled.txt", "src/app.ts"]);
+  await expectListed(page, "From commits since the turn began", ["pulled.txt", "src/app.ts"]);
   await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveText("● agent");
-  await expect(section(page, "Project").locator(".changed-path")).toHaveText(["by-hand.txt"]);
+  await expectListed(page, "Project", ["by-hand.txt"]);
 
   await fileRow(page, "src/app.ts").click();
   await expect(changes(page).locator(".changes-diff")).toContainText("committed by the agent");

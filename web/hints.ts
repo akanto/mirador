@@ -283,6 +283,10 @@ export const hints = {
     uncommitted: "git status: the files that differ from the last commit, and the files outside the project the agent edited in this conversation.",
     session: "Every file the agent changed with its edit tools in this conversation, even where a later turn changed it back, and the git-ignored files written since its first message, such as build output.",
   },
+  changesView: {
+    list: "Each changed file on its own row, with its whole path. Remembered in this browser.",
+    tree: "The changed files in their folders. Click a folder to fold it. Remembered in this browser.",
+  },
   changesRefresh: "Load the list again. It also loads after each tool call the agent finishes and when the turn ends.",
   changesByAgent: "This conversation's agent changed this file with its edit tools.",
   changesOpenInIdea: "Open the file in IntelliJ IDEA at its first changed line.",
