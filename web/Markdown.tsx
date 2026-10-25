@@ -44,6 +44,9 @@ function CodeBlock({ node: _node, ...props }: ComponentProps<"pre"> & ExtraProps
   );
 }
 
+/** Whether images from other sites show as links, where the page's own image policy isn't the one that applies, as in a plugin's canvas view. */
+export const ExternalImagesBlocked = createContext<boolean | null>(null);
+
 /** A badge is an image inside a link, and a link cannot hold another. */
 const InsideLink = createContext(false);
 
@@ -56,7 +59,8 @@ function MarkdownLink({ node: _node, children, ...props }: ComponentProps<"a"> &
 }
 
 function MarkdownImage({ node: _node, ...props }: ComponentProps<"img"> & ExtraProps) {
-  const externalImagesBlocked = useExternalImagesBlocked();
+  const blockedByThisPage = useExternalImagesBlocked();
+  const externalImagesBlocked = useContext(ExternalImagesBlocked) ?? blockedByThisPage;
   const insideLink = useContext(InsideLink);
   const source = typeof props.src === "string" ? props.src : "";
   if (!externalImagesBlocked || !isFromAnotherSite(source, location.origin)) return <img {...props} />;

@@ -29,7 +29,8 @@ test.afterAll(async () => {
 const status = (page: Page) => page.locator(".chat-header:visible .badge");
 const toggle = (page: Page) => page.locator(".checklist-toggle:visible");
 const canvasTitle = (page: Page) => page.locator(".canvas-header:visible .canvas-title");
-const checklistItem = (page: Page, text: string) => page.locator(".checklist:visible .checklist-item", { hasText: text });
+const checklistView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
+const checklistItem = (page: Page, text: string) => checklistView(page).locator(".checklist-item", { hasText: text });
 const checkbox = (page: Page, text: string) => checklistItem(page, text).getByRole("checkbox");
 
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
@@ -49,7 +50,7 @@ const release = {
   title: "Release 0.4.2",
   sections: [
     { title: "Build", items: [{ id: "tests", text: "Run the tests" }, { id: "build", text: "Build the app", detail: "Signed and **notarized**" }] },
-    { title: "Ship", items: [{ id: "publish", text: "Publish the release" }, { id: "announce", text: "Post the announcement", owner: "user" }] },
+    { title: "Ship", items: [{ id: "publish", text: "Publish the release", detail: "```\ngh release create v0.4.2\n```" }, { id: "announce", text: "Post the announcement", owner: "user" }] },
   ],
 };
 
@@ -69,14 +70,23 @@ test("the agent publishes a checklist and ticks it as it goes, your ticks reach 
     await expect(toggle(page)).toHaveText("Checklist 0/4");
     await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(canvasTitle(page)).toHaveText("Release 0.4.2");
-    await expect(page.locator(".checklist:visible .checklist-section h4")).toHaveText(["Build 0/2", "Ship 0/2"]);
+    await expect(checklistView(page).locator(".checklist-section h4")).toHaveText(["Build 0/2", "Ship 0/2"]);
     const lastBuildItem = await checklistItem(page, "Build the app").boundingBox();
-    const shipHeading = await page.locator(".checklist:visible .checklist-section h4", { hasText: "Ship" }).boundingBox();
+    const shipHeading = await checklistView(page).locator(".checklist-section h4", { hasText: "Ship" }).boundingBox();
     expect(shipHeading!.y - (lastBuildItem!.y + lastBuildItem!.height), "a section stands apart from the one before it").toBeGreaterThanOrEqual(12);
     await expect(checklistItem(page, "Build the app").locator(".checklist-detail strong")).toHaveText("notarized");
     await expect(checklistItem(page, "Post the announcement").locator(".checklist-owner")).toHaveText("you");
     await expect(checklistItem(page, "Run the tests").locator(".checklist-owner")).toHaveCount(0);
     await expect(page.locator(".canvas-header:visible .history-toggle")).toHaveText("History (0)");
+  });
+
+  await test.step("a command in a detail is copied with its Copy button, as in the chat", async () => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const detail = checklistItem(page, "Publish the release").locator(".checklist-detail");
+    await detail.hover();
+    await detail.getByRole("button", { name: "Copy" }).click();
+    await expect(detail.getByRole("button", { name: "Copied" })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("gh release create v0.4.2");
   });
 
   await test.step("the agent ticks an item: the count goes up and the item flashes", async () => {
@@ -168,7 +178,7 @@ test("the agent publishes a checklist and ticks it as it goes, your ticks reach 
     await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(canvasTitle(page)).toHaveText("Release 0.4.2, the rest");
     await expect(toggle(page)).toHaveText("Checklist 2/3");
-    await expect(page.locator(".checklist:visible .checklist-list .checklist-item")).toHaveCount(3);
+    await expect(checklistView(page).locator(".checklist-list .checklist-item")).toHaveCount(3);
     await sendAndWait(page, "Last one");
     expect(agentSaw().endsWith("\nLast one\n")).toBe(true);
     expect(agentSaw()).not.toContain("On your checklist \"Release 0.4.2\", the user ticked \"announce\"");

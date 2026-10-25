@@ -1,6 +1,48 @@
-import { checklistItems, type Checklist, type ChecklistItem, type ChecklistOwner, type ChecklistSection } from "../../shared/checklist.ts";
-import { definedOnly } from "../review/edit.ts";
-import { ReviewProblems } from "../review/snapshot.ts";
+/** Who is expected to do an item; anyone may tick it. */
+export type ChecklistOwner = "agent" | "user" | "both";
+
+export const checklistOwners: ChecklistOwner[] = ["agent", "user", "both"];
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  /** Markdown, shown under the text. */
+  detail?: string;
+  owner: ChecklistOwner;
+  done: boolean;
+  /** Whether the item is done as far as the agent knows: it ticked it itself, or has heard that the user did. */
+  heardDone: boolean;
+}
+
+export interface ChecklistSection {
+  title?: string;
+  items: ChecklistItem[];
+}
+
+/** The checklist item's data. */
+export interface Checklist {
+  sections: ChecklistSection[];
+  /** The items the agent's latest change in place ticked, reworded or added, which flash once. */
+  agentChanged?: string[];
+}
+
+export const checklistItems = (checklist: Checklist) => checklist.sections.flatMap((section) => section.items);
+
+export function checklistProgress(items: { done: boolean }[]) {
+  return { done: items.filter((item) => item.done).length, total: items.length };
+}
+
+/** What the agent hears instead of a result: the lead, then each problem on a line of its own. */
+export class ChecklistProblems extends Error {
+  constructor(
+    readonly problems: string[],
+    lead: string,
+  ) {
+    super(`${lead}:\n${problems.map((problem) => `- ${problem}`).join("\n")}`);
+  }
+}
+
+const definedOnly = <T extends object>(fields: T) => Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as Partial<T>;
 
 export interface NewChecklistItem {
   id: string;
@@ -52,7 +94,7 @@ const idsUsedTwice = (ids: string[]) => [...new Set(ids.filter((id, index) => id
 /** A checklist published again keeps the done state of the items with the same ids, unless the agent says otherwise. */
 export function newChecklist(request: ChecklistRequest, earlier: Checklist | undefined): Checklist {
   const twice = idsUsedTwice(request.sections.flatMap((section) => section.items.map(({ id }) => id)));
-  if (twice.length > 0) throw new ReviewProblems(twice.map((id) => `"${id}" names more than one item; give each item its own id.`), CHECKLIST_NOT_SHOWN);
+  if (twice.length > 0) throw new ChecklistProblems(twice.map((id) => `"${id}" names more than one item; give each item its own id.`), CHECKLIST_NOT_SHOWN);
   const doneBefore = new Map((earlier ? checklistItems(earlier) : []).map(({ id, done }) => [id, done]));
   return {
     sections: request.sections.map(({ title, items }) => ({
@@ -93,7 +135,7 @@ export function applyChecklistEdit(checklist: Checklist, edit: ChecklistEdit) {
     if (!placeable) problems.push(`"${id}" goes after "${after}", which is not an item of this checklist${removed.has(after!) ? " once the ones you take out are gone" : ""}.`);
     added.add(id);
   });
-  if (problems.length > 0) throw new ReviewProblems(problems, CHECKLIST_NOT_CHANGED);
+  if (problems.length > 0) throw new ChecklistProblems(problems, CHECKLIST_NOT_CHANGED);
 
   const sections = checklist.sections.map((section) => ({
     ...section,
@@ -131,9 +173,6 @@ const withItems = (checklist: Checklist, change: (item: ChecklistItem) => Checkl
 });
 
 export const tickedByUser = (checklist: Checklist, itemId: string, done: boolean) => withItems(checklist, (item) => (item.id === itemId ? { ...item, done } : item));
-
-/** The user's dismissal of the checklist: its items and ticks stand, but it no longer shows on the canvas on its own. */
-export const dismissedByUser = (checklist: Checklist): Checklist => ({ ...checklist, dismissed: true });
 
 export const unheardTicks = (checklist: Checklist): UserTick[] =>
   checklistItems(checklist)

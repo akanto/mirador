@@ -189,10 +189,6 @@ export type ClientMessage =
   | { type: "app.run"; workspaceId: string; app: string; task: string }
   /** The user stops the app's task under way. */
   | { type: "app.stop-task"; workspaceId: string; app: string }
-  /** The user ticks or unticks an item of the agent's checklist; the agent hears of it with their next message. */
-  | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
-  /** The user takes the checklist off the canvas; it stays gone until the agent publishes a new one. */
-  | { type: "checklist.dismiss"; itemId: string }
   /** What the user did in a plugin item's view, for the plugin's host code; answered with "canvas.item-acted". */
   | { type: "canvas.item-action"; requestId: string; itemId: string; action: unknown }
   /** The user takes a plugin's item out of the tab; it stays gone until the plugin publishes a new one. */

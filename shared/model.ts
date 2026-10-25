@@ -6,7 +6,6 @@ import type {
   ToolCallUpdate,
   ToolKind,
 } from "@agentclientprotocol/sdk";
-import type { Checklist } from "./checklist.ts";
 import type { PluginItemPlacement } from "./canvas-plugins.ts";
 import type { EditDiff, Review, Tour } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
@@ -567,7 +566,7 @@ export interface CanvasAnswer {
   deliveredAs: "tool-result" | "next-message";
 }
 
-export type CanvasItemKind = "show" | "ask" | "review" | "tour" | "checklist" | "plugin";
+export type CanvasItemKind = "show" | "ask" | "review" | "tour" | "plugin";
 
 /** What every canvas item carries, whatever its kind. */
 export interface CanvasItemBase {
@@ -617,12 +616,6 @@ export interface TourItem extends CanvasItemBase {
   tour: Tour;
 }
 
-/** The conversation's checklist is its newest one; it shows in its own tab, not among the pages. */
-export interface ChecklistCanvasItem extends CanvasItemBase {
-  kind: "checklist";
-  checklist: Checklist;
-}
-
 /** An item a plugin's tool published; the plugin's canvas view draws it in a frame. */
 export interface PluginCanvasItem extends CanvasItemBase {
   kind: "plugin";
@@ -640,4 +633,4 @@ export interface PluginCanvasItem extends CanvasItemBase {
   agentEditedAt?: number;
 }
 
-export type CanvasItem = ShowItem | AskItem | ReviewItem | TourItem | ChecklistCanvasItem | PluginCanvasItem;
+export type CanvasItem = ShowItem | AskItem | ReviewItem | TourItem | PluginCanvasItem;

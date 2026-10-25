@@ -1,7 +1,7 @@
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, createProfile, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -76,6 +76,28 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(pageView(page).locator("#reply")).toHaveText("A card can only be pressed.");
   });
 
+  await test.step("the view looks like Mirador: its colours and font scale reach it, and follow a change", async () => {
+    const themed = pageView(page).locator("#theme");
+    const panelText = await page.locator(".canvas-panel:visible").evaluate((panel) => getComputedStyle(panel).color);
+    await expect(themed).toHaveCSS("color", panelText);
+    await expect(themed).toHaveCSS("font-size", "10px");
+    await chooseInSettings(page, "Text size", "140%");
+    await expect(themed).toHaveCSS("font-size", "14px");
+    await chooseInSettings(page, "Text size", "100%");
+  });
+
+  await test.step("a hint in the view shows as Mirador's own, and a link in it opens in a new tab", async () => {
+    await pageView(page).locator("#hinted").hover();
+    await expect(page.getByRole("tooltip")).toHaveText("What the board says about itself.");
+    const viewBox = (await page.locator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin").boundingBox())!;
+    const hintBox = (await page.getByRole("tooltip").boundingBox())!;
+    expect(hintBox.y).toBeGreaterThan(viewBox.y);
+    await page.context().route("https://example.invalid/board", (route) => route.fulfill({ body: "The board's site" }));
+    const opened = page.context().waitForEvent("page");
+    await pageView(page).getByRole("link", { name: "The board's site" }).click();
+    expect((await opened).url()).toBe("https://example.invalid/board");
+  });
+
   await test.step("the agent hears of the presses with the next message, once", async () => {
     await sendAndWait(page, "Carry on");
     expect(agentSaw()).toContain('The user pressed the card "Hello" 1 times.\n\nCarry on\n');
@@ -95,6 +117,18 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(page.getByRole("button", { name: "History (1)" })).toBeVisible();
   });
 
+  await test.step("the view knows which of the agent's changes the user hasn't seen yet", async () => {
+    await expect(tabView(page).locator("#unseen")).toHaveText("Changed since you looked");
+    await page.getByRole("button", { name: "Close the checklist" }).click();
+    await toggle(page).click();
+    await expect(tabView(page).locator("#unseen")).toHaveText("Nothing new");
+    await page.getByRole("button", { name: "Close the checklist" }).click();
+    await callCanvasTool(host, conversationId, "finish_step", {});
+    await expect(toggle(page)).toHaveText("Checklist 2/2");
+    await toggle(page).click();
+    await expect(tabView(page).locator("#unseen")).toHaveText("Changed since you looked");
+  });
+
   await test.step("dismissing takes the item out of the tab, and the plugin knows", async () => {
     await page.getByRole("button", { name: "Dismiss the checklist" }).click();
     await expect(toggle(page)).toHaveCount(0);
@@ -102,6 +136,7 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await page.reload();
     await expect(toggle(page)).toHaveCount(0);
     expect(await callCanvasTool(host, conversationId, "finish_step", {})).toBe("There are no steps to tick off.");
+    await expect(canvasKind(page)).toHaveText("▤");
   });
 
   await test.step("with the plugin gone, its card shows what it published instead of a blank page", async () => {

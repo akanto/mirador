@@ -1,5 +1,5 @@
 /** None of them changes files or runs commands for the agent, so none is worth a permission prompt. */
-export const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "checklist", "update_checklist", "when_done"];
+export const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "when_done"];
 
 const APP_TOOLS = ["app_open", "apply", "app_state", "app_run"];
 

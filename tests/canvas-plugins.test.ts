@@ -4,102 +4,37 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeSessionMeta } from "../host/acp/harnesses.ts";
 import { loadPlugins } from "../host/apps/plugins.ts";
-import type { ConversationService } from "../host/conversations.ts";
 import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.ts";
-import { CanvasMcpEndpoints } from "../host/canvas/mcp.ts";
-import { CanvasPlugins } from "../host/canvas/plugins.ts";
-import type { CanvasService } from "../host/canvas/service.ts";
-import type { Hub } from "../host/hub.ts";
-import { Store } from "../host/store.ts";
 import type { PluginCanvasItem } from "../shared/model.ts";
-import type { ServerMessage } from "../shared/protocol.ts";
+import { canvasPluginHost } from "./canvas-plugin-host.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "canvas-plugins");
 
-async function setUp() {
-  const store = new Store(":memory:");
-  store.insertWorkspace({ id: "w1", name: "p", path: "/tmp/p", defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
-  store.insertConversation({
-    id: "c1",
-    workspaceId: "w1",
-    harness: "claude",
-    profileId: null,
-    title: "t",
-    titleSetByUser: false,
-    acpSessionId: null,
-    askMode: "wait",
-    bypassPermissions: false,
-    status: "idle",
-    statusDetail: null,
-    openInTerminal: null,
-    contextUsage: null,
-    queuedMessages: [],
-    usageLimit: null,
-    jobWaits: [],
-    asyncTasks: [],
-    waitingFor: null,
-    pendingRequest: null,
-    lastWords: null,
-    activity: null,
-    configOptions: [],
-    createdAt: 1,
-    updatedAt: 1,
-  });
-  const published: ServerMessage[] = [];
-  const hub = { publishToConversation: (_conversationId: string, message: ServerMessage) => void published.push(message) } as unknown as Hub;
-  const loaded = await loadPlugins(FIXTURES);
-  expect(loaded.problems).toEqual([]);
-  const plugins = new CanvasPlugins(store, hub, loaded.canvases);
-  const endpoints = new CanvasMcpEndpoints({} as CanvasService, {} as ConversationService, "http://127.0.0.1:4601", null, plugins);
-  const items = () => store.listCanvasItems("c1") as PluginCanvasItem[];
-  return { store, plugins, endpoints, published, items };
-}
-
-async function mcpRequest(endpoints: CanvasMcpEndpoints, method: string, params: Record<string, unknown>) {
-  const response = await endpoints.handle(
-    "c1",
-    new Request("http://127.0.0.1/mcp/c1", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    }),
-  );
-  const body = await response.text();
-  const payload = body
-    .split("\n")
-    .find((line) => line.startsWith("data: "))
-    ?.slice("data: ".length);
-  return JSON.parse(payload ?? body).result;
-}
-
-async function callTool(endpoints: CanvasMcpEndpoints, name: string, args: Record<string, unknown>) {
-  const result = await mcpRequest(endpoints, "tools/call", { name, arguments: args });
-  return { text: result.content[0].text as string, isError: result.isError === true };
-}
+const setUp = () => canvasPluginHost(FIXTURES);
 
 describe("CanvasPlugins", () => {
   test("a plugin's tools join the canvas server, pre-allowed, with its lines of guidance", async () => {
-    const { plugins, endpoints } = await setUp();
-    const { tools } = await mcpRequest(endpoints, "tools/list", {});
+    const { plugins, mcpRequest } = await setUp();
+    const { tools } = await mcpRequest("tools/list", {});
     expect(tools.map(({ name }: { name: string }) => name)).toEqual(expect.arrayContaining(["show", "show_card", "change_card", "track_steps", "finish_step"]));
     expect(tools.find(({ name }: { name: string }) => name === "show_card")).toMatchObject({ description: "Show a card the user can press.", _meta: { "anthropic/alwaysLoad": true } });
 
     const { guidance } = plugins;
     expect(guidance.toolNames).toEqual(["show_card", "change_card", "track_steps", "finish_step"]);
-    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("update_checklist's result.\n- show_card: show a card the user can press.\n\nRendering environment:");
-    expect(canvasUseGuidance(guidance)).toContain("in your to-do list too.\n- show_card: when a card says it better than words.\n- Keep pages lean");
+    expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("only when the code under review changed.\n- show_card: show a card the user can press.\n\nRendering environment:");
+    expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- show_card: when a card says it better than words.\n- Keep pages lean");
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__show_card");
   });
 
   test("a tool publishes an item, and another changes it in place as the agent's change", async () => {
-    const { endpoints, items, published } = await setUp();
-    const shown = await callTool(endpoints, "show_card", { title: "Hello", text: "First" });
+    const { callTool, items, published } = await setUp();
+    const shown = await callTool("show_card", { title: "Hello", text: "First" });
     const [card] = items();
     expect(shown).toEqual({ text: `Shown as ${card!.id}.`, isError: false });
     expect(card).toMatchObject({ kind: "plugin", plugin: "board", type: "card", icon: "▤", placement: "page", title: "Hello", status: "shown", data: { text: "First", presses: 0 } });
     expect(card).not.toHaveProperty("agentEditedAt");
 
-    expect(await callTool(endpoints, "change_card", { text: "Second" })).toEqual({ text: "Changed.", isError: false });
+    expect(await callTool("change_card", { text: "Second" })).toEqual({ text: "Changed.", isError: false });
     expect(items()).toHaveLength(1);
     expect(items()[0]).toMatchObject({ id: card!.id, data: { text: "Second" }, agentEditedAt: expect.any(Number) });
     expect(published.map((message) => message.type === "canvas.upserted" && (message.item as PluginCanvasItem).data)).toEqual([
@@ -109,25 +44,25 @@ describe("CanvasPlugins", () => {
   });
 
   test("what a tool throws, and arguments its schema refuses, reach the agent as tool errors and change nothing", async () => {
-    const { endpoints, items } = await setUp();
-    expect(await callTool(endpoints, "change_card", { text: "Second" })).toEqual({ text: "There is no card to change; show one with show_card.", isError: true });
-    const refused = await callTool(endpoints, "show_card", { text: "No title" });
+    const { callTool, items } = await setUp();
+    expect(await callTool("change_card", { text: "Second" })).toEqual({ text: "There is no card to change; show one with show_card.", isError: true });
+    const refused = await callTool("show_card", { text: "No title" });
     expect(refused.isError).toBe(true);
     expect(refused.text).toContain("title");
     expect(items()).toEqual([]);
   });
 
   test("an item in the tab carries its count, kept up to date", async () => {
-    const { endpoints, items } = await setUp();
-    await callTool(endpoints, "track_steps", { title: "Release", steps: ["Build", "Ship"] });
+    const { callTool, items } = await setUp();
+    await callTool("track_steps", { title: "Release", steps: ["Build", "Ship"] });
     expect(items()[0]).toMatchObject({ type: "steps", icon: "◔", placement: "tab", count: "0/2" });
-    await callTool(endpoints, "finish_step", {});
+    await callTool("finish_step", {});
     expect(items()[0]).toMatchObject({ count: "1/2" });
   });
 
   test("the user's action reaches the plugin and its reply comes back; the agent hears of it with the next message, once", async () => {
-    const { plugins, endpoints, items } = await setUp();
-    await callTool(endpoints, "show_card", { title: "Hello", text: "First" });
+    const { plugins, callTool, items } = await setUp();
+    await callTool("show_card", { title: "Hello", text: "First" });
     const cardId = items()[0]!.id;
 
     expect(await plugins.act(cardId, { kind: "press" })).toEqual({ presses: 1 });
@@ -143,13 +78,13 @@ describe("CanvasPlugins", () => {
   });
 
   test("the user dismisses an item in the tab, and its plugin knows; a page can't be dismissed", async () => {
-    const { plugins, endpoints, items } = await setUp();
-    await callTool(endpoints, "track_steps", { title: "Release", steps: ["Build"] });
-    await callTool(endpoints, "show_card", { title: "Hello", text: "First" });
+    const { plugins, callTool, items } = await setUp();
+    await callTool("track_steps", { title: "Release", steps: ["Build"] });
+    await callTool("show_card", { title: "Hello", text: "First" });
     const [steps, card] = items();
     plugins.dismiss(steps!.id);
     expect(items()[0]).toMatchObject({ dismissed: true });
-    expect(await callTool(endpoints, "finish_step", {})).toEqual({ text: "There are no steps to tick off.", isError: true });
+    expect(await callTool("finish_step", {})).toEqual({ text: "There are no steps to tick off.", isError: true });
     expect(() => plugins.dismiss(card!.id)).toThrow("Only an item in the tab can be dismissed.");
   });
 

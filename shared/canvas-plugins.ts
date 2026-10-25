@@ -26,6 +26,8 @@ export interface PluginItem<Data = unknown> {
   createdAt: number;
   /** The user took it out of the tab. */
   dismissed: boolean;
+  /** When the agent last changed it in place, from a tool; null until it does. */
+  agentEditedAt: number | null;
 }
 
 /** A plugin's item as its host code and its view see it, without what only Mirador keeps. */
@@ -36,6 +38,7 @@ export const pluginItemOf = (item: PluginCanvasItem): PluginItem => ({
   data: item.data,
   createdAt: item.createdAt,
   dismissed: item.dismissed ?? false,
+  agentEditedAt: item.agentEditedAt ?? null,
 });
 
 /** The conversation a plugin's code runs for, and its items in the canvas there. */

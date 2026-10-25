@@ -1,0 +1,6 @@
+{
+  "name": "checklist",
+  "title": "Checklist",
+  "api": 3,
+  "canvas": { "host": "host.ts", "view": "view.tsx" }
+}

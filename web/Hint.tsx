@@ -10,6 +10,13 @@ interface Hint {
   anchor: DOMRect;
 }
 
+/** A hint inside a canvas frame, which the page's own listeners can't see into; its anchor is where it shows on the page. */
+export type FramedHint = { text: string; anchor: DOMRect } | null;
+
+const framedHintListeners = new Set<(hint: FramedHint) => void>();
+
+export const showFramedHint = (hint: FramedHint) => framedHintListeners.forEach((listener) => listener(hint));
+
 const hintedElementAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLElement>("[data-hint], [data-shortcut]") : null);
 
 /**
@@ -63,6 +70,19 @@ export function HintLayer() {
       hide();
     };
     const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && hide();
+    const onFramedHint = (framed: FramedHint) => {
+      if (!framed) return hide();
+      clearTimeout(timer);
+      current = null;
+      timer = setTimeout(
+        () => {
+          visible = true;
+          setHint({ text: framed.text, shortcut: null, anchor: framed.anchor });
+        },
+        visible ? 0 : SHOW_DELAY_MS,
+      );
+    };
+    framedHintListeners.add(onFramedHint);
     document.addEventListener("pointerover", onPointerOver);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("focusin", onFocusIn);
@@ -72,6 +92,7 @@ export function HintLayer() {
     window.addEventListener("blur", hide);
     return () => {
       clearTimeout(timer);
+      framedHintListeners.delete(onFramedHint);
       document.removeEventListener("pointerover", onPointerOver);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("focusin", onFocusIn);

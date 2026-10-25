@@ -1,0 +1,207 @@
+/* Mirador's own stylesheet for the checklist and the Markdown in it, on the --mirador-… variables the bridge sets. */
+:root {
+  font-family: var(--mirador-font);
+  font-size: calc(13.5px * var(--mirador-font-scale));
+  -webkit-font-smoothing: antialiased;
+  background: var(--mirador-panel);
+  color: var(--mirador-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid var(--mirador-border);
+  background: var(--mirador-panel);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-weight: 500;
+}
+
+button:where(:hover:not(:disabled)) {
+  background: var(--mirador-panel-2);
+}
+
+input {
+  font: inherit;
+  color: inherit;
+  background: var(--mirador-panel);
+  border: 1px solid var(--mirador-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--mirador-accent) 45%, transparent);
+  outline-offset: 0;
+  border-color: var(--mirador-accent);
+}
+
+pre,
+code {
+  font-family: var(--mirador-mono);
+  font-size: calc(12.5px * var(--mirador-font-scale));
+}
+
+.checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.checklist-section h4 {
+  margin: 0 0 6px;
+  font-size: calc(13px * var(--mirador-font-scale));
+}
+
+.checklist-progress {
+  color: var(--mirador-muted);
+  font-weight: normal;
+}
+
+.checklist-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checklist-item {
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.checklist-item label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.checklist-item.done .checklist-text {
+  color: var(--mirador-muted);
+  text-decoration: line-through;
+}
+
+.checklist-owner {
+  flex-shrink: 0;
+  font-size: calc(11px * var(--mirador-font-scale));
+  color: var(--mirador-muted);
+  border: 1px solid var(--mirador-border);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+.checklist-owner.owner-user,
+.checklist-owner.owner-both {
+  color: var(--mirador-accent);
+  border-color: var(--mirador-accent);
+}
+
+.checklist-detail {
+  margin: 2px 0 0 24px;
+  color: var(--mirador-muted);
+  font-size: calc(12.5px * var(--mirador-font-scale));
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 8px;
+}
+
+.copyable-code {
+  position: relative;
+  margin: calc(12.5px * var(--mirador-font-scale)) 0;
+}
+
+.markdown pre {
+  margin: 0;
+  background: var(--mirador-code-bg);
+  border: 1px solid var(--mirador-border);
+  padding: 8px 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.markdown code {
+  background: var(--mirador-code-bg);
+  padding: 1px 4px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.code-copy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  color: var(--mirador-muted);
+  font-size: calc(12px * var(--mirador-font-scale));
+  user-select: none;
+  /* Not visibility: a hidden button can't take focus, and Tab must reach it. */
+  opacity: 0;
+}
+
+.copyable-code:hover .code-copy,
+.code-copy:focus-visible,
+.code-copy.shown {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .code-copy {
+    opacity: 1;
+  }
+}
+
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--mirador-border);
+  padding: 4px 8px;
+}
+
+.markdown a {
+  color: var(--mirador-accent);
+}
+
+.agent-edited {
+  animation: agent-edited 2s ease-out;
+}
+
+@keyframes agent-edited {
+  from {
+    box-shadow: 0 0 0 3px var(--mirador-accent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}

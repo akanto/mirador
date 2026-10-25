@@ -46,6 +46,11 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-ready" }
   /** What the user did in a plugin item's view, for the plugin's host code; the panel answers with an "item-reply" or "item-reply-failed". */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-send"; requestId: string; action: unknown }
+  /** What a plugin item's view has its `data-hint` on, pointed at or focused with the keyboard; the panel shows the hint as its own. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-hint"; text: unknown; anchor: unknown }
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-hint-gone" }
+  /** A link the user followed in a plugin item's view, which the sandbox keeps from opening there. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-open"; href: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -76,6 +81,19 @@ export function canvasThemeMessage(theme: CanvasTheme) {
  * a frame loaded from a server answers only to the policy it is served with.
  */
 export const CANVAS_SHELL_PATH = "/canvas-shell.html";
+
+/** What a canvas page may load beyond the canvas assets: images from other sites, for a plugin's view while Settings let them load. */
+export interface CanvasPagePolicy {
+  imagesFromOtherSites?: boolean;
+}
+
+const IMAGES_FROM_OTHER_SITES_QUERY = "images=other-sites";
+
+/** The shell is served with its policy as a header, which the page's own policy can only narrow, so a wider one is asked for in its address. */
+export const canvasShellUrl = (assetsOrigin: string, { imagesFromOtherSites = false }: CanvasPagePolicy = {}) =>
+  `${assetsOrigin}${CANVAS_SHELL_PATH}${imagesFromOtherSites ? `?${IMAGES_FROM_OTHER_SITES_QUERY}` : ""}`;
+
+export const shellPolicyAskedFor = (url: URL): CanvasPagePolicy => ({ imagesFromOtherSites: url.search === `?${IMAGES_FROM_OTHER_SITES_QUERY}` });
 
 export function canvasPageMessage(document: string) {
   return { source: CANVAS_MESSAGE_SOURCE, kind: "page", document };
@@ -229,9 +247,22 @@ function appBridge(frameId: string, storage: AppStorageItems) {
 })();`;
 }
 
+/** What a plugin item's view draws besides the item: how it is to look in Mirador, and what the user saw of it. */
+export interface PluginItemContext {
+  /** When the agent last changed the item while the user had it in view; what the agent changed since is new to them. */
+  seenAgentEditAt: number | null;
+  /** Settings let images from other sites load, so the view may show them rather than link to them. */
+  imagesFromOtherSites: boolean;
+}
+
 /** A plugin's item for its view, posted by the panel on every change. */
-export function pluginItemMessage(item: PluginItem) {
-  return { source: CANVAS_MESSAGE_SOURCE, kind: "item-state", item };
+export function pluginItemMessage(item: PluginItem, context: PluginItemContext) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "item-state", item, context };
+}
+
+/** Mirador's colours, as the panel shows them now, its font and its font scale, as CSS variables named --mirador-…, for a plugin's view to look like the rest of Mirador. */
+export function pluginThemeMessage(variables: Record<string, string>) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "item-theme", variables };
 }
 
 /** The plugin's reply to an action the view sent. */
@@ -245,31 +276,67 @@ export function pluginItemReplyFailedMessage(requestId: string, message: string)
 }
 
 /**
- * `window.mirador` for a plugin's canvas view. `onItem` hands the listener the item the view draws, at once when it is
- * known and again on every change, so the view may start listening whenever its code is ready. `send` hands an action to
- * the plugin's host code and resolves to its reply, or rejects with the reason there is none.
+ * `window.mirador` for a plugin's canvas view. `onItem` hands the listener the item the view draws and its context, at
+ * once when they are known and again on every change, so the view may start listening whenever its code is ready. `send`
+ * hands an action to the plugin's host code and resolves to its reply, or rejects with the reason there is none.
+ * Mirador's look arrives as CSS variables on the page's root, `data-hint` shows as Mirador's own hints, and links open in
+ * a new tab, as the sandbox would not let them.
  */
 function pluginItemBridge(frameId: string) {
   return `(() => {
   const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
   const itemId = ${JSON.stringify(frameId)};
+  const post = (message) => parent.postMessage({ source, itemId, ...message }, "*");
   const listeners = new Set();
   const replies = new Map();
   let latest;
+  const theme = document.createElement("style");
+  document.head.append(theme);
   addEventListener("message", (event) => {
     const data = event.data;
     if ((event.source !== parent && event.source !== null) || !data || data.source !== source) return;
+    if (data.kind === "item-theme") theme.textContent = ":root{" + Object.entries(data.variables).map(([name, value]) => name + ":" + value).join(";") + "}";
     if (data.kind === "item-state") {
-      latest = data.item;
-      listeners.forEach((listener) => listener(latest));
+      latest = { item: data.item, context: data.context };
+      listeners.forEach((listener) => listener(latest.item, latest.context));
     }
     if (data.kind === "item-reply") replies.get(data.requestId)?.resolve(data.reply);
     if (data.kind === "item-reply-failed") replies.get(data.requestId)?.reject(new Error(data.message));
   });
+  const hintedAt = (target) => (target instanceof Element ? target.closest("[data-hint]") : null);
+  let hinted = null;
+  const hintFor = (element) => {
+    hinted = element;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    post({ kind: "item-hint", text: element.dataset.hint, anchor: { left, top, width, height } });
+  };
+  const noHint = () => {
+    if (hinted) post({ kind: "item-hint-gone" });
+    hinted = null;
+  };
+  addEventListener("pointerover", (event) => {
+    const element = hintedAt(event.target);
+    if (element === hinted) return;
+    if (element) hintFor(element);
+    else noHint();
+  });
+  addEventListener("pointerdown", noHint);
+  addEventListener("focusin", (event) => {
+    const element = hintedAt(event.target);
+    if (element && event.target.matches(":focus-visible")) hintFor(element);
+  });
+  addEventListener("focusout", noHint);
+  addEventListener("scroll", noHint, true);
+  addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!link || event.defaultPrevented) return;
+    event.preventDefault();
+    post({ kind: "item-open", href: link.href });
+  });
   window.mirador = Object.freeze({
     onItem(listener) {
       listeners.add(listener);
-      if (latest !== undefined) listener(latest);
+      if (latest !== undefined) listener(latest.item, latest.context);
       return () => listeners.delete(listener);
     },
     send(action) {
@@ -282,17 +349,20 @@ function pluginItemBridge(frameId: string) {
           finish(result);
         };
         replies.set(requestId, { resolve: (reply) => settle(resolve, reply), reject: (error) => settle(reject, error) });
-        parent.postMessage({ source, itemId, kind: "item-send", requestId, action }, "*");
+        post({ kind: "item-send", requestId, action });
       });
     },
   });
-  parent.postMessage({ source, itemId, kind: "item-ready" }, "*");
+  post({ kind: "item-ready" });
 })();`;
 }
 
+/** Room for a focus ring or a flash at the edge of a view in the tab, whose frame bleeds as far into the tab's padding. */
+const IN_TAB_PAGE_STYLE = "<style>html{padding:3px}body{margin:0}</style>";
+
 /** The page of a plugin item's view: the bridge first, then the plugin's canvas view, which the canvas assets serve. */
-export function pluginItemPage(viewUrl: string, frameId: string) {
-  return `<script>${pluginItemBridge(frameId)}</script>\n<script type="module" src="${escapeAttribute(viewUrl)}"></script>`;
+export function pluginItemPage(viewUrl: string, frameId: string, { inTab = false } = {}) {
+  return [`<script>${pluginItemBridge(frameId)}</script>`, ...(inTab ? [IN_TAB_PAGE_STYLE] : []), `<script type="module" src="${escapeAttribute(viewUrl)}"></script>`].join("\n");
 }
 
 /** The page of an app's view: the bridge first, then the view's code, which the canvas assets serve. */
@@ -311,13 +381,13 @@ export function canvasImportMap(assetsOrigin: string) {
   };
 }
 
-export function canvasContentSecurityPolicy(assetsOrigins: string[], scriptSources = assetsOrigins) {
+export function canvasContentSecurityPolicy(assetsOrigins: string[], scriptSources = assetsOrigins, { imagesFromOtherSites = false }: CanvasPagePolicy = {}) {
   const appMedia = assetsOrigins.map((origin) => `${origin}${APP_MEDIA_PATH}`).join(" ");
   return [
     "default-src 'none'",
     `script-src 'unsafe-inline' 'unsafe-eval' blob: ${scriptSources.join(" ")}`,
     "style-src 'unsafe-inline'",
-    `img-src data: blob: ${appMedia}`,
+    `img-src data: blob: ${appMedia}${imagesFromOtherSites ? " https: http:" : ""}`,
     "font-src data:",
     `media-src data: blob: ${appMedia}`,
     "worker-src blob:",
@@ -332,8 +402,8 @@ export function canvasContentSecurityPolicy(assetsOrigins: string[], scriptSourc
  * opaque origin and matches nothing, which there refuses every library the page loads. The policy names the addresses the
  * assets are reached at beside 'self', so both engines let the page load them.
  */
-export const canvasShellPolicy = (assetsOrigins: string[]) =>
-  `${canvasContentSecurityPolicy(assetsOrigins, ["'self'", ...assetsOrigins])}; sandbox allow-scripts`;
+export const canvasShellPolicy = (assetsOrigins: string[], policy: CanvasPagePolicy = {}) =>
+  `${canvasContentSecurityPolicy(assetsOrigins, ["'self'", ...assetsOrigins], policy)}; sandbox allow-scripts`;
 
 /**
  * WebKit tells a frame of an opaque origin only "Script error." of what its own classic scripts throw. A syntax error
@@ -657,11 +727,11 @@ const PADDED_PAGE_STYLE = "<style>html{padding:0 8px}body{margin-left:0;margin-r
  * reporter come before anything the agent wrote; the parser folds the agent's own
  * <html>/<head> tags into the already-open elements.
  */
-export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string, theme: CanvasTheme, { padded = false } = {}) {
+export function buildCanvasDocument(html: string, itemId: string, assetsOrigin: string, theme: CanvasTheme, { padded = false, policy = {} }: { padded?: boolean; policy?: CanvasPagePolicy } = {}) {
   const withoutDoctype = html.replace(/^\s*<!doctype[^>]*>/i, "");
   return [
     "<!doctype html>",
-    `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy([assetsOrigin]))}">`,
+    `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(canvasContentSecurityPolicy([assetsOrigin], [assetsOrigin], policy))}">`,
     '<meta charset="utf-8">',
     `<script type="importmap">${JSON.stringify(canvasImportMap(assetsOrigin))}</script>`,
     `<script>${frameReporter(itemId, theme, assetsOrigin)}</script>`,

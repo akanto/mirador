@@ -15,6 +15,7 @@ import {
   CANVAS_MESSAGE_SOURCE,
   CANVAS_SHELL_PAGE,
   CANVAS_SHELL_PATH,
+  canvasShellUrl,
   HIDDEN_ERROR_SCRIPT,
   TEXT_CONTRAST_SCRIPT,
 } from "../shared/canvas-document.ts";
@@ -34,6 +35,13 @@ describe("buildCanvasDocument", () => {
     expect(document).toContain(`img-src data: blob: ${assetsOrigin}/media/;`);
     expect(document).toContain(`media-src data: blob: ${assetsOrigin}/media/;`);
     expect(document).toContain("default-src 'none'");
+  });
+
+  test("a plugin's view may load images from other sites, while Settings let them load; nothing else on the network opens to it", () => {
+    const document = buildCanvasDocument("<p>", "item", assetsOrigin, "light", { policy: { imagesFromOtherSites: true } });
+    expect(document).toContain(`img-src data: blob: ${assetsOrigin}/media/ https: http:;`);
+    expect(document).toContain(`media-src data: blob: ${assetsOrigin}/media/;`);
+    expect(document).toContain("connect-src 'none'");
   });
 
   test("maps three and its addons to the assets origin", () => {
@@ -157,6 +165,19 @@ describe("serveCanvasAssets", () => {
       expect(policy).toEndWith("sandbox allow-scripts");
       expect(response.headers.get("cache-control")).toBe("no-cache");
       expect(await response.text()).toBe(CANVAS_SHELL_PAGE);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("serves the shell with images from other sites let in only when its address asks for them", async () => {
+    const server = serveCanvasAssets(0);
+    const origin = `http://127.0.0.1:${server.port}`;
+    try {
+      const policyAt = async (url: string) => (await fetch(url)).headers.get("content-security-policy");
+      expect(await policyAt(canvasShellUrl(origin, { imagesFromOtherSites: true }))).toContain(`img-src data: blob: ${origin}/media/ https: http:;`);
+      expect(await policyAt(canvasShellUrl(origin))).toContain(`img-src data: blob: ${origin}/media/;`);
+      expect(await policyAt(`${canvasShellUrl(origin)}?images=other-sites&more`)).toContain(`img-src data: blob: ${origin}/media/;`);
     } finally {
       server.stop(true);
     }

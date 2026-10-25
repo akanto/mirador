@@ -1,11 +1,17 @@
 const page = document.createElement("main");
-page.innerHTML = '<h1 id="title"></h1><p id="text"></p><p id="type"></p><button id="press">Press</button><p id="reply"></p><button id="refused">Do what cards don\'t</button>';
+page.innerHTML = `<h1 id="title"></h1><p id="text"></p><p id="type"></p><p id="unseen"></p>
+<button id="press">Press</button><p id="reply"></p><button id="refused">Do what cards don't</button>
+<span id="hinted" data-hint="What the board says about itself.">Hover me</span>
+<a id="link" href="https://example.invalid/board">The board's site</a>
+<p id="theme" style="color: var(--mirador-text); font-size: calc(10px * var(--mirador-font-scale))">Themed</p>`;
 document.body.append(page);
 const show = (id, text) => (document.getElementById(id).textContent = text);
-window.mirador.onItem((item) => {
+const isUnseen = (item, { seenAgentEditAt }) => item.agentEditedAt !== null && (seenAgentEditAt === null || item.agentEditedAt > seenAgentEditAt);
+window.mirador.onItem((item, context) => {
   show("title", item.title);
   show("type", item.type);
   show("text", item.type === "card" ? `${item.data.text} (pressed ${item.data.presses} times)` : `${item.data.done} of ${item.data.steps.length} steps done`);
+  show("unseen", isUnseen(item, context) ? "Changed since you looked" : "Nothing new");
 });
 document.getElementById("press").addEventListener("click", () =>
   window.mirador.send({ kind: "press" }).then(({ presses }) => show("reply", `Pressed ${presses} times`), (error) => show("reply", error.message)),

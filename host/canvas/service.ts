@@ -1,5 +1,4 @@
 import { answersSummary, questionsOf } from "../../shared/ask.ts";
-import { checklistItems } from "../../shared/checklist.ts";
 import type {
   AskAnswerEntry,
   AskItem,
@@ -7,7 +6,6 @@ import type {
   CanvasAnswer,
   CanvasItem,
   CanvasItemBase,
-  ChecklistCanvasItem,
   ReviewItem,
   ShowItem,
   TourItem,
@@ -20,20 +18,6 @@ import type { SystemNotifications } from "../system-notifications.ts";
 import type { PageLibraries } from "../../shared/canvas-export.ts";
 import { standalonePage } from "./export.ts";
 import { saveIntoWorkspace } from "./save-to-project.ts";
-import {
-  applyChecklistEdit,
-  CHECKLIST_DISMISSED_BY_USER,
-  CHECKLIST_NOT_CHANGED,
-  CHECKLIST_NOT_CHANGED_LEAD,
-  dismissedByUser,
-  heardOf,
-  newChecklist,
-  noteOfTicks,
-  tickedByUser,
-  unheardTicks,
-  type ChecklistEdit,
-  type ChecklistRequest,
-} from "./checklist.ts";
 import { noteOfPageErrors, type CanvasNote } from "./notes.ts";
 import { answersToConversations } from "../review/answers.ts";
 import { carryOverAnswerChoices, carryOverChoices, ofSamePullRequest, reviewToCarryOverFrom } from "../review/carry-over.ts";
@@ -189,64 +173,9 @@ export class CanvasService {
     });
   }
 
-  /** Publishing again replaces the conversation's checklist; the result names what the user had ticked on the one it replaces. */
-  publishChecklist(conversationId: string, request: ChecklistRequest) {
-    const replaced = this.newestChecklist(conversationId);
-    const item = this.save({
-      id: crypto.randomUUID(),
-      conversationId,
-      kind: "checklist",
-      title: request.title,
-      checklist: newChecklist(request, replaced && !replaced.checklist.dismissed ? replaced.checklist : undefined),
-      status: "shown",
-      createdAt: Date.now(),
-    });
-    return { item, replaced: replaced && { title: replaced.title, ticks: unheardTicks(replaced.checklist) } };
-  }
-
-  /** The agent's change to its checklist, in place; the agent hears what the user ticked since it last did. */
-  editChecklist(conversationId: string, edit: ChecklistEdit) {
-    const current = this.newestChecklist(conversationId);
-    if (!current) throw new ReviewProblems(["This conversation has no checklist; publish one with the checklist tool."], CHECKLIST_NOT_CHANGED);
-    if (current.checklist.dismissed) throw new ReviewProblems([CHECKLIST_DISMISSED_BY_USER], CHECKLIST_NOT_CHANGED_LEAD);
-    const { checklist, changed, added, removed } = applyChecklistEdit(current.checklist, edit);
-    const ticks = unheardTicks(checklist);
-    const agentEdit = { at: Date.now(), items: [...changed, ...added] };
-    const item = this.save({ ...current, checklist: { ...heardOf(checklist, ticks), agentEdit } });
-    return { item, changed, added, removed, ticks };
-  }
-
-  tickChecklistItem(itemId: string, checklistItemId: string, done: boolean) {
-    const item = this.store.findCanvasItem(itemId);
-    if (item?.kind !== "checklist") throw new Error("Unknown checklist.");
-    if (!checklistItems(item.checklist).some(({ id }) => id === checklistItemId)) throw new Error("Unknown checklist item.");
-    this.save({ ...item, checklist: tickedByUser(item.checklist, checklistItemId, done) });
-  }
-
-  /** The user takes the checklist off the canvas for good; only publishing a new one brings a checklist back. */
-  dismissChecklist(itemId: string) {
-    const item = this.store.findCanvasItem(itemId);
-    if (item?.kind !== "checklist") throw new Error("Unknown checklist.");
-    this.save({ ...item, checklist: dismissedByUser(item.checklist) });
-  }
-
   /** What the canvas has for the agent to hear of with the user's next message. */
   notesForAgent(conversationId: string): CanvasNote[] {
-    return [this.checklistNote(conversationId), this.pageErrorsNote(conversationId)].filter((note) => note !== null);
-  }
-
-  /** What the user ticked, for the agent with their next message; once the message is sent, the agent has heard. */
-  checklistNote(conversationId: string): CanvasNote | null {
-    const current = this.newestChecklist(conversationId);
-    const ticks = current ? unheardTicks(current.checklist) : [];
-    if (!current || ticks.length === 0) return null;
-    return {
-      text: noteOfTicks(current.title, ticks),
-      heard: () => {
-        const latest = this.store.findCanvasItem(current.id);
-        if (latest?.kind === "checklist") this.save({ ...latest, checklist: heardOf(latest.checklist, ticks) });
-      },
-    };
+    return [this.pageErrorsNote(conversationId)].filter((note) => note !== null);
   }
 
   /**
@@ -452,11 +381,6 @@ export class CanvasService {
     if (item) return item;
     const problem = itemId === undefined ? "This conversation has no review to change; publish one with the review tool." : `review: ${itemId} is not a review in this conversation.`;
     throw new ReviewProblems([problem], REVIEW_NOT_CHANGED);
-  }
-
-  /** The conversation's checklist is its newest published one, dismissed or not: the user's ticks on a dismissed one still reach the agent once. */
-  private newestChecklist(conversationId: string): ChecklistCanvasItem | undefined {
-    return this.store.listCanvasItems(conversationId).findLast((item) => item.kind === "checklist");
   }
 
   private latestReviewOf(conversationId: string, change: Review) {

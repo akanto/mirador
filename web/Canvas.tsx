@@ -1,6 +1,6 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type RefObject } from "react";
-import { buildCanvasDocument, CANVAS_SHELL_PATH, canvasPageMessage, canvasThemeMessage, isCanvasFrameMessage, type CanvasFrameMessage } from "../shared/canvas-document.ts";
+import { buildCanvasDocument, canvasPageMessage, canvasShellUrl, canvasThemeMessage, isCanvasFrameMessage, type CanvasFrameMessage, type CanvasPagePolicy } from "../shared/canvas-document.ts";
 import { appKey, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
 import { answersSummary, questionsOf } from "../shared/ask.ts";
 import type { AskItem, AskQuestion, CanvasItem, ShowItem } from "../shared/model.ts";
@@ -9,7 +9,7 @@ import { BarMenu, type BarMenuEntry } from "./BarMenu.tsx";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
 import { ChangesView } from "./Changes.tsx";
-import { agentEditOf, ChecklistView, currentTabItem, isTabItem, tabCount, useFlashOnAgentEdit } from "./Checklist.tsx";
+import { ChecklistView, currentTabItem, isTabItem, tabCount, useFlashOnAgentEdit } from "./Checklist.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { usePageExport } from "./PageExport.tsx";
@@ -89,6 +89,9 @@ export function CanvasFrame({
   assetsOrigin,
   className,
   fitsContent = false,
+  padded = fitsContent,
+  policy,
+  allow,
   onRendered,
   onContentWidth,
   onMessage,
@@ -99,6 +102,11 @@ export function CanvasFrame({
   assetsOrigin: string;
   className?: string;
   fitsContent?: boolean;
+  /** A little room at the page's sides; a page that fits its content has it unless it says otherwise. */
+  padded?: boolean;
+  policy?: CanvasPagePolicy;
+  /** Browser features the page may use, as the iframe's allow attribute names them. */
+  allow?: string;
   onRendered?: (errors: string[]) => void;
   onContentWidth?: (width: number) => void;
   /** Every message the page posts, for what the frame itself doesn't handle, such as an app view's operations. */
@@ -113,7 +121,11 @@ export function CanvasFrame({
   const [errors, setErrors] = useState<string[]>([]);
   const [contentSize, setContentSize] = useState<ContentSize>();
   // The theme is not a dependency: changing it would reload the page, so it reaches a shown page by message instead.
-  const document = useMemo(() => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme(), { padded: fitsContent }), [html, frameId, assetsOrigin, fitsContent]);
+  const imagesFromOtherSites = policy?.imagesFromOtherSites ?? false;
+  const document = useMemo(
+    () => buildCanvasDocument(html, frameId, assetsOrigin, shownTheme(), { padded, policy: { imagesFromOtherSites } }),
+    [html, frameId, assetsOrigin, padded, imagesFromOtherSites],
+  );
   const onRenderedRef = useRef(onRendered);
   onRenderedRef.current = onRendered;
   const onContentWidthRef = useRef(onContentWidth);
@@ -155,7 +167,8 @@ export function CanvasFrame({
         key={document}
         ref={frame}
         sandbox="allow-scripts"
-        src={`${assetsOrigin}${CANVAS_SHELL_PATH}`}
+        allow={allow}
+        src={canvasShellUrl(assetsOrigin, { imagesFromOtherSites })}
         title={frameId}
         style={fitted.frame}
         onLoad={() => postThemeTo(frame)}
@@ -451,7 +464,10 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
   );
 }
 
-const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?", review: "⇄", tour: "↯", checklist: "☑" };
+const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?", review: "⇄", tour: "↯" };
+
+/** The tab's header with only the agent's plan in it. */
+const PLAN_ICON = "☑";
 
 const iconOf = (item: CanvasItem) => (item.kind === "plugin" ? item.icon : kindIcons[item.kind]);
 
@@ -690,7 +706,7 @@ export function CanvasPanel({
   const toggleTab = (toggled: Exclude<CoveringTab, null>) => setTab((open) => (open === toggled ? null : toggled));
   const shownApp = apps.open.find(({ app }) => tab === appTab(app));
   const shownAppInstalled = shownApp && apps.installed.find(({ name }) => name === shownApp.app);
-  const editAt = agentEditOf(tabItem);
+  const editAt = tabItem?.agentEditedAt;
   const seenEdit = useRef<SeenEdit>(left ? left.seenEdit : { tabItemId: tabItem?.id, at: editAt });
   const checklistFlashing = useFlashOnAgentEdit(tabItem?.id, editAt, !checklistOpen);
   const placeForReview = useReviewPlacement();
@@ -740,7 +756,7 @@ export function CanvasPanel({
   };
   const dismissChecklist = () => {
     setTab(null);
-    if (tabItem) connection.send({ type: tabItem.kind === "checklist" ? "checklist.dismiss" : "canvas.dismiss", itemId: tabItem.id });
+    if (tabItem) connection.send({ type: "canvas.dismiss", itemId: tabItem.id });
   };
   const toggleHistory = () => setHistoryOpen((open) => !open);
   const shownPage = !tab && selected?.kind === "show" ? selected : undefined;
@@ -786,7 +802,7 @@ export function CanvasPanel({
           </>
         ) : checklistOpen ? (
           <>
-            <span className="canvas-kind">{tabItem ? iconOf(tabItem) : kindIcons.checklist}</span>
+            <span className="canvas-kind">{tabItem?.icon ?? PLAN_ICON}</span>
             <span className="canvas-title">{tabItem?.title ?? "Agent's plan"}</span>
             <button type="button" className="icon checklist-close" aria-label="Close the checklist" data-hint={hints.checklistClose} onClick={() => setTab(null)}>
               ×
@@ -920,8 +936,10 @@ export function CanvasPanel({
           </>
         )}
         {checklistOpen && (
-          <ChecklistView checklist={tabItem?.kind === "checklist" ? tabItem : undefined} plan={plan} seenEditAt={seenEdit.current.at}>
-            {tabItem?.kind === "plugin" && <PluginItemView key={tabItem.id} item={tabItem} viewPath={canvasViews[tabItem.plugin]} assetsOrigin={assetsOrigin} fitsContent />}
+          <ChecklistView plan={plan}>
+            {tabItem && (
+              <PluginItemView key={tabItem.id} item={tabItem} viewPath={canvasViews[tabItem.plugin]} assetsOrigin={assetsOrigin} seenAgentEditAt={seenEdit.current.at ?? null} fitsContent />
+            )}
           </ChecklistView>
         )}
         {shownApp && shownAppInstalled && (

@@ -1038,10 +1038,6 @@ export function startServer(services: HostServices) {
       }
       case "canvas.report":
         return canvas.reportRender(message.itemId, { errors: message.errors });
-      case "checklist.tick":
-        return canvas.tickChecklistItem(message.itemId, message.checklistItemId, message.done);
-      case "checklist.dismiss":
-        return canvas.dismissChecklist(message.itemId);
       case "canvas.item-action":
         return void canvasPlugins.act(message.itemId, message.action).then(
           (answer) => reply({ type: "canvas.item-acted", requestId: message.requestId, reply: answer, problem: null }),

@@ -3465,10 +3465,12 @@ button.edits-waiting {
   flex: 1;
 }
 
+/* Bleeds into the tab's padding by as much as Mirador pads the page in the tab (pluginItemPage), so a focus ring or a flash at its edge isn't cut off. */
 .checklist .canvas-frame.plugin {
   flex: none;
   position: relative;
   overflow: hidden;
+  margin: -3px;
 }
 
 .checklist .canvas-frame.plugin iframe {

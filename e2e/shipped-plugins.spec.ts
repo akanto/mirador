@@ -54,10 +54,11 @@ test("Settings lists the plugins Mirador comes with first, without update or rem
   await signIn(page, host);
   const settings = await openSettings(page, "Plugins");
   const plugins = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
-  await expect(plugins).toHaveCount(2);
-  await expect(plugins.nth(0)).toHaveText("TallytallyComes with Mirador");
-  await expect(plugins.nth(0).getByRole("button")).toHaveCount(0);
-  await expect(plugins.nth(1)).toHaveText("CountertallyA folder put there by handDidn't load: Mirador comes with a plugin named tallyRemove");
+  await expect(plugins).toHaveCount(3);
+  await expect(plugins.nth(0)).toHaveText("ChecklistchecklistComes with Mirador");
+  await expect(plugins.nth(1)).toHaveText("TallytallyComes with Mirador");
+  await expect(plugins.nth(1).getByRole("button")).toHaveCount(0);
+  await expect(plugins.nth(2)).toHaveText("CountertallyA folder put there by handDidn't load: Mirador comes with a plugin named tallyRemove");
 });
 
 test("the agent opens a plugin Mirador comes with, whose view Mirador bundled", async ({ page }) => {

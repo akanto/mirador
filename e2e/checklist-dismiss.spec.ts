@@ -26,7 +26,8 @@ test.afterAll(async () => {
 
 const toggle = (page: Page) => page.locator(".checklist-toggle:visible");
 const canvasTitle = (page: Page) => page.locator(".canvas-header:visible .canvas-title");
-const checkbox = (page: Page, text: string) => page.locator(".checklist:visible .checklist-item", { hasText: text }).getByRole("checkbox");
+const checklistView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
+const checkbox = (page: Page, text: string) => checklistView(page).locator(".checklist-item", { hasText: text }).getByRole("checkbox");
 
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
 async function startConversationWithoutModel(page: Page) {

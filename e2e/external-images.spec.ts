@@ -32,7 +32,8 @@ async function openChecklist(page: Page) {
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
 }
 
-const detailOf = (page: Page, text: string) => page.locator(".checklist:visible .checklist-item", { hasText: text }).locator(".checklist-detail");
+const checklistView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
+const detailOf = (page: Page, text: string) => checklistView(page).locator(".checklist-item", { hasText: text }).locator(".checklist-detail");
 
 /** Loads an image from another site the way the page would, and says whether the page's policy refused it. */
 const refusedByPolicy = (page: Page) =>

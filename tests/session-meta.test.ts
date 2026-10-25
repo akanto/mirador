@@ -3,15 +3,13 @@ import { claudeSessionMeta, piSessionMeta, sessionMeta } from "../host/acp/harne
 import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.ts";
 import type { CanvasUse } from "../shared/model.ts";
 
-test("Claude Code runs every canvas tool without a permission prompt", () => {
+test("Claude Code runs every tool of the canvas's own without a permission prompt", () => {
   expect(claudeSessionMeta("often").claudeCode.options.allowedTools).toEqual([
     "mcp__canvas__show",
     "mcp__canvas__ask",
     "mcp__canvas__tour",
     "mcp__canvas__review",
     "mcp__canvas__update_review",
-    "mcp__canvas__checklist",
-    "mcp__canvas__update_checklist",
     "mcp__canvas__when_done",
   ]);
 });
