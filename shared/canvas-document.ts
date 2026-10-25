@@ -684,6 +684,9 @@ ${pageDrawing(assetsOrigin)}
   const described = (element) => ({ path: pathTo(element), html: htmlOf(element) });
 
   let selected = null;
+  // A phone hangs its selection handles below the text, where a tap would take the handle.
+  const BELOW_TOUCH_HANDLES = 36;
+  let selectedByTouch = false;
   const typingInAField = () => {
     const focused = document.activeElement;
     return Boolean(focused && (focused.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName)));
@@ -699,7 +702,7 @@ ${pageDrawing(assetsOrigin)}
     pill.style.display = "block";
     const room = document.documentElement.scrollWidth - pill.offsetWidth - 4;
     pill.style.left = Math.max(4, Math.min(room, end.right + scrollX - pill.offsetWidth / 2)) + "px";
-    pill.style.top = end.bottom + scrollY + 6 + "px";
+    pill.style.top = end.bottom + scrollY + (selectedByTouch ? BELOW_TOUCH_HANDLES : 6) + "px";
   };
   const offerToAsk = () => {
     if (pointing) return;
@@ -708,7 +711,10 @@ ${pageDrawing(assetsOrigin)}
     else hide(pill);
   };
   let pressing = false;
-  addEventListener("pointerdown", () => (pressing = true), true);
+  addEventListener("pointerdown", (event) => {
+    pressing = true;
+    selectedByTouch = event.pointerType === "touch";
+  }, true);
   const pressEnded = (event) => {
     pressing = false;
     if (event.target !== host) setTimeout(offerToAsk, 0);
