@@ -22,6 +22,13 @@ describe("reading a question aloud", () => {
     expect(spokenLabel("Ship it — recommended")).toBe("Ship it");
   });
 
+  test("the word alone is no mark: an option advised against, or one about recommended things, isn't the recommended one", () => {
+    for (const label of ["Not recommended: drop it now", "Keep the recommended defaults", "Drop it (not recommended)"]) {
+      expect(recommendedIndex([{ label }, { label: "Wait a week" }]), label).toBeNull();
+      expect(spokenLabel(label), label).toBe(label);
+    }
+  });
+
   test("with a recommended option, that one is read in full, and the others are offered", () => {
     expect(questionSentences(sounds, { position: 0, of: 1 })).toEqual({
       sentences: ["What should signal the microphone's state.", "I recommend Short sounds.", "A chime as it opens, another once it has heard.", "Go with it, or hear the others?"],

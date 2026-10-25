@@ -6,7 +6,8 @@ export type OfferedOptions = "recommended" | "all";
 /** What a spoken answer to a question means. */
 export type HeardChoice = { kind: "pick"; index: number } | { kind: "others" } | { kind: "unclear" };
 
-const RECOMMENDED = /\s*\(?\brecommended\b\)?\s*/i;
+/** Only where a mark sits, as "(recommended)", "Recommended: …" or "… — recommended", so "Not recommended: …" isn't one. */
+const RECOMMENDED = /\s*[([]recommended[)\]]\s*|^\s*recommended\s*[:–—-]\s*|\s*[:,–—-]\s*recommended\s*$/i;
 
 /** The option the agent marked as the one it recommends, as in "Short sounds (recommended)". */
 export const recommendedIndex = (options: AskOption[]) => {
