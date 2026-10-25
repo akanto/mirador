@@ -94,7 +94,17 @@ async function selectTextOf(page: Page, element: Locator) {
   await page.mouse.up();
 }
 
-test("the user selects text or points at an element on a page the agent showed, and asks about it or has it changed", async ({ page }) => {
+/** Drags a finger from one point of the page to another, as Playwright's touchscreen only taps. */
+async function dragAFinger(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+  const touch = await page.context().newCDPSession(page);
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+  for (const step of [1, 2, 3, 4, 5, 6, 7, 8].map((each) => each / 8))
+    await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: from.x + (to.x - from.x) * step, y: from.y + (to.y - from.y) * step }] });
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await touch.detach();
+}
+
+test("the user selects text or points at an element on a page the agent showed, and asks about it or has it changed", async ({ page, browser }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, profileName, "", "", "opencode");
@@ -207,5 +217,27 @@ test("the user selects text or points at an element on a page the agent showed, 
     await shown.locator("#save").click();
     await expect(shown.locator("#clicks")).toHaveText("2");
     expect(recordedPrompts()).toBe(promptsBefore);
+  });
+
+  await test.step("on a touch screen a tap in point mode picks the element instead of pressing it, and a finger's drag draws a box", async () => {
+    const touchScreen = await browser.newContext({ hasTouch: true });
+    const tablet = await touchScreen.newPage();
+    await signIn(tablet, host);
+    await tablet.goto(page.url());
+    const shownOnTablet = canvasPage(tablet);
+    await expect(shownOnTablet.locator("#save")).toBeVisible();
+    await pointToggle(tablet).tap();
+    const save = (await shownOnTablet.locator("#save").boundingBox())!;
+    await tablet.touchscreen.tap(save.x + save.width / 2, save.y + save.height / 2);
+    await expect(wordsBox(tablet)).toContainText("Ask the agent about the element button#save");
+    await expect(shownOnTablet.locator("#clicks")).toHaveText("0");
+    await wordsBox(tablet).getByRole("button", { name: "Cancel" }).tap();
+
+    await pointToggle(tablet).tap();
+    const scene = (await shownOnTablet.locator("#scene").boundingBox())!;
+    await dragAFinger(tablet, { x: scene.x + 20, y: scene.y + 20 }, { x: scene.x + 140, y: scene.y + 90 });
+    await expect(wordsBox(tablet)).toContainText("Ask the agent about the marked area");
+    await expect(pointToggle(tablet)).toHaveAttribute("aria-pressed", "false");
+    await touchScreen.close();
   });
 });

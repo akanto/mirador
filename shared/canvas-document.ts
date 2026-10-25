@@ -776,7 +776,6 @@ ${pageDrawing(assetsOrigin)}
   };
   const markArea = async (area) => {
     stopPointing();
-    swallowNextClick = true;
     post({ kind: "pointing", on: false });
     const element = described(holderOf(area));
     try {
@@ -795,12 +794,21 @@ ${pageDrawing(assetsOrigin)}
     pressedAt = atPage(event);
     boxed = null;
   }, true);
+  const markElement = (element) => {
+    picked = element;
+    stopPointing();
+    placeOver(chosen, picked.getBoundingClientRect());
+    post({ kind: "mark", mark: { kind: "element", element: described(picked) } });
+  };
+  // The mark is made on pointerup: a touch screen fires no click once its touches were cancelled.
   addEventListener("pointerup", (event) => {
-    if (!swallowed(event)) return;
+    if (!swallowed(event) || !pressedAt) return;
     pressedAt = null;
+    swallowNextClick = true;
     if (boxed) markArea(boxed);
+    else if (event.target instanceof Element) markElement(event.target);
   }, true);
-  // A drag's click is swallowed even though the drag already ended point mode.
+  // The click that follows is swallowed even though the mark already ended point mode.
   addEventListener("click", (event) => {
     if (swallowNextClick && event.isTrusted) {
       swallowNextClick = false;
@@ -808,11 +816,7 @@ ${pageDrawing(assetsOrigin)}
       event.stopImmediatePropagation();
       return;
     }
-    if (!swallowed(event) || !(event.target instanceof Element)) return;
-    picked = event.target;
-    stopPointing();
-    placeOver(chosen, picked.getBoundingClientRect());
-    post({ kind: "mark", mark: { kind: "element", element: described(picked) } });
+    if (swallowed(event) && event.target instanceof Element) markElement(event.target);
   }, true);
   addEventListener("pointermove", (event) => {
     if (!pointing) return;
