@@ -3603,10 +3603,10 @@ button.edits-waiting {
   font-size: calc(12px * var(--font-scale));
 }
 
-/* Columns as wide as the agent asked, or as the widest preview needs (plus the option's padding and borders), side by side while they fit */
+/* Columns as wide as the agent asked, or as the widest preview needs (plus the option's padding and borders), side by side while they fit; fewer options than fit share the whole row */
 .ask-options {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(200px, var(--option-width, 0px), var(--preview-width, 0px) + 24px)), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(200px, var(--option-width, 0px), var(--preview-width, 0px) + 24px)), 1fr));
   gap: 8px;
 }
 

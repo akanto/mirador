@@ -84,6 +84,22 @@ test("the agent can make the answer boxes wider, up to the canvas's width", asyn
   await answerCanvasQuestion(page, "Huge");
 });
 
+test("on a wide canvas the answer boxes share the whole row, rather than leaving room for boxes that aren't there", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await signIn(page, host);
+  const conversationId = await startConversation(page);
+  const options = page.locator(".ask-option");
+
+  askInBackground(conversationId, { question: "Which colour?", options: [{ label: "Green", html: fluid("green") }, { label: "Blue", html: fluid("blue") }] });
+  await expect(options.first()).toHaveText(/Green/);
+  const [green, blue, row] = await Promise.all([options.nth(0).boundingBox(), options.nth(1).boundingBox(), page.locator(".ask-options").boundingBox()]);
+  expect(blue!.y).toBe(green!.y);
+  expect(row!.width, "the canvas has room for more boxes than two").toBeGreaterThan(3 * 208);
+  expect(blue!.x + blue!.width).toBeCloseTo(row!.x + row!.width, 0);
+  expect(blue!.width).toBeCloseTo(green!.width, 0);
+  await answerCanvasQuestion(page, "Green");
+});
+
 test("a long unbroken word wraps inside its option and the question's page, rather than running past the box or shrinking the page, and short words stay whole", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await signIn(page, host);
