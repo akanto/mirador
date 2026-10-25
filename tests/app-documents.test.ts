@@ -154,6 +154,22 @@ describe("AppDocuments", () => {
     apps.stop();
   });
 
+  test("opens on a file the app edits, starting its document beside it for that file, and again on the document itself", async () => {
+    const { apps, workspacePath, store } = await setUp();
+    mkdirSync(join(workspacePath, "trip"));
+    writeFileSync(join(workspacePath, "trip", "day1.tally"), "");
+    expect(await apps.open("w1", "counter", "trip/day1.tally")).toEqual({ workspaceId: "w1", app: "counter", title: "Counter", file: "trip/day1.json" });
+    expect(JSON.parse(readFileSync(join(workspacePath, "trip", "day1.json"), "utf8"))).toEqual({ count: 0, startedFor: "day1.tally" });
+    await apps.apply("w1", undefined, { op: "add", by: 2 }, { kind: "you" });
+    expect(await apps.open("w1", "counter", "trip/day1.tally")).toMatchObject({ file: "trip/day1.json" });
+    expect(apps.state("w1", "counter")!.document).toEqual({ count: 2, startedFor: "day1.tally" });
+    apps.stop();
+    const again = await setUp(store, workspacePath);
+    await again.apps.reopenAll();
+    expect(again.apps.state("w1", "counter")!.document).toEqual({ count: 2, startedFor: "day1.tally" });
+    again.apps.stop();
+  });
+
   test("applies operations sent at once one after another, and the file holds them", async () => {
     const { apps, fileText } = await setUp();
     await apps.open("w1", "counter", "counter.json");

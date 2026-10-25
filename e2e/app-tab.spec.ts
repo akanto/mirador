@@ -265,4 +265,13 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#page-load")).not.toHaveText(loaded);
     await expect(view(page).locator("#count")).toHaveText(count);
   });
+
+  await test.step("app_open on a file the app edits starts the app's document beside it, for that file", async () => {
+    writeFileSync(join(host.projectDir, "week.tally"), "");
+    const opened = await callCanvasTool(host, first, "app_open", { app: "counter", file: "week.tally" });
+    expect(opened).toContain("Counter is open on week.json, the document for week.tally; the user sees it in the canvas.");
+    expect(opened).toContain("The count is 0. Started for week.tally.");
+    expect(JSON.parse(readFileSync(join(host.projectDir, "week.json"), "utf8"))).toEqual({ count: 0, startedFor: "week.tally" });
+    await expect(view(page).locator("#count")).toHaveText("0");
+  });
 });

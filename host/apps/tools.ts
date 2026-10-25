@@ -1,4 +1,5 @@
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
+import { normalize } from "node:path";
 import * as z from "zod/v4";
 import type { ConversationService } from "../conversations.ts";
 import { type AppDocuments } from "./documents.ts";
@@ -36,17 +37,18 @@ export function registerAppTools(
   server.registerTool(
     "app_open",
     {
-      description: `Open an app the user installed in Mirador on a file of this workspace; the user sees it live in a tab of the canvas, and every conversation in the workspace works on the same document. A file that doesn't exist yet is started. Installed apps: ${names}. Then read the document with app_state and change it with apply.`,
+      description: `Open an app the user installed in Mirador on a file of this workspace; the user sees it live in a tab of the canvas, and every conversation in the workspace works on the same document. A file that doesn't exist yet is started. An app may also open on a file it edits, such as a video for a video editor, with its document beside it. Installed apps: ${names}. Then read the document with app_state and change it with apply.`,
       inputSchema: z.object({
         app: z.string().describe("The app's name, e.g. one of those installed."),
-        file: z.string().min(1).describe("The document's path, relative to the workspace."),
+        file: z.string().min(1).describe("The document's path, or the path of a file the app edits, relative to the workspace."),
       }),
       _meta: loadedUpFront,
     },
     ({ app, file }, ctx) =>
       answered(ctx, async (workspaceId) => {
         const opened = await apps.open(workspaceId, app, file);
-        return `${opened.title} is open on ${opened.file}; the user sees it in the canvas.\n\n${apps.describe(workspaceId, opened.app)}`;
+        const forFile = opened.file === normalize(file) ? "" : `, the document for ${normalize(file)}`;
+        return `${opened.title} is open on ${opened.file}${forFile}; the user sees it in the canvas.\n\n${apps.describe(workspaceId, opened.app)}`;
       }),
   );
 

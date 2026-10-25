@@ -190,11 +190,13 @@ export class AppDocuments {
     const plugin = this.plugin(appName);
     const workspace = this.store.findWorkspace(workspaceId);
     if (!workspace) throw new AppProblem("That workspace no longer exists.");
-    const target = fileInWorkspace(workspace.path, file);
+    const documentFile = this.guarded(() => plugin.host.documentFor?.(file)) ?? file;
+    const target = fileInWorkspace(workspace.path, documentFile);
+    const openedFile = documentFile === file ? undefined : relative(dirname(target.path), fileInWorkspace(workspace.path, file).path);
     const already = this.documents.get(appKey({ workspaceId, app: appName }));
     if (already?.file === target.file && !already.problem) return openAppOf(already);
     const text = existsSync(target.path) ? readFileSync(target.path, "utf8") : null;
-    const document = text === null ? this.created(plugin, target.file) : this.guarded(() => plugin.host.parse(text));
+    const document = text === null ? this.created(plugin, target.file, openedFile) : this.guarded(() => plugin.host.parse(text));
     this.close(workspaceId, appName);
     const opened: AppDocument = {
       plugin,
@@ -374,10 +376,10 @@ export class AppDocuments {
     throw new AppProblem(`Several apps are open here (${names(here)}); say which with app.`);
   }
 
-  private created(plugin: AppPlugin, file: string) {
+  private created(plugin: AppPlugin, file: string, openedFile: string | undefined) {
     const { create } = plugin.host;
     if (!create) throw new AppProblem(`${file} doesn't exist, and ${plugin.manifest.title} can't start a new one; give the path of an existing file.`);
-    return this.guarded(() => create.call(plugin.host));
+    return this.guarded(() => create.call(plugin.host, openedFile));
   }
 
   /** Plugin code runs in the host's process: whatever it throws becomes a problem for whoever asked, and nothing changes. */

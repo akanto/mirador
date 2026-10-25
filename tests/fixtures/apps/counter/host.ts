@@ -3,10 +3,12 @@ import type { AppHost } from "../../../../shared/apps.ts";
 /** The smallest app for testing Mirador's app platform: a number that operations add to. */
 interface Counter {
   count: number;
+  /** The file app_open was given, when it started the counter through documentFor. */
+  startedFor?: string;
 }
 
 const added = (counter: Counter, by: number) => ({
-  document: { count: counter.count + by },
+  document: { ...counter, count: counter.count + by },
   inverse: { op: "add", by: -by },
   summary: `Added ${by}; the count is ${counter.count + by}.`,
   touched: ["count"],
@@ -25,8 +27,9 @@ const host: AppHost<Counter> = {
     if (op === "crash") return (undefined as unknown as { boom: () => never }).boom();
     throw new Error('Unknown operation; use { op: "add", by: <number> }.');
   },
-  describe: (counter) => `The count is ${counter.count}.`,
-  create: () => ({ count: 0 }),
+  describe: (counter) => `The count is ${counter.count}.${counter.startedFor ? ` Started for ${counter.startedFor}.` : ""}`,
+  documentFor: (file) => (file.endsWith(".tally") ? file.replace(/\.tally$/, ".json") : null),
+  create: (openedFile) => (openedFile ? { count: 0, startedFor: openedFile } : { count: 0 }),
   tasks: {
     "count-up": {
       title: "Count up three times",

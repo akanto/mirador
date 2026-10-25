@@ -47,8 +47,13 @@ export interface AppHost<Document = unknown> {
   apply(document: Document, operation: unknown): { document: Document; inverse: unknown; summary: string; touched?: string[] };
   /** The document in words, for the agent. */
   describe(document: Document): string;
-  /** A new document, for opening the app on a file that doesn't exist yet. */
-  create?(): Document;
+  /**
+   * The document for a file the app edits rather than one of its own, both relative to the workspace, as a video editor keeps
+   * clip.media.json for clip.mp4; null for the app's own document. With it, app_open takes the edited file itself.
+   */
+  documentFor?(file: string): string | null;
+  /** A new document, for opening the app on a file that doesn't exist yet; `openedFile`, relative to the document's folder, is the file app_open was given for it through documentFor. */
+  create?(openedFile?: string): Document;
   /** Longer work than an operation, such as rendering a video, by name: the agent runs one with app_run, the view with `mirador.run`. */
   tasks?: Record<string, AppTask<Document>>;
 }
