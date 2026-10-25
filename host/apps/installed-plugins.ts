@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
-import type { AppManifest, PluginCommit, PluginInfo, PluginSource } from "../../shared/apps.ts";
+import type { PluginManifest, PluginCommit, PluginInfo, PluginSource } from "../../shared/apps.ts";
 import { environmentWithoutPrompts } from "../git-environment.ts";
 import { AppProblem, messageOf, pluginFiles, pluginFolders, readManifest, type PluginLoadProblem } from "./plugins.ts";
 
@@ -198,7 +198,7 @@ export class InstalledPlugins {
     return done;
   }
 
-  private async clonedAndBuilt(url: string, branch: string | null): Promise<{ staged: string; manifest: AppManifest }> {
+  private async clonedAndBuilt(url: string, branch: string | null): Promise<{ staged: string; manifest: PluginManifest }> {
     if (!url) throw new AppProblem("Give the git URL or the path of the plugin's repo.");
     mkdirSync(this.staging, { recursive: true });
     const staged = join(this.staging, crypto.randomUUID());

@@ -7,6 +7,7 @@ import type {
   ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { Checklist } from "./checklist.ts";
+import type { PluginItemPlacement } from "./canvas-plugins.ts";
 import type { EditDiff, Review, Tour } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
 
@@ -566,7 +567,7 @@ export interface CanvasAnswer {
   deliveredAs: "tool-result" | "next-message";
 }
 
-export type CanvasItemKind = "show" | "ask" | "review" | "tour" | "checklist";
+export type CanvasItemKind = "show" | "ask" | "review" | "tour" | "checklist" | "plugin";
 
 /** What every canvas item carries, whatever its kind. */
 export interface CanvasItemBase {
@@ -622,4 +623,21 @@ export interface ChecklistCanvasItem extends CanvasItemBase {
   checklist: Checklist;
 }
 
-export type CanvasItem = ShowItem | AskItem | ReviewItem | TourItem | ChecklistCanvasItem;
+/** An item a plugin's tool published; the plugin's canvas view draws it in a frame. */
+export interface PluginCanvasItem extends CanvasItemBase {
+  kind: "plugin";
+  plugin: string;
+  /** Which of the plugin's kinds of item it is. */
+  type: string;
+  icon: string;
+  placement: PluginItemPlacement;
+  /** An item in the tab: how far along it is, on the tab's toggle. */
+  count?: string;
+  data: unknown;
+  /** The user took it out of the tab; only publishing a new one brings one back. */
+  dismissed?: boolean;
+  /** When the agent last changed it in place, for the tab's toggle to flash. */
+  agentEditedAt?: number;
+}
+
+export type CanvasItem = ShowItem | AskItem | ReviewItem | TourItem | ChecklistCanvasItem | PluginCanvasItem;

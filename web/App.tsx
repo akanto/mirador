@@ -540,6 +540,7 @@ export function App() {
                 homeDir={state.homeDir}
                 changesRefreshPoint={changesRefresh}
                 apps={workspaceApps}
+                canvasViews={state.canvasViews}
                 onHide={toggleCanvas}
               />
             ) : null,

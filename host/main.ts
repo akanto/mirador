@@ -4,7 +4,8 @@ import { authorityFingerprint, namesToCover, servingCertificate } from "./certif
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { AppDocuments } from "./apps/documents.ts";
 import { InstalledPlugins } from "./apps/installed-plugins.ts";
-import { loadAppPlugins } from "./apps/plugins.ts";
+import { loadPlugins } from "./apps/plugins.ts";
+import { CanvasPlugins } from "./canvas/plugins.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { agentLogsDirectory, loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
@@ -58,7 +59,13 @@ const droppedFiles = new DroppedFiles(join(config.dataDir, "dropped-files"));
 const notifications = new SystemNotifications(store, hub);
 const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, MUTED_LIST_FILE));
 notifierMute.unmuteSessionsOfEarlierRuns();
-const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications);
+const sourceDir = dirname(import.meta.dir);
+const pluginsFolder = join(config.dataDir, "plugins");
+const shippedPluginsFolder = join(sourceDir, "plugins");
+const loadedPlugins = await loadPlugins(pluginsFolder, shippedPluginsFolder);
+for (const { folder, message } of loadedPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
+const canvasPlugins = new CanvasPlugins(store, hub, loadedPlugins.canvases);
+const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications, canvasPlugins.guidance);
 const canvasAssetsOrigins = [
   ...new Set([
     config.canvasAssetsOrigin,
@@ -67,20 +74,15 @@ const canvasAssetsOrigins = [
   ]),
 ];
 const canvas = new CanvasService(store, hub, conversations, notifications, canvasAssetsOrigins);
-conversations.hearCanvasNotesFrom((conversationId) => canvas.notesForAgent(conversationId));
-const sourceDir = dirname(import.meta.dir);
-const pluginsFolder = join(config.dataDir, "plugins");
-const shippedPluginsFolder = join(sourceDir, "plugins");
-const appPlugins = await loadAppPlugins(pluginsFolder, shippedPluginsFolder);
-for (const { folder, message } of appPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
-const plugins = new InstalledPlugins(pluginsFolder, appPlugins.problems, shippedPluginsFolder);
-const apps = new AppDocuments(store, appPlugins.plugins, {
+conversations.hearCanvasNotesFrom((conversationId) => [...canvas.notesForAgent(conversationId), ...canvasPlugins.notesForAgent(conversationId)]);
+const plugins = new InstalledPlugins(pluginsFolder, loadedPlugins.problems, shippedPluginsFolder);
+const apps = new AppDocuments(store, loadedPlugins.apps, {
   openAppsChanged: (openApps) => hub.broadcast({ type: "apps.open", openApps }),
   stateChanged: (state) => hub.publishAppState(state),
 });
 await apps.reopenAll();
-const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin, apps);
-const appViewCode = (pathname: string) => apps.viewCode(pathname);
+const mcp = new CanvasMcpEndpoints(canvas, conversations, config.canvasAssetsOrigin, apps, canvasPlugins);
+const appViewCode = (pathname: string) => apps.viewCode(pathname) ?? canvasPlugins.viewCode(pathname);
 const appMediaFile = (pathname: string) => apps.mediaFile(pathname);
 const assetsServer = serveCanvasAssets(config.canvasAssetsPort, { knownOrigins: canvasAssetsOrigins, appViewCode, appMediaFile });
 const networkAssetsServer = network && certificate && serveCanvasAssets(network.canvasPort, { certificate, knownOrigins: canvasAssetsOrigins, appViewCode, appMediaFile });
@@ -139,7 +141,7 @@ const voiceEngine = new VoiceEngine(
 );
 voiceEngineInstaller.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();

@@ -82,6 +82,8 @@ export interface AppState {
   newerVersion: NewerVersion | null;
   installedApps: InstalledApp[];
   openApps: OpenApp[];
+  /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
+  canvasViews: Record<string, string>;
   /** The documents of the apps this page shows, by appKey: it gets them only while subscribed. */
   appDocuments: Record<string, AppDocumentState>;
 }
@@ -128,6 +130,7 @@ export const initialState: AppState = {
   newerVersion: null,
   installedApps: [],
   openApps: [],
+  canvasViews: {},
   appDocuments: {},
   notices: [],
   noticesEverShown: 0,
@@ -214,6 +217,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         newerVersion: message.newerVersion,
         installedApps: message.installedApps,
         openApps: message.openApps,
+        canvasViews: message.canvasViews,
         kept: state.kept.filter(({ conversationId }) => exists(conversationId)),
       };
       return exists(state.selectedConversationId) ? next : select(next, null);
@@ -335,6 +339,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "plugins.listed":
     case "plugins.changed":
     case "plugins.commits-found":
+    case "canvas.item-acted":
     case "conversation.revert-previewed":
     case "conversation.reverted":
     case "conversation.revert-failed":

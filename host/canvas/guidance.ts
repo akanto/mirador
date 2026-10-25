@@ -1,5 +1,16 @@
+/** What the loaded canvas plugins add to what agents are told and allowed: their tools, and a line each of guidance. */
+export interface CanvasPluginGuidance {
+  toolNames: string[];
+  instructions: string[];
+  often: string[];
+}
+
+export const NO_CANVAS_PLUGINS: CanvasPluginGuidance = { toolNames: [], instructions: [], often: [] };
+
+const linesAfter = (lines: string[]) => lines.map((line) => `\n${line}`).join("");
+
 /** The canvas MCP server's instructions: how its tools are meant to be used, and how pages render. */
-export function canvasInstructions(assetsOrigin: string) {
+export function canvasInstructions(assetsOrigin: string, plugins = NO_CANVAS_PLUGINS) {
   return `The canvas is a browser panel next to this conversation. The user finds long terminal text and ASCII diagrams hard to read, so prefer the canvas for anything visual.
 
 - show: render an HTML page: architecture or flow diagrams, UI mockups, side-by-side comparisons, charts, 3D scenes, visual explanations, code-review walkthroughs.
@@ -7,7 +18,7 @@ export function canvasInstructions(assetsOrigin: string) {
 - tour: when you explain how code works, or walk the user through code you changed, publish a guided tour of its flow with this tool rather than show: steps anchored to lines, which the page shows with the code. Pass since to mark what you changed and show its diff.
 - review: when you review code changes (a pull request or a branch), publish the review with this tool rather than show. The user reads it as a guided tour of the code flow, the diff with your findings on it, and posts the findings they keep to the pull request.
 - update_review: to change parts of a review already shown (reword a finding, add or take one out, a new verdict), change just those parts with this tool; the user keeps their place in the review. Publish the whole review again only when the code under review changed.
-- checklist: when you work through several steps, publish them as a checklist the user sees beside the canvas, and tick each item with update_checklist as you finish it. An item is yours, the user's or both of yours to do; the user can tick any of them, and you hear of their ticks with their next message or in update_checklist's result.
+- checklist: when you work through several steps, publish them as a checklist the user sees beside the canvas, and tick each item with update_checklist as you finish it. An item is yours, the user's or both of yours to do; the user can tick any of them, and you hear of their ticks with their next message or in update_checklist's result.${linesAfter(plugins.instructions)}
 
 Rendering environment: every page renders in a sandboxed iframe with NO network access (no fetch, no external CDNs, fonts or images), shown light or dark as the panel's theme is. Write self-contained HTML with inline CSS and JS, and pick every colour (background, text, cards, inline code and code blocks, borders, lines) with light-dark() so the page follows that theme, e.g. <style>html { background: light-dark(#ffffff, #111214); color: light-dark(#1c1c1e, #ececee); }</style>. Don't use @media (prefers-color-scheme): it follows the system, not the panel. A script that draws in colour reads the theme as getComputedStyle(document.documentElement).colorScheme, "light" or "dark". Available libraries:
 - three.js (ES modules): <script type="module">import * as THREE from "three"; import { OrbitControls } from "three/addons/controls/OrbitControls.js";</script>
@@ -17,11 +28,11 @@ When someone is viewing the conversation, show reports back script errors from t
 }
 
 /** Appended to Claude Code's and pi's system prompt when Settings ask for the canvas often; the canvas server's own instructions stay the reference for how pages render. */
-export const canvasUseGuidance = `# Canvas
+export const canvasUseGuidance = (plugins = NO_CANVAS_PLUGINS) => `# Canvas
 This conversation runs in Mirador, where the user reads a canvas panel next to the chat. Pages there are much easier for them to read than long terminal text, so reach for the canvas server's show, tour, ask and checklist tools whenever a page would be clearer:
 - tour: explaining how code works, and at the end of a substantial coding task, walking the user through what you changed (pass since) instead of a summary page. Keep the chat reply to a few lines that point at the tour.
 - show: explaining how a system works (architecture, sequences); comparing two or more options; results that are tables, timelines or before/after; and the summary at the end of a substantial piece of work that is not a code change. Keep the chat reply to a few lines that point at the page.
 - ask: every choice you would otherwise put to the user in text, including "which approach?", "help me decide" and "should I go ahead?". Give the options, mark the one you recommend, and add a preview when it helps.
-- checklist: work with several steps, such as a feature, a release or a migration. Publish the steps before you start, tick each one with update_checklist as you finish it, and mark the ones the user has to do as theirs. The user follows along beside the chat. Your own to-do list already shows pinned under the checklist, so while a checklist tracks the work, don't keep the same steps in your to-do list too.
+- checklist: work with several steps, such as a feature, a release or a migration. Publish the steps before you start, tick each one with update_checklist as you finish it, and mark the ones the user has to do as theirs. The user follows along beside the chat. Your own to-do list already shows pinned under the checklist, so while a checklist tracks the work, don't keep the same steps in your to-do list too.${linesAfter(plugins.often)}
 - Keep pages lean: plain semantic HTML and a little CSS, no decoration for its own sake.
 - Plain text stays right for short answers, single facts and code the user will copy.`;

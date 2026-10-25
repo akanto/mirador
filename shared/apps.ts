@@ -1,18 +1,31 @@
 /**
  * The plugin API version this Mirador speaks; a plugin.json names the one it was written for, and Mirador loads every
- * version up to its own. API 2 brought host tasks, streamed files and images in a view's message.
+ * version up to its own. API 2 brought host tasks, streamed files and images in a view's message; API 3 brought canvas
+ * tools and items.
  */
-export const APP_PLUGIN_API = 2;
+export const APP_PLUGIN_API = 3;
 
-/** A plugin's plugin.json, for a plugin that brings an app: a document that the agent and the user change together. */
-export interface AppManifest {
+/** The first plugin API whose plugin.json may have a canvas part. */
+export const CANVAS_PLUGIN_API = 3;
+
+/**
+ * A plugin's plugin.json. A plugin brings an app, a document that the agent and the user change together; canvas tools
+ * and the items they show; or both.
+ */
+export interface PluginManifest {
   name: string;
   title: string;
   api: number;
-  app: {
+  app?: {
     /** The module, relative to the plugin's folder, whose exports are the plugin's AppHost. */
     host: string;
     /** One ES module, relative to the plugin's folder, that draws the app in a canvas frame with `window.mirador`. */
+    view: string;
+  };
+  canvas?: {
+    /** The module, relative to the plugin's folder, whose exports are the plugin's CanvasHost; it may be the app's host module too. */
+    host: string;
+    /** One ES module, relative to the plugin's folder, that draws the plugin's canvas items in a canvas frame with `window.mirador`. */
     view: string;
   };
   /**
@@ -184,18 +197,20 @@ export function appPromptText({ title, file }: OpenApp, text: string) {
   return `About ${file}, open in ${title} (app_state reads it, apply changes it):\n\n${text.trim()}`;
 }
 
-export function isAppManifest(value: unknown): value is AppManifest {
+const isHostAndView = (part: unknown) =>
+  typeof part === "object" && part !== null && typeof (part as { host?: unknown }).host === "string" && typeof (part as { view?: unknown }).view === "string";
+
+export function isPluginManifest(value: unknown): value is PluginManifest {
   if (typeof value !== "object" || value === null) return false;
-  const { name, title, api, app, build } = value as Partial<AppManifest>;
+  const { name, title, api, app, canvas, build } = value as Partial<PluginManifest>;
   return (
     typeof name === "string" &&
     /^[a-z0-9][a-z0-9-]*$/.test(name) &&
     typeof title === "string" &&
     typeof api === "number" &&
-    typeof app === "object" &&
-    app !== null &&
-    typeof app.host === "string" &&
-    typeof app.view === "string" &&
+    (app !== undefined || canvas !== undefined) &&
+    (app === undefined || isHostAndView(app)) &&
+    (canvas === undefined || isHostAndView(canvas)) &&
     (build === undefined || typeof build === "string")
   );
 }

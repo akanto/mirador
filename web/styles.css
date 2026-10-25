@@ -3461,6 +3461,34 @@ button.edits-waiting {
   flex: 1;
 }
 
+.canvas-frame.plugin {
+  flex: 1;
+}
+
+.checklist .canvas-frame.plugin {
+  flex: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.checklist .canvas-frame.plugin iframe {
+  flex: none;
+}
+
+.plugin-item-missing {
+  padding: 14px 16px;
+  color: var(--muted);
+}
+
+.plugin-item-missing pre {
+  overflow: auto;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--panel-2);
+  border-radius: 6px;
+  font-size: calc(12px * var(--font-scale));
+}
+
 .app-view {
   flex: 1;
   display: flex;

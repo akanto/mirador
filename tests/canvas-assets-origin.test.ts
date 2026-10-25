@@ -32,6 +32,7 @@ function connectedAt(canvasAssetsOrigin: string): AppState {
     newerVersion: null,
     installedApps: [],
     openApps: [],
+    canvasViews: {},
   } satisfies ServerMessage;
   const connected = reducer(initialState, { type: "server", message: snapshot });
   return reducer(connected, { type: "select", conversationId: "a" });

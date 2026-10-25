@@ -26,6 +26,7 @@ import type { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import type { CanvasService } from "./canvas/service.ts";
 import { AppFileRefused, type AppDocuments } from "./apps/documents.ts";
 import { withoutCredentials, type InstalledPlugins } from "./apps/installed-plugins.ts";
+import type { CanvasPlugins } from "./canvas/plugins.ts";
 import { AppStorage } from "./apps/storage.ts";
 import { messageOf } from "./apps/plugins.ts";
 import { appKey } from "../shared/apps.ts";
@@ -77,6 +78,7 @@ export interface HostServices {
   mcp: CanvasMcpEndpoints;
   apps: AppDocuments;
   plugins: InstalledPlugins;
+  canvasPlugins: CanvasPlugins;
   profiles: ProfileService;
   statusline: StatuslineService;
   terminals: TerminalService;
@@ -151,6 +153,7 @@ export function startServer(services: HostServices) {
     mcp,
     apps,
     plugins,
+    canvasPlugins,
     profiles,
     statusline,
     terminals,
@@ -1039,6 +1042,13 @@ export function startServer(services: HostServices) {
         return canvas.tickChecklistItem(message.itemId, message.checklistItemId, message.done);
       case "checklist.dismiss":
         return canvas.dismissChecklist(message.itemId);
+      case "canvas.item-action":
+        return void canvasPlugins.act(message.itemId, message.action).then(
+          (answer) => reply({ type: "canvas.item-acted", requestId: message.requestId, reply: answer, problem: null }),
+          (error) => reply({ type: "canvas.item-acted", requestId: message.requestId, reply: null, problem: messageOf(error) }),
+        );
+      case "canvas.dismiss":
+        return canvasPlugins.dismiss(message.itemId);
       case "canvas.export":
         canvas
           .exportPage(message.itemId, message.libraries)
@@ -1285,6 +1295,7 @@ export function startServer(services: HostServices) {
       newerVersion: newerVersion.current,
       installedApps: apps.installed(),
       openApps: apps.openApps(),
+      canvasViews: canvasPlugins.viewPaths(),
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });
     hub.send(socket, voiceSettingsFor(socket));

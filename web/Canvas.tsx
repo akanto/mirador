@@ -9,10 +9,11 @@ import { BarMenu, type BarMenuEntry } from "./BarMenu.tsx";
 import { connection } from "./connection.ts";
 import { settledEditNote, type EditRequest } from "./edit-approval.ts";
 import { ChangesView } from "./Changes.tsx";
-import { checklistCount, ChecklistView, currentChecklist, useFlashOnAgentEdit } from "./Checklist.tsx";
+import { agentEditOf, ChecklistView, currentTabItem, isTabItem, tabCount, useFlashOnAgentEdit } from "./Checklist.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
 import { usePageExport } from "./PageExport.tsx";
+import { PluginItemView } from "./PluginItemView.tsx";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
@@ -450,7 +451,9 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
   );
 }
 
-const kindIcons: Record<CanvasItem["kind"], string> = { show: "▣", ask: "?", review: "⇄", tour: "↯", checklist: "☑" };
+const kindIcons: Record<Exclude<CanvasItem["kind"], "plugin">, string> = { show: "▣", ask: "?", review: "⇄", tour: "↯", checklist: "☑" };
+
+const iconOf = (item: CanvasItem) => (item.kind === "plugin" ? item.icon : kindIcons[item.kind]);
 
 function outcomeOf(item: CanvasItem) {
   if (item.kind === "review") return item.review.verdict;
@@ -529,7 +532,7 @@ function CanvasHistory({ items, selectedId, onPick }: { items: CanvasItem[]; sel
             <time className="timestamp" title={formatFullTime(item.createdAt)}>
               {formatClockTime(item.createdAt)}
             </time>
-            <span className="entry-kind">{kindIcons[item.kind]}</span>
+            <span className="entry-kind">{iconOf(item)}</span>
             <span className="entry-title">{item.title}</span>
             <span className="entry-outcome">{outcomeOf(item)}</span>
           </button>
@@ -637,9 +640,9 @@ function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab:
 /** What each conversation's canvas showed when the user left it, which the panel, made again for each conversation, picks up. */
 const leftViews = new Map<string, { latestId: string | undefined; selectedId: string | null; tab: CoveringTab; seenEdit: SeenEdit }>();
 
-/** The agent's change to the checklist the user last saw, by checklist: its changes since flash once the tab opens. */
+/** The agent's change to the tab's item the user last saw, by item: its changes since flash once the tab opens. */
 interface SeenEdit {
-  checklistId: string | undefined;
+  tabItemId: string | undefined;
   at: number | undefined;
 }
 
@@ -652,6 +655,7 @@ export function CanvasPanel({
   homeDir,
   changesRefreshPoint,
   apps,
+  canvasViews,
   onHide,
 }: {
   conversationId: string;
@@ -664,15 +668,17 @@ export function CanvasPanel({
   homeDir: string;
   changesRefreshPoint: number;
   apps: WorkspaceApps;
+  /** Where the canvas assets serve each canvas plugin's view, by plugin name. */
+  canvasViews: Record<string, string>;
   onHide: () => void;
 }) {
-  const pages = useMemo(() => items.filter((item) => item.kind !== "checklist"), [items]);
-  const checklist = currentChecklist(items);
+  const pages = useMemo<CanvasItem[]>(() => items.filter((item) => !isTabItem(item)), [items]);
+  const tabItem = currentTabItem(items);
   const newestFirst = useMemo(() => [...pages].sort((a, b) => b.createdAt - a.createdAt), [pages]);
   const newest = newestFirst[0];
   const onCanvasByDefault = newest && !isSettledQuestion(newest) ? newest.id : null;
-  const checklistIsLatest = checklist !== undefined && checklist.createdAt > (newest?.createdAt ?? 0);
-  const latestId = checklistIsLatest ? checklist.id : newest?.id;
+  const checklistIsLatest = tabItem !== undefined && tabItem.createdAt > (newest?.createdAt ?? 0);
+  const latestId = checklistIsLatest ? tabItem.id : newest?.id;
   const tabByDefault: CoveringTab = checklistIsLatest ? "checklist" : null;
   const left = leftViews.get(conversationId);
   const nothingNewSinceLeft = left?.latestId === latestId;
@@ -684,9 +690,9 @@ export function CanvasPanel({
   const toggleTab = (toggled: Exclude<CoveringTab, null>) => setTab((open) => (open === toggled ? null : toggled));
   const shownApp = apps.open.find(({ app }) => tab === appTab(app));
   const shownAppInstalled = shownApp && apps.installed.find(({ name }) => name === shownApp.app);
-  const editAt = checklist?.checklist.agentEdit?.at;
-  const seenEdit = useRef<SeenEdit>(left ? left.seenEdit : { checklistId: checklist?.id, at: editAt });
-  const checklistFlashing = useFlashOnAgentEdit(checklist?.id, editAt, !checklistOpen);
+  const editAt = agentEditOf(tabItem);
+  const seenEdit = useRef<SeenEdit>(left ? left.seenEdit : { tabItemId: tabItem?.id, at: editAt });
+  const checklistFlashing = useFlashOnAgentEdit(tabItem?.id, editAt, !checklistOpen);
   const placeForReview = useReviewPlacement();
   const keptSinceLeft = useRef(nothingNewSinceLeft);
   useEffect(() => {
@@ -700,11 +706,11 @@ export function CanvasPanel({
   // After the reset to the newest item, so that an app the agent opened while the user was away stays in front.
   useAppTabOnOpen(conversationId, apps.open, setTab);
   useEffect(() => {
-    if (checklistOpen || seenEdit.current.checklistId !== checklist?.id) seenEdit.current = { checklistId: checklist?.id, at: editAt };
-  }, [checklistOpen, checklist?.id, editAt]);
+    if (checklistOpen || seenEdit.current.tabItemId !== tabItem?.id) seenEdit.current = { tabItemId: tabItem?.id, at: editAt };
+  }, [checklistOpen, tabItem?.id, editAt]);
   useEffect(() => {
     leftViews.set(conversationId, { latestId, selectedId, tab, seenEdit: seenEdit.current });
-  }, [conversationId, latestId, selectedId, tab, checklist?.id, editAt]);
+  }, [conversationId, latestId, selectedId, tab, tabItem?.id, editAt]);
   const edit = useEditsOnCanvas(edits, () => setSelectedId(null));
   useEffect(() => {
     if (edit.shown) setTab(null);
@@ -734,14 +740,14 @@ export function CanvasPanel({
   };
   const dismissChecklist = () => {
     setTab(null);
-    if (checklist) connection.send({ type: "checklist.dismiss", itemId: checklist.id });
+    if (tabItem) connection.send({ type: tabItem.kind === "checklist" ? "checklist.dismiss" : "canvas.dismiss", itemId: tabItem.id });
   };
   const toggleHistory = () => setHistoryOpen((open) => !open);
   const shownPage = !tab && selected?.kind === "show" ? selected : undefined;
   const pageExport = usePageExport(shownPage, shownPageFrame);
   const bar = useRef<HTMLDivElement>(null);
   const foldLevel = useFoldLevel(bar);
-  const checklistCountText = (checklist || plan) && `Checklist ${checklistCount(checklist, plan)}`;
+  const checklistCountText = (tabItem || plan) && `Checklist ${tabCount(tabItem, plan)}`;
   const foldedEntries: BarMenuEntry[] = [
     ...(foldLevel >= FOLDS.navigation
       ? [
@@ -752,7 +758,7 @@ export function CanvasPanel({
       : []),
     ...(foldLevel >= FOLDS.checklist && checklistCountText ? [{ label: checklistCountText, checked: checklistOpen, onChoose: () => toggleTab("checklist") }] : []),
     ...(foldLevel >= FOLDS.checklist ? apps.open.map(({ app, title }) => ({ label: title, checked: tab === appTab(app), onChoose: () => toggleTab(appTab(app)) })) : []),
-    ...(foldLevel >= FOLDS.checklist && checklistOpen && checklist ? [{ label: "Dismiss", onChoose: dismissChecklist }] : []),
+    ...(foldLevel >= FOLDS.checklist && checklistOpen && tabItem ? [{ label: "Dismiss", onChoose: dismissChecklist }] : []),
     ...(foldLevel >= FOLDS.leastUsed
       ? [
           { label: `History (${pages.length})`, checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
@@ -780,12 +786,12 @@ export function CanvasPanel({
           </>
         ) : checklistOpen ? (
           <>
-            <span className="canvas-kind">{kindIcons.checklist}</span>
-            <span className="canvas-title">{checklist?.title ?? "Agent's plan"}</span>
+            <span className="canvas-kind">{tabItem ? iconOf(tabItem) : kindIcons.checklist}</span>
+            <span className="canvas-title">{tabItem?.title ?? "Agent's plan"}</span>
             <button type="button" className="icon checklist-close" aria-label="Close the checklist" data-hint={hints.checklistClose} onClick={() => setTab(null)}>
               ×
             </button>
-            {checklist && (
+            {tabItem && (
               <button type="button" className="icon checklist-dismiss" aria-label="Dismiss the checklist" data-hint={hints.checklistDismiss} onClick={dismissChecklist}>
                 Dismiss
               </button>
@@ -799,7 +805,7 @@ export function CanvasPanel({
           </>
         ) : selected ? (
           <>
-            <span className="canvas-kind">{kindIcons[selected.kind]}</span>
+            <span className="canvas-kind">{iconOf(selected)}</span>
             <span className="canvas-title">{selected.title}</span>
             {outcome && (
               <span className={`canvas-outcome status-${selected.status}${selected.kind === "review" ? " verdict" : ""}${outcomeIsFreeText(selected) ? " free-text" : ""}`} title={outcome}>
@@ -841,7 +847,7 @@ export function CanvasPanel({
         >
           Changes
         </button>
-        {(checklist || plan) && (
+        {(tabItem || plan) && (
           <button
             type="button"
             className={["checklist-toggle", checklistOpen && "on", checklistFlashing && "agent-edited"].filter(Boolean).join(" ")}
@@ -913,7 +919,11 @@ export function CanvasPanel({
             <ChangesView conversationId={conversationId} refreshPoint={changesRefreshPoint} homeDir={homeDir} />
           </>
         )}
-        {checklistOpen && <ChecklistView checklist={checklist} plan={plan} seenEditAt={seenEdit.current.at} />}
+        {checklistOpen && (
+          <ChecklistView checklist={tabItem?.kind === "checklist" ? tabItem : undefined} plan={plan} seenEditAt={seenEdit.current.at}>
+            {tabItem?.kind === "plugin" && <PluginItemView key={tabItem.id} item={tabItem} viewPath={canvasViews[tabItem.plugin]} assetsOrigin={assetsOrigin} fitsContent />}
+          </ChecklistView>
+        )}
         {shownApp && shownAppInstalled && (
           <AppView key={shownApp.app} openApp={shownApp} installed={shownAppInstalled} documentState={apps.documents[appKey(shownApp)]} assetsOrigin={assetsOrigin} conversationId={conversationId} />
         )}
@@ -931,6 +941,7 @@ export function CanvasPanel({
             onRendered={reportRender(selected.id)}
           />
         )}
+        {!tab && selected?.kind === "plugin" && <PluginItemView key={selected.id} item={selected} viewPath={canvasViews[selected.plugin]} assetsOrigin={assetsOrigin} />}
         {!tab && selected?.kind === "review" && (
           <WalkthroughView key={selected.id} item={selected} conversationId={selected.conversationId} />
         )}

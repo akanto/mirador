@@ -3,7 +3,8 @@ import * as z from "zod/v4";
 import type { ConversationService } from "../conversations.ts";
 import { CANVAS_SERVER_NAME } from "../acp/harnesses.ts";
 import { JobWaitRefused, jobWaitToolDescription } from "../job-waits.ts";
-import { canvasInstructions } from "./guidance.ts";
+import { canvasInstructions, NO_CANVAS_PLUGINS } from "./guidance.ts";
+import type { CanvasPlugins } from "./plugins.ts";
 import { readJobWaitRequest, waitSetUpReply } from "../../shared/job-waits.ts";
 import { answerAsToolResult, type CanvasService, type RenderOutcome } from "./service.ts";
 import type { ChecklistCanvasItem } from "../../shared/model.ts";
@@ -260,10 +261,17 @@ const toolError = (text: string) => ({ isError: true, content: [{ type: "text" a
 /** opencode 2 names the session that calls a tool, its subagents' included. */
 const OPENCODE_SESSION_META = "ai.opencode/sessionID";
 
-function buildCanvasServer(conversationId: string, canvas: CanvasService, conversations: ConversationService, assetsOrigin: string, apps: AppDocuments | null) {
+function buildCanvasServer(
+  conversationId: string,
+  canvas: CanvasService,
+  conversations: ConversationService,
+  assetsOrigin: string,
+  apps: AppDocuments | null,
+  canvasPlugins: CanvasPlugins | null,
+) {
   const server = new McpServer(
     { name: CANVAS_SERVER_NAME, version: MIRADOR_VERSION },
-    { instructions: canvasInstructions(assetsOrigin) },
+    { instructions: canvasInstructions(assetsOrigin, canvasPlugins?.guidance ?? NO_CANVAS_PLUGINS) },
   );
 
   /**
@@ -477,6 +485,7 @@ function buildCanvasServer(conversationId: string, canvas: CanvasService, conver
   );
 
   if (apps && apps.installed().length > 0) registerAppTools(server, apps, conversations, callingConversation);
+  canvasPlugins?.registerTools(server, callingConversation);
 
   return server;
 }
@@ -489,6 +498,7 @@ export class CanvasMcpEndpoints {
     private readonly conversations: ConversationService,
     private readonly assetsOrigin: string,
     private readonly apps: AppDocuments | null = null,
+    private readonly canvasPlugins: CanvasPlugins | null = null,
   ) {}
 
   handle(conversationId: string, request: Request) {
@@ -503,7 +513,7 @@ export class CanvasMcpEndpoints {
     let handler = this.handlers.get(conversationId);
     if (!handler) {
       handler = createMcpHandler(() =>
-        buildCanvasServer(conversationId, this.canvas, this.conversations, this.assetsOrigin, this.apps),
+        buildCanvasServer(conversationId, this.canvas, this.conversations, this.assetsOrigin, this.apps, this.canvasPlugins),
       );
       this.handlers.set(conversationId, handler);
     }

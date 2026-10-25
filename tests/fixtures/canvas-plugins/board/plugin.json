@@ -1,0 +1,6 @@
+{
+  "name": "board",
+  "title": "Board",
+  "api": 3,
+  "canvas": { "host": "host.ts", "view": "canvas.js" }
+}

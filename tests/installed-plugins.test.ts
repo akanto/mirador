@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { InstalledPlugins, withoutCredentials } from "../host/apps/installed-plugins.ts";
-import { loadAppPlugins } from "../host/apps/plugins.ts";
+import { loadPlugins } from "../host/apps/plugins.ts";
 
 const COUNTER = join(import.meta.dir, "fixtures", "apps", "counter");
 const SHIPPED = join(import.meta.dir, "fixtures", "shipped-plugins");
@@ -55,8 +55,8 @@ describe("InstalledPlugins", () => {
     writeFileSync(join(plugins, "broken", "plugin.json"), JSON.stringify({ name: "broken", title: "Broken", api: 1, app: { host: "host.ts", view: "dist/view.js" } }));
     mkdirSync(join(plugins, "not-a-plugin"));
 
-    const loaded = await loadAppPlugins(plugins);
-    expect(loaded.plugins.map(({ manifest }) => manifest.name)).toEqual(["counter", "linked-counter"]);
+    const loaded = await loadPlugins(plugins);
+    expect(loaded.apps.map(({ manifest }) => manifest.name)).toEqual(["counter", "linked-counter"]);
     const listed = await new InstalledPlugins(plugins, loaded.problems).list();
 
     expect(listed).toEqual([
@@ -138,7 +138,7 @@ describe("adding, updating and removing plugins", () => {
       },
     ]);
     expect(leftInStaging(plugins)).toEqual([]);
-    expect((await loadAppPlugins(plugins)).plugins.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
+    expect((await loadPlugins(plugins)).apps.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
   });
 
   test("refuses a repo whose build fails, with the end of its output, and leaves nothing behind", async () => {

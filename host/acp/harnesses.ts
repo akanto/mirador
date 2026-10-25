@@ -2,7 +2,8 @@ import { RequestError } from "@agentclientprotocol/sdk";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { harnessIds, harnessLabels, type CanvasUse, type HarnessId, type Profile } from "../../shared/model.ts";
-import { canvasInstructions, canvasUseGuidance } from "../canvas/guidance.ts";
+import { canvasInstructions, canvasUseGuidance, NO_CANVAS_PLUGINS, type CanvasPluginGuidance } from "../canvas/guidance.ts";
+import { PRE_ALLOWED_CANVAS_TOOLS } from "../canvas/tool-names.ts";
 import { jobWaitGuidance } from "../job-waits.ts";
 import { applyEnvironment, parseEnvironment } from "../../shared/profile-environment.ts";
 import { claudeProgramMissing, findClaudeProgram } from "./claude-program.ts";
@@ -163,16 +164,17 @@ export function profileEnvironment(profile: Profile | null): Record<string, stri
   return applyEnvironment(agentEnvironment(hostEnvironment()), environment);
 }
 
-/** None of them changes files or runs commands for the agent, so none is worth a permission prompt. */
-const PRE_ALLOWED_CANVAS_TOOLS = ["show", "ask", "tour", "review", "update_review", "checklist", "update_checklist", "when_done"];
-
 /**
  * opencode needs nothing: it offers no question tool over ACP, puts the canvas server's own instructions in its prompt,
  * and the user's own opencode permission settings apply unchanged.
  */
-export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { canvasAssetsOrigin, withoutUserSettings = false }: { canvasAssetsOrigin: string; withoutUserSettings?: boolean }) {
-  if (harness === "claude") return claudeSessionMeta(canvasUse, { withoutUserSettings });
-  if (harness === "pi") return piSessionMeta(canvasUse, canvasAssetsOrigin);
+export function sessionMeta(
+  harness: HarnessId,
+  canvasUse: CanvasUse,
+  { canvasAssetsOrigin, withoutUserSettings = false, canvasPlugins = NO_CANVAS_PLUGINS }: { canvasAssetsOrigin: string; withoutUserSettings?: boolean; canvasPlugins?: CanvasPluginGuidance },
+) {
+  if (harness === "claude") return claudeSessionMeta(canvasUse, { withoutUserSettings, canvasPlugins });
+  if (harness === "pi") return piSessionMeta(canvasUse, canvasAssetsOrigin, canvasPlugins);
   return undefined;
 }
 
@@ -180,23 +182,23 @@ export function sessionMeta(harness: HarnessId, canvasUse: CanvasUse, { canvasAs
  * pi leaves the instructions of MCP servers whose tools it declares directly out of its prompt, so the canvas server's
  * come in the text Mirador's pi-acp patch appends. Its job waits go through the canvas's when_done tool, as opencode's do.
  */
-export function piSessionMeta(canvasUse: CanvasUse, canvasAssetsOrigin: string) {
-  const canvasServerInstructions = `# Canvas server instructions\n${canvasInstructions(canvasAssetsOrigin)}`;
-  return { systemPrompt: { append: [canvasServerInstructions, ...(canvasUse === "often" ? [canvasUseGuidance] : [])].join("\n\n") } };
+export function piSessionMeta(canvasUse: CanvasUse, canvasAssetsOrigin: string, canvasPlugins = NO_CANVAS_PLUGINS) {
+  const canvasServerInstructions = `# Canvas server instructions\n${canvasInstructions(canvasAssetsOrigin, canvasPlugins)}`;
+  return { systemPrompt: { append: [canvasServerInstructions, ...(canvasUse === "often" ? [canvasUseGuidance(canvasPlugins)] : [])].join("\n\n") } };
 }
 
 /**
  * Session options Claude Code reads from `_meta.claudeCode.options` (claude-agent-acp).
  * AskUserQuestion is disabled so questions go through the visual `ask` tool instead.
  */
-export function claudeSessionMeta(canvasUse: CanvasUse, { withoutUserSettings = false } = {}) {
+export function claudeSessionMeta(canvasUse: CanvasUse, { withoutUserSettings = false, canvasPlugins = NO_CANVAS_PLUGINS } = {}) {
   return {
-    systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance] : []), jobWaitGuidance()].join("\n\n") },
+    systemPrompt: { append: [...(canvasUse === "often" ? [canvasUseGuidance(canvasPlugins)] : []), jobWaitGuidance()].join("\n\n") },
     claudeCode: {
       options: {
         ...(withoutUserSettings && { settingSources: ["project", "local"] }),
         env: { CLAUDE_NOTIFIER: "0" },
-        allowedTools: PRE_ALLOWED_CANVAS_TOOLS.map((tool) => `mcp__${CANVAS_SERVER_NAME}__${tool}`),
+        allowedTools: [...PRE_ALLOWED_CANVAS_TOOLS, ...canvasPlugins.toolNames].map((tool) => `mcp__${CANVAS_SERVER_NAME}__${tool}`),
         disallowedTools: ["AskUserQuestion"],
       },
     },

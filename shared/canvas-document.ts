@@ -1,4 +1,5 @@
 import { APP_MEDIA_PATH, APP_STORAGE_CHARACTERS, type AppStorageItems } from "./apps.ts";
+import type { PluginItem } from "./canvas-plugins.ts";
 
 export const CANVAS_MESSAGE_SOURCE = "mirador-canvas";
 
@@ -41,6 +42,10 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-stop-task" }
   /** An item the view set in its storage, for the host to keep in the workspace; a null value removes it. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "app-storage-set"; key: unknown; value: unknown }
+  /** A plugin item's view is ready for its item. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-ready" }
+  /** What the user did in a plugin item's view, for the plugin's host code; the panel answers with an "item-reply" or "item-reply-failed". */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-send"; requestId: string; action: unknown }
   /** The page drawn as a PNG, as the panel asked for it to copy. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "captured"; requestId: string; image: Blob }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "capture-failed"; requestId: string; message: string };
@@ -222,6 +227,72 @@ function appBridge(frameId: string, storage: AppStorageItems) {
   });
   parent.postMessage({ source, itemId, kind: "app-ready" }, "*");
 })();`;
+}
+
+/** A plugin's item for its view, posted by the panel on every change. */
+export function pluginItemMessage(item: PluginItem) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "item-state", item };
+}
+
+/** The plugin's reply to an action the view sent. */
+export function pluginItemReplyMessage(requestId: string, reply: unknown) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "item-reply", requestId, reply };
+}
+
+/** Why an action the view sent has no reply. */
+export function pluginItemReplyFailedMessage(requestId: string, message: string) {
+  return { source: CANVAS_MESSAGE_SOURCE, kind: "item-reply-failed", requestId, message };
+}
+
+/**
+ * `window.mirador` for a plugin's canvas view. `onItem` hands the listener the item the view draws, at once when it is
+ * known and again on every change, so the view may start listening whenever its code is ready. `send` hands an action to
+ * the plugin's host code and resolves to its reply, or rejects with the reason there is none.
+ */
+function pluginItemBridge(frameId: string) {
+  return `(() => {
+  const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
+  const itemId = ${JSON.stringify(frameId)};
+  const listeners = new Set();
+  const replies = new Map();
+  let latest;
+  addEventListener("message", (event) => {
+    const data = event.data;
+    if ((event.source !== parent && event.source !== null) || !data || data.source !== source) return;
+    if (data.kind === "item-state") {
+      latest = data.item;
+      listeners.forEach((listener) => listener(latest));
+    }
+    if (data.kind === "item-reply") replies.get(data.requestId)?.resolve(data.reply);
+    if (data.kind === "item-reply-failed") replies.get(data.requestId)?.reject(new Error(data.message));
+  });
+  window.mirador = Object.freeze({
+    onItem(listener) {
+      listeners.add(listener);
+      if (latest !== undefined) listener(latest);
+      return () => listeners.delete(listener);
+    },
+    send(action) {
+      const requestId = crypto.randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => settle(reject, new Error("Mirador didn't answer the action.")), ${APP_ANSWER_MS});
+        const settle = (finish, result) => {
+          clearTimeout(timer);
+          replies.delete(requestId);
+          finish(result);
+        };
+        replies.set(requestId, { resolve: (reply) => settle(resolve, reply), reject: (error) => settle(reject, error) });
+        parent.postMessage({ source, itemId, kind: "item-send", requestId, action }, "*");
+      });
+    },
+  });
+  parent.postMessage({ source, itemId, kind: "item-ready" }, "*");
+})();`;
+}
+
+/** The page of a plugin item's view: the bridge first, then the plugin's canvas view, which the canvas assets serve. */
+export function pluginItemPage(viewUrl: string, frameId: string) {
+  return `<script>${pluginItemBridge(frameId)}</script>\n<script type="module" src="${escapeAttribute(viewUrl)}"></script>`;
 }
 
 /** The page of an app's view: the bridge first, then the view's code, which the canvas assets serve. */

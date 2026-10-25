@@ -193,6 +193,10 @@ export type ClientMessage =
   | { type: "checklist.tick"; itemId: string; checklistItemId: string; done: boolean }
   /** The user takes the checklist off the canvas; it stays gone until the agent publishes a new one. */
   | { type: "checklist.dismiss"; itemId: string }
+  /** What the user did in a plugin item's view, for the plugin's host code; answered with "canvas.item-acted". */
+  | { type: "canvas.item-action"; requestId: string; itemId: string; action: unknown }
+  /** The user takes a plugin's item out of the tab; it stays gone until the plugin publishes a new one. */
+  | { type: "canvas.dismiss"; itemId: string }
   /** A page the agent showed, as a file of its own, for the user to copy or download. */
   | { type: "canvas.export"; requestId: string; itemId: string; libraries: PageLibraries }
   | { type: "canvas.save-to-project"; requestId: string; itemId: string; path: string; libraries: PageLibraries; replace: boolean }
@@ -306,6 +310,8 @@ export type ServerMessage =
       newerVersion: NewerVersion | null;
       installedApps: InstalledApp[];
       openApps: OpenApp[];
+      /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
+      canvasViews: Record<string, string>;
     }
   /** Every app open in every workspace, whenever one opens or closes. */
   | { type: "apps.open"; openApps: OpenApp[] }
@@ -425,6 +431,8 @@ export type ServerMessage =
   | { type: "plugins.listed"; folder: string; plugins: PluginInfo[]; restartNeeded: boolean }
   /** The answer to plugins.add, plugins.update and plugins.remove. */
   | { type: "plugins.changed"; requestId: string; problem: string | null }
+  /** The plugin's reply to an item's action, or why there is none. */
+  | { type: "canvas.item-acted"; requestId: string; reply: unknown; problem: string | null }
   /** The commits on the plugin's branch that it doesn't have yet, newest first. */
   | { type: "plugins.commits-found"; requestId: string; commits: PluginCommit[]; problem: string | null }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }

@@ -1,0 +1,88 @@
+import type { PluginCanvasItem } from "./model.ts";
+
+/**
+ * Where a plugin's item shows: among the canvas's pages, or in the tab beside the canvas that holds the agent's plan,
+ * above the plan, where the newest one the user hasn't dismissed is the one shown.
+ */
+export type PluginItemPlacement = "page" | "tab";
+
+export const pluginItemPlacements: PluginItemPlacement[] = ["page", "tab"];
+
+/** A kind of item a plugin's canvas view draws. */
+export interface PluginItemType<Data = unknown> {
+  /** A character or two, for the canvas's list of pages and its header. */
+  icon: string;
+  placement: PluginItemPlacement;
+  /** An item in the tab: how far along it is in a few characters, e.g. "3/5", for the tab's toggle. */
+  count?(data: Data): string;
+}
+
+/** An item a plugin published in a conversation's canvas, as its host code sees it. */
+export interface PluginItem<Data = unknown> {
+  id: string;
+  type: string;
+  title: string;
+  data: Data;
+  createdAt: number;
+  /** The user took it out of the tab. */
+  dismissed: boolean;
+}
+
+/** A plugin's item as its host code and its view see it, without what only Mirador keeps. */
+export const pluginItemOf = (item: PluginCanvasItem): PluginItem => ({
+  id: item.id,
+  type: item.type,
+  title: item.title,
+  data: item.data,
+  createdAt: item.createdAt,
+  dismissed: item.dismissed ?? false,
+});
+
+/** The conversation a plugin's code runs for, and its items in the canvas there. */
+export interface CanvasPluginContext<Data = unknown> {
+  conversationId: string;
+  /** The plugin's items in the conversation, oldest first. */
+  items(): PluginItem<Data>[];
+  /** Changes one of them in place. Made while a tool runs, it is the agent's change, and the tab's toggle flashes for it. */
+  change(itemId: string, change: { title?: string; data?: Data }): PluginItem<Data>;
+}
+
+export interface CanvasToolContext<Data = unknown> extends CanvasPluginContext<Data> {
+  /** Shows a new item, of one of the plugin's types, in the canvas. */
+  publish(item: { type: string; title: string; data: Data }): PluginItem<Data>;
+}
+
+/** A tool the agent calls on the canvas server, next to show, ask and the rest. */
+export interface CanvasTool<Data = unknown> {
+  description: string;
+  /** JSON Schema of an object: the tool's arguments, which Mirador checks before calling run. */
+  input: Record<string, unknown>;
+  /** Resolves to the text the agent gets. What it throws reaches the agent as a tool error, so its message should say what would work. */
+  run(input: unknown, context: CanvasToolContext<Data>): string | Promise<string>;
+}
+
+/** What the agent hears with the user's next message; heard() runs once that message went. */
+export interface CanvasPluginNote {
+  text: string;
+  heard(): void;
+}
+
+/**
+ * What a plugin's canvas host module exports. Mirador calls it in its own process; every call is guarded, and what a
+ * call throws goes to whoever caused it, the agent or the view, as its message.
+ */
+export interface CanvasHost<Data = unknown> {
+  /** The kinds of item the plugin's tools publish, by name. */
+  items: Record<string, PluginItemType<Data>>;
+  /** By name, which is the tool's name on the canvas server: lower case, digits and underscores. */
+  tools: Record<string, CanvasTool<Data>>;
+  /**
+   * A line each, e.g. "- checklist: …", for the canvas server's instructions and for what Claude Code and pi are told
+   * when Settings ask for the canvas often.
+   */
+  guidance?: { instructions?: string; often?: string };
+  /** The user's action in an item's view, sent with `mirador.send`; resolves to what send resolves to in the view. */
+  action?(item: PluginItem<Data>, action: unknown, context: CanvasPluginContext<Data>): unknown;
+  /** What the agent should hear of with the user's next message, such as what the user did in an item. */
+  note?(context: CanvasPluginContext<Data>): CanvasPluginNote | null;
+}

@@ -1,7 +1,7 @@
 import type { PlanEntry } from "@agentclientprotocol/sdk";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { checklistItems, checklistProgress, type Checklist, type ChecklistItem } from "../shared/checklist.ts";
-import type { CanvasItem, ChecklistCanvasItem } from "../shared/model.ts";
+import type { CanvasItem, ChecklistCanvasItem, PluginCanvasItem } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { MarkdownText } from "./Markdown.tsx";
@@ -10,17 +10,28 @@ const AGENT_EDIT_FLASH_MS = 2000;
 
 const ownerLabels = { user: "you", both: "both" };
 
-/** The conversation's checklist is the newest the agent published and has not dismissed; a new publishing brings one back. */
-export const currentChecklist = (items: CanvasItem[]): ChecklistCanvasItem | undefined => {
-  const newest = items.filter((item) => item.kind === "checklist").sort((a, b) => b.createdAt - a.createdAt)[0];
-  return newest && !newest.checklist.dismissed ? newest : undefined;
+/** What the checklist tab shows above the agent's plan: the agent's checklist, or a plugin's item that goes in the tab. */
+export type TabItem = ChecklistCanvasItem | PluginCanvasItem;
+
+export const isTabItem = (item: CanvasItem): item is TabItem => item.kind === "checklist" || (item.kind === "plugin" && item.placement === "tab");
+
+const isDismissed = (item: TabItem) => (item.kind === "checklist" ? item.checklist.dismissed : item.dismissed) === true;
+
+/** The tab's item is the newest the agent published there and the user has not dismissed; a new publishing brings one back. */
+export const currentTabItem = (items: CanvasItem[]): TabItem | undefined => {
+  const newest = items.filter(isTabItem).sort((a, b) => b.createdAt - a.createdAt)[0];
+  return newest && !isDismissed(newest) ? newest : undefined;
 };
+
+/** When the agent last changed the tab's item in place. */
+export const agentEditOf = (item: TabItem | undefined) => (item?.kind === "checklist" ? item.checklist.agentEdit?.at : item?.agentEditedAt);
 
 const planAsItems = (plan: PlanEntry[]) => plan.map((entry) => ({ done: entry.status === "completed" }));
 
-/** What the tab's toggle counts: the agent's checklist, or without one, its own plan. */
-export function checklistCount(checklist: ChecklistCanvasItem | undefined, plan: PlanEntry[] | null) {
-  const { done, total } = checklistProgress(checklist ? checklistItems(checklist.checklist) : planAsItems(plan ?? []));
+/** What the tab's toggle counts: the agent's checklist, a plugin item's own count, or without either, the agent's plan. */
+export function tabCount(item: TabItem | undefined, plan: PlanEntry[] | null) {
+  if (item?.kind === "plugin" && item.count !== undefined) return item.count;
+  const { done, total } = checklistProgress(item?.kind === "checklist" ? checklistItems(item.checklist) : planAsItems(plan ?? []));
   return `${done}/${total}`;
 }
 
@@ -131,12 +142,24 @@ function PinnedPlan({ plan }: { plan: PlanEntry[] }) {
   );
 }
 
-/** Covers the canvas like Changes: the agent's checklist, and under it the plan the agent keeps for itself. */
-export function ChecklistView({ checklist, plan, seenEditAt }: { checklist: ChecklistCanvasItem | undefined; plan: PlanEntry[] | null; seenEditAt: number | undefined }) {
+/** Covers the canvas like Changes: the agent's checklist or a plugin's item, and under it the plan the agent keeps for itself. */
+export function ChecklistView({
+  checklist,
+  plan,
+  seenEditAt,
+  children,
+}: {
+  checklist: ChecklistCanvasItem | undefined;
+  plan: PlanEntry[] | null;
+  seenEditAt: number | undefined;
+  /** A plugin's item in the tab, in place of the checklist. */
+  children?: ReactNode;
+}) {
   const [seenUpTo] = useState(seenEditAt);
   return (
     <div className="checklist">
       {checklist && <AgentChecklist item={checklist} seenUpTo={seenUpTo} />}
+      {children}
       {plan && <PinnedPlan plan={plan} />}
     </div>
   );

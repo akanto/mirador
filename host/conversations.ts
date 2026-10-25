@@ -51,6 +51,7 @@ import { hasBegun, updatesTheAgentRecords } from "../shared/conversation-begun.t
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
 import { awaitingDelivery, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { withCanvasNotes, type CanvasNote } from "./canvas/notes.ts";
+import { NO_CANVAS_PLUGINS, type CanvasPluginGuidance } from "./canvas/guidance.ts";
 import { endsTurn, joinedRunningTurn, lastAgentMessageId, pendingReverts, rewindPointBefore, turnTitle, turnsFrom, whyNoRewindTo, withRevertNotes, type Revert } from "../shared/reverts.ts";
 import { returnedSteerSeqs } from "../shared/steered-messages.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
@@ -269,6 +270,7 @@ export class ConversationService {
     private readonly images: ImageStore,
     private readonly droppedFiles: DroppedFiles,
     private readonly notifications: SystemNotifications,
+    private readonly canvasPlugins: CanvasPluginGuidance = NO_CANVAS_PLUGINS,
   ) {
     this.checkpoints = new Checkpoints(config.dataDir);
     this.changes = new Changes(store, this.checkpoints, (conversationId) => this.workspaceOf(conversationId), launchIdea, openWithSystemDefault, (file) =>
@@ -1342,7 +1344,7 @@ export class ConversationService {
   private async sessionRequest(conversationId: string, workspace: Workspace) {
     const conversation = this.get(conversationId);
     const withoutUserSettings = this.config.testSkipsUserSettings && this.onUsersOwnSetup(conversation);
-    return { cwd: await recordedDirectory(workspace), mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings }) };
+    return { cwd: await recordedDirectory(workspace), mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings, canvasPlugins: this.canvasPlugins }) };
   }
 
   /** claude-notifier hooks into Claude Code only. */

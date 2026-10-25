@@ -21,8 +21,8 @@ const appendedForPi = (canvasUse: CanvasUse) => piSessionMeta(canvasUse, ASSETS_
 
 test("pi gets the canvas server's instructions, and the canvas guidance only when Settings ask for the canvas often", () => {
   expect(appendedForPi("as-needed")).toContain(canvasInstructions(ASSETS_ORIGIN));
-  expect(appendedForPi("as-needed")).not.toContain(canvasUseGuidance);
-  expect(appendedForPi("often")).toContain(canvasUseGuidance);
+  expect(appendedForPi("as-needed")).not.toContain(canvasUseGuidance());
+  expect(appendedForPi("often")).toContain(canvasUseGuidance());
 });
 
 test("pi waits for jobs with the canvas's when_done tool, as its commands can't name their session to mirador when-done", () => {

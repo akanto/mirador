@@ -3,7 +3,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppDocuments, AppFileRefused, type AppPublisher } from "../host/apps/documents.ts";
-import { AppProblem, loadAppPlugins } from "../host/apps/plugins.ts";
+import { AppProblem, loadPlugins } from "../host/apps/plugins.ts";
 import { Store } from "../host/store.ts";
 import { APP_MEDIA_PATH, appFileUrl, appMediaGrantUrl, appPromptText, type AppDocumentState, type OpenApp } from "../shared/apps.ts";
 
@@ -19,7 +19,7 @@ function recordingPublisher() {
 
 async function setUp(store = new Store(":memory:"), workspacePath = mkdtempSync(join(tmpdir(), "app-workspace-")), maxFileBytes?: number) {
   if (!store.findWorkspace("w1")) store.insertWorkspace({ id: "w1", name: "p", path: workspacePath, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
-  const { plugins } = await loadAppPlugins(FIXTURE_APPS);
+  const { apps: plugins } = await loadPlugins(FIXTURE_APPS);
   const recorded = recordingPublisher();
   const apps = new AppDocuments(store, plugins, recorded.publisher, maxFileBytes);
   const fileText = () => readFileSync(join(workspacePath, "counter.json"), "utf8");
@@ -53,9 +53,9 @@ function pluginFolder(files: Record<string, string>) {
   return folder;
 }
 
-describe("loadAppPlugins", () => {
+describe("loadPlugins", () => {
   test("loads an app plugin and serves its view under a hash of its code", async () => {
-    const { plugins, problems } = await loadAppPlugins(FIXTURE_APPS);
+    const { apps: plugins, problems } = await loadPlugins(FIXTURE_APPS);
     expect(problems).toEqual([]);
     const { apps } = await setUp();
     const [counter] = apps.installed();
@@ -82,11 +82,11 @@ describe("loadAppPlugins", () => {
       "just-a-folder/readme.md": "not a plugin",
     });
     cpSync(join(FIXTURE_APPS, "counter"), join(folder, "counter"), { recursive: true });
-    const { plugins, problems } = await loadAppPlugins(folder);
+    const { apps: plugins, problems } = await loadPlugins(folder);
     expect(plugins.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
     const problemOf = (name: string) => problems.find((problem) => problem.folder.endsWith(name))?.message;
     expect(problems).toHaveLength(6);
-    expect(problemOf("old-api")).toContain("plugin API 99; this Mirador speaks plugin API 1 to 2, so the plugin needs a newer Mirador");
+    expect(problemOf("old-api")).toContain("plugin API 99; this Mirador speaks plugin API 1 to 3, so the plugin needs a newer Mirador");
     expect(problemOf("taskless")).toContain("the host module's tasks render need a title and a run function");
     expect(problemOf("no-exports")).toContain("serialize, apply, describe");
     expect(problemOf("unbuilt")).toContain("dist/view.js doesn't exist");
@@ -98,17 +98,17 @@ describe("loadAppPlugins", () => {
     cpSync(join(FIXTURE_APPS, "counter"), join(folder, "counter"), { recursive: true });
     const manifest = join(folder, "counter", "plugin.json");
     writeFileSync(manifest, readFileSync(manifest, "utf8").replace('"api": 2', '"api": 1'));
-    const { plugins, problems } = await loadAppPlugins(folder);
+    const { apps: plugins, problems } = await loadPlugins(folder);
     expect(problems).toEqual([]);
     expect(plugins.map(({ manifest }) => manifest.api)).toEqual([1]);
   });
 
   test("finds nothing in a folder that doesn't exist", async () => {
-    expect(await loadAppPlugins(join(tmpdir(), "no-such-plugins-folder"))).toEqual({ plugins: [], problems: [] });
+    expect(await loadPlugins(join(tmpdir(), "no-such-plugins-folder"))).toEqual({ apps: [], canvases: [], problems: [] });
   });
 
   test("loads the plugins Mirador comes with first, their views bundled into one module with what they import", async () => {
-    const { plugins, problems } = await loadAppPlugins(FIXTURE_APPS, FIXTURE_SHIPPED);
+    const { apps: plugins, problems } = await loadPlugins(FIXTURE_APPS, FIXTURE_SHIPPED);
     expect(problems).toEqual([]);
     expect(plugins.map(({ manifest, shipped }) => [manifest.name, shipped])).toEqual([
       ["tally", true],
@@ -125,7 +125,7 @@ describe("loadAppPlugins", () => {
     cpSync(join(FIXTURE_APPS, "counter"), join(folder, "my-tally"), { recursive: true });
     const manifest = join(folder, "my-tally", "plugin.json");
     writeFileSync(manifest, readFileSync(manifest, "utf8").replace('"name": "counter"', '"name": "tally"'));
-    const { plugins, problems } = await loadAppPlugins(folder, FIXTURE_SHIPPED);
+    const { apps: plugins, problems } = await loadPlugins(folder, FIXTURE_SHIPPED);
     expect(plugins.map(({ manifest, shipped }) => [manifest.name, shipped])).toEqual([["tally", true]]);
     expect(problems).toEqual([{ folder: join(folder, "my-tally"), message: "Mirador comes with a plugin named tally" }]);
   });
@@ -136,7 +136,7 @@ describe("loadAppPlugins", () => {
       "unbundled/host.ts": "export default { parse() {}, serialize() {}, apply() {}, describe() {} };",
       "unbundled/view.ts": 'import "./missing.ts";',
     });
-    const { plugins, problems } = await loadAppPlugins(join(tmpdir(), "no-such-plugins-folder"), shipped);
+    const { apps: plugins, problems } = await loadPlugins(join(tmpdir(), "no-such-plugins-folder"), shipped);
     expect(plugins).toEqual([]);
     expect(problems).toHaveLength(1);
     expect(problems[0]!.message).toStartWith("its view didn't bundle: ");
@@ -417,7 +417,7 @@ describe("AppDocuments tasks", () => {
     const store = new Store(":memory:");
     store.insertWorkspace({ id: "w1", name: "p", path: mkdtempSync(join(tmpdir(), "app-workspace-")), defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
     const recorded = recordingPublisher();
-    const apps = new AppDocuments(store, (await loadAppPlugins(plugins)).plugins, recorded.publisher);
+    const apps = new AppDocuments(store, (await loadPlugins(plugins)).apps, recorded.publisher);
     await apps.open("w1", "late", "late.json");
     expect(await apps.startTask("w1", undefined, "render", { kind: "you" }).ended).toBe("Rendered.");
     await Bun.sleep(400);
@@ -446,7 +446,7 @@ describe("AppDocuments tasks", () => {
     mkdirSync(join(workspacePath, "plan", "sub"), { recursive: true });
     const store = new Store(":memory:");
     store.insertWorkspace({ id: "w1", name: "p", path: workspacePath, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
-    const apps = new AppDocuments(store, (await loadAppPlugins(plugins)).plugins, recordingPublisher().publisher);
+    const apps = new AppDocuments(store, (await loadPlugins(plugins)).apps, recordingPublisher().publisher);
     await apps.open("w1", "paths", "plan/paths.json");
     const folder = realpathSync.native(join(workspacePath, "plan"));
     expect(JSON.parse(await apps.startTask("w1", undefined, "try", { kind: "you" }).ended)).toEqual([
