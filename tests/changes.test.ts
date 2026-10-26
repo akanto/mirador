@@ -195,6 +195,23 @@ test("the agent's edits come from its finished edit tool calls, each file with t
   ]);
 });
 
+test("a file outside the project is added when the agent's first edit made it, modified when it was there, and deleted once it is gone, however it went", async () => {
+  const made = join(outsideDir, "made.md");
+  const edited = join(outsideDir, "edited.md");
+  await writeFile(made, "new\n");
+  await writeFile(edited, "old\nmore\n");
+  await startTurn();
+  agentEdits("t1", made, null, "new\n");
+  agentEdits("t2", edited, "old\n", "new\n");
+  agentEdits("t3", made, "new\n", "newer\n");
+
+  const statusOf = async () => Object.fromEntries((await changes.list("c1", "turn")).outside.map(({ path, status }) => [path, status]));
+  expect(await statusOf()).toEqual({ [made]: "added", [edited]: "modified" });
+
+  await rm(made);
+  expect(await statusOf()).toEqual({ [made]: "deleted", [edited]: "modified" });
+});
+
 test("this turn lists what differs from the turn's start, marks the agent's files, and keeps files outside the project apart", async () => {
   await write("kept.txt", "one\nTWO\nthree\n");
   await startTurn();
@@ -210,7 +227,7 @@ test("this turn lists what differs from the turn's start, marks the agent's file
     { path: "by-hand.txt", status: "added", added: 1, removed: 0, byAgent: false },
     { path: "kept.txt", status: "modified", added: 1, removed: 0, byAgent: true },
   ]);
-  expect(list.outside).toEqual([{ path: join(outsideDir, "notes.md"), status: "modified", added: null, removed: null, byAgent: true }]);
+  expect(list.outside).toEqual([{ path: join(outsideDir, "notes.md"), status: "added", added: null, removed: null, byAgent: true }]);
 
   const uncommitted = await changes.list("c1", "uncommitted");
   expect(uncommitted.base).toBe("head");

@@ -98,6 +98,7 @@ test("the empty canvas lists the files this turn changed as the agent works, wit
   await expect(fileRow(page, "src/generated.txt").locator(".by-agent")).toHaveCount(0);
   await expectListed(page, "Outside the project", [outsideFileShown]);
   await expect(fileRow(page, outsideFileShown).locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
+  await expect(fileRow(page, outsideFileShown).locator(".change-status"), "the agent's edit made it").toHaveText("A");
 });
 
 test("clicking a file opens its line changes under its row, with the file's line numbers, unified or split, and Open in IDEA", async ({ page }) => {
@@ -130,6 +131,15 @@ test("clicking a file opens its line changes under its row, with the file's line
   await test.step("clicking the selected file again closes its line changes", async () => {
     await fileRow(page, outsideFileShown).click();
     await expect(diff).toHaveCount(0);
+  });
+
+  await test.step("a file outside the project deleted by other means than the agent's edits shows as deleted", async () => {
+    rmSync(outsideFile);
+    await changes(page).getByRole("button", { name: "Refresh" }).click();
+    await expect(fileRow(page, outsideFileShown).locator(".change-status")).toHaveText("D");
+    writeFileSync(outsideFile, "outside the project\n");
+    await changes(page).getByRole("button", { name: "Refresh" }).click();
+    await expect(fileRow(page, outsideFileShown).locator(".change-status")).toHaveText("A");
   });
 });
 

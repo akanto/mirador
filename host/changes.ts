@@ -125,6 +125,20 @@ const byPath = (a: ChangedFile, b: ChangedFile) => a.path.localeCompare(b.path);
 
 const agentOnly = (path: string, edits: AgentFileEdits): ChangedFile => ({ path, status: edits.deleted ? "deleted" : "modified", added: null, removed: null, byAgent: true });
 
+/**
+ * A file outside the project as the agent's edits and the disk tell it: added when the agent's first edit made it,
+ * deleted once it is gone however that happened, as a script or shell command deleting it leaves no edit. Only whether
+ * the file is there is looked at, never what it holds.
+ */
+async function outsideFile(edits: AgentFileEdits): Promise<ChangedFile> {
+  const stillThere = await lstat(edits.path).then(
+    () => true,
+    () => false,
+  );
+  const status = edits.deleted || !stillThere ? "deleted" : edits.snippets[0]?.oldText === null ? "added" : "modified";
+  return { ...agentOnly(edits.path, edits), status };
+}
+
 interface ScopeStart {
   fromSeq: number;
   /** What the project's files are compared with, when there is something to compare them with. */
@@ -164,7 +178,7 @@ export class Changes {
     const directories = await projectDirectories(workspace);
     const edits = this.agentEdits(conversationId, workspace, start.fromSeq);
     const agentProjectFiles = new Map(edits.flatMap((edit) => (projectPathOf(edit.path, directories) === null ? [] : [[projectPathOf(edit.path, directories)!, edit] as const])));
-    const outside = edits.filter((edit) => projectPathOf(edit.path, directories) === null).map((edit) => agentOnly(edit.path, edit));
+    const outside = await Promise.all(edits.filter((edit) => projectPathOf(edit.path, directories) === null).map(outsideFile));
     const { changes, committedPaths, truncated } = await this.treeChanges(workspace, scope, start);
     const project = changes
       ? [
