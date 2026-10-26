@@ -500,6 +500,16 @@ test("git is asked to name a hidden folder in whole, so a folder like node_modul
   expect(gitCalls.flat()).toContain("--directory");
 });
 
+test("in a folder that is no repository, files written in a repository inside it belong to that repository, not the folder", async () => {
+  const folder = await mkdtemp(join(root, "projects-"));
+  await mkdir(join(folder, "mirador", ".git"), { recursive: true });
+  await mkdir(join(folder, "notes"));
+  await writeFile(join(folder, "mirador", "join.ts"), "another session's edit\n");
+  await writeFile(join(folder, "notes", "plan.md"), "this session's file\n");
+
+  expect((await filesWrittenSince(folder, aMomentAgo())).changes.map(({ path }) => path)).toEqual(["notes/plan.md"]);
+});
+
 test("a file written in the same clock tick as the turn's start still counts as written during the turn", async () => {
   const folder = await mkdtemp(join(root, "same-tick-"));
   await writeFile(join(folder, "hook.js"), "written the moment the turn began\n");

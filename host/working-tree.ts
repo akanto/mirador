@@ -165,7 +165,8 @@ async function writtenChangesOf(directory: string, paths: string[], earliestWrit
 /**
  * The files of a folder that is not a git repository which were written at or after `since` (epoch ms), by their times
  * alone: a file made since then is added with its line counts, any other is modified. Nothing says what a file held
- * before, and a deleted file leaves nothing to find. A folder of more than `limit` files is checked only in part, which
+ * before, and a deleted file leaves nothing to find. A subfolder with a .git of its own is another project, whose files
+ * other sessions and tools write, so it is left out. A folder of more than `limit` files is checked only in part, which
  * `truncated` says.
  */
 export async function filesWrittenSince(
@@ -173,7 +174,7 @@ export async function filesWrittenSince(
   since: number,
   limit = MAX_SCANNED_FILES,
 ): Promise<{ changes: TreeChange[]; truncated: boolean }> {
-  const { files, truncated } = await scannedFiles(directory, limit);
+  const { files, truncated } = await scannedFiles(directory, limit, { skipOtherRepositories: true });
   return { changes: await writtenChangesOf(directory, files, since - FILE_TIME_TICK_MS), truncated };
 }
 
