@@ -1,8 +1,11 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const MAX_COMPLETIONS = 30;
+
+/** A path relative to a workspace as Mirador names it everywhere, with / between its names on Windows too. */
+export const toPosix = (path: string) => path.split(sep).join("/");
 
 /** Windows takes either slash between a path's names; elsewhere a backslash is part of a name. */
 const pathSeparators = (platform: NodeJS.Platform) => (platform === "win32" ? ["/", "\\"] : ["/"]);

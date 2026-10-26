@@ -1,5 +1,6 @@
 import { lstat, mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { toPosix } from "../paths.ts";
 
 export class SaveRefused extends Error {}
 
@@ -14,7 +15,6 @@ const isWithin = (root: string, path: string) => !escapes(relative(root, path));
 
 const isInside = (root: string, path: string) => relative(root, path) !== "" && isWithin(root, path);
 
-const toPosix = (path: string) => path.split(sep).join("/");
 
 const outsideWorkspace = (name: string) => new SaveRefused(`"${name}" is not a file inside the project folder.`);
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type AppMediaGrant, type AppTaskContext, type AppTaskState, type OpenApp } from "../../shared/apps.ts";
+import { toPosix } from "../paths.ts";
 import type { Store } from "../store.ts";
 import { AppMediaGrants } from "./media.ts";
 import { AppProblem, appViewPath, installedApp, messageOf, type AppPlugin } from "./plugins.ts";
@@ -84,7 +85,7 @@ function fileInWorkspace(workspacePath: string, file: string) {
   const root = resolve(workspacePath);
   const path = resolve(root, file);
   if (!path.startsWith(root + sep)) throw new AppProblem(`${file} is outside the workspace; give a path inside ${root}.`);
-  return { path, file: relative(root, path) };
+  return { path, file: toPosix(relative(root, path)) };
 }
 
 const realPathOrNull = (path: string) => {
@@ -222,7 +223,7 @@ export class AppDocuments {
     if (!workspace) throw new AppProblem("That workspace no longer exists.");
     const documentFile = this.guarded(() => plugin.host.documentFor?.(file)) ?? file;
     const target = fileInWorkspace(workspace.path, documentFile);
-    const openedFile = documentFile === file ? undefined : relative(dirname(target.path), fileInWorkspace(workspace.path, file).path);
+    const openedFile = documentFile === file ? undefined : toPosix(relative(dirname(target.path), fileInWorkspace(workspace.path, file).path));
     const already = this.documents.get(appKey({ workspaceId, app: appName }));
     if (already?.file === target.file && !already.problem) {
       if (conversationId) this.useIn(workspaceId, appName, conversationId);
