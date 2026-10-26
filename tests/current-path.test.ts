@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { currentPath, expandVariables, hostEnvironment, withFolders } from "../host/current-path.ts";
 
-/** A powershell.exe start can take seconds on a busy Windows runner. */
-const POWERSHELL_TIMEOUT_MS = 30_000;
+/** A PATH value as reg.exe prints it, written as stored: an entry naming a %variable% is left unexpanded. */
+function registryPath(key: string) {
+  const query = Bun.spawnSync(["reg.exe", "query", key, "/v", "Path"], { stdout: "pipe" });
+  return query.stdout.toString().match(/^\s+Path\s+REG_\w+\s+(.*)$/im)?.[1] ?? "";
+}
 
 describe("the PATH programs are looked up on and started with", () => {
   test("keeps its own folders first, then adds the ones it lacks, each once whatever its case or closing backslash", () => {
@@ -23,19 +26,12 @@ describe("the PATH programs are looked up on and started with", () => {
     expect(currentPath("/usr/bin:/bin", "linux")).toBe("/usr/bin:/bin");
   });
 
-  test.if(process.platform === "win32")(
-    "on Windows it has every folder of the machine's and the user's PATH as Windows has them now",
-    () => {
-      const registry = Bun.spawnSync(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "[Environment]::GetEnvironmentVariable('Path', 'Machine'); [Environment]::GetEnvironmentVariable('Path', 'User')"],
-        { stdout: "pipe" },
-      );
-      const folders = registry.stdout.toString().split(/[\r\n;]+/).filter((folder) => folder && !folder.includes("%"));
-      const path = currentPath()!.toLowerCase().split(";");
-      expect(folders.length).toBeGreaterThan(0);
-      expect(folders.filter((folder) => !path.includes(folder.toLowerCase()) && !path.includes(folder.toLowerCase().replace(/\\+$/, "")))).toEqual([]);
-      expect(Object.keys(hostEnvironment()).filter((name) => name.toUpperCase() === "PATH")).toEqual(["PATH"]);
-    },
-    POWERSHELL_TIMEOUT_MS,
-  );
+  test.if(process.platform === "win32")("on Windows it has every folder of the machine's and the user's PATH as Windows has them now", () => {
+    const registry = [registryPath("HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"), registryPath("HKCU\\Environment")];
+    const folders = registry.join(";").split(";").filter((folder) => folder && !folder.includes("%"));
+    const path = currentPath()!.toLowerCase().split(";");
+    expect(folders.length).toBeGreaterThan(0);
+    expect(folders.filter((folder) => !path.includes(folder.toLowerCase()) && !path.includes(folder.toLowerCase().replace(/\\+$/, "")))).toEqual([]);
+    expect(Object.keys(hostEnvironment()).filter((name) => name.toUpperCase() === "PATH")).toEqual(["PATH"]);
+  });
 });
