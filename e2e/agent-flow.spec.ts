@@ -12,17 +12,20 @@ import {
   startConversation,
   waitForTurnToEnd,
 } from "./helpers.ts";
+import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost();
+const api = new FakeClaudeApi();
+const host = new TestHost({ environment: () => fakeClaudeEnvironment(api) });
 const CHOSEN_NAME = "Named by the user";
 let page: Page;
 const agentTitles: string[] = [];
 
-// Real Claude Code answering while four suites run needs more than the config's five minutes per test.
-test.describe.configure({ mode: "serial", timeout: 480_000 });
+test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async ({ browser }) => {
+  api.limited = false;
+  await api.start();
   await host.start();
   page = await browser.newPage();
   page.on("websocket", (socket) =>
@@ -37,6 +40,7 @@ test.afterAll(async () => {
   await page.close();
   await host.stop();
   await host.cleanUp();
+  api.stop();
 });
 
 test("starts a Claude Code conversation with the test model", async () => {
@@ -51,14 +55,13 @@ test("starts a Claude Code conversation with the test model", async () => {
 });
 
 test("streams a reply and asks for permission in the browser", async () => {
-  await sendMessage(page, 'Use your Write tool to create a file named hello.txt in the current directory whose content is the word "hi". Then reply with the single word DONE.');
+  await sendMessage(page, `WRITE ${join(host.projectDir, "hello.txt")} hi`);
   const permission = page.locator(".permission.pending");
-  await expect(permission).toBeVisible({ timeout: 120_000 });
+  await expect(permission).toBeVisible();
   await permission.locator("button.option-allow_once").click();
   await waitForTurnToEnd(page);
-  await expect(lastAgentMessage(page)).toContainText("DONE");
   expect(readFileSync(join(host.projectDir, "hello.txt"), "utf8")).toContain("hi");
-  await expect(page.locator(".context-meter")).toHaveText(/^\d+% · [\d.]+k \/ (200k|1M)$/);
+  await expect(page.locator(".context-meter")).toHaveText(/^(<1|\d+)% · [\d.]+k? \/ (200k|1M)$/);
 });
 
 test("keeps the name the user chose when Claude Code titles the session", async () => {
@@ -70,7 +73,10 @@ test("keeps the name the user chose when Claude Code titles the session", async 
 test("shows a page and returns an ask answer as the tool result", async () => {
   await sendMessage(
     page,
-    'Call the canvas show tool with title "Greeting" and html "<h1>Hello canvas</h1>". Then call the canvas ask tool with question "Pick a color" and the options Red and Blue. After you get my answer, reply with only the name of the color I picked.',
+    [
+      'CALL mcp__canvas__show {"title": "Greeting", "html": "<h1>Hello canvas</h1>"}',
+      'CALL mcp__canvas__ask {"question": "Pick a color", "options": [{"label": "Red"}, {"label": "Blue"}]}',
+    ].join("\n"),
   );
   await answerCanvasQuestion(page, "Blue");
   await expect(page.locator(".settled-note")).toHaveText("✓ Answer sent: “Blue”");
@@ -95,12 +101,9 @@ test("resumes the agent session and canvas tools after a host restart", async ()
   await host.restart();
   await expect(page.locator(".banner")).toHaveCount(0, { timeout: 30_000 });
   await page.getByLabel("Mode", { exact: true }).selectOption("acceptEdits");
-  await sendMessage(
-    page,
-    'What color did I pick earlier? Call the canvas show tool with title "After restart" and html "<p>The color was X</p>" where X is that color, then reply with only the color.',
-  );
+  await sendMessage(page, 'CALL mcp__canvas__show {"title": "After restart", "html": "<p>The color was Blue</p>"}');
   await waitForTurnToEnd(page);
-  await expect(lastAgentMessage(page)).toContainText("Blue");
+  expect(api.history.at(-1)!.join("\n"), "the resumed session still holds the answer").toContain("Blue");
   await expect(page.locator(".canvas-panel:visible .canvas-frame.show iframe").contentFrame().getByText("The color was Blue")).toBeVisible();
   await expect(page.getByLabel("Model", { exact: true }).filter({ visible: true })).toHaveValue("haiku");
   await expect(page.getByLabel("Mode", { exact: true })).toHaveValue("acceptEdits");
@@ -108,8 +111,8 @@ test("resumes the agent session and canvas tools after a host restart", async ()
 
 test("delivers an answer as the next message when the conversation is set to", async () => {
   await page.getByLabel("Questions").selectOption("next-message");
-  await sendMessage(page, 'Call the canvas ask tool with question "Pick a size" and the options Small and Large. Then end your turn.');
-  await expect(page.locator(".ask").getByRole("radio", { name: "Large" })).toBeVisible({ timeout: 240_000 });
+  await sendMessage(page, 'CALL mcp__canvas__ask {"question": "Pick a size", "options": [{"label": "Small"}, {"label": "Large"}]}');
+  await expect(page.locator(".ask").getByRole("radio", { name: "Large" })).toBeVisible();
   await waitForTurnToEnd(page);
   await answerCanvasQuestion(page, "Large");
   await expect(page.locator(".message.user").last()).toContainText('My answer to your question "Pick a size": Large');

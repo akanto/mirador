@@ -1,13 +1,21 @@
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, answerCanvasQuestion, callCanvasTool, openSettings, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost();
+const api = new FakeClaudeApi();
+const host = new TestHost({ environment: () => fakeClaudeEnvironment(api) });
 
-test.beforeAll(() => host.start());
+test.beforeAll(async () => {
+  api.limited = false;
+  await api.start();
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
+  api.stop();
 });
 
 /** The agent waits on its question until it is answered, so the call is left running. */
@@ -57,8 +65,8 @@ test("the sidebar marks the conversations waiting for you, in the look chosen in
   });
 
   await test.step("a permission request needs you, and a turn that ends while you watch is not marked", async () => {
-    await sendMessage(page, 'Use your Write tool to create a file named hello.txt in the current directory whose content is the word "hi". Then reply with the single word DONE.');
-    await expect(firstPill).toHaveText("Needs you", { timeout: 120_000 });
+    await sendMessage(page, `WRITE ${join(host.projectDir, "hello.txt")} hi`);
+    await expect(firstPill).toHaveText("Needs you");
     await expect(firstPill).toHaveAttribute("data-hint", /approve a tool/);
     await page.locator(".permission.pending button.option-allow_once").click();
     await waitForTurnToEnd(page);
@@ -66,9 +74,11 @@ test("the sidebar marks the conversations waiting for you, in the look chosen in
   });
 
   await test.step("a turn that ends while you look elsewhere is done until you open the conversation, also after a host restart", async () => {
+    api.hold();
     await sendMessage(page, "Reply with just the word OK.");
     await secondRow.click();
-    await expect(firstPill).toHaveText("Done", { timeout: 180_000 });
+    api.answerHeld();
+    await expect(firstPill).toHaveText("Done");
     await expect(count).toHaveClass(/tone-done/);
     await expect(waitingList.locator("li")).toHaveCount(1);
     await page.reload();
