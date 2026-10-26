@@ -33,7 +33,7 @@ import type {
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges, ProjectFiles } from "./changes.ts";
 import type { PageLibraries } from "./canvas-export.ts";
-import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings } from "./apps.ts";
+import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings, PluginUpdate } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -297,6 +297,8 @@ export type ServerMessage =
       /** The version of Mirador this host is. */
       version: string;
       newerVersion: NewerVersion | null;
+      /** Plugins from git repos with new commits, as the host found by itself. */
+      pluginUpdates?: PluginUpdate[];
       installedApps: InstalledApp[];
       openApps: OpenApp[];
       /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
@@ -408,6 +410,8 @@ export type ServerMessage =
   | { type: "desktop-app.outdated"; outdated: boolean }
   /** To pages, and to this machine's desktop app: also on connecting, while there is a newer version. */
   | { type: "newer-version.found"; newerVersion: NewerVersion | null }
+  /** To pages, whenever what the host found by itself of the plugins' new commits changes. */
+  | { type: "plugin-updates.found"; pluginUpdates: PluginUpdate[] }
   /** The host is stopping to start again in place; pages reload once they reconnect. */
   | { type: "host.restarting" }
   | { type: "error"; message: string }

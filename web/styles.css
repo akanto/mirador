@@ -6723,6 +6723,28 @@ body.reordering * {
   font-size: calc(12px * var(--font-scale));
 }
 
+.updates-waiting {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.plugin-update-all {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
 .plugin-commits {
   flex-basis: 100%;
   margin: 0;

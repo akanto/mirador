@@ -22,6 +22,7 @@ import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { conversationsIn } from "./navigation.ts";
 import { pastelVariables } from "./pastels.ts";
+import { UpdatesWaiting } from "./PluginSettings.tsx";
 import { ProfileDot, ProfileEdge } from "./ProfileDot.tsx";
 import { highlightedCompletion } from "./path-completion.ts";
 import { shortcutKeys } from "./shortcuts.ts";
@@ -692,6 +693,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         <div className="footer-buttons">
           <button className="link" data-hint={hints.settings} onClick={() => openOverlay({ kind: "settings" })}>
             Settings…
+            <UpdatesWaiting count={state.pluginUpdates.length} />
           </button>
           <button className="link" data-hint={hints.profiles} onClick={() => openOverlay({ kind: "profiles" })}>
             Profiles…

@@ -206,6 +206,15 @@ export interface PluginCommit {
   subject: string;
 }
 
+/** A plugin from a git repo whose branch has commits it doesn't have, as Mirador found by itself, newest first. */
+export interface PluginUpdate {
+  folder: string;
+  title: string;
+  /** The plugin's commit when they were found: once it is updated past it, these commits are no longer news. */
+  from: string;
+  commits: PluginCommit[];
+}
+
 /** What an app's view keeps in a workspace, as its localStorage: text by key. */
 export type AppStorageItems = Record<string, string>;
 

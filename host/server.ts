@@ -29,7 +29,7 @@ import { withoutCredentials, type InstalledPlugins } from "./apps/installed-plug
 import type { CanvasPlugins } from "./canvas/plugins.ts";
 import { AppStorage } from "./apps/storage.ts";
 import { messageOf } from "./apps/plugins.ts";
-import { appKey } from "../shared/apps.ts";
+import { appKey, type PluginUpdate } from "../shared/apps.ts";
 import type { PluginSettingsStore } from "./plugin-settings.ts";
 import { pluginsListed as listedPlugins, type PluginCatalog } from "./plugin-catalog.ts";
 import { FileAlreadyThere } from "./canvas/save-to-project.ts";
@@ -60,6 +60,7 @@ import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.t
 import { completeDirectories, existingDirectory } from "./paths.ts";
 import { launchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
 import type { DesktopAppCheck } from "./desktop-app-check.ts";
+import type { Lookout } from "./lookout.ts";
 import type { NewerVersionWatcher } from "./newer-version.ts";
 import type { HostRestart } from "./restart.ts";
 import { signInLink, type SignInCodes } from "./sign-in-codes.ts";
@@ -93,6 +94,7 @@ export interface HostServices {
   restart: HostRestart;
   desktopApp: DesktopAppCheck;
   newerVersion: NewerVersionWatcher;
+  pluginUpdates: Lookout<PluginUpdate[]>;
   devices: DeviceService;
   joinRequests: JoinRequestService;
   signInCodes: SignInCodes;
@@ -170,6 +172,7 @@ export function startServer(services: HostServices) {
     restart,
     desktopApp,
     newerVersion,
+    pluginUpdates,
     devices,
     joinRequests,
     signInCodes,
@@ -353,7 +356,9 @@ export function startServer(services: HostServices) {
       (error) => withoutCredentials(messageOf(error)),
     );
     hub.send(socket, { type: "plugins.changed", requestId, problem });
-    if (problem === null) hub.broadcast(await pluginsListed());
+    if (problem !== null) return;
+    hub.broadcast(await pluginsListed());
+    pluginUpdates.recount();
   }
 
   /** Saves a setting from Settings for the next start, or says what is wrong with it. */
@@ -1181,7 +1186,10 @@ export function startServer(services: HostServices) {
         });
       case "plugins.find-commits":
         return void plugins.newCommits(message.folder).then(
-          (commits) => reply({ type: "plugins.commits-found", requestId: message.requestId, commits, problem: null }),
+          (commits) => {
+            reply({ type: "plugins.commits-found", requestId: message.requestId, commits, problem: null });
+            pluginUpdates.recount();
+          },
           (error) => reply({ type: "plugins.commits-found", requestId: message.requestId, commits: [], problem: withoutCredentials(messageOf(error)) }),
         );
       case "devices.invite":
@@ -1297,6 +1305,7 @@ export function startServer(services: HostServices) {
       desktopAppOutdated: desktopApp.outdated,
       version: MIRADOR_VERSION,
       newerVersion: newerVersion.current,
+      pluginUpdates: pluginUpdates.current ?? [],
       installedApps: apps.installed(),
       openApps: apps.openApps(),
       canvasViews: canvasPlugins.viewPaths(),

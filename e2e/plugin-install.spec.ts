@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, createProfile, openSettings, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, openSettings, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
-const host = new TestHost({ fakePrograms: true });
+const host = new TestHost({ fakePrograms: true, environment: { MIRADOR_PLUGIN_UPDATE_CHECK: "on" } });
 const profileName = "plugin-install";
 const repo = () => join(host.root, "counter-repo");
 
@@ -105,21 +105,42 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await expect(view(page).getByRole("button", { name: "Add one" })).toBeVisible();
   });
 
-  await test.step("an update lists the commits the plugin doesn't have, then installs them for the next start", async () => {
+  await test.step("Mirador finds a plugin's new commits by itself when it starts, and Update all installs them for the next start", async () => {
+    writeFileSync(join(repo(), "src", "view.js"), "document.body.innerHTML = '<p id=\"count\">Counting by two</p>';\n");
+    git(repo(), "commit", "--quiet", "-am", "Count by two");
+    await host.restart();
+    await reloadFromRestartedHost(page);
+    const settingsButton = page.getByRole("button", { name: "Settings…" });
+    await expect(settingsButton.locator(".updates-waiting")).toHaveText("1");
+    const settings = await openSettings(page, "Plugins");
+    await expect(settings.getByRole("tab", { name: "Plugins" }).locator(".updates-waiting")).toHaveText("1");
+    await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by two`);
+    await settings.getByRole("button", { name: "Update all (1)" }).click();
+    await expect(counterRow(settings)).toContainText("used from the next start");
+    await expect(counterRow(settings)).toContainText("Count by two");
+    await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveCount(0);
+    await expect(settingsButton.locator(".updates-waiting")).toHaveCount(0);
+    await restartFromSettings(page);
+    await appToggle(page).click();
+    await expect(view(page).locator("#count")).toHaveText("Counting by two");
+  });
+
+  await test.step("checking by hand lists the commits the plugin doesn't have, then Update installs them for the next start", async () => {
     const settings = await openSettings(page, "Plugins");
     await settings.getByRole("button", { name: "Check for updates" }).click();
     await expect(settings.getByText("Up to date.")).toBeVisible();
 
-    writeFileSync(join(repo(), "src", "view.js"), "document.body.innerHTML = '<p id=\"count\">Counting by two</p>';\n");
-    git(repo(), "commit", "--quiet", "-am", "Count by two");
+    writeFileSync(join(repo(), "src", "view.js"), "document.body.innerHTML = '<p id=\"count\">Counting by three</p>';\n");
+    git(repo(), "commit", "--quiet", "-am", "Count by three");
     await settings.getByRole("button", { name: "Check again" }).click();
-    await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by two`);
-    await settings.getByRole("button", { name: "Update" }).click();
+    await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by three`);
+    await expect(page.getByRole("button", { name: "Settings…" }).locator(".updates-waiting")).toHaveText("1");
+    await settings.getByRole("button", { name: "Update", exact: true }).click();
     await expect(counterRow(settings)).toContainText("used from the next start");
-    await expect(counterRow(settings)).toContainText("Count by two");
+    await expect(counterRow(settings)).toContainText("Count by three");
     await restartFromSettings(page);
     await appToggle(page).click();
-    await expect(view(page).locator("#count")).toHaveText("Counting by two");
+    await expect(view(page).locator("#count")).toHaveText("Counting by three");
   });
 
   await test.step("removing the plugin with its app open: after the restart the app is gone and the host is fine", async () => {

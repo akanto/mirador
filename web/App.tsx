@@ -617,6 +617,7 @@ export function App() {
           profiles={state.profiles}
           version={state.version}
           newerVersion={state.newerVersion}
+          pluginUpdates={state.pluginUpdates}
           layoutDefault={conversationLayouts.layoutDefault}
           onChange={conversationLayouts.setLayoutDefault}
           onClose={closeOverlay}

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { settingValue, type CatalogPlugin, type PluginCommit, type PluginInfo, type PluginSettings as SettingsOfPlugin, type PluginSource } from "../shared/apps.ts";
+import { settingValue, type CatalogPlugin, type PluginCommit, type PluginInfo, type PluginSettings as SettingsOfPlugin, type PluginSource, type PluginUpdate as FoundUpdate } from "../shared/apps.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
@@ -48,8 +48,19 @@ type Updating =
   | { step: "updating"; commits: PluginCommit[] }
   | { step: "failed"; problem: string };
 
-function PluginUpdate({ plugin }: { plugin: PluginInfo }) {
-  const [updating, setUpdating] = useState<Updating>({ step: "idle" });
+/** How many plugins have new commits, as Mirador found by itself; nothing when none has. */
+export function UpdatesWaiting({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="updates-waiting" data-hint={hints.pluginUpdatesWaiting} aria-label={`${count} ${count === 1 ? "plugin update" : "plugin updates"}`}>
+      {count}
+    </span>
+  );
+}
+
+function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginCommit[] | undefined }) {
+  const [checked, setUpdating] = useState<Updating>({ step: "idle" });
+  const updating: Updating = checked.step === "idle" && found ? { step: "found", commits: found } : checked;
   const check = async () => {
     setUpdating({ step: "checking" });
     const { commits, problem } = await findCommits(plugin.folder);
@@ -127,7 +138,7 @@ function SettingsOf({ settings }: { settings: SettingsOfPlugin }) {
   );
 }
 
-function PluginRow({ plugin, official }: { plugin: PluginInfo; official?: CatalogPlugin }) {
+function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?: CatalogPlugin; found: PluginCommit[] | undefined }) {
   const settings = usePluginSettings().find(({ plugin: name }) => name === plugin.name);
   const [problem, setProblem] = useState<string | null>(null);
   const title = plugin.title ?? plugin.folder;
@@ -149,7 +160,7 @@ function PluginRow({ plugin, official }: { plugin: PluginInfo; official?: Catalo
       {settings && settings.settings.length > 0 && <SettingsOf settings={settings} />}
       {plugin.source.kind !== "shipped" && (
         <span className="plugin-actions">
-          {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} />}
+          {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} found={found} />}
           <ConfirmButton
             className="danger"
             label={`Remove ${title}`}
@@ -239,8 +250,45 @@ function usePluginsListed() {
   return listed;
 }
 
-export function PluginSettings() {
+/** The commits Mirador found that the plugin still lacks: none once it was updated past the commit they were found from. */
+function newsFor(plugin: PluginInfo, pluginUpdates: FoundUpdate[]) {
+  const found = pluginUpdates.find(({ folder }) => folder === plugin.folder);
+  return found && plugin.source.kind === "git" && plugin.source.commit === found.from ? found.commits : undefined;
+}
+
+/** Updates every plugin with new commits, one after the other, and stops at the first that fails. */
+function UpdateAll({ updates }: { updates: FoundUpdate[] }) {
+  const [updating, setUpdating] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const updateAll = async () => {
+    setProblem(null);
+    for (const { folder, title } of updates) {
+      setUpdating(title);
+      const failed = await changePlugins((requestId) => ({ type: "plugins.update", requestId, folder }));
+      if (failed) {
+        setProblem(`${title}: ${failed}`);
+        break;
+      }
+    }
+    setUpdating(null);
+  };
+  return (
+    <div className="plugin-update-all">
+      {updating ? (
+        <span className="plugin-status">Updating {updating}…</span>
+      ) : (
+        <button type="button" data-hint={hints.updateAllPlugins} onClick={updateAll}>
+          Update all ({updates.length})
+        </button>
+      )}
+      {problem && <pre className="plugin-output">{problem}</pre>}
+    </div>
+  );
+}
+
+export function PluginSettings({ pluginUpdates }: { pluginUpdates: FoundUpdate[] }) {
   const listed = usePluginsListed();
+  const waiting = pluginUpdates.filter(({ folder }) => listed?.plugins.some((plugin) => plugin.folder === folder && newsFor(plugin, pluginUpdates)));
   return (
     <>
       <h3>Plugins</h3>
@@ -256,12 +304,14 @@ export function PluginSettings() {
           </button>
         </p>
       )}
+      {waiting.length > 0 && <UpdateAll updates={waiting} />}
       <ul className="plugin-list" aria-label="Plugins">
         {listed?.plugins.map((plugin) => (
           <PluginRow
             key={`${plugin.source.kind === "shipped" ? "shipped" : "installed"}/${plugin.folder}`}
             plugin={plugin}
             official={listed.official?.find(({ name }) => name === plugin.name)}
+            found={newsFor(plugin, pluginUpdates)}
           />
         ))}
         {listed?.plugins.length === 0 && <li className="plugin-none">No plugin is installed.</li>}

@@ -204,6 +204,23 @@ describe("adding, updating and removing plugins", () => {
     expect(git(join(plugins, "counter"), "log", "-1", "--format=%s")).toBe("Count by two");
   });
 
+  test("the updates found by itself name each git plugin with new commits and its commit then; offline, a plugin keeps what was found last", async () => {
+    const repo = builtCounterRepo("updates-found-repo");
+    const plugins = pluginsIn("updates-found");
+    const installed = new InstalledPlugins(plugins, []);
+    await installed.add(repo, null);
+    expect(await installed.updatesFound(null)).toEqual([]);
+
+    commit(repo, "src/view.js", "document.body.textContent = 'Counting by two';\n", "Count by two");
+    const installedAt = git(join(plugins, "counter"), "rev-parse", "--short", "HEAD");
+    const found = await installed.updatesFound(null);
+    expect(found).toEqual([{ folder: "counter", title: "Counter", from: installedAt, commits: [{ commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by two" }] }]);
+
+    rmSync(repo, { recursive: true, force: true });
+    expect(await installed.updatesFound(found)).toEqual(found);
+    expect(await installed.updatesFound(null)).toEqual([]);
+  });
+
   test("a plugin's files install as committed where the user's git checks text out with CRLF, as Git for Windows does", async () => {
     const repo = builtCounterRepo("crlf-repo");
     const plugins = pluginsIn("crlf");

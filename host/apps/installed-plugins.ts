@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
-import type { PluginManifest, PluginCommit, PluginInfo, PluginSource } from "../../shared/apps.ts";
+import type { PluginManifest, PluginCommit, PluginInfo, PluginSource, PluginUpdate } from "../../shared/apps.ts";
 import { environmentWithoutPrompts } from "../git-environment.ts";
 import { AppProblem, messageOf, pluginFiles, pluginFolders, readManifest, type PluginLoadProblem } from "./plugins.ts";
 
@@ -154,6 +154,21 @@ export class InstalledPlugins {
           return { commit, subject: subject.join("\t") };
         });
     });
+  }
+
+  /** The plugins from git repos with commits they don't have; one whose fetch fails, offline for one, keeps what was last found for it. */
+  async updatesFound(last: PluginUpdate[] | null): Promise<PluginUpdate[]> {
+    const fromGit = (await this.list()).flatMap(({ folder, title, source }) => (source.kind === "git" ? [{ folder, title, from: source.commit }] : []));
+    const found = await Promise.all(
+      fromGit.map(async ({ folder, title, from }) => {
+        try {
+          return { folder, title: title ?? folder, from, commits: await this.newCommits(folder) };
+        } catch {
+          return last?.find((update) => update.folder === folder) ?? null;
+        }
+      }),
+    );
+    return found.filter((update): update is PluginUpdate => update !== null && update.commits.length > 0);
   }
 
   /** Clones and builds the branch as it is now, and only then swaps it in, so a failed update leaves the plugin as it was. */

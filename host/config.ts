@@ -52,6 +52,8 @@ export interface HostConfig {
   runsUserStatusLine: boolean;
   /** Test hosts turn it off with MIRADOR_NEWER_VERSION_CHECK=off, so they neither fetch the checkout they run from nor ask GitHub. */
   checksForNewerVersion: boolean;
+  /** Test hosts turn it off with MIRADOR_PLUGIN_UPDATE_CHECK=off, so they fetch no plugin's repo unless a spec asks. */
+  checksForPluginUpdates: boolean;
   /** Where a release finds the latest published release; e2e points it at a fake. */
   latestReleaseUrl: string;
   /** Where the catalog of official plugins is; MIRADOR_PLUGIN_CATALOG=off, as test hosts have it unless a spec gives one, fetches none. */
@@ -203,6 +205,7 @@ export function loadConfig(env = process.env): HostConfig {
     developmentMode: env.MIRADOR_DEV === "1",
     runsUserStatusLine: env.MIRADOR_STATUSLINE !== "off",
     checksForNewerVersion: env.MIRADOR_NEWER_VERSION_CHECK !== "off",
+    checksForPluginUpdates: env.MIRADOR_PLUGIN_UPDATE_CHECK !== "off",
     latestReleaseUrl: env.MIRADOR_LATEST_RELEASE_URL ?? `https://api.github.com/repos/${RELEASES_REPOSITORY}/releases/latest`,
     pluginCatalogUrl: env.MIRADOR_PLUGIN_CATALOG === "off" ? null : (env.MIRADOR_PLUGIN_CATALOG ?? PLUGIN_CATALOG_URL),
     voiceModelsUrl: env.MIRADOR_VOICE_MODELS_URL ?? "https://huggingface.co",

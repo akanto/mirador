@@ -1,6 +1,6 @@
 import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
-import { appKey, type AppDocumentState, type InstalledApp, type OpenApp } from "../shared/apps.ts";
+import { appKey, type AppDocumentState, type InstalledApp, type OpenApp, type PluginUpdate } from "../shared/apps.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import type { Turn } from "../shared/reverts.ts";
 import { inSidebarOrder } from "../shared/sidebar-order.ts";
@@ -80,6 +80,7 @@ export interface AppState {
   hostRestarting: boolean;
   desktopAppOutdated: boolean;
   newerVersion: NewerVersion | null;
+  pluginUpdates: PluginUpdate[];
   installedApps: InstalledApp[];
   openApps: OpenApp[];
   /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
@@ -128,6 +129,7 @@ export const initialState: AppState = {
   hostRestarting: false,
   desktopAppOutdated: false,
   newerVersion: null,
+  pluginUpdates: [],
   installedApps: [],
   openApps: [],
   canvasViews: {},
@@ -215,6 +217,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         hostCodeChanged: message.hostCodeChanged,
         desktopAppOutdated: message.desktopAppOutdated,
         newerVersion: message.newerVersion,
+        pluginUpdates: message.pluginUpdates ?? [],
         installedApps: message.installedApps,
         openApps: message.openApps,
         canvasViews: message.canvasViews,
@@ -365,6 +368,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, desktopAppOutdated: message.outdated };
     case "newer-version.found":
       return { ...state, newerVersion: message.newerVersion };
+    case "plugin-updates.found":
+      return { ...state, pluginUpdates: message.pluginUpdates };
   }
 }
 

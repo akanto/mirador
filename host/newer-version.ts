@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { isNewerVersion, releasePage, type NewerVersion } from "../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../shared/version.ts";
 import { environmentWithoutPrompts } from "./git-environment.ts";
+import { Lookout } from "./lookout.ts";
 
-const CHECK_EVERY_MILLISECONDS = 6 * 60 * 60 * 1000;
 const GIVE_UP_AFTER_MILLISECONDS = 60_000;
 
 async function git(directory: string, args: string[]) {
@@ -46,43 +46,4 @@ export async function newerRelease(latestReleaseUrl: string, current = MIRADOR_V
 export const newerVersionLookup = (sourceDir: string, latestReleaseUrl: string) =>
   existsSync(join(sourceDir, ".git")) ? (fetching: boolean) => newerCommits(sourceDir, fetching) : () => newerRelease(latestReleaseUrl);
 
-/** Looks when started and every few hours; when it can't tell, offline for one, the last answer stands. */
-export class NewerVersionWatcher {
-  current: NewerVersion | null = null;
-  private started = false;
-  private timer?: ReturnType<typeof setInterval>;
-  private looking: Promise<void> = Promise.resolve();
-
-  constructor(
-    private readonly lookup: (fetching: boolean) => Promise<NewerVersion | null>,
-    private readonly changed: (newer: NewerVersion | null) => void,
-  ) {}
-
-  start() {
-    this.started = true;
-    this.look(true);
-    this.timer = setInterval(() => this.look(true), CHECK_EVERY_MILLISECONDS);
-  }
-
-  stop() {
-    clearInterval(this.timer);
-  }
-
-  /** After a pull, without asking the remote again; a host that doesn't look, as test hosts don't, doesn't recount either. */
-  recount() {
-    if (this.started) this.look(false);
-  }
-
-  /** One look at a time, so a slow fetch can't finish after a later recount and bring back what that recount cleared. */
-  look(fetching: boolean) {
-    this.looking = this.looking.then(() => this.lookOnce(fetching));
-    return this.looking;
-  }
-
-  private async lookOnce(fetching: boolean) {
-    const found = await this.lookup(fetching).catch(() => this.current);
-    if (JSON.stringify(found) === JSON.stringify(this.current)) return;
-    this.current = found;
-    this.changed(found);
-  }
-}
+export class NewerVersionWatcher extends Lookout<NewerVersion> {}

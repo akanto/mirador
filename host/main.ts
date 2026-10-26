@@ -32,6 +32,8 @@ import { installedHarnesses } from "./acp/harnesses.ts";
 import { giveEveryWorkspaceAProfile, moveProfilelessOntoProfiles, ProfileService } from "./profiles.ts";
 import { HostRestart, relaunch, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "./restart.ts";
 import { DesktopAppCheck } from "./desktop-app-check.ts";
+import type { PluginUpdate } from "../shared/apps.ts";
+import { Lookout } from "./lookout.ts";
 import { NewerVersionWatcher, newerVersionLookup } from "./newer-version.ts";
 import { desktopAppCode } from "../shared/desktop-app-code.ts";
 import { startServer } from "./server.ts";
@@ -109,6 +111,7 @@ const desktopApp = new DesktopAppCheck(
   (outdated) => hub.broadcast({ type: "desktop-app.outdated", outdated }),
 );
 const newerVersion = new NewerVersionWatcher(newerVersionLookup(sourceDir, config.latestReleaseUrl), (found) => hub.announceNewerVersion(found));
+const pluginUpdates = new Lookout((_, last: PluginUpdate[] | null) => plugins.updatesFound(last), (found) => hub.announcePluginUpdates(found ?? []));
 const devices = new DeviceService(store);
 const joinRequests = new JoinRequestService(store, devices, ownAuthorityFingerprint);
 const signInCodes = new SignInCodes(store);
@@ -155,7 +158,7 @@ const voiceEngine = new VoiceEngine(
 );
 voiceEngineInstaller.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, pluginUpdates, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();
@@ -168,6 +171,7 @@ const sourceWatcher = new SourceWatcher(sourceDir, {
 });
 sourceWatcher.start();
 if (config.checksForNewerVersion) newerVersion.start();
+if (config.checksForPluginUpdates) pluginUpdates.start();
 conversations.resumeAfterRestart(takeTurnsStoppedForRestart(config.dataDir));
 const terminalSessions = new TerminalSessionWatcher(
   () => conversations.claudeConfigDirs(),
@@ -192,6 +196,7 @@ async function stopServices() {
   terminalSessions.stop();
   sourceWatcher.stop();
   newerVersion.stop();
+  pluginUpdates.stop();
   const childrenExited = Promise.all([terminals.shutdown(), conversations.shutdown()]);
   server.stop();
   assetsServer.stop(true);
