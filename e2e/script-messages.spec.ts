@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import type { Conversation } from "../shared/model.ts";
 import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, bashPath, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { spawnProgram, TestHost } from "./test-host.ts";
 
 const api = new FakeClaudeApi();
@@ -59,7 +59,7 @@ test("a script the agent starts, or anything with the agent's session, messages 
   await expect(yolo).toBeChecked();
 
   await test.step("a command the agent runs reaches its own conversation, and the agent reads the message", async () => {
-    await sendMessage(page, `RUN ${mirador} message "The build finished with 3 warnings."`);
+    await sendMessage(page, `RUN ${bashPath(mirador)} message "The build finished with 3 warnings."`);
     await expect(messagesFromScripts(page)).toHaveText(["The build finished with 3 warnings."]);
     await waitForTurnToEnd(page);
     expect(api.answered).toContain("The build finished with 3 warnings.");

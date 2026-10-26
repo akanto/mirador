@@ -2,6 +2,9 @@ import { spawn } from "node:child_process";
 import { expect, test, type Frame, type FrameLocator, type Locator, type Page } from "@playwright/test";
 import type { TestHost } from "./test-host.ts";
 
+/** A path as the agent's Bash takes it: Git Bash reads a backslash as an escape, so on Windows the path is written with slashes. */
+export const bashPath = (path: string) => path.replaceAll("\\", "/");
+
 /** Presses on the item and moves to just inside the top or bottom edge of the target, leaving the button down. */
 export async function dragOnto(page: Page, item: Locator, target: Locator, edge: "top" | "bottom") {
   const from = (await item.boundingBox())!;

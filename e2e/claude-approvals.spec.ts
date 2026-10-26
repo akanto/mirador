@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, bashPath, createProfile, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -48,9 +48,9 @@ test("a command Claude Code asks to run shows on its approval card", async ({ pa
   await signIn(page, host);
   await page.locator(".workspace li").first().click();
   const madeByHand = join(host.projectDir, "made-by-hand");
-  await sendMessage(page, `RUN touch ${madeByHand}`);
+  await sendMessage(page, `RUN touch ${bashPath(madeByHand)}`);
   const card = page.locator(".timeline:visible .permission.pending");
-  await expect(card.locator(".shell-body")).toContainText(`touch ${madeByHand}`, { timeout: 120_000 });
+  await expect(card.locator(".shell-body")).toContainText(`touch ${bashPath(madeByHand)}`, { timeout: 120_000 });
   await card.getByRole("button", { name: "Yes", exact: true }).click();
   await waitForTurnToEnd(page);
   expect(existsSync(madeByHand)).toBe(true);
