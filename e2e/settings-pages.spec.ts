@@ -57,3 +57,23 @@ test("a chosen option in the left column keeps its whole ring, not cut by the ed
   expect(ringWidth).toBeGreaterThan(0);
   expect(roomOnTheLeft).toBeGreaterThanOrEqual(ringWidth);
 });
+
+test("Settings is resized by dragging its corner, and opens at that size again", async ({ page }) => {
+  await signIn(page, host);
+  const settings = await openSettings(page);
+  const before = (await settings.boundingBox())!;
+
+  await page.mouse.move(before.x + before.width - 3, before.y + before.height - 3);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width + 150, before.y + before.height + 100, { steps: 5 });
+  await page.mouse.up();
+  const dragged = (await settings.boundingBox())!;
+  expect(dragged.width).toBeGreaterThan(before.width + 50);
+  expect(dragged.height).toBeGreaterThan(before.height + 30);
+
+  await settings.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+  const reopened = (await (await openSettings(page)).boundingBox())!;
+  expect(Math.round(reopened.width)).toBe(Math.round(dragged.width));
+  expect(Math.round(reopened.height)).toBe(Math.round(dragged.height));
+});

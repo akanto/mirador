@@ -16,6 +16,7 @@ import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export.ts";
 import { setPageLibraries, usePageLibraries } from "./page-libraries.ts";
+import { rememberSettingsSize } from "./paneLayouts.ts";
 import { hints } from "./hints.ts";
 import { NewerVersionNote, UpdateCheckButton } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
@@ -179,7 +180,7 @@ export function SettingsDialog({
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal settings" role="dialog" aria-label="Settings">
+      <div className="modal settings" role="dialog" aria-label="Settings" ref={rememberSettingsSize}>
         <header>
           <h2>Settings</h2>
           <button className="icon" title="Close" aria-label="Close" onClick={onClose}>

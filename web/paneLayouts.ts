@@ -15,6 +15,7 @@ const LAYOUTS_KEY = "mirador-conversation-layouts";
 const WORKSPACE_LAYOUTS_KEY = "mirador-layouts";
 const DEFAULT_KEY = "mirador-default-layout";
 const SIDEBAR_WIDTH_KEY = "mirador-sidebar-width";
+const SETTINGS_SIZE_KEY = "mirador-settings-size";
 
 function readJson(key: string): unknown {
   try {
@@ -87,4 +88,36 @@ export function useSidebarWidth() {
   const [width, setWidth] = useState(storedSidebarWidth);
   useEffect(() => writeJson(SIDEBAR_WIDTH_KEY, width), [width]);
   return [width, (next: number) => setWidth(sidebarWidthWithinLimits(next))] as const;
+}
+
+interface DialogSize {
+  width: number;
+  height: number;
+}
+
+const isDialogSize = (value: unknown): value is DialogSize =>
+  typeof value === "object" && value !== null && [(value as DialogSize).width, (value as DialogSize).height].every((side) => typeof side === "number" && side > 0);
+
+const sizeOf = (dialog: HTMLElement): DialogSize => ({ width: dialog.offsetWidth, height: dialog.offsetHeight });
+
+/**
+ * A ref for the Settings dialog: it opens at the size the user last dragged it to, kept per browser. Only a drag of its
+ * corner is kept, not a squeeze by a small window.
+ */
+export function rememberSettingsSize(dialog: HTMLElement | null) {
+  if (!dialog) return;
+  const stored = readJson(SETTINGS_SIZE_KEY);
+  if (isDialogSize(stored)) {
+    dialog.style.width = `${stored.width}px`;
+    dialog.style.height = `${stored.height}px`;
+  }
+  let sizeBefore = sizeOf(dialog);
+  const keepDraggedSize = () => {
+    const size = sizeOf(dialog);
+    if (size.width === sizeBefore.width && size.height === sizeBefore.height) return;
+    sizeBefore = size;
+    writeJson(SETTINGS_SIZE_KEY, size);
+  };
+  dialog.addEventListener("pointerup", keepDraggedSize);
+  return () => dialog.removeEventListener("pointerup", keepDraggedSize);
 }

@@ -5029,7 +5029,11 @@ button.shell-more:hover {
   flex-direction: column;
   width: min(760px, 100%);
   height: min(640px, 100%);
+  min-width: min(520px, 100%);
+  min-height: min(360px, 100%);
+  max-width: 100%;
   overflow: hidden;
+  resize: both;
 }
 
 .settings-body {
