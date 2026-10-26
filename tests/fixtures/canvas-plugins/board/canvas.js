@@ -6,7 +6,8 @@ page.innerHTML = `<h1 id="title"></h1><p id="text"></p><p id="type"></p><p id="u
 <p id="theme" style="color: var(--mirador-text); font-size: calc(10px * var(--mirador-font-scale))">Themed</p>
 <p id="fullscreen"></p><button id="toggle-fullscreen">Toggle full screen</button>
 <p id="typing"></p><p id="found"></p>
-<textarea id="question" aria-label="Question"></textarea><button id="ask">Ask the agent</button><p id="asked"></p>`;
+<textarea id="question" aria-label="Question"></textarea><button id="ask">Ask the agent</button><p id="asked"></p>
+<button id="open-file">Open src/app.ts</button>`;
 document.body.append(page);
 const show = (id, text) => (document.getElementById(id).textContent = text);
 const textOf = (item) => {
@@ -33,6 +34,7 @@ addEventListener("keydown", (event) => {
   event.preventDefault();
   show("found", `Found ${++found} times`);
 });
+document.getElementById("open-file").addEventListener("click", () => window.mirador.openFile("src/app.ts"));
 document.getElementById("toggle-fullscreen").addEventListener("click", () => window.mirador.setFullscreen(!fullscreen));
 document.getElementById("ask").addEventListener("click", () =>
   window.mirador.prompt(document.getElementById("question").value).then(() => show("asked", "Asked"), (error) => show("asked", error.message)),

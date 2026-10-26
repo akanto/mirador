@@ -154,6 +154,7 @@ export function PluginItemView({
     }
     if (message.kind === "item-hint-gone") showFramedHint(null);
     if (message.kind === "item-open" && openable(message.href)) openFromView(message.href);
+    if (message.kind === "item-open-file" && typeof message.path === "string") connection.send({ type: "files.open", conversationId: item.conversationId, path: message.path });
   };
 
   if (!page) return <WithoutItsPlugin item={item} />;

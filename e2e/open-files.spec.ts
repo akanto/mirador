@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expect, test, type Locator } from "@playwright/test";
-import { addWorkspace, createProfile, openSettings, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, createProfile, openSettings, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram, writeCompiledBunProgram } from "./test-host.ts";
 
 const host = new TestHost({ fakePrograms: true });
@@ -41,6 +41,7 @@ test.beforeAll(async () => {
   mkdirSync(join(host.projectDir, "src"), { recursive: true });
   mkdirSync(join(host.root, "elsewhere"), { recursive: true });
   fakeAgentAndOpeners();
+  cpSync(join(import.meta.dirname, "..", "tests", "fixtures", "canvas-plugins", "board"), join(host.dataDir, "plugins", "board"), { recursive: true });
   await host.start();
 });
 test.afterAll(async () => {
@@ -101,6 +102,19 @@ test("a file path the agent writes in backticks in its reply is a link that open
     await linkCode.hover();
     await expect.poll(async () => (await looksOf(linkCode)).underline).toBe("solid");
   });
+});
+
+test("a plugin's view opens a file through Mirador, as a file link in the chat does", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page).toHaveURL(/#\/c\/.+$/);
+  const conversationId = page.url().match(/#\/c\/(.+)$/)![1]!;
+  await callCanvasTool(host, conversationId, "show_card", { title: "Files", text: "Open one" });
+
+  const before = openedSoFar();
+  await page.frameLocator(".canvas-panel:visible .canvas-frame.plugin iframe").getByRole("button", { name: "Open src/app.ts" }).click();
+  await expect.poll(() => openedSoFar().slice(before.length)).toContain(realpathSync.native(appFile));
 });
 
 test("a link to a file outside the workspace that the agent did not change asks first, naming the file, and opens it only once agreed", async ({ page }) => {

@@ -52,6 +52,8 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-hint-gone" }
   /** A link the user followed in a plugin item's view, which the sandbox keeps from opening there. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-open"; href: unknown }
+  /** A file the user asked the view to open, a path as the agent wrote it, which opens as a file link in the chat does. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-open-file"; path: unknown }
   /** The view asks for the canvas to fill the workspace, or to sit beside the chat again. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-fullscreen"; on: unknown }
   /** A message the user wrote in the view for the agent, sent as the composer sends; answered as "item-send" is. */
@@ -314,6 +316,7 @@ export interface PluginViewBridge<Data = unknown> {
   send(action: unknown): Promise<unknown>;
   prompt(text: string): Promise<void>;
   setFullscreen(on: boolean): void;
+  openFile(path: string): void;
 }
 
 /** The plugin's reply to an action the view sent. */
@@ -330,7 +333,8 @@ export function pluginItemReplyFailedMessage(requestId: string, message: string)
  * `window.mirador` for a plugin's canvas view. `onItem` hands the listener the item the view draws and its context, at
  * once when they are known and again on every change, so the view may start listening whenever its code is ready. `send`
  * hands an action to the plugin's host code and resolves to its reply, or rejects with the reason there is none; `prompt`
- * sends the agent a message as the composer would, and `setFullscreen` asks for the canvas to fill the workspace or not.
+ * sends the agent a message as the composer would, `setFullscreen` asks for the canvas to fill the workspace or not, and
+ * `openFile` opens a file as a file link in the chat does, a path relative to the conversation's workspace or absolute.
  * Mirador's look arrives as CSS variables on the page's root, `data-hint` shows as Mirador's own hints, and links open in
  * a new tab, as the sandbox would not let them.
  */
@@ -412,6 +416,9 @@ function pluginItemBridge(frameId: string) {
     },
     setFullscreen(on) {
       post({ kind: "item-fullscreen", on: Boolean(on) });
+    },
+    openFile(path) {
+      post({ kind: "item-open-file", path: String(path) });
     },
   });
   post({ kind: "item-ready" });
