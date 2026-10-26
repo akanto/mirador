@@ -9,7 +9,7 @@
     "music": "bun audio/compose.ts",
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts Trailer out/render.mp4 --codec=h264 --crf=16 --audio-bitrate=320k --concurrency=8 && bun audio/master.ts",
-    "build": "bun run capture && bun run encode && bun run narrate && bun run music && bun run render",
+    "build": "bun run narrate && bun run capture && bun run encode && bun run music && bun run render",
     "typecheck": "tsc --noEmit -p .",
     "test": "bun test tests/"
   },

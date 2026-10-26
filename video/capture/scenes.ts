@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { CHECKOUT_FLOW, CHECKOUT_LEAD, CHECKOUT_RISKS, CHECKOUT_TITLE, MERMAID_SEQUENCE } from "./checkout-flow.ts";
+import { CHECKOUT_FLOW, CHECKOUT_FLOW_QUEUED, CHECKOUT_LEAD, CHECKOUT_RISKS, CHECKOUT_RISKS_QUEUED, CHECKOUT_TITLE, MERMAID_SEQUENCE } from "./checkout-flow.ts";
+import { DEMO_VIDEO } from "./demo-video.ts";
 import type { Script } from "./director.ts";
 
 /** What the user types in each filmed conversation; the director's scripts answer to these. */
@@ -12,11 +13,22 @@ export const prompts = {
   questionAboutBlocker: "Is the cart id enough if the customer changes the cart?",
   fix: "Fix the blocker from the review: a retried capture must not charge the card twice.",
   reproduce: "Reproduce the double charge: a failing test, and a script that replays a capture that timed out.",
+  emailAfterResponse: "Send the email after the response, from a queue. How does the flow change?",
+  tightenVideo: "The checkout demo video drags in the middle. Can you tighten it?",
+  openVideo: `Open ${DEMO_VIDEO.file} in Media.`,
+  spinnerNote: "The spinner drags on here. Keep a second of it.",
+  switchOverTime: "How long will the switch-over take, and what could go wrong?",
 };
+
+/** What Mirador tells the agent once the user answers Install; the agent's next turn answers to it. */
+export const MEDIA_INSTALLED = "installed the Media plugin";
+export const MEDIA_INSTALLED_REPLY = "Media is installed. Once Mirador restarts, I'll open the video in it.";
 
 export const LAYOUT_CHOICE = "Grouped list (recommended)";
 
-const checkoutDiagram = (assetsOrigin: string) => `<style>
+type Risk = { title: string; detail: string; slow: boolean; fixed?: boolean };
+
+const checkoutDiagram = (assetsOrigin: string, flow = CHECKOUT_FLOW, risks: Risk[] = CHECKOUT_RISKS) => `<style>
   :root { color-scheme: light dark; }
   body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 22px 26px; background: light-dark(#fbfaff, #17161f); color: light-dark(#1f1d2b, #ecebf5); }
   h1 { font-size: 21px; margin: 0 0 4px; }
@@ -25,14 +37,15 @@ const checkoutDiagram = (assetsOrigin: string) => `<style>
   .risks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
   .risk { background: light-dark(#fff, #1f1e2a); border: 1px solid light-dark(#e6e3f2, #34324a); border-left: 4px solid #e5484d; border-radius: 10px; padding: 9px 12px; font-size: 13px; }
   .risk.slow { border-left-color: #f5a524; }
+  .risk.fixed { border-left-color: #30a46c; }
   .risk b { display: block; }
 </style>
 <h1>${CHECKOUT_TITLE}</h1>
 <p class="lead">${CHECKOUT_LEAD}</p>
 <div class="diagram"><pre class="mermaid">
-${CHECKOUT_FLOW}</pre></div>
+${flow}</pre></div>
 <div class="risks">
-${CHECKOUT_RISKS.map(({ title, detail, slow }) => `  <div class="risk${slow ? " slow" : ""}"><b>${title}</b>${detail}</div>`).join("\n")}
+${risks.map(({ title, detail, slow, fixed }) => `  <div class="risk${slow ? " slow" : ""}${fixed ? " fixed" : ""}"><b>${title}</b>${detail}</div>`).join("\n")}
 </div>
 <script src="${assetsOrigin}/mermaid.min.js"></script>
 <script>
@@ -214,6 +227,63 @@ export function scripts({ projects, assetsOrigin }: { projects: { shopApi: strin
           call: { tool: "Edit", input: { file_path: join(shopApi, "src/checkout.ts"), old_string: "payments.capture(card, cart.total)", new_string: "payments.capture(card, cart.total, { idempotencyKey: cart.id })" } },
         },
         { thinkMs: 500, say: "Done: the capture sends the cart's id as its idempotency key, so a retry the bank already took no longer charges the card twice." },
+      ],
+    },
+    {
+      prompt: prompts.emailAfterResponse,
+      steps: [
+        {
+          thinkMs: 1200,
+          say: "The order answers with 201 first, and a queue sends the email after it, so a slow mail server no longer holds the order open.",
+          call: { tool: "canvas.show", input: { title: CHECKOUT_TITLE, html: checkoutDiagram(assetsOrigin, CHECKOUT_FLOW_QUEUED, CHECKOUT_RISKS_QUEUED) } },
+        },
+        { thinkMs: 500, say: "The new flow is on the canvas. Want me to make the change? It's the mailer call in `src/checkout.ts` and a job in `src/jobs`." },
+      ],
+    },
+    {
+      prompt: prompts.tightenVideo,
+      steps: [
+        {
+          thinkMs: 1400,
+          say: "Mirador's official Media plugin is made for this: you mark the slow part on the frame, and I cut it and render the video.",
+          call: { tool: "canvas.plugin_install", input: { name: "media", reason: "Mark the part that drags right on the video, and I cut it and render the result." } },
+        },
+        { thinkMs: 300, say: "It installs only once you say so." },
+      ],
+    },
+    {
+      prompt: MEDIA_INSTALLED,
+      steps: [{ thinkMs: 700, say: MEDIA_INSTALLED_REPLY }],
+    },
+    {
+      prompt: prompts.openVideo,
+      steps: [
+        { thinkMs: 900, call: { tool: "canvas.app_open", input: { app: "media", file: DEMO_VIDEO.file } } },
+        { thinkMs: 300, say: "It's open. Mark the part that drags, and tell me what to do there." },
+      ],
+    },
+    {
+      prompt: prompts.spinnerNote,
+      steps: [
+        { thinkMs: 1000, say: "Cutting the spinner down to a second.", call: { tool: "canvas.apply", input: { app: "media", op: { op: "cut", start: DEMO_VIDEO.spinnerStarts + 0.5, end: DEMO_VIDEO.spinnerEnds } } } },
+        { thinkMs: 400, call: { tool: "canvas.apply", input: { app: "media", op: { op: "mark-done", mark: "m1" } } } },
+        { thinkMs: 400, call: { tool: "canvas.app_run", input: { app: "media", task: "render" } } },
+        { thinkMs: 500, say: `Done: the spinner shows for a second instead of six, and the video is ${DEMO_VIDEO.seconds - (DEMO_VIDEO.spinnerEnds - DEMO_VIDEO.spinnerStarts - 0.5)} seconds long. The render is in \`checkout-demo.edited.mp4\`.` },
+      ],
+    },
+    {
+      prompt: prompts.switchOverTime,
+      steps: [
+        { thinkMs: 900, call: { tool: "Read", input: { file_path: join(infra, "postgres/cluster.tf") } } },
+        {
+          thinkMs: 700,
+          say: [
+            "**About ten minutes**, and the database is read-only for all of them.",
+            "",
+            "- **The risk is replication lag.** If 18 is behind when we switch, the last writes are lost, so the runbook waits for zero lag first.",
+            "- **The fallback:** 16 keeps running for a day, and switching back takes two minutes.",
+          ].join("\n"),
+        },
       ],
     },
   ];

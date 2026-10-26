@@ -8,6 +8,17 @@ const CANVAS_AND_CHAT = { x: 256, y: 0, width: 1280, height: 720 };
 /** The top of the canvas, from its Changes button down past the list of changed files. */
 const TOP_OF_CANVAS = { x: 836, y: 0, width: 700, height: 394 };
 
+/** The review's flow: the steps along the top, and the code of the step under them. */
+const FLOW = { x: 256, y: 80, width: 1280, height: 720 };
+/** The top of the canvas, where the point-and-ask button and the diagram are. */
+const TOP_OF_DIAGRAM = { x: 836, y: 0, width: 700, height: 540 };
+/** The bottom of the diagram, its risks, and the box to ask about what was pointed at. */
+const RISKS_AND_QUESTION = { x: 836, y: 300, width: 700, height: 564 };
+/** The plugin's install question and its answers, at the top of the canvas. */
+const INSTALL_QUESTION = { x: 836, y: 0, width: 700, height: 520 };
+/** Media's frame, its timeline and the note under it. */
+const MEDIA_EDITOR = { x: 836, y: 80, width: 700, height: 640 };
+
 /** When the narrator starts the statement, in seconds of the wall scene; its parts land as they're said. */
 const STATEMENT_AT = 8;
 
@@ -56,6 +67,25 @@ export const STORYBOARD: Scene[] = [
     ],
     captions: [{ kicker: "Show", title: "Your agent draws what it means.", at: 6.8, seconds: 3.6 }],
     narration: [{ line: "show", at: 1.2 }],
+  },
+  {
+    kind: "clip",
+    id: "point",
+    clip: "point",
+    shots: [
+      { from: 1, to: ["picked", 0.3], speed: 1.3 },
+      { from: ["picked", 0.3], to: "typed", speed: 1.8 },
+      { from: "typed", to: ["asked", 0.3] },
+      { from: ["asked", 0.3], to: ["redrawn", -0.2], speed: 1.5 },
+      { from: ["redrawn", -0.2], to: ["redrawn", 2] },
+    ],
+    camera: [
+      { at: 1, look: TOP_OF_DIAGRAM, zoom: 1.6 },
+      { at: ["picked", -0.6], look: RISKS_AND_QUESTION, zoom: 1.6 },
+      { at: ["asked", 0.4], look: "canvas", zoom: 1.3 },
+    ],
+    captions: [{ kicker: "Point and ask", title: "Ask about what it drew.", at: 0.4, seconds: 3.4 }],
+    narration: [{ line: "point", at: 0.4 }],
   },
   {
     kind: "clip",
@@ -110,7 +140,7 @@ export const STORYBOARD: Scene[] = [
     camera: [
       { at: ["typing", -0.4], look: "composer", zoom: 1.6 },
       { at: ["reviewShown", -0.3], look: "canvas", zoom: 1.12 },
-      { at: ["flowStep", 0.2], look: { x: 560, y: 90, width: 962, height: 380 }, zoom: 1.55 },
+      { at: ["flowStep", 0.2], look: FLOW, zoom: 1.2 },
       { at: ["findings", 0.2], look: "blocker", zoom: 1.2 },
       { at: ["askOpened", 0.1], look: "askDialog", zoom: 1.22 },
       { at: ["chatShown", 0.1], look: "app" },
@@ -122,6 +152,68 @@ export const STORYBOARD: Scene[] = [
       { line: "review", at: 3.4 },
       { line: "reviewAsk", at: 10.8 },
       { line: "reviewPost", at: 19.2 },
+    ],
+  },
+  {
+    kind: "clip",
+    id: "plugins",
+    clip: "plugins",
+    shots: [
+      { from: ["typing", -0.3], to: "sent", speed: 1.8 },
+      { from: "sent", to: ["asked", -0.2], speed: 1.5 },
+      { from: ["asked", -0.2], to: ["picked", 0.3], speed: 1.2 },
+      { from: ["picked", 0.3], to: ["submitted", 1], speed: 1.2 },
+    ],
+    camera: [
+      { at: ["typing", -0.3], look: "composer", zoom: 1.6 },
+      { at: ["sent", 0.2], look: "timeline", zoom: 1.4 },
+      { at: ["asked", -0.3], look: INSTALL_QUESTION, zoom: 1.65 },
+    ],
+    captions: [{ kicker: "Plugins", title: "Official plugins, installed when you say so.", at: 4.2, seconds: 3.8 }],
+    narration: [{ line: "plugins", at: 0.4 }],
+  },
+  {
+    kind: "clip",
+    id: "media",
+    clip: "media",
+    shots: [
+      { from: ["opened", -0.8], to: "seeked", speed: 1.5 },
+      { from: "seeked", to: "ranged", speed: 1.3 },
+      { from: "ranged", to: "boxed", speed: 1.3 },
+      { from: "boxed", to: "markSent", speed: 2 },
+      { from: "markSent", to: "cut", speed: 1.2 },
+      { from: "cut", to: "rendered", speed: 3 },
+      { from: "rendered", to: ["playing", 2.2], speed: 2 },
+    ],
+    camera: [
+      { at: ["opened", -0.8], look: "canvas", zoom: 1.3 },
+      { at: ["seeked", -0.3], look: MEDIA_EDITOR, zoom: 1.4 },
+      { at: ["markSent", 0.2], look: "app" },
+      { at: ["rendered", -0.3], look: "canvas", zoom: 1.3 },
+    ],
+    captions: [{ kicker: "Media", title: "Mark it on the frame. The agent edits.", at: 5.4, seconds: 3.6 }],
+    narration: [{ line: "media", at: 0.5 }],
+  },
+  {
+    kind: "clip",
+    id: "voice",
+    clip: "voice",
+    shots: [
+      { from: ["listening", -1.4], to: ["listening", 3.4] },
+      { from: ["listening", 3.4], to: "sent", speed: 2 },
+      { from: "sent", to: "reading", speed: 2 },
+      { from: "reading", to: ["listeningAgain", 1] },
+    ],
+    camera: [
+      { at: ["listening", -1.4], look: "composer", zoom: 1.6 },
+      { at: ["sent", -0.2], look: "timeline", zoom: 1.4 },
+      { at: ["listeningAgain", -0.3], look: "composer", zoom: 1.6 },
+    ],
+    captions: [{ kicker: "Voice", title: "It reads you the gist, then listens again.", at: 5.2, seconds: 4 }],
+    narration: [
+      { line: "voice", at: 0.1 },
+      { line: "voiceAsk", at: 0.15, from: "listening" },
+      { line: "voiceReply", at: 0.05, from: "reading" },
     ],
   },
   {
@@ -181,7 +273,7 @@ export const STORYBOARD: Scene[] = [
   {
     kind: "end",
     id: "end",
-    seconds: 7.5,
+    seconds: 8,
     narration: [
       { line: "mirador", at: 0.1, musicDipsTo: 0.8 },
       { line: "end", at: 1.05 },
@@ -193,6 +285,9 @@ export const STORYBOARD: Scene[] = [
 
 /** Where the end card sends people. The repository is private for now, so check this before publishing. */
 export const WHERE_TO_GET_IT = "github.com/sodre90/mirador";
+
+/** The official plugins' catalog, which the end card names under it. */
+export const PLUGIN_CATALOG = "github.com/sodre90/mirador-plugins";
 
 /** The music bed; bun run music writes this one. To use another track, put it in public/music and name it here. */
 export const MUSIC = "music/score.wav";

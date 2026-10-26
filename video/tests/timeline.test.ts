@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ClipInfo, type ClipScene, type Scene, clipSeconds, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf, shotTrim, statementBeats } from "../src/timeline.ts";
+import { type ClipInfo, type ClipScene, type Scene, clipSeconds, linesOf, placeScenes, sceneSeconds, sceneSecondsOf, shotsOf, shotTrim, statementBeats } from "../src/timeline.ts";
 
 const clip: ClipInfo = { name: "demo", seconds: 20, moments: { sent: 4, shown: 10 }, rects: {} };
 
@@ -60,6 +60,12 @@ describe("a scene's length", () => {
   test("can be set shorter than the footage, but still waits for its narration", () => {
     expect(sceneSeconds({ ...scene, seconds: 1.5 }, { demo: clip }, {})).toBe(1.5);
     expect(sceneSeconds({ ...scene, seconds: 1.5, narration: [{ line: "intro", at: 1 }] }, { demo: clip }, narration)).toBeCloseTo(4.6);
+  });
+
+  test("waits for a line timed from a point of the clip, wherever the shots put that point", () => {
+    const fromShown = { ...scene, narration: [{ line: "intro", at: 0.2, from: "shown" }] };
+    expect(linesOf(fromShown, { demo: clip })).toEqual([{ line: "intro", at: 2.2, musicDipsTo: undefined }]);
+    expect(sceneSeconds(fromShown, { demo: clip }, narration)).toBeCloseTo(5.8);
   });
 
   test("asks for the narration to be made when a line is missing", () => {

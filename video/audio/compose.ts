@@ -14,8 +14,9 @@ import {
  * minor near 144 BPM. A pumping drone and a quickening arpeggio under the wall of text build into a snare roll and stop
  * dead for the voice: in the silence, each part of the statement lands on a clap, and from its stressed part on a hit.
  * Pumping chords and a climbing arpeggio swell under the picture into a hit on the logo. Then a half-time groove with a
- * rolling bass runs under the first features and builds into a four-on-the-floor drop on the review, a synth hook plays
- * in the gaps between lines, and the music steps up to E minor for the montage. Its last chord rings over the backdrop
+ * rolling bass runs under the first features and builds into a four-on-the-floor drop on the review, where a synth hook
+ * plays in the gaps between lines. The plugins bring a lighter half-time breakdown, which builds again into the montage,
+ * where the music steps up to E minor. Its last chord rings over the backdrop
  * and resolves to E major on the end card's hit.
  * Each stretch's tempo bends a little so the scene changes land on beats; it is timed by the storyboard, so the hits land
  * on the scene changes however long the scenes run. While the narrator speaks, the band where words are heard is turned
@@ -46,9 +47,13 @@ function timeline() {
     stressed: Math.max(0, wall.statement.parts.findIndex(({ stressed }) => stressed)),
     logo: starts.logo!,
     show: starts.show!,
+    point: starts.point!,
     overview: starts.overview!,
     ask: starts.ask!,
     review: starts.review!,
+    plugins: starts.plugins!,
+    media: starts.media!,
+    voice: starts.voice!,
     montage: starts.edit!,
     terminals: starts.terminals!,
     groups: starts.groups!,
@@ -96,6 +101,7 @@ class Score {
     const firstFeatureBeat = this.features();
     this.logo(firstFeatureBeat);
     this.drop();
+    this.breakdown();
     this.montage();
     this.ending();
     const mix = new Mix(at.seconds);
@@ -244,14 +250,14 @@ class Score {
     roll(main, g, buildFrom * 4, g.beats, { from: 0.06, to: 0.34 });
     main.add(g.at(buildFrom * 4), tonalRiser([62, 69, 74], 2 * g.bar), 0.26, { verb: 0.2 });
     main.add(g.at(buildFrom * 4), riser(2 * g.bar), 0.25);
-    [at.overview, at.ask].forEach((time) => this.accent(g, time));
+    [at.point, at.overview, at.ask].forEach((time) => this.accent(g, time));
     return g;
   }
 
-  /** From the review to the montage: four on the floor, with the hook in the gaps between lines. */
+  /** From the review to the plugins: four on the floor, with the hook in the gaps between lines. */
   private drop() {
     const { at, main } = this;
-    const g = grid(at.review, at.montage, TEMPO, true);
+    const g = grid(at.review, at.plugins, TEMPO, true);
     main.add(at.review, crash(), 0.5, { verb: 0.3 });
     range(0, g.bars).forEach((bar) => {
       this.harmony(g, bar, PROGRESSION[bar % 4]!, { cutoff: 5000, gain: 0.32, arp: true });
@@ -259,9 +265,31 @@ class Score {
     });
     this.playHook(g, 0, 0, 2);
     this.playHook(g, 9, 0, 3);
-    roll(main, g, (g.bars - 1) * 4, g.beats, { from: 0.06, to: 0.3 });
-    main.add(g.at((g.bars - 1) * 4), tonalRiser([62, 69], g.bar), 0.22);
-    main.add(at.montage - 2 * g.beat, swell(2 * g.beat), 0.2);
+    main.add(at.plugins - 2 * g.beat, swell(2 * g.beat), 0.2);
+  }
+
+  /** From the plugins to the montage: the groove falls back to half time and a darker chord, then builds again. */
+  private breakdown() {
+    const { at, main, drums } = this;
+    const g = grid(at.plugins, at.montage, TEMPO, true);
+    const buildFrom = g.bars - 2;
+    main.add(at.plugins, crash(), 0.4, { verb: 0.35 });
+    range(0, g.bars).forEach((bar) => {
+      const chord = PROGRESSION[Math.floor(bar / 2) % 4]!;
+      const building = bar >= buildFrom;
+      if (bar % 2 === 0) {
+        const bars = Math.min(2, g.bars - bar);
+        this.harmony(g, bar, chord, { bars, cutoff: building ? (t) => 1400 * 5 ** (t / (bars * g.bar)) : 1300, gain: building ? 0.27 : 0.22, rolling: bar >= 4, arp: bar >= 4, arpGain: 0.05 });
+      }
+      if (!building) return this.halfTime(g, bar, bar >= 4);
+      const beats = bar === g.bars - 1 ? [0, 1, 2] : [0, 2];
+      beats.forEach((offset) => main.add(g.at(bar * 4 + offset), drums.kick, 0.55));
+      main.pumpAt(...range(0, 4).map((offset) => g.at(bar * 4 + offset)));
+    });
+    roll(main, g, buildFrom * 4, g.beats, { from: 0.06, to: 0.32 });
+    main.add(g.at(buildFrom * 4), tonalRiser([62, 69, 74], 2 * g.bar), 0.24, { verb: 0.2 });
+    main.add(g.at(buildFrom * 4), riser(2 * g.bar), 0.24);
+    [at.media, at.voice].forEach((time) => this.accent(g, time));
   }
 
   /** From the montage to the backdrop, a step higher, with the whole hook doubled an octave up; the last chord rings on. */
@@ -297,7 +325,7 @@ function compose() {
   const at = timeline();
   writeWav(output, new Score(at).render(), LEVEL);
   console.log(
-    `${output}: ${at.seconds.toFixed(1)} s; black at ${at.goesBlack.toFixed(2)} s, picture at ${at.picture.toFixed(2)} s, logo at ${at.logo.toFixed(2)} s, groove from ${at.show.toFixed(2)} s, drop at ${at.review.toFixed(2)} s, montage from ${at.montage.toFixed(2)} s, last chord at ${at.lastChord.toFixed(2)} s, end card at ${at.ending.toFixed(2)} s`,
+    `${output}: ${at.seconds.toFixed(1)} s; black at ${at.goesBlack.toFixed(2)} s, picture at ${at.picture.toFixed(2)} s, logo at ${at.logo.toFixed(2)} s, groove from ${at.show.toFixed(2)} s, drop at ${at.review.toFixed(2)} s, breakdown at ${at.plugins.toFixed(2)} s, montage from ${at.montage.toFixed(2)} s, last chord at ${at.lastChord.toFixed(2)} s, end card at ${at.ending.toFixed(2)} s`,
   );
 }
 

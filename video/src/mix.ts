@@ -10,8 +10,8 @@ const DUCK_RAMP_SECONDS = 0.25;
 export type SpokenSpan = { from: number; to: number; musicDipsTo: number };
 
 export function spokenSpans(placed: PlacedScene[], narration: Record<string, NarrationLine>, fps: number): SpokenSpan[] {
-  return placed.flatMap(({ scene, from }) =>
-    (scene.narration ?? []).map(({ line, at, musicDipsTo = DUCKED }) => ({ from: from + (at - 0.15) * fps, to: from + (at + narration[line]!.seconds + 0.2) * fps, musicDipsTo })),
+  return placed.flatMap(({ from, lines }) =>
+    lines.map(({ line, at, musicDipsTo = DUCKED }) => ({ from: from + (at - 0.15) * fps, to: from + (at + narration[line]!.seconds + 0.2) * fps, musicDipsTo })),
   );
 }
 

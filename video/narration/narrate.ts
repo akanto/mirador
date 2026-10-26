@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { LINES, SAMPLE_VOICES, SPEED, VOICE, type LineName } from "./lines.ts";
+import { LINES, SAMPLE_VOICES, SPEED, textOf, VOICE, voiceOf, type LineName } from "./lines.ts";
 
 /**
  * Speaks the narration with Kokoro, an open-weight voice model that runs on this machine, into public/narration, and
@@ -74,25 +74,25 @@ async function narrate() {
   const manifest = readManifest();
   const isCurrent = (name: LineName) => {
     const line = manifest.lines[name];
-    return line && line.text === LINES[name] && line.voice === VOICE && line.speed === SPEED && existsSync(join(narrationDirectory, line.file));
+    return line && line.text === textOf(name) && line.voice === voiceOf(name) && line.speed === SPEED && existsSync(join(narrationDirectory, line.file));
   };
   const stale = (Object.keys(LINES) as LineName[]).filter((name) => !isCurrent(name));
-  const jobs = stale.map((name) => ({ text: LINES[name], voice: VOICE, speed: SPEED, out: join(narrationDirectory, `${name}.wav`) }));
+  const jobs = stale.map((name) => ({ text: textOf(name), voice: voiceOf(name), speed: SPEED, out: join(narrationDirectory, `${name}.wav`) }));
   const seconds = await speak(jobs);
   const lines = Object.fromEntries(
     (Object.keys(LINES) as LineName[]).map((name) => [
       name,
-      stale.includes(name) ? { text: LINES[name], file: `${name}.wav`, seconds: seconds.get(join(narrationDirectory, `${name}.wav`))!, voice: VOICE, speed: SPEED } : manifest.lines[name]!,
+      stale.includes(name) ? { text: textOf(name), file: `${name}.wav`, seconds: seconds.get(join(narrationDirectory, `${name}.wav`))!, voice: voiceOf(name), speed: SPEED } : manifest.lines[name]!,
     ]),
   );
   writeFileSync(manifestPath, `${JSON.stringify({ voice: VOICE, lines }, null, 2)}\n`);
-  console.log(stale.length ? `Spoke ${stale.join(", ")} in ${VOICE}` : "The narration is up to date");
+  console.log(stale.length ? `Spoke ${stale.map((name) => `${name} in ${voiceOf(name)}`).join(", ")}` : "The narration is up to date");
 }
 
 async function speakSamples() {
   const directory = join(video, "out", "voice-samples");
   mkdirSync(directory, { recursive: true });
-  const text = `${LINES.canvas} ${LINES.show}`;
+  const text = `${textOf("canvas")} ${textOf("show")}`;
   const seconds = await speak(SAMPLE_VOICES.map((voice) => ({ text, voice, speed: SPEED, out: join(directory, `${voice}.wav`) })));
   seconds.forEach((length, out) => console.log(`${out}: ${length.toFixed(1)} s`));
 }

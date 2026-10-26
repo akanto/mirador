@@ -6,9 +6,9 @@ import { Reveal } from "../components/Reveal.tsx";
 
 /**
  * The last word, landing on the hit after a breath: the name, the promise and what it saves you, what it runs with
- * and on, and where to get it. Each line comes in as the narrator says it.
+ * and on, and where to get it and its plugins. Each line comes in as the narrator says it.
  */
-export function EndScene({ frames, url }: { frames: number; url: string }) {
+export function EndScene({ frames, url, pluginCatalog }: { frames: number; url: string; pluginCatalog: string }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const fadeOut = interpolate(frame, [frames - 30, frames], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -32,6 +32,11 @@ export function EndScene({ frames, url }: { frames: number; url: string }) {
         </Reveal>
         <Reveal at={245} style={{ marginTop: 80 }}>
           <div style={{ padding: "26px 60px", borderRadius: 999, border: `3px solid ${BRAND.violet}`, background: "rgba(118, 118, 242, 0.12)", font: `500 64px ${MONO}`, color: BRAND.ink }}>{url}</div>
+        </Reveal>
+        <Reveal at={300} style={{ marginTop: 40 }}>
+          <div style={{ font: `500 48px ${MONO}`, color: "#cfcde8" }}>
+            <span style={{ fontFamily: FONT, fontWeight: 620 }}>Plugins</span> · {pluginCatalog}
+          </div>
         </Reveal>
       </AbsoluteFill>
       <AbsoluteFill style={{ background: "#fff", opacity: interpolate(frame, [0, 10], [0.3, 0], { extrapolateRight: "clamp" }) }} />

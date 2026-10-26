@@ -92,6 +92,48 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "point": {
+      "text": "Point at anything it drew, and ask about it, or have it changed.",
+      "file": "point.wav",
+      "seconds": 3.328,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "plugins": {
+      "text": "Mirador grows with plugins. Your agent knows the official ones, and installs one when you say so.",
+      "file": "plugins.wav",
+      "seconds": 6.144,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "media": {
+      "text": "Like Media. Mark what's wrong on the frame, and the agent cuts the video and renders it.",
+      "file": "media.wav",
+      "seconds": 4.8213333333333335,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "voice": {
+      "text": "Or just talk to it.",
+      "file": "voice.wav",
+      "seconds": 1.0666666666666667,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
+    "voiceAsk": {
+      "text": "How long will the switch-over take, and what could go wrong?",
+      "file": "voiceAsk.wav",
+      "seconds": 3.050666666666667,
+      "voice": "af_bella",
+      "speed": 1
+    },
+    "voiceReply": {
+      "text": "About ten minutes, read-only. It waits for replication to catch up before it switches.",
+      "file": "voiceReply.wav",
+      "seconds": 5.589333333333333,
+      "voice": "bm_george",
+      "speed": 1
+    },
     "mirador": {
       "text": "Mirador.",
       "file": "mirador.wav",

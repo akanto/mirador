@@ -13,11 +13,14 @@ export function worldIn(root: string) {
   return { home, projects: { shopApi: join(code, "shop-api"), mobileApp: join(code, "mobile-app"), storefront: join(code, "storefront"), infra: join(code, "infra") } };
 }
 
+/** Claude Code runs commands and the canvas's tools, its plugins' too, without asking; edits it still asks for. */
+export const CLAUDE_SETTINGS = JSON.stringify({ permissions: { allow: ["Bash", "mcp__canvas"] } }, null, 2);
+
 /** Writes the world's files; Playwright also imports specs in a process that never runs their hooks, so call it from one. */
 export function createWorld({ home, projects }: ReturnType<typeof worldIn>) {
   writeFiles(home, {
     ".zshrc": "PROMPT='%F{141}%1~%f %F{245}❯%f '\nPROMPT_EOL_MARK=''\nunsetopt BEEP\n",
-    ".claude/settings.json": JSON.stringify({ permissions: { allow: ["Bash"] } }, null, 2),
+    ".claude/settings.json": CLAUDE_SETTINGS,
     ".gitconfig": "[user]\n\tname = Ada\n\temail = ada@example.com\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n",
   });
   createShopApi(projects.shopApi);

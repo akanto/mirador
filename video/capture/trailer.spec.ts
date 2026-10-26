@@ -1,16 +1,21 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { signIn, waitForTurnToEnd, workspaceCard } from "../../e2e/helpers.ts";
+import { openSettings, signIn, useOwnVoiceServer, voiceSection, waitForTurnToEnd, walkthroughView, workspaceCard } from "../../e2e/helpers.ts";
 import type { Demo, DemoConversation } from "../../e2e/seed-demo.ts";
 import { TestHost } from "../../e2e/test-host.ts";
 import { Cursor } from "./cursor.ts";
-import { CHECKOUT_TEST, checkoutTest, createWorld, REPLAY_SCRIPT, replayScript, worldIn } from "./demo-world.ts";
+import { textOf } from "../narration/lines.ts";
+import { DEMO_VIDEO, makeDemoVideo } from "./demo-video.ts";
+import { CHECKOUT_TEST, checkoutTest, CLAUDE_SETTINGS, createWorld, git, REPLAY_SCRIPT, replayScript, worldIn } from "./demo-world.ts";
 import { Director } from "./director.ts";
+import { MEDIA_FROM_CACHE, setUpPlugins } from "./plugins.ts";
 import { ClipRecorder } from "./recorder.ts";
-import { LAYOUT_CHOICE, PULL_REQUEST, prompts, scripts } from "./scenes.ts";
+import { LAYOUT_CHOICE, MEDIA_INSTALLED, MEDIA_INSTALLED_REPLY, PULL_REQUEST, prompts, scripts } from "./scenes.ts";
 import { expect, test } from "./studio.ts";
 import { typeLikeAPerson } from "./typing.ts";
 
@@ -22,13 +27,17 @@ import { typeLikeAPerson } from "./typing.ts";
 const root = join(realpathSync(tmpdir()), `mirador-video-${crypto.randomUUID().slice(0, 8)}`);
 const world = worldIn(root);
 const { shopApi, mobileApp, storefront, infra } = world.projects;
-const host = new TestHost(5900, {
+const catalogFile = join(root, "official-plugins.json");
+const host = new TestHost({
   shell: "/bin/zsh",
   fakePrograms: true,
-  environment: { HOME: world.home, ZDOTDIR: world.home, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default" },
+  environment: { HOME: world.home, ZDOTDIR: world.home, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default", MIRADOR_PLUGIN_CATALOG: `file://${catalogFile}`, ...MEDIA_FROM_CACHE },
 });
-const director = new Director(scripts({ projects: world.projects, assetsOrigin: `http://127.0.0.1:${host.port + 1}` }));
+const director = new Director();
 const clips = join(import.meta.dirname, "..", "public", "clips");
+/** MIRADOR_VIDEO_SCENES=point,media films only those scenes and keeps the other clips; a scene may need the one before it to have run. */
+const scenesToFilm = process.env.MIRADOR_VIDEO_SCENES?.split(",");
+const scene = (title: string, body: () => Promise<void>) => (scenesToFilm && !scenesToFilm.includes(title.split(":")[0]!) ? Promise.resolve() : test.step(title, body));
 const theme = process.env.MIRADOR_VIDEO_THEME ?? "dark";
 
 /** A gh that answers like GitHub for the review's pull request, so posting the review needs no account and reaches no one. */
@@ -38,11 +47,14 @@ function writeFakeGh() {
 input=""
 if [[ " $* " == *" --input - "* ]]; then input=$(cat); fi
 case "$*" in
+  "auth status"*) exit 0 ;;
   *"${pulls}/reviews"*) echo '[]' ;;
   *"${pulls}"*) echo "{\\"node_id\\":\\"PR_42\\",\\"head\\":{\\"sha\\":\\"$(git -C '${shopApi}' rev-parse HEAD)\\"}}" ;;
   *graphql*)
     if [[ "$input" == *"reviewThreads("* ]]; then
       echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
+    elif [[ "$input" == *"reviews(states: PENDING"* ]]; then
+      echo '{"data":{"repository":{"pullRequest":{"reviews":{"nodes":[]}}}}}'
     elif [[ "$input" == *"addPullRequestReview("* ]]; then
       echo '{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"PRR_1","url":"${PULL_REQUEST.url}#pullrequestreview-1"}}}}'
     else
@@ -55,19 +67,53 @@ esac
   writeFileSync(join(host.fakeProgramsDir, "gh"), gh, { mode: 0o755 });
 }
 
+/**
+ * The voice services the voice scene uses, all on this machine: speech recognition hears the user's question once and
+ * "Thanks" after, the voice model sums the reply up in the line the agent is heard saying, and the reply voice is that
+ * line as bun run narrate spoke it.
+ */
+let heard = 0;
+const voiceServer = createServer((request, response) => {
+  request.resume();
+  request.on("end", () => {
+    if (request.url!.endsWith("/audio/transcriptions")) {
+      response.setHeader("content-type", "application/json");
+      return response.end(JSON.stringify({ text: heard++ === 0 ? prompts.switchOverTime : "Thanks.", language: "en" }));
+    }
+    if (request.url!.endsWith("/chat/completions")) {
+      response.setHeader("content-type", "application/json");
+      return response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: textOf("voiceReply") }, finish_reason: "stop" }] }));
+    }
+    response.setHeader("content-type", "audio/wav");
+    response.end(readFileSync(join(import.meta.dirname, "..", "public", "narration", "voiceReply.wav")));
+  });
+});
+const voiceAddress = () => `http://127.0.0.1:${(voiceServer.address() as AddressInfo).port}/v1`;
+
 test.beforeAll(async () => {
   createWorld(world);
+  writeFileSync(REPLAY_SCRIPT, replayScript, { mode: 0o755 });
+  await makeDemoVideo(join(storefront, DEMO_VIDEO.file));
+  git(storefront, "add", DEMO_VIDEO.file);
+  git(storefront, "commit", "-q", "-m", "Checkout demo video");
+  await new Promise<void>((resolve) => voiceServer.listen(0, "127.0.0.1", resolve));
   writeFakeGh();
   await director.start();
   mkdirSync(host.dataDir, { recursive: true });
+  mkdirSync(host.claudeConfigDir, { recursive: true });
+  writeFileSync(join(host.claudeConfigDir, "settings.json"), CLAUDE_SETTINGS);
+  setUpPlugins(host.dataDir, catalogFile);
   execFileSync("bun", [join(import.meta.dirname, "seed-profile.ts"), join(host.dataDir, "state.sqlite"), director.environment]);
   await host.start();
+  director.scripts = scripts({ projects: world.projects, assetsOrigin: `http://127.0.0.1:${host.port + 1}` });
 });
 
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
   director.stop();
+  voiceServer.close();
+  rmSync(REPLAY_SCRIPT, { force: true });
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -114,6 +160,39 @@ async function sendOnCamera(page: Page, cursor: Cursor, recorder: ClipRecorder, 
   recorder.mark("sent");
 }
 
+/** The canvas page the agent showed last. */
+const shownPage = (page: Page) => page.locator(".canvas-panel:visible .canvas-frame.show iframe").last().contentFrame();
+/** The Media plugin's view on the canvas. */
+const mediaView = (page: Page) => page.locator(".canvas-panel:visible .canvas-frame.app iframe").contentFrame();
+
+/** Sets up dictation, spoken replies and Keep talking against the stand-in voice services, off camera. */
+async function setUpVoice(page: Page) {
+  const settings = await openSettings(page, "Voice");
+  const speaking = voiceSection(settings, "When you speak");
+  await useOwnVoiceServer(speaking, "Speech recognition", { url: voiceAddress(), model: "whisper-turbo" });
+  await speaking.getByLabel("Send right away").check();
+  await useOwnVoiceServer(voiceSection(settings, "Translating and summing up"), "Voice model", { url: voiceAddress(), model: "gemma" });
+  const replies = voiceSection(settings, "When the agent replies");
+  await useOwnVoiceServer(replies, "Read aloud", { url: voiceAddress(), model: "kokoro", voice: "bm_george" });
+  await replies.getByLabel("Keep talking").check();
+  await expect(replies.getByRole("status")).toHaveText("Saved.");
+  await settings.getByRole("button", { name: "Close" }).click();
+}
+
+/** Restarts the host off camera, as a newly installed plugin asks, and brings the page back. */
+async function restartHost(page: Page, cursor: Cursor) {
+  await host.stop();
+  await host.start();
+  await page.reload();
+  await cursor.restore();
+}
+
+/** A point of the Media view's timeline, at `seconds` of the video. */
+async function timelinePoint(page: Page, seconds: number) {
+  const tracks = (await mediaView(page).getByRole("slider", { name: "Time" }).boundingBox())!;
+  return { x: tracks.x + (tracks.width * seconds) / DEMO_VIDEO.seconds, y: tracks.y + tracks.height * 0.75 };
+}
+
 const sidebarItem = (page: Page, directory: string, title: string) => workspaceCard(page, directory).locator("li", { hasText: title });
 const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
 
@@ -145,6 +224,7 @@ test("the trailer's clips", async ({ page }) => {
     reviewRetries: await newConversationIn(page, shopApi),
     stopDoubleCharge: await newConversationIn(page, shopApi),
     explainCheckout: await newConversationIn(page, shopApi),
+    tightenVideo: await newConversationIn(page, storefront),
     coldStart: await newConversationIn(page, mobileApp),
     settingsLayout: await newConversationIn(page, mobileApp),
     translate: await newConversationIn(page, storefront),
@@ -179,6 +259,7 @@ test("the trailer's clips", async ({ page }) => {
       conversation(ids.coldStart, "Speed up the cold start", 30, [userSays("Profile the cold start on a mid-range phone and cut it below a second."), agentSays("Starting a trace on the emulator…"), { type: "turn-end", stopReason: "refusal" }], "error"),
       conversation(ids.settingsLayout, "Pick a settings layout", 2, []),
       conversation(ids.translate, "Translate the checkout pages", 2, []),
+      conversation(ids.tightenVideo, "Tighten the checkout video", 4, []),
       conversation(ids.postgres, "Plan the Postgres 18 upgrade", 90, [userSays("Plan the upgrade to Postgres 18 with no downtime."), agentSays("Logical replication to a new 18 cluster, then a switch-over in the next maintenance window."), turnEnd]),
     ],
   };
@@ -195,7 +276,7 @@ test("the trailer's clips", async ({ page }) => {
     console.log(`${name}: ${info.seconds.toFixed(1)} s, ${info.frames} frames, gaps median ${info.medianGapMs} ms, p95 ${info.p95GapMs} ms, moments ${JSON.stringify(info.moments)}`);
   };
 
-  await test.step("show: the agent draws the checkout flow", async () => {
+  await scene("show: the agent draws the checkout flow", async () => {
     await openConversation(page, ids.explainCheckout);
     await page.waitForTimeout(500);
     await film("show", async () => {
@@ -216,7 +297,35 @@ test("the trailer's clips", async ({ page }) => {
     });
   });
 
-  await test.step("overview: agents at work across the projects", async () => {
+  await scene("point: point at part of the page and have it changed", async () => {
+    await film("point", async () => {
+      await recorder.markRect("canvas", canvasPane(page));
+      await page.waitForTimeout(500);
+      await cursor.click(page.locator(".canvas-header:visible .point-toggle"));
+      recorder.mark("pointing");
+      await page.waitForTimeout(400);
+      const mailRisk = shownPage(page).locator(".risk").nth(2);
+      await recorder.markRect("risk", mailRisk);
+      await cursor.click(mailRisk);
+      recorder.mark("picked");
+      const wordsBox = page.getByRole("dialog", { name: "Ask the agent about what you marked" });
+      await expect(wordsBox.getByRole("textbox")).toBeFocused();
+      await recorder.markRect("wordsBox", wordsBox);
+      await typeLikeAPerson(page, prompts.emailAfterResponse);
+      recorder.mark("typed");
+      await page.waitForTimeout(300);
+      await cursor.click(wordsBox.getByRole("button", { name: "Change" }));
+      recorder.mark("asked");
+      await expect(shownPage(page).locator(".risk.fixed")).toBeVisible({ timeout: 30_000 });
+      await expect(shownPage(page).locator(".mermaid svg")).toBeVisible();
+      recorder.mark("redrawn");
+      await waitForTurnToEnd(page);
+      recorder.mark("turnEnded");
+      await page.waitForTimeout(2500);
+    });
+  });
+
+  await scene("overview: agents at work across the projects", async () => {
     await sendOffCamera(page, ids.settingsLayout, prompts.settingsLayout);
     await sendOffCamera(page, ids.translate, prompts.translate);
     await sendOffCamera(page, ids.postgres, prompts.runbook);
@@ -236,7 +345,7 @@ test("the trailer's clips", async ({ page }) => {
     });
   });
 
-  await test.step("ask: the agent asks with pictures", async () => {
+  await scene("ask: the agent asks with pictures", async () => {
     await film("ask", async () => {
       await page.waitForTimeout(400);
       await cursor.click(sidebarItem(page, mobileApp, "Pick a settings layout"), { offsetX: 0.35 });
@@ -265,13 +374,13 @@ test("the trailer's clips", async ({ page }) => {
     });
   });
 
-  await test.step("review: a guided tour of the change", async () => {
+  await scene("review: a guided tour of the change", async () => {
     await openConversation(page, ids.reviewRetries);
     await film("review", async () => {
       await page.waitForTimeout(400);
       await recorder.markRect("composer", page.locator(".composer:visible"));
       await sendOnCamera(page, cursor, recorder, prompts.review);
-      const view = page.locator(".review");
+      const view = walkthroughView(page).locator(".review");
       await expect(view.locator(".verdict")).toBeVisible();
       recorder.mark("reviewShown");
       await recorder.markRect("canvas", canvasPane(page));
@@ -296,7 +405,7 @@ test("the trailer's clips", async ({ page }) => {
       await page.waitForTimeout(700);
       await cursor.click(blocker.getByRole("button", { name: "Ask", exact: true }));
       recorder.mark("askOpened");
-      const askDialog = page.getByRole("dialog", { name: "Ask the agent about these lines" });
+      const askDialog = walkthroughView(page).getByRole("dialog", { name: "Ask the agent about these lines" });
       await expect(askDialog.locator("textarea")).toBeFocused();
       await recorder.markRect("askDialog", askDialog);
       await typeLikeAPerson(page, prompts.questionAboutBlocker);
@@ -336,7 +445,106 @@ test("the trailer's clips", async ({ page }) => {
     });
   });
 
-  await test.step("edit: approve the change, then see what it touched", async () => {
+  await scene("plugins: the agent recommends an official plugin, and installs it once the user says so", async () => {
+    await openConversation(page, ids.tightenVideo);
+    await film("plugins", async () => {
+      await page.waitForTimeout(400);
+      await recorder.markRect("composer", page.locator(".composer:visible"));
+      await sendOnCamera(page, cursor, recorder, prompts.tightenVideo);
+      const ask = page.locator(".ask");
+      await expect(ask).toContainText("Install the Media plugin?");
+      recorder.mark("asked");
+      await recorder.markRect("question", canvasPane(page));
+      await recorder.markRect("timeline", page.locator(".timeline:visible"));
+      await page.waitForTimeout(1800);
+      await cursor.click(ask.locator(".ask-option-label", { hasText: /^Install/ }));
+      recorder.mark("picked");
+      await page.waitForTimeout(400);
+      await cursor.click(ask.getByRole("button", { name: "Submit" }));
+      recorder.mark("submitted");
+      await page.waitForTimeout(2500);
+    });
+    await expect(page.locator(".timeline:visible .message.user").last()).toContainText(MEDIA_INSTALLED, { timeout: 300_000 });
+    await expect(page.locator(".timeline:visible .message.agent").last()).toContainText(MEDIA_INSTALLED_REPLY);
+    await waitForTurnToEnd(page);
+    await restartHost(page, cursor);
+  });
+
+  await scene("media: mark the part that drags, and the agent cuts it and renders the video", async () => {
+    await openConversation(page, ids.tightenVideo);
+    await film("media", async () => {
+      await page.waitForTimeout(400);
+      await recorder.markRect("composer", page.locator(".composer:visible"));
+      await sendOnCamera(page, cursor, recorder, prompts.openVideo);
+      await expect(mediaView(page).locator(".filmstrip img").first()).toBeVisible();
+      recorder.mark("opened");
+      await recorder.markRect("canvas", canvasPane(page));
+      await waitForTurnToEnd(page);
+      await page.waitForTimeout(600);
+      await cursor.glideTo(await timelinePoint(page, DEMO_VIDEO.spinnerEnds - 0.2));
+      await cursor.click();
+      recorder.mark("seeked");
+      await page.waitForTimeout(300);
+      await cursor.click(mediaView(page).getByRole("button", { name: "Start a range here" }));
+      recorder.mark("rangeStarted");
+      await cursor.glideTo(await timelinePoint(page, DEMO_VIDEO.spinnerEnds - 0.2));
+      await cursor.drag(await timelinePoint(page, DEMO_VIDEO.spinnerStarts + 0.2));
+      recorder.mark("ranged");
+      await recorder.markRect("timelineLanes", mediaView(page).getByRole("slider", { name: "Time" }));
+      const frame = (await mediaView(page).locator(".frame").boundingBox())!;
+      const { x, y, width, height } = DEMO_VIDEO.spinnerBox;
+      const onFrame = (atX: number, atY: number) => ({ x: frame.x + (frame.width * atX) / DEMO_VIDEO.width, y: frame.y + (frame.height * atY) / DEMO_VIDEO.height });
+      await cursor.glideTo(onFrame(x, y));
+      await cursor.drag(onFrame(x + width, y + height));
+      recorder.mark("boxed");
+      await recorder.markRect("frame", mediaView(page).locator(".frame"));
+      await cursor.click(mediaView(page).getByLabel("What's wrong here"));
+      await typeLikeAPerson(page, prompts.spinnerNote);
+      await page.keyboard.press("Enter");
+      recorder.mark("markSent");
+      await expect(mediaView(page).locator(".timeline .removed.cut")).toBeVisible({ timeout: 30_000 });
+      recorder.mark("cut");
+      await waitForTurnToEnd(page);
+      recorder.mark("rendered");
+      await page.waitForTimeout(800);
+      await cursor.click(mediaView(page).getByRole("button", { name: "Rendered" }));
+      recorder.mark("comparing");
+      await page.waitForTimeout(500);
+      await cursor.click(mediaView(page).getByRole("button", { name: "Play" }));
+      recorder.mark("playing");
+      await page.waitForTimeout(4000);
+    });
+  });
+
+  await scene("voice: ask out loud, hear the gist of the reply, and keep talking", async () => {
+    await setUpVoice(page);
+    await openConversation(page, ids.postgres);
+    const composer = page.locator(".composer:visible");
+    const dictate = composer.getByRole("button", { name: "Dictate" });
+    await film("voice", async () => {
+      await recorder.markRect("composer", composer);
+      await page.waitForTimeout(600);
+      await cursor.click(dictate);
+      recorder.mark("listening");
+      await cursor.glideToElement(page.locator(".timeline:visible"), { offsetX: 0.7, offsetY: 0.8 });
+      await expect(page.locator(".timeline:visible .message.user").last()).toContainText(prompts.switchOverTime, { timeout: 30_000 });
+      recorder.mark("sent");
+      await recorder.markRect("timeline", page.locator(".timeline:visible"));
+      await waitForTurnToEnd(page);
+      recorder.mark("answered");
+      await expect(page.locator('.read-aloud button[aria-label="Stop reading"]')).toBeVisible({ timeout: 30_000 });
+      recorder.mark("reading");
+      await expect(dictate).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
+      recorder.mark("listeningAgain");
+      await page.waitForTimeout(1500);
+      await page.keyboard.press("Escape");
+      recorder.mark("stopped");
+      await expect(dictate).toHaveAttribute("aria-pressed", "false");
+      await page.waitForTimeout(800);
+    });
+  });
+
+  await scene("edit: approve the change, then see what it touched", async () => {
     await openConversation(page, ids.stopDoubleCharge);
     await film("edit", async () => {
       await page.waitForTimeout(400);
@@ -355,14 +563,16 @@ test("the trailer's clips", async ({ page }) => {
       await cursor.click(canvasPane(page).getByRole("button", { name: "Changes" }));
       recorder.mark("changes");
       const changes = page.locator(".changes");
-      await expect(changes.getByRole("button", { name: /src\/checkout\.ts/ })).toBeVisible();
+      await expect(changes.getByRole("button", { name: /checkout\.ts .*Changed by the agent/ })).toBeVisible();
       await expect(canvasPane(page).getByText(/Allowed: edit/)).toBeHidden({ timeout: 15_000 });
       recorder.mark("turnListed");
       await page.waitForTimeout(900);
       await cursor.click(changes.getByRole("button", { name: "Uncommitted", exact: true }));
       recorder.mark("uncommitted");
-      await expect(changes.getByRole("region", { name: "Outside the project" })).toContainText(REPLAY_SCRIPT);
-      await expect(changes.getByRole("region", { name: "Project", exact: true }).locator(".changed-path")).toHaveText(["README.md", "src/checkout.test.ts", "src/checkout.ts"]);
+      await expect(changes.getByRole("region", { name: "Outside the project" }).getByRole("button", { name: /replay-capture\.sh/ })).toBeVisible();
+      const project = changes.getByRole("region", { name: "Project", exact: true });
+      await expect(project.getByRole("button", { name: /checkout\.test\.ts/ })).toBeVisible();
+      await expect(project.getByRole("button", { name: /README\.md/ })).toBeVisible();
       await expect(page.locator(".timeline:visible .error-line")).toHaveCount(0);
       recorder.mark("uncommittedListed");
       await recorder.markRect("changesList", changes);
@@ -370,7 +580,7 @@ test("the trailer's clips", async ({ page }) => {
     });
   });
 
-  await test.step("terminals: a shell beside the conversation", async () => {
+  await scene("terminals: a shell beside the conversation", async () => {
     await openConversation(page, ids.explainCheckout);
     await film("terminals", async () => {
       await page.waitForTimeout(400);
@@ -398,7 +608,7 @@ test("the trailer's clips", async ({ page }) => {
     await page.getByRole("button", { name: "Hide terminal" }).click();
   });
 
-  await test.step("groups: put the workspaces in order", async () => {
+  await scene("groups: put the workspaces in order", async () => {
     await film("groups", async () => {
       await recorder.markRect("sidebar", page.locator("nav.sidebar"));
       await page.waitForTimeout(400);

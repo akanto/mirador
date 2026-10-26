@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { seededRandom } from "./typing.ts";
@@ -11,7 +12,7 @@ type MessagesRequest = {
 };
 
 /** A tool by Claude Code's own name, or one of the canvas's by its action, whatever the canvas server is called. */
-export type ToolCall = { tool: "Read" | "Bash" | "Edit" | "Write" | "canvas.show" | "canvas.ask" | "canvas.review" | "canvas.update_review"; input: Record<string, unknown> };
+export type ToolCall = { tool: "Read" | "Bash" | "Edit" | "Write" | "canvas.show" | "canvas.ask" | "canvas.review" | "canvas.update_review" | "canvas.plugin_install" | "canvas.app_open" | "canvas.apply" | "canvas.app_run"; input: Record<string, unknown> };
 
 /** One reply of the agent: a pause as if thinking, some text, and the tool it calls next, if any. */
 export type Step = { thinkMs?: number; say?: string; call?: ToolCall };
@@ -44,7 +45,8 @@ export class Director {
   private server?: Server;
   private readonly random = seededRandom(7);
 
-  constructor(private readonly scripts: Script[]) {}
+  /** The scripts are given once the host has started, as the pages they show load the host's canvas assets. */
+  scripts: Script[] = [];
 
   async start() {
     this.server = createServer((request, response) => {
@@ -87,10 +89,12 @@ export class Director {
 
   private async reply(body: MessagesRequest, response: ServerResponse) {
     const mainLoop = (body.tools ?? []).length > 0;
-    const typedIndex = body.messages.findLastIndex(({ role, content }) => role === "user" && !isToolResult(content) && typedText(content) !== "");
+    // A message sent while a turn runs reaches the model in the same user message as a tool's result.
+    const typedIndex = body.messages.findLastIndex(({ role, content }) => role === "user" && typedText(content) !== "");
     const typed = typedIndex < 0 ? "" : typedText(body.messages[typedIndex]!.content);
     const script = mainLoop ? this.scripts.find(({ prompt }) => typed.includes(prompt)) : undefined;
     this.requests.push({ typed, mainLoop, scripted: Boolean(script) });
+    if (process.env.MIRADOR_VIDEO_DIRECTOR_LOG) appendFileSync(process.env.MIRADOR_VIDEO_DIRECTOR_LOG, `${JSON.stringify({ typed, mainLoop, script: script?.prompt, lastMessage: body.messages.at(-1) })}\n`);
     if (!script) return this.send(body, response, { say: mainLoop ? "Done." : "Mirador demo" }, false);
     const stepIndex = body.messages.slice(typedIndex + 1).filter(({ role, content }) => role === "user" && isToolResult(content)).length;
     const step = script.steps[stepIndex] ?? { say: "" };

@@ -17,10 +17,15 @@ export type CameraKey = { at: ClipTime; look: "app" | string | Rect; zoom?: numb
 export type Caption = { kicker: string; title: string; at?: number; seconds?: number; side?: "left" | "right" };
 
 /**
- * A line of narration (narration/lines.ts) and when in its scene it starts, in seconds. The music dips under it to
- * `musicDipsTo` of its volume, or the trailer's usual dip: a shallower one keeps a fast section's beat going.
+ * A line of narration (narration/lines.ts) and when in its scene it starts, in seconds. In a clip scene, `from` names
+ * a point of the clip that `at` counts from, so a line keeps to what it goes with however the shots speed the clip up.
+ * The music dips under it to `musicDipsTo` of its volume, or the trailer's usual dip: a shallower one keeps a fast
+ * section's beat going.
  */
-export type Spoken = { line: string; at: number; musicDipsTo?: number };
+export type Spoken = { line: string; at: number; from?: ClipTime; musicDipsTo?: number };
+
+/** A line of narration with its start in seconds of its scene. */
+export type PlacedLine = { line: string; at: number; musicDipsTo?: number };
 
 /**
  * Words shown large, landing part by part as the narrator says them: its line starts at `at`, and each part lands
@@ -44,8 +49,11 @@ export type Scene = ClipScene | CardScene | WallScene;
 
 export type NarrationLine = { text: string; file: string; seconds: number };
 
-/** A scene as the composition plays it: where it starts, how long it runs and how long it fades in over the one before, in frames. */
-export type PlacedScene = { scene: Scene; from: number; frames: number; fadeInFrames: number };
+/**
+ * A scene as the composition plays it: where it starts, how long it runs and how long it fades in over the one before,
+ * in frames, and its narration's lines, each with its start in seconds of the scene.
+ */
+export type PlacedScene = { scene: Scene; from: number; frames: number; fadeInFrames: number; lines: PlacedLine[] };
 
 /** How long after a scene's narration ends before the next scene starts, in seconds. */
 const NARRATION_TAIL = 0.6;
@@ -93,10 +101,19 @@ export function narrationLine(narration: Record<string, NarrationLine>, name: st
   return line;
 }
 
+/** The scene's lines of narration, each starting in seconds of the scene. */
+export function linesOf(scene: Scene, clips: Record<string, ClipInfo>): PlacedLine[] {
+  return (scene.narration ?? []).map(({ line, at, from, musicDipsTo }) => {
+    if (from === undefined) return { line, at, musicDipsTo };
+    if (scene.kind !== "clip") throw new Error(`${scene.id}: only a clip scene's narration can start from a point of its clip`);
+    return { line, at: sceneSecondsOf(scene, clipNamed(clips, scene.clip), from) + at, musicDipsTo };
+  });
+}
+
 /** A scene lasts its footage's length or its own, and longer when its narration needs it: the last frame then holds. */
 export function sceneSeconds(scene: Scene, clips: Record<string, ClipInfo>, narration: Record<string, NarrationLine>) {
   const footage = scene.kind === "clip" ? (scene.seconds ?? shotsOf(scene, clipNamed(clips, scene.clip)).at(-1)!.sceneTo) : scene.seconds;
-  const spokenUntil = (scene.narration ?? []).map(({ line, at }) => at + narrationLine(narration, line).seconds + NARRATION_TAIL);
+  const spokenUntil = linesOf(scene, clips).map(({ line, at }) => at + narrationLine(narration, line).seconds + NARRATION_TAIL);
   return Math.max(footage, ...spokenUntil);
 }
 
@@ -112,7 +129,7 @@ export function placeScenes(scenes: Scene[], clips: Record<string, ClipInfo>, na
   let from = 0;
   return scenes.map((scene, index) => {
     const overlapWithNext = fadeInOf(scenes[index + 1], index + 1);
-    const placed = { scene, from, frames: Math.round(sceneSeconds(scene, clips, narration) * fps) + overlapWithNext, fadeInFrames: fadeInOf(scene, index) };
+    const placed = { scene, from, frames: Math.round(sceneSeconds(scene, clips, narration) * fps) + overlapWithNext, fadeInFrames: fadeInOf(scene, index), lines: linesOf(scene, clips) };
     from += placed.frames - overlapWithNext;
     return placed;
   });

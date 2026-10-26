@@ -28,3 +28,30 @@ export const CHECKOUT_RISKS = [
 ];
 
 export const MERMAID_SEQUENCE = { mirrorActors: false, showSequenceNumbers: true };
+
+/** The flow the agent draws again once the user points at the slow mail server and asks for the email to leave the request. */
+export const CHECKOUT_FLOW_QUEUED = `sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant A as Checkout API
+  participant I as Inventory
+  participant P as Payments
+  participant O as Orders
+  participant Q as Mail queue
+  B->>A: POST /checkout
+  A->>I: reserve(cart.items)
+  I-->>A: reservation
+  A->>P: capture(card, total)
+  Note over A,P: ⚠ no idempotency key
+  P-->>A: payment
+  A->>O: create(cart, payment)
+  O-->>A: order 1042
+  A-->>B: 201 Created
+  A-)Q: send the email, after the response
+`;
+
+export const CHECKOUT_RISKS_QUEUED = [
+  { title: "Declined card", detail: "Stock stays reserved until the nightly job.", slow: false },
+  { title: "Retried capture", detail: "Without a key, the card is charged twice.", slow: false },
+  { title: "Mail server", detail: "✓ Off the request: a queue sends the email.", slow: false, fixed: true },
+];

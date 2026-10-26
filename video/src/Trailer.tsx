@@ -6,7 +6,7 @@ import { ClipSceneView } from "./scenes/ClipSceneView.tsx";
 import { EndScene } from "./scenes/EndScene.tsx";
 import { LogoScene } from "./scenes/LogoScene.tsx";
 import { TextWallScene } from "./scenes/TextWallScene.tsx";
-import { MUSIC, WHERE_TO_GET_IT } from "./storyboard.ts";
+import { MUSIC, PLUGIN_CATALOG, WHERE_TO_GET_IT } from "./storyboard.ts";
 import type { ClipInfo, NarrationLine, PlacedScene, Scene } from "./timeline.ts";
 
 export type TrailerProps = {
@@ -27,7 +27,7 @@ function SceneView({ scene, clips, frames }: { scene: Scene; clips: Record<strin
   if (scene.kind === "text-wall") return <TextWallScene scene={scene} />;
   if (scene.kind === "logo") return <LogoScene frames={frames} />;
   if (scene.kind === "backdrop") return <Backdrop />;
-  return <EndScene frames={frames} url={WHERE_TO_GET_IT} />;
+  return <EndScene frames={frames} url={WHERE_TO_GET_IT} pluginCatalog={PLUGIN_CATALOG} />;
 }
 
 export function Trailer({ placed, clips, narration }: TrailerProps) {
@@ -43,8 +43,8 @@ export function Trailer({ placed, clips, narration }: TrailerProps) {
         </Sequence>
       ))}
       <Audio src={staticFile(MUSIC)} volume={(frame) => musicVolume(frame, spoken, fps)} />
-      {placed.flatMap(({ scene, from }) =>
-        (scene.narration ?? []).map(({ line, at }) => (
+      {placed.flatMap(({ from, lines }) =>
+        lines.map(({ line, at }) => (
           <Sequence key={`narration ${line}`} from={from + Math.round(at * fps)} name={`narration: ${line}`}>
             <Audio src={staticFile(`narration/${narration[line]!.file}`)} />
           </Sequence>
