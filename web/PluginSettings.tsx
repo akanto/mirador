@@ -297,8 +297,9 @@ export function PluginSettings({ pluginUpdates }: { pluginUpdates: FoundUpdate[]
     <>
       <h3>Plugins</h3>
       <p className="hint">
-        A plugin brings an app: a document that you and the agent change together in the canvas. Plugins are the ones Mirador comes with and the
-        folders in {listed ? <code>{listed.folder}</code> : "Mirador's plugins folder"}, and load when Mirador starts.
+        A plugin gives the agent tools of its own on the canvas, or brings an app: a document that you and the agent change together. Plugins are
+        the folders in {listed ? <code>{listed.folder}</code> : "Mirador's plugins folder"}, and load when Mirador starts. Mirador updates the ones it
+        installed from a git repo; a linked folder is your own checkout, so you update it there.
       </p>
       {listed?.restartNeeded && (
         <p className="restart-needed">

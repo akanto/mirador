@@ -40,4 +40,5 @@ test("Settings lists the installed plugins, where each came from, and why one di
   await expect(plugins.nth(0)).toHaveText(`Countercounter1.0.0${counterRepo()} · main · ${git(counterRepo(), "rev-parse", "--short", "HEAD")} Count by oneCheck for updatesRemove`);
   await expect(plugins.nth(1)).toHaveText("Unbuiltunbuilt1.0.0A folder put there by handDidn't load: host.ts doesn't exist; build the plugin first?Remove");
   await expect(settings.getByText(join(host.dataDir, "plugins"), { exact: true })).toBeVisible();
+  await expect(settings.getByText("a linked folder is your own checkout, so you update it there.", { exact: false })).toBeVisible();
 });
