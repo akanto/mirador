@@ -103,6 +103,8 @@ async function manifestFields(folder: string): Promise<{ name: string | null; ti
 
 const isLink = (folder: string) => lstatSync(folder).isSymbolicLink();
 
+const byTitle = ({ title, folder }: PluginInfo) => title ?? folder;
+
 /**
  * The plugins folder: what the Plugins settings list, and the plugins they add from a git repo, update and remove. A change takes effect at Mirador's next start, which is when plugins load.
  */
@@ -128,7 +130,8 @@ export class InstalledPlugins {
   }
 
   async list(): Promise<PluginInfo[]> {
-    return Promise.all(pluginFolders(this.folder).map(async (folder) => this.info(folder, await sourceOf(folder).catch((): PluginSource => ({ kind: "folder" })))));
+    const plugins = await Promise.all(pluginFolders(this.folder).map(async (folder) => this.info(folder, await sourceOf(folder).catch((): PluginSource => ({ kind: "folder" })))));
+    return plugins.sort((one, other) => byTitle(one).localeCompare(byTitle(other)));
   }
 
   private async info(folder: string, source: PluginSource): Promise<PluginInfo> {

@@ -40,6 +40,18 @@ describe("withoutCredentials", () => {
 });
 
 describe("InstalledPlugins", () => {
+  test("lists the plugins by title, whatever their folders are named", async () => {
+    const plugins = join(root, "by-title");
+    const pluginTitled = (folder: string, name: string, title: string) => {
+      cpSync(COUNTER, join(plugins, folder), { recursive: true });
+      writeFileSync(join(plugins, folder, "plugin.json"), JSON.stringify({ name, title, version: "1.0.0", api: 1, app: { host: "host.ts", view: "view.js" } }));
+    };
+    pluginTitled("review", "review", "Code review");
+    pluginTitled("checklist", "checklist", "Checklist");
+    pluginTitled("media", "media", "Media");
+    expect((await new InstalledPlugins(plugins, []).list()).map(({ title }) => title)).toEqual(["Checklist", "Code review", "Media"]);
+  });
+
   test("lists each plugin with where it came from, and why one didn't load", async () => {
     const plugins = join(root, "plugins");
     mkdirSync(plugins);
