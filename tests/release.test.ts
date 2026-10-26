@@ -25,6 +25,7 @@ import {
   type Plan,
   type Step,
 } from "../scripts/release.ts";
+import { LOGIN_KEYCHAIN } from "../desktop/scripts/sign-macos-app.ts";
 import { fakeProgram } from "./fake-program.ts";
 
 test("a release is made in a worktree of its own, into dist/ of the checkout, from the notes there", () => {
@@ -362,12 +363,12 @@ test("the cask must name the published SHA-256 of each file it installs", () => 
   expect(caskMismatches(cask, { "Mirador-macos-arm64.zip": `sha256:${arm}` })).toEqual(["Mirador-linux-x64-Setup.tar.gz", "Mirador-linux-arm64-Setup.tar.gz"]);
 });
 
-test("a notary profile that cannot be read, as while the screen is locked, stops the release with a word to unlock the Mac", () => {
+test("a notary profile missing from the login keychain stops the release with how to store it there", () => {
   const scratch = mkdtempSync(join(tmpdir(), "release-notary-"));
   const recorded = join(scratch, "arguments.txt");
   const refusingXcrun = fakeProgram(scratch, "xcrun", `require("node:fs").writeFileSync(${JSON.stringify(recorded)}, process.argv.slice(2).join(" ")); process.exit(1);`);
-  expect(() => requireReadableNotaryProfile(refusingXcrun)).toThrow("unlock the Mac");
-  expect(readFileSync(recorded, "utf8")).toBe("notarytool history --keychain-profile mirador-notary");
+  expect(() => requireReadableNotaryProfile(refusingXcrun)).toThrow(`xcrun notarytool store-credentials mirador-notary --keychain ${LOGIN_KEYCHAIN}`);
+  expect(readFileSync(recorded, "utf8")).toBe(`notarytool history --keychain-profile mirador-notary --keychain ${LOGIN_KEYCHAIN}`);
 });
 
 test("a notary profile that can be read lets the release go on", () => {

@@ -18,7 +18,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { CASK_ASSETS } from "../desktop/scripts/homebrew-cask.ts";
-import { NOTARY_PROFILE } from "../desktop/scripts/sign-macos-app.ts";
+import { LOGIN_KEYCHAIN, NOTARY_CREDENTIALS, NOTARY_PROFILE } from "../desktop/scripts/sign-macos-app.ts";
 import { buildMachineBun, definedBunVersion, requireDefinedBun } from "../desktop/scripts/ship-build-bun.ts";
 import type { Platform } from "../desktop/scripts/update-files.ts";
 import { isNewerVersion, RELEASES_REPOSITORY } from "../shared/newer-version.ts";
@@ -423,12 +423,14 @@ export async function windows(release: Release, shell: Shell) {
   if (version !== release.version) throw new Error(`The Windows build says ${version}, not ${release.version}`);
 }
 
-/** The profile sits in the data-protection keychain, which nothing can read while the Mac's screen is locked. */
+/** Checked before the build, as notarizing comes last, hours into a release. */
 export function requireReadableNotaryProfile(xcrun = "xcrun") {
-  const { exitCode, stderr } = Bun.spawnSync([xcrun, "notarytool", "history", "--keychain-profile", NOTARY_PROFILE], { stdout: "pipe", stderr: "pipe" });
+  const { exitCode, stderr } = Bun.spawnSync([xcrun, "notarytool", "history", ...NOTARY_CREDENTIALS], { stdout: "pipe", stderr: "pipe" });
   if (exitCode === 0) return;
   const reason = stderr.toString().split("\n")[0].trim();
-  throw new Error(`The notary profile ${NOTARY_PROFILE} cannot be read, as happens while the Mac's screen is locked: unlock the Mac and go on.${reason ? ` ${reason}` : ""}`);
+  throw new Error(
+    `The notary profile ${NOTARY_PROFILE} cannot be read from the login keychain. Store it there once with \`xcrun notarytool store-credentials ${NOTARY_PROFILE} --keychain ${LOGIN_KEYCHAIN}\`.${reason ? ` ${reason}` : ""}`,
+  );
 }
 
 async function macos(release: Release, shell: Shell) {

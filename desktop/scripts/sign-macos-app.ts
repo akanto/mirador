@@ -2,17 +2,20 @@
 /**
  * Signs a built Mirador.app with the Developer ID in the login keychain, has Apple's notary service check it and
  * staples the ticket, so a downloaded copy opens without clearing its quarantine. Usage: sign-macos-app.ts <Mirador.app>
- * The keychain holds the notary key under the profile name `xcrun notarytool store-credentials` was given.
+ * The login keychain holds the notary key under the profile name `xcrun notarytool store-credentials` was given.
  * When Apple takes longer than the wait, `sign-macos-app.ts --staple <Mirador.app>` finishes once it accepted the app.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { closeSync, mkdtempSync, openSync, readdirSync, readSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
 /** codesign takes any identity whose name contains this, and refuses when two do. */
 const SIGNING_IDENTITY = "Developer ID Application";
 export const NOTARY_PROFILE = "mirador-notary";
+/** Unlike the data-protection keychain notarytool uses by default, it stays readable while the Mac's screen is locked. */
+export const LOGIN_KEYCHAIN = join(homedir(), "Library", "Keychains", "login.keychain-db");
+export const NOTARY_CREDENTIALS = ["--keychain-profile", NOTARY_PROFILE, "--keychain", LOGIN_KEYCHAIN];
 const ENTITLEMENTS = join(import.meta.dir, "..", "entitlements.plist");
 /** Apple can take more than an hour, most of all with a new team's first submissions. */
 const NOTARY_TIMEOUT = "2h";
@@ -77,7 +80,7 @@ function checkBunRuns(app: string) {
 }
 
 const notarytool = (args: string[]) =>
-  execFileSync("xcrun", ["notarytool", ...args, "--keychain-profile", NOTARY_PROFILE], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+  execFileSync("xcrun", ["notarytool", ...args, ...NOTARY_CREDENTIALS], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
 
 function submit(app: string) {
   const folder = mkdtempSync(join(tmpdir(), "mirador-notarize-"));
@@ -92,7 +95,7 @@ function submit(app: string) {
 
 /** Ends when Apple decided, or when the wait ran out; the submission's status says which. */
 function waitForApple(id: string) {
-  spawnSync("xcrun", ["notarytool", "wait", id, "--keychain-profile", NOTARY_PROFILE, "--timeout", NOTARY_TIMEOUT], { stdio: "inherit" });
+  spawnSync("xcrun", ["notarytool", "wait", id, ...NOTARY_CREDENTIALS, "--timeout", NOTARY_TIMEOUT], { stdio: "inherit" });
 }
 
 function notarize(app: string) {
@@ -101,11 +104,11 @@ function notarize(app: string) {
   const { status } = JSON.parse(notarytool(["info", id, "--output-format", "json"])) as { status: string };
   if (status === "In Progress") {
     throw new Error(
-      `Apple is still checking submission ${id}. Once \`xcrun notarytool info ${id} --keychain-profile ${NOTARY_PROFILE}\` says Accepted, run make macos-staple.`,
+      `Apple is still checking submission ${id}. Once \`xcrun notarytool info ${id} ${NOTARY_CREDENTIALS.join(" ")}\` says Accepted, run make macos-staple.`,
     );
   }
   if (status !== "Accepted") {
-    run("xcrun", ["notarytool", "log", id, "--keychain-profile", NOTARY_PROFILE]);
+    run("xcrun", ["notarytool", "log", id, ...NOTARY_CREDENTIALS]);
     throw new Error(`Apple's notary service answered ${status} for submission ${id}.`);
   }
 }
