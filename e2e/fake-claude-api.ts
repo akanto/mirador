@@ -29,6 +29,7 @@ const BACKGROUND = "BACKGROUND ";
 const RUN = "RUN ";
 const SUBAGENT = "SUBAGENT ";
 const ADVISOR_AFTER_BASH = "ADVISOR AFTER BASH ";
+const WRITE = "WRITE ";
 
 const offersBash = ({ tools }: MessagesRequest) => (tools ?? []).some(({ name }) => name === "Bash");
 
@@ -49,6 +50,7 @@ const answersEndedBackgroundCommand = ({ messages }: MessagesRequest) => {
  * notification of it waits until `answerEndedCommands`, then runs `true` in Bash, so the turn Claude Code started on its
  * own asks for one more reply after it. A message starting with `ADVISOR AFTER BASH ` runs the rest in Bash and calls
  * the advisor after it in the same reply, which the real API never runs, so that call gets no result. A message
+ * starting with `WRITE ` writes the file whose absolute path follows with the words after it. A message
  * starting with `SUBAGENT ` has a subagent do the rest, on the model Claude Code picks for it. While `contextTokens` is
  * set, answers report it as their input usage, so Claude Code compacts its context on the next request; a message equal
  * to `refuseAfterCompaction` is answered with a Bash call so the turn keeps going after the compaction, and every
@@ -167,11 +169,17 @@ export class FakeClaudeApi {
     if (bashOffered && typed.startsWith(RUN)) return [this.bashCall(typed.slice(RUN.length), false)];
     if (bashOffered && typed.startsWith(BACKGROUND)) return [this.bashCall(typed.slice(BACKGROUND.length), true)];
     if (bashOffered && typed.startsWith(ADVISOR_AFTER_BASH)) return [this.bashCall(typed.slice(ADVISOR_AFTER_BASH.length), false), this.advisorCall()];
+    if (bashOffered && typed.startsWith(WRITE)) return [this.writeCall(typed.slice(WRITE.length))];
     return [{ type: "text", text: `Answered: ${typed}` }];
   }
 
   private bashCall(command: string, inBackground: boolean): Answer {
     return { type: "tool_use", id: `toolu_fake_${this.replies + 1}`, name: "Bash", input: { command, description: `Run ${command}`, run_in_background: inBackground } };
+  }
+
+  private writeCall(pathAndText: string): Answer {
+    const [path, ...words] = pathAndText.split(" ");
+    return { type: "tool_use", id: `toolu_fake_${this.replies + 1}`, name: "Write", input: { file_path: path, content: `${words.join(" ")}\n` } };
   }
 
   private agentCall(prompt: string): Answer {

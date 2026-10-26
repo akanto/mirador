@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { AppStorageItems } from "../shared/apps.ts";
-import type { AvailableCommand } from "@agentclientprotocol/sdk";
+import type { AvailableCommand, ToolCallUpdate } from "@agentclientprotocol/sdk";
 import type {
   AskMode,
   CanvasItem,
@@ -998,6 +998,17 @@ export class Store {
       )
       .all(conversationId, fromSeq)
       .map((row: any) => ({ seq: row.seq, at: row.at, event: JSON.parse(row.event) }));
+  }
+
+  /** The reports of one tool call, the first and every update to it, in order. */
+  toolCallReports(conversationId: string, toolCallId: string): ToolCallUpdate[] {
+    return this.db
+      .query(
+        `SELECT event FROM events WHERE conversation_id = ? AND json_extract(event, '$.type') = 'acp'
+         AND json_extract(event, '$.update.sessionUpdate') IN ('tool_call', 'tool_call_update') AND json_extract(event, '$.update.toolCallId') = ? ORDER BY seq`,
+      )
+      .all(conversationId, toolCallId)
+      .map((row: any) => JSON.parse(row.event).update);
   }
 
   /**

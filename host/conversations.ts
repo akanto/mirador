@@ -58,6 +58,7 @@ import { returnedSteerSeqs } from "../shared/steered-messages.ts";
 import { miradorCommandEnvironment } from "./acp/environment.ts";
 import { CANVAS_SERVER_NAME, harnessSpec, isAuthRequiredError, launchEnvironment, loginCommand, profileEnvironment, sessionMeta } from "./acp/harnesses.ts";
 import { HarnessProcess, type ConfigValue } from "./acp/harness.ts";
+import { withReportedToolCall } from "./acp/reported-tool-call.ts";
 import { agentLogsDirectory, type HostConfig } from "./config.ts";
 import type { Hub } from "./hub.ts";
 import type { DroppedFiles } from "./dropped-files.ts";
@@ -1695,7 +1696,8 @@ export class ConversationService {
       return { outcome: { outcome: "selected", optionId: allowOptionId } };
     }
     const runtime = this.runtime(conversationId);
-    const editsRead = this.editsAskedFor(conversationId, request.toolCall);
+    const toolCall = withReportedToolCall(request.toolCall, this.store.toolCallReports(conversationId, request.toolCall.toolCallId));
+    const editsRead = this.editsAskedFor(conversationId, toolCall);
     const inArrivalOrder = (runtime.permissionArriving ?? Promise.resolve()).then(() => editsRead);
     runtime.permissionArriving = inArrivalOrder;
     const edits = await inArrivalOrder;
@@ -1707,11 +1709,11 @@ export class ConversationService {
     this.append(conversationId, {
       type: "permission",
       permissionId,
-      toolCall: request.toolCall,
+      toolCall,
       options: request.options,
       ...(edits && { edits }),
     });
-    this.notifications.notify(conversationId, { kind: "permission", tool: request.toolCall.title });
+    this.notifications.notify(conversationId, { kind: "permission", tool: toolCall.title });
     return new Promise((resolve) => {
       const settle: PermissionResolver = (optionId) => {
         if (!runtime.pendingPermissions.delete(permissionId)) return;
