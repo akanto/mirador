@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, eventsInOrderOn, lastAgentMessage, openSettings, pasteImage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -9,7 +11,13 @@ const keptOutLines = () => host.log.split("\n").filter((line) => line.includes("
 
 test.describe.configure({ mode: "serial" });
 
-test.beforeAll(() => host.start());
+// Claude Code refuses a foreground `sleep 30` in the command itself, so the long tool call runs a script that waits.
+const SLOW_SCRIPT = "wait-then-print.sh";
+
+test.beforeAll(async () => {
+  await host.start();
+  writeFileSync(join(host.projectDir, SLOW_SCRIPT), "sleep 30\necho slept\n");
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
@@ -23,8 +31,8 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
-  await sendMessage(page, "Run the shell command `sleep 30; echo slept` with your Bash tool, then reply with what it printed.");
-  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
+  await sendMessage(page, `Run the shell command \`sh ${SLOW_SCRIPT}\` with your Bash tool right away, without reading the script first, then reply with what it printed.`);
+  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").filter({ has: page.locator(".shell-command", { hasText: SLOW_SCRIPT }) })).toBeVisible({ timeout: 120_000 });
 
   const composer = page.locator(".composer textarea");
   await composer.fill("Also, which colour fills ");
@@ -66,7 +74,7 @@ test("a message sent with Enter while Claude Code runs a tool joins the turn onc
   await expect(page.locator(".message.agent", { hasText: /red/i })).not.toHaveCount(0);
   await expect(lastAgentMessage(page)).toContainText("LATER");
   await expect(userMessages.filter({ hasText: QUEUED }).locator(".message-images img")).toHaveJSProperty("naturalWidth", 64);
-  expect(eventsInOrder).toEqual([expect.stringContaining("sleep 30"), QUEUED, "turn-end", AFTER_TURN, "turn-end"]);
+  expect(eventsInOrder).toEqual([expect.stringContaining(SLOW_SCRIPT), QUEUED, "turn-end", AFTER_TURN, "turn-end"]);
   expect(keptOutLines(), "the message waiting for the turn to end is no stall to log").toHaveLength(1);
 });
 
