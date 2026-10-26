@@ -28,7 +28,8 @@ import * as acp from "@agentclientprotocol/sdk";
  * ends the turn as done, as Claude Code does when its answer was already complete as the stop came.
  * `REPLY TOOL REPLY ` answers as Claude Code does around a tool: a reply under one id, a tool call, and a reply under
  * the next id. `REPLY STEERED ` begins a reply, waits for a message steered into the turn and
- * answers it under the next id.
+ * answers it under the next id. `TOOL UNTIL ` and a path runs a command until that file exists, then ends the turn
+ * at once, before a steer the command's end set off can reach the agent.
  * `ASYNC TASK` starts a background task the way claude-agent-acp does with its `asyncTasks` capability: a spawn update,
  * a progress beat shortly after, and output lines appended to a file under `FAKE_ACP_TASK_OUTPUT_DIR`; with ` DONE`
  * after it the task completes on its own too, and with ` STUCK` a Stop fails on it with an error. The
@@ -315,6 +316,15 @@ async function runTools(client: acp.AgentContext, sessionId: string, tools: { ti
   return { stopReason: "end_turn" as const };
 }
 
+async function toolUntil(client: acp.AgentContext, sessionId: string, path: string) {
+  const notify = (update: acp.SessionUpdate) => client.notify(acp.methods.client.session.update, { sessionId, update });
+  const toolCallId = `tool-${++nextToolCall}`;
+  await notify({ sessionUpdate: "tool_call", toolCallId, title: `wait for ${path}`, kind: "execute", status: "in_progress" });
+  while (!existsSync(path)) await Bun.sleep(50);
+  await notify({ sessionUpdate: "tool_call_update", toolCallId, status: "completed" });
+  return { stopReason: "end_turn" as const };
+}
+
 const steerWaiters = new Map<string, (text: string) => void>();
 let nextSteeredTurn = 0;
 
@@ -417,6 +427,7 @@ acp
     if (startsWith(ctx.params.prompt, "STOPPED BEFORE ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED BEFORE ".length), false);
     if (startsWith(ctx.params.prompt, "STOPPED QUIET ")) return stoppedQuietly(ctx.params.sessionId);
     if (startsWith(ctx.params.prompt, "REPLY TOOL REPLY ")) return replyAroundATool(ctx.client, ctx.params.sessionId, text.slice("REPLY TOOL REPLY ".length));
+    if (startsWith(ctx.params.prompt, "TOOL UNTIL ")) return toolUntil(ctx.client, ctx.params.sessionId, text.slice("TOOL UNTIL ".length));
     if (startsWith(ctx.params.prompt, "REPLY STEERED ")) return replyThenSteered(ctx.client, ctx.params.sessionId, text.slice("REPLY STEERED ".length));
     if (startsWith(ctx.params.prompt, "CRASH LEAVING A CHILD")) spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: ["ignore", "inherit", "ignore"] });
     if (startsWith(ctx.params.prompt, "CRASH")) setTimeout(() => process.exit(1), 100);

@@ -217,6 +217,8 @@ interface Runtime {
   queuedMessages: QueuedMessage[];
   /** The latest steer still on its way to the agent; the next one goes after it, so messages join the turn in the order they were sent. */
   steering?: Promise<void>;
+  /** Messages taken out of the queue to join the turn, until the agent says whether it took them: a turn ending meanwhile must not send what was queued behind them. */
+  steerInFlight?: boolean;
   openToolCalls: OpenToolCalls;
   usageLimit?: { wait: UsageLimitWait; timer?: ReturnType<typeof setTimeout> };
   /** How often in a row the agent continued by itself after a usage limit's reset, without a turn that succeeded. */
@@ -1617,9 +1619,11 @@ export class ConversationService {
     const { turn } = runtime;
     const steeredAt = Date.now();
     this.showHeldBackReply(conversationId);
+    runtime.steerInFlight = true;
     const outcome = await this.promptContent(conversationId, withNotes(notes, text), imageIds)
       .then((prompt) => harness.steer(sessionId, prompt))
       .catch((error: unknown) => `failed: ${errorMessage(error)}`);
+    runtime.steerInFlight = false;
     if (outcome !== "injected") {
       console.error(`${new Date().toISOString()} could not steer queued messages into the turn of conversation ${conversationId}, so they go back to the queue: ${outcome}`);
       this.setQueue(conversationId, runtime, [...messages, ...runtime.queuedMessages]);
@@ -1786,6 +1790,7 @@ export class ConversationService {
     if (runtime.holdingQueue) return "the queue waits for a profile switch or for a stopped turn to go on";
     if (this.stopping) return "the host is stopping";
     if (runtime.usageLimit !== undefined) return "the queue waits for the usage limit to reset";
+    if (runtime.steerInFlight) return "messages are on their way into the turn";
     return null;
   }
 
