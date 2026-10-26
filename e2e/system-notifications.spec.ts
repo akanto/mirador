@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline";
 import { expect, test } from "@playwright/test";
 import type { SystemNotification } from "../shared/system-notifications.ts";
+import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
 import {
   addWorkspace,
   allowNotifications,
@@ -15,12 +16,18 @@ import {
 } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost();
+const api = new FakeClaudeApi();
+const host = new TestHost({ environment: () => fakeClaudeEnvironment(api) });
 
-test.beforeAll(() => host.start());
+test.beforeAll(async () => {
+  api.limited = false;
+  await api.start();
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
+  api.stop();
 });
 
 /** The agent waits on its question until it is answered, so the call is left running. */
@@ -76,10 +83,13 @@ test("questions elsewhere notify, in the browser or else through the desktop app
   });
 
   await test.step("once the desktop app is gone, a turn that finishes while you look elsewhere notifies the browser", async () => {
-    await sendMessage(page, "Reply with just the word OK.");
+    api.hold();
+    await sendMessage(page, "OK");
     await page.locator(".workspace li:not(.selected) .conversation-title").click();
     await expect(page).toHaveURL(new RegExp(`#/c/${second}$`));
+    await expect.poll(() => api.held).toContain("OK");
+    api.answerHeld();
     const bodiesAbout = async (conversationId: string) => (await notificationsShown(page)).filter(({ tag }) => tag === conversationId).map(({ body }) => body);
-    await expect.poll(() => bodiesAbout(first), { timeout: 180_000 }).toContain("project · Finished, waiting for you");
+    await expect.poll(() => bodiesAbout(first)).toContain("project · Finished, waiting for you");
   });
 });

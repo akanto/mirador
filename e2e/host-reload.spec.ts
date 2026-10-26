@@ -3,16 +3,23 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { isHostCommandLine } from "../desktop/src/core/host-command.ts";
+import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost({ copiesSource: true });
+const api = new FakeClaudeApi();
+const host = new TestHost({ copiesSource: true, environment: () => fakeClaudeEnvironment(api) });
 
 test.describe.configure({ mode: "serial" });
-test.beforeAll(() => host.start());
+test.beforeAll(async () => {
+  api.limited = false;
+  await api.start();
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
+  api.stop();
 });
 
 function editSource(file: string, from: string, to: string) {
@@ -58,8 +65,8 @@ test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, 
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
-  await sendMessage(page, "Run the shell command `sleep 20; echo slept-through-restart` with your Bash tool, then reply with what it printed.");
-  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
+  await sendMessage(page, "RUN echo waiting; sleep 60");
+  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible();
   const composer = page.locator(".composer textarea");
   await composer.fill("queued before the restart");
   await composer.press("Enter");
@@ -78,17 +85,17 @@ test("Cmd+R serves the UI as it is now; Cmd+Shift+R restarts the host in place, 
 
   await test.step("the agent continues where it left off, then the queued message goes out", async () => {
     await expect(page.locator(".message.user", { hasText: "Continue where you left off." })).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator(".message.user").last()).toHaveText("queued before the restart", { timeout: 180_000 });
+    await expect(page.locator(".message.user").last()).toHaveText("queued before the restart");
     await waitForTurnToEnd(page);
-    // Whether the agent runs the interrupted command again is its own choice, so only how the turns ended is checked.
+    await expect(page.locator(".message.agent").last()).toHaveText("Answered: queued before the restart");
+    expect(api.answered).toEqual(expect.arrayContaining(["Continue where you left off.", "queued before the restart"]));
     await expect(page.locator(".timeline .notice-line", { hasText: "Turn ended:" })).toHaveText(["Turn ended: cancelled"]);
     await expect(page.locator(".timeline .error-line")).toHaveCount(0);
     await expect(page.locator(".timeline")).not.toContainText("Could not resume");
   });
 });
 
-/** Some models carry on with a turn the restart cut short rather than answer the message that came after it. */
-const QUEUED_MESSAGE = "Run no command, and reply with just the word QUEUED.";
+const QUEUED_MESSAGE = "queued before the outside restart";
 
 test("a host stopped from outside, like the tray's Restart, keeps the queued messages and sends them once it is back", async ({ page }) => {
   await signIn(page, host);
@@ -96,8 +103,8 @@ test("a host stopped from outside, like the tray's Restart, keeps the queued mes
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
-  await sendMessage(page, "Run the shell command `sleep 30` with your Bash tool, then reply with the single word SLEPT.");
-  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
+  await sendMessage(page, "RUN echo waiting; sleep 60");
+  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible();
   const composer = page.locator(".composer textarea");
   await composer.fill(QUEUED_MESSAGE);
   await composer.press("Enter");
@@ -107,5 +114,5 @@ test("a host stopped from outside, like the tray's Restart, keeps the queued mes
   await expect(page.locator(".message.user").last()).toHaveText(QUEUED_MESSAGE, { timeout: 60_000 });
   await expect(page.locator(".queue .queued-text")).toHaveCount(0);
   await waitForTurnToEnd(page);
-  await expect(page.locator(".message.agent").last()).toContainText("QUEUED");
+  await expect(page.locator(".message.agent").last()).toHaveText(`Answered: ${QUEUED_MESSAGE}`);
 });

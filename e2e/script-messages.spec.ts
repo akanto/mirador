@@ -1,18 +1,25 @@
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import type { Conversation } from "../shared/model.ts";
+import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { spawnProgram, TestHost } from "./test-host.ts";
 
-const host = new TestHost();
+const api = new FakeClaudeApi();
+const host = new TestHost({ environment: () => fakeClaudeEnvironment(api) });
 const mirador = resolve("bin/mirador");
 /** What a script outside Git Bash runs: Windows runs no script without an extension, so there it is mirador.cmd. */
 const miradorForScripts = process.platform === "win32" ? `${mirador}.cmd` : mirador;
 
-test.beforeAll(() => host.start());
+test.beforeAll(async () => {
+  api.limited = false;
+  await api.start();
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
+  api.stop();
 });
 
 function runMiradorMessage(args: string[]) {
@@ -52,24 +59,21 @@ test("a script the agent starts, or anything with the agent's session, messages 
   await expect(yolo).toBeChecked();
 
   await test.step("a command the agent runs reaches its own conversation, and the agent reads the message", async () => {
-    await sendMessage(
-      page,
-      `Run the shell command \`${mirador} message "The build finished with 3 warnings."\` once with your Bash tool. A message about the build will reach you; don't run the command again, reply with just the number of warnings, as a digit.`,
-    );
-    await expect(messagesFromScripts(page)).toHaveText(["The build finished with 3 warnings."], { timeout: 120_000 });
+    await sendMessage(page, `RUN ${mirador} message "The build finished with 3 warnings."`);
+    await expect(messagesFromScripts(page)).toHaveText(["The build finished with 3 warnings."]);
     await waitForTurnToEnd(page);
-    await expect(lastAgentMessage(page)).toContainText("3");
+    expect(api.answered).toContain("The build finished with 3 warnings.");
   });
 
   const sessionId = sessionByConversation.get(conversationId)!;
   expect(sessionId).toBeTruthy();
 
   await test.step("while the agent is idle, a message for its session starts the next turn", async () => {
-    expect(await runMiradorMessage(["--session", sessionId, "Reply with just the word PONG."])).toEqual({ exitCode: 0, stderr: "" });
-    await expect(messagesFromScripts(page)).toHaveCount(2, { timeout: 30_000 });
-    await expect(messagesFromScripts(page).last()).toHaveText("Reply with just the word PONG.");
+    expect(await runMiradorMessage(["--session", sessionId, "PONG"])).toEqual({ exitCode: 0, stderr: "" });
+    await expect(messagesFromScripts(page)).toHaveCount(2);
+    await expect(messagesFromScripts(page).last()).toHaveText("PONG");
     await waitForTurnToEnd(page);
-    await expect(lastAgentMessage(page)).toContainText("PONG");
+    await expect(lastAgentMessage(page)).toHaveText("Answered: PONG");
   });
 
   await test.step("an unknown session, an empty message or one too long is refused with the reason", async () => {
@@ -81,14 +85,12 @@ test("a script the agent starts, or anything with the agent's session, messages 
     await expect(messagesFromScripts(page)).toHaveCount(2);
   });
 
-  await test.step("a script's turn whose reply stops at a step it announced is nudged on, a couple of times in a row at most", async () => {
+  await test.step("a script's turn whose reply stops at a step it announced is nudged on, until a reply ends otherwise", async () => {
     const nudges = messagesFromScripts(page).filter({ hasText: "your reply ended announcing a next step" });
-    expect(await runMiradorMessage(["--session", sessionId, "Reply with exactly this line, and nothing else: Next I check the logs:"])).toEqual({ exitCode: 0, stderr: "" });
-    await expect(nudges.first()).toBeVisible({ timeout: 120_000 });
-    // A nudge starts its turn as the stopped one ends, so idle can flash between them: settle before counting.
+    expect(await runMiradorMessage(["--session", sessionId, "Next I check the logs:"])).toEqual({ exitCode: 0, stderr: "" });
+    await expect(nudges).toHaveCount(1);
+    await expect(lastAgentMessage(page)).toHaveText(/^Answered: Continue where you left off/);
     await waitForTurnToEnd(page);
-    await page.waitForTimeout(5_000);
-    await waitForTurnToEnd(page);
-    expect(await nudges.count()).toBeLessThanOrEqual(2);
+    await expect(nudges).toHaveCount(1);
   });
 });
