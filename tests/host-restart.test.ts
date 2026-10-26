@@ -307,10 +307,20 @@ describe("openTurnTheAgentWorkedOn", () => {
 /** Long enough for anything else an edit makes the watch tell of to show too, once what was expected has. */
 const SETTLE_MS = 200;
 
-/** Waits for the watch to tell of each of `expected`, which takes longer on a loaded machine, then gives all it told. */
-async function toldOnceExpected(edited: string[], expected: string[], timeoutMs = 5_000) {
+/** GitHub's macOS runners can miss an edit made just after a watch starts, which a user's edit never is, so it is made again until heard. */
+const EDIT_AGAIN_MS = 500;
+
+/** Makes the edit, and again while unheard, until the watch tells of each of `expected`, then gives all it told. */
+async function toldOnceExpected(edited: string[], expected: string[], edit: () => void, timeoutMs = 5_000) {
   const deadline = Date.now() + timeoutMs;
-  while (!expected.every((listener) => edited.includes(listener)) && Date.now() < deadline) await Bun.sleep(20);
+  let editAgainAt = 0;
+  while (!expected.every((listener) => edited.includes(listener)) && Date.now() < deadline) {
+    if (Date.now() >= editAgainAt) {
+      edit();
+      editAgainAt = Date.now() + EDIT_AGAIN_MS;
+    }
+    await Bun.sleep(20);
+  }
   await Bun.sleep(SETTLE_MS);
   return [...new Set(edited)].sort();
 }
@@ -325,8 +335,7 @@ async function staleAfterEditing(file: string, expected: string[]) {
   const watcher = new SourceWatcher(sourceDir, { uiEdited: () => edited.push("ui"), hostEdited: () => edited.push("host") });
   watcher.start();
   try {
-    writeFileSync(join(sourceDir, file), "export {};\n");
-    return await toldOnceExpected(edited, expected);
+    return await toldOnceExpected(edited, expected, () => writeFileSync(join(sourceDir, file), "export {};\n"));
   } finally {
     watcher.stop();
   }
@@ -360,11 +369,9 @@ describe("SourceWatcher", () => {
     try {
       renameSync(join(sourceDir, "web"), join(sourceDir, "web.old"));
       mkdirSync(join(sourceDir, "web"));
-      writeFileSync(join(sourceDir, "web", "App.tsx"), "export {};\n");
-      expect(await toldOnceExpected(edited, ["ui"])).toEqual(["ui"]);
+      expect(await toldOnceExpected(edited, ["ui"], () => writeFileSync(join(sourceDir, "web", "App.tsx"), "export {};\n"))).toEqual(["ui"]);
       edited.length = 0;
-      writeFileSync(join(sourceDir, "web", "Other.tsx"), "export {};\n");
-      expect(await toldOnceExpected(edited, ["ui"])).toEqual(["ui"]);
+      expect(await toldOnceExpected(edited, ["ui"], () => writeFileSync(join(sourceDir, "web", "Other.tsx"), "export {};\n"))).toEqual(["ui"]);
     } finally {
       watcher.stop();
     }

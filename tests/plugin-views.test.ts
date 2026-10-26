@@ -14,9 +14,19 @@ const changes = () => {
   return { heard: () => heard, onChange: () => void heard++ };
 };
 
-async function heardWithin(heard: () => number, ms: number) {
-  const until = Date.now() + ms;
-  while (heard() === 0 && Date.now() < until) await Bun.sleep(50);
+/** GitHub's macOS runners can miss an edit made just after a watch starts, which a build never is, so it is made again until heard. */
+const EDIT_AGAIN_MS = 500;
+
+async function heardAfterEditing(heard: () => number, edit: () => void, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  let editAgainAt = 0;
+  while (heard() === 0 && Date.now() < deadline) {
+    if (Date.now() >= editAgainAt) {
+      edit();
+      editAgainAt = Date.now() + EDIT_AGAIN_MS;
+    }
+    await Bun.sleep(50);
+  }
 }
 
 test("a view built again is served under its new hash and the pages hear of it; a write that leaves it the same is not news", async () => {
@@ -31,8 +41,7 @@ test("a view built again is served under its new hash and the pages hear of it; 
     writeFileSync(join(plugins, "counter", "view.js"), readFileSync(join(plugins, "counter", "view.js")));
     await Bun.sleep(400);
     expect(heard()).toBe(0);
-    appendFileSync(join(plugins, "counter", "view.js"), "\n// built again\n");
-    await heardWithin(heard, 3000);
+    await heardAfterEditing(heard, () => appendFileSync(join(plugins, "counter", "view.js"), "\n// built again\n"));
     expect(heard()).toBe(1);
     expect(appViewPath(counter!)).not.toBe(pathBefore);
     expect(new TextDecoder().decode(counter!.view.code)).toEndWith("// built again\n");
@@ -63,8 +72,7 @@ test("a plugin linked into the plugins folder, as one being worked on is, is fol
   const { heard, onChange } = changes();
   const stop = watchViews(loaded, onChange);
   try {
-    appendFileSync(join(checkout, "view.js"), "\n// built again\n");
-    await heardWithin(heard, 3000);
+    await heardAfterEditing(heard, () => appendFileSync(join(checkout, "view.js"), "\n// built again\n"));
     expect(heard()).toBe(1);
     expect(appViewPath(loaded.apps[0]!)).not.toBe(pathBefore);
   } finally {
@@ -80,8 +88,7 @@ test("a canvas plugin's view built again is served under its new hash too", asyn
   const { heard, onChange } = changes();
   const stop = watchViews(loaded, onChange);
   try {
-    appendFileSync(join(plugins, "board", "canvas.js"), "\n// built again\n");
-    await heardWithin(heard, 3000);
+    await heardAfterEditing(heard, () => appendFileSync(join(plugins, "board", "canvas.js"), "\n// built again\n"));
     expect(heard()).toBe(1);
     expect(canvasViewPath(loaded.canvases[0]!)).not.toBe(pathBefore);
   } finally {
