@@ -85,7 +85,7 @@ export function homebrewCask(version: string, sha256: CaskChecksums) {
 
   name "Mirador"
   desc "Canvas for coding agents to draw, ask and review beside the conversation"
-  homepage "https://github.com/${RELEASES_REPOSITORY}"
+  homepage "https://mirador.sodre90.com/"
 
   livecheck do
     url :url

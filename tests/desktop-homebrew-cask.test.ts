@@ -20,3 +20,7 @@ test("the cask downloads the release's assets, with Homebrew filling in the vers
 test("neither uninstall nor zap touches the conversations in ~/.mirador", () => {
   expect(cask).not.toContain("~/.mirador");
 });
+
+test("the cask's homepage is Mirador's website", () => {
+  expect(cask).toContain('homepage "https://mirador.sodre90.com/"');
+});
