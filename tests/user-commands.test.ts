@@ -62,6 +62,9 @@ const printWorkingDirectory = `"${process.execPath}" -e "console.log(process.cwd
 
 const programWritingItsPid = `"${process.execPath}" -e "require('fs').writeFileSync('pid', String(process.pid)); setTimeout(() => {}, 30000)"`;
 
+/** A stopped program ends at once, but a loaded CI runner can take seconds to get it there. */
+const PROGRAM_ENDS_WITHIN_MS = 10_000;
+
 const isRunning = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -93,7 +96,7 @@ test("the runner records a command's output by stream, its exit code, and can st
     await running;
     expect(Date.now() - stoppedAt).toBeLessThan(2_000);
     expect(userCommandsIn(stored(events))[0]).toMatchObject({ ended: true, exitCode: null, chunks: [] });
-    const deadline = Date.now() + 2_000;
+    const deadline = Date.now() + PROGRAM_ENDS_WITHIN_MS;
     while (isRunning(program) && Date.now() < deadline) await Bun.sleep(20);
     expect(isRunning(program)).toBe(false);
   } finally {

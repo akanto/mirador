@@ -32,8 +32,8 @@ const isRunning = (pid: number) => {
 
 /** taskkill ends the program under a claude.cmd a moment after cmd.exe; a program sent SIGKILL is gone at once. */
 const KILL_GRACE_MS = process.platform === "win32" ? 3_000 : 0;
-/** SIGKILL reaches a whole process group asynchronously. */
-const GROUP_KILL_GRACE_MS = 3_000;
+/** SIGKILL reaches a whole process group asynchronously, and on a loaded CI runner takes seconds to. */
+const GROUP_KILL_GRACE_MS = 10_000;
 
 async function runsOnAfter(pid: number, graceMs: number) {
   const deadline = Date.now() + graceMs;

@@ -220,10 +220,10 @@ describe("owned host", () => {
     const hostDirectory = mkdtempSync(join(tmpdir(), "mirador-app-"));
     mkdirSync(join(hostDirectory, "host"));
     writeFileSync(join(hostDirectory, "host", "main.ts"), "await Bun.sleep(60_000);\n");
+    const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: {}, logPath: join(hostDirectory, "host.log") }, () => {}, "win32");
     try {
-      const pid = spawnOwnedHost({ bun: process.execPath, hostDirectory }, { shell: "/bin/sh", overrides: {}, logPath: join(hostDirectory, "host.log") }, () => {}, "win32");
       expect(parentOf(pid)).toBe(process.pid);
-      const commandLine = systemProcesses.commandLine(pid);
+      const commandLine = await commandLineOnceReadable(pid);
       expect(commandLine).toEndWith(" host/main.ts");
       expect(isHostCommandLine(commandLine!)).toBe(true);
       systemProcesses.terminate(pid);
@@ -231,7 +231,15 @@ describe("owned host", () => {
       while (systemProcesses.commandLine(pid) !== null && Date.now() < deadline) await Bun.sleep(50);
       expect(systemProcesses.commandLine(pid)).toBeNull();
     } finally {
-      rmSync(hostDirectory, { recursive: true, force: true });
+      if (systemProcesses.commandLine(pid) !== null) systemProcesses.terminate(pid);
+      rmSync(hostDirectory, { recursive: true, force: true, maxRetries: 10 });
     }
   });
 });
+
+/** Windows reads a process's command line from the process itself, which a process started a moment ago may not have set up yet. */
+async function commandLineOnceReadable(pid: number) {
+  const deadline = Date.now() + 5_000;
+  while (systemProcesses.commandLine(pid) === null && Date.now() < deadline) await Bun.sleep(20);
+  return systemProcesses.commandLine(pid);
+}
