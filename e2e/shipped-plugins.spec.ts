@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, openSettings, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const host = new TestHost({ copiesSource: true, fakePrograms: true });
 const profileName = "shipped-plugins";
@@ -55,11 +56,11 @@ test("Settings lists the plugins Mirador comes with first, without update or rem
   const settings = await openSettings(page, "Plugins");
   const plugins = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
   await expect(plugins).toHaveCount(4);
-  await expect(plugins.nth(0)).toHaveText("ChecklistchecklistComes with Mirador");
-  await expect(plugins.nth(1)).toHaveText("Code reviewreviewComes with MiradorOpen reviewsFull screen, over the chatIn the canvas pane, beside the chat");
-  await expect(plugins.nth(2)).toHaveText("TallytallyComes with Mirador");
+  await expect(plugins.nth(0)).toHaveText(`ChecklistchecklistComes with Mirador ${MIRADOR_VERSION}`);
+  await expect(plugins.nth(1)).toHaveText(`Code reviewreviewComes with Mirador ${MIRADOR_VERSION}Open reviewsFull screen, over the chatIn the canvas pane, beside the chat`);
+  await expect(plugins.nth(2)).toHaveText(`TallytallyComes with Mirador ${MIRADOR_VERSION}`);
   await expect(plugins.nth(2).getByRole("button")).toHaveCount(0);
-  await expect(plugins.nth(3)).toHaveText("CountertallyA folder put there by handDidn't load: Mirador comes with a plugin named tallyRemove");
+  await expect(plugins.nth(3)).toHaveText("Countertally1.0.0A folder put there by handDidn't load: Mirador comes with a plugin named tallyRemove");
 });
 
 test("where this browser opened reviews before plugins had settings moves to the code review plugin's setting, once", async ({ page }) => {

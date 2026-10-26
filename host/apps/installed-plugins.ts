@@ -1,9 +1,10 @@
 import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
-import type { PluginManifest, PluginCommit, PluginInfo, PluginSource, PluginUpdate } from "../../shared/apps.ts";
+import { isPluginVersion, type PluginManifest, type PluginNews, type PluginInfo, type PluginSource, type PluginUpdate } from "../../shared/apps.ts";
+import { isNewerVersion } from "../../shared/newer-version.ts";
 import { environmentWithoutPrompts } from "../git-environment.ts";
-import { AppProblem, messageOf, pluginFiles, pluginFolders, readManifest, type PluginLoadProblem } from "./plugins.ts";
+import { AppProblem, messageOf, pluginFiles, pluginFolders, readManifest, refuseUnversioned, type PluginLoadProblem } from "./plugins.ts";
 
 const GIT_GIVES_UP_AFTER_MS = 5 * 60_000;
 const BUILD_GIVES_UP_AFTER_MS = 10 * 60_000;
@@ -53,6 +54,28 @@ function buildEnvironment() {
   return { ...environment, [pathKey]: [dirname(process.execPath), environment[pathKey]].filter(Boolean).join(delimiter) };
 }
 
+const RELEASE_TAG_PREFIX = "v";
+const releaseTag = (version: string) => `${RELEASE_TAG_PREFIX}${version}`;
+const releaseOfTag = (tag: string | null) => {
+  const version = tag?.startsWith(RELEASE_TAG_PREFIX) ? tag.slice(RELEASE_TAG_PREFIX.length) : null;
+  return isPluginVersion(version) ? version : null;
+};
+
+const newestOf = (tags: string[]) =>
+  tags.flatMap((tag) => releaseOfTag(tag) ?? []).reduce<string | null>((newest, release) => (newest === null || isNewerVersion(release, newest) ? release : newest), null);
+
+/** The newest release whose tag a detached checkout sits at; a checkout of a branch follows the branch. */
+async function releaseCheckedOut(folder: string) {
+  return newestOf(((await gitOutput(folder, ["tag", "--points-at", "HEAD", "--list", `${RELEASE_TAG_PREFIX}[0-9]*`])) ?? "").split("\n"));
+}
+
+/** The newest release the repo has tagged; null when it tags none. */
+async function newestRelease(url: string): Promise<string | null> {
+  const listed = await run(["git", "ls-remote", "--tags", "--refs", "--", url, `${RELEASE_TAG_PREFIX}*`], process.cwd(), environmentWithoutPrompts(), GIT_GIVES_UP_AFTER_MS);
+  if (!listed.ok) throw new AppProblem(`git ls-remote failed:\n${listed.output}`);
+  return newestOf(listed.output.split("\n").map((line) => line.split("refs/tags/")[1] ?? ""));
+}
+
 async function sourceOf(folder: string): Promise<PluginSource> {
   if (lstatSync(folder).isSymbolicLink()) return { kind: "linked", target: resolve(dirname(folder), readlinkSync(folder)) };
   if (!existsSync(join(folder, ".git"))) return { kind: "folder" };
@@ -63,15 +86,18 @@ async function sourceOf(folder: string): Promise<PluginSource> {
     gitOutput(folder, ["log", "-1", "--format=%s"]),
   ]);
   if (!commit) return { kind: "folder" };
-  return { kind: "git", remote: remote && withoutCredentials(remote), branch, commit, subject: subject ?? "" };
+  const release = branch ? null : await releaseCheckedOut(folder);
+  return { kind: "git", remote: remote && withoutCredentials(remote), branch, release, commit, subject: subject ?? "" };
 }
 
-async function manifestNames(folder: string): Promise<{ name: string | null; title: string | null }> {
+/** What plugin.json says, as far as it can be read, for a plugin that may not load. */
+async function manifestFields(folder: string): Promise<{ name: string | null; title: string | null; version: string | null }> {
+  const textOrNull = (value: unknown) => (typeof value === "string" ? value : null);
   try {
-    const { name, title } = await Bun.file(join(folder, "plugin.json")).json();
-    return { name: typeof name === "string" ? name : null, title: typeof title === "string" ? title : null };
+    const { name, title, version } = await Bun.file(join(folder, "plugin.json")).json();
+    return { name: textOrNull(name), title: textOrNull(title), version: textOrNull(version) };
   } catch {
-    return { name: null, title: null };
+    return { name: null, title: null, version: null };
   }
 }
 
@@ -112,7 +138,7 @@ export class InstalledPlugins {
   private async info(folder: string, source: PluginSource): Promise<PluginInfo> {
     return {
       folder: basename(folder),
-      ...(await manifestNames(folder)),
+      ...(await manifestFields(folder)),
       source,
       problem: this.loadProblems.find((problem) => problem.folder === folder)?.message ?? null,
       waitsForRestart: source.kind !== "shipped" && this.changed.has(basename(folder)),
@@ -123,10 +149,16 @@ export class InstalledPlugins {
     return this.shippedFolder ? pluginFolders(this.shippedFolder) : [];
   }
 
-  /** Clones the repo, builds it and puts it in the plugins folder, in a folder named as the plugin. */
+  /**
+   * Clones the repo at the branch or tag given, or else at its newest release, or its default branch when it tags no
+   * release; builds it and puts it in the plugins folder, in a folder named as the plugin.
+   */
   add(url: string, branch: string | null): Promise<void> {
     return this.oneAtATime(async () => {
-      const { staged, manifest } = await this.clonedAndBuilt(expandedHome(url.trim()), branch?.trim() || null);
+      const repo = expandedHome(url.trim());
+      const given = branch?.trim() || null;
+      const release = given || !repo ? null : await newestRelease(repo);
+      const { staged, manifest } = await this.clonedAndBuilt(repo, given ?? (release && releaseTag(release)));
       try {
         await this.refuseTakenName(manifest.name);
         mkdirSync(this.folder, { recursive: true });
@@ -138,46 +170,60 @@ export class InstalledPlugins {
     });
   }
 
-  /** Fetches the plugin's branch: the commits it doesn't have yet, newest first. */
-  newCommits(folderName: string): Promise<PluginCommit[]> {
+  /** What updating would bring: the newer release, or the commits on the plugin's branch it doesn't have yet. */
+  news(folderName: string): Promise<PluginNews> {
     return this.oneAtATime(async () => {
       const folder = this.clonedPlugin(folderName);
-      const { branch } = await this.remoteBranch(folder);
-      const fetched = await run(["git", "fetch", "--quiet", "--no-tags", "origin", branch], folder, environmentWithoutPrompts(), GIT_GIVES_UP_AFTER_MS);
-      if (!fetched.ok) throw new AppProblem(`git fetch failed:\n${fetched.output}`);
-      const log = (await gitOutput(folder, ["log", "--format=%h%x09%s", "HEAD..FETCH_HEAD"])) ?? "";
-      return log
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          const [commit = "", ...subject] = line.split("\t");
-          return { commit, subject: subject.join("\t") };
-        });
+      const followed = await this.followed(folder);
+      if (followed.branch === null) {
+        const newest = await newestRelease(followed.remote);
+        if (!newest || !isNewerVersion(newest, followed.release)) return { release: null, commits: [] };
+        return { release: newest, commits: await this.commitsOf(folder, `refs/tags/${releaseTag(newest)}`) };
+      }
+      return { release: null, commits: await this.commitsOf(folder, followed.branch) };
     });
   }
 
-  /** The plugins from git repos with commits they don't have; one whose fetch fails, offline for one, keeps what was last found for it. */
+  /** The commits the ref brings that the checkout doesn't have, newest first. */
+  private async commitsOf(folder: string, ref: string) {
+    const fetched = await run(["git", "fetch", "--quiet", "--no-tags", "origin", ref], folder, environmentWithoutPrompts(), GIT_GIVES_UP_AFTER_MS);
+    if (!fetched.ok) throw new AppProblem(`git fetch failed:\n${fetched.output}`);
+    const log = (await gitOutput(folder, ["log", "--format=%h%x09%s", "HEAD..FETCH_HEAD"])) ?? "";
+    return log
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [commit = "", ...subject] = line.split("\t");
+        return { commit, subject: subject.join("\t") };
+      });
+  }
+
+  /** The plugins from git repos with news; one whose fetch fails, offline for one, keeps what was last found for it. */
   async updatesFound(last: PluginUpdate[] | null): Promise<PluginUpdate[]> {
     const fromGit = (await this.list()).flatMap(({ folder, title, source }) => (source.kind === "git" ? [{ folder, title, from: source.commit }] : []));
     const found = await Promise.all(
       fromGit.map(async ({ folder, title, from }) => {
         try {
-          return { folder, title: title ?? folder, from, commits: await this.newCommits(folder) };
+          return { folder, title: title ?? folder, from, ...(await this.news(folder)) };
         } catch {
           return last?.find((update) => update.folder === folder) ?? null;
         }
       }),
     );
-    return found.filter((update): update is PluginUpdate => update !== null && update.commits.length > 0);
+    return found.filter((update): update is PluginUpdate => update !== null && (update.release !== null || update.commits.length > 0));
   }
 
-  /** Clones and builds the branch as it is now, and only then swaps it in, so a failed update leaves the plugin as it was. */
+  /**
+   * Clones and builds the newest release, or the branch as it is now, and only then swaps it in, so a failed update
+   * leaves the plugin as it was.
+   */
   update(folderName: string): Promise<void> {
     return this.oneAtATime(async () => {
       const folder = this.clonedPlugin(folderName);
-      const { remote, branch } = await this.remoteBranch(folder);
+      const followed = await this.followed(folder);
+      const newest = followed.release && ((await newestRelease(followed.remote)) ?? followed.release);
       const installed = await readManifest(folder).catch(() => null);
-      const { staged, manifest } = await this.clonedAndBuilt(remote, branch);
+      const { staged, manifest } = await this.clonedAndBuilt(followed.remote, newest ? releaseTag(newest) : followed.branch);
       try {
         if (installed && manifest.name !== installed.name) {
           throw new AppProblem(`The repo's plugin is named ${manifest.name} now, not ${installed.name}; remove ${folderName} and add the repo again.`);
@@ -195,7 +241,7 @@ export class InstalledPlugins {
   remove(folderName: string): Promise<string | null> {
     return this.oneAtATime(async () => {
       const folder = this.installedFolder(folderName);
-      const { name } = await manifestNames(folder);
+      const { name } = await manifestFields(folder);
       if (isLink(folder)) {
         unlinkSync(folder);
       } else {
@@ -213,21 +259,26 @@ export class InstalledPlugins {
     return done;
   }
 
-  private async clonedAndBuilt(url: string, branch: string | null): Promise<{ staged: string; manifest: PluginManifest }> {
+  /** Clones the repo at the branch or tag, or its default branch, and builds it in the staging folder. */
+  private async clonedAndBuilt(url: string, branchOrTag: string | null): Promise<{ staged: string; manifest: PluginManifest }> {
     if (!url) throw new AppProblem("Give the git URL or the path of the plugin's repo.");
     mkdirSync(this.staging, { recursive: true });
     const staged = join(this.staging, crypto.randomUUID());
     try {
       const cloned = await run(
-        ["git", "clone", "--quiet", WITH_FILES_AS_COMMITTED, ...(branch ? [`--branch=${branch}`] : []), "--", url, staged],
+        ["git", "clone", "--quiet", WITH_FILES_AS_COMMITTED, ...(branchOrTag ? [`--branch=${branchOrTag}`] : []), "--", url, staged],
         this.staging,
         environmentWithoutPrompts(),
         GIT_GIVES_UP_AFTER_MS,
       );
       if (!cloned.ok) throw new AppProblem(`git clone failed:\n${cloned.output}`);
-      const manifest = await readManifest(staged).catch((error) => {
-        throw new AppProblem(`The repo isn't a plugin Mirador can load: ${messageOf(error)}.`);
-      });
+      const manifest = await readManifest(staged)
+        .then((read) => (refuseUnversioned(read), read))
+        .catch((error) => {
+          throw new AppProblem(`The repo isn't a plugin Mirador can load: ${messageOf(error)}.`);
+        });
+      const tagged = releaseOfTag(branchOrTag);
+      if (tagged && manifest.version !== tagged) throw new AppProblem(`Its tag ${branchOrTag} is release ${tagged}, but its plugin.json says version ${manifest.version}.`);
       if (manifest.build) {
         const built = await run(shellCommand(manifest.build), staged, buildEnvironment(), BUILD_GIVES_UP_AFTER_MS);
         if (!built.ok) throw new AppProblem(`Its build command, ${manifest.build}, failed:\n${lastPart(built.output)}`);
@@ -246,11 +297,11 @@ export class InstalledPlugins {
 
   private async refuseTakenName(name: string) {
     for (const folder of this.shippedFolders()) {
-      if ((await manifestNames(folder)).name === name) throw new AppProblem(`Mirador comes with a plugin named ${name}; give yours another name.`);
+      if ((await manifestFields(folder)).name === name) throw new AppProblem(`Mirador comes with a plugin named ${name}; give yours another name.`);
     }
     if (existsSync(join(this.folder, name))) throw new AppProblem(`The plugins folder already has a ${name} folder; update or remove that plugin first.`);
     for (const folder of pluginFolders(this.folder)) {
-      if ((await manifestNames(folder)).name === name) throw new AppProblem(`The plugin in ${basename(folder)} is already named ${name}; remove it first.`);
+      if ((await manifestFields(folder)).name === name) throw new AppProblem(`The plugin in ${basename(folder)} is already named ${name}; remove it first.`);
     }
   }
 
@@ -266,9 +317,12 @@ export class InstalledPlugins {
     return folder;
   }
 
-  private async remoteBranch(folder: string) {
+  /** Where updates come from: the remote's releases, for a clone at a release's tag, or else its branch. */
+  private async followed(folder: string): Promise<{ remote: string; branch: string; release: null } | { remote: string; branch: null; release: string }> {
     const [remote, branch] = await Promise.all([gitOutput(folder, ["remote", "get-url", "origin"]), gitOutput(folder, ["symbolic-ref", "--quiet", "--short", "HEAD"])]);
-    if (!remote || !branch) throw new AppProblem(`${basename(folder)} has no remote branch to update from.`);
-    return { remote, branch };
+    if (remote && branch) return { remote, branch, release: null };
+    const release = remote && (await releaseCheckedOut(folder));
+    if (!remote || !release) throw new AppProblem(`${basename(folder)} has no remote branch or release to update from.`);
+    return { remote, branch: null, release };
   }
 }

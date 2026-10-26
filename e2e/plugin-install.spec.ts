@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, openSettings, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const host = new TestHost({ fakePrograms: true, environment: { MIRADOR_PLUGIN_UPDATE_CHECK: "on" } });
 const profileName = "plugin-install";
@@ -21,10 +22,18 @@ function counterRepo() {
   rmSync(join(repo(), "view.js"));
   writeFileSync(join(repo(), ".gitignore"), "/view.js\n");
   writeFileSync(join(repo(), "build.ts"), 'await Bun.write("view.js", Bun.file("src/view.js"));\n');
-  writeFileSync(join(repo(), "plugin.json"), JSON.stringify({ name: "counter", title: "Counter", api: 1, app: { host: "host.ts", view: "view.js" }, build: "bun build.ts" }));
+  writeFileSync(join(repo(), "plugin.json"), JSON.stringify({ name: "counter", title: "Counter", version: "1.0.0", api: 1, app: { host: "host.ts", view: "view.js" }, build: "bun build.ts" }));
   git(repo(), "init", "--quiet", "-b", "main");
   git(repo(), "add", ".");
   git(repo(), "commit", "--quiet", "-m", "Count by one");
+}
+
+/** Commits plugin.json at the version and tags the commit v<version>. */
+function release(version: string) {
+  const manifest = join(repo(), "plugin.json");
+  writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version }));
+  git(repo(), "commit", "--quiet", "-am", `Release ${version}`);
+  git(repo(), "tag", `v${version}`);
 }
 
 test.beforeAll(async () => {
@@ -73,7 +82,7 @@ async function startConversationWithoutModel(page: Page) {
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
 
-test("a plugin added from a git repo is built, works after a restart, updates to new commits, and goes when removed", async ({ page }) => {
+test("a plugin added from a git repo is built, works after a restart, updates to new commits, goes when removed, and follows releases", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, profileName, "", "", "opencode");
@@ -83,12 +92,12 @@ test("a plugin added from a git repo is built, works after a restart, updates to
   await sendMessage(page, "Start");
   await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 60_000 });
 
-  await test.step("a repo git can't clone is refused with git's own words", async () => {
+  await test.step("a repo git can't reach is refused with git's own words", async () => {
     const settings = await openSettings(page, "Plugins");
     await settings.getByLabel("Git URL or path").fill(join(host.root, "no-such-repo"));
     await settings.getByRole("button", { name: "Add" }).click();
-    await expect(settings.getByRole("form", { name: "Add a plugin" }).locator(".plugin-output")).toContainText("git clone failed:");
-    await expect(pluginRows(settings)).toHaveText(["ChecklistchecklistComes with Mirador", "Code reviewreviewComes with MiradorOpen reviewsFull screen, over the chatIn the canvas pane, beside the chat"]);
+    await expect(settings.getByRole("form", { name: "Add a plugin" }).locator(".plugin-output")).toContainText("git ls-remote failed:");
+    await expect(pluginRows(settings)).toHaveText([`ChecklistchecklistComes with Mirador ${MIRADOR_VERSION}`, `Code reviewreviewComes with Mirador ${MIRADOR_VERSION}Open reviewsFull screen, over the chatIn the canvas pane, beside the chat`]);
   });
 
   await test.step("adding clones and builds the repo, and the app works from the next start", async () => {
@@ -96,7 +105,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await settings.getByLabel("Git URL or path").fill(repo());
     await settings.getByLabel("Branch").fill("main");
     await settings.getByRole("button", { name: "Add" }).click();
-    await expect(counterRow(settings)).toContainText(`Countercounterused from the next start${repo()} · main · ${git(repo(), "rev-parse", "--short", "HEAD")} Count by one`);
+    await expect(counterRow(settings)).toContainText(`Countercounter1.0.0used from the next start${repo()} · main · ${git(repo(), "rev-parse", "--short", "HEAD")} Count by one`);
     await expect(settings.getByText("Mirador uses the changed plugins from its next start.")).toBeVisible();
     await expect(settings.getByLabel("Git URL or path")).toHaveValue("");
     await restartFromSettings(page);
@@ -147,9 +156,26 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     const settings = await openSettings(page, "Plugins");
     await settings.getByRole("button", { name: "Remove Counter" }).click();
     await settings.getByRole("button", { name: "Confirm: Remove Counter" }).click();
-    await expect(pluginRows(settings)).toHaveText(["ChecklistchecklistComes with Mirador", "Code reviewreviewComes with MiradorOpen reviewsFull screen, over the chatIn the canvas pane, beside the chat"]);
+    await expect(pluginRows(settings)).toHaveText([`ChecklistchecklistComes with Mirador ${MIRADOR_VERSION}`, `Code reviewreviewComes with Mirador ${MIRADOR_VERSION}Open reviewsFull screen, over the chatIn the canvas pane, beside the chat`]);
     await restartFromSettings(page);
     await expect(appToggle(page)).toHaveCount(0);
     expect(await canvasToolNames(conversation)).not.toContain("app_open");
+  });
+
+  await test.step("without a branch, adding installs the newest release, and an update brings the next one", async () => {
+    release("1.1.0");
+    const settings = await openSettings(page, "Plugins");
+    await settings.getByLabel("Git URL or path").fill(repo());
+    await settings.getByRole("button", { name: "Add" }).click();
+    await expect(counterRow(settings)).toContainText(`Countercounter1.1.0used from the next start${repo()} · releases · ${git(repo(), "rev-parse", "--short", "HEAD")} Release 1.1.0`);
+    await settings.getByRole("button", { name: "Check for updates" }).click();
+    await expect(settings.getByText("Up to date.")).toBeVisible();
+
+    release("1.2.0");
+    await settings.getByRole("button", { name: "Check again" }).click();
+    await expect(counterRow(settings).locator(".plugin-release")).toHaveText("1.1.0 → 1.2.0");
+    await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Release 1.2.0`);
+    await settings.getByRole("button", { name: "Update", exact: true }).click();
+    await expect(counterRow(settings)).toContainText(`Countercounter1.2.0used from the next start${repo()} · releases · ${git(repo(), "rev-parse", "--short", "HEAD")} Release 1.2.0`);
   });
 });

@@ -434,8 +434,8 @@ export type ServerMessage =
   | { type: "plugins.changed"; requestId: string; problem: string | null }
   /** The plugin's reply to an item's action, or why there is none. */
   | { type: "canvas.item-acted"; requestId: string; reply: unknown; problem: string | null }
-  /** The commits on the plugin's branch that it doesn't have yet, newest first. */
-  | { type: "plugins.commits-found"; requestId: string; commits: PluginCommit[]; problem: string | null }
+  /** What updating the plugin would bring: a newer release and its commits, or the commits on its branch it lacks, newest first. */
+  | { type: "plugins.commits-found"; requestId: string; release: string | null; commits: PluginCommit[]; problem: string | null }
   | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
   /** The addresses that answered as this Mirador, and whether this machine has Tailscale to put its ports on the tailnet. */
   | { type: "address.found"; requestId: string; addresses: FoundAddress[]; tailscale: "absent" | "present"; problem: string | null }

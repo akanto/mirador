@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const host: TestHost = new TestHost({ fakePrograms: true, environment: () => ({ MIRADOR_PLUGIN_CATALOG: `file://${catalogFile()}` }) });
 const catalogFile = () => join(host.root, "official-plugins.json");
@@ -77,7 +78,7 @@ test("the agent recommends an official plugin, and Mirador installs it only once
 
   await test.step("Settings lists each plugin once: an official one in the plugins list with its tag and description, and those to install apart", async () => {
     await openSettings(page, "Plugins");
-    await expect(pluginRows(page).filter({ hasText: "Checklist" })).toContainText("checklistOfficialSteps, ticked.Comes with Mirador");
+    await expect(pluginRows(page).filter({ hasText: "Checklist" })).toContainText(`checklistOfficialSteps, ticked.Comes with Mirador ${MIRADOR_VERSION}`);
     await expect(pluginRows(page).filter({ hasText: "Counter" }).locator(".plugin-official")).toHaveText("Official");
     await expect(pluginRows(page).filter({ hasText: "Counter" }).locator(".plugin-description")).toHaveText("Counts by one.");
     await expect(pluginRows(page).filter({ hasText: "Code review" })).not.toContainText("Official");

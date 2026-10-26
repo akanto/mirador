@@ -1187,12 +1187,12 @@ export function startServer(services: HostServices) {
           if (name) store.forgetOpenApps(name);
         });
       case "plugins.find-commits":
-        return void plugins.newCommits(message.folder).then(
-          (commits) => {
-            reply({ type: "plugins.commits-found", requestId: message.requestId, commits, problem: null });
+        return void plugins.news(message.folder).then(
+          (news) => {
+            reply({ type: "plugins.commits-found", requestId: message.requestId, ...news, problem: null });
             pluginUpdates.recount();
           },
-          (error) => reply({ type: "plugins.commits-found", requestId: message.requestId, commits: [], problem: withoutCredentials(messageOf(error)) }),
+          (error) => reply({ type: "plugins.commits-found", requestId: message.requestId, release: null, commits: [], problem: withoutCredentials(messageOf(error)) }),
         );
       case "devices.invite":
         return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });

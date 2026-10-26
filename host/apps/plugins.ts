@@ -112,7 +112,7 @@ export async function readManifest(folder: string): Promise<PluginManifest> {
   if (!existsSync(file)) throw new Error("there's no plugin.json at the top of its folder");
   const manifest: unknown = await Bun.file(file).json();
   if (!isPluginManifest(manifest)) {
-    throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, an api number, and app.host and app.view, canvas.host and canvas.view, or both; each of its settings, if any, an id of its own (lower case, digits and dashes), a label, choices with a value and a label each, and one of them as its default");
+    throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, a version as x.y.z if any, an api number, and app.host and app.view, canvas.host and canvas.view, or both; each of its settings, if any, an id of its own (lower case, digits and dashes), a label, choices with a value and a label each, and one of them as its default");
   }
   if (!Number.isInteger(manifest.api) || manifest.api < 1 || manifest.api > APP_PLUGIN_API) {
     throw new Error(`plugin.json is for plugin API ${manifest.api}; this Mirador speaks plugin API 1 to ${APP_PLUGIN_API}, so the plugin needs a newer Mirador`);
@@ -127,8 +127,14 @@ export function pluginFiles(folder: string, { app, canvas }: PluginManifest) {
   return { app: app && filesOf(app), canvas: canvas && filesOf(canvas) };
 }
 
+/** Every plugin but those that come with Mirador gives its release; they carry Mirador's. */
+export function refuseUnversioned(manifest: PluginManifest) {
+  if (manifest.version === undefined) throw new Error("plugin.json needs a version, its release as x.y.z, such as 1.0.0");
+}
+
 async function loadPlugin(folder: string, shipped: boolean): Promise<{ app: AppPlugin | null; canvas: CanvasPlugin | null }> {
   const manifest = await readManifest(folder);
+  if (!shipped) refuseUnversioned(manifest);
   const files = pluginFiles(folder, manifest);
   const loaded = { manifest, folder, shipped };
   return {

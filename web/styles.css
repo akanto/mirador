@@ -6661,7 +6661,8 @@ body.reordering * {
   font-weight: 600;
 }
 
-.plugin-name {
+.plugin-name,
+.plugin-version {
   color: var(--muted);
   font-size: calc(12px * var(--font-scale));
 }
@@ -6743,6 +6744,11 @@ body.reordering * {
   align-items: flex-start;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.plugin-release {
+  flex-basis: 100%;
+  font-weight: 600;
 }
 
 .plugin-commits {

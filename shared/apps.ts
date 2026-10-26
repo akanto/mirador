@@ -15,6 +15,11 @@ export const CANVAS_PLUGIN_API = 3;
 export interface PluginManifest {
   name: string;
   title: string;
+  /**
+   * The plugin's release as x.y.z, which its repo tags v<version>; required of every plugin but those that come with
+   * Mirador, which carry Mirador's version.
+   */
+  version?: string;
   api: number;
   app?: {
     /** The module, relative to the plugin's folder, whose exports are the plugin's AppHost. */
@@ -148,11 +153,12 @@ export interface AppDocumentState {
 
 /**
  * Where a plugin's folder came from: Mirador's own plugins folder, a git clone (its remote shown without credentials), a
- * link to a folder elsewhere, or a plain folder.
+ * link to a folder elsewhere, or a plain folder. A clone follows its branch, or, when it was cloned at a release's tag,
+ * the releases.
  */
 export type PluginSource =
   | { kind: "shipped" }
-  | { kind: "git"; remote: string | null; branch: string | null; commit: string; subject: string }
+  | { kind: "git"; remote: string | null; branch: string | null; release: string | null; commit: string; subject: string }
   | { kind: "linked"; target: string }
   | { kind: "folder" };
 
@@ -162,6 +168,7 @@ export interface PluginInfo {
   /** From its plugin.json, while that can be read. */
   name: string | null;
   title: string | null;
+  version: string | null;
   source: PluginSource;
   /** Why it didn't load when Mirador started; null when it did. */
   problem: string | null;
@@ -206,13 +213,18 @@ export interface PluginCommit {
   subject: string;
 }
 
-/** A plugin from a git repo whose branch has commits it doesn't have, as Mirador found by itself, newest first. */
-export interface PluginUpdate {
+/** What updating a plugin would bring: a newer release, for a plugin that follows releases, and its commits, newest first. */
+export interface PluginNews {
+  release: string | null;
+  commits: PluginCommit[];
+}
+
+/** A plugin from a git repo with news, as Mirador found by itself. */
+export interface PluginUpdate extends PluginNews {
   folder: string;
   title: string;
-  /** The plugin's commit when they were found: once it is updated past it, these commits are no longer news. */
+  /** The plugin's commit when it was found: once it is updated past it, this is no longer news. */
   from: string;
-  commits: PluginCommit[];
 }
 
 /** What an app's view keeps in a workspace, as its localStorage: text by key. */
@@ -290,13 +302,17 @@ function isPluginSetting(value: unknown): value is PluginSetting {
   );
 }
 
+/** A release number as plugins give it: x.y.z, nothing after. */
+export const isPluginVersion = (version: unknown): version is string => typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version);
+
 export function isPluginManifest(value: unknown): value is PluginManifest {
   if (typeof value !== "object" || value === null) return false;
-  const { name, title, api, app, canvas, build, settings } = value as Partial<PluginManifest>;
+  const { name, title, version, api, app, canvas, build, settings } = value as Partial<PluginManifest>;
   return (
     typeof name === "string" &&
     /^[a-z0-9][a-z0-9-]*$/.test(name) &&
     typeof title === "string" &&
+    (version === undefined || isPluginVersion(version)) &&
     typeof api === "number" &&
     (app !== undefined || canvas !== undefined) &&
     (app === undefined || isHostAndView(app)) &&

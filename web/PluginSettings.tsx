@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { settingValue, type CatalogPlugin, type PluginCommit, type PluginInfo, type PluginSettings as SettingsOfPlugin, type PluginSource, type PluginUpdate as FoundUpdate } from "../shared/apps.ts";
+import { settingValue, type CatalogPlugin, type PluginInfo, type PluginNews, type PluginSettings as SettingsOfPlugin, type PluginSource, type PluginUpdate as FoundUpdate } from "../shared/apps.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
@@ -17,23 +18,23 @@ async function changePlugins(send: (requestId: string) => ClientMessage): Promis
   }
 }
 
-async function findCommits(folder: string): Promise<{ commits: PluginCommit[]; problem: string | null }> {
+async function findNews(folder: string): Promise<PluginNews & { problem: string | null }> {
   try {
     return await connection.sendAndAwait(
       (requestId) => ({ type: "plugins.find-commits", requestId, folder }),
       (message, requestId) => (message.type === "plugins.commits-found" && message.requestId === requestId ? message : undefined),
     );
   } catch (error) {
-    return { commits: [], problem: error instanceof Error ? error.message : String(error) };
+    return { release: null, commits: [], problem: error instanceof Error ? error.message : String(error) };
   }
 }
 
 function sourceLine(source: PluginSource) {
   switch (source.kind) {
     case "shipped":
-      return "Comes with Mirador";
+      return `Comes with Mirador ${MIRADOR_VERSION}`;
     case "git":
-      return [source.remote ?? "no remote", source.branch ?? "no branch", `${source.commit} ${source.subject}`].join(" · ");
+      return [source.remote ?? "no remote", source.release ? "releases" : (source.branch ?? "no branch"), `${source.commit} ${source.subject}`].join(" · ");
     case "linked":
       return `Linked to ${source.target}`;
     case "folder":
@@ -44,8 +45,8 @@ function sourceLine(source: PluginSource) {
 type Updating =
   | { step: "idle" }
   | { step: "checking" }
-  | { step: "found"; commits: PluginCommit[] }
-  | { step: "updating"; commits: PluginCommit[] }
+  | { step: "found"; news: PluginNews }
+  | { step: "updating" }
   | { step: "failed"; problem: string };
 
 /** How many plugins have new commits, as Mirador found by itself; nothing when none has. */
@@ -58,16 +59,18 @@ export function UpdatesWaiting({ count }: { count: number }) {
   );
 }
 
-function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginCommit[] | undefined }) {
+const isNothingNew = ({ release, commits }: PluginNews) => release === null && commits.length === 0;
+
+function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews | undefined }) {
   const [checked, setUpdating] = useState<Updating>({ step: "idle" });
-  const updating: Updating = checked.step === "idle" && found ? { step: "found", commits: found } : checked;
+  const updating: Updating = checked.step === "idle" && found ? { step: "found", news: found } : checked;
   const check = async () => {
     setUpdating({ step: "checking" });
-    const { commits, problem } = await findCommits(plugin.folder);
-    setUpdating(problem ? { step: "failed", problem } : { step: "found", commits });
+    const { problem, ...news } = await findNews(plugin.folder);
+    setUpdating(problem ? { step: "failed", problem } : { step: "found", news });
   };
-  const update = async (commits: PluginCommit[]) => {
-    setUpdating({ step: "updating", commits });
+  const update = async () => {
+    setUpdating({ step: "updating" });
     const problem = await changePlugins((requestId) => ({ type: "plugins.update", requestId, folder: plugin.folder }));
     if (problem) setUpdating({ step: "failed", problem });
   };
@@ -81,7 +84,7 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginComm
     case "checking":
       return <span className="plugin-status">Checking for updates…</span>;
     case "found":
-      if (updating.commits.length === 0) {
+      if (isNothingNew(updating.news)) {
         return (
           <>
             <span className="plugin-status">Up to date.</span>
@@ -93,14 +96,19 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginComm
       }
       return (
         <>
+          {updating.news.release && (
+            <span className="plugin-release">
+              {plugin.version ?? "?"} → {updating.news.release}
+            </span>
+          )}
           <ul className="plugin-commits" aria-label={`New commits of ${plugin.title ?? plugin.folder}`}>
-            {updating.commits.map(({ commit, subject }) => (
+            {updating.news.commits.map(({ commit, subject }) => (
               <li key={commit}>
                 <code>{commit}</code> {subject}
               </li>
             ))}
           </ul>
-          <button type="button" data-hint={hints.updatePlugin} onClick={() => update(updating.commits)}>
+          <button type="button" data-hint={hints.updatePlugin} onClick={update}>
             Update
           </button>
         </>
@@ -138,7 +146,7 @@ function SettingsOf({ settings }: { settings: SettingsOfPlugin }) {
   );
 }
 
-function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?: CatalogPlugin; found: PluginCommit[] | undefined }) {
+function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?: CatalogPlugin; found: PluginNews | undefined }) {
   const settings = usePluginSettings().find(({ plugin: name }) => name === plugin.name);
   const [problem, setProblem] = useState<string | null>(null);
   const title = plugin.title ?? plugin.folder;
@@ -148,6 +156,7 @@ function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?:
     <li className={plugin.problem ? "failed" : undefined}>
       <span className="plugin-title">{title}</span>
       {plugin.name && <span className="plugin-name">{plugin.name}</span>}
+      {plugin.version && <span className="plugin-version">{plugin.version}</span>}
       {official && (
         <span className="plugin-official" data-hint={hints.officialPlugin}>
           Official
@@ -250,10 +259,10 @@ function usePluginsListed() {
   return listed;
 }
 
-/** The commits Mirador found that the plugin still lacks: none once it was updated past the commit they were found from. */
-function newsFor(plugin: PluginInfo, pluginUpdates: FoundUpdate[]) {
+/** The news Mirador found for the plugin: none once it was updated past the commit it was found from. */
+function newsFor(plugin: PluginInfo, pluginUpdates: FoundUpdate[]): PluginNews | undefined {
   const found = pluginUpdates.find(({ folder }) => folder === plugin.folder);
-  return found && plugin.source.kind === "git" && plugin.source.commit === found.from ? found.commits : undefined;
+  return found && plugin.source.kind === "git" && plugin.source.commit === found.from ? found : undefined;
 }
 
 /** Updates every plugin with new commits, one after the other, and stops at the first that fails. */

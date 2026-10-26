@@ -49,10 +49,10 @@ describe("InstalledPlugins", () => {
     git(join(plugins, "cloned"), "remote", "set-url", "origin", "https://me:s3cret@example.com/me/counter.git");
     const elsewhere = join(root, "elsewhere");
     cpSync(COUNTER, elsewhere, { recursive: true });
-    writeFileSync(join(elsewhere, "plugin.json"), JSON.stringify({ name: "linked-counter", title: "Linked counter", api: 1, app: { host: "host.ts", view: "view.js" } }));
+    writeFileSync(join(elsewhere, "plugin.json"), JSON.stringify({ name: "linked-counter", title: "Linked counter", version: "1.0.0", api: 1, app: { host: "host.ts", view: "view.js" } }));
     symlinkSync(elsewhere, join(plugins, "linked"));
     mkdirSync(join(plugins, "broken"));
-    writeFileSync(join(plugins, "broken", "plugin.json"), JSON.stringify({ name: "broken", title: "Broken", api: 1, app: { host: "host.ts", view: "dist/view.js" } }));
+    writeFileSync(join(plugins, "broken", "plugin.json"), JSON.stringify({ name: "broken", title: "Broken", version: "1.0.0", api: 1, app: { host: "host.ts", view: "dist/view.js" } }));
     mkdirSync(join(plugins, "not-a-plugin"));
 
     const loaded = await loadPlugins(plugins);
@@ -60,16 +60,17 @@ describe("InstalledPlugins", () => {
     const listed = await new InstalledPlugins(plugins, loaded.problems).list();
 
     expect(listed).toEqual([
-      { folder: "broken", name: "broken", title: "Broken", source: { kind: "folder" }, problem: "host.ts doesn't exist; build the plugin first?", waitsForRestart: false },
+      { folder: "broken", name: "broken", title: "Broken", version: "1.0.0", source: { kind: "folder" }, problem: "host.ts doesn't exist; build the plugin first?", waitsForRestart: false },
       {
         folder: "cloned",
         name: "counter",
         title: "Counter",
-        source: { kind: "git", remote: "https://example.com/me/counter.git", branch: "main", commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by one" },
+        version: "1.0.0",
+        source: { kind: "git", remote: "https://example.com/me/counter.git", branch: "main", release: null, commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by one" },
         problem: null,
         waitsForRestart: false,
       },
-      { folder: "linked", name: "linked-counter", title: "Linked counter", source: { kind: "linked", target: elsewhere }, problem: null, waitsForRestart: false },
+      { folder: "linked", name: "linked-counter", title: "Linked counter", version: "1.0.0", source: { kind: "linked", target: elsewhere }, problem: null, waitsForRestart: false },
     ]);
   });
 
@@ -79,14 +80,14 @@ describe("InstalledPlugins", () => {
     cpSync(COUNTER, join(plugins, "tally"), { recursive: true });
     const installed = new InstalledPlugins(plugins, [], SHIPPED);
     expect(await installed.list()).toEqual([
-      { folder: "tally", name: "tally", title: "Tally", source: { kind: "shipped" }, problem: null, waitsForRestart: false },
-      { folder: "tally", name: "counter", title: "Counter", source: { kind: "folder" }, problem: null, waitsForRestart: false },
+      { folder: "tally", name: "tally", title: "Tally", version: null, source: { kind: "shipped" }, problem: null, waitsForRestart: false },
+      { folder: "tally", name: "counter", title: "Counter", version: "1.0.0", source: { kind: "folder" }, problem: null, waitsForRestart: false },
     ]);
     expect(await installed.remove("tally")).toBe("counter");
     await expect(installed.remove("tally")).rejects.toThrow("No plugin is installed in tally.");
-    await expect(installed.newCommits("tally")).rejects.toThrow("No plugin is installed in tally.");
+    await expect(installed.news("tally")).rejects.toThrow("No plugin is installed in tally.");
     await expect(installed.update("tally")).rejects.toThrow("No plugin is installed in tally.");
-    expect(await installed.list()).toEqual([{ folder: "tally", name: "tally", title: "Tally", source: { kind: "shipped" }, problem: null, waitsForRestart: false }]);
+    expect(await installed.list()).toEqual([{ folder: "tally", name: "tally", title: "Tally", version: null, source: { kind: "shipped" }, problem: null, waitsForRestart: false }]);
   });
 });
 
@@ -100,7 +101,7 @@ describe("adding, updating and removing plugins", () => {
     rmSync(join(repo, "view.js"));
     writeFileSync(join(repo, ".gitignore"), "/view.js\n");
     writeFileSync(join(repo, "build.ts"), 'await Bun.write("view.js", Bun.file("src/view.js"));\n');
-    writeFileSync(join(repo, "plugin.json"), JSON.stringify({ name: "counter", title: "Counter", api: 1, app: { host: "host.ts", view: "view.js" }, build: "bun build.ts" }));
+    writeFileSync(join(repo, "plugin.json"), JSON.stringify({ name: "counter", title: "Counter", version: "1.0.0", api: 1, app: { host: "host.ts", view: "view.js" }, build: "bun build.ts" }));
     git(repo, "init", "--quiet", "-b", "main");
     git(repo, "add", ".");
     git(repo, "commit", "--quiet", "-m", "Count by one");
@@ -132,7 +133,8 @@ describe("adding, updating and removing plugins", () => {
         folder: "counter",
         name: "counter",
         title: "Counter",
-        source: { kind: "git", remote: repo, branch: "main", commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by one" },
+        version: "1.0.0",
+        source: { kind: "git", remote: repo, branch: "main", release: null, commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by one" },
         problem: null,
         waitsForRestart: true,
       },
@@ -168,7 +170,7 @@ describe("adding, updating and removing plugins", () => {
     await expect(installed.add(builtCounterRepo("taken-repo"), null)).rejects.toThrow("The plugin in my-counter is already named counter; remove it first.");
 
     const unreachable = installed.add("https://me:s3cret@127.0.0.1:9/counter.git", null);
-    await expect(unreachable).rejects.toThrow("git clone failed:");
+    await expect(unreachable).rejects.toThrow("git ls-remote failed:");
     await expect(unreachable).rejects.not.toThrow("s3cret");
     expect(leftInStaging(plugins)).toEqual([]);
   });
@@ -189,10 +191,10 @@ describe("adding, updating and removing plugins", () => {
     const plugins = pluginsIn("update");
     await new InstalledPlugins(plugins, []).add(repo, null);
     const installed = new InstalledPlugins(plugins, []);
-    expect(await installed.newCommits("counter")).toEqual([]);
+    expect(await installed.news("counter")).toEqual({ release: null, commits: [] });
 
     commit(repo, "src/view.js", "document.body.textContent = 'Counting by two';\n", "Count by two");
-    const [newest] = await installed.newCommits("counter");
+    const [newest] = (await installed.news("counter")).commits;
     expect(newest).toEqual({ commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by two" });
     await installed.update("counter");
     expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe("document.body.textContent = 'Counting by two';\n");
@@ -214,11 +216,63 @@ describe("adding, updating and removing plugins", () => {
     commit(repo, "src/view.js", "document.body.textContent = 'Counting by two';\n", "Count by two");
     const installedAt = git(join(plugins, "counter"), "rev-parse", "--short", "HEAD");
     const found = await installed.updatesFound(null);
-    expect(found).toEqual([{ folder: "counter", title: "Counter", from: installedAt, commits: [{ commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by two" }] }]);
+    expect(found).toEqual([{ folder: "counter", title: "Counter", from: installedAt, release: null, commits: [{ commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by two" }] }]);
 
     rmSync(repo, { recursive: true, force: true });
     expect(await installed.updatesFound(found)).toEqual(found);
     expect(await installed.updatesFound(null)).toEqual([]);
+  });
+
+  /** Commits plugin.json at the version and tags the commit as `tag`, its release tag by default. */
+  function release(repo: string, version: string, tag = `v${version}`) {
+    const manifest = join(repo, "plugin.json");
+    writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version }));
+    git(repo, "commit", "--quiet", "-am", `Release ${version}`);
+    git(repo, "tag", tag);
+  }
+
+  test("without a branch, installs the newest release and follows the releases, not the branch", async () => {
+    const repo = builtCounterRepo("release-repo");
+    git(repo, "tag", "v1.0.0");
+    release(repo, "1.9.0");
+    release(repo, "1.10.0");
+    git(repo, "tag", "v2.0.0-rc1");
+    const plugins = pluginsIn("release");
+    const installed = new InstalledPlugins(plugins, []);
+    await installed.add(repo, null);
+
+    const [listed] = await installed.list();
+    expect(listed).toMatchObject({ version: "1.10.0", source: { kind: "git", branch: null, release: "1.10.0", subject: "Release 1.10.0" } });
+    expect(await installed.news("counter")).toEqual({ release: null, commits: [] });
+
+    commit(repo, "src/view.js", "document.body.textContent = 'Counting by two';\n", "Count by two");
+    release(repo, "1.11.0");
+    const news = { release: "1.11.0", commits: [{ commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Release 1.11.0" }, { commit: git(repo, "rev-parse", "--short", "HEAD~1"), subject: "Count by two" }] };
+    expect(await installed.news("counter")).toEqual(news);
+    expect(await installed.updatesFound(null)).toEqual([{ folder: "counter", title: "Counter", from: listed!.source.kind === "git" ? listed!.source.commit : "", ...news }]);
+
+    await installed.update("counter");
+    expect((await installed.list())[0]).toMatchObject({ version: "1.11.0", source: { release: "1.11.0" }, waitsForRestart: true });
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe("document.body.textContent = 'Counting by two';\n");
+  });
+
+  test("refuses a release whose plugin.json gives another version, and a plugin without a version, which doesn't load either", async () => {
+    const repo = builtCounterRepo("mistagged-repo");
+    release(repo, "1.2.0", "v1.3.0");
+    const plugins = pluginsIn("mistagged");
+    const installed = new InstalledPlugins(plugins, []);
+    await expect(installed.add(repo, null)).rejects.toThrow("Its tag v1.3.0 is release 1.3.0, but its plugin.json says version 1.2.0.");
+
+    const manifest = join(repo, "plugin.json");
+    const { version: _, ...unversioned } = JSON.parse(readFileSync(manifest, "utf8"));
+    writeFileSync(manifest, JSON.stringify(unversioned));
+    git(repo, "commit", "--quiet", "-am", "Forget the version");
+    await expect(installed.add(repo, "main")).rejects.toThrow("The repo isn't a plugin Mirador can load: plugin.json needs a version, its release as x.y.z, such as 1.0.0.");
+    expect(leftInStaging(plugins)).toEqual([]);
+
+    cpSync(COUNTER, join(plugins, "copied"), { recursive: true });
+    writeFileSync(join(plugins, "copied", "plugin.json"), JSON.stringify(unversioned));
+    expect((await loadPlugins(plugins)).problems).toEqual([{ folder: join(plugins, "copied"), message: "plugin.json needs a version, its release as x.y.z, such as 1.0.0" }]);
   });
 
   test("a plugin's files install as committed where the user's git checks text out with CRLF, as Git for Windows does", async () => {
@@ -242,7 +296,7 @@ describe("adding, updating and removing plugins", () => {
     const plugins = pluginsIn("no-updates");
     cpSync(COUNTER, join(plugins, "copied"), { recursive: true });
     const installed = new InstalledPlugins(plugins, []);
-    await expect(installed.newCommits("copied")).rejects.toThrow("copied wasn't installed from a git repo, so there's nothing to update it from.");
+    await expect(installed.news("copied")).rejects.toThrow("copied wasn't installed from a git repo, so there's nothing to update it from.");
     await expect(installed.update("elsewhere")).rejects.toThrow("No plugin is installed in elsewhere.");
   });
 
@@ -250,7 +304,7 @@ describe("adding, updating and removing plugins", () => {
     const plugins = pluginsIn("remove");
     const linkedFolder = join(root, "remove-linked-target");
     cpSync(COUNTER, linkedFolder, { recursive: true });
-    writeFileSync(join(linkedFolder, "plugin.json"), JSON.stringify({ name: "linked-counter", title: "Linked counter", api: 1, app: { host: "host.ts", view: "view.js" } }));
+    writeFileSync(join(linkedFolder, "plugin.json"), JSON.stringify({ name: "linked-counter", title: "Linked counter", version: "1.0.0", api: 1, app: { host: "host.ts", view: "view.js" } }));
     symlinkSync(linkedFolder, join(plugins, "linked"));
     const installed = new InstalledPlugins(plugins, []);
     await installed.add(builtCounterRepo("remove-repo"), null);

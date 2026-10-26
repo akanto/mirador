@@ -70,23 +70,25 @@ describe("loadPlugins", () => {
   test("reports a plugin that fails to load and still loads the others", async () => {
     const folder = pluginFolder({
       "broken-json/plugin.json": "{",
-      "old-api/plugin.json": JSON.stringify({ name: "old-api", title: "Old", api: 99, app: { host: "host.ts", view: "view.js" } }),
-      "taskless/plugin.json": JSON.stringify({ name: "taskless", title: "Taskless", api: 2, app: { host: "host.ts", view: "view.js" } }),
+      "old-api/plugin.json": JSON.stringify({ name: "old-api", title: "Old", version: "1.0.0", api: 99, app: { host: "host.ts", view: "view.js" } }),
+      "taskless/plugin.json": JSON.stringify({ name: "taskless", title: "Taskless", version: "1.0.0", api: 2, app: { host: "host.ts", view: "view.js" } }),
       "taskless/host.ts": `export default { parse() {}, serialize() {}, apply() {}, describe() {}, create() {}, tasks: { render: { title: "Render" }, ok: { title: "Ok", run: async () => "" } } };`,
       "taskless/view.js": "",
-      "no-exports/plugin.json": JSON.stringify({ name: "no-exports", title: "None", api: 1, app: { host: "host.ts", view: "view.js" } }),
+      "no-exports/plugin.json": JSON.stringify({ name: "no-exports", title: "None", version: "1.0.0", api: 1, app: { host: "host.ts", view: "view.js" } }),
       "no-exports/host.ts": "export const parse = () => 1;",
       "no-exports/view.js": "",
-      "unbuilt/plugin.json": JSON.stringify({ name: "unbuilt", title: "Unbuilt", api: 1, app: { host: "host.ts", view: "dist/view.js" } }),
+      "unbuilt/plugin.json": JSON.stringify({ name: "unbuilt", title: "Unbuilt", version: "1.0.0", api: 1, app: { host: "host.ts", view: "dist/view.js" } }),
       "unbuilt/host.ts": "export default {};",
-      "escapes/plugin.json": JSON.stringify({ name: "escapes", title: "Escapes", api: 1, app: { host: "../outside.ts", view: "view.js" } }),
+      "escapes/plugin.json": JSON.stringify({ name: "escapes", title: "Escapes", version: "1.0.0", api: 1, app: { host: "../outside.ts", view: "view.js" } }),
+      "short-version/plugin.json": JSON.stringify({ name: "short-version", title: "Short", version: "1.0", api: 2, app: { host: "host.ts", view: "view.js" } }),
       "just-a-folder/readme.md": "not a plugin",
     });
     cpSync(join(FIXTURE_APPS, "counter"), join(folder, "counter"), { recursive: true });
     const { apps: plugins, problems } = await loadPlugins(folder);
     expect(plugins.map(({ manifest }) => manifest.name)).toEqual(["counter"]);
     const problemOf = (name: string) => problems.find((problem) => problem.folder.endsWith(name))?.message;
-    expect(problems).toHaveLength(6);
+    expect(problems).toHaveLength(7);
+    expect(problemOf("short-version")).toContain("a version as x.y.z if any");
     expect(problemOf("old-api")).toContain("plugin API 99; this Mirador speaks plugin API 1 to 4, so the plugin needs a newer Mirador");
     expect(problemOf("taskless")).toContain("the host module's tasks render need a title and a run function");
     expect(problemOf("no-exports")).toContain("serialize, apply, describe");
@@ -133,7 +135,7 @@ describe("loadPlugins", () => {
 
   test("reports a plugin Mirador comes with whose view doesn't bundle", async () => {
     const shipped = pluginFolder({
-      "unbundled/plugin.json": JSON.stringify({ name: "unbundled", title: "Unbundled", api: 2, app: { host: "host.ts", view: "view.ts" } }),
+      "unbundled/plugin.json": JSON.stringify({ name: "unbundled", title: "Unbundled", version: "1.0.0", api: 2, app: { host: "host.ts", view: "view.ts" } }),
       "unbundled/host.ts": "export default { parse() {}, serialize() {}, apply() {}, describe() {} };",
       "unbundled/view.ts": 'import "./missing.ts";',
     });
@@ -431,7 +433,7 @@ describe("AppDocuments tasks", () => {
 
   test("progress a task reports after it ended, as a render's last output line, leaves it ended", async () => {
     const plugins = pluginFolder({
-      "late/plugin.json": JSON.stringify({ name: "late", title: "Late", api: 2, app: { host: "host.ts", view: "view.js" } }),
+      "late/plugin.json": JSON.stringify({ name: "late", title: "Late", version: "1.0.0", api: 2, app: { host: "host.ts", view: "view.js" } }),
       "late/view.js": "",
       "late/host.ts": `export default {
         parse: () => ({}), serialize: () => "{}", apply() { throw new Error("no"); }, describe: () => "", create: () => ({}),
@@ -459,7 +461,7 @@ describe("AppDocuments tasks", () => {
 
   test("a task's files stay in the document's folder: it may name one that doesn't exist yet, but not one outside", async () => {
     const plugins = pluginFolder({
-      "paths/plugin.json": JSON.stringify({ name: "paths", title: "Paths", api: 2, app: { host: "host.ts", view: "view.js" } }),
+      "paths/plugin.json": JSON.stringify({ name: "paths", title: "Paths", version: "1.0.0", api: 2, app: { host: "host.ts", view: "view.js" } }),
       "paths/view.js": "",
       "paths/host.ts": `export default {
         parse: () => ({}), serialize: () => "{}", apply() { throw new Error("no"); }, describe: () => "", create: () => ({}),

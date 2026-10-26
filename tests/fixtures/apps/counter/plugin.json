@@ -1,6 +1,7 @@
 {
   "name": "counter",
   "title": "Counter",
+  "version": "1.0.0",
   "api": 2,
   "app": { "host": "host.ts", "view": "view.js" }
 }

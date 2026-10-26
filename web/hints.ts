@@ -80,12 +80,13 @@ export const hints = {
   addPlugin:
     "Clones the repo into Mirador's plugins folder and runs the build command its plugin.json names. Mirador loads the plugin from its next start.",
   checkForUpdates: "Looks for a newer Mirador now, rather than at the next look by itself, which comes every 6 hours.",
-  checkPluginUpdates: "Fetches the plugin's branch and lists the commits it doesn't have yet. Nothing changes until you update.",
+  checkPluginUpdates:
+    "Looks for a newer release of the plugin, or for a plugin that follows a branch, the branch's new commits. Nothing changes until you update.",
   pluginUpdatesWaiting:
-    "Plugins from git repos with new commits. Mirador looks when it starts and every 6 hours, and installs nothing by itself: update them in Settings › Plugins.",
-  updateAllPlugins: "Updates every plugin with new commits, one after the other. Mirador uses them from its next start.",
+    "Plugins from git repos with a newer release or new commits. Mirador looks when it starts and every 6 hours, and installs nothing by itself: update them in Settings › Plugins.",
+  updateAllPlugins: "Updates every plugin with a newer release or new commits, one after the other. Mirador uses them from its next start.",
   updatePlugin:
-    "Clones the branch as it is now and builds it, and only then replaces the plugin, so a failed update leaves it as it was. Mirador uses the new one from its next start.",
+    "Clones the newest release, or the branch as it is now, and builds it, and only then replaces the plugin, so a failed update leaves it as it was. Mirador uses the new one from its next start.",
   removePluginArmed: "Click again to remove this plugin. Mirador stops loading it from its next start.",
   unlinkPluginArmed: "Click again to remove the link. The folder it points to stays as it is.",
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { openSettings, signIn } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const host = new TestHost();
 const counterRepo = () => join(host.root, "counter-repo");
@@ -20,7 +21,7 @@ function installPlugins() {
   const plugins = join(host.dataDir, "plugins");
   mkdirSync(join(plugins, "unbuilt"), { recursive: true });
   git(plugins, "clone", "--quiet", counterRepo(), "counter");
-  writeFileSync(join(plugins, "unbuilt", "plugin.json"), JSON.stringify({ name: "unbuilt", title: "Unbuilt", api: 1, app: { host: "host.ts", view: "dist/view.js" } }));
+  writeFileSync(join(plugins, "unbuilt", "plugin.json"), JSON.stringify({ name: "unbuilt", title: "Unbuilt", version: "1.0.0", api: 1, app: { host: "host.ts", view: "dist/view.js" } }));
 }
 
 test.beforeAll(async () => {
@@ -37,9 +38,9 @@ test("Settings lists the installed plugins, where each came from, and why one di
   const settings = await openSettings(page, "Plugins");
   const plugins = settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
   await expect(plugins).toHaveCount(4);
-  await expect(plugins.nth(0)).toHaveText("ChecklistchecklistComes with Mirador");
-  await expect(plugins.nth(1)).toHaveText("Code reviewreviewComes with MiradorOpen reviewsFull screen, over the chatIn the canvas pane, beside the chat");
-  await expect(plugins.nth(2)).toHaveText(`Countercounter${counterRepo()} · main · ${git(counterRepo(), "rev-parse", "--short", "HEAD")} Count by oneCheck for updatesRemove`);
-  await expect(plugins.nth(3)).toHaveText("UnbuiltunbuiltA folder put there by handDidn't load: host.ts doesn't exist; build the plugin first?Remove");
+  await expect(plugins.nth(0)).toHaveText(`ChecklistchecklistComes with Mirador ${MIRADOR_VERSION}`);
+  await expect(plugins.nth(1)).toHaveText(`Code reviewreviewComes with Mirador ${MIRADOR_VERSION}Open reviewsFull screen, over the chatIn the canvas pane, beside the chat`);
+  await expect(plugins.nth(2)).toHaveText(`Countercounter1.0.0${counterRepo()} · main · ${git(counterRepo(), "rev-parse", "--short", "HEAD")} Count by oneCheck for updatesRemove`);
+  await expect(plugins.nth(3)).toHaveText("Unbuiltunbuilt1.0.0A folder put there by handDidn't load: host.ts doesn't exist; build the plugin first?Remove");
   await expect(settings.getByText(join(host.dataDir, "plugins"), { exact: true })).toBeVisible();
 });
