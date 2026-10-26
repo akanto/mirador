@@ -10,6 +10,7 @@ export type ShortcutCommand =
   | { type: "toggle-terminal" }
   | { type: "find" }
   | { type: "search" }
+  | { type: "filter-sidebar" }
   | { type: "mark-unread" }
   | { type: "focus"; pane: "chat" | "canvas" | "terminals" }
   | { type: "bigger-font" }
@@ -53,6 +54,7 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   if (press.ctrlKey && !press.metaKey && !press.altKey && !press.shiftKey && press.code === "Backquote") return { type: "toggle-terminal" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyF" && typing !== "terminal") return { type: "find" };
   if (primary && !press.altKey && press.shiftKey && press.code === "KeyF" && !terminalFinds) return { type: "search" };
+  if (primary && !press.altKey && press.shiftKey && press.code === "KeyL") return { type: "filter-sidebar" };
   if (primary && !press.altKey && press.shiftKey && press.code === "KeyU" && !terminalEntersUnicode) return { type: "mark-unread" };
   if (primary && !press.altKey && press.shiftKey && typing !== "typing") {
     if (press.code === "ArrowLeft") return { type: "focus", pane: "chat" };
@@ -109,6 +111,7 @@ export function shortcutKeys(mac = isMac) {
     focusTerminal: `${primary}${shift}↓`,
     find: `${primary}F`,
     search: `${primary}${shift}F`,
+    filterSidebar: `${primary}${shift}L`,
     restartHost: `${primary}${shift}R`,
     markUnread: `${primary}${shift}U`,
     templates: `${primary}J`,
@@ -143,6 +146,7 @@ export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
     { keys: keys.toggleCanvas, action: "Show / hide the canvas" },
     { keys: keys.toggleTerminal, action: "Show / hide the terminal" },
     { keys: keys.search, action: "Search every conversation in every workspace" },
+    { keys: keys.filterSidebar, action: "Filter the sidebar to the workspaces and conversations whose names hold the words you type (Esc clears it)" },
     { keys: keys.markUnread, action: "Mark this conversation unread and go back to the one open before it (right-click a conversation in the sidebar to mark any)" },
     { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included; Aa matches case (Enter: older match, Shift+Enter: newer)" },
     { keys: keys.find, action: "In a review or tour: find in the code of its changed files, with match case, whole word and regular expression toggles (Enter: next match, Shift+Enter: previous)" },

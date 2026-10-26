@@ -662,6 +662,8 @@ function ConnectedDevices({ listed, onOpen }: { listed: DevicesListed | null; on
   );
 }
 
+export const focusSidebarFilter = () => document.querySelector<HTMLInputElement>(".sidebar-filter input")?.select();
+
 function SidebarFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const clearOnEscape = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Escape" || value === "") return;
@@ -675,6 +677,7 @@ function SidebarFilter({ value, onChange }: { value: string; onChange: (value: s
         aria-label="Filter workspaces and conversations"
         placeholder="Filter"
         data-hint={hints.filterSidebar}
+        data-shortcut={shortcutKeys().filterSidebar}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={clearOnEscape}

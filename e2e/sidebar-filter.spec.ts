@@ -65,7 +65,27 @@ test("the sidebar filters to the workspaces and conversations whose names hold e
     await expect(page.locator(".sidebar")).toContainText("Nothing here matches “nowhere”");
   });
 
+  await test.step("the shortcut goes to the filter from the message box, and the shortcuts list names it", async () => {
+    await page.locator(".composer:visible textarea").click();
+    await page.keyboard.press("ControlOrMeta+Shift+L");
+    await expect(filterField(page)).toBeFocused();
+    await expect(filterField(page)).toHaveValue("nowhere");
+    await page.keyboard.type("queue");
+    await expect(shownTitles(page)).toHaveText(["Queue of tickets", "Queue steering"]);
+    await page.locator(".sidebar").getByRole("button", { name: /^Shortcuts/ }).click();
+    await expect(page.locator(".shortcut-help")).toContainText("Filter the sidebar");
+    await page.keyboard.press("Escape");
+    await page.locator(".composer:visible textarea").click();
+    await page.keyboard.press("ControlOrMeta+K");
+    await page.getByPlaceholder(/Go to a conversation/).fill("filter the sidebar");
+    await page.keyboard.press("Enter");
+    await expect(filterField(page)).toBeFocused();
+  });
+
   await test.step("Esc clears the filter", async () => {
+    await filterField(page).press("Escape");
+    await expect(filterField(page)).toHaveValue("");
+    await filterField(page).fill("nowhere");
     await filterField(page).press("Escape");
     await expect(filterField(page)).toHaveValue("");
     await expect(shownWorkspaces(page)).toHaveText(["beta", "alpha"]);

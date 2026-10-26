@@ -32,7 +32,7 @@ import { SettingsDialog } from "./Settings.tsx";
 import { shortcutKeys, typingStateOf, type ShortcutCommand } from "./shortcuts.ts";
 import { setFontScale, stepFontScale } from "./font-scale.ts";
 import { resetTerminalFontSize, stepTerminalFontSize } from "./terminal-settings.ts";
-import { Sidebar } from "./Sidebar.tsx";
+import { focusSidebarFilter, Sidebar } from "./Sidebar.tsx";
 import { Splitter } from "./Splitter.tsx";
 import { initialStateFor, reducer, selectedOpen, type AppAction, type AppState, type OpenConversation } from "./state.ts";
 import { useSystemNotifications } from "./system-notifications.ts";
@@ -231,6 +231,7 @@ function paletteEntries(
     ...openConversationActions,
     ...machineActions,
     { id: "search", label: "Search all workspaces…", detail: "every conversation", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "search" } }) },
+    { id: "filter-sidebar", label: "Filter the sidebar", detail: shortcutKeys().filterSidebar, kind: "action", run: () => requestAnimationFrame(focusSidebarFilter) },
     { id: "add-workspace", label: "Add workspace…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace" } }) },
     { id: "add-workspace-group", label: "New group…", detail: "of workspaces", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace-group" } }) },
     { id: "profiles", label: "Profiles…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "profiles" } }) },
@@ -393,6 +394,8 @@ export function App() {
         return toggleTerminal();
       case "find":
         return findInOpenConversation();
+      case "filter-sidebar":
+        return focusSidebarFilter();
       case "mark-unread": {
         const conversation = state.conversations.find(({ id }) => id === state.selectedConversationId);
         return conversation && canMarkUnread(conversation) && markUnread(conversation.id, dispatch);
