@@ -64,6 +64,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - **No AI attribution:** no `Co-Authored-By` or "Generated with" trailers, and no agent name anywhere in the message.
 - **Beads hook:** the beads `prepare-commit-msg` hook, which adds agent trailers, was removed on purpose. Never reinstall it.
 - **One commit per finished change**, with only that change's files. Other work in the tree stays uncommitted. Include `.beads/interactions.jsonl` when it changed.
+- **Never amend or rebase a commit that's already on origin:** make a new commit instead. Rewriting a pushed commit leaves main and origin/main with two copies of it.
 - **Messages:** one plain sentence saying what the user gets, as in "Reorder queued messages by dragging them".
 
 ## Build & Test
