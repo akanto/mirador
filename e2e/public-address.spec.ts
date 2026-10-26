@@ -35,7 +35,14 @@ test.afterAll(async () => {
 
 const addressForm = (settings: Locator) => settings.getByRole("form", { name: "Address on your network" });
 const routeChoice = (settings: Locator, name: string) => settings.getByRole("radio", { name });
-const configFile = () => JSON.parse(readFileSync(join(host.dataDir, "config.json"), "utf8"));
+/** Null until Settings has written the whole file: a throw would end expect.poll at once, not try again. */
+function configFile() {
+  try {
+    return JSON.parse(readFileSync(join(host.dataDir, "config.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
 const ADDRESS_ROUTE = "At an address a proxy gives it";
 const NETWORK_ROUTE = "Over the network, with no address";
 const ALONE_ROUTE = "Only on this machine";
