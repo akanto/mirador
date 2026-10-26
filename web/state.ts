@@ -66,6 +66,8 @@ export interface AppState {
   devices: DevicesListed | null;
   homeDir: string;
   selectedConversationId: string | null;
+  /** Counts every time a conversation is picked, the open one again included, so the sidebar brings it back into view each time. */
+  conversationsPicked: number;
   /** The conversations opened last, the selected one first: they stay subscribed and drawn, so switching back is instant. */
   kept: OpenConversation[];
   awaitingConversationIn: string | null;
@@ -121,6 +123,7 @@ export const initialState: AppState = {
   devices: null,
   homeDir: "",
   selectedConversationId: null,
+  conversationsPicked: 0,
   kept: [],
   awaitingConversationIn: null,
   overlay: null,
@@ -379,7 +382,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case "server":
       return applyServerMessage(state, action.message);
     case "select":
-      return action.conversationId === state.selectedConversationId ? state : select(state, action.conversationId);
+      return { ...(action.conversationId === state.selectedConversationId ? state : select(state, action.conversationId)), conversationsPicked: state.conversationsPicked + 1 };
     case "leave-conversation":
       return action.conversationId === state.selectedConversationId ? select(state, conversationToReturnTo(state, action.conversationId)) : state;
     case "awaiting-conversation":

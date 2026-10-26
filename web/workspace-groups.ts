@@ -101,16 +101,26 @@ export function createFoldStore(storageKey: string) {
     listeners.add(listener);
     return () => void listeners.delete(listener);
   };
+  const save = (next: Set<string>) => {
+    folded = next;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...folded]));
+    } catch {}
+    listeners.forEach((listener) => listener());
+  };
   return {
     setFolded(id: string, fold: boolean) {
       if (folded.has(id) === fold) return;
-      folded = new Set(folded);
-      if (fold) folded.add(id);
-      else folded.delete(id);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify([...folded]));
-      } catch {}
-      listeners.forEach((listener) => listener());
+      const next = new Set(folded);
+      if (fold) next.add(id);
+      else next.delete(id);
+      save(next);
+    },
+    /** Forgets the folds of what no longer exists, so they don't pile up in the browser's storage. */
+    keepOnly(existingIds: Iterable<string>) {
+      const existing = new Set(existingIds);
+      const kept = new Set([...folded].filter((id) => existing.has(id)));
+      if (kept.size < folded.size) save(kept);
     },
     useFolded: () => useSyncExternalStore(subscribe, () => folded),
   };
@@ -123,3 +133,9 @@ export const useFoldedGroups = foldedGroups.useFolded;
 const foldedWorkspaces = createFoldStore("mirador-folded-workspaces");
 export const setWorkspaceFolded = foldedWorkspaces.setFolded;
 export const useFoldedWorkspaces = foldedWorkspaces.useFolded;
+
+/** Once the host has said which workspaces and groups there are, the folds of deleted ones are dropped. */
+export function forgetFoldsOfDeleted(workspaces: { id: string }[], groups: { id: string }[]) {
+  foldedWorkspaces.keepOnly(workspaces.map(({ id }) => id));
+  foldedGroups.keepOnly(groups.map(({ id }) => id));
+}

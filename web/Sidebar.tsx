@@ -33,7 +33,7 @@ import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, w
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
-import { landingBefore, movesWorkspace, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
+import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
 function useDirectoryCompletions(prefix: string) {
   const [completions, setCompletions] = useState<string[]>([]);
@@ -356,7 +356,7 @@ function WorkspaceSection({
           className="icon workspace-fold"
           aria-expanded={!folded}
           aria-label={`${folded ? "Unfold" : "Fold"} ${workspace.name}`}
-          data-hint={hints.foldWorkspace}
+          data-hint={folded ? hints.unfoldWorkspace : hints.foldWorkspace}
           onClick={toggleFolded}
         >
           ›
@@ -567,14 +567,21 @@ function sidebarRows(sidebar: HTMLElement): SidebarRow[] {
   });
 }
 
-/** Opening a conversation in a folded workspace or group unfolds them, so the open conversation always shows in the sidebar. */
+/** Picking a conversation in a folded workspace or group unfolds them, the open one picked again too, so the open conversation always shows in the sidebar. */
 function useUnfoldAroundOpenConversation(state: AppState) {
   useEffect(() => {
     const workspaceId = state.conversations.find(({ id }) => id === state.selectedConversationId)?.workspaceId;
     if (workspaceId) setWorkspaceFolded(workspaceId, false);
     const groupId = state.workspaces.find(({ id }) => id === workspaceId)?.groupId;
     if (groupId) setGroupFolded(groupId, false);
-  }, [state.selectedConversationId]);
+  }, [state.selectedConversationId, state.conversationsPicked]);
+}
+
+function useFoldsOfDeletedForgotten(state: AppState) {
+  const hostHasListedThem = state.hostRunId !== null;
+  useEffect(() => {
+    if (hostHasListedThem) forgetFoldsOfDeleted(state.workspaces, state.workspaceGroups);
+  }, [hostHasListedThem, state.workspaces, state.workspaceGroups]);
 }
 
 function WaitingEdge({ side, hidden, onClick }: { side: "above" | "below"; hidden: HiddenWaiting | null; onClick: () => void }) {
@@ -617,6 +624,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const folded = useFoldedGroups();
   const foldedWorkspaces = useFoldedWorkspaces();
   useUnfoldAroundOpenConversation(state);
+  useFoldsOfDeletedForgotten(state);
   const items = sidebarItems(state.workspaces, state.workspaceGroups);
   const [conversationMenu, setConversationMenu] = useState<{ conversationId: string; x: number; y: number } | null>(null);
   const openConversationMenu = (conversation: Conversation, event: ReactMouseEvent) => {

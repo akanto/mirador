@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, addWorkspaceFromSidebar, createProfile, pickProfileIfAsked, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, addWorkspaceFromSidebar, createProfile, dragOnto, pickProfileIfAsked, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -78,6 +78,54 @@ test("a workspace folds to its heading, by its chevron or its name, stays folded
   await page.keyboard.press("Enter");
   await expect(card.getByRole("button", { name: `Fold ${name}` })).toHaveAttribute("aria-expanded", "true");
   await expect(card.locator("li")).toHaveCount(2);
+
+  await test.step("picking the open conversation again unfolds its workspace", async () => {
+    await card.locator("li.selected .conversation-title").dblclick();
+    await page.getByLabel("Conversation name").fill("Folded away");
+    await page.getByLabel("Conversation name").press("Enter");
+    await card.getByRole("button", { name: `Fold ${name}` }).click();
+    await expect(card.locator("li")).toHaveCount(0);
+    await page
+      .locator(".sidebar")
+      .getByRole("button", { name: /^Palette/ })
+      .click();
+    await page.getByPlaceholder(/Go to a conversation/).fill("Folded away");
+    await page.keyboard.press("Enter");
+    await expect(card.locator("li")).toHaveCount(2);
+  });
+});
+
+test("a folded workspace's tooltip offers to unfold it, it moves by its heading and stays folded, and its fold is forgotten once it is removed", async ({ page }) => {
+  const movedDir = join(host.root, "moved-folded");
+  const besideDir = join(host.root, "beside-it");
+  [movedDir, besideDir].forEach((directory) => mkdirSync(directory, { recursive: true }));
+  await signIn(page, host);
+  await addWorkspaceFromSidebar(page, movedDir);
+  await addWorkspaceFromSidebar(page, besideDir);
+  const name = basename(movedDir);
+  const card = workspaceCard(page, movedDir);
+  const besideCard = workspaceCard(page, besideDir);
+  const workspaceId = (await card.getAttribute("data-reorder-id"))!;
+  const cardOrder = () => page.locator("section.workspace").evaluateAll((sections) => sections.map((section) => section.getAttribute("aria-label")));
+  const foldedIds = () => page.evaluate(() => JSON.parse(localStorage.getItem("mirador-folded-workspaces") ?? "[]") as string[]);
+
+  await expect(card.getByRole("button", { name: `Fold ${name}` })).toHaveAttribute("data-hint", /^Fold this workspace/);
+  await card.getByRole("button", { name: `Fold ${name}` }).click();
+  await expect(card.getByRole("button", { name: `Unfold ${name}` })).toHaveAttribute("data-hint", /^Show this workspace's conversations/);
+
+  const before = await cardOrder();
+  const movedWasFirst = before.indexOf(name) < before.indexOf(basename(besideDir));
+  await dragOnto(page, card.locator(":scope > header"), besideCard, movedWasFirst ? "bottom" : "top");
+  await page.mouse.up();
+  await expect.poll(async () => (await cardOrder()).indexOf(name) < (await cardOrder()).indexOf(basename(besideDir))).toBe(!movedWasFirst);
+  await expect(card.getByRole("button", { name: `Unfold ${name}` })).toHaveAttribute("aria-expanded", "false");
+
+  expect(await foldedIds()).toContain(workspaceId);
+  await card.hover();
+  await card.getByRole("button", { name: "Remove workspace" }).click();
+  await card.getByRole("button", { name: "Confirm: Remove workspace" }).click();
+  await expect(card).toHaveCount(0);
+  await expect.poll(foldedIds).not.toContain(workspaceId);
 });
 
 test("a workspace added while the page reconnects to the host is added once it has", async ({ page }) => {

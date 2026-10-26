@@ -94,6 +94,18 @@ test("a chip at the sidebar's edge shows conversations waiting for you out of vi
     await expect(chipAbove).toHaveText("↑ 3 waiting");
   });
 
+  await test.step("a folded workspace's heading out of view counts its conversations waiting, as a folded group's does", async () => {
+    await list.evaluate((element) => (element.scrollTop = 0));
+    await page.getByRole("button", { name: "Unfold Side", exact: true }).click();
+    const sideCard = workspaceCard(page, sideProjectDir);
+    await sideCard.getByRole("button", { name: "Fold side-project", exact: true }).click();
+    await expect(sideCard.locator("li")).toHaveCount(0);
+    await expect(sideCard.locator(":scope > header .waiting-count")).toHaveText("2");
+    await list.evaluate((element) => (element.scrollTop = element.scrollHeight));
+    await expect(sideCard).not.toBeInViewport();
+    await expect(chipAbove).toHaveText("↑ 3 waiting");
+  });
+
   await test.step("the footer's Settings… button stays in the viewport at both scroll ends", async () => {
     const settings = sidebar.getByRole("button", { name: "Settings…" });
     await list.evaluate((element) => (element.scrollTop = 0));

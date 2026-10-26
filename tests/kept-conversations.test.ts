@@ -56,3 +56,10 @@ test("a reply streamed into a kept conversation is held as one event, however ma
   expect(held.map(({ seq }) => seq)).toEqual([1, 501]);
   expect(held[1]).toMatchObject({ event: { update: { content: { text: streamed.map((_, index) => `word${index + 2} `).join("") } } } });
 });
+
+test("picking the open conversation again counts as a pick, so the sidebar can bring it back into view, and keeps it as it is", () => {
+  const opened = selecting(initialState, "a");
+  const pickedAgain = selecting(opened, "a");
+  expect(pickedAgain.conversationsPicked).toBe(opened.conversationsPicked + 1);
+  expect(pickedAgain.kept).toBe(opened.kept);
+});
