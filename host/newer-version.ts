@@ -25,7 +25,10 @@ export async function newerCommits(checkout: string, fetching: boolean): Promise
   const branch = await git(checkout, ["symbolic-ref", "--quiet", "HEAD"]);
   const [remote, remoteBranch, upstream] = (await git(checkout, ["for-each-ref", "--format=%(upstream:remotename)%09%(upstream:remoteref)%09%(upstream:short)", branch])).split("\t");
   if (!remote || !remoteBranch || !upstream) return null;
-  if (fetching) await git(checkout, ["fetch", "--quiet", "--no-tags", remote, remoteBranch]);
+  if (fetching)
+    await git(checkout, ["fetch", "--quiet", "--no-tags", remote, remoteBranch]).catch(() => {
+      throw new Error(`Couldn't fetch ${upstream}`);
+    });
   const commits = Number(await git(checkout, ["rev-list", "--count", "HEAD..@{upstream}"]));
   if (commits === 0) return null;
   return { kind: "checkout", commits, upstream, upstreamCommit: await git(checkout, ["rev-parse", "@{upstream}"]) };
@@ -33,9 +36,11 @@ export async function newerCommits(checkout: string, fetching: boolean): Promise
 
 /** GitHub answers 404 while the repository is private or nothing is published yet, which leaves nothing to show. */
 export async function newerRelease(latestReleaseUrl: string, current = MIRADOR_VERSION): Promise<NewerVersion | null> {
-  const response = await fetch(latestReleaseUrl, { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(GIVE_UP_AFTER_MILLISECONDS) });
+  const response = await fetch(latestReleaseUrl, { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(GIVE_UP_AFTER_MILLISECONDS) }).catch(() => {
+    throw new Error("Couldn't reach GitHub");
+  });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`the latest release answered ${response.status}`);
+  if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
   const { tag_name: tag } = (await response.json()) as { tag_name?: unknown };
   if (typeof tag !== "string") return null;
   const version = tag.replace(/^v/, "");

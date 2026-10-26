@@ -59,7 +59,11 @@ describe("the latest published release", () => {
 
   test("can't be told when GitHub fails, such as over its rate limit", async () => {
     answer = () => new Response("rate limited", { status: 403 });
-    await expect(newerRelease(latestRelease, "0.3.3")).rejects.toThrow("403");
+    await expect(newerRelease(latestRelease, "0.3.3")).rejects.toThrow("GitHub answered 403");
+  });
+
+  test("can't be told when GitHub can't be reached, and says so", async () => {
+    await expect(newerRelease("http://127.0.0.1:9/repos/sodre90/mirador/releases/latest", "0.3.3")).rejects.toThrow("Couldn't reach GitHub");
   });
 });
 
@@ -103,7 +107,7 @@ describe("new commits on a checkout's upstream", () => {
     await expect(newerCommits(checkout, false)).rejects.toThrow();
     git(checkout, "switch", "--quiet", "main");
     git(checkout, "remote", "set-url", "origin", join(root, "gone.git"));
-    await expect(newerCommits(checkout, true)).rejects.toThrow();
+    await expect(newerCommits(checkout, true)).rejects.toThrow("Couldn't fetch origin/main");
     git(checkout, "remote", "set-url", "origin", origin);
   });
 
@@ -148,6 +152,16 @@ describe("watching for a newer version", () => {
     watcher.stop();
     await watcher.look(true);
     expect(fetched).toEqual([true, true, false, true]);
+  });
+
+  test("a look asked for now says why it failed, keeping the last answer, and says nothing when it didn't", async () => {
+    const { watcher, fetched } = watcherAnswering(release("0.4.0"), new Error("Couldn't reach GitHub"), null);
+    expect(await watcher.lookNow()).toBeNull();
+    expect(await watcher.lookNow()).toBe("Couldn't reach GitHub");
+    expect(watcher.current).toEqual(release("0.4.0"));
+    expect(await watcher.lookNow()).toBeNull();
+    expect(watcher.current).toBeNull();
+    expect(fetched).toEqual([true, true, true]);
   });
 
   test("looks one at a time, so a slow fetch can't undo the recount after it", async () => {

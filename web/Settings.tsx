@@ -17,7 +17,7 @@ import { fontScaleLabels, useFontScale } from "./font-scale.ts";
 import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export.ts";
 import { setPageLibraries, usePageLibraries } from "./page-libraries.ts";
 import { hints } from "./hints.ts";
-import { NewerVersionNote } from "./NewerVersion.tsx";
+import { NewerVersionNote, UpdateCheckButton } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
 import { profilePictureDataUrl } from "./profile-picture.ts";
 import { PromptTemplateSettings } from "./PromptTemplates.tsx";
@@ -648,6 +648,7 @@ function AboutSettings({ version, newerVersion, claudeProgram }: { version: stri
       <h3>About</h3>
       <p className="hint">Mirador {version}</p>
       <NewerVersionNote newerVersion={newerVersion} />
+      <UpdateCheckButton version={version} newerVersion={newerVersion} />
       <p className="hint">Claude Code: {foundClaudeProgram(claudeProgram)}</p>
     </>
   );

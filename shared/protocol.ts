@@ -94,6 +94,8 @@ export type ClientMessage =
   | { type: "prompt-template.delete"; templateId: string }
   | { type: "settings.set-canvas-use"; canvasUse: CanvasUse }
   | { type: "settings.set-claude-program"; path: string }
+  /** Looks for a newer Mirador now; what it finds comes as newer-version.found, before the answer. */
+  | { type: "newer-version.check"; requestId: string }
   /** Empty for the system's text editor. */
   | { type: "settings.set-script-program"; program: string }
   /** The user's picture as a small square PNG data URL the page drew; null takes it away, leaving the person icon. */
@@ -410,6 +412,8 @@ export type ServerMessage =
   | { type: "desktop-app.outdated"; outdated: boolean }
   /** To pages, and to this machine's desktop app: also on connecting, while there is a newer version. */
   | { type: "newer-version.found"; newerVersion: NewerVersion | null }
+  /** Why the check asked for failed, or null when it didn't. */
+  | { type: "newer-version.checked"; requestId: string; failure: string | null }
   /** To pages, whenever what the host found by itself of the plugins' new commits changes. */
   | { type: "plugin-updates.found"; pluginUpdates: PluginUpdate[] }
   /** The host is stopping to start again in place; pages reload once they reconnect. */

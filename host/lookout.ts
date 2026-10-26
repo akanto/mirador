@@ -15,6 +15,11 @@ export class Lookout<T> {
   start() {
     this.started = true;
     this.look(true);
+    this.lookEveryFewHours();
+  }
+
+  private lookEveryFewHours() {
+    clearInterval(this.timer);
     this.timer = setInterval(() => this.look(true), CHECK_EVERY_MILLISECONDS);
   }
 
@@ -29,12 +34,28 @@ export class Lookout<T> {
 
   /** One look at a time, so a slow fetch can't finish after a later recount and bring back what that recount cleared. */
   look(fetching: boolean) {
-    this.looking = this.looking.then(() => this.lookOnce(fetching));
-    return this.looking;
+    const failure = this.looking.then(() => this.lookOnce(fetching));
+    this.looking = failure.then(() => {});
+    return failure;
   }
 
-  private async lookOnce(fetching: boolean) {
-    const found = await this.lookup(fetching, this.current).catch(() => this.current);
+  /** A look the user asked for puts off the next look by itself; a lookout not started looks all the same, as the user asked. */
+  lookNow() {
+    if (this.started) this.lookEveryFewHours();
+    return this.look(true);
+  }
+
+  /** Why the look failed, or null when it didn't. */
+  private async lookOnce(fetching: boolean): Promise<string | null> {
+    try {
+      this.take(await this.lookup(fetching, this.current));
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private take(found: T | null) {
     if (JSON.stringify(found) === JSON.stringify(this.current)) return;
     this.current = found;
     this.changed(found);

@@ -866,6 +866,8 @@ export function startServer(services: HostServices) {
         return setCanvasUse(message.canvasUse);
       case "settings.set-claude-program":
         return setClaudeProgram(message.path);
+      case "newer-version.check":
+        return void newerVersion.lookNow().then((failure) => reply({ type: "newer-version.checked", requestId: message.requestId, failure }));
       case "settings.set-script-program":
         return setScriptProgram(message.program);
       case "settings.set-avatar":

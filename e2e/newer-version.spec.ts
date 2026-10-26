@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { expect, test, type Page } from "@playwright/test";
 import { giveNonceScript, showUpdateScript } from "../desktop/src/core/window-menu.ts";
 import type { DesktopMenuMessage, DesktopUpdate } from "../shared/desktop-menu.ts";
+import { MIRADOR_VERSION } from "../shared/version.ts";
 import { openSettings, signIn, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -14,10 +15,16 @@ import { TestHost } from "./test-host.ts";
 const releaseEnvironment: Record<string, string> = { MIRADOR_NEWER_VERSION_CHECK: "on" };
 const releaseHost = new TestHost({ copiesSource: true, environment: releaseEnvironment });
 const checkoutHost = new TestHost({ copiesSource: true, environment: { MIRADOR_NEWER_VERSION_CHECK: "on" } });
+const checkingEnvironment: Record<string, string> = { MIRADOR_NEWER_VERSION_CHECK: "on" };
+const checkingHost = new TestHost({ copiesSource: true, environment: checkingEnvironment });
 
-const github = createServer((_, response) => {
-  response.writeHead(200, { "Content-Type": "application/json" });
-  response.end(JSON.stringify({ tag_name: "v99.0.0", html_url: "https://elsewhere.example/" }));
+/** What the fake GitHub answers checkingHost, which a test changes between its checks. */
+let latestForChecking = { status: 200, tag: `v${MIRADOR_VERSION}` };
+
+const github = createServer((request, response) => {
+  const { status, tag } = request.url?.startsWith("/checking/") ? latestForChecking : { status: 200, tag: "v99.0.0" };
+  response.writeHead(status, { "Content-Type": "application/json" });
+  response.end(JSON.stringify({ tag_name: tag, html_url: "https://elsewhere.example/" }));
 });
 
 const git = (directory: string, ...args: string[]) =>
@@ -47,13 +54,15 @@ function makeACheckoutTwoCommitsBehind(host: TestHost) {
 
 test.beforeAll(async () => {
   await new Promise<void>((resolve) => github.listen(0, "127.0.0.1", resolve));
-  releaseEnvironment.MIRADOR_LATEST_RELEASE_URL = `http://127.0.0.1:${(github.address() as AddressInfo).port}/repos/sodre90/mirador/releases/latest`;
+  const githubOrigin = `http://127.0.0.1:${(github.address() as AddressInfo).port}`;
+  releaseEnvironment.MIRADOR_LATEST_RELEASE_URL = `${githubOrigin}/repos/sodre90/mirador/releases/latest`;
+  checkingEnvironment.MIRADOR_LATEST_RELEASE_URL = `${githubOrigin}/checking/repos/sodre90/mirador/releases/latest`;
   makeACheckoutTwoCommitsBehind(checkoutHost);
-  await Promise.all([releaseHost.start(), checkoutHost.start()]);
+  await Promise.all([releaseHost.start(), checkoutHost.start(), checkingHost.start()]);
 });
 test.afterAll(async () => {
-  await Promise.all([releaseHost.stop(), checkoutHost.stop()]);
-  await Promise.all([releaseHost.cleanUp(), checkoutHost.cleanUp()]);
+  await Promise.all([releaseHost.stop(), checkoutHost.stop(), checkingHost.stop()]);
+  await Promise.all([releaseHost.cleanUp(), checkoutHost.cleanUp(), checkingHost.cleanUp()]);
   github.close();
 });
 
@@ -202,4 +211,29 @@ test("a checkout shows the commits on its upstream that it lacks, until they are
 
   git(checkoutHost.sourceDir, "merge", "--quiet", "--ff-only", "origin/main");
   await expect(banner).toHaveCount(0);
+});
+
+test("Check for updates in Settings › About looks now, says when Mirador is up to date, shows a newer release, says why a check failed, and asks the desktop app to look too", async ({ page }) => {
+  const desktopApp = await actAsDesktopApp(page);
+  await signIn(page, checkingHost);
+  await desktopApp.answerNonceRequest({ stage: "idle" });
+  const about = await openSettings(page, "About");
+  const check = about.locator(".update-check");
+  const button = check.getByRole("button");
+  await expect(button).toHaveText("Check for updates");
+  await expect(about.locator(".newer-version")).toHaveCount(0);
+
+  await button.click();
+  await expect(check).toHaveText(`Check for updates Mirador ${MIRADOR_VERSION} is up to date.`);
+  expect(await desktopApp.sent()).toContainEqual({ type: "desktop-action", nonce: "nonce-1", action: "check-for-update" });
+
+  latestForChecking = { status: 200, tag: "v99.0.0" };
+  await button.click();
+  await expect(about.locator(".newer-version")).toHaveText("Mirador 99.0.0 is out. Download");
+  await expect(check).toHaveText("Check for updates");
+
+  latestForChecking = { status: 500, tag: "v99.0.0" };
+  await button.click();
+  await expect(check).toHaveText("Check for updates GitHub answered 500.");
+  await expect(about.locator(".newer-version")).toHaveText("Mirador 99.0.0 is out. Download");
 });

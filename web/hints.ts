@@ -79,6 +79,7 @@ export const hints = {
   installOfficialPlugin: "Clones the plugin's repo, builds it and puts it in Mirador's plugins folder. Mirador uses it from its next start.",
   addPlugin:
     "Clones the repo into Mirador's plugins folder and runs the build command its plugin.json names. Mirador loads the plugin from its next start.",
+  checkForUpdates: "Looks for a newer Mirador now, rather than at the next look by itself, which comes every 6 hours.",
   checkPluginUpdates: "Fetches the plugin's branch and lists the commits it doesn't have yet. Nothing changes until you update.",
   pluginUpdatesWaiting:
     "Plugins from git repos with new commits. Mirador looks when it starts and every 6 hours, and installs nothing by itself: update them in Settings › Plugins.",

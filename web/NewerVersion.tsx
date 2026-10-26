@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DesktopUpdate } from "../shared/desktop-menu.ts";
 import { newerVersionKey, newerVersionLabel, type NewerVersion } from "../shared/newer-version.ts";
+import { connection } from "./connection.ts";
 import { checkForUpdate, restartToUpdate, useDesktopUpdate } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
 
@@ -125,5 +126,43 @@ export function NewerVersionNote({ newerVersion }: { newerVersion: NewerVersion 
         </p>
       )}
     </>
+  );
+}
+
+type UpdateCheck = { step: "idle" } | { step: "checking" } | { step: "checked"; failure: string | null };
+
+async function checkForNewerVersion(): Promise<string | null> {
+  try {
+    const { failure } = await connection.sendAndAwait(
+      (requestId) => ({ type: "newer-version.check", requestId }),
+      (message, requestId) => (message.type === "newer-version.checked" && message.requestId === requestId ? message : undefined),
+    );
+    return failure;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+function UpdateCheckOutcome({ check, version, newerVersion }: { check: UpdateCheck; version: string; newerVersion: NewerVersion | null }) {
+  if (check.step !== "checked") return null;
+  if (check.failure) return <span>{check.failure}.</span>;
+  return newerVersion ? null : <span>Mirador {version} is up to date.</span>;
+}
+
+/** The host looks now; the desktop app that updates itself looks too, and downloads what it finds. What is newer shows in NewerVersionNote. */
+export function UpdateCheckButton({ version, newerVersion }: { version: string; newerVersion: NewerVersion | null }) {
+  const [check, setCheck] = useState<UpdateCheck>({ step: "idle" });
+  const checkNow = async () => {
+    setCheck({ step: "checking" });
+    checkForUpdate();
+    setCheck({ step: "checked", failure: await checkForNewerVersion() });
+  };
+  return (
+    <p className="hint update-check" role="status">
+      <button type="button" data-hint={hints.checkForUpdates} disabled={check.step === "checking"} onClick={checkNow}>
+        {check.step === "checking" ? "Checking…" : "Check for updates"}
+      </button>{" "}
+      <UpdateCheckOutcome check={check} version={version} newerVersion={newerVersion} />
+    </p>
   );
 }
