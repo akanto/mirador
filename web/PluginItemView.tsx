@@ -111,7 +111,7 @@ export function PluginItemView({
   const shownTheme = useShownTheme();
   const [fontScale] = useFontScale();
   const viewUrl = viewPath && `${assetsOrigin}${viewPath}`;
-  const page = useMemo(() => viewUrl && pluginItemPage(viewUrl, item.id, { inTab: fitsContent }), [viewUrl, item.id, fitsContent]);
+  const page = useMemo(() => viewUrl && pluginItemPage(viewUrl, item.id, { inTab: fitsContent, opensFiles: true }), [viewUrl, item.id, fitsContent]);
   const context: PluginItemContext = {
     seenAgentEditAt: seenWhenShown,
     imagesFromOtherSites,

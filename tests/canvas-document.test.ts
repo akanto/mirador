@@ -18,6 +18,7 @@ import {
   canvasShellUrl,
   HIDDEN_ERROR_SCRIPT,
   TEXT_CONTRAST_SCRIPT,
+  pluginItemPage,
 } from "../shared/canvas-document.ts";
 
 const assetsOrigin = "http://127.0.0.1:4601";
@@ -418,4 +419,9 @@ describe("the messages that answer what an app view asks for", () => {
     expect(appAnswerMessage("r2", "http://assets/media/t/a.mp4")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-answer", requestId: "r2", value: "http://assets/media/t/a.mp4" });
     expect(appAnswerFailedMessage("r2", "nope")).toEqual({ source: CANVAS_MESSAGE_SOURCE, kind: "app-answer-failed", requestId: "r2", message: "nope" });
   });
+});
+
+test("a plugin's view can open files only where its page says files open, as Mirador's canvas does and the phone doesn't", () => {
+  expect(pluginItemPage("https://assets/view.js", "item-1", { opensFiles: true })).toContain('kind: "item-open-file"');
+  expect(pluginItemPage("https://assets/view.js", "item-1")).not.toContain("openFile");
 });

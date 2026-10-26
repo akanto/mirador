@@ -316,7 +316,8 @@ export interface PluginViewBridge<Data = unknown> {
   send(action: unknown): Promise<unknown>;
   prompt(text: string): Promise<void>;
   setFullscreen(on: boolean): void;
-  openFile(path: string): void;
+  /** Only where files open: Mirador's canvas has it, the phone doesn't. */
+  openFile?(path: string): void;
 }
 
 /** The plugin's reply to an action the view sent. */
@@ -333,12 +334,13 @@ export function pluginItemReplyFailedMessage(requestId: string, message: string)
  * `window.mirador` for a plugin's canvas view. `onItem` hands the listener the item the view draws and its context, at
  * once when they are known and again on every change, so the view may start listening whenever its code is ready. `send`
  * hands an action to the plugin's host code and resolves to its reply, or rejects with the reason there is none; `prompt`
- * sends the agent a message as the composer would, `setFullscreen` asks for the canvas to fill the workspace or not, and
- * `openFile` opens a file as a file link in the chat does, a path relative to the conversation's workspace or absolute.
+ * sends the agent a message as the composer would, `setFullscreen` asks for the canvas to fill the workspace or not, and,
+ * where files open, `openFile` opens one as a file link in the chat does, a path relative to the conversation's workspace
+ * or absolute.
  * Mirador's look arrives as CSS variables on the page's root, `data-hint` shows as Mirador's own hints, and links open in
  * a new tab, as the sandbox would not let them.
  */
-function pluginItemBridge(frameId: string) {
+function pluginItemBridge(frameId: string, opensFiles: boolean) {
   return `(() => {
   const source = ${JSON.stringify(CANVAS_MESSAGE_SOURCE)};
   const itemId = ${JSON.stringify(frameId)};
@@ -417,9 +419,13 @@ function pluginItemBridge(frameId: string) {
     setFullscreen(on) {
       post({ kind: "item-fullscreen", on: Boolean(on) });
     },
-    openFile(path) {
+    ${
+      opensFiles
+        ? `openFile(path) {
       post({ kind: "item-open-file", path: String(path) });
-    },
+    },`
+        : ""
+    }
   });
   post({ kind: "item-ready" });
 })();`;
@@ -429,8 +435,8 @@ function pluginItemBridge(frameId: string) {
 const IN_TAB_PAGE_STYLE = "<style>html{padding:3px}body{margin:0}</style>";
 
 /** The page of a plugin item's view: the bridge first, then the plugin's canvas view, which the canvas assets serve. */
-export function pluginItemPage(viewUrl: string, frameId: string, { inTab = false } = {}) {
-  return [`<script>${pluginItemBridge(frameId)}</script>`, ...(inTab ? [IN_TAB_PAGE_STYLE] : []), `<script type="module" src="${escapeAttribute(viewUrl)}"></script>`].join("\n");
+export function pluginItemPage(viewUrl: string, frameId: string, { inTab = false, opensFiles = false } = {}) {
+  return [`<script>${pluginItemBridge(frameId, opensFiles)}</script>`, ...(inTab ? [IN_TAB_PAGE_STYLE] : []), `<script type="module" src="${escapeAttribute(viewUrl)}"></script>`].join("\n");
 }
 
 /** The page of an app's view: the bridge first, then the view's code, which the canvas assets serve. */
