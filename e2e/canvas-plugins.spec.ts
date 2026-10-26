@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, primaryModifier, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
+import type { DesktopMenuMessage } from "../shared/desktop-menu.ts";
 
 const host = new TestHost({ fakePrograms: true });
 const promptsFile = join(host.root, "prompts");
@@ -97,6 +98,24 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     const opened = page.context().waitForEvent("page");
     await pageView(page).getByRole("link", { name: "The board's site" }).click();
     expect((await opened).url()).toBe("https://example.invalid/board");
+  });
+
+  await test.step("inside the desktop app, a link in the view opens in the browser through the app", async () => {
+    await page.addInitScript(() => {
+      const sent: DesktopMenuMessage[] = [];
+      Object.assign(window, { sentToDesktopApp: sent });
+      window.__electrobunSendToHost = (message) => {
+        sent.push(message);
+        if (message.type === "desktop-nonce-request") setTimeout(() => window.dispatchEvent(new CustomEvent("mirador:desktop-nonce", { detail: "nonce-1" })));
+      };
+    });
+    await page.reload();
+    const pagesBefore = page.context().pages().length;
+    await pageView(page).getByRole("link", { name: "The board's site" }).click();
+    const openedLinks = async () =>
+      (await page.evaluate(() => (window as unknown as { sentToDesktopApp: DesktopMenuMessage[] }).sentToDesktopApp)).filter(({ type }) => type === "desktop-open-link");
+    await expect.poll(openedLinks).toEqual([{ type: "desktop-open-link", nonce: "nonce-1", url: "https://example.invalid/board" }]);
+    expect(page.context().pages()).toHaveLength(pagesBefore);
   });
 
   await test.step("the agent hears of the presses with the next message, once", async () => {
