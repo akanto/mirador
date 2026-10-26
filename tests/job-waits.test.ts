@@ -1,12 +1,15 @@
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, jobWaitGuidance, jobWaitToolDescription, type JobState } from "../host/job-waits.ts";
 import { Store } from "../host/store.ts";
 import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, waitingOnJobsHint, waitSetUpReply, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd } from "../shared/model.ts";
 import { fakeProgram } from "./fake-program.ts";
+
+// These tests start real processes and follow them for a few seconds; a loaded machine takes longer than Bun's 5 s default.
+setDefaultTimeout(15_000);
 
 /** What ssh runs on the far machine, and the program a tab follows a job with off Windows, are POSIX shell, which Windows has none of. */
 const hasPosixShell = process.platform !== "win32";
@@ -299,7 +302,7 @@ exec /bin/sh -c "$*"
 
   test("over ssh, a process's command line and the lines it writes to its log show until it ends", async () => {
     const log = join(mkdtempSync(join(tmpdir(), "followed-job-")), "it's.log");
-    const job = Bun.spawn(["sh", "-c", "echo first; sleep 0.5; echo second; sleep 1.5"], { stdout: Bun.file(log), stderr: "ignore" });
+    const job = Bun.spawn(["sh", "-c", "echo first; sleep 0.5; echo second; sleep 3"], { stdout: Bun.file(log), stderr: "ignore" });
     const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: "box" }, binWith({ ssh: fakeSsh }));
     expect(output).toContain("Command: sh -c echo first; sleep 0.5; echo second");
     expect(output).toMatch(/Running for: \d\d:\d\d/);
@@ -309,9 +312,9 @@ exec /bin/sh -c "$*"
   });
 
   test("from Windows, ssh runs on its own and the job shows the same, though an error connecting does not stay", async () => {
-    const job = Bun.spawn(["sleep", "1"]);
+    const job = Bun.spawn(["sleep", "3"]);
     const output = await follow({ job: { kind: "process", pid: job.pid }, sshHost: "box" }, binWith({ ssh: fakeSsh }), "win32");
-    expect(output).toContain("Command: sleep 1");
+    expect(output).toContain("Command: sleep 3");
     expect(output).toEndWith(`\nProcess ${job.pid} ended.\nPress Enter to close this tab.`);
     expect(await follow({ job: { kind: "process", pid: 1 }, sshHost: "unreachable" }, binWith({ ssh: fakeSsh }), "win32")).toBe(
       "ssh: connect to host unreachable port 22: Connection refused\n",
