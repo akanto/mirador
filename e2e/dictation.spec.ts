@@ -218,6 +218,20 @@ test("The mic button and ⌘⇧Space dictate into the message box: a tap listens
     await box.fill("");
   });
 
+  await test.step("a tap stays a tap when the page is too busy to handle the letting go at once", async () => {
+    await page.evaluate(() => {
+      const keepBusy = () => {
+        const until = performance.now() + 700;
+        while (performance.now() < until);
+      };
+      window.addEventListener("pointerdown", keepBusy, { once: true });
+    });
+    await mic.click();
+    await expect(box).toHaveValue(IN_ENGLISH, { timeout: 15_000 });
+    await expect(problem).toHaveCount(0);
+    await box.fill("");
+  });
+
   await changeVoiceSettings(page, async (settings) => {
     await settings.getByLabel("Send right away").check();
     await expect(voiceSection(settings, "When you speak").getByRole("status")).toHaveText("Saved.");

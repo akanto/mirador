@@ -183,17 +183,18 @@ export function useDictation({
     setPhase("idle");
   };
 
-  const onPress = () => {
+  /** Timed at when the input happened, not when its handler ran: a busy page would make a tap look held. */
+  const onPress = (at = performance.now()) => {
     if (!available) return setProblem(RECOGNITION_OFF);
     if (phase === "transcribing") return;
-    const next = pressed(press.current, performance.now());
+    const next = pressed(press.current, at);
     press.current = next.press;
     if (next.action === "start") begin();
     if (next.action === "finish") void finish();
   };
 
-  const onRelease = () => {
-    const next = released(press.current, performance.now());
+  const onRelease = (at = performance.now()) => {
+    const next = released(press.current, at);
     press.current = next.press;
     if (next.action === "finish") void finish();
   };
@@ -225,8 +226,8 @@ export function useDictation({
   useEffect(() => (microphoneOpen ? quietClock() : undefined), [microphoneOpen]);
 
   useEffect(() => {
-    const pressFromKeys = () => {
-      latest.current.onPress();
+    const pressFromKeys = (at?: number) => {
+      latest.current.onPress(at);
       textarea.current?.focus();
     };
     const tapFromKeys = () => {
@@ -241,10 +242,10 @@ export function useDictation({
       }
       if (!dictates(event)) return;
       event.preventDefault();
-      if (!event.repeat && !aDialogIsOpen()) pressFromKeys();
+      if (!event.repeat && !aDialogIsOpen()) pressFromKeys(event.timeStamp);
     };
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.code === "Space" || releasingKeys.includes(event.key)) latest.current.onRelease();
+      if (event.code === "Space" || releasingKeys.includes(event.key)) latest.current.onRelease(event.timeStamp);
     };
     const onBlur = () => latest.current.onRelease();
     const onHidden = () => document.hidden && latest.current.onRelease();
@@ -321,10 +322,10 @@ export function DictateButton({ dictation }: { dictation: DictationControls }) {
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
-        onPress();
+        onPress(event.timeStamp);
       }}
-      onPointerUp={onRelease}
-      onPointerCancel={onRelease}
+      onPointerUp={(event) => onRelease(event.timeStamp)}
+      onPointerCancel={(event) => onRelease(event.timeStamp)}
       onClick={(event) => {
         if (event.detail !== 0) return;
         onPress();
