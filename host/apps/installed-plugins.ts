@@ -1,9 +1,10 @@
-import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { isPluginVersion, type PluginManifest, type PluginNews, type PluginInfo, type PluginSource, type PluginUpdate } from "../../shared/apps.ts";
 import { isNewerVersion } from "../../shared/newer-version.ts";
 import { environmentWithoutPrompts } from "../git-environment.ts";
+import { renameWhenFree } from "../rename-when-free.ts";
 import { AppProblem, messageOf, pluginFiles, pluginFolders, readManifest, refuseUnversioned, type PluginLoadProblem } from "./plugins.ts";
 
 const GIT_GIVES_UP_AFTER_MS = 5 * 60_000;
@@ -157,7 +158,7 @@ export class InstalledPlugins {
       try {
         await this.refuseTakenName(manifest.name);
         mkdirSync(this.folder, { recursive: true });
-        renameSync(staged, join(this.folder, manifest.name));
+        await renameWhenFree(staged, join(this.folder, manifest.name));
         this.changed.add(manifest.name);
       } finally {
         rmSync(staged, { recursive: true, force: true });
@@ -223,8 +224,8 @@ export class InstalledPlugins {
         if (installed && manifest.name !== installed.name) {
           throw new AppProblem(`The repo's plugin is named ${manifest.name} now, not ${installed.name}; remove ${folderName} and add the repo again.`);
         }
-        renameSync(folder, join(this.staging, `${folderName}-replaced-${crypto.randomUUID()}`));
-        renameSync(staged, folder);
+        await renameWhenFree(folder, join(this.staging, `${folderName}-replaced-${crypto.randomUUID()}`));
+        await renameWhenFree(staged, folder);
         this.changed.add(folderName);
       } finally {
         rmSync(staged, { recursive: true, force: true });
@@ -241,7 +242,7 @@ export class InstalledPlugins {
         unlinkSync(folder);
       } else {
         mkdirSync(this.staging, { recursive: true });
-        renameSync(folder, join(this.staging, `${folderName}-removed-${crypto.randomUUID()}`));
+        await renameWhenFree(folder, join(this.staging, `${folderName}-removed-${crypto.randomUUID()}`));
       }
       this.changed.add(folderName);
       return name;
