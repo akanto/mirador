@@ -85,35 +85,41 @@ export function idBelowGroup(items: SidebarItem[], groupId: string): string | nu
   return index === -1 ? null : (items[index + 1] ? sidebarItemId(items[index + 1]!) : null);
 }
 
-const FOLDED_KEY = "mirador-folded-workspace-groups";
-
-function storedFolded(): Set<string> {
-  try {
-    const stored: unknown = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]");
-    return new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []);
-  } catch {
-    return new Set();
-  }
+/** Folding is this browser's own, as pane layouts are: another window keeps its groups and workspaces as it had them. */
+export function createFoldStore(storageKey: string) {
+  const stored = (): Set<string> => {
+    try {
+      const ids: unknown = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+      return new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : []);
+    } catch {
+      return new Set();
+    }
+  };
+  let folded = stored();
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  };
+  return {
+    setFolded(id: string, fold: boolean) {
+      if (folded.has(id) === fold) return;
+      folded = new Set(folded);
+      if (fold) folded.add(id);
+      else folded.delete(id);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify([...folded]));
+      } catch {}
+      listeners.forEach((listener) => listener());
+    },
+    useFolded: () => useSyncExternalStore(subscribe, () => folded),
+  };
 }
 
-let folded = storedFolded();
-const foldListeners = new Set<() => void>();
+const foldedGroups = createFoldStore("mirador-folded-workspace-groups");
+export const setGroupFolded = foldedGroups.setFolded;
+export const useFoldedGroups = foldedGroups.useFolded;
 
-/** Folding is this browser's own, as pane layouts are: another window keeps its groups as it had them. */
-export function setGroupFolded(groupId: string, fold: boolean) {
-  if (folded.has(groupId) === fold) return;
-  folded = new Set(folded);
-  if (fold) folded.add(groupId);
-  else folded.delete(groupId);
-  try {
-    localStorage.setItem(FOLDED_KEY, JSON.stringify([...folded]));
-  } catch {}
-  foldListeners.forEach((listener) => listener());
-}
-
-const subscribeToFolding = (listener: () => void) => {
-  foldListeners.add(listener);
-  return () => void foldListeners.delete(listener);
-};
-
-export const useFoldedGroups = () => useSyncExternalStore(subscribeToFolding, () => folded);
+const foldedWorkspaces = createFoldStore("mirador-folded-workspaces");
+export const setWorkspaceFolded = foldedWorkspaces.setFolded;
+export const useFoldedWorkspaces = foldedWorkspaces.useFolded;

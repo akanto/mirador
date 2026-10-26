@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, createProfile, pickProfileIfAsked, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, addWorkspaceFromSidebar, createProfile, pickProfileIfAsked, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -37,6 +37,47 @@ test("a workspace is a card: its folder under the name, new conversations at the
   await profiles.getByRole("button", { name: "Close" }).click();
   await card.getByLabel("Agent").selectOption({ label: "home llama · opencode" });
   await expect(chip).toHaveText("home llama · opencode");
+});
+
+test("a workspace folds to its heading, by its chevron or its name, stays folded in this browser, and unfolds when one of its conversations opens", async ({ page }) => {
+  const foldedDir = join(host.root, "foldable");
+  const otherDir = join(host.root, "stays-open");
+  [foldedDir, otherDir].forEach((directory) => mkdirSync(directory, { recursive: true }));
+  await signIn(page, host);
+  await addWorkspaceFromSidebar(page, foldedDir);
+  await addWorkspaceFromSidebar(page, otherDir);
+  const name = basename(foldedDir);
+  const card = workspaceCard(page, foldedDir);
+  await card.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(card.locator("li")).toHaveCount(1);
+  await workspaceCard(page, otherDir).getByRole("button", { name: "+ New conversation" }).click();
+  await expect(workspaceCard(page, otherDir).locator("li")).toHaveCount(1);
+
+  await card.getByRole("button", { name: `Fold ${name}` }).click();
+  await expect(card.getByRole("button", { name: `Unfold ${name}` })).toHaveAttribute("aria-expanded", "false");
+  await expect(card.locator("li")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "+ New conversation" })).toHaveCount(0);
+  await expect(card.locator(".workspace-name")).toBeVisible();
+
+  await card.locator(".workspace-name").click();
+  await expect(card.getByRole("button", { name: `Fold ${name}` })).toHaveAttribute("aria-expanded", "true");
+  await expect(card.locator("li")).toHaveCount(1);
+  await card.locator(".workspace-name").click();
+  await expect(card.locator("li")).toHaveCount(0);
+
+  await page.reload();
+  await expect(card.getByRole("button", { name: `Unfold ${name}` })).toBeVisible();
+  await expect(card.locator("li")).toHaveCount(0);
+  await expect(workspaceCard(page, otherDir).locator("li")).toHaveCount(1);
+
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: /^Palette/ })
+    .click();
+  await page.getByPlaceholder(/Go to a conversation/).fill(`New conversation in ${name}`);
+  await page.keyboard.press("Enter");
+  await expect(card.getByRole("button", { name: `Fold ${name}` })).toHaveAttribute("aria-expanded", "true");
+  await expect(card.locator("li")).toHaveCount(2);
 });
 
 test("a workspace added while the page reconnects to the host is added once it has", async ({ page }) => {

@@ -33,7 +33,7 @@ import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, w
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
-import { landingBefore, movesWorkspace, setGroupFolded, useFoldedGroups, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
+import { landingBefore, movesWorkspace, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
 function useDirectoryCompletions(prefix: string) {
   const [completions, setCompletions] = useState<string[]>([]);
@@ -309,6 +309,7 @@ function WorkspaceSection({
   homeDir,
   selectedConversationId,
   pickingColor,
+  folded,
   dispatch,
   dragClasses,
   onStartDrag,
@@ -320,6 +321,7 @@ function WorkspaceSection({
   homeDir: string;
   selectedConversationId: string | null;
   pickingColor: boolean;
+  folded: boolean;
   dispatch: Dispatch<AppAction>;
   dragClasses: string[];
   onStartDrag: (event: PointerEvent<HTMLElement>) => void;
@@ -328,6 +330,9 @@ function WorkspaceSection({
   const mark = useRef<HTMLButtonElement>(null);
   const closePicker = useCallback(() => dispatch({ type: "close-overlay" }), [dispatch]);
   const togglePicker = () => dispatch(pickingColor ? { type: "close-overlay" } : { type: "open-overlay", overlay: { kind: "workspace-color", workspaceId: workspace.id } });
+  const toggleFolded = () => setWorkspaceFolded(workspace.id, !folded);
+  const toggleFromHeading = (event: ReactMouseEvent<HTMLElement>) => !(event.target as Element).closest("button, input") && toggleFolded();
+  const waitingHere = folded ? waitingInFoldedGroup(conversations) : null;
   const deleteWorkspace = () => connection.send({ type: "workspace.delete", workspaceId: workspace.id });
   const deleteConversation = (conversation: Conversation) => connection.send({ type: "conversation.delete", conversationId: conversation.id });
   const conversationList = useRef<HTMLUListElement>(null);
@@ -337,7 +342,7 @@ function WorkspaceSection({
 
   return (
     <section
-      className={["workspace", ...dragClasses].join(" ")}
+      className={["workspace", folded && "folded", ...dragClasses].filter(Boolean).join(" ")}
       aria-label={workspace.name}
       data-reorder-id={workspace.id}
       data-drop-row="workspace"
@@ -345,7 +350,17 @@ function WorkspaceSection({
       data-color={workspace.color ?? undefined}
       style={workspace.color ? pastelVariables(workspace.color) : undefined}
     >
-      <header onPointerDown={onStartDrag}>
+      <header onPointerDown={onStartDrag} onClick={toggleFromHeading} data-waiting-tone={waitingHere?.tone} data-waiting-count={waitingHere?.count}>
+        <button
+          type="button"
+          className="icon workspace-fold"
+          aria-expanded={!folded}
+          aria-label={`${folded ? "Unfold" : "Fold"} ${workspace.name}`}
+          data-hint={hints.foldWorkspace}
+          onClick={toggleFolded}
+        >
+          ›
+        </button>
         <button
           ref={mark}
           type="button"
@@ -375,7 +390,7 @@ function WorkspaceSection({
         </ConfirmButton>
       </header>
       {pickingColor && <WorkspaceColorPicker workspace={workspace} mark={mark} onClose={closePicker} />}
-      {conversations.length > 0 && (
+      {!folded && conversations.length > 0 && (
         <ul ref={conversationList}>
           {conversations.map((conversation, index) => (
             <li
@@ -405,26 +420,28 @@ function WorkspaceSection({
           ))}
         </ul>
       )}
-      <div className="workspace-actions">
-        <button
-          className="link"
-          aria-label="+ New conversation"
-          data-hint={hints.newConversation}
-          data-shortcut={shortcutKeys().newConversation}
-          onClick={() => startConversationIn(workspace, dispatch)}
-        >
-          + New
-        </button>
-        <LaunchPicker workspace={workspace} profiles={profiles} dispatch={dispatch} />
-        <button
-          className="link continue-session"
-          aria-label="Continue a session…"
-          data-hint={hints.continueSession}
-          onClick={() => dispatch({ type: "open-overlay", overlay: { kind: "sessions", workspaceId: workspace.id } })}
-        >
-          Continue…
-        </button>
-      </div>
+      {!folded && (
+        <div className="workspace-actions">
+          <button
+            className="link"
+            aria-label="+ New conversation"
+            data-hint={hints.newConversation}
+            data-shortcut={shortcutKeys().newConversation}
+            onClick={() => startConversationIn(workspace, dispatch)}
+          >
+            + New
+          </button>
+          <LaunchPicker workspace={workspace} profiles={profiles} dispatch={dispatch} />
+          <button
+            className="link continue-session"
+            aria-label="Continue a session…"
+            data-hint={hints.continueSession}
+            onClick={() => dispatch({ type: "open-overlay", overlay: { kind: "sessions", workspaceId: workspace.id } })}
+          >
+            Continue…
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -550,10 +567,11 @@ function sidebarRows(sidebar: HTMLElement): SidebarRow[] {
   });
 }
 
-/** Opening a conversation in a folded group unfolds the group, so the open conversation always shows in the sidebar. */
-function useUnfoldGroupOfOpenConversation(state: AppState) {
+/** Opening a conversation in a folded workspace or group unfolds them, so the open conversation always shows in the sidebar. */
+function useUnfoldAroundOpenConversation(state: AppState) {
   useEffect(() => {
     const workspaceId = state.conversations.find(({ id }) => id === state.selectedConversationId)?.workspaceId;
+    if (workspaceId) setWorkspaceFolded(workspaceId, false);
     const groupId = state.workspaces.find(({ id }) => id === workspaceId)?.groupId;
     if (groupId) setGroupFolded(groupId, false);
   }, [state.selectedConversationId]);
@@ -597,7 +615,8 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const outOfView = useWaitingOutOfView(sidebar);
   const scrollToWaiting = (side: "above" | "below") => sidebar.current && scrollToNearestWaiting(sidebar.current, side);
   const folded = useFoldedGroups();
-  useUnfoldGroupOfOpenConversation(state);
+  const foldedWorkspaces = useFoldedWorkspaces();
+  useUnfoldAroundOpenConversation(state);
   const items = sidebarItems(state.workspaces, state.workspaceGroups);
   const [conversationMenu, setConversationMenu] = useState<{ conversationId: string; x: number; y: number } | null>(null);
   const openConversationMenu = (conversation: Conversation, event: ReactMouseEvent) => {
@@ -632,6 +651,7 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
       homeDir={state.homeDir}
       selectedConversationId={state.selectedConversationId}
       pickingColor={state.overlay?.kind === "workspace-color" && state.overlay.workspaceId === workspace.id}
+      folded={foldedWorkspaces.has(workspace.id)}
       dispatch={dispatch}
       onConversationMenu={openConversationMenu}
     />

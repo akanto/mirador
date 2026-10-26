@@ -807,6 +807,10 @@ body.resizing iframe {
   visibility: visible;
 }
 
+.workspace > header button.icon.workspace-fold {
+  visibility: visible;
+}
+
 .conversation-title {
   flex: 1;
   overflow: hidden;
@@ -959,7 +963,8 @@ body.resizing iframe {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-button.icon.group-fold {
+button.icon.group-fold,
+button.icon.workspace-fold {
   padding: 0 4px;
   font-size: calc(14px * var(--font-scale));
   line-height: 1;
@@ -967,7 +972,8 @@ button.icon.group-fold {
   transition: transform 0.12s;
 }
 
-.workspace-group.folded button.icon.group-fold {
+.workspace-group.folded button.icon.group-fold,
+.workspace.folded button.icon.workspace-fold {
   transform: none;
 }
 
