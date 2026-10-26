@@ -15,7 +15,6 @@ const isWithin = (root: string, path: string) => !escapes(relative(root, path));
 
 const isInside = (root: string, path: string) => relative(root, path) !== "" && isWithin(root, path);
 
-
 const outsideWorkspace = (name: string) => new SaveRefused(`"${name}" is not a file inside the project folder.`);
 
 const statOf = (path: string) => stat(path).catch(() => undefined);
