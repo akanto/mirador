@@ -662,7 +662,12 @@ function ConnectedDevices({ listed, onOpen }: { listed: DevicesListed | null; on
   );
 }
 
-export const focusSidebarFilter = () => document.querySelector<HTMLInputElement>(".sidebar-filter input")?.select();
+/** Focused before it is selected: WebKit, which the desktop app runs on, selects a field's text without focusing it. */
+export function focusSidebarFilter() {
+  const field = document.querySelector<HTMLInputElement>(".sidebar-filter input");
+  field?.focus();
+  field?.select();
+}
 
 function SidebarFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const clearOnEscape = (event: KeyboardEvent<HTMLInputElement>) => {
