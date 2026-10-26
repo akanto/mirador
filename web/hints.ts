@@ -181,6 +181,7 @@ export const hints = {
   foldWorkspace: "Fold this workspace to its heading. Opening one of its conversations unfolds it.",
   unfoldWorkspace: "Show this workspace's conversations again.",
   workspaceGroupCount: "Workspaces in this group.",
+  filterSidebar: "Show only the workspaces, groups and conversations whose names hold every word you type. Esc clears it.",
   waitingInGroup: "Conversations in this group's workspaces waiting for you.",
   waitingAbove: "Conversations waiting for you, scrolled out of view above. Click to show the nearest.",
   waitingBelow: "Conversations waiting for you, scrolled out of view below. Click to show the nearest.",

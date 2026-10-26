@@ -32,6 +32,7 @@ import { canMarkUnread, markRead, markUnread } from "./unread.ts";
 import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, waitingTones } from "./waiting.ts";
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
+import { filterSidebar, filterWords } from "../shared/sidebar-filter.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
 import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setDelegationsOpen, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, useOpenedDelegations, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
@@ -661,6 +662,27 @@ function ConnectedDevices({ listed, onOpen }: { listed: DevicesListed | null; on
   );
 }
 
+function SidebarFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const clearOnEscape = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Escape" || value === "") return;
+    event.stopPropagation();
+    onChange("");
+  };
+  return (
+    <div className="sidebar-filter">
+      <input
+        type="search"
+        aria-label="Filter workspaces and conversations"
+        placeholder="Filter"
+        data-hint={hints.filterSidebar}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={clearOnEscape}
+      />
+    </div>
+  );
+}
+
 export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispatch<AppAction> }) {
   const adding = state.overlay?.kind === "add-workspace";
   const setAdding = (open: boolean) => dispatch(open ? { type: "open-overlay", overlay: { kind: "add-workspace" } } : { type: "close-overlay" });
@@ -673,7 +695,13 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const foldedWorkspaces = useFoldedWorkspaces();
   useUnfoldAroundOpenConversation(state);
   useFoldsOfDeletedForgotten(state);
-  const items = sidebarItems(state.workspaces, state.workspaceGroups);
+  const [filter, setFilter] = useState("");
+  const allItems = sidebarItems(state.workspaces, state.workspaceGroups);
+  const filtered = filterWords(filter).length > 0 ? filterSidebar(allItems, (workspaceId) => conversationsIn(state, workspaceId), filter) : null;
+  const items = filtered?.items ?? allItems;
+  const conversationsShownIn = (workspaceId: string) => filtered?.conversationsOf.get(workspaceId) ?? conversationsIn(state, workspaceId);
+  /** Dragging in a filtered sidebar would place things among ones it hides. */
+  const unlessFiltered = (startDrag: (event: PointerEvent<HTMLElement>) => void) => (filtered ? () => {} : startDrag);
   const [conversationMenu, setConversationMenu] = useState<{ conversationId: string; x: number; y: number } | null>(null);
   const openConversationMenu = (conversation: Conversation, event: ReactMouseEvent) => {
     event.preventDefault();
@@ -700,14 +728,14 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
     <WorkspaceSection
       key={workspace.id}
       dragClasses={[workspaceDrag.drag?.id === workspace.id && "dragged", ...dragClasses].filter((name): name is string => Boolean(name))}
-      onStartDrag={(event) => startWorkspaceDrag(workspace, event)}
+      onStartDrag={unlessFiltered((event) => startWorkspaceDrag(workspace, event))}
       workspace={workspace}
-      conversations={conversationsIn(state, workspace.id)}
+      conversations={conversationsShownIn(workspace.id)}
       profiles={state.profiles}
       homeDir={state.homeDir}
       selectedConversationId={state.selectedConversationId}
       pickingColor={state.overlay?.kind === "workspace-color" && state.overlay.workspaceId === workspace.id}
-      folded={foldedWorkspaces.has(workspace.id)}
+      folded={!filtered && foldedWorkspaces.has(workspace.id)}
       dispatch={dispatch}
       onConversationMenu={openConversationMenu}
     />
@@ -715,16 +743,16 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
   const sidebarItem = (item: SidebarItem, index: number) => {
     const isLast = index === items.length - 1;
     if (item.kind === "workspace") return workspaceSection(item.workspace, [...workspaceLandingClasses(item.workspace.id, null, isLast), ...groupDrag.classesOf(item.workspace.id, isLast)]);
-    const isFolded = folded.has(item.group.id);
+    const isFolded = !filtered && folded.has(item.group.id);
     return (
       <WorkspaceGroupSection
         key={item.group.id}
         item={item}
-        conversations={item.workspaces.flatMap((workspace) => conversationsIn(state, workspace.id))}
+        conversations={item.workspaces.flatMap((workspace) => conversationsShownIn(workspace.id))}
         folded={isFolded}
         landingInto={landsLastIn(item.group.id) && (isFolded || item.workspaces.length === 0)}
         dragClasses={[...groupDrag.classesOf(item.group.id, isLast), ...workspaceLandingClasses(item.group.id, null, isLast)].filter((name): name is string => Boolean(name))}
-        onStartDrag={(event) => groupDrag.startDrag(item.group.id, sidebar.current, event)}
+        onStartDrag={unlessFiltered((event) => groupDrag.startDrag(item.group.id, sidebar.current, event))}
       >
         {item.workspaces.map((workspace, memberIndex) => workspaceSection(workspace, workspaceLandingClasses(workspace.id, item.group.id, memberIndex === item.workspaces.length - 1)))}
       </WorkspaceGroupSection>
@@ -756,8 +784,10 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
             + Add a project directory
           </button>
         )}
+        {state.workspaces.length > 0 && <SidebarFilter value={filter} onChange={setFilter} />}
         {addingGroup && <GroupNameField initial="" label="New group name" onSave={createGroup} onCancel={() => dispatch({ type: "close-overlay" })} />}
         {items.map(sidebarItem)}
+        {filtered && items.length === 0 && <p className="sidebar-filter-empty">Nothing here matches “{filter.trim()}”</p>}
         <WaitingEdge side="below" hidden={outOfView.below} onClick={() => scrollToWaiting("below")} />
       </div>
       {conversationMenu && conversationInMenu && (

@@ -1047,6 +1047,23 @@ button.icon.workspace-fold {
   font-size: calc(12px * var(--font-scale));
 }
 
+.sidebar-filter {
+  flex: none;
+  margin: 10px 4px 0;
+}
+
+.sidebar-filter input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.sidebar-filter-empty {
+  margin: 14px 8px 0;
+  font-size: calc(12px * var(--font-scale));
+  color: var(--muted);
+}
+
 .sidebar-scroll > .group-name-field {
   flex: none;
   margin: 14px 4px 0;
