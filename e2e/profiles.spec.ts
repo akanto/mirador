@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
 import { FakeGateway, gatewayEnvironment } from "./fake-gateway.ts";
 import { addWorkspace, createProfile, openProfiles, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -9,6 +10,9 @@ const host = new TestHost();
 const prelaunchMarker = join(host.root, "prelaunch-ran");
 
 const gateway = new FakeGateway();
+const api = new FakeClaudeApi();
+// Claude Code refuses a foreground `sleep 30` in the command itself, so the long tool call runs a script that waits.
+const SLOW_SCRIPT = "wait-then-print.sh";
 
 /** Claude Code retitles a session as later prompts come, so the conversation the tests share is opened by its id. */
 let sharedConversationId = "";
@@ -24,13 +28,17 @@ async function requestContaining(text: string) {
 
 test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
+  api.limited = false;
+  await api.start();
   await gateway.start();
   await host.start();
+  writeFileSync(join(host.projectDir, SLOW_SCRIPT), "sleep 30\necho slept-long\n");
 });
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
   gateway.stop();
+  api.stop();
 });
 
 test("a profile's environment and pre-launch command reach Claude Code, and its secrets stay hidden", async ({ page }) => {
@@ -156,13 +164,15 @@ test("a conversation whose profile was deleted continues after picking another o
 
 test("switching profile while the agent works stops the turn, moves the session and continues it there, then sends the queue", async ({ page }) => {
   await signIn(page, host);
-  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "Claude Code" });
+  const saved = await createProfile(page, "scripted claude", `${subscriptionEnvironment(api)}\nCLAUDE_CONFIG_DIR=${host.claudeConfigDir}`);
+  await saved.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "scripted claude · Claude Code" });
   await startConversation(page);
   const yolo = page.getByLabel("YOLO", { exact: true });
   await yolo.click();
   await expect(yolo).toBeChecked();
-  await sendMessage(page, "Run the shell command `sleep 30; echo slept-long` with your Bash tool, then reply with what it printed.");
-  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible({ timeout: 120_000 });
+  await sendMessage(page, `RUN sh ${SLOW_SCRIPT}`);
+  await expect(page.locator(".timeline").locator(".tool-pending, .tool-in_progress").first()).toBeVisible();
   const composer = page.locator(".composer textarea");
   await composer.fill("queued before the switch");
   await composer.press("Enter");
@@ -173,7 +183,7 @@ test("switching profile while the agent works stops the turn, moves the session 
   await expect(page.locator(".timeline")).toContainText("Turn ended: cancelled");
   await expect(page.locator(".timeline")).toContainText("Now using the profile “fake gateway”");
   const continued = await requestContaining("Continue where you left off.");
-  expect(continued.body).toContain("slept-long");
+  expect(continued.body).toContain(SLOW_SCRIPT);
   const queued = await requestContaining("queued before the switch");
   expect(gateway.requests.indexOf(queued)).toBeGreaterThan(gateway.requests.indexOf(continued));
   await expect(page.locator(".message.user").last()).toHaveText("queued before the switch", { timeout: 60_000 });

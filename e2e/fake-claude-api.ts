@@ -3,7 +3,7 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { scratchPath } from "./test-host.ts";
 
-type ContentBlock = { type: string; text?: string; tool_use_id?: string; content?: string | { type: string; text?: string }[] };
+type ContentBlock = { type: string; text?: string; tool_use_id?: string; content?: string | { type: string; text?: string }[]; source?: { media_type?: string } };
 
 type MessagesRequest = {
   model: string;
@@ -19,6 +19,9 @@ const systemTextOf = ({ system }: MessagesRequest) => (typeof system === "string
 
 const textOf = (content: MessagesRequest["messages"][number]["content"]) =>
   typeof content === "string" ? content : content.map(({ text }) => text ?? "").join("");
+
+const imageTypesIn = (content: MessagesRequest["messages"][number]["content"]) =>
+  typeof content === "string" ? [] : content.filter(({ type }) => type === "image").map(({ source }) => source?.media_type ?? "");
 
 /** What a reply quotes: the newest text the user typed, after Claude Code's system reminders. */
 const lastTypedText = ({ messages }: MessagesRequest) =>
@@ -90,6 +93,8 @@ export class FakeClaudeApi {
   readonly systemPrompts = new Map<string, string>();
   /** The user's newest message as Claude Code sent it, with the context it adds, by the text the user typed. */
   readonly userMessages = new Map<string, string>();
+  /** The media type of each image the user's newest message carried, by the text the user typed. */
+  readonly images = new Map<string, string[]>();
   /** The model each request asked for, by the text the user typed last; a subagent's request goes by its prompt. */
   readonly models = new Map<string, string>();
   /** Every request's messages, role by role: what the agent's own history held when it answered. */
@@ -156,6 +161,7 @@ export class FakeClaudeApi {
     const typed = lastTypedText(body);
     this.systemPrompts.set(typed, systemTextOf(body));
     this.userMessages.set(typed, textOf(body.messages.findLast(({ role }) => role === "user")?.content ?? ""));
+    this.images.set(typed, imageTypesIn(body.messages.findLast(({ role }) => role === "user")?.content ?? ""));
     this.history.push(body.messages.map(({ role, content }) => `${role}: ${textOf(content)}`));
     this.models.set(typed, body.model);
     if (this.failing) {
