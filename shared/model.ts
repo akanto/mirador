@@ -116,6 +116,7 @@ export interface ReachabilitySettings {
   savedNetwork: boolean;
   networkSetByEnvironment: boolean;
   networkPort: number;
+  networkCanvasPort: number;
   /** What is saved differs from what the host runs with. */
   restartNeeded: boolean;
   /** Of the certificate authority Mirador made for itself; invite links carry it so joining machines can pin it. */

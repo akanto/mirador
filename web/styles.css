@@ -6311,6 +6311,13 @@ body.reordering * {
   margin-top: 6px;
 }
 
+.proxy-elsewhere {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0;
+}
+
 .setting-problem {
   color: var(--danger);
 }

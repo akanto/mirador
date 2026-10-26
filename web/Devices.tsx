@@ -159,14 +159,20 @@ const routeOf = (settings: ReachabilitySettings): ReachRoute => {
   return listening ? "network" : "none";
 };
 
-/** The two settings are one choice, so they are saved together: the address first, as it is the one that can be wrong. */
-async function saveRoute(route: ReachRoute, address: PublicAddress | null) {
+/**
+ * The two settings are one choice, so they are saved together: the address first, as it is the one that can be wrong.
+ * A proxy on another machine reaches the host through its network listener, so that route keeps both.
+ */
+async function saveRoute(route: ReachRoute, address: PublicAddress | null, proxyElsewhere = false) {
   const problem = await saveSetting((requestId) => ({ type: "settings.set-public-address", requestId, address: route === "address" ? address : null }));
   if (problem) return problem;
-  return await saveSetting((requestId) => ({ type: "settings.set-network", requestId, on: route === "network" }));
+  return await saveSetting((requestId) => ({ type: "settings.set-network", requestId, on: route === "network" || (route === "address" && address !== null && proxyElsewhere) }));
 }
 
-/** One way other devices reach this host. Only the chosen one shows its controls, so no setting looks like it applies when it does not. */
+/**
+ * One way other devices reach this host. Only the chosen one shows its controls, so no setting looks like it applies
+ * when it does not; the others keep theirs hidden, so what was typed there is still there on coming back.
+ */
 function RouteOption({
   title,
   description,
@@ -191,7 +197,11 @@ function RouteOption({
         {title}
       </label>
       <p className="hint">{description}</p>
-      {chosen && <div className="route-controls">{children}</div>}
+      {children && (
+        <div className="route-controls" hidden={!chosen}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -202,27 +212,30 @@ function AddressRoute({
   onProblem,
 }: {
   settings: ReachabilitySettings;
-  onSave: (address: PublicAddress | null) => void;
+  onSave: (address: PublicAddress | null, proxyElsewhere: boolean) => void;
   onProblem: (problem: string) => void;
 }) {
   const { publicAddress, savedPublicAddress, publicAddressSetByEnvironment: setByEnvironment } = settings;
   const shown = setByEnvironment ? publicAddress : savedPublicAddress;
+  const savedProxyElsewhere = savedPublicAddress !== null && settings.savedNetwork;
   const [origin, setOrigin] = useState(shown?.origin ?? "");
   const [canvasOrigin, setCanvasOrigin] = useState(shown?.canvasOrigin ?? "");
+  const [proxyElsewhere, setProxyElsewhere] = useState(savedProxyElsewhere);
   useEffect(() => {
     setOrigin(shown?.origin ?? "");
     setCanvasOrigin(shown?.canvasOrigin ?? "");
   }, [shown?.origin, shown?.canvasOrigin]);
+  useEffect(() => setProxyElsewhere(savedProxyElsewhere), [savedProxyElsewhere]);
 
-  const edited = origin.trim() !== (shown?.origin ?? "") || canvasOrigin.trim() !== (shown?.canvasOrigin ?? "");
+  const edited = origin.trim() !== (shown?.origin ?? "") || canvasOrigin.trim() !== (shown?.canvasOrigin ?? "") || proxyElsewhere !== savedProxyElsewhere;
   const save = (event: FormEvent) => {
     event.preventDefault();
-    onSave(origin.trim() || canvasOrigin.trim() ? { origin, canvasOrigin } : null);
+    onSave(origin.trim() || canvasOrigin.trim() ? { origin, canvasOrigin } : null, proxyElsewhere);
   };
   const useFound = (address: PublicAddress) => {
     setOrigin(address.origin);
     setCanvasOrigin(address.canvasOrigin);
-    onSave(address);
+    onSave(address, proxyElsewhere);
   };
 
   return (
@@ -233,6 +246,12 @@ function AddressRoute({
             The host's environment sets its address (<code>MIRADOR_PUBLIC_ORIGIN</code> and <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code>), so it can't be changed
             here.
           </>
+        ) : proxyElsewhere ? (
+          <>
+            Where other devices open Mirador, and where its canvas pages load the libraries they draw with. A proxy on another machine can't reach this
+            machine's own ports, so Mirador also serves HTTPS on the network, and the proxy forwards to port <code>{settings.networkPort}</code> for Mirador
+            and <code>{settings.networkCanvasPort}</code> for the canvas.
+          </>
         ) : (
           <>
             Where other devices open Mirador — its own port, <code>{settings.port}</code> — and where its canvas pages load the libraries they draw with, a port
@@ -240,6 +259,12 @@ function AddressRoute({
           </>
         )}
       </p>
+      {!setByEnvironment && (
+        <label className="proxy-elsewhere" data-hint={hints.proxyElsewhere}>
+          <input type="checkbox" checked={proxyElsewhere} onChange={(event) => setProxyElsewhere(event.target.checked)} />
+          The proxy runs on another machine
+        </label>
+      )}
       {!setByEnvironment && <AddressFinder onUse={useFound} onProblem={onProblem} />}
       <div className="address-fields">
         <label data-hint={hints.address}>
@@ -357,17 +382,26 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => setRoute(savedChoice), [savedChoice]);
 
-  /** An address route with no address is nothing yet, so picking it only brings its fields out; saving one picks it for good. */
-  const revealAddress = () => {
-    setRoute("address");
+  /** Picking a way only brings out what it needs, so looking at one loses nothing; its button applies it. */
+  const reveal = (wanted: ReachRoute) => {
+    setRoute(wanted);
     setProblem(null);
   };
 
-  const choose = (wanted: ReachRoute, address: PublicAddress | null = null) => {
+  const apply = (wanted: ReachRoute, address: PublicAddress | null = null, proxyElsewhere = false) => {
     setRoute(wanted);
     setProblem(null);
-    void saveRoute(wanted, address).then(setProblem);
+    void saveRoute(wanted, address, proxyElsewhere).then(setProblem);
   };
+
+  const proxyGivesTheAddress = settings.savedPublicAddress !== null || settings.publicAddressSetByEnvironment;
+
+  const useThis = (wanted: ReachRoute) =>
+    savedChoice !== wanted && (
+      <button type="button" onClick={() => apply(wanted)}>
+        Use this
+      </button>
+    );
 
   return (
     <section className="reachability" aria-label="How other devices reach this Mirador">
@@ -380,21 +414,21 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
           title="At an address a proxy gives it"
           chosen={route === "address"}
           locked={locked}
-          onChoose={revealAddress}
+          onChoose={() => reveal("address")}
           description="A proxy in front of Mirador gives it an address other devices reach it at — tailscale serve does this in one command."
         >
-          <AddressRoute settings={settings} onSave={(address) => choose("address", address)} onProblem={setProblem} />
+          <AddressRoute settings={settings} onSave={(address, proxyElsewhere) => apply("address", address, proxyElsewhere)} onProblem={setProblem} />
         </RouteOption>
         <RouteOption
           title="Over the network, with no address"
           hint={hints.networkReachability}
           chosen={route === "network"}
           locked={locked}
-          onChoose={() => choose("network")}
+          onChoose={() => reveal("network")}
           description={
             <>
               Mirador serves HTTPS itself on port <code>{settings.networkPort}</code>, with a certificate it makes. Devices on the same network reach it
-              directly{settings.network && settings.publicAddress ? ` at ${settings.publicAddress.origin}` : ""}, with no proxy and no VPN; browsers warn once about
+              directly{settings.network && settings.publicAddress && !proxyGivesTheAddress ? ` at ${settings.publicAddress.origin}` : ""}, with no proxy and no VPN; browsers warn once about
               the certificate
               {settings.network && settings.authorityFingerprint ? (
                 <>
@@ -404,14 +438,18 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
               .
             </>
           }
-        />
+        >
+          {useThis("network")}
+        </RouteOption>
         <RouteOption
           title="Only on this machine"
           chosen={route === "none"}
           locked={locked}
-          onChoose={() => choose("none")}
+          onChoose={() => reveal("none")}
           description="No other device reaches it, and the host serves nothing on the network."
-        />
+        >
+          {useThis("none")}
+        </RouteOption>
       </div>
       {locked && (
         <p className="hint">

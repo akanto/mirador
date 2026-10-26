@@ -104,7 +104,7 @@ test("a machine with Tailscale is offered one button for both of its ports, and 
   });
 });
 
-test("choosing another way takes the address back, and the host's own HTTPS is saved by choosing it", async ({ page }) => {
+test("looking at another way loses nothing, and only its Use this button applies it and takes the address back", async ({ page }) => {
   await signIn(page, host);
   const settings = await openSettings(page, "Devices");
   await chooseAddressRoute(settings);
@@ -112,18 +112,68 @@ test("choosing another way takes the address back, and the host's own HTTPS is s
   await form.getByLabel("Address", { exact: true }).fill("https://box.example.ts.net");
   await form.getByLabel("Canvas address").fill("https://box.example.ts.net:8443");
   await form.getByRole("button", { name: "Save address" }).click();
-  expect(configFile()).toEqual({ publicOrigin: "https://box.example.ts.net", publicCanvasOrigin: "https://box.example.ts.net:8443" });
+  const savedAddress = { publicOrigin: "https://box.example.ts.net", publicCanvasOrigin: "https://box.example.ts.net:8443" };
+  await expect.poll(configFile).toEqual(savedAddress);
 
-  await test.step("the network way clears the address and serves the host's own HTTPS", async () => {
+  await test.step("picking the network way only shows it, and the saved address stays", async () => {
     await routeChoice(settings, NETWORK_ROUTE).click();
     await expect(routeChoice(settings, NETWORK_ROUTE)).toBeChecked();
     await expect(addressForm(settings), "the fields go away with the choice that used them").toHaveCount(0);
-    await expect.poll(configFile).toEqual({ network: true });
+    await expect(settings.getByRole("button", { name: "Use this" })).toBeVisible();
+    expect(configFile()).toEqual(savedAddress);
   });
 
-  await test.step("only on this machine takes that back too", async () => {
+  await test.step("coming back finds the address as saved, and what was typed but not saved is still there", async () => {
+    await chooseAddressRoute(settings);
+    await expect(form.getByLabel("Address", { exact: true })).toHaveValue("https://box.example.ts.net");
+    await form.getByLabel("Canvas address").fill("https://box.example.ts.net:9443");
     await routeChoice(settings, ALONE_ROUTE).click();
-    await expect(routeChoice(settings, ALONE_ROUTE)).toBeChecked();
+    await chooseAddressRoute(settings);
+    await expect(form.getByLabel("Canvas address")).toHaveValue("https://box.example.ts.net:9443");
+    expect(configFile()).toEqual(savedAddress);
+  });
+
+  await test.step("Use this applies the network way: it clears the address and serves the host's own HTTPS", async () => {
+    await routeChoice(settings, NETWORK_ROUTE).click();
+    await settings.getByRole("button", { name: "Use this" }).click();
+    await expect.poll(configFile).toEqual({ network: true });
+    await expect(settings.getByRole("button", { name: "Use this" }), "the way in use has nothing left to apply").toHaveCount(0);
+  });
+
+  await test.step("only on this machine takes that back too, once applied", async () => {
+    await routeChoice(settings, ALONE_ROUTE).click();
+    expect(configFile()).toEqual({ network: true });
+    await settings.getByRole("button", { name: "Use this" }).click();
+    await expect.poll(configFile).toEqual({});
+  });
+});
+
+test("an address given by a proxy on another machine is saved with the host's own HTTPS, and the ports the proxy forwards to are named", async ({ page }) => {
+  await signIn(page, host);
+  let settings = await openSettings(page, "Devices");
+  await chooseAddressRoute(settings);
+  const form = () => addressForm(settings);
+  await form().getByLabel("Address", { exact: true }).fill("https://mirador.example.com");
+  await form().getByLabel("Canvas address").fill("https://mirador-canvas.example.com");
+  await form().getByLabel("The proxy runs on another machine").check();
+  await expect(form()).toContainText(`forwards to port ${host.port + 2} for Mirador and ${host.port + 3} for the canvas`);
+  await form().getByRole("button", { name: "Save address" }).click();
+  await expect.poll(configFile).toEqual({ publicOrigin: "https://mirador.example.com", publicCanvasOrigin: "https://mirador-canvas.example.com", network: true });
+
+  await page.reload();
+  settings = await openSettings(page, "Devices");
+  await expect(routeChoice(settings, ADDRESS_ROUTE)).toBeChecked();
+  await expect(form().getByLabel("The proxy runs on another machine")).toBeChecked();
+
+  await test.step("unticking it and saving leaves the address alone, with no network of its own", async () => {
+    await form().getByLabel("The proxy runs on another machine").uncheck();
+    await form().getByRole("button", { name: "Save address" }).click();
+    await expect.poll(configFile).toEqual({ publicOrigin: "https://mirador.example.com", publicCanvasOrigin: "https://mirador-canvas.example.com" });
+  });
+
+  await test.step("only on this machine takes the address back", async () => {
+    await routeChoice(settings, ALONE_ROUTE).click();
+    await settings.getByRole("button", { name: "Use this" }).click();
     await expect.poll(configFile).toEqual({});
   });
 });

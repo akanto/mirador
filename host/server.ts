@@ -314,6 +314,7 @@ export function startServer(services: HostServices) {
       savedNetwork: savedNetwork(config.dataDir),
       networkSetByEnvironment: running.networkSetByEnvironment,
       networkPort: running.network?.port ?? config.port + 2,
+      networkCanvasPort: running.network?.canvasPort ?? config.port + 3,
       restartNeeded: JSON.stringify(afterRestart) !== JSON.stringify(running),
       authorityFingerprint,
     };

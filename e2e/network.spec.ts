@@ -101,6 +101,7 @@ test("turning the network on in Settings takes effect when the host restarts", a
   let settings = await openSettings(page, "Devices");
   const networkRoute = () => settings.getByRole("radio", { name: "Over the network, with no address" });
   await networkRoute().check();
+  await settings.getByRole("button", { name: "Use this" }).click();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
   expect(JSON.parse(readFileSync(join(hostSwitchedInSettings.dataDir, "config.json"), "utf8"))).toEqual({ network: true });
 
@@ -114,6 +115,7 @@ test("turning the network on in Settings takes effect when the host restarts", a
   expect(await fetchTrusting(authority, `${networkOriginAt(hostSwitchedInSettings.port)}/mirador-ca.pem`)).toBe(authority);
 
   await settings.getByRole("radio", { name: "Only on this machine" }).check();
+  await settings.getByRole("button", { name: "Use this" }).click();
   await expect(settings.getByText("Saved. The host uses it from its next start.")).toBeVisible();
 });
 
