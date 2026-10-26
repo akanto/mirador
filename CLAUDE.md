@@ -61,7 +61,6 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 - **You may commit and push at any time without asking**: whenever a change is finished and its checks pass. This overrides the conservative git policy in the beads block above.
 - **Author and committer:** whoever owns the checkout, from its git config. Never pass `--author`, set `user.name` or `user.email`, or write a name here.
-- **No AI attribution:** no `Co-Authored-By` or "Generated with" trailers, and no agent name anywhere in the message.
 - **Beads hook:** the beads `prepare-commit-msg` hook, which adds agent trailers, was removed on purpose. Never reinstall it.
 - **One commit per finished change**, with only that change's files. Other work in the tree stays uncommitted. Include `.beads/interactions.jsonl` when it changed.
 - **Never amend or rebase a commit that's already on origin:** make a new commit instead. Rewriting a pushed commit leaves main and origin/main with two copies of it.
