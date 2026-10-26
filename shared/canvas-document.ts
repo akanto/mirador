@@ -1106,6 +1106,13 @@ function escapeAttribute(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 }
 
+/**
+ * Mermaid puts a diagram's drawing in place of its source only once it has drawn it, so until then the source stays
+ * hidden; a diagram that is never drawn shows its source after 3 s, as the page itself has it.
+ */
+const DIAGRAM_SOURCE_HIDDEN_STYLE =
+  "<style>@keyframes mirador-undrawn-diagram{from{visibility:hidden}}.mermaid:not(:has(svg)){animation:mirador-undrawn-diagram 0s 3s backwards}</style>";
+
 /** A page in a box among a question's fields keeps its side spacing on html, where a page's own body{margin:0} does not take it away; the body's top and bottom margins stay, to collapse with its first and last elements' as before. */
 const PADDED_PAGE_STYLE = "<style>html{padding:0 8px}body{margin-left:0;margin-right:0}</style>";
 
@@ -1131,6 +1138,7 @@ export function buildCanvasDocument(
     ...(markable ? [`<script>${pageMarking(itemId, assetsOrigin)}</script>`] : []),
     `<script>${frameReporter(itemId, theme, assetsOrigin)}</script>`,
     "<style>html{background:light-dark(#fff,#111);color:light-dark(#171717,#ececec);font-family:system-ui,sans-serif;overflow-wrap:break-word}</style>",
+    DIAGRAM_SOURCE_HIDDEN_STYLE,
     ...(padded ? [PADDED_PAGE_STYLE] : []),
     withoutDoctype,
   ].join("\n");
