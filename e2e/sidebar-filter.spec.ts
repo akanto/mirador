@@ -67,7 +67,7 @@ test("the sidebar filters to the workspaces and conversations whose names hold e
 
   await test.step("the shortcut goes to the filter from the message box, and the shortcuts list names it", async () => {
     await page.locator(".composer:visible textarea").click();
-    await page.keyboard.press("ControlOrMeta+Shift+L");
+    await page.keyboard.press("ControlOrMeta+Shift+E");
     await expect(filterField(page)).toBeFocused();
     await expect(filterField(page)).toHaveValue("nowhere");
     await page.keyboard.type("queue");

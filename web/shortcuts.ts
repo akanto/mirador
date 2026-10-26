@@ -54,7 +54,7 @@ export function commandFor(press: KeyPress, typing: TypingState, mac = isMac): S
   if (press.ctrlKey && !press.metaKey && !press.altKey && !press.shiftKey && press.code === "Backquote") return { type: "toggle-terminal" };
   if (primary && !press.altKey && !press.shiftKey && press.code === "KeyF" && typing !== "terminal") return { type: "find" };
   if (primary && !press.altKey && press.shiftKey && press.code === "KeyF" && !terminalFinds) return { type: "search" };
-  if (primary && !press.altKey && press.shiftKey && press.code === "KeyL") return { type: "filter-sidebar" };
+  if (primary && !press.altKey && press.shiftKey && press.code === "KeyE") return { type: "filter-sidebar" };
   if (primary && !press.altKey && press.shiftKey && press.code === "KeyU" && !terminalEntersUnicode) return { type: "mark-unread" };
   if (primary && !press.altKey && press.shiftKey && typing !== "typing") {
     if (press.code === "ArrowLeft") return { type: "focus", pane: "chat" };
@@ -111,7 +111,7 @@ export function shortcutKeys(mac = isMac) {
     focusTerminal: `${primary}${shift}↓`,
     find: `${primary}F`,
     search: `${primary}${shift}F`,
-    filterSidebar: `${primary}${shift}L`,
+    filterSidebar: `${primary}${shift}E`,
     restartHost: `${primary}${shift}R`,
     markUnread: `${primary}${shift}U`,
     templates: `${primary}J`,

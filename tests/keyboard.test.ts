@@ -57,12 +57,12 @@ describe("commandFor", () => {
     expect(shortcutKeys(true).markUnread).toBe("⌘⇧U");
   });
 
-  test("Cmd+Shift+L, or Ctrl+Shift+L, goes to the sidebar's filter from anywhere, while typing too", () => {
+  test("Cmd+Shift+E, or Ctrl+Shift+E (Bitwarden takes Ctrl+Shift+L), goes to the sidebar's filter from anywhere, while typing too", () => {
     const filterSidebar = { type: "filter-sidebar" } as const;
-    expect(commandFor(press("KeyL", { metaKey: true, shiftKey: true }), "typing", true)).toEqual(filterSidebar);
-    expect(commandFor(press("KeyL", { ctrlKey: true, shiftKey: true }), "terminal", false)).toEqual(filterSidebar);
-    expect(commandFor(press("KeyL", { metaKey: true }), "not-typing", true)).toBeNull();
-    expect(shortcutKeys(false).filterSidebar).toBe("Ctrl+Shift+L");
+    expect(commandFor(press("KeyE", { metaKey: true, shiftKey: true }), "typing", true)).toEqual(filterSidebar);
+    expect(commandFor(press("KeyE", { ctrlKey: true, shiftKey: true }), "terminal", false)).toEqual(filterSidebar);
+    expect(commandFor(press("KeyE", { metaKey: true }), "not-typing", true)).toBeNull();
+    expect(shortcutKeys(false).filterSidebar).toBe("Ctrl+Shift+E");
   });
 
   test("Ctrl+` shows and hides the terminal on every system, and Cmd+Shift+Down focuses it", () => {
