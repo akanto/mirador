@@ -44,13 +44,13 @@ export function storeWithConversation(path = ":memory:") {
 }
 
 /**
- * Conversation c1's canvas server with the canvas plugins of `pluginsFolder` and Mirador's own `shippedFolder`, and nothing
- * else behind it. `hosts` stand in for the host code of plugins by name; the prompts plugins send are kept in `prompts`.
+ * Conversation c1's canvas server with the canvas plugins of `pluginsFolder`, and nothing else behind it. `hosts` stand
+ * in for the host code of plugins by name; the prompts plugins send are kept in `prompts`.
  */
-export async function canvasPluginHost(pluginsFolder: string, shippedFolder: string | null = null, store = storeWithConversation(), hosts: Record<string, CanvasHost> = {}) {
+export async function canvasPluginHost(pluginsFolder: string, store = storeWithConversation(), hosts: Record<string, CanvasHost> = {}) {
   const published: ServerMessage[] = [];
   const hub = { publishToConversation: (_conversationId: string, message: ServerMessage) => void published.push(message) } as unknown as Hub;
-  const loaded = await loadPlugins(pluginsFolder, shippedFolder);
+  const loaded = await loadPlugins(pluginsFolder);
   expect(loaded.problems).toEqual([]);
   const plugins = new CanvasPlugins(
     store,

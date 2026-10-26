@@ -1,10 +1,16 @@
+import { cpSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
 
-test.beforeAll(() => host.start());
+/** The board test plugin, whose steps show in the tab beside the canvas, as a checklist does. */
+test.beforeAll(async () => {
+  cpSync(join(import.meta.dirname, "..", "tests", "fixtures", "canvas-plugins", "board"), join(host.dataDir, "plugins", "board"), { recursive: true });
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
@@ -42,7 +48,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const conversationId = await startConversation(page);
-  await callCanvasTool(host, conversationId, "checklist", { title: "Release", sections: [{ title: "Build", items: [{ id: "tests", text: "Run the tests" }] }] });
+  await callCanvasTool(host, conversationId, "track_steps", { title: "Release", steps: ["Run the tests"] });
   await callCanvasTool(host, conversationId, "show", { title: "Sales by region, quarter by quarter", html: "<p>A chart</p>" });
   await expect(bar(page).locator(".canvas-title")).toHaveText("Sales by region, quarter by quarter");
 
@@ -124,7 +130,7 @@ test("the canvas bar folds its buttons into More as its pane narrows, so every o
 
   await test.step("with the checklist folded, the agent's tick flashes More", async () => {
     await chooseFromMore(page, "Checklist 0/1");
-    await callCanvasTool(host, conversationId, "update_checklist", { items: [{ id: "tests", done: true }] });
+    await callCanvasTool(host, conversationId, "finish_step", {});
     await expect(more(page)).toHaveClass(/agent-edited/);
   });
 

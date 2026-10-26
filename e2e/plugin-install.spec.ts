@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, openSettings, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
-import { MIRADOR_VERSION } from "../shared/version.ts";
 
 const host = new TestHost({ fakePrograms: true, environment: { MIRADOR_PLUGIN_UPDATE_CHECK: "on" } });
 const profileName = "plugin-install";
@@ -97,7 +96,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await settings.getByLabel("Git URL or path").fill(join(host.root, "no-such-repo"));
     await settings.getByRole("button", { name: "Add" }).click();
     await expect(settings.getByRole("form", { name: "Add a plugin" }).locator(".plugin-output")).toContainText("git ls-remote failed:");
-    await expect(pluginRows(settings)).toHaveText([`ChecklistchecklistComes with Mirador ${MIRADOR_VERSION}`, `Code reviewreviewComes with Mirador ${MIRADOR_VERSION}Open reviewsFull screen, over the chatIn the canvas pane, beside the chat`]);
+    await expect(pluginRows(settings)).toHaveText(["No plugin is installed."]);
   });
 
   await test.step("adding clones and builds the repo, and the app works from the next start", async () => {
@@ -156,7 +155,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     const settings = await openSettings(page, "Plugins");
     await settings.getByRole("button", { name: "Remove Counter" }).click();
     await settings.getByRole("button", { name: "Confirm: Remove Counter" }).click();
-    await expect(pluginRows(settings)).toHaveText([`ChecklistchecklistComes with Mirador ${MIRADOR_VERSION}`, `Code reviewreviewComes with Mirador ${MIRADOR_VERSION}Open reviewsFull screen, over the chatIn the canvas pane, beside the chat`]);
+    await expect(pluginRows(settings)).toHaveText(["No plugin is installed."]);
     await restartFromSettings(page);
     await expect(appToggle(page)).toHaveCount(0);
     expect(await canvasToolNames(conversation)).not.toContain("app_open");

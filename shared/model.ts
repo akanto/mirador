@@ -7,7 +7,7 @@ import type {
   ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { PluginItemPlacement } from "./canvas-plugins.ts";
-import type { EditDiff, Review, Tour } from "./review.ts";
+import type { EditDiff } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
 
 export type HarnessId = "claude" | "opencode" | "pi";
@@ -570,7 +570,7 @@ export interface CanvasAnswer {
   deliveredAs: "tool-result" | "next-message";
 }
 
-export type CanvasItemKind = "show" | "ask" | "review" | "tour" | "plugin";
+export type CanvasItemKind = "show" | "ask" | "plugin";
 
 /** What every canvas item carries, whatever its kind. */
 export interface CanvasItemBase {
@@ -610,18 +610,6 @@ export interface AskItem extends CanvasItemBase {
   shownBefore?: string[];
   /** The official plugin Mirador installs when the user answers Install. */
   installsPlugin?: string;
-}
-
-/** A review as the walkthrough view draws it; the code review plugin keeps reviews as its items. */
-export interface ReviewItem extends CanvasItemBase {
-  kind: "review";
-  review: Review;
-}
-
-/** A tour as the walkthrough view draws it; the code review plugin keeps tours as its items. */
-export interface TourItem extends CanvasItemBase {
-  kind: "tour";
-  tour: Tour;
 }
 
 /** An item a plugin's tool published; the plugin's canvas view draws it in a frame. */

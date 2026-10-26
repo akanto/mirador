@@ -126,7 +126,7 @@ describe("CanvasPlugins", () => {
 
   test("a plugin keeps what it stores across conversations and restarts, apart from other plugins", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "canvas-storage-")), "state.sqlite");
-    const first = await canvasPluginHost(FIXTURES, null, storeWithConversation(path));
+    const first = await canvasPluginHost(FIXTURES, storeWithConversation(path));
     await first.callTool("show_card", { title: "Hello", text: "First" });
     const cardId = first.items()[0]!.id;
     expect(await first.plugins.act(cardId, { kind: "remember", key: "split", value: { list: 0.3 } })).toEqual({ list: 0.3 });

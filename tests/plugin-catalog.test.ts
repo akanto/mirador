@@ -12,18 +12,18 @@ const media = {
   repo: "https://github.com/sodre90/mirador-media.git",
   branch: "main",
 };
-const checklist = { name: "checklist", title: "Checklist", description: "Steps, ticked.", recommendWhen: "the work has several steps", comesWithMirador: true };
+const checklist = { name: "checklist", title: "Checklist", description: "Steps, ticked.", recommendWhen: "the work has several steps", repo: "https://github.com/sodre90/mirador-checklist.git" };
 
 let served: unknown = { plugins: [media, checklist] };
 const server = Bun.serve({ port: 0, fetch: () => (served === null ? new Response("gone", { status: 500 }) : Response.json(served)) });
 afterAll(() => server.stop(true));
 const url = `http://127.0.0.1:${server.port}/index.json`;
 
-test("the catalog keeps the entries it can read: a repo to clone, or none for one that comes with Mirador", () => {
+test("the catalog keeps the entries it can read: each with a repo to clone", () => {
   expect(catalogPluginsOf({ plugins: [media, checklist] })).toEqual([media, checklist]);
   expect(
     catalogPluginsOf({
-      plugins: [{ ...media, repo: "" }, { ...checklist, repo: media.repo }, { ...media, name: "Media" }, { ...media, recommendWhen: "" }, checklist],
+      plugins: [{ ...media, repo: "" }, { ...checklist, repo: undefined }, { ...media, name: "Media" }, { ...media, recommendWhen: "" }, checklist],
     }),
   ).toEqual([checklist]);
   expect(catalogPluginsOf({ plugins: "media" })).toBeNull();
@@ -37,7 +37,7 @@ test("offers the plugins not installed yet, keeps the last catalog fetched when 
   expect(catalog.all).toEqual([]);
   await catalog.refresh();
   expect(catalog.all.map(({ name }) => name)).toEqual(["media", "checklist"]);
-  expect(catalog.notInstalled()).toEqual([media]);
+  expect(catalog.notInstalled()).toEqual([media, checklist]);
 
   served = null;
   await catalog.refresh();
@@ -45,16 +45,15 @@ test("offers the plugins not installed yet, keeps the last catalog fetched when 
   expect(new PluginCatalog(store, null, () => false).all.map(({ name }) => name)).toEqual(["media", "checklist"]);
 
   installed.add("media");
-  expect(catalog.notInstalled()).toEqual([]);
+  expect(catalog.notInstalled()).toEqual([checklist]);
   served = { plugins: [media, checklist] };
 });
 
-test("installs only an official plugin that is neither installed nor coming with Mirador", async () => {
+test("installs only an official plugin that isn't installed yet", async () => {
   const installed = new Set<string>();
   const catalog = new PluginCatalog(new Store(":memory:"), url, (name) => installed.has(name));
   await catalog.refresh();
   expect(catalog.installable("media").repo).toBe(media.repo);
-  expect(() => catalog.installable("checklist")).toThrow("Checklist comes with Mirador.");
   expect(() => catalog.installable("evil")).toThrow("evil is not an official plugin; they are media, checklist.");
   installed.add("media");
   expect(() => catalog.installable("media")).toThrow("Media is installed already.");

@@ -4,6 +4,7 @@ import { serveCanvasAssets } from "./canvas/assets.ts";
 import { authorityFingerprint, namesToCover, servingCertificate } from "./certificates.ts";
 import { CanvasMcpEndpoints } from "./canvas/mcp.ts";
 import { AppDocuments } from "./apps/documents.ts";
+import { defaultPluginsIn, installDefaultPlugins } from "./apps/default-plugins.ts";
 import { InstalledPlugins } from "./apps/installed-plugins.ts";
 import { loadPlugins, watchViews } from "./apps/plugins.ts";
 import { CanvasPlugins } from "./canvas/plugins.ts";
@@ -66,8 +67,8 @@ const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, M
 notifierMute.unmuteSessionsOfEarlierRuns();
 const sourceDir = dirname(import.meta.dir);
 const pluginsFolder = join(config.dataDir, "plugins");
-const shippedPluginsFolder = join(sourceDir, "plugins");
-const loadedPlugins = await loadPlugins(pluginsFolder, shippedPluginsFolder);
+if (config.defaultPluginsFile) await installDefaultPlugins(await defaultPluginsIn(config.defaultPluginsFile), new InstalledPlugins(pluginsFolder, []), store);
+const loadedPlugins = await loadPlugins(pluginsFolder);
 for (const { folder, message } of loadedPlugins.problems) console.warn(`The plugin in ${folder} didn't load: ${message}`);
 const canvasPlugins = new CanvasPlugins(store, hub, loadedPlugins.canvases);
 const loadedPluginNames = new Set([...loadedPlugins.canvases, ...loadedPlugins.apps].map(({ manifest }) => manifest.name));
@@ -87,7 +88,7 @@ const canvasAssetsOrigins = [
 const canvas = new CanvasService(store, hub, conversations, notifications, canvasAssetsOrigins);
 // The checklist plugin's note about the user's ticks came before the page errors when the checklist was Mirador's own.
 conversations.hearCanvasNotesFrom((conversationId) => [...canvasPlugins.notesForAgent(conversationId), ...canvas.notesForAgent(conversationId)]);
-const plugins = new InstalledPlugins(pluginsFolder, loadedPlugins.problems, shippedPluginsFolder);
+const plugins = new InstalledPlugins(pluginsFolder, loadedPlugins.problems);
 canvas.installsPluginsWith((name) => installOfficialPlugin(name, catalog, plugins, (listed) => hub.broadcast(listed)));
 const apps = new AppDocuments(store, loadedPlugins.apps, {
   openAppsChanged: (openApps) => hub.broadcast({ type: "apps.open", openApps }),

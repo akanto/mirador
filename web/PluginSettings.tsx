@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { settingValue, type CatalogPlugin, type PluginInfo, type PluginNews, type PluginSettings as SettingsOfPlugin, type PluginSource, type PluginUpdate as FoundUpdate } from "../shared/apps.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
-import { MIRADOR_VERSION } from "../shared/version.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
@@ -31,8 +30,6 @@ async function findNews(folder: string): Promise<PluginNews & { problem: string 
 
 function sourceLine(source: PluginSource) {
   switch (source.kind) {
-    case "shipped":
-      return `Comes with Mirador ${MIRADOR_VERSION}`;
     case "git":
       return [source.remote ?? "no remote", source.release ? "releases" : (source.branch ?? "no branch"), `${source.commit} ${source.subject}`].join(" · ");
     case "linked":
@@ -167,26 +164,24 @@ function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?:
       <span className="plugin-source">{sourceLine(plugin.source)}</span>
       {plugin.problem && <span className="plugin-problem">Didn't load: {plugin.problem}</span>}
       {settings && settings.settings.length > 0 && <SettingsOf settings={settings} />}
-      {plugin.source.kind !== "shipped" && (
-        <span className="plugin-actions">
-          {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} found={found} />}
-          <ConfirmButton
-            className="danger"
-            label={`Remove ${title}`}
-            armedText={linked ? "Remove the link?" : "Remove?"}
-            armedHint={linked ? hints.unlinkPluginArmed : hints.removePluginArmed}
-            onConfirm={remove}
-          >
-            Remove
-          </ConfirmButton>
-        </span>
-      )}
+      <span className="plugin-actions">
+        {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} found={found} />}
+        <ConfirmButton
+          className="danger"
+          label={`Remove ${title}`}
+          armedText={linked ? "Remove the link?" : "Remove?"}
+          armedHint={linked ? hints.unlinkPluginArmed : hints.removePluginArmed}
+          onConfirm={remove}
+        >
+          Remove
+        </ConfirmButton>
+      </span>
       {problem && <pre className="plugin-output">{problem}</pre>}
     </li>
   );
 }
 
-function OfficialPluginToInstall({ plugin }: { plugin: CatalogPlugin & { repo: string } }) {
+function OfficialPluginToInstall({ plugin }: { plugin: CatalogPlugin }) {
   const [installing, setInstalling] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const install = async () => {
@@ -210,7 +205,7 @@ function OfficialPluginToInstall({ plugin }: { plugin: CatalogPlugin & { repo: s
 }
 
 const toInstall = (official: CatalogPlugin[], installed: PluginInfo[]) =>
-  official.filter((plugin): plugin is CatalogPlugin & { repo: string } => plugin.repo !== undefined && !installed.some(({ name }) => name === plugin.name));
+  official.filter((plugin) => !installed.some(({ name }) => name === plugin.name));
 
 function AddPlugin() {
   const [url, setUrl] = useState("");
@@ -317,7 +312,7 @@ export function PluginSettings({ pluginUpdates }: { pluginUpdates: FoundUpdate[]
       <ul className="plugin-list" aria-label="Plugins">
         {listed?.plugins.map((plugin) => (
           <PluginRow
-            key={`${plugin.source.kind === "shipped" ? "shipped" : "installed"}/${plugin.folder}`}
+            key={plugin.folder}
             plugin={plugin}
             official={listed.official?.find(({ name }) => name === plugin.name)}
             found={newsFor(plugin, pluginUpdates)}

@@ -4,7 +4,7 @@ import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { lineDiff } from "../web/diff.ts";
 import { pageEvent } from "../host/low-data.ts";
 import { canTryAgain } from "../shared/try-again.ts";
-import { approvalsWaiting, authorOf, buildTimeline, spokenSeverity, startsAuthorGroup, stepsAtWork, stepsRunning, subagentAsking, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
+import { approvalsWaiting, authorOf, buildTimeline, latestPlan, spokenSeverity, startsAuthorGroup, stepsAtWork, stepsRunning, subagentAsking, subagentEndedAt, subagentsIn, subagentState, toolCallsAwaitingPermission, type SubagentBlock, type TimelineBlock } from "../shared/timeline.ts";
 
 function stored(events: ConversationEvent[]): StoredEvent[] {
   return events.map((event, index) => ({ seq: index + 1, at: (index + 1) * 1000, event }));
@@ -560,5 +560,26 @@ describe("opencode 2 subagents", () => {
     ]);
 
     expect(timeline).toMatchObject([{ kind: "plan", entries: [{ content: "Main step" }] }, { kind: "agent", text: "Main says more." }]);
+  });
+});
+
+const planEvent = (seq: number, entries: { content: string; status: "pending" | "in_progress" | "completed" }[], meta?: Record<string, unknown>): StoredEvent => ({
+  seq,
+  at: seq,
+  event: { type: "acp", update: { sessionUpdate: "plan", entries: entries.map((entry) => ({ ...entry, priority: "medium" })), ...(meta && { _meta: meta }) } },
+});
+
+describe("latestPlan", () => {
+  test("is the agent's newest plan, across turns; a subagent's plan or an emptied one leaves it standing", () => {
+    const events: StoredEvent[] = [
+      planEvent(1, [{ content: "Old", status: "completed" }]),
+      planEvent(2, [{ content: "Read the code", status: "completed" }, { content: "Write the tool", status: "in_progress" }]),
+      { seq: 3, at: 3, event: { type: "turn-end", stopReason: "end_turn" } },
+      { seq: 4, at: 4, event: { type: "user-message", text: "Next" } },
+      planEvent(5, [{ content: "Subagent step", status: "pending" }], { claudeCode: { parentToolUseId: "toolu_1" } }),
+      planEvent(6, []),
+    ];
+    expect(latestPlan(events)?.map(({ content }) => content)).toEqual(["Read the code", "Write the tool"]);
+    expect(latestPlan(events.slice(2, 4))).toBeNull();
   });
 });

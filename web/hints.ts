@@ -47,10 +47,6 @@ export const hints = {
   restartHost:
     "Starts the host again in place, so it runs its code as it is now. Agents that are working stop, then continue where they left off; queued messages are kept. Terminals come back as new shells under the output they had. Open pages reload by themselves.",
   stop: "Asks the agent to stop its turn, as Esc does. When it has not stopped within a few seconds, this becomes Force stop, which ends the agent process instead; other conversations on the same profile continue where they left off.",
-  reviewLineNumber: "Click to select this line, Shift+click to select up to it. Then a asks the agent about the lines, o opens them in IntelliJ IDEA.",
-  findingChecked: "Confirmed: the agent verified it (ran, traced or tested the code). Plausible: suspected, not verified.",
-  findingNumber: "The number the agent knows this finding by: when it writes finding 5 or finding-5, it means #5.",
-  findingDecision: "Kept findings go to the pull request when you post; dropped ones stay here. Click to switch.",
   promptTemplates: "Messages you send often, with the values you fill in each time. Settings adds, changes and deletes them.",
   deleteTemplateArmed: "Click again to delete this template. Defaults deleted here do not come back.",
   findAddress:
@@ -103,19 +99,6 @@ export const hints = {
   terminalScrollback: "How many lines a terminal keeps after they scroll off the top.",
   connectedDevicesInSidebar: "While devices are connected, a line at the bottom of the sidebar says how many; click it to see which. Remembered in this browser.",
   connectedDevices: (names: string[]) => `Connected now: ${names.join(", ")}. Click to see all devices in Settings → Devices.`,
-  askAndUpdateReview:
-    "Ask, and tell the agent to update the parts of the review its answer changes, such as a finding, the tour, the summary or the verdict. They change in place, and the rest stays as you left it.",
-  answerDecision: "Kept answers go to their conversations on the pull request when you post, as replies on your pending review; dropped ones stay here. Click to switch.",
-  answerResolve:
-    "Resolve this conversation on GitHub when its answer is posted. The answer waits on your pending review until you submit it, but the conversation shows as resolved to everyone at once.",
-  answerCannotResolve: "GitHub does not let you resolve this conversation.",
-  findingOutsideDiff: "GitHub takes line comments only on changed lines and the 3 lines around them, so this one cannot be posted as a comment. It stays in the review.",
-  fileInTour: "The flow tour passes through this file; such files come first.",
-  revealUnderPrevious: "Shows the next lines of the file, under the change above.",
-  revealOverNext: "Shows the lines of the file right above the change below.",
-  revealAll: "Shows every line of the file between the two changes (or up to the file's start or end).",
-  reviewPlacement: "Show the review over the whole workspace, or in the canvas pane next to the chat. The code review plugin's setting in Settings picks where reviews open.",
-  tourPlacement: "Show the tour over the whole workspace, or in the canvas pane next to the chat.",
   pageLibrariesSetting:
     "Where a page you copy or save out of the canvas loads D3, Mermaid and three.js from. The canvas serves them itself, which a page outside Mirador cannot reach. three.js always comes from the CDN.",
   editsInCanvasSetting:
@@ -158,10 +141,6 @@ export const hints = {
   findOlder: "Previous match, further up (Enter)",
   findNewer: "Next match, further down (Shift+Enter)",
   findMatchCase: "Match case: capital and small letters count as different.",
-  reviewFind: "Find text in the code of every changed file, in the lines their diffs show.",
-  reviewFindPrevious: "Previous match, further up (Shift+Enter)",
-  reviewFindNext: "Next match, further down and on into the next file (Enter)",
-  reviewFileMatches: "How often this file holds the text you are finding",
   runningSubagent: "A subagent at work. Click to open its card in the conversation and see what it has done so far.",
   approvalWaiting: "The agent, or one of its subagents, waits for your approval further up the conversation. Click to go to it.",
   subagentTokens: (read: string, written: string, fresh: string) =>
@@ -281,7 +260,6 @@ export const hints = {
     "The steps of the agent's work, ticked as it finishes them. You can tick any of them too: the agent hears of your ticks with your next message.",
   checklistClose: "Back to what the canvas showed. The Checklist button opens it again.",
   checklistDismiss: "Take the checklist off the canvas for good. It stays gone until the agent publishes a new one.",
-  checklistOwner: { user: "Yours to do.", both: "For you and the agent to do together." },
   checklistPlan: "The agent's own to-do list, as it last updated it. Only the agent ticks these.",
   changesScope: {
     turn: "The files that differ from how they were when this turn began, as the agent or anything else left them.",

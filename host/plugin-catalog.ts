@@ -22,18 +22,17 @@ export class PluginCatalog {
     return this.plugins;
   }
 
-  /** The ones the user could install: not coming with Mirador, and not in the plugins folder yet. */
+  /** The ones the user could install: not in the plugins folder yet. */
   notInstalled(): CatalogPlugin[] {
-    return this.plugins.filter(({ name, comesWithMirador }) => !comesWithMirador && !this.isInstalled(name));
+    return this.plugins.filter(({ name }) => !this.isInstalled(name));
   }
 
   /** Throws why the plugin can't be installed from the catalog. */
-  installable(name: string): CatalogPlugin & { repo: string } {
+  installable(name: string): CatalogPlugin {
     const plugin = this.plugins.find((listed) => listed.name === name);
     if (!plugin) throw new Error(`${name} is not an official plugin; they are ${this.plugins.map((listed) => listed.name).join(", ") || "not known yet"}.`);
-    if (plugin.comesWithMirador || !plugin.repo) throw new Error(`${plugin.title} comes with Mirador.`);
     if (this.isInstalled(name)) throw new Error(`${plugin.title} is installed already.`);
-    return { ...plugin, repo: plugin.repo };
+    return plugin;
   }
 
   /** Fetches the catalog; a failure keeps the last one and is only logged. */

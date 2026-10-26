@@ -447,6 +447,16 @@ export class Store {
     this.setSetting("plugin_catalog", JSON.stringify(catalog));
   }
 
+  /** The default plugins Mirador has installed, whether or not the user has removed them since. */
+  defaultPluginsInstalled(): string[] {
+    const saved = this.setting("default_plugins_installed");
+    return saved === null ? [] : JSON.parse(saved);
+  }
+
+  rememberDefaultPluginInstalled(name: string) {
+    this.setSetting("default_plugins_installed", JSON.stringify([...new Set([...this.defaultPluginsInstalled(), name])]));
+  }
+
   saveAppConversation(workspaceId: string, app: string, conversationId: string) {
     this.db.query("INSERT OR IGNORE INTO app_conversations (workspace_id, app, conversation_id) VALUES (?, ?, ?)").run(workspaceId, app, conversationId);
   }

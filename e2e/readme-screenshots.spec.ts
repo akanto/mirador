@@ -18,7 +18,7 @@ const zdotdir = join(tmpdir(), "mirador-readme-zdotdir");
 const host = new TestHost({
   shell: "/bin/zsh",
   usesClaudeLogin: true,
-  environment: { ZDOTDIR: zdotdir, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default" },
+  environment: { ZDOTDIR: zdotdir, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default", MIRADOR_DEFAULT_PLUGINS: join(import.meta.dirname, "..", "plugins", "defaults.json") },
 });
 const screenshots = join(import.meta.dirname, "..", "docs", "screenshots");
 const shopApi = join(host.root, "shop-api");

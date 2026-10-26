@@ -14,8 +14,6 @@ export interface ViewCode {
 interface LoadedPlugin {
   manifest: PluginManifest;
   folder: string;
-  /** In Mirador's own plugins folder, rather than one the owner installed. */
-  shipped: boolean;
 }
 
 /** A plugin's app part. */
@@ -70,23 +68,15 @@ export interface LoadedPlugins {
   problems: PluginLoadProblem[];
 }
 
-/**
- * The plugins in Mirador's own `shippedFolder`, then every folder in `pluginsFolder` with a plugin.json; one that fails
- * to load is reported and the rest still load.
- */
-export async function loadPlugins(pluginsFolder: string, shippedFolder: string | null = null): Promise<LoadedPlugins> {
+/** Every folder in `pluginsFolder` with a plugin.json; one that fails to load is reported and the rest still load. */
+export async function loadPlugins(pluginsFolder: string): Promise<LoadedPlugins> {
   const loaded: LoadedPlugins = { apps: [], canvases: [], problems: [] };
   const names = new Map<string, LoadedPlugin>();
-  const foldersToLoad = [
-    ...(shippedFolder ? pluginFolders(shippedFolder).map((folder) => ({ folder, shipped: true })) : []),
-    ...pluginFolders(pluginsFolder).map((folder) => ({ folder, shipped: false })),
-  ];
-  for (const { folder, shipped } of foldersToLoad) {
+  for (const folder of pluginFolders(pluginsFolder)) {
     try {
-      const { app, canvas } = await loadPlugin(folder, shipped);
+      const { app, canvas } = await loadPlugin(folder);
       const { name } = (app ?? canvas)!.manifest;
-      const namesake = names.get(name);
-      if (namesake) throw new Error(namesake.shipped ? `Mirador comes with a plugin named ${name}` : `another plugin is already named ${name}`);
+      if (names.has(name)) throw new Error(`another plugin is already named ${name}`);
       if (canvas) refuseTakenToolNames(canvas, loaded.canvases);
       names.set(name, (app ?? canvas)!);
       if (app) loaded.apps.push(app);
@@ -127,42 +117,40 @@ export function pluginFiles(folder: string, { app, canvas }: PluginManifest) {
   return { app: app && filesOf(app), canvas: canvas && filesOf(canvas) };
 }
 
-/** Every plugin but those that come with Mirador gives its release; they carry Mirador's. */
+/** Every plugin gives its release. */
 export function refuseUnversioned(manifest: PluginManifest) {
   if (manifest.version === undefined) throw new Error("plugin.json needs a version, its release as x.y.z, such as 1.0.0");
 }
 
-async function loadPlugin(folder: string, shipped: boolean): Promise<{ app: AppPlugin | null; canvas: CanvasPlugin | null }> {
+async function loadPlugin(folder: string): Promise<{ app: AppPlugin | null; canvas: CanvasPlugin | null }> {
   const manifest = await readManifest(folder);
-  if (!shipped) refuseUnversioned(manifest);
+  refuseUnversioned(manifest);
   const files = pluginFiles(folder, manifest);
-  const loaded = { manifest, folder, shipped };
+  const loaded = { manifest, folder };
   return {
-    app: files.app ? { ...loaded, host: hostFrom(await import(files.app.hostFile)), view: await viewCode(files.app.viewFile, shipped) } : null,
-    canvas: files.canvas ? { ...loaded, host: canvasHostFrom(await import(files.canvas.hostFile), manifest.settings ?? []), view: await viewCode(files.canvas.viewFile, shipped) } : null,
+    app: files.app ? { ...loaded, host: hostFrom(await import(files.app.hostFile)), view: await viewCode(files.app.viewFile) } : null,
+    canvas: files.canvas ? { ...loaded, host: canvasHostFrom(await import(files.canvas.hostFile), manifest.settings ?? []), view: await viewCode(files.canvas.viewFile) } : null,
   };
 }
 
 const VIEW_SETTLES_MS = 100;
 
 /**
- * Follows the views of the plugins the owner installed: a view built again is read again under its new hash, and
- * `onChange` hears of it, for the pages to load it. Mirador's own plugins are left out: their views are bundled from
- * sources that a change of one file doesn't cover. Each view's folder is watched rather than the file, which a build
- * may replace. Returns the function that stops it.
+ * Follows the plugins' views: a view built again is read again under its new hash, and `onChange` hears of it, for the
+ * pages to load it. Each view's folder is watched rather than the file, which a build may replace. Returns the function
+ * that stops it.
  */
 export function watchViews({ apps, canvases }: Pick<LoadedPlugins, "apps" | "canvases">, onChange: () => void): () => void {
-  const installed = (plugin: LoadedPlugin) => !plugin.shipped;
   const views = [
-    ...apps.filter(installed).map((plugin) => ({ plugin, viewFile: pluginFiles(plugin.folder, plugin.manifest).app!.viewFile })),
-    ...canvases.filter(installed).map((plugin) => ({ plugin, viewFile: pluginFiles(plugin.folder, plugin.manifest).canvas!.viewFile })),
+    ...apps.map((plugin) => ({ plugin, viewFile: pluginFiles(plugin.folder, plugin.manifest).app!.viewFile })),
+    ...canvases.map((plugin) => ({ plugin, viewFile: pluginFiles(plugin.folder, plugin.manifest).canvas!.viewFile })),
   ];
   const timers = new Set<Timer>();
   const watchers = views.map(({ plugin, viewFile }) => {
     let settling: Timer | undefined;
     const readAgain = async () => {
       timers.delete(settling!);
-      const view = await viewCode(viewFile, false).catch(() => null);
+      const view = await viewCode(viewFile).catch(() => null);
       if (!view || view.hash === plugin.view.hash) return;
       plugin.view = view;
       onChange();
@@ -187,17 +175,9 @@ export function watchViews({ apps, canvases }: Pick<LoadedPlugins, "apps" | "can
   };
 }
 
-async function viewCode(viewFile: string, shipped: boolean): Promise<ViewCode> {
-  const code = shipped ? await bundledView(viewFile) : await Bun.file(viewFile).bytes();
+async function viewCode(viewFile: string): Promise<ViewCode> {
+  const code = await Bun.file(viewFile).bytes();
   return { code, hash: createHash("sha256").update(code).digest("hex").slice(0, 16) };
-}
-
-/** A shipped plugin has no build step of its own, so its view is bundled into one module here, as Bun bundles the page. */
-async function bundledView(viewFile: string): Promise<Uint8Array<ArrayBuffer>> {
-  const built = await Bun.build({ entrypoints: [viewFile], minify: true, define: { "process.env.NODE_ENV": JSON.stringify("production") }, throw: false });
-  const bundle = built.outputs.find((output) => output.kind === "entry-point");
-  if (!built.success || !bundle) throw new Error(`its view didn't bundle: ${built.logs.map(String).join("; ")}`);
-  return new Uint8Array(await bundle.arrayBuffer());
 }
 
 function insideFolder(folder: string, relativePath: string) {

@@ -43,7 +43,7 @@ import { canTryAgain } from "../shared/try-again.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
 import { pendingAsk, pendingPermission } from "./pending-requests.ts";
-import { launchIdea } from "./review/editor.ts";
+import { launchIdea } from "./idea.ts";
 import { openAsText, openWithSystemDefault } from "./system-open.ts";
 import { mentionSuggestions } from "./mentions.ts";
 import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";

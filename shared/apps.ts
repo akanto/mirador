@@ -152,17 +152,16 @@ export interface AppDocumentState {
 }
 
 /**
- * Where a plugin's folder came from: Mirador's own plugins folder, a git clone (its remote shown without credentials), a
+ * Where a plugin's folder came from: a git clone (its remote shown without credentials), a
  * link to a folder elsewhere, or a plain folder. A clone follows its branch, or, when it was cloned at a release's tag,
  * the releases.
  */
 export type PluginSource =
-  | { kind: "shipped" }
   | { kind: "git"; remote: string | null; branch: string | null; release: string | null; commit: string; subject: string }
   | { kind: "linked"; target: string }
   | { kind: "folder" };
 
-/** A folder in Mirador's own or the owner's plugins folder that holds a plugin.json, as the Plugins settings list it. */
+/** A folder in the plugins folder that holds a plugin.json, as the Plugins settings list it. */
 export interface PluginInfo {
   folder: string;
   /** From its plugin.json, while that can be read. */
@@ -183,20 +182,20 @@ export interface CatalogPlugin {
   description: string;
   /** When an agent should offer it, completing "Recommend it when …". */
   recommendWhen: string;
-  /** What git clones, which the catalog's README asks to be an https URL anyone can clone; none for a plugin that comes with Mirador. */
-  repo?: string;
+  /** What git clones, which the catalog's README asks to be an https URL anyone can clone. */
+  repo: string;
   branch?: string;
-  comesWithMirador?: boolean;
 }
 
 function isCatalogPlugin(value: unknown): value is CatalogPlugin {
   if (typeof value !== "object" || value === null) return false;
-  const { name, title, description, recommendWhen, repo, branch, comesWithMirador } = value as Partial<CatalogPlugin>;
+  const { name, title, description, recommendWhen, repo, branch } = value as Partial<CatalogPlugin>;
   return (
     typeof name === "string" &&
     /^[a-z0-9][a-z0-9-]*$/.test(name) &&
     [title, description, recommendWhen].every((text) => typeof text === "string" && text !== "") &&
-    (comesWithMirador === true ? repo === undefined : typeof repo === "string" && repo !== "") &&
+    typeof repo === "string" &&
+    repo !== "" &&
     (branch === undefined || typeof branch === "string")
   );
 }

@@ -1,10 +1,15 @@
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
-import { TestHost } from "./test-host.ts";
+import { addWorkspace, createProfile, openSettings, sendMessage, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { TestHost, writeBunProgram } from "./test-host.ts";
 
-const host = new TestHost();
+const host = new TestHost({ fakePrograms: true });
+const profileName = "images";
 
-test.beforeAll(() => host.start());
+test.beforeAll(async () => {
+  writeBunProgram(host.fakeProgramsDir, "opencode", join(import.meta.dirname, "fake-acp-agent.ts"), { FAKE_ACP_PROMPTS: join(host.root, "prompts") });
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
@@ -12,28 +17,25 @@ test.afterAll(async () => {
 
 const ONE_PIXEL_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-const imagesInReplies = {
-  title: "Images",
-  sections: [
-    {
-      items: [
-        { id: "chart", text: "Chart", detail: "![build chart](https://images.invalid/chart.png)" },
-        { id: "badge", text: "Badge", detail: "[![build](https://badges.invalid/build.svg)](https://ci.invalid/run/1)" },
-        { id: "unnamed", text: "Unnamed", detail: "![](https://images.invalid/unnamed.png)" },
-        { id: "inline", text: "Inline", detail: `![dot](${ONE_PIXEL_PNG})` },
-      ],
-    },
-  ],
-};
+/** The agent's reply, in Markdown: a chart, a badge, an image without a name, and one inlined as data. */
+const imagesInReply = [
+  "![build chart](https://images.invalid/chart.png)",
+  "[![build](https://badges.invalid/build.svg)](https://ci.invalid/run/1)",
+  "![](https://images.invalid/unnamed.png)",
+  `![dot](${ONE_PIXEL_PNG})`,
+].join("\n\n");
 
-async function openChecklist(page: Page) {
-  const toggle = page.locator(".checklist-toggle:visible");
-  await expect(toggle).toBeVisible();
-  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+const reply = (page: Page) => page.locator(".timeline:visible .message.agent").last();
+
+/** The stub agent offers no model to pick, so this starts the conversation without that wait. */
+async function startConversationWithTheAgent(page: Page) {
+  const profiles = await createProfile(page, profileName, "", "", "opencode");
+  await profiles.getByRole("button", { name: "Close" }).click();
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: `${profileName} · opencode` });
+  const previousUrl = page.url();
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page).not.toHaveURL(previousUrl);
 }
-
-const checklistView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
-const detailOf = (page: Page, text: string) => checklistView(page).locator(".checklist-item", { hasText: text }).locator(".checklist-detail");
 
 /** Loads an image from another site the way the page would, and says whether the page's policy refused it. */
 const refusedByPolicy = (page: Page) =>
@@ -53,20 +55,21 @@ test("images from other sites in an agent's Markdown show as links naming the si
   page.on("request", (request) => new URL(request.url()).hostname.endsWith(".invalid") && requestsToOtherSites.push(request.url()));
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
-  const conversationId = await startConversation(page);
-  await callCanvasTool(host, conversationId, "checklist", imagesInReplies);
+  await startConversationWithTheAgent(page);
+  await sendMessage(page, `SAY ${imagesInReply}`);
+  await waitForTurnToEnd(page);
 
   await test.step("by default each shows as a link to the image, named for its site, and nothing is fetched from that site", async () => {
-    const chart = detailOf(page, "Chart").getByRole("link", { name: "build chart (image from images.invalid)" });
+    const chart = reply(page).getByRole("link", { name: "build chart (image from images.invalid)" });
     await expect(chart).toHaveAttribute("href", "https://images.invalid/chart.png");
-    await expect(detailOf(page, "Unnamed").getByRole("link", { name: "Image from images.invalid" })).toBeVisible();
-    await expect(detailOf(page, "Chart").locator("img")).toHaveCount(0);
-    await expect(detailOf(page, "Inline").locator("img")).toBeVisible();
+    await expect(reply(page).getByRole("link", { name: "Image from images.invalid", exact: true })).toBeVisible();
+    await expect(reply(page).locator("img")).toHaveCount(1);
+    await expect(reply(page).getByRole("img", { name: "dot" })).toBeVisible();
     expect(requestsToOtherSites).toEqual([]);
   });
 
   await test.step("a badge keeps its own link, with the image named inside it rather than a second link", async () => {
-    const badge = detailOf(page, "Badge").getByRole("link");
+    const badge = reply(page).getByRole("link", { name: "badges.invalid" });
     await expect(badge).toHaveCount(1);
     await expect(badge).toHaveAttribute("href", "https://ci.invalid/run/1");
     await expect(badge).toHaveText("build (image from badges.invalid)");
@@ -82,13 +85,11 @@ test("images from other sites in an agent's Markdown show as links naming the si
     await expect(asLinks).toBeChecked();
     await asLinks.uncheck();
     await expect(settings.getByText("They load after a reload.")).toBeVisible();
-    await expect(detailOf(page, "Chart").locator("img")).toHaveCount(0);
+    await expect(reply(page).locator("img")).toHaveCount(1);
     const chartRequested = page.waitForRequest("https://images.invalid/chart.png");
     await settings.getByRole("button", { name: "Reload" }).click();
-    await openChecklist(page);
     await chartRequested;
-    await expect(detailOf(page, "Chart").locator("img")).toHaveAttribute("src", "https://images.invalid/chart.png");
-    await expect(detailOf(page, "Chart").locator("img")).toHaveAttribute("alt", "build chart");
+    await expect(reply(page).getByRole("img", { name: "build chart" })).toHaveAttribute("src", "https://images.invalid/chart.png");
     expect(await refusedByPolicy(page)).toBe(false);
   });
 
@@ -97,7 +98,7 @@ test("images from other sites in an agent's Markdown show as links naming the si
     await settings.getByRole("checkbox", { name: "Show images from other sites as links" }).check();
     await expect(settings.getByText("They load after a reload.")).toHaveCount(0);
     await settings.getByRole("button", { name: "Close" }).click();
-    await expect(detailOf(page, "Chart").getByRole("link", { name: "build chart (image from images.invalid)" })).toBeVisible();
+    await expect(reply(page).getByRole("link", { name: "build chart (image from images.invalid)" })).toBeVisible();
     expect(await refusedByPolicy(page)).toBe(true);
   });
 });

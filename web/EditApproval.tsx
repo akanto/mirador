@@ -5,7 +5,7 @@ import { connection } from "./connection.ts";
 import { splitRows, type EditRequest } from "./edit-approval.ts";
 import { highlightRows, type CodeSpan } from "./highlight.ts";
 import { hints } from "./hints.ts";
-import { CodeText } from "./Review.tsx";
+import { CodeText } from "./CodeText.tsx";
 import { gapsOf, type Gap } from "./review-context.ts";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { storedChoice } from "./stored-choice.ts";

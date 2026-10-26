@@ -52,21 +52,6 @@ test("once stopped, a change of the view goes unheard", async () => {
   expect(heard()).toBe(0);
 });
 
-test("Mirador's own plugins are not watched: their views are bundled from more files than one", async () => {
-  const shipped = join(root, "shipped");
-  cpSync(COUNTER, join(shipped, "counter"), { recursive: true });
-  const loaded = await loadPlugins(join(root, "none"), shipped);
-  const { heard, onChange } = changes();
-  const stop = watchViews(loaded, onChange);
-  try {
-    appendFileSync(join(shipped, "counter", "view.js"), "\n// built again\n");
-    await Bun.sleep(400);
-    expect(heard()).toBe(0);
-  } finally {
-    stop();
-  }
-});
-
 test("a plugin linked into the plugins folder, as one being worked on is, is followed through the link", async () => {
   const checkout = join(root, "checkout", "counter");
   cpSync(COUNTER, checkout, { recursive: true });
