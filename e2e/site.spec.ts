@@ -78,7 +78,7 @@ test("the first screen says what Mirador is, with the install line, the way to t
   await expect(page.locator("#install .command code").filter({ hasText: WINDOWS_INSTALL })).toBeInViewport();
   await expect(hero.getByRole("link", { name: "Download" })).toHaveAttribute("href", "https://github.com/sodre90/mirador/releases/latest");
   await expect(hero.getByRole("link", { name: "Star on GitHub" })).toHaveAttribute("href", "https://github.com/sodre90/mirador");
-  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", "https://sodre90.github.io/mirador/og.jpg");
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", "https://mirador.sodre90.com/og.jpg");
 });
 
 test("Copy puts each command on the clipboard as it is shown", async ({ page, context }) => {
