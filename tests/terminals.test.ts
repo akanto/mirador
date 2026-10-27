@@ -134,11 +134,24 @@ const replayed = (received: ServerMessage[], terminalId: string) =>
 
 const savedOutputOf = (terminalId: string) => store.listTerminalTabs("c1")[0]?.scrollback.get(terminalId) ?? "";
 
+/** Windows keeps a folder busy for a moment after the last process in it ended, and Bun's rm takes no maxRetries. */
+async function removeOnceFree(folder: string) {
+  const giveUpAt = Date.now() + 5_000;
+  while (true) {
+    try {
+      return await rm(folder, { recursive: true, force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EBUSY" || Date.now() >= giveUpAt) throw error;
+      await Bun.sleep(100);
+    }
+  }
+}
+
 afterEach(async () => {
   await terminals.shutdown();
   process.env.SHELL = originalShell;
   process.env.HOME = originalHome;
-  await rm(workspaceDir, { recursive: true, force: true });
+  await removeOnceFree(workspaceDir);
 });
 
 test("a terminal runs a shell in the workspace folder, sized as asked, and streams to browsers attached to its conversation, not to another of the workspace", async () => {
