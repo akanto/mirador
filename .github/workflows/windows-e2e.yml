@@ -3,7 +3,14 @@ name: Windows e2e
 on:
   push:
     branches: [windows-e2e]
+  # Some specs run many times, to tell a fixed flake from a lucky run; without them, the whole suite runs once.
   workflow_dispatch:
+    inputs:
+      specs:
+        description: Spec files, separated by spaces
+        required: false
+      repeat:
+        default: "1"
   # make release calls this, so a spec failing with no stated reason holds the release.
   workflow_call:
     inputs:
@@ -78,6 +85,8 @@ jobs:
           ANTHROPIC_DEFAULT_OPUS_MODEL: radiance-qwen3.8-flash-next
           ANTHROPIC_SMALL_FAST_MODEL: radiance-qwen3.8-flash-next
           ENABLE_TOOL_SEARCH: "false"
+          SPECS: ${{ inputs.specs }}
+          REPEAT: ${{ inputs.repeat || '1' }}
         run: |
           $serverHost = ($env:ANTHROPIC_BASE_URL -as [uri]).Host
           if ($serverHost) { "::add-mask::$serverHost" }
@@ -99,7 +108,7 @@ jobs:
           # The 75-minute suite budget stays inside the job's 120 even after a slow setup, so an overrun ends as a reported
           # interrupted suite rather than a cancelled job whose JSON reporter wrote nothing for the Verdict to read.
           # Only a release passes a commit. A called workflow's github.event_name is its caller's, never workflow_call.
-          cmd /c "bunx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }} --global-timeout=4500000 --retries=${{ inputs.commit && 2 || 1 }} --reporter=list,json > survey-output.txt 2>&1"
+          cmd /c "bunx playwright test $env:SPECS --repeat-each=$env:REPEAT --pass-with-no-tests --shard=${{ matrix.shard }}/${{ strategy.job-total }} --global-timeout=4500000 --retries=${{ inputs.commit && 2 || 1 }} --reporter=list,json > survey-output.txt 2>&1"
           "playwright exit: $LASTEXITCODE, minutes: $([math]::Round(((Get-Date) - $started).TotalMinutes, 1))"
           Get-Content survey-output.txt | Where-Object { $_ -notmatch 'auth\?(token|code)' }
           if (Test-Path $env:SURVEY) { (Get-Content -Raw $env:SURVEY) -replace 'auth\?(token|code)=[^"\s\\&]*', 'auth?$1=REDACTED' | Hide-ModelServer | Set-Content $env:SURVEY }
