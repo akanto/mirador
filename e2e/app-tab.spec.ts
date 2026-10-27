@@ -291,6 +291,37 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#count")).toHaveText("0");
   });
 
+  await test.step("the app's tab comes forward when the agent opens the file already open, in that agent's conversation only", async () => {
+    const { hash } = new URL(page.url());
+    const here = hash.slice("#/c/".length);
+    const other = here === first ? second : first;
+    const goTo = async (conversationId: string) => {
+      await page.evaluate((target) => (location.hash = target), `#/c/${conversationId}`);
+      await expect(page).toHaveURL(new RegExp(`#/c/${conversationId}$`));
+      await expect(appToggle(page)).toBeVisible();
+    };
+    const putAside = async () => {
+      if ((await appToggle(page).getAttribute("aria-pressed")) === "true") await appToggle(page).click();
+      await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    };
+    await goTo(other);
+    await putAside();
+    await goTo(here);
+    await putAside();
+    expect(await callCanvasTool(host, other, "app_open", { app: "counter", file: "second.json" })).toContain("Counter is open on second.json");
+    await goTo(other);
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await putAside();
+    await goTo(here);
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    expect(await callCanvasTool(host, here, "app_open", { app: "counter", file: "second.json" })).toContain("Counter is open on second.json");
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await goTo(other);
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    await goTo(here);
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+  });
+
   await test.step("an app the agent opens while the user is in another conversation is in front when they come back", async () => {
     await appToggle(page).click();
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");

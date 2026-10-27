@@ -512,9 +512,23 @@ describe("the conversations an app shows in", () => {
   test("the conversation that opens the app shows it with the same news of the opening", async () => {
     const { apps, openAppLists } = await setUpWithTwoConversations();
     await apps.open("w1", "counter", "counter.json", "c1");
-    expect(openAppLists).toEqual([[{ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json", conversationIds: ["c1"] }]]);
+    expect(openAppLists).toEqual([[{ workspaceId: "w1", app: "counter", title: "Counter", file: "counter.json", conversationIds: ["c1"], shownBy: { conversationId: "c1", at: expect.any(Number) } }]]);
     await apps.open("w1", "counter", "counter.json", "c2");
     expect(openAppLists.at(-1)![0]!.conversationIds).toEqual(["c1", "c2"]);
+    apps.stop();
+  });
+
+  test("an agent opening the file already open tells the pages again, naming its conversation, so that its tab comes forward there", async () => {
+    const { apps, openAppLists } = await setUpWithTwoConversations();
+    await apps.open("w1", "counter", "counter.json", "c1");
+    const firstOpening = openAppLists.at(-1)![0]!.shownBy!;
+    await Bun.sleep(2);
+    await apps.open("w1", "counter", "counter.json", "c1");
+    expect(openAppLists).toHaveLength(2);
+    expect(openAppLists.at(-1)![0]!.shownBy).toEqual({ conversationId: "c1", at: expect.any(Number) });
+    expect(openAppLists.at(-1)![0]!.shownBy!.at).toBeGreaterThan(firstOpening.at);
+    await apps.open("w1", "counter", "counter.json", "c2");
+    expect(openAppLists.at(-1)![0]!.shownBy!.conversationId).toBe("c2");
     apps.stop();
   });
 

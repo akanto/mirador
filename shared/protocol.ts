@@ -308,7 +308,7 @@ export type ServerMessage =
       /** Missing from a host older than plugin settings. */
       pluginSettings?: PluginSettings[];
     }
-  /** Every app open in every workspace, whenever one opens or closes. */
+  /** Every app open in every workspace, whenever one opens or closes, and when an agent opens one again. */
   | { type: "apps.open"; openApps: OpenApp[] }
   /** Only to the pages subscribed to the app: a whole document, on every change. */
   | { type: "app.state"; state: AppDocumentState }

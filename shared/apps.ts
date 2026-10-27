@@ -138,6 +138,13 @@ export interface OpenApp {
   file: string;
   /** The conversations whose agent used the app, or whose user added it; its tab shows only in those. */
   conversationIds: string[];
+  /** The agent that last opened the app with app_open, whose canvas brings its tab forward, even on the file already open. Missing from older hosts, and until an agent opens it in this run of the host. */
+  shownBy?: AppShownBy;
+}
+
+export interface AppShownBy {
+  conversationId: string;
+  at: number;
 }
 
 /** What a view shows: sent to the pages that have the app open, on every change. */

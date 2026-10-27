@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type AppMediaGrant, type AppTaskContext, type AppTaskState, type OpenApp } from "../../shared/apps.ts";
+import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type AppMediaGrant, type AppShownBy, type AppTaskContext, type AppTaskState, type OpenApp } from "../../shared/apps.ts";
 import { toPosix } from "../paths.ts";
 import { renameWhenFree } from "../rename-when-free.ts";
 import type { Store } from "../store.ts";
@@ -63,6 +63,7 @@ interface AppDocument {
   running: RunningTask | null;
   /** The latest task run on it, under way or ended. */
   task: AppTaskState | null;
+  shownBy: AppShownBy | null;
 }
 
 const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -151,6 +152,7 @@ export class AppDocuments {
       title: opened.plugin.manifest.title,
       file: opened.file,
       conversationIds: [...(this.usedIn.get(keyOf(opened)) ?? [])],
+      ...(opened.shownBy && { shownBy: opened.shownBy }),
     };
   }
 
@@ -227,7 +229,11 @@ export class AppDocuments {
     const openedFile = documentFile === file ? undefined : toPosix(relative(dirname(target.path), fileInWorkspace(workspace.path, file).path));
     const already = this.documents.get(appKey({ workspaceId, app: appName }));
     if (already?.file === target.file && !already.problem) {
-      if (conversationId) this.useIn(workspaceId, appName, conversationId);
+      if (conversationId) {
+        this.noteUsedIn(already, conversationId);
+        already.shownBy = { conversationId, at: Date.now() };
+        this.publisher.openAppsChanged(this.openApps());
+      }
       return this.openAppOf(already);
     }
     const text = existsSync(target.path) ? readFileSync(target.path, "utf8") : null;
@@ -247,6 +253,7 @@ export class AppDocuments {
       settling: undefined,
       running: null,
       task: null,
+      shownBy: conversationId ? { conversationId, at: Date.now() } : null,
     };
     if (text === null) await this.write(opened, this.guarded(() => plugin.host.serialize(document)));
     this.documents.set(keyOf(opened), opened);
