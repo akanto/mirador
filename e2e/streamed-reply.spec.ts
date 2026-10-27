@@ -92,16 +92,19 @@ test("a reader who scrolled up while a reply streams in stays on the line they w
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "stream · opencode" });
   await page.getByRole("button", { name: "+ New conversation" }).click();
   await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
-  await sendMessage(page, "STREAM PARAGRAPHS 150");
+  await sendMessage(page, "STREAM PARAGRAPHS 300");
   await expect(lastAgentMessage(page)).toContainText("Paragraph 30 ");
   const timeline = page.locator(".timeline:visible");
-  await timeline.evaluate((element) => {
+  const heightWhenScrolled = await timeline.evaluate((element) => {
     element.scrollTop = 100;
     element.dispatchEvent(new Event("scroll"));
+    return element.scrollHeight;
   });
   await waitForTurnToEnd(page);
-  await expect(lastAgentMessage(page)).toContainText("Paragraph 150 ");
-  const place = await timeline.evaluate((element) => ({ top: element.scrollTop, unread: element.scrollHeight - element.clientHeight - element.scrollTop }));
+  await expect(lastAgentMessage(page)).toContainText("Paragraph 300 ");
+  const place = await timeline.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight, unread: element.scrollHeight - element.clientHeight - element.scrollTop }));
+  // What follows only says something about a reader who scrolled up mid-reply: the reply has to keep growing under them.
+  expect(place.height - heightWhenScrolled).toBeGreaterThan(500);
   expect(Math.abs(place.top - 100)).toBeLessThanOrEqual(2);
   expect(place.unread).toBeGreaterThan(1000);
 });
