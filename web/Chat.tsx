@@ -972,11 +972,13 @@ function scrollBackTo(timeline: HTMLElement, { element, fraction }: ScrollAnchor
 }
 
 /**
- * Keeps the reader's place when events arrive or the pane changes size: at the bottom if they were there, otherwise
- * on the line at the top of the view, however the text rewraps. Scroll events caused by the resize itself (the browser
- * clamping or reflowing) are ignored, so they don't overwrite the place remembered before it.
+ * Keeps the reader's place when the timeline's content or the pane's size changes: at the bottom if they were there,
+ * otherwise on the line at the top of the view, however the text rewraps. Content can change long after the event that
+ * brought it, as when a streamed reply's text shows a moment after its last chunk or an image loads, so the bottom is
+ * kept on every change to the page, before the browser paints it or reports the scroll. Scroll events caused by the
+ * resize itself (the browser clamping or reflowing) are ignored, so they don't overwrite the place remembered before it.
  */
-function useScrollAnchor(dependency: unknown) {
+function useScrollAnchor() {
   const ref = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const anchor = useRef<ScrollAnchor | null>(null);
@@ -986,19 +988,35 @@ function useScrollAnchor(dependency: unknown) {
   const resizedSinceLastLook = (timeline: HTMLElement) => timeline.clientWidth !== size.current.width || timeline.clientHeight !== size.current.height;
 
   useLayoutEffect(() => {
-    const element = ref.current;
-    if (element && pinned.current) element.scrollTop = element.scrollHeight;
-  }, [dependency]);
-
-  useLayoutEffect(() => {
     const timeline = ref.current!;
-    const observer = new ResizeObserver(() => {
+    let heightSeen = 0;
+    /** Only growth moves the view, so a clock ticking in an entry doesn't pull back a reader a few pixels up. */
+    const followGrowth = () => {
+      if (pinned.current && timeline.scrollHeight > heightSeen) timeline.scrollTop = timeline.scrollHeight;
+      heightSeen = timeline.scrollHeight;
+    };
+    followGrowth();
+    const resizes = new ResizeObserver(() => {
       if (pinned.current) timeline.scrollTop = timeline.scrollHeight;
       else if (anchor.current) scrollBackTo(timeline, anchor.current);
       size.current = { width: timeline.clientWidth, height: timeline.clientHeight };
+      heightSeen = timeline.scrollHeight;
     });
-    observer.observe(timeline);
-    return () => observer.disconnect();
+    resizes.observe(timeline);
+    /** A section the reader opens or closes leaves the view where it is, and whether they are at the bottom is taken anew. */
+    const onlyToggled = (records: MutationRecord[]) => records.every(({ type }) => type === "attributes");
+    const changes = new MutationObserver((records) => {
+      if (!onlyToggled(records)) return followGrowth();
+      if (timeline.clientHeight) rememberPlaceIn(timeline);
+      heightSeen = timeline.scrollHeight;
+    });
+    changes.observe(timeline, { childList: true, subtree: true, characterData: true, attributeFilter: ["open"] });
+    timeline.addEventListener("load", followGrowth, true);
+    return () => {
+      resizes.disconnect();
+      changes.disconnect();
+      timeline.removeEventListener("load", followGrowth, true);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -1888,7 +1906,7 @@ export function ChatPanel({
   const begun = useMemo(() => !open.loaded || hasBegun(open.events), [open.loaded, open.events]);
   const pendingCommands = useMemo(() => awaitingDelivery(timeline.flatMap((block) => (block.kind === "command" ? [block.command] : []))), [timeline]);
   const awaitingPermission = useMemo(() => toolCallsAwaitingPermission(timeline), [timeline]);
-  const { ref, onScroll, holdPlace, isPinned, rememberPlace } = useScrollAnchor(open.events);
+  const { ref, onScroll, holdPlace, isPinned, rememberPlace } = useScrollAnchor();
   const earlier = useEarlierHistory(open);
   const { firstLoaded, loadFrom, loadEarlier } = useLoadedEntries(timeline, open.loaded, { holdPlace, isPinned }, earlier);
   const [subagentToShow, setSubagentToShow] = useState<string | null>(null);

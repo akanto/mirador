@@ -71,3 +71,37 @@ test("a long reply keeps the reader at its newest line while it streams in", asy
   expect(below.unread).toBeLessThan(150);
   await waitForTurnToEnd(page);
 });
+
+test("a reply of many paragraphs ends with the reader at its last line, though its text shows a moment after the last chunk", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 560 });
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "stream · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
+  await sendMessage(page, "STREAM PARAGRAPHS 80");
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Paragraph 80 ");
+  const timeline = page.locator(".timeline:visible");
+  expect(await timeline.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(1000);
+  await expect.poll(() => timeline.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThan(2);
+});
+
+test("a reader who scrolled up while a reply streams in stays on the line they were reading", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 560 });
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "stream · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
+  await sendMessage(page, "STREAM PARAGRAPHS 150");
+  await expect(lastAgentMessage(page)).toContainText("Paragraph 30 ");
+  const timeline = page.locator(".timeline:visible");
+  await timeline.evaluate((element) => {
+    element.scrollTop = 100;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await waitForTurnToEnd(page);
+  await expect(lastAgentMessage(page)).toContainText("Paragraph 150 ");
+  const place = await timeline.evaluate((element) => ({ top: element.scrollTop, unread: element.scrollHeight - element.clientHeight - element.scrollTop }));
+  expect(Math.abs(place.top - 100)).toBeLessThanOrEqual(2);
+  expect(place.unread).toBeGreaterThan(1000);
+});
