@@ -18,12 +18,12 @@ const PROGRESS_HEARTBEAT_MS = 15_000;
 const optionSchema = z.object({
   label: z.string().min(1).describe("Short name of the option; returned verbatim when chosen."),
   description: z.string().optional().describe("One or two sentences on the trade-off."),
-  html: z.string().optional().describe("Optional HTML preview of this option (mockup, diagram, code sample)."),
+  html: z.string().optional().describe("Optional HTML preview of this option (mockup, diagram drawn in HTML and CSS, inline SVG or Mermaid rather than ASCII art, code sample)."),
   recommended: z.boolean().optional().describe("True on the one option you recommend, rather than a mark in its label. The user sees it marked, and in a spoken conversation it is read first."),
 });
 
 const askQuestionShape = {
-  html: z.string().optional().describe("Optional HTML shown above the options: the explanation or mockup the question is about. Put it here rather than in a show call just before."),
+  html: z.string().optional().describe("Optional HTML shown above the options: the explanation or mockup the question is about, with any diagram drawn in HTML and CSS, inline SVG or Mermaid, not ASCII art. Put it here rather than in a show call just before."),
   allowOther: z.boolean().optional().describe("Let the user type an answer that is not one of the options."),
   optionWidth: z.number().int().positive().optional().describe("Optional least width of each answer box in CSS pixels, for options whose descriptions need more room. Boxes still sit side by side while they fit and never get wider than the canvas. Without it they are at least 200px, or as wide as the widest preview."),
 };
@@ -74,7 +74,7 @@ function buildCanvasServer(
     "show",
     {
       description:
-        "Render an HTML page in the user's browser canvas (diagrams, mockups, comparisons, charts, 3D). Prefer this over ASCII art or long text explanations. The page runs sandboxed without network access; three.js, D3 and Mermaid are available (see the server instructions).",
+        "Render an HTML page in the user's browser canvas (diagrams, mockups, comparisons, charts, 3D). Prefer this over ASCII art or long text explanations, and draw diagrams on the page with HTML and CSS, inline SVG or Mermaid, never as ASCII art in a <pre>. The page runs sandboxed without network access; three.js, D3 and Mermaid are available (see the server instructions).",
       inputSchema: z.object({
         title: z.string().min(1).describe("Short title shown above the page."),
         html: z.string().min(1).describe("A complete HTML document or an HTML fragment with inline CSS/JS."),

@@ -27,3 +27,7 @@ test("pi waits for jobs with the canvas's when_done tool, as its commands can't 
 test("opencode gets no session options", () => {
   expect(sessionMeta("opencode", "often", { canvasAssetsOrigin: ASSETS_ORIGIN })).toBeUndefined();
 });
+
+test("The canvas instructions tell agents to draw diagrams as graphics, not ASCII art in a pre", () => {
+  expect(canvasInstructions(ASSETS_ORIGIN)).toContain("Never draw them with ASCII or box-drawing characters");
+});
