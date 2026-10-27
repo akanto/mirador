@@ -222,12 +222,13 @@ test("All files shows every file of the project in its folders, the changed ones
     expect(guide).toBe("solid");
   });
 
-  await test.step("an open file's changes cover the guide lines of the folders around it", async () => {
+  await test.step("an open file's changes start under its row, beside the guide lines of the folders around it", async () => {
     await fileRow(page, "src/app.ts").click();
     const diff = fileRow(page, "src/app.ts").locator("xpath=..").locator(".changes-diff");
-    const panelBackground = await page.locator(".canvas-panel:visible").evaluate((panel) => getComputedStyle(panel).backgroundColor);
-    const diffStyle = await diff.evaluate((element) => ({ position: getComputedStyle(element).position, background: getComputedStyle(element).backgroundColor }));
-    expect(diffStyle).toEqual({ position: "relative", background: panelBackground });
+    const diffLeft = (await diff.boundingBox())!.x;
+    const statusLeft = (await fileRow(page, "src/app.ts").locator(".change-status").boundingBox())!.x;
+    expect(Math.abs(diffLeft - statusLeft)).toBeLessThanOrEqual(1);
+    expect(await diff.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe("0px");
     await fileRow(page, "src/app.ts").click();
   });
 

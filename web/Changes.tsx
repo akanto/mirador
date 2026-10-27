@@ -140,7 +140,7 @@ function FileRow({ file, name, depth, rows }: { file: ListedFile; name: string; 
   const selected = file.path === rows.selectedPath;
   const { change } = file;
   return (
-    <li>
+    <li style={indentedBy(depth)}>
       <button
         type="button"
         className={`changed-file status-${change?.status ?? "unchanged"} ${selected ? "selected" : ""}`}

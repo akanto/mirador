@@ -3441,14 +3441,11 @@ button.edits-waiting {
 }
 
 .changes-diff {
-  position: relative;
-  background: var(--panel);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin: 4px 0 12px 8px;
-  padding: 8px 0 0 12px;
-  border-left: 2px solid var(--accent-soft);
+  margin: 4px 0 12px calc(8px + var(--depth, 0) * 16px);
+  padding-top: 8px;
 }
 
 .canvas-history {
