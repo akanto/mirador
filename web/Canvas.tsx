@@ -680,9 +680,9 @@ const seenOpenApps = new Map<string, Set<string>>();
 /**
  * Opens an app's tab when the app opens in the workspace, or opens another file, or this conversation's agent opens it
  * again or runs one of its tasks, as app_open and app_run say the user will see it: at once while the panel is up, or when the user comes back
- * to the conversation, its canvas kept hidden or made again.
+ * to the conversation, its canvas kept hidden or made again. A question the agent waits on stays in front of it.
  */
-function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab: AppTab) => void, shown: boolean) {
+function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab: AppTab) => void, shown: boolean, questionWaiting: boolean) {
   const openings = openingsHere(conversationId);
   const openNow = open.flatMap(openings);
   useEffect(() => {
@@ -690,7 +690,7 @@ function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab:
     const seen = seenOpenApps.get(conversationId) ?? new Set(openNow);
     const opened = open.find((app) => openings(app).some((opening) => !seen.has(opening)));
     seenOpenApps.set(conversationId, new Set(openNow));
-    if (opened) showTab(appTab(opened.app));
+    if (opened && !questionWaiting) showTab(appTab(opened.app));
   }, [conversationId, openNow.join("\n"), shown]);
 }
 
@@ -764,7 +764,7 @@ export function CanvasPanel({
     if (shown && takeArrivedReview(newest)) placeForReview(newest);
   }, [latestId, shown]);
   // After the reset to the newest item, so that an app the agent opened while the user was away stays in front.
-  useAppTabOnOpen(conversationId, apps.open, setTab, shown);
+  useAppTabOnOpen(conversationId, apps.open, setTab, shown, newest?.kind === "ask" && !isSettledQuestion(newest));
   useEffect(() => {
     if (checklistOpen || seenEdit.current.tabItemId !== tabItem?.id) seenEdit.current = { tabItemId: tabItem?.id, at: editAt };
   }, [checklistOpen, tabItem?.id, editAt]);

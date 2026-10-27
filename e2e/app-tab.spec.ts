@@ -349,6 +349,27 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#count")).toHaveText("0");
   });
 
+  await test.step("a question the agent asks after opening the app while the user is away is in front when they come back, not the app", async () => {
+    const { hash } = new URL(page.url());
+    const here = hash.slice("#/c/".length);
+    const elsewhere = here === first ? second : first;
+    await page.evaluate((other) => (location.hash = other), `#/c/${elsewhere}`);
+    await expect(page).toHaveURL(new RegExp(`#/c/${elsewhere}$`));
+    expect(await callCanvasTool(host, here, "app_open", { app: "counter", file: "fourth.json" })).toContain("Counter is open on fourth.json");
+    const answer = callCanvasTool(host, here, "ask", { question: "Keep the count?", options: [{ label: "Yes" }, { label: "No" }] });
+    await expect(page.locator(".kept-canvas .ask", { hasText: "Keep the count?" }), "the question reached the canvas kept out of sight").toHaveCount(1);
+    await page.evaluate((back) => (location.hash = back), hash);
+    await expect(page).toHaveURL(new RegExp(`${hash}$`));
+    const question = page.locator(".canvas-panel:visible .ask");
+    await expect(question).toContainText("Keep the count?");
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    await question.getByRole("radio", { name: "Yes" }).check();
+    await question.getByRole("button", { name: "Submit" }).click();
+    expect(await answer).toBe("The user chose: Yes");
+    await appToggle(page).click();
+    await expect(view(page).locator("#count")).toHaveText("0");
+  });
+
   await test.step("going to another conversation and back finds the app's page as it was, its video paused while out of sight", async () => {
     const { hash } = new URL(page.url());
     const elsewhere = hash.endsWith(first) ? second : first;
