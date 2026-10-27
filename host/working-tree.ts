@@ -67,7 +67,7 @@ export const isRepository = async (directory: string) => (await git(directory, [
 /** HEAD, or the empty tree in a repository with no commit yet, so its first files show as added. */
 export async function headOrEmptyTree(directory: string) {
   const head = await git(directory, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
-  return head.exitCode === 0 ? head.stdout.trim() : (await mustGit(directory, ["hash-object", "-t", "tree", "--stdin"])).trim();
+  return head.exitCode === 0 ? head.stdout.trim() : emptyTree(directory);
 }
 
 /**
@@ -151,11 +151,30 @@ const writtenAt = (stats: { mtimeMs: number; birthtimeMs: number }) => Math.max(
 /** Linux and Windows round a file's times down to their clock's tick, up to ~16 ms, so a write landing in the tick of the turn's start reads as older than it. */
 const FILE_TIME_TICK_MS = 16;
 
-/** The times of a file decide which of the two it is: made at or after `since`, or written earlier and rewritten. */
-async function writtenChangesOf(directory: string, paths: string[], earliestWrite: number): Promise<TreeChange[]> {
+/** Whether a file written at that time (epoch ms) counts. */
+export type CountsWrite = (writtenAtMs: number) => boolean;
+
+export const writtenSince =
+  (since: number): CountsWrite =>
+  (writtenAtMs) =>
+    writtenAtMs >= since - FILE_TIME_TICK_MS;
+
+/** A stretch of time, epoch ms. */
+export interface TimeWindow {
+  from: number;
+  to: number;
+}
+
+export const writtenWithin =
+  (windows: TimeWindow[]): CountsWrite =>
+  (writtenAtMs) =>
+    windows.some(({ from, to }) => writtenAtMs >= from - FILE_TIME_TICK_MS && writtenAtMs <= to);
+
+/** The times of a file decide which of the two it is: made when a write counts, or made before and rewritten then. */
+async function writtenChangesOf(directory: string, paths: string[], counts: CountsWrite): Promise<TreeChange[]> {
   const written = await inLimitedParallel(paths, async (path) => {
     const stats = await lstat(join(directory, path)).catch(() => null);
-    return stats?.isFile() && writtenAt(stats) >= earliestWrite ? [{ path, createdSince: stats.birthtimeMs >= earliestWrite }] : [];
+    return stats?.isFile() && counts(writtenAt(stats)) ? [{ path, createdSince: counts(stats.birthtimeMs) }] : [];
   });
   return inLimitedParallel(written.flat(), async ({ path, createdSince }) =>
     createdSince ? untrackedChange(directory, path) : { path, status: "modified" as const, added: null, removed: null },
@@ -169,26 +188,25 @@ async function writtenChangesOf(directory: string, paths: string[], earliestWrit
  * other sessions and tools write, so it is left out. A folder of more than `limit` files is checked only in part, which
  * `truncated` says.
  */
-export async function filesWrittenSince(
-  directory: string,
-  since: number,
-  limit = MAX_SCANNED_FILES,
-): Promise<{ changes: TreeChange[]; truncated: boolean }> {
+export const filesWrittenSince = (directory: string, since: number, limit = MAX_SCANNED_FILES) => filesWritten(directory, writtenSince(since), limit);
+
+/** Like filesWrittenSince, for the files whose write `counts`. */
+export async function filesWritten(directory: string, counts: CountsWrite, limit = MAX_SCANNED_FILES): Promise<{ changes: TreeChange[]; truncated: boolean }> {
   const { files, truncated } = await scannedFiles(directory, limit, { skipOtherRepositories: true });
-  return { changes: await writtenChangesOf(directory, files, since - FILE_TIME_TICK_MS), truncated };
+  return { changes: await writtenChangesOf(directory, files, counts), truncated };
 }
 
 /**
- * The files a git repository hides behind its excludes which were written at or after `since` (epoch ms), which git
+ * The files a git repository hides behind its excludes whose write `counts`, which git
  * lists by name so a walk never opens the tracked files. Their times tell them apart as in filesWrittenSince. Git names
  * a hidden folder in whole instead of listing what is in it, and only those folders are walked, leaving out
  * node_modules and the folders tools keep their own state in, and any folder holding a git of its own, which is that
  * repository's. Git also names the hidden files of an untracked folder one by one, so a file can come twice. A
  * repository hiding more files than `limit` is checked only in part, which `truncated` says.
  */
-export async function ignoredFilesWrittenSince(
+export async function ignoredFilesWritten(
   directory: string,
-  since: number,
+  counts: CountsWrite,
   limit = MAX_SCANNED_FILES,
 ): Promise<{ changes: TreeChange[]; truncated: boolean }> {
   const listed = (await mustGit(directory, ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])).split("\0").filter(Boolean);
@@ -196,7 +214,72 @@ export async function ignoredFilesWrittenSince(
   const hiddenFolders = listed.filter((path) => path.endsWith("/")).map((folder) => folder.slice(0, -1)).filter(isScannedPath);
   const walked = await scannedFiles(directory, limit, { folders: hiddenFolders, skipOtherRepositories: true });
   const hidden = [...new Set([...hiddenFiles, ...walked.files])];
-  return { changes: await writtenChangesOf(directory, hidden.slice(0, limit), since - FILE_TIME_TICK_MS), truncated: walked.truncated || hidden.length > limit };
+  return { changes: await writtenChangesOf(directory, hidden.slice(0, limit), counts), truncated: walked.truncated || hidden.length > limit };
+}
+
+/**
+ * The changes whose file is still there and was written when a write `counts`; a deleted file has no time to tell. Git
+ * names an untracked folder holding a repository of its own as the folder, which is that repository's, so it is left out.
+ */
+export async function changesWritten(directory: string, changes: TreeChange[], counts: CountsWrite): Promise<TreeChange[]> {
+  const kept = await inLimitedParallel(changes, async (change) => {
+    const stats = await lstat(join(directory, change.path)).catch(() => null);
+    return stats && !stats.isDirectory() && counts(writtenAt(stats)) ? [change] : [];
+  });
+  return kept.flat();
+}
+
+export const isIgnored = async (directory: string, path: string) => (await git(directory, ["check-ignore", "-q", "--", path])).exitCode === 0;
+
+/** A commit as `git log --format="%H %ct %P"` lists it. */
+export interface LoggedCommit {
+  commit: string;
+  committedAtMs: number;
+  parents: string[];
+}
+
+/** The commits of `git log --format="%H %ct %P"`, newest first as git lists them. */
+export const loggedCommitsIn = (log: string): LoggedCommit[] =>
+  log
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [commit = "", committedAt = "0", ...parents] = line.split(" ");
+      return { commit, committedAtMs: Number(committedAt) * 1000, parents: parents.filter(Boolean) };
+    });
+
+/** Git keeps a commit's time in whole seconds, so a commit made in a window can read as up to a second before it. */
+const COMMIT_TIME_TICK_MS = 1000;
+const madeWithin = (committedAtMs: number, { from, to }: TimeWindow) => committedAtMs + COMMIT_TIME_TICK_MS > from && committedAtMs <= to;
+
+/**
+ * The files the commits made within `windows` changed, each against what it was before the earliest of them, as the
+ * working tree has it now. A merge brings in others' work, so it is left out, and so are commits that only arrived, as
+ * a pull keeps their own times.
+ */
+export async function changesSinceCommitsWithin(directory: string, since: number, windows: TimeWindow[]): Promise<{ changes: TreeChange[]; baseOf: Map<string, string> }> {
+  const log = await mustGit(directory, ["log", `--since=@${Math.floor(since / 1000) - 1}`, "--format=%H %ct %P"]);
+  const made = loggedCommitsIn(log)
+    .filter(({ parents }) => parents.length <= 1)
+    .filter(({ committedAtMs }) => windows.some((window) => madeWithin(committedAtMs, window)));
+  const baseOf = new Map<string, string>();
+  for (const { commit, parents } of made) {
+    const base = parents[0] ?? (await emptyTree(directory));
+    const paths = (await mustGit(directory, ["diff-tree", "-r", "-z", "--name-only", "--no-renames", "--relative", base, commit])).split("\0").filter(Boolean);
+    paths.forEach((path) => baseOf.set(path, base));
+  }
+  const byBase = Map.groupBy(baseOf, ([, base]) => base);
+  const changes = await Promise.all([...byBase].map(async ([base, entries]) => changesAgainst(directory, base, entries.map(([path]) => path))));
+  return { changes: changes.flat(), baseOf };
+}
+
+const emptyTree = async (directory: string) => (await mustGit(directory, ["hash-object", "-t", "tree", "--stdin"])).trim();
+
+/** How `paths` differ in the working tree from `revision`, with line counts. */
+async function changesAgainst(directory: string, revision: string, paths: string[]): Promise<TreeChange[]> {
+  const diff = (format: string) => mustGit(directory, ["diff", "--relative", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", format, revision, "--", ...paths.map((path) => `:(literal)${path}`)]);
+  const [raw, numstat] = await Promise.all([diff("--raw"), diff("--numstat")]);
+  return treeChangesIn(raw, numstat);
 }
 
 /** Whether the file was made at or after `since`, which the file's time of birth says where the system keeps one. */

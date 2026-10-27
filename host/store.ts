@@ -1061,6 +1061,14 @@ export class Store {
     return latest("AND json_extract(event, '$.checkpoint') IS NOT NULL") ?? latest("");
   }
 
+  /** When each of the conversation's turns ended, oldest first. */
+  turnEndTimes(conversationId: string): number[] {
+    return this.db
+      .query("SELECT at FROM events WHERE conversation_id = ? AND json_extract(event, '$.type') IN ('turn-end', 'error') ORDER BY seq")
+      .all(conversationId)
+      .map((row: any) => row.at);
+  }
+
   /** When the conversation's first message was sent; null before there is one. */
   firstMessageAt(conversationId: string): number | null {
     const row = this.db

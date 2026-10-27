@@ -9,7 +9,24 @@ import { fileChangeDiff, shownPath, snippetDiff, textFileAt } from "./edit-diff.
 import type { FileBefore } from "./edit-diff.ts";
 import type { Store } from "./store.ts";
 import { looksLikeText, openingOf } from "./system-open.ts";
-import { createdSince, fileAtRevision, filesWrittenSince, headOrEmptyTree, ignoredFilesWrittenSince, isRepository, MAX_SCANNED_FILES, projectFiles, uncommittedChanges, type TreeChange } from "./working-tree.ts";
+import {
+  changesSinceCommitsWithin,
+  changesWritten,
+  createdSince,
+  fileAtRevision,
+  filesWritten,
+  filesWrittenSince,
+  headOrEmptyTree,
+  ignoredFilesWritten,
+  isIgnored,
+  isRepository,
+  MAX_SCANNED_FILES,
+  projectFiles,
+  uncommittedChanges,
+  writtenWithin,
+  type TimeWindow,
+  type TreeChange,
+} from "./working-tree.ts";
 
 const FILE_CHANGING_KINDS: ToolKind[] = ["edit", "delete", "move"];
 
@@ -67,6 +84,43 @@ export function agentEditsIn(events: StoredEvent[]): AgentFileEdits[] {
       }),
     );
   return [...files.values()];
+}
+
+/** The host stores a report when it reads it, which can be a little after the command it reports on wrote a file, or before. */
+export const COMMAND_WINDOW_SLACK_MS = 1000;
+
+interface CommandSoFar {
+  kind: ToolKind | null;
+  reportedAt: number;
+  runningAt: number | null;
+  endedAt: number | null;
+}
+
+/**
+ * When each of the agent's commands ran, from the conversation's first message on: from when it started running,
+ * which Claude Code reports after a permission was answered, else its first report, to when it completed or failed;
+ * a command with neither ended with its turn, or still runs.
+ */
+export function commandWindows(events: StoredEvent[], turnEnds: number[], firstMessageAt: number, now: number): TimeWindow[] {
+  const calls = new Map<string, CommandSoFar>();
+  events.forEach(({ at, event }) => {
+    if (event.type !== "acp" || (event.update.sessionUpdate !== "tool_call" && event.update.sessionUpdate !== "tool_call_update")) return;
+    const { toolCallId, kind, status } = event.update;
+    const call = calls.get(toolCallId) ?? { kind: null, reportedAt: at, runningAt: null, endedAt: null };
+    calls.set(toolCallId, call);
+    call.kind ??= kind ?? null;
+    if (status === "in_progress") call.runningAt ??= at;
+    if (status === "completed" || status === "failed") call.endedAt ??= at;
+  });
+  return [...calls.values()]
+    .filter(({ kind }) => kind === "execute")
+    .map(({ reportedAt, runningAt, endedAt }) => {
+      const from = runningAt ?? reportedAt;
+      const to = endedAt ?? turnEnds.find((at) => at >= from) ?? now;
+      return { from, to: to + COMMAND_WINDOW_SLACK_MS };
+    })
+    .filter(({ from }) => from >= firstMessageAt)
+    .map(({ from, to }) => ({ from: Math.max(from - COMMAND_WINDOW_SLACK_MS, firstMessageAt), to }));
 }
 
 /** The folders that count as the workspace's, as edit approvals count them: its path, and that path with links resolved. */
@@ -145,6 +199,8 @@ interface ScopeStart {
   revision: string | null;
   /** When the turn began, for a folder that is no repository: its files are told apart by when they were written. */
   since?: number;
+  /** In a session, when the agent's commands ran: a file written then is the agent's too. */
+  commandWindows?: TimeWindow[];
   base: ChangesBase;
 }
 
@@ -214,10 +270,23 @@ export class Changes {
       return agentDiffs();
     }
     if (!withinWorkspace(workspace, path)) throw new Error(`${path} is not a file of this workspace.`);
+    if (start.commandWindows && !agentEdits && (await this.isTrackedOrUntracked(workspace, path))) {
+      const { baseOf } = await changesSinceCommitsWithin(workspace.path, start.since!, start.commandWindows);
+      return this.filesDiff(workspace, path, baseOf.get(path) ?? (await headOrEmptyTree(workspace.path)), null);
+    }
     if (!start.revision) return start.since === undefined ? agentDiffs() : this.writtenSinceDiff(workspace, path, start.since, agentEdits ? agentDiffs() : null);
-    const [before, after] = await Promise.all([fileAtRevision(workspace.path, start.revision, path), workspaceFileAt(workspace, path)]);
+    return this.filesDiff(workspace, path, start.revision, agentEdits ? agentDiffs : null);
+  }
+
+  private async isTrackedOrUntracked(workspace: Workspace, path: string) {
+    return (await isRepository(workspace.path)) && !(await isIgnored(workspace.path, path));
+  }
+
+  /** The file compared with `revision`, or the agent's own edits to it where it is as it was then. */
+  private async filesDiff(workspace: Workspace, path: string, revision: string, agentDiffs: (() => FileChanges) | null): Promise<FileChanges> {
+    const [before, after] = await Promise.all([fileAtRevision(workspace.path, revision, path), workspaceFileAt(workspace, path)]);
     const unchanged = before.kind === after.kind && (before.kind !== "text" || (after.kind === "text" && before.text === after.text));
-    if (unchanged && agentEdits) return agentDiffs();
+    if (unchanged && agentDiffs) return agentDiffs();
     return { path, source: "files", diffs: unchanged ? [] : [fileChangeDiff(path, before, after)] };
   }
 
@@ -286,18 +355,33 @@ export class Changes {
    */
   private sessionStart(conversationId: string): ScopeStart {
     const firstMessageAt = this.store.firstMessageAt(conversationId);
-    return { fromSeq: 0, revision: null, ...(firstMessageAt !== null && { since: firstMessageAt }), base: "session" };
+    if (firstMessageAt === null) return { fromSeq: 0, revision: null, base: "session" };
+    const windows = commandWindows(this.store.toolCallEventsFrom(conversationId, 0), this.store.turnEndTimes(conversationId), firstMessageAt, Date.now());
+    return { fromSeq: 0, revision: null, since: firstMessageAt, commandWindows: windows, base: "session" };
   }
 
-  /** In a repository, git already lists what it tracks, so a session adds only what the excludes hide, and asks git for those too. */
-  private async writtenSince(workspace: Workspace, scope: ChangeScope, since: number) {
-    if (scope === "session" && (await isRepository(workspace.path))) return ignoredFilesWrittenSince(workspace.path, since, MAX_SCANNED_FILES);
-    return filesWrittenSince(workspace.path, since, MAX_SCANNED_FILES);
+  /**
+   * The files written while the agent's commands ran: in a repository, those git lists as uncommitted, those its
+   * excludes hide, and those of the commits made then, each compared with what it was before; a file in a commit counts
+   * from before its earliest one.
+   */
+  private async writtenByCommands(workspace: Workspace, since: number, windows: TimeWindow[]): Promise<{ changes: TreeChange[]; truncated: boolean }> {
+    if (windows.length === 0) return { changes: [], truncated: false };
+    const counts = writtenWithin(windows);
+    if (!(await isRepository(workspace.path))) return filesWritten(workspace.path, counts, MAX_SCANNED_FILES);
+    const [uncommitted, ignored, committed] = await Promise.all([
+      uncommittedChanges(workspace.path).then((changes) => changesWritten(workspace.path, changes ?? [], counts)),
+      ignoredFilesWritten(workspace.path, counts, MAX_SCANNED_FILES),
+      changesSinceCommitsWithin(workspace.path, since, windows),
+    ]);
+    const byPath = new Map([...ignored.changes, ...uncommitted, ...committed.changes].map((change) => [change.path, change]));
+    return { changes: [...byPath.values()], truncated: ignored.truncated };
   }
 
   private async treeChanges(workspace: Workspace, scope: ChangeScope, start: ScopeStart): Promise<{ changes: TreeChange[] | null; committedPaths: Set<string>; truncated: boolean }> {
     const noCommits = new Set<string>();
-    if (start.since !== undefined) return { ...(await this.writtenSince(workspace, scope, start.since)), committedPaths: noCommits };
+    if (start.commandWindows) return { ...(await this.writtenByCommands(workspace, start.since!, start.commandWindows)), committedPaths: noCommits };
+    if (start.since !== undefined) return { ...(await filesWrittenSince(workspace.path, start.since, MAX_SCANNED_FILES)), committedPaths: noCommits };
     if (!start.revision) return { changes: null, committedPaths: noCommits, truncated: false };
     if (scope !== "turn") return { changes: await uncommittedChanges(workspace.path), committedPaths: noCommits, truncated: false };
     const sinceTurnStart = await this.checkpoints.changesSince(workspace, start.revision);

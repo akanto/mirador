@@ -274,7 +274,7 @@ export const hints = {
   changesScope: {
     turn: "The files that differ from how they were when this turn began, as the agent or anything else left them.",
     uncommitted: "git status: the files that differ from the last commit, and the files outside the project the agent edited in this conversation.",
-    session: "Every file the agent changed with its edit tools in this conversation, even where a later turn changed it back, and the git-ignored files written since its first message, such as build output.",
+    session: "Every file the agent changed with its edit tools in this conversation, even where a later turn changed it back, and the files written while its commands ran, build output and its commits included. A file a command deleted, or a job it left running wrote later, is not listed.",
   },
   changesView: {
     list: "Each changed file on its own row, with its whole path. Remembered in this browser.",

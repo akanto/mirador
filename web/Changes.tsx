@@ -18,7 +18,7 @@ const listViewLabels: Record<ListView, string> = { list: "List", tree: "Tree", a
 const listView = storedChoice<ListView>("mirador-changes-view", listViews, "all");
 
 const listNotes: Partial<Record<ChangesBase, string>> = {
-  session: "The files the agent changed with its edit tools in this conversation, and the git-ignored files written since its first message. In a folder that is not a git repository, every file written since then.",
+  session: "The files the agent changed with its edit tools in this conversation, and the files written while its commands ran, including those of the commits they made.",
   "turn-file-times": "This folder is not a git repository, so the list holds the files written since this turn began, and the agent's edits. Deleted files and earlier versions are not known.",
   "not-a-repository": "This folder is not a git repository, so the list holds only the files the agent edited.",
   "turn-not-kept": "The files from this turn's start are no longer kept, so the list holds only the files the agent edited.",

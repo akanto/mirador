@@ -4,10 +4,10 @@ import { chmod, mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile }
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ToolKind } from "@agentclientprotocol/sdk";
-import { agentEditsIn, Changes, OutsideWorkspace } from "../host/changes.ts";
+import { agentEditsIn, Changes, COMMAND_WINDOW_SLACK_MS, commandWindows, OutsideWorkspace } from "../host/changes.ts";
 import { Checkpoints } from "../host/checkpoints.ts";
 import { Store } from "../host/store.ts";
-import { createdSince, filesWrittenSince, ignoredFilesWrittenSince, projectFiles, treeChangesIn, uncommittedChanges } from "../host/working-tree.ts";
+import { createdSince, filesWrittenSince, ignoredFilesWritten, loggedCommitsIn, projectFiles, treeChangesIn, uncommittedChanges, writtenSince } from "../host/working-tree.ts";
 import type { StoredEvent } from "../shared/model.ts";
 import { changesRefreshPoint, firstChangedLine } from "../web/changes.ts";
 
@@ -29,12 +29,15 @@ const openerNoting = (openedFiles: string[], programOpens: () => boolean) => asy
   return programOpens();
 };
 
-async function git(directory: string, args: string[]) {
-  const child = Bun.spawn(["git", "-C", directory, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+async function git(directory: string, args: string[], env: Record<string, string> = {}) {
+  const child = Bun.spawn(["git", "-C", directory, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe", env: { ...process.env, ...env } });
   const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
   if (exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${stderr}`);
   return stdout.trim();
 }
+
+/** A commit from well before any test's conversation, which no command window reaches. */
+const commitLongAgo = (message: string) => git(projectDir, ["commit", "-qm", message], { GIT_COMMITTER_DATE: "2020-01-01T00:00:00Z" });
 
 const write = (relative: string, content: string) => writeFile(join(projectDir, relative), content);
 
@@ -51,7 +54,7 @@ beforeEach(async () => {
   await write("kept.txt", "one\ntwo\nthree\n");
   await write("doomed.txt", "doomed\n");
   await git(projectDir, ["add", "-A"]);
-  await git(projectDir, ["commit", "-qm", "base"]);
+  await commitLongAgo("base");
   store = new Store(":memory:");
   store.insertWorkspace({ id: "w1", name: "project", path: projectDir, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
   store.insertConversation({
@@ -102,6 +105,16 @@ async function startTurn() {
   const checkpoint = await checkpoints.snapshot(workspace());
   return store.appendEvent("c1", { type: "user-message", text: "go", ...(checkpoint && { checkpoint }) });
 }
+
+/** A command of the agent's, reported as running while `work` writes, then done. */
+async function agentRuns(toolCallId: string, work: () => Promise<unknown>) {
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call", toolCallId, title: "Run", kind: "execute", status: "in_progress" } });
+  await work();
+  store.appendEvent("c1", { type: "acp", update: { sessionUpdate: "tool_call_update", toolCallId, status: "completed" } });
+}
+
+/** Long enough after a command for a write not to count as its. */
+const pastTheCommand = () => Bun.sleep(COMMAND_WINDOW_SLACK_MS + 100);
 
 /** A finished edit as Claude Code reports it: the kind first, then the path and diff, then done. */
 function agentEdits(toolCallId: string, path: string, oldText: string | null, newText: string, kind: ToolKind = "edit") {
@@ -430,14 +443,14 @@ test("ignored files written since a timestamp are found, while unignored and old
   const past = now - 60_000;
   const future = now + 60_000;
 
-  const found = await ignoredFilesWrittenSince(projectDir, past);
+  const found = await ignoredFilesWritten(projectDir, writtenSince(past));
   expect(found.changes).toEqual([{ path: "build/output.log", status: "added", added: 2, removed: 0 }]);
   expect(found.truncated).toBe(false);
 
-  const none = await ignoredFilesWrittenSince(projectDir, future);
+  const none = await ignoredFilesWritten(projectDir, writtenSince(future));
   expect(none.changes).toEqual([]);
 
-  const part = await ignoredFilesWrittenSince(projectDir, past, 0);
+  const part = await ignoredFilesWritten(projectDir, writtenSince(past), 0);
   expect(part.truncated).toBe(true);
   expect(part.changes).toHaveLength(0);
 });
@@ -457,7 +470,7 @@ async function writeIgnored(...paths: string[]) {
 test("ignored files deep in a hidden folder and beside tracked ones are found, but not under node_modules or tool folders", async () => {
   await writeIgnored("build/deep/er/output.js", "build/node_modules/pkg/index.js", "build/.beads/state.json", "node_modules/pkg/index.js", "src/trace.log");
 
-  const found = await ignoredFilesWrittenSince(projectDir, aMomentAgo());
+  const found = await ignoredFilesWritten(projectDir, writtenSince(aMomentAgo()));
 
   expect(found.changes.map(({ path }) => path).sort()).toEqual(["build/deep/er/output.js", "src/trace.log"]);
   expect(found.truncated).toBe(false);
@@ -467,7 +480,7 @@ test("a repository of its own inside a hidden folder is left to that repository"
   await writeIgnored("build/output.js", "build/vendored/lib.js");
   await git(join(projectDir, "build/vendored"), ["init", "-q"]);
 
-  const found = await ignoredFilesWrittenSince(projectDir, aMomentAgo());
+  const found = await ignoredFilesWritten(projectDir, writtenSince(aMomentAgo()));
 
   expect(found.changes.map(({ path }) => path)).toEqual(["build/output.js"]);
 });
@@ -475,9 +488,9 @@ test("a repository of its own inside a hidden folder is left to that repository"
 test("the limit counts the files of every hidden folder together", async () => {
   await writeIgnored("build/a.js", "build/b.js", "dist/c.js", "dist/d.js", "e.log");
 
-  expect((await ignoredFilesWrittenSince(projectDir, aMomentAgo(), 5)).truncated).toBe(false);
+  expect((await ignoredFilesWritten(projectDir, writtenSince(aMomentAgo()), 5)).truncated).toBe(false);
 
-  const part = await ignoredFilesWrittenSince(projectDir, aMomentAgo(), 3);
+  const part = await ignoredFilesWritten(projectDir, writtenSince(aMomentAgo()), 3);
   expect(part.truncated).toBe(true);
   expect(part.changes).toHaveLength(3);
 });
@@ -492,7 +505,7 @@ test("git is asked to name a hidden folder in whole, so a folder like node_modul
   }) as typeof Bun.spawn;
 
   try {
-    await ignoredFilesWrittenSince(projectDir, aMomentAgo());
+    await ignoredFilesWritten(projectDir, writtenSince(aMomentAgo()));
   } finally {
     Bun.spawn = realSpawn;
   }
@@ -724,29 +737,85 @@ test("a script opens as text, executable or not, and through a link named like a
   expect(openedByDefault).toEqual([]);
 });
 
-test("the session scope adds the git-ignored files written since the session began, and leaves out tracked files that only git lists", async () => {
+test("the session scope lists the tracked, untracked and git-ignored files the agent's commands wrote, compared with HEAD", async () => {
   await write(".gitignore", "build/\n");
   await write("app.ts", "one\n");
   await git(projectDir, ["add", "-A"]);
-  await git(projectDir, ["commit", "-qm", "base"]);
+  await commitLongAgo("base");
   await startTurn();
-  await Bun.sleep(20);
-  await mkdir(join(projectDir, "build"));
-  await writeFile(join(projectDir, "build", "out.js"), "built\n");
-  await write("app.ts", "two\n");
+  await agentRuns("build", async () => {
+    await mkdir(join(projectDir, "build"));
+    await writeFile(join(projectDir, "build", "out.js"), "built\n");
+    await write("app.ts", "two\n");
+    await write("new.txt", "new\n");
+  });
   const session = await changes.list("c1", "session");
-  expect(session.project.map((file) => file.path)).toEqual(["build/out.js"]);
+  expect(session.project).toEqual([
+    { path: "app.ts", status: "modified", added: 1, removed: 1, byAgent: false },
+    { path: "build/out.js", status: "added", added: 1, removed: 0, byAgent: false },
+    { path: "new.txt", status: "added", added: 1, removed: 0, byAgent: false },
+  ]);
+  expect((await changes.diff("c1", "session", "app.ts")).diffs[0]?.hunks[0]?.rows.map(({ kind }) => kind)).toEqual(["removed", "added"]);
 });
 
-test("the session scope leaves out the git-ignored files written before the conversation's first message", async () => {
+test("the session scope leaves out the files written before the conversation's first message, or outside the agent's commands", async () => {
   await mkdir(join(projectDir, "build"));
   await writeFile(join(projectDir, "build", "old.js"), "built before\n");
   await Bun.sleep(50);
   await startTurn();
-  await Bun.sleep(20);
-  await writeFile(join(projectDir, "build", "new.js"), "built in the session\n");
+  await agentRuns("build", () => writeFile(join(projectDir, "build", "new.js"), "built in the session\n"));
+  await pastTheCommand();
+  await writeFile(join(projectDir, "build", "theirs.js"), "built by another conversation\n");
+  await write("kept.txt", "changed by hand\n");
   const session = await changes.list("c1", "session");
   expect(session.project.map((file) => file.path)).toEqual(["build/new.js"]);
+});
+
+test("the session scope lists the files of the commits the agent's commands made, compared with before the first of them, and no merge's", async () => {
+  await startTurn();
+  await agentRuns("commit", async () => {
+    await write("kept.txt", "one\nTWO\nthree\n");
+    await git(projectDir, ["commit", "-qam", "the agent's"]);
+    await write("kept.txt", "one\nTWO\nTHREE\n");
+    await git(projectDir, ["commit", "-qam", "the agent's again"]);
+  });
+  await git(projectDir, ["checkout", "-qb", "theirs", "HEAD~2"]);
+  await write("pulled.txt", "theirs\n");
+  await git(projectDir, ["add", "pulled.txt"]);
+  await commitLongAgo("theirs");
+  await git(projectDir, ["checkout", "-q", "-"]);
+  await agentRuns("merge", () => git(projectDir, ["merge", "-q", "--no-edit", "--no-ff", "theirs"]));
+  const session = await changes.list("c1", "session");
+  expect(session.project).toEqual([{ path: "kept.txt", status: "modified", added: 2, removed: 2, byAgent: false }]);
+  const rows = (await changes.diff("c1", "session", "kept.txt")).diffs[0]?.hunks[0]?.rows ?? [];
+  expect(rows.filter(({ kind }) => kind === "removed").map(({ text }) => text)).toEqual(["two", "three"]);
+});
+
+test("a command window runs from when the command started running to when it ended, its turn's end, or now, and none from before the first message", () => {
+  const at = (when: number, update: Record<string, unknown>): StoredEvent => ({ seq: when, at: when, event: { type: "acp", update: update as never } });
+  const slack = COMMAND_WINDOW_SLACK_MS;
+  const events = [
+    at(5, { sessionUpdate: "tool_call", toolCallId: "replayed", kind: "execute", status: "completed" }),
+    at(100, { sessionUpdate: "tool_call", toolCallId: "asked", kind: "execute", status: "pending" }),
+    at(5_000, { sessionUpdate: "tool_call_update", toolCallId: "asked", status: "in_progress" }),
+    at(6_000, { sessionUpdate: "tool_call_update", toolCallId: "asked", status: "completed" }),
+    at(7_000, { sessionUpdate: "tool_call", toolCallId: "stopped", kind: "execute", status: "in_progress" }),
+    at(8_000, { sessionUpdate: "tool_call", toolCallId: "edit", kind: "edit", status: "in_progress" }),
+    at(20_000, { sessionUpdate: "tool_call", toolCallId: "running", kind: "execute", status: "pending" }),
+  ];
+  expect(commandWindows(events, [9_000], 50, 30_000)).toEqual([
+    { from: 5_000 - slack, to: 6_000 + slack },
+    { from: 7_000 - slack, to: 9_000 + slack },
+    { from: 20_000 - slack, to: 30_000 + slack },
+  ]);
+});
+
+test("git log's commits give each one's time in ms and its parents", () => {
+  expect(loggedCommitsIn("aaa 1700000000 bbb ccc\nbbb 1690000000 ddd\nddd 1680000000\n")).toEqual([
+    { commit: "aaa", committedAtMs: 1_700_000_000_000, parents: ["bbb", "ccc"] },
+    { commit: "bbb", committedAtMs: 1_690_000_000_000, parents: ["ddd"] },
+    { commit: "ddd", committedAtMs: 1_680_000_000_000, parents: [] },
+  ]);
 });
 
 async function writeToolState() {
@@ -760,11 +829,13 @@ async function writeToolState() {
 
 test("the session leaves out the git-ignored folders tools keep their own state in", async () => {
   await write(".gitignore", "build\n.beads\n.dolt\n.idea\n");
-  await git(projectDir, ["commit", "-qam", "ignore tool state"]);
+  await git(projectDir, ["add", "-A"]);
+  await commitLongAgo("ignore tool state");
   await startTurn();
-  await Bun.sleep(20);
-  await writeToolState();
-  await write("build", "built\n");
+  await agentRuns("build", async () => {
+    await writeToolState();
+    await write("build", "built\n");
+  });
   expect((await changes.list("c1", "session")).project.map((file) => file.path)).toEqual(["build"]);
 });
 
@@ -777,17 +848,19 @@ test("outside a git repository, a turn leaves out the folders tools keep their o
   expect((await changes.list("c1", "turn")).project.map((file) => file.path)).toEqual(["out.txt"]);
 });
 
-test("the session lists the git-ignored files in ignored folders and by name, and none of an untracked folder's or node_modules'", async () => {
+test("the session lists the git-ignored files in ignored folders and by name, an untracked folder's by git status, and none of node_modules'", async () => {
   await write(".gitignore", "build/\n*.log\nnode_modules/\n");
-  await git(projectDir, ["commit", "-qam", "ignore more"]);
+  await git(projectDir, ["add", "-A"]);
+  await commitLongAgo("ignore more");
   await startTurn();
-  await Bun.sleep(20);
-  await Promise.all(["build/deep", "src", "untracked", "node_modules/pkg"].map((folder) => mkdir(join(projectDir, folder), { recursive: true })));
-  await write("build/deep/out.js", "built\n");
-  await write("src/debug.log", "logged\n");
-  await write("untracked/new.txt", "new\n");
-  await write("node_modules/pkg/index.js", "installed\n");
-  expect((await changes.list("c1", "session")).project.map((file) => file.path)).toEqual(["build/deep/out.js", "src/debug.log"]);
+  await agentRuns("build", async () => {
+    await Promise.all(["build/deep", "src", "untracked", "node_modules/pkg"].map((folder) => mkdir(join(projectDir, folder), { recursive: true })));
+    await write("build/deep/out.js", "built\n");
+    await write("src/debug.log", "logged\n");
+    await write("untracked/new.txt", "new\n");
+    await write("node_modules/pkg/index.js", "installed\n");
+  });
+  expect((await changes.list("c1", "session")).project.map((file) => file.path)).toEqual(["build/deep/out.js", "src/debug.log", "untracked/new.txt"]);
 });
 
 test("a file written in a submodule or a nested clone leaves the session's other git-ignored files listed", async () => {
@@ -799,13 +872,12 @@ test("a file written in a submodule or a nested clone leaves the session's other
   await git(projectDir, ["add", ".gitignore"]);
   await Promise.all(["a", "nested", "z"].map((folder) => mkdir(join(projectDir, folder))));
   await git(projectDir, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", library, "m-submodule"]);
-  await git(projectDir, ["commit", "-qm", "add the submodule"]);
+  await commitLongAgo("add the submodule");
   await git(join(projectDir, "nested"), ["init", "-q"]);
   await git(join(projectDir, "nested"), ["commit", "-q", "--allow-empty", "-m", "nested"]);
   await startTurn();
-  await Bun.sleep(20);
   const written = ["a.log", "a/first.log", "m-submodule/inside.log", "nested/inside.log", "z/last.log", "z.log"];
-  await Promise.all(written.map((path) => write(path, "logged\n")));
+  await agentRuns("log", () => Promise.all(written.map((path) => write(path, "logged\n"))));
   expect((await changes.list("c1", "session")).project.map((file) => file.path).sort()).toEqual(["a.log", "a/first.log", "z.log", "z/last.log"]);
 });
 
@@ -824,16 +896,15 @@ test("a git-ignored file a script rewrote in the session says git ignores it, ra
   await writeFile(join(projectDir, "build", "cache.js"), "from before\n");
   await Bun.sleep(50);
   await startTurn();
-  await writeFile(join(projectDir, "build", "cache.js"), "rewritten by a script\n");
+  await agentRuns("build", () => writeFile(join(projectDir, "build", "cache.js"), "rewritten by a script\n"));
   expect((await changes.list("c1", "session")).project).toEqual([{ path: "build/cache.js", status: "modified", added: null, removed: null, byAgent: false }]);
   expect((await changes.diff("c1", "session", "build/cache.js")).diffs[0]).toMatchObject({ hiddenBecause: "git ignores this file, so there is no earlier version to compare with" });
 });
 
-test("outside a git repository, the session lists every file written since it began, and says the folder is no repository", async () => {
+test("outside a git repository, the session lists the files the agent's commands wrote, and says the folder is no repository", async () => {
   await leaveGit();
   await startTurn();
-  await Bun.sleep(20);
-  await write("doomed.txt", "rewritten by a script\n");
+  await agentRuns("script", () => write("doomed.txt", "rewritten by a script\n"));
   const session = await changes.list("c1", "session");
   expect(session.base).toBe("session");
   expect(session.project.map((file) => file.path)).toEqual(["doomed.txt"]);
