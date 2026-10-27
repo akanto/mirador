@@ -55,7 +55,10 @@ function useDirectoryCompletions(prefix: string) {
   return completions;
 }
 
-function folderHint(completionHighlighted: boolean, createsDirectory: boolean) {
+const typedName = (path: string) => path.split(/[\\/]/).pop();
+
+function folderHint(path: string, completionHighlighted: boolean, createsDirectory: boolean) {
+  if (completionHighlighted && createsDirectory) return `Enter or Tab takes the highlighted folder, ⇧Enter creates ${typedName(path)}, Esc cancels`;
   if (completionHighlighted) return "Enter or Tab takes the highlighted folder, Esc cancels";
   return createsDirectory ? "Enter creates the folder and adds it, Esc cancels" : "Enter adds, Tab completes, Esc cancels";
 }
@@ -111,7 +114,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
       setPicked(Math.max(highlighted - 1, 0));
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (highlighted === null) submit();
+      if (highlighted === null || (event.shiftKey && createsDirectory)) submit();
       else setPath(completion!);
     } else if (event.key === "Escape") {
       onDone();
@@ -153,7 +156,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
         </>
       ) : (
         <>
-          <div className="hint">{folderHint(highlighted !== null, createsDirectory)}</div>
+          <div className="hint">{folderHint(path, highlighted !== null, createsDirectory)}</div>
           <ul className="completions">
             {completions.map((completion, index) => (
               <li key={completion} className={index === highlighted ? "highlighted" : ""} onMouseDown={() => setPath(completion)}>

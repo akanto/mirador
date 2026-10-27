@@ -164,6 +164,23 @@ test("a folder that is not there yet is made and added, in a folder that is", as
   expect(statSync(directory).isDirectory()).toBe(true);
 });
 
+test("⇧Enter makes a new folder whose name begins a folder's that is there, which Enter would take", async ({ page }) => {
+  const parent = join(host.root, "prefixes");
+  mkdirSync(join(parent, "api-server"), { recursive: true });
+  const directory = join(parent, "api");
+  await signIn(page, host);
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const input = page.getByLabel("Workspace directory");
+
+  await input.fill(directory);
+  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}/api-server/`);
+  await expect(page.locator(".add-workspace .hint")).toHaveText("Enter or Tab takes the highlighted folder, ⇧Enter creates api, Esc cancels");
+  await input.press("Shift+Enter");
+  await pickProfileIfAsked(page, directory);
+  await expect(workspaceCard(page, directory)).toBeVisible();
+  expect(statSync(directory).isDirectory()).toBe(true);
+});
+
 test("Enter takes the highlighted folder while its name is being typed, and adds a path that names a folder", async ({ page }) => {
   const parent = join(host.root, "completions");
   ["alpha-one", "alpha-two", "beta"].forEach((name) => mkdirSync(join(parent, name), { recursive: true }));
@@ -174,7 +191,7 @@ test("Enter takes the highlighted folder while its name is being typed, and adds
 
   await input.fill(`${parent}/alp`);
   await expect(highlighted).toHaveText(`${parent}/alpha-one/`);
-  await expect(page.locator(".add-workspace .hint")).toHaveText("Enter or Tab takes the highlighted folder, Esc cancels");
+  await expect(page.locator(".add-workspace .hint")).toHaveText("Enter or Tab takes the highlighted folder, ⇧Enter creates alp, Esc cancels");
   await input.press("Enter");
   await expect(input).toHaveValue(`${parent}/alpha-one/`);
   await expect(highlighted).toHaveCount(0);
