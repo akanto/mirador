@@ -1946,6 +1946,12 @@ input.picker-search {
   padding: 4px 8px;
 }
 
+/* anywhere would let a column shrink to one letter per line; break-word keeps words whole when columns are sized. */
+.markdown td code,
+.markdown th code {
+  overflow-wrap: break-word;
+}
+
 .markdown a {
   color: var(--accent);
 }

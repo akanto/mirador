@@ -104,6 +104,27 @@ test("a file path the agent writes in backticks in its reply is a link that open
   });
 });
 
+test("code in a table cell beside a long one stays on one line", async ({ page }) => {
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+
+  const longCell = "The router, which routes every request by its model id and pipes streams through unbuffered. ".repeat(4);
+  await sendMessage(page, `SAY | file | what |\n| --- | --- |\n| \`proxy.mjs\` | ${longCell} |\n| \`src/app.ts\` | short |`);
+  await waitForTurnToEnd(page);
+
+  for (const name of ["src/app.ts", "proxy.mjs"]) {
+    const code = page.locator(".markdown td code").getByText(name, { exact: true });
+    await expect(code).toBeVisible();
+    const linesOfText = await code.evaluate((element) => {
+      const text = document.createRange();
+      text.selectNodeContents(element);
+      return text.getClientRects().length;
+    });
+    expect(linesOfText, name).toBe(1);
+  }
+});
+
 test("a plugin's view opens a file through Mirador, as a file link in the chat does", async ({ page }) => {
   await signIn(page, host);
   await page.getByLabel("Agent", { exact: true }).selectOption({ label: "open-files · opencode" });
