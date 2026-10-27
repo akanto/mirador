@@ -20,7 +20,7 @@ import { DesktopMenu } from "./DesktopMenu.tsx";
 import { useDragToReorder, usePointerDrag } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
-import { conversationsIn } from "./navigation.ts";
+import { conversationsIn, isUnderCaller } from "./navigation.ts";
 import { pastelVariables } from "./pastels.ts";
 import { UpdatesWaiting } from "./PluginSettings.tsx";
 import { ProfileDot, ProfileEdge } from "./ProfileDot.tsx";
@@ -242,8 +242,8 @@ function ConversationMenu({ conversation, at, dispatch, onClose }: { conversatio
   return <ContextMenu name={conversation.title} at={at} entries={[entry]} onClose={onClose} />;
 }
 
-const rowClasses = (conversation: Conversation, selectedConversationId: string | null) =>
-  [conversation.id === selectedConversationId && "selected", conversation.waitingFor && "waiting"].filter(Boolean);
+const rowClasses = (conversation: Conversation, listed: Conversation[], selectedConversationId: string | null) =>
+  [conversation.id === selectedConversationId && "selected", conversation.waitingFor && "waiting", isUnderCaller(conversation, listed) && "under-caller"].filter(Boolean);
 
 const markColors = ["#6e56cf", "#0e9384", "#d9822b", "#3e63dd", "#d6409f", "#12a594", "#8e4ec6", "#ad7f58"];
 
@@ -411,7 +411,7 @@ function WorkspaceSection({
               key={conversation.id}
               data-reorder-id={conversation.id}
               data-waiting-tone={conversation.waitingFor ? waitingTones[conversation.waitingFor] : undefined}
-              className={[...rowClasses(conversation, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
+              className={[...rowClasses(conversation, conversations, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
               onPointerDown={(event) => conversationDrag.startDrag(conversation.id, conversationList.current, event)}
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
               onContextMenu={(event) => onConversationMenu(conversation, event)}

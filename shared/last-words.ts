@@ -1,4 +1,4 @@
-import type { FirstReply } from "./canvas-plugins.ts";
+import type { ConversationReply } from "./canvas-plugins.ts";
 import type { StoredEvent } from "./model.ts";
 import { lastGraphemes } from "./text-cut.ts";
 import { buildTimeline } from "./timeline.ts";
@@ -27,16 +27,11 @@ export function lastWordsOf(turn: StoredEvent[]): string | null {
   return kept === message ? message : `…${kept.slice(cleanStart(kept)).trimStart()}`;
 }
 
-/**
- * What the agent said, in full, and how its first turn ended, from a conversation's events; a turn with no end in
- * them failed.
- */
-export function firstReplyOf(events: StoredEvent[]): FirstReply {
-  const endIndex = events.findIndex(({ event }) => event.type === "turn-end");
-  const firstTurn = endIndex === -1 ? events : events.slice(0, endIndex + 1);
-  const last = buildTimeline(firstTurn).findLast(({ kind }) => kind === "agent");
+/** What the agent said last in a turn's events, in full, and how the turn ended; a turn with no end in them failed. */
+export function replyOf(turn: StoredEvent[]): ConversationReply {
+  const last = buildTimeline(turn).findLast(({ kind }) => kind === "agent");
   const text = last?.kind === "agent" && last.text.trim() ? last.text.trim() : null;
-  const turnEnd = firstTurn[endIndex]?.event;
+  const turnEnd = turn.findLast(({ event }) => event.type === "turn-end")?.event;
   if (turnEnd?.type !== "turn-end") return { text, ended: "failed" };
   return { text, ended: turnEnd.stopReason === "cancelled" ? "stopped" : "finished" };
 }

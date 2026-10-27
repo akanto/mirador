@@ -14,6 +14,7 @@ import {
   type AsyncTask,
   type AsyncTaskState,
   type Conversation,
+  type DelegatedReply,
   type HarnessId,
   type JobWait,
   type Profile,
@@ -1334,6 +1335,59 @@ function AsyncTaskRow({ conversationId, task }: { conversationId: string; task: 
   );
 }
 
+const delegatedEndLabels: Record<DelegatedReply["ended"], string> = { finished: "Finished", stopped: "Stopped", failed: "Failed" };
+
+/** The conversations this one's plugin tools started, such as delegated tasks, until the user dismisses them. */
+function DelegatedTasks({ tasks, profiles }: { tasks: Conversation[]; profiles: Profile[] }) {
+  return (
+    <section className="delegated-tasks" aria-label="Delegated tasks">
+      <ul>
+        {tasks.map((task) => (
+          <li key={task.id}>
+            <DelegatedTaskRow task={task} profile={profiles.find(({ id }) => id === task.profileId)?.name ?? harnessLabels[task.harness]} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function DelegatedTaskRow({ task, profile }: { task: Conversation; profile: string }) {
+  const reply = task.startedBy?.reply ?? null;
+  const now = useClock(reply === null);
+  const detail = reply ? reply.opening : task.activity?.title;
+  return (
+    <>
+      <div className="delegated-task-text">
+        <span data-hint={hints.delegatedTask}>
+          {reply ? delegatedEndLabels[reply.ended] : "Working"}:{" "}
+          <button type="button" className="link" data-hint={hints.openDelegatedTask} onClick={() => (location.hash = `#/c/${task.id}`)}>
+            {task.title}
+          </button>{" "}
+          on {profile}
+          {!reply && ` for ${formatDuration(now - task.createdAt)}`}
+        </span>
+        {detail && <span className="delegated-task-detail">{detail}</span>}
+      </div>
+      {!reply && isBusy(task) && (
+        <button type="button" className="link" data-hint={hints.stopDelegatedTask} onClick={() => connection.send({ type: "conversation.cancel", conversationId: task.id })}>
+          Stop
+        </button>
+      )}
+      {reply && (
+        <button
+          type="button"
+          className="link"
+          data-hint={hints.dismissDelegatedTask}
+          onClick={() => connection.send({ type: "conversation.delegation.dismiss", conversationId: task.id })}
+        >
+          Dismiss
+        </button>
+      )}
+    </>
+  );
+}
+
 function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wait: UsageLimitWait }) {
   return (
     <section className="usage-limit" aria-label="Usage limit">
@@ -1479,6 +1533,8 @@ function BusySendButtons({ canSteer, enterWhileBusy, onSend }: { canSteer: boole
 
 function Composer({
   conversation,
+  delegatedTasks,
+  profiles,
   events,
   holdsEarliest,
   pendingCommands,
@@ -1488,6 +1544,8 @@ function Composer({
   onManageTemplates,
 }: {
   conversation: Conversation;
+  delegatedTasks: Conversation[];
+  profiles: Profile[];
   events: StoredEvent[];
   holdsEarliest: boolean;
   pendingCommands: UserCommand[];
@@ -1674,6 +1732,7 @@ function Composer({
       <ComposerGrip textarea={textarea} />
       {conversation.usageLimit && <UsageLimitNotice conversationId={conversation.id} wait={conversation.usageLimit} />}
       {conversation.asyncTasks.length > 0 && <BackgroundTasks conversationId={conversation.id} tasks={conversation.asyncTasks} />}
+      {delegatedTasks.length > 0 && <DelegatedTasks tasks={delegatedTasks} profiles={profiles} />}
       {conversation.jobWaits.length > 0 && <JobWaits conversationId={conversation.id} waits={conversation.jobWaits} />}
       {queued.length > 0 && <QueuedMessages conversationId={conversation.id} harness={conversation.harness} messages={queued} onEdit={pullBack} onRemove={remove} />}
       <CommandOutputsAttached commands={pendingCommands} conversationId={conversation.id} />
@@ -1792,6 +1851,7 @@ function Composer({
 
 export function ChatPanel({
   conversation,
+  delegatedTasks,
   profiles,
   promptTemplates,
   voiceSettings,
@@ -1805,6 +1865,8 @@ export function ChatPanel({
   onToggleTerminal,
 }: {
   conversation: Conversation;
+  /** The conversations this one's plugin tools started that the user hasn't dismissed. */
+  delegatedTasks: Conversation[];
   profiles: Profile[];
   promptTemplates: PromptTemplate[];
   voiceSettings: VoiceSettings;
@@ -1924,6 +1986,8 @@ export function ChatPanel({
                   )}
                   <Composer
                     conversation={conversation}
+                    delegatedTasks={delegatedTasks}
+                    profiles={profiles}
                     events={open.events}
                     holdsEarliest={!open.hasEarlier}
                     pendingCommands={pendingCommands}

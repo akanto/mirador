@@ -976,6 +976,8 @@ export function startServer(services: HostServices) {
         return conversations.dismissAsyncTask(message.conversationId, message.asyncTaskId);
       case "conversation.async-task.clear-finished":
         return conversations.clearFinishedAsyncTasks(message.conversationId);
+      case "conversation.delegation.dismiss":
+        return conversations.dismissDelegation(message.conversationId);
       case "async-task.output.get":
         return reply({
           type: "async-task.output.got",

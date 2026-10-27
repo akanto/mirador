@@ -216,6 +216,11 @@ export const hints = {
   stopAsyncTask: "Stop this task: Claude Code ends it and the agent hears of it. The turn that started it keeps running.",
   dismissAsyncTask: "Dismiss this task: remove it from above the message box.",
   clearFinishedAsyncTasks: "Clear all finished tasks from above the message box.",
+  delegatedTask:
+    "A plugin's tool, such as delegate, started this conversation on another profile to work on a task for this one. When its first turn ends, its agent's last message comes to this conversation's agent as your next message.\n\nThe reply survives a host restart.",
+  openDelegatedTask: "Open the conversation working on this task, to watch it or answer what it asks.",
+  stopDelegatedTask: "Stop its turn. The agent here hears that the task stopped, with whatever the other agent said so far.",
+  dismissDelegatedTask: "Dismiss this task: remove it from above the message box. Its conversation stays in the sidebar.",
   claudeProgram: (installFolders: string) =>
     `The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ${installFolders}.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.`,
   canvasUse:
@@ -276,6 +281,8 @@ export const hints = {
     all: "Every file of the project in its folders, the changed ones marked. Only the folders holding a change start open. Remembered in this browser.",
   },
   changesFoldAll: "Fold every folder, so only the top level shows. Click a folder to open it again.",
+  changesEditedByAgent: "The project's files this conversation's agent changed with its edit tools in this turn.",
+  changesChangedOtherwise: "The project's files changed in this turn without the agent's edit tools: by commands the agent ran, by you, or by another conversation or tool working in this folder.",
   changesFromCommit: "A commit since the turn began changed this file, such as a pull's or the agent's own.",
   changesRefresh: "Load the list again. It also loads after each tool call the agent finishes and when the turn ends.",
   changesByAgent: "This conversation's agent changed this file with its edit tools.",

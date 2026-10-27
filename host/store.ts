@@ -6,6 +6,7 @@ import type {
   CanvasItem,
   ContextUsage,
   Conversation,
+  DelegatedReply,
   Device,
   Machine,
   ConversationEvent,
@@ -138,6 +139,10 @@ const addedColumns = [
   { table: "workspaces", column: "group_id", definition: "TEXT" },
   { table: "conversations", column: "rewound_through_seq", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "conversations", column: "context_usage", definition: "TEXT" },
+  { table: "conversations", column: "started_by", definition: "TEXT" },
+  { table: "conversations", column: "started_by_plugin", definition: "TEXT" },
+  { table: "conversations", column: "delegated_reply", definition: "TEXT" },
+  { table: "conversations", column: "delegation_dismissed", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "profiles", column: "effort", definition: "TEXT" },
 ];
 
@@ -184,6 +189,10 @@ type ConversationRow = {
   queued_messages: string;
   context_usage: string | null;
   position: number;
+  started_by: string | null;
+  started_by_plugin: string | null;
+  delegated_reply: string | null;
+  delegation_dismissed: number;
   created_at: number;
   updated_at: number;
 };
@@ -229,6 +238,18 @@ const toMachine = (row: unknown): Machine => {
   return { id, name, origin, createdAt: created_at, relayPort: relay_port, joined: joined === 1, color: isPastel(color) ? color : null };
 };
 
+const startedByOf = (row: ConversationRow) =>
+  row.started_by && row.started_by_plugin
+    ? {
+        startedBy: {
+          conversationId: row.started_by,
+          plugin: row.started_by_plugin,
+          reply: row.delegated_reply ? (JSON.parse(row.delegated_reply) as DelegatedReply) : null,
+          dismissed: row.delegation_dismissed === 1,
+        },
+      }
+    : {};
+
 const toConversation = (row: ConversationRow): Conversation => ({
   id: row.id,
   workspaceId: row.workspace_id,
@@ -253,6 +274,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   activity: null,
   configOptions: JSON.parse(row.config_options),
   position: row.position,
+  ...startedByOf(row),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -530,6 +552,19 @@ export class Store {
         conversation.updatedAt,
       );
     return { ...conversation, position };
+  }
+
+  /** The conversation a plugin's tool started works for the caller, which is owed word of how its work ends. */
+  recordStartedBy(conversationId: string, { conversationId: callerId, plugin }: { conversationId: string; plugin: string }) {
+    this.db.query("UPDATE conversations SET started_by = ?, started_by_plugin = ? WHERE id = ?").run(callerId, plugin, conversationId);
+  }
+
+  recordDelegatedReply(conversationId: string, reply: DelegatedReply) {
+    this.db.query("UPDATE conversations SET delegated_reply = ? WHERE id = ?").run(JSON.stringify(reply), conversationId);
+  }
+
+  dismissDelegation(conversationId: string) {
+    this.db.query("UPDATE conversations SET delegation_dismissed = 1 WHERE id = ? AND started_by IS NOT NULL").run(conversationId);
   }
 
   /** Numbers the conversations' positions in the given order. */

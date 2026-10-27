@@ -6,7 +6,7 @@ import type {
   ToolCallUpdate,
   ToolKind,
 } from "@agentclientprotocol/sdk";
-import type { PluginItemPlacement } from "./canvas-plugins.ts";
+import type { ConversationReply, PluginItemPlacement } from "./canvas-plugins.ts";
 import type { EditDiff } from "./review.ts";
 import type { TerminalLayout } from "./terminal-layout.ts";
 
@@ -449,8 +449,26 @@ export interface Conversation {
   configOptions: SessionConfigOption[];
   /** Its place among its workspace's conversations in the sidebar. */
   position: number;
+  /** Only on a conversation a plugin's tool started, such as a delegated task. */
+  startedBy?: StartedBy;
   createdAt: number;
   updatedAt: number;
+}
+
+/** The conversation another one works for, which shows it above its composer and under it in the sidebar. */
+export interface StartedBy {
+  conversationId: string;
+  plugin: string;
+  /** Null until the plugin heard how its work ended, in this run of Mirador or the next. */
+  reply: DelegatedReply | null;
+  /** The user took it off the caller's list of delegated tasks. */
+  dismissed: boolean;
+}
+
+/** How a started conversation's work ended, and the start of its agent's last message, for the caller's list. */
+export interface DelegatedReply {
+  ended: ConversationReply["ended"];
+  opening: string | null;
 }
 
 export type CommandStream = "stdout" | "stderr";

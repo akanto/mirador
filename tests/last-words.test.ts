@@ -8,7 +8,7 @@ import { ConversationService } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
 import { Store } from "../host/store.ts";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
-import { firstReplyOf, LAST_WORDS_GRAPHEMES, lastWordsOf } from "../shared/last-words.ts";
+import { replyOf, LAST_WORDS_GRAPHEMES, lastWordsOf } from "../shared/last-words.ts";
 
 const scratch = mkdtempSync(join(tmpdir(), "last-words-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -106,23 +106,14 @@ describe("a conversation's last words", () => {
   });
 });
 
-describe("a conversation's first reply", () => {
-  test("is the agent's whole last message of the first turn, finished, whatever later turns said", () => {
+describe("the reply of a turn", () => {
+  test("is the agent's whole last message, however long, and the turn finished", () => {
     const long = "y".repeat(LAST_WORDS_GRAPHEMES * 2);
-    const events = stored([
-      { type: "user-message", text: "Find the callers" },
-      agentText("Looking."),
-      toolCall("t1"),
-      agentText(long),
-      { type: "turn-end", stopReason: "end_turn" },
-      { type: "user-message", text: "Thanks" },
-      agentText("You're welcome."),
-    ]);
-    expect(firstReplyOf(events)).toEqual({ text: long, ended: "finished" });
+    expect(replyOf(turn(agentText("Looking."), toolCall("t1"), agentText(long)))).toEqual({ text: long, ended: "finished" });
   });
 
   test("says the turn was stopped, or failed when it has no end, and has no text when the agent said nothing", () => {
-    expect(firstReplyOf(stored([{ type: "user-message", text: "Find" }, toolCall("t1"), { type: "turn-end", stopReason: "cancelled" }]))).toEqual({ text: null, ended: "stopped" });
-    expect(firstReplyOf(stored([{ type: "user-message", text: "Find" }, agentText("Half")]))).toEqual({ text: "Half", ended: "failed" });
+    expect(replyOf(stored([{ type: "user-message", text: "Find" }, toolCall("t1"), { type: "turn-end", stopReason: "cancelled" }]))).toEqual({ text: null, ended: "stopped" });
+    expect(replyOf(stored([{ type: "user-message", text: "Find" }, agentText("Half")]))).toEqual({ text: "Half", ended: "failed" });
   });
 });

@@ -64,7 +64,7 @@ async function startConversation(page: Page) {
 
 let conversationId: string;
 
-test("the empty canvas lists the files this turn changed as the agent works, with its own edits marked and files outside the project apart, under home as ~/", async ({ page }) => {
+test("the empty canvas lists the files this turn changed as the agent works, its own edits apart from the project's other changes and files outside the project apart, under home as ~/", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, "changes", "", "", "opencode");
@@ -94,6 +94,14 @@ test("the empty canvas lists the files this turn changed as the agent works, wit
   await waitForTurnToEnd(page);
 
   await expectListed(page, "Project", ["src/app.ts", "src/generated.txt"]);
+  await test.step("Tree lists the agent's edits apart from the project's other changes", async () => {
+    await changes(page).getByRole("button", { name: "Tree" }).click();
+    await expectListed(page, "Edited by the agent", ["src/app.ts"]);
+    await expectListed(page, "Changed some other way", ["src/generated.txt"], "a file the agent's command wrote is not one of its edits");
+    await expect(changes(page).locator("h3", { hasText: "Changed some other way" })).toHaveAttribute("data-hint", /commands the agent ran/);
+    await expect(section(page, "Project"), "the turn's project files are only in the two sections").toHaveCount(0);
+    await changes(page).getByRole("button", { name: "All files" }).click();
+  });
   await expect(fileRow(page, "src/generated.txt").locator(".change-status")).toHaveText("A");
   await expect(fileRow(page, "src/generated.txt").locator(".by-agent")).toHaveCount(0);
   await expectListed(page, "Outside the project", [outsideFileShown]);
@@ -502,7 +510,8 @@ test("This turn lists the files commits since the turn began changed in a sectio
   await expectListed(page, "From commits since the turn began", ["pulled.txt", "src/app.ts"]);
   await expect(section(page, "From commits since the turn began").locator(".from-commit")).toHaveCount(0);
   await expect(fileRow(page, "src/app.ts").locator(".by-agent")).toHaveAttribute("aria-label", "Changed by the agent");
-  await expectListed(page, "Project", ["by-hand.txt"]);
+  await expectListed(page, "Changed some other way", ["by-hand.txt"]);
+  await expect(section(page, "Edited by the agent"), "the agent's edit went into a commit").toHaveCount(0);
 
   await fileRow(page, "src/app.ts").click();
   await expect(changes(page).locator(".changes-diff")).toContainText("committed by the agent");

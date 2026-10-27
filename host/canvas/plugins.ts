@@ -1,6 +1,15 @@
 import { fromJsonSchema, type McpServer, type ServerContext } from "@modelcontextprotocol/server";
-import { pluginItemOf, type StartedConversation, type CanvasActionContext, type CanvasPluginContext, type CanvasPluginStorage, type CanvasToolContext, type PluginItemType } from "../../shared/canvas-plugins.ts";
-import type { PluginCanvasItem } from "../../shared/model.ts";
+import {
+  pluginItemOf,
+  type CanvasActionContext,
+  type CanvasPluginContext,
+  type CanvasPluginStorage,
+  type CanvasToolContext,
+  type ConversationReply,
+  type PluginItemType,
+  type StartedConversation,
+} from "../../shared/canvas-plugins.ts";
+import type { PluginCanvasItem, StartedBy } from "../../shared/model.ts";
 import { canvasViewPath, messageOf, type CanvasPlugin } from "../apps/plugins.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
@@ -28,7 +37,7 @@ const shownOf = (type: PluginItemType | undefined, data: unknown) => ({ ...count
 
 export type SendPrompt = (conversationId: string, text: string, options: { afterTurn: boolean }) => Promise<void>;
 
-export type StartBeside = (callerId: string, profileName: string, prompt: string) => StartedConversation;
+export type StartBeside = (callerId: string, plugin: string, profileName: string, prompt: string) => StartedConversation;
 
 /**
  * The canvas plugins Mirador loaded when it started: their tools on every conversation's canvas server, the items those
@@ -116,6 +125,12 @@ export class CanvasPlugins {
     this.save({ ...item, dismissed: true });
   }
 
+  /** The plugin whose tool started a conversation hears how its work ended; one no longer installed hears nothing. */
+  async replied(started: StartedConversation, { conversationId, plugin: name }: StartedBy, reply: ConversationReply) {
+    const plugin = this.plugins.find(({ manifest }) => manifest.name === name);
+    await plugin?.host.replied?.(started, reply, this.actionContext(plugin, conversationId));
+  }
+
   /** What the plugins have for the agent to hear of with the user's next message; a plugin whose note fails is left out. */
   notesForAgent(conversationId: string): CanvasNote[] {
     return this.plugins.flatMap((plugin) => {
@@ -134,7 +149,7 @@ export class CanvasPlugins {
       ...this.context(plugin, conversationId, { byAgent: true }),
       publish: ({ type, title, data }) => pluginItemOf(this.publish(plugin, conversationId, type, title, data)),
       prompt: (text, { afterTurn = false } = {}) => this.sendPrompt(conversationId, text, { afterTurn }),
-      startConversation: async ({ profile, prompt }) => this.startBeside(conversationId, profile, prompt),
+      startConversation: async ({ profile, prompt }) => this.startBeside(conversationId, plugin.manifest.name, profile, prompt),
     };
   }
 

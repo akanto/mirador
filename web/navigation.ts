@@ -7,10 +7,19 @@ export interface NavigationState {
   selectedConversationId: string | null;
 }
 
-/** A workspace's conversations in the order the sidebar lists them: where the user put them, a new one last, next to the button that made it. */
+/**
+ * A workspace's conversations in the order the sidebar lists them: where the user put them, a new one last, next to the
+ * button that made it, and one a plugin's tool started right under the conversation that started it.
+ */
 export function conversationsIn(state: Pick<NavigationState, "conversations">, workspaceId: string): Conversation[] {
-  return state.conversations.filter((conversation) => conversation.workspaceId === workspaceId).sort(inSidebarOrder);
+  const inOrder = state.conversations.filter((conversation) => conversation.workspaceId === workspaceId).sort(inSidebarOrder);
+  const callerOf = (conversation: Conversation) => (isUnderCaller(conversation, inOrder) ? conversation.startedBy!.conversationId : null);
+  return inOrder.filter((conversation) => !callerOf(conversation)).flatMap((caller) => [caller, ...inOrder.filter((conversation) => callerOf(conversation) === caller.id)]);
 }
+
+/** Whether the sidebar lists the conversation under the one that started it, which it does while that one is listed too. */
+export const isUnderCaller = (conversation: Conversation, listed: Conversation[]) =>
+  conversation.startedBy !== undefined && listed.some(({ id }) => id === conversation.startedBy!.conversationId);
 
 const newest = (conversations: Conversation[]) => conversations.reduce((newest, each) => (each.createdAt > newest.createdAt ? each : newest));
 

@@ -23,6 +23,7 @@ import {
   type RestoreFiles,
   type RestorePlan,
   type SessionSearchHit,
+  type StartedBy,
   type StoredEvent,
   type TerminalActivity,
   type UsageLimitWait,
@@ -36,10 +37,10 @@ import { panelCommandRun } from "../shared/panel-commands.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
-import { firstReplyOf, lastWordsOf } from "../shared/last-words.ts";
+import { lastWordsOf, replyOf } from "../shared/last-words.ts";
 import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
 import { isInformational } from "../shared/timeline.ts";
-import type { StartedConversation } from "../shared/canvas-plugins.ts";
+import type { ConversationReply, StartedConversation } from "../shared/canvas-plugins.ts";
 import { canTryAgain } from "../shared/try-again.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
@@ -112,8 +113,13 @@ const CONTINUE_AFTER_STALL = "Continue where you left off: your reply ended anno
 const REPLY_END_KEPT = 200;
 /** setTimeout fires at once when asked to wait longer than this, about 24.8 days. */
 const LONGEST_TIMER_MS = 2 ** 31 - 1;
+/** How much of a started conversation's reply the caller's list of delegated tasks shows. */
+const REPLY_OPENING_GRAPHEMES = 300;
 
 type PermissionResolver = (optionId: string | null) => void;
+
+/** The plugin whose tool started a conversation hears how its work ended, in the conversation that started it. */
+export type HearReply = (started: StartedConversation, startedBy: StartedBy, reply: ConversationReply) => void | Promise<void>;
 
 interface NotesForAgent {
   commands: UserCommand[];
@@ -266,6 +272,9 @@ export class ConversationService {
   /** While the host stops or restarts, messages wait in the queue for the next host, and turns it ends are not the agent's failures. */
   private stopping = false;
   private canvasNotesOf: (conversationId: string) => CanvasNote[] = () => [];
+  private hearReply: HearReply = () => {};
+  /** The turns the previous host died in the middle of, whose replies, if owed, say they failed. */
+  private readonly turnsCutShortByCrash: Set<string>;
 
   constructor(
     private readonly store: Store,
@@ -282,7 +291,7 @@ export class ConversationService {
       openAsText(file, store.scriptProgramSetting()),
     );
     this.cancelPermissionsOrphanedByRestart();
-    this.endTurnsOrphanedByRestart();
+    this.turnsCutShortByCrash = new Set(this.endTurnsOrphanedByRestart());
     this.contextUsage = new Map(store.listContextUsages());
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
     this.unseenTurnEnds.forEach((_, conversationId) => this.keepLastWords(conversationId));
@@ -352,16 +361,51 @@ export class ConversationService {
     return conversation;
   }
 
-  /** For a plugin's tool: a conversation beside the caller's, on another profile, working on `prompt` at once. */
-  startBeside(callerId: string, profileName: string, prompt: string): StartedConversation {
+  /**
+   * For a plugin's tool: a conversation beside the caller's, on another profile, working on `prompt` at once. It works
+   * for the caller, which hears through the plugin how its work ended.
+   */
+  startBeside(callerId: string, plugin: string, profileName: string, prompt: string): StartedConversation {
     const caller = this.get(callerId);
+    if (caller.startedBy) throw new Error("A plugin's tool started this conversation, so it can't start another; do the task here.");
     const profiles = this.store.listProfiles();
     const profile = profiles.find(({ name }) => name.toLowerCase() === profileName.trim().toLowerCase());
     if (!profile) throw new Error(`There is no profile named ${profileName}; the profiles are ${profiles.map(({ name }) => name).join(", ")}.`);
     const conversation = this.create(caller.workspaceId, { harness: profile.harness, profileId: profile.id });
+    this.store.recordStartedBy(conversation.id, { conversationId: callerId, plugin });
     if (caller.bypassPermissions) this.setBypassPermissions(conversation.id, true);
-    const firstReply = this.prompt(conversation.id, prompt, { startsTurn: true }).then(() => firstReplyOf(this.store.listEvents(conversation.id)));
-    return { id: conversation.id, firstReply };
+    this.prompt(conversation.id, prompt, { startsTurn: true }).catch(() => {});
+    return { id: conversation.id, profile: profile.name };
+  }
+
+  hearRepliesWith(hearReply: HearReply) {
+    this.hearReply = hearReply;
+  }
+
+  /** The user takes a started conversation off its caller's list of delegated tasks. */
+  dismissDelegation(conversationId: string) {
+    this.store.dismissDelegation(conversationId);
+    this.republish(conversationId);
+  }
+
+  /**
+   * Once, when the work of a conversation a plugin's tool started ends. The reply is kept before the plugin hears it, so
+   * a crash in between can't tell it twice; a caller deleted since hears nothing.
+   */
+  private deliverOwedReply(conversationId: string, endedAs?: ConversationReply["ended"]) {
+    const conversation = this.store.findConversation(conversationId);
+    const startedBy = conversation?.startedBy;
+    if (!conversation || !startedBy || startedBy.reply) return;
+    const turnStart = this.store.latestTurnStart(conversationId)?.seq ?? 0;
+    const reply = replyOf(this.store.listEventsFrom(conversationId, turnStart));
+    const told = endedAs ? { ...reply, ended: endedAs } : reply;
+    this.store.recordDelegatedReply(conversationId, { ended: told.ended, opening: told.text && cutWithEllipsis(told.text, REPLY_OPENING_GRAPHEMES) });
+    this.republish(conversationId);
+    if (!this.store.hasConversation(startedBy.conversationId)) return;
+    const started = { id: conversationId, profile: (conversation.profileId && this.store.findProfile(conversation.profileId)?.name) || harnessLabels[conversation.harness] };
+    Promise.resolve()
+      .then(() => this.hearReply(started, startedBy, told))
+      .catch((error: unknown) => console.error(`the ${startedBy.plugin} plugin failed to hear the reply of ${conversationId}:`, error));
   }
 
   /** The newest sessions the harness knows for the workspace directory, including ones started outside the app. */
@@ -472,6 +516,7 @@ export class ConversationService {
 
   delete(conversationId: string) {
     const conversation = this.get(conversationId);
+    this.deliverOwedReply(conversationId, "stopped");
     if (conversation.acpSessionId) {
       this.cancel(conversationId).catch(() => {});
       this.notifier.unmute(conversation.acpSessionId);
@@ -695,6 +740,7 @@ export class ConversationService {
       this.setStatus(conversationId, "idle");
       endTurn();
     }
+    if (!this.stopping) this.deliverOwedReply(conversationId);
     this.sendNextQueuedMessage(conversationId);
     this.nudgeAfterStall(conversationId, turn, response);
   }
@@ -1182,12 +1228,14 @@ export class ConversationService {
 
   /**
    * Picks up where the previous host stopped: a turn it stopped for a restart continues where it left off, if the agent
-   * recorded it. Otherwise messages still queued (also after a crash) go out, as they would have when the turn ended.
+   * recorded it. Otherwise messages still queued (also after a crash) go out, as they would have when the turn ended,
+   * and a reply the previous host owed a plugin, for a turn that ended as it stopped or that it died in, is told.
    */
   resumeAfterRestart(stoppedTurns: string[]) {
     this.store.listConversations().forEach(({ id, acpSessionId }) => {
-      if (stoppedTurns.includes(id)) this.resumeStoppedTurn(id, acpSessionId).catch(() => {});
-      else if (!this.resumeUsageLimitWait(id)) this.sendNextQueuedMessage(id);
+      if (stoppedTurns.includes(id)) return void this.resumeStoppedTurn(id, acpSessionId).catch(() => {});
+      this.deliverOwedReply(id, this.turnsCutShortByCrash.has(id) ? "failed" : undefined);
+      if (!this.resumeUsageLimitWait(id)) this.sendNextQueuedMessage(id);
     });
     this.jobWaits.startAll();
   }
@@ -1230,6 +1278,7 @@ export class ConversationService {
     const request = unfinishedTurnRequest(this.store.listEvents(conversationId));
     if (!request) {
       this.setStatus(conversationId, "idle");
+      this.deliverOwedReply(conversationId);
       this.sendNextQueuedMessage(conversationId);
       return;
     }
@@ -1238,6 +1287,7 @@ export class ConversationService {
     runtime.holdingQueue = true;
     const continuation = await this.continuationOf(conversationId, stoppedSessionId, request).catch((error: unknown) => {
       runtime.holdingQueue = false;
+      this.deliverOwedReply(conversationId, "failed");
       this.sendNextQueuedMessage(conversationId);
       throw error;
     });
@@ -1770,9 +1820,11 @@ export class ConversationService {
 
   /** A turn the host was killed in the middle of has no end in the log, which leaves its subagent cards working for good. */
   private endTurnsOrphanedByRestart() {
-    this.store.takeTurnsInFlight().forEach((id) => {
+    const turnsInFlight = this.store.takeTurnsInFlight();
+    turnsInFlight.forEach((id) => {
       if (openTurnTheAgentWorkedOn(this.store.listEvents(id))) this.store.appendEvent(id, { type: "turn-end", stopReason: "cancelled" });
     });
+    return turnsInFlight;
   }
 
   private cancelPermissionsOrphanedByRestart() {

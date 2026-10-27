@@ -89,7 +89,6 @@ const host: CanvasHost<BoardData> = {
       async run(input, context) {
         const { profile, task } = input as { profile: string; task: string };
         const started = await context.startConversation({ profile, prompt: task });
-        void started.firstReply.then(({ text, ended }) => context.prompt(`The handed-over task ${ended}: ${text ?? "no reply"}`, { afterTurn: true }));
         return `Handed over to ${started.id}.`;
       },
     },
@@ -125,6 +124,9 @@ const host: CanvasHost<BoardData> = {
         context.change(card.id, { data: { ...(latest.data as Card), heardPresses: data.presses } });
       },
     };
+  },
+  async replied(_started, { text, ended }, context) {
+    await context.prompt(`The handed-over task ${ended}: ${text ?? "no reply"}`, { afterTurn: true });
   },
 };
 

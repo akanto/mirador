@@ -221,12 +221,12 @@ function TreeRows({ nodes, depth, rows, folding }: { nodes: TreeNode<ListedFile>
 }
 
 /** A section of the list, as whole paths or as a tree of folders; the selected file's line changes open under its row. */
-function FileSection({ title, files, asTree, rows, folding }: { title: string; files: ListedFile[]; asTree: boolean; rows: RowContext; folding: Folding }) {
+function FileSection({ title, hint, files, asTree, rows, folding }: { title: string; hint?: string; files: ListedFile[]; asTree: boolean; rows: RowContext; folding: Folding }) {
   const tree = useMemo(() => (asTree ? fileTree(files, ({ path }) => withHomeAsTilde(path, rows.homeDir)) : []), [asTree, files, rows.homeDir]);
   if (files.length === 0) return null;
   return (
     <section className="changes-section" aria-label={title}>
-      <h3>{title}</h3>
+      <h3 data-hint={hint}>{title}</h3>
       <ul>
         {asTree ? (
           <TreeRows nodes={tree} depth={0} rows={rows} folding={folding} />
@@ -304,15 +304,17 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
     reloadWhen,
   );
   const projectFiles = everyFile && loadedProjectFiles && "value" in loadedProjectFiles ? loadedProjectFiles.value : null;
-  const sections = useMemo(
-    () =>
-      list && {
-        project: projectFiles ? projectFilesWithChanges(list, projectFiles.paths) : changedFiles(list.project),
-        committed: projectFiles ? [] : changedFiles(list.committed),
-        outside: changedFiles(list.outside),
-      },
-    [list, projectFiles],
-  );
+  const sections = useMemo(() => {
+    if (!list) return null;
+    const splitByAgent = list.scope === "turn" && !projectFiles;
+    return {
+      project: projectFiles ? projectFilesWithChanges(list, projectFiles.paths) : splitByAgent ? [] : changedFiles(list.project),
+      editedByAgent: splitByAgent ? changedFiles(list.project.filter(({ byAgent }) => byAgent)) : [],
+      changedOtherwise: splitByAgent ? changedFiles(list.project.filter(({ byAgent }) => !byAgent)) : [],
+      committed: projectFiles ? [] : changedFiles(list.committed),
+      outside: changedFiles(list.outside),
+    };
+  }, [list, projectFiles]);
   const unchangedSelected = !selected && selectedPath !== null && Boolean(sections?.project.some(({ path, change }) => path === selectedPath && !change));
   const toggle = (path: string) => {
     const next = path === selectedPath ? null : path;
@@ -382,6 +384,8 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
       {sections && (
         <>
           <FileSection title="Project" files={sections.project} asTree={view !== "list"} rows={rows} folding={foldingOf("project")} />
+          <FileSection title="Edited by the agent" hint={hints.changesEditedByAgent} files={sections.editedByAgent} asTree={view !== "list"} rows={rows} folding={foldingOf("edited-by-agent")} />
+          <FileSection title="Changed some other way" hint={hints.changesChangedOtherwise} files={sections.changedOtherwise} asTree={view !== "list"} rows={rows} folding={foldingOf("changed-otherwise")} />
           <FileSection title="From commits since the turn began" files={sections.committed} asTree={view !== "list"} rows={rows} folding={foldingOf("committed")} />
           <FileSection title="Outside the project" files={sections.outside} asTree={view !== "list"} rows={rows} folding={foldingOf("outside")} />
         </>

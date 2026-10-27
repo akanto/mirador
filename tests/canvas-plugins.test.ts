@@ -8,7 +8,6 @@ import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.t
 import type { PluginCanvasItem } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
 import type { PluginCatalog } from "../host/plugin-catalog.ts";
-import type { FirstReply } from "../shared/canvas-plugins.ts";
 import { canvasPluginHost, storeWithConversation } from "./canvas-plugin-host.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "canvas-plugins");
@@ -153,23 +152,26 @@ describe("CanvasPlugins", () => {
     ]);
   });
 
-  test("a tool starts a conversation on another profile, and messages its agent after the turn with that conversation's first reply", async () => {
+  test("a tool starts a conversation on another profile, and its plugin hears that conversation's reply in the caller's conversation", async () => {
     const { plugins, prompts, callTool } = await setUp();
-    let finishFirstTurn = () => {};
     const started: unknown[] = [];
-    plugins.startsConversationsWith((callerId, profileName, prompt) => {
-      started.push({ callerId, profileName, prompt });
-      const firstReply = new Promise<FirstReply>((resolve) => (finishFirstTurn = () => resolve({ text: "Found 3 callers.", ended: "finished" })));
-      return { id: "c2", firstReply };
+    plugins.startsConversationsWith((callerId, plugin, profileName, prompt) => {
+      started.push({ callerId, plugin, profileName, prompt });
+      return { id: "c2", profile: "Local" };
     });
 
-    expect(await callTool("hand_over", { profile: "Local", task: "Find the callers of run" })).toEqual({ text: "Handed over to c2.", isError: false });
-    expect(started).toEqual([{ callerId: "c1", profileName: "Local", prompt: "Find the callers of run" }]);
+    expect(await callTool("hand_over", { profile: "local", task: "Find the callers of run" })).toEqual({ text: "Handed over to c2.", isError: false });
+    expect(started).toEqual([{ callerId: "c1", plugin: "board", profileName: "local", prompt: "Find the callers of run" }]);
     expect(prompts).toEqual([]);
 
-    finishFirstTurn();
-    await Bun.sleep(0);
+    await plugins.replied({ id: "c2", profile: "Local" }, { conversationId: "c1", plugin: "board", reply: null, dismissed: false }, { text: "Found 3 callers.", ended: "finished" });
     expect(prompts).toEqual([{ conversationId: "c1", text: "The handed-over task finished: Found 3 callers.", afterTurn: true }]);
+  });
+
+  test("a reply for a plugin that isn't installed any more goes nowhere", async () => {
+    const { plugins, prompts } = await setUp();
+    await plugins.replied({ id: "c2", profile: "Local" }, { conversationId: "c1", plugin: "gone", reply: null, dismissed: false }, { text: "Found", ended: "finished" });
+    expect(prompts).toEqual([]);
   });
 
   test("a conversation that can't be started reaches the agent as a tool error", async () => {

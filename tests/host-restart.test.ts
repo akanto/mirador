@@ -89,8 +89,11 @@ describe("prepareForRestart", () => {
   });
 });
 
-/** A next host whose store holds a conversation with these events already written, on a profile whose agent fails to start. */
-function hostWithEvents(events: ConversationEvent[], store = new Store(":memory:")) {
+/**
+ * A next host whose store holds a conversation with these events already written, on a profile whose agent fails to
+ * start; `beforeStart` sees the store as the previous host left it.
+ */
+function hostWithEvents(events: ConversationEvent[], store = new Store(":memory:"), beforeStart = () => {}) {
   const scratch = mkdtempSync(join(tmpdir(), "mirador-restart-resume-"));
   const workspacePath = join(scratch, "project");
   mkdirSync(workspacePath);
@@ -123,6 +126,7 @@ function hostWithEvents(events: ConversationEvent[], store = new Store(":memory:
     updatedAt: 1,
   });
   events.forEach((event) => store.appendEvent("c1", event));
+  beforeStart();
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
   return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
 }
@@ -185,6 +189,76 @@ describe("a host continuing turns the previous one stopped for a restart", () =>
     const conversations = hostWithEvents([said("What colour is the sky?"), worked, ended, cancelled]);
     conversations.resumeAfterRestart(["c1"]);
     expect(conversations.get("c1").status).toBe("idle");
+    void conversations.shutdown();
+  });
+});
+
+describe("a reply owed to the plugin whose tool started a conversation", () => {
+  const said: ConversationEvent = { type: "user-message", text: "Find the callers" };
+  const worked: ConversationEvent = { type: "acp", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Found 3." } } };
+  const ended: ConversationEvent = { type: "turn-end", stopReason: "end_turn" };
+
+  /** Conversation c1, which the board plugin's tool started from c0, as the previous host left it. */
+  function hostOwingAReply(events: ConversationEvent[], { diedInTheTurn = false, callerDeleted = false } = {}) {
+    const store = new Store(":memory:");
+    const conversations = hostWithEvents(events, store, () => {
+      if (!callerDeleted) store.insertConversation({ ...store.findConversation("c1")!, id: "c0" });
+      store.recordStartedBy("c1", { conversationId: "c0", plugin: "board" });
+      if (diedInTheTurn) store.turnStarted("c1");
+    });
+    const heard: unknown[] = [];
+    conversations.hearRepliesWith((started, { conversationId, plugin }, reply) => void heard.push({ started, caller: conversationId, plugin, reply }));
+    return { conversations, store, heard };
+  }
+
+  const heardSoon = async (heard: unknown[]) => {
+    for (let tries = 0; heard.length === 0 && tries < 100; tries++) await Bun.sleep(20);
+    return heard;
+  };
+
+  test("is told at the next start for a turn that ended as the previous host stopped, and kept for the caller's list", async () => {
+    const { conversations, store, heard } = hostOwingAReply([said, worked, ended]);
+    conversations.resumeAfterRestart([]);
+    expect(await heardSoon(heard)).toEqual([{ started: { id: "c1", profile: "failing" }, caller: "c0", plugin: "board", reply: { text: "Found 3.", ended: "finished" } }]);
+    expect(store.findConversation("c1")!.startedBy).toEqual({ conversationId: "c0", plugin: "board", reply: { ended: "finished", opening: "Found 3." }, dismissed: false });
+    void conversations.shutdown();
+  });
+
+  test("says the turn failed when the previous host died in it", async () => {
+    const { conversations, heard } = hostOwingAReply([said, worked], { diedInTheTurn: true });
+    conversations.resumeAfterRestart([]);
+    expect(await heardSoon(heard)).toMatchObject([{ reply: { text: "Found 3.", ended: "failed" } }]);
+    void conversations.shutdown();
+  });
+
+  test("says the turn failed when the next host can't continue it", async () => {
+    const { conversations, heard } = hostOwingAReply([said, worked, { type: "turn-end", stopReason: "cancelled" }]);
+    conversations.resumeAfterRestart(["c1"]);
+    expect(await heardSoon(heard)).toMatchObject([{ reply: { ended: "failed" } }]);
+    void conversations.shutdown();
+  });
+
+  test("is told once: a reply already given isn't owed again", async () => {
+    const { conversations, store, heard } = hostOwingAReply([said, worked, ended]);
+    store.recordDelegatedReply("c1", { ended: "finished", opening: "Found 3." });
+    conversations.resumeAfterRestart([]);
+    await Bun.sleep(50);
+    expect(heard).toEqual([]);
+    void conversations.shutdown();
+  });
+
+  test("goes to no plugin when its caller was deleted, but is kept all the same", async () => {
+    const { conversations, store, heard } = hostOwingAReply([said, worked, ended], { callerDeleted: true });
+    conversations.resumeAfterRestart([]);
+    await Bun.sleep(50);
+    expect(heard).toEqual([]);
+    expect(store.findConversation("c1")!.startedBy!.reply).toEqual({ ended: "finished", opening: "Found 3." });
+    void conversations.shutdown();
+  });
+
+  test("a conversation a plugin's tool started can't start another", () => {
+    const { conversations } = hostOwingAReply([said, worked, ended]);
+    expect(() => conversations.startBeside("c1", "board", "failing", "Again")).toThrow("A plugin's tool started this conversation, so it can't start another");
     void conversations.shutdown();
   });
 });

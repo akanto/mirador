@@ -763,6 +763,10 @@ body.resizing iframe {
   background: var(--rail-hover);
 }
 
+.workspace li.under-caller {
+  margin-left: 14px;
+}
+
 .profile-edge {
   position: absolute;
   left: 3px;
@@ -4491,6 +4495,51 @@ button.shell-more:hover {
   font-size: calc(11.5px * var(--font-scale));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.delegated-tasks ul {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: calc(12.5px * var(--font-scale));
+}
+
+.delegated-tasks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 10px;
+}
+
+.delegated-tasks li + li {
+  border-top: 1px solid var(--border);
+}
+
+.delegated-task-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.delegated-tasks button.link {
+  padding: 0;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.delegated-task-detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
 }
 
 .job-wait-message[role="button"]:hover {

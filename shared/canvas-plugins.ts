@@ -87,22 +87,21 @@ export interface CanvasToolContext<Data = unknown> extends CanvasPluginContext<D
   prompt(text: string, options?: { afterTurn?: boolean }): Promise<void>;
   /**
    * Starts a conversation in this one's workspace on the profile of that name, with `prompt` as its first message, and
-   * bypassing permissions if this one does. Throws, naming the profiles there are, when none has that name.
+   * bypassing permissions if this one does; it shows above this one's composer and under it in the sidebar, and the
+   * plugin's `replied` hears when it ends its work. Throws, naming the profiles there are, when none has that name, and
+   * when a plugin's tool started this conversation, which keeps to one level of them.
    */
   startConversation(start: { profile: string; prompt: string }): Promise<StartedConversation>;
 }
 
-/**
- * A conversation a plugin's tool started, and what its agent said when its first turn ended; a restart of Mirador during
- * that turn leaves `firstReply` unsettled.
- */
 export interface StartedConversation {
   id: string;
-  firstReply: Promise<FirstReply>;
+  /** The profile's name as Mirador has it. */
+  profile: string;
 }
 
 /** The agent's last message in the turn, null when it said nothing in words; `ended` says how the turn ended. */
-export interface FirstReply {
+export interface ConversationReply {
   text: string | null;
   ended: "finished" | "stopped" | "failed";
 }
@@ -140,4 +139,10 @@ export interface CanvasHost<Data = unknown> {
   action?(item: PluginItem<Data>, action: unknown, context: CanvasActionContext<Data>): unknown;
   /** What the agent should hear of with the user's next message, such as what the user did in an item. */
   note?(context: CanvasPluginContext<Data>): CanvasPluginNote | null;
+  /**
+   * Once, when a conversation one of the plugin's tools started ends the turn its first message began, or the turn a
+   * restart of Mirador resumed it in; the context is the conversation that started it. A turn cut short by a crash
+   * reports as failed at the next start.
+   */
+  replied?(started: StartedConversation, reply: ConversationReply, context: CanvasActionContext<Data>): void | Promise<void>;
 }

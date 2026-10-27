@@ -484,6 +484,7 @@ export function App() {
                 >
                   <ChatPanel
                     conversation={keptConversation}
+                    delegatedTasks={state.conversations.filter(({ startedBy }) => startedBy?.conversationId === keptConversation.id && !startedBy.dismissed)}
                     profiles={state.profiles}
                     promptTemplates={state.promptTemplates}
                     voiceSettings={state.voiceSettings}

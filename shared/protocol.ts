@@ -171,6 +171,8 @@ export type ClientMessage =
   | { type: "conversation.async-task.dismiss"; conversationId: string; asyncTaskId: string }
   /** Dismisses all finished background tasks from above the composer. */
   | { type: "conversation.async-task.clear-finished"; conversationId: string }
+  /** Takes a conversation a plugin's tool started off its caller's list of delegated tasks. */
+  | { type: "conversation.delegation.dismiss"; conversationId: string }
   /** The last part of the file a background task writes its output to; null when none is there to read. */
   | { type: "async-task.output.get"; requestId: string; conversationId: string; asyncTaskId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }
