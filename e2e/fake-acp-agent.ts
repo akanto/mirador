@@ -356,9 +356,9 @@ async function streamWords(client: acp.AgentContext, sessionId: string, count: n
 }
 
 async function streamParagraphs(client: acp.AgentContext, sessionId: string, count: number) {
-  for (let position = 1; position <= count; position++) {
-    const text = `Paragraph ${position} is long enough to wrap onto a second line in a narrow chat pane, as replies do.\n\n`;
-    await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+  const paragraphs = Array.from({ length: count }, (_, position) => `Paragraph ${position + 1} is long enough to wrap onto a second line in a narrow chat pane, as replies do.\n\n`);
+  for (const paragraph of paragraphs) {
+    await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: paragraph } } });
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   return { stopReason: "end_turn" as const };
