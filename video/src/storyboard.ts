@@ -221,7 +221,7 @@ export const STORYBOARD: Scene[] = [
       { at: ["delegated", 0.1], look: DELEGATED_TASK, zoom: 1.85 },
       { at: ["replied", 0.1], look: "timeline", zoom: 1.4 },
     ],
-    captions: [{ kicker: "Delegate", title: "Long reads go to a local model.", at: 1.6, seconds: 3.4 }],
+    captions: [{ kicker: "Delegate", title: "Long reads go to a local model.", at: 0.3, seconds: 2.6, side: "right" }],
     narration: [{ line: "delegate", at: 0.4 }],
   },
   {

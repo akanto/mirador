@@ -17,7 +17,7 @@ type Release = { name: string; repo: string; tag: string };
 const comesWithMirador = () => (JSON.parse(readFileSync(join(repoRoot, "plugins", "defaults.json"), "utf8")) as { plugins: Release[] }).plugins;
 
 export const MEDIA: Release = { name: "media", repo: "https://github.com/sodre90/mirador-media.git", tag: "v1.0.0" };
-const DELEGATE: Release = { name: "delegate", repo: "https://github.com/sodre90/mirador-delegate.git", tag: "v0.3.0" };
+const DELEGATE: Release = { name: "delegate", repo: "https://github.com/sodre90/mirador-delegate.git", tag: "v0.3.1" };
 
 const cachedClone = ({ name, tag }: Release) => join(cache, `${name}@${tag}`);
 
