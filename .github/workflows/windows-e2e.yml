@@ -146,6 +146,10 @@ jobs:
             $target = Join-Path e2e-pages ($_.Directory.Name + ".md")
             Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Hide-ModelServer | Set-Content -LiteralPath $target
           }
+          Get-ChildItem -Path test-results -Recurse -File -Filter app-trace.txt -ErrorAction SilentlyContinue | ForEach-Object {
+            $target = Join-Path e2e-pages ($_.Directory.Name + "-app-trace.txt")
+            Get-Content -LiteralPath $_.FullName | Where-Object { $_ -notmatch 'auth\?(token|code)' } | Hide-ModelServer | Set-Content -LiteralPath $target
+          }
       # A shard run again replaces the artifact its earlier try left.
       - if: always()
         uses: actions/upload-artifact@v7

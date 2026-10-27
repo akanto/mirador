@@ -48,8 +48,21 @@ class AppTrace {
     });
     await page.exposeFunction("recordAppTrace", (line: string) => this.add(line));
     await page.addInitScript(() => {
-      if (window !== window.top) return;
       const record = (window as unknown as { recordAppTrace: (line: string) => void }).recordAppTrace;
+      if (window !== window.top) {
+        window.addEventListener("message", (event) => {
+          if (event.data?.kind === "hidden") record(`frame ${location.pathname} told it is hidden`);
+        });
+        document.addEventListener(
+          "pause",
+          (event) => {
+            const { top, bottom } = (event.target as Element).getBoundingClientRect();
+            record(`frame ${location.pathname} media paused, ${top < innerHeight && bottom > 0 ? "in view" : "out of view"}, page ${document.visibilityState}`);
+          },
+          true,
+        );
+        return;
+      }
       window.addEventListener("message", (event) => {
         const kind = String(event.data?.kind ?? "");
         if (!kind.startsWith("app-") && kind !== "shell-ready") return;
