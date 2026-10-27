@@ -145,6 +145,7 @@ const addedColumns = [
   { table: "conversations", column: "delegated_reply", definition: "TEXT" },
   { table: "conversations", column: "delegation_dismissed", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "profiles", column: "effort", definition: "TEXT" },
+  { table: "conversations", column: "plugin_settings", definition: "TEXT" },
 ];
 
 /** A turn that ended while nobody looked at its conversation, or the owner's Unread mark, until someone opens it. */
@@ -195,6 +196,7 @@ type ConversationRow = {
   started_by_plugin: string | null;
   delegated_reply: string | null;
   delegation_dismissed: number;
+  plugin_settings: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -278,6 +280,7 @@ const toConversation = (row: ConversationRow): Conversation => ({
   configOptions: JSON.parse(row.config_options),
   position: row.position,
   ...startedByOf(row),
+  ...(row.plugin_settings && { pluginSettings: JSON.parse(row.plugin_settings) as Record<string, Record<string, string>> }),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -578,7 +581,7 @@ export class Store {
   updateConversation(conversation: Conversation) {
     this.db
       .query(
-        `UPDATE conversations SET harness = ?, profile_id = ?, title = ?, title_set_by_user = ?, acp_session_id = ?, ask_mode = ?, bypass_permissions = ?, config_options = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE conversations SET harness = ?, profile_id = ?, title = ?, title_set_by_user = ?, acp_session_id = ?, ask_mode = ?, bypass_permissions = ?, config_options = ?, plugin_settings = ?, updated_at = ? WHERE id = ?`,
       )
       .run(
         conversation.harness,
@@ -589,6 +592,7 @@ export class Store {
         conversation.askMode,
         Number(conversation.bypassPermissions),
         JSON.stringify(conversation.configOptions),
+        conversation.pluginSettings ? JSON.stringify(conversation.pluginSettings) : null,
         conversation.updatedAt,
         conversation.id,
       );

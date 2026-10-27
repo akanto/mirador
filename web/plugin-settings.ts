@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { settingValue, type PluginSettings } from "../shared/apps.ts";
-import type { CanvasItem } from "../shared/model.ts";
+import { settingValue, type PluginProfileSetting, type PluginSettings } from "../shared/apps.ts";
+import type { CanvasItem, Profile } from "../shared/model.ts";
 import { itemRooms, type ItemRoom } from "../shared/canvas-plugins.ts";
 import { connection } from "./connection.ts";
 
@@ -24,6 +24,12 @@ const subscribe = (listener: () => void) => {
 };
 
 export const usePluginSettings = () => useSyncExternalStore(subscribe, () => current);
+
+/** A setting whose choices are the profiles offers the others, never the profile itself, and none. */
+export const choicesOf = (setting: PluginProfileSetting, profiles: Profile[], ownId: string | null | undefined) =>
+  setting.choices === "profiles"
+    ? [{ value: "", label: "None" }, ...profiles.filter(({ id }) => id !== ownId).map(({ id, name }) => ({ value: id, label: name }))]
+    : setting.choices;
 
 export const choosePluginSetting = (plugin: string, setting: string, value: string) => connection.send({ type: "plugins.choose-setting", plugin, setting, value });
 

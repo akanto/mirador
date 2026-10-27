@@ -1011,6 +1011,9 @@ export function startServer(services: HostServices) {
           .catch((error) => reply({ type: "conversation.rewind-failed", requestId: message.requestId, message: errorMessage(error) }));
       case "conversation.set-ask-mode":
         return conversations.setAskMode(message.conversationId, message.askMode);
+      case "conversation.set-plugin-setting":
+        conversations.setPluginSetting(message.conversationId, message.plugin, message.setting, message.value);
+        return canvasPlugins.settingChanged(message.conversationId, message.plugin, message.setting);
       case "conversation.set-bypass-permissions":
         return conversations.setBypassPermissions(message.conversationId, message.bypassPermissions);
       case "conversation.set-config":

@@ -453,6 +453,8 @@ export interface Conversation {
   position: number;
   /** Only on a conversation a plugin's tool started, such as a delegated task. */
   startedBy?: StartedBy;
+  /** What the user chose in its top bar for plugins' profile settings, by plugin and setting id; a setting not here follows the profile. */
+  pluginSettings?: Record<string, Record<string, string>>;
   createdAt: number;
   updatedAt: number;
 }

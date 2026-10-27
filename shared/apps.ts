@@ -312,6 +312,14 @@ export interface PluginSettings {
 export const profileSettingValue = (profilePluginSettings: Record<string, Record<string, string>> | undefined, plugin: string, setting: PluginProfileSetting) =>
   profilePluginSettings?.[plugin]?.[setting.id] ?? setting.default;
 
+/** What the conversation chose for the setting, else what its profile set, else the default. */
+export const conversationSettingValue = (
+  conversation: { pluginSettings?: Record<string, Record<string, string>> } | undefined,
+  profile: { pluginSettings?: Record<string, Record<string, string>> } | undefined,
+  plugin: string,
+  setting: PluginProfileSetting,
+) => conversation?.pluginSettings?.[plugin]?.[setting.id] ?? profileSettingValue(profile?.pluginSettings, plugin, setting);
+
 export const settingValue = (settings: PluginSettings | undefined, id: string): string | undefined =>
   settings?.chosen[id] ?? settings?.settings.find((setting) => setting.id === id)?.default;
 

@@ -238,6 +238,7 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await task.getByRole("button", { name: "SAY Found 3 callers." }).click();
     await expect(page.locator(".chat-header:visible")).toContainText("SAY Found 3 callers.");
     await expect(page.locator(".sidebar li.under-caller.selected"), "opening a folded delegated conversation unfolds it").toContainText("SAY Found 3 callers.");
+    await expect(page.locator(".chat-header:visible").getByLabel("Hand over to", { exact: true }), "a handed-over conversation can't hand over in turn").toHaveCount(0);
     await page.evaluate((caller) => (location.hash = `#/c/${caller}`), conversationId);
     await task.getByRole("button", { name: "Dismiss" }).click();
     await expect(page.locator(".delegated-tasks:visible")).toHaveCount(0);
@@ -303,6 +304,24 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
 
     expect(await callCanvasTool(host, conversationId, "hand_over", { task: "SAY Handed over by default." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
     await expect.poll(agentSaw).toContain("The handed-over task finished: Handed over by default.\n");
+  });
+
+  await test.step("the conversation's top bar picks its own choice for a plugin's profile setting, which its tool takes and its agent hears of; Profile's follows the profile again", async () => {
+    await backToTheMessageBox(page);
+    const handOverTo = page.locator(".chat-header:visible").getByLabel("Hand over to", { exact: true });
+    await expect(handOverTo.locator("option:checked")).toHaveText("Profile's (Local)");
+    await handOverTo.selectOption({ label: "None" });
+    await expect.poll(() => callCanvasTool(host, conversationId, "hand_over", { task: "SAY Not handed over." })).toBe("Name a profile; this one hands over to none.");
+    await sendAndWait(page, "SAY Noted.");
+    expect(agentSaw()).toContain("Hand over to for this conversation is now none: the user chose it, in place of what your instructions say of it.\n\nSAY Noted.");
+
+    await handOverTo.selectOption({ label: "Profile's (Local)" });
+    await expect.poll(() => callCanvasTool(host, conversationId, "hand_over", { task: "SAY Handed over again." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
+
+    await handOverTo.selectOption({ label: "None" });
+    await expect(handOverTo.locator("option:checked")).toHaveText("None");
+    await page.getByLabel("Profile", { exact: true }).filter({ visible: true }).selectOption({ label: "Local" });
+    await expect(handOverTo.locator("option:checked"), "switching profile goes back to following it").toHaveText("Profile's (None)");
   });
 
   await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {

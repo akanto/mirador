@@ -176,6 +176,8 @@ export type ClientMessage =
   /** The last part of the file a background task writes its output to; null when none is there to read. */
   | { type: "async-task.output.get"; requestId: string; conversationId: string; asyncTaskId: string }
   | { type: "conversation.set-ask-mode"; conversationId: string; askMode: AskMode }
+  /** Null follows the profile again. */
+  | { type: "conversation.set-plugin-setting"; conversationId: string; plugin: string; setting: string; value: string | null }
   | { type: "conversation.set-bypass-permissions"; conversationId: string; bypassPermissions: boolean }
   | { type: "conversation.set-config"; conversationId: string; configId: string; value: string | boolean }
   | { type: "permission.respond"; conversationId: string; permissionId: string; optionId: string | null }

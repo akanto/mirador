@@ -23,6 +23,8 @@ import {
   type StoredEvent,
   type UsageLimitWait,
 } from "../shared/model.ts";
+import { profileSettingValue } from "../shared/apps.ts";
+import { choicesOf, usePluginSettings } from "./plugin-settings.ts";
 import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.ts";
 import { adjacentPlaceholder, placeholdersIn, type TextRange } from "../shared/prompt-templates.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
@@ -207,6 +209,46 @@ function YoloSwitch({ conversation }: { conversation: Conversation }) {
   );
 }
 
+const FOLLOWS_PROFILE = "\u0000profile";
+
+/** Each plugin's profile settings, chosen for this conversation over what its profile sets; a conversation a plugin's tool started has none. */
+function PluginSettingMenus({ conversation, profiles }: { conversation: Conversation; profiles: Profile[] }) {
+  const withProfileSettings = usePluginSettings().flatMap(({ plugin, profileSettings }) => (profileSettings ?? []).map((setting) => ({ plugin, setting })));
+  if (conversation.startedBy) return null;
+  const profile = profiles.find(({ id }) => id === conversation.profileId);
+  return withProfileSettings.map(({ plugin, setting }) => {
+    const choices = choicesOf(setting, profiles, conversation.profileId);
+    const profilesValue = profileSettingValue(profile?.pluginSettings, plugin, setting);
+    const profilesLabel = choices.find(({ value }) => value === profilesValue)?.label ?? "None";
+    const chosen = conversation.pluginSettings?.[plugin]?.[setting.id] ?? FOLLOWS_PROFILE;
+    return (
+      <label key={`${plugin}/${setting.id}`} className="config" data-hint={[setting.hint, hints.conversationPluginSetting].filter(Boolean).join("\n\n")}>
+        <span>{setting.label}</span>
+        <select
+          aria-label={setting.label}
+          value={chosen}
+          onChange={(event) =>
+            connection.send({
+              type: "conversation.set-plugin-setting",
+              conversationId: conversation.id,
+              plugin,
+              setting: setting.id,
+              value: event.target.value === FOLLOWS_PROFILE ? null : event.target.value,
+            })
+          }
+        >
+          <option value={FOLLOWS_PROFILE}>Profile's ({profilesLabel})</option>
+          {choices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  });
+}
+
 function ChatHeader({
   conversation,
   profiles,
@@ -269,6 +311,7 @@ function ChatHeader({
           <ConfigControl key={option.id} conversationId={conversation.id} option={option} />
         ))}
         <YoloSwitch conversation={conversation} />
+        <PluginSettingMenus conversation={conversation} profiles={profiles} />
         <label className="config" data-hint={hints.questions}>
           <span>Questions</span>
           <select

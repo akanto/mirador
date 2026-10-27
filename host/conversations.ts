@@ -595,6 +595,7 @@ export class ConversationService {
       profileId,
       askMode: profile.askMode,
       bypassPermissions: profile.bypassPermissions,
+      pluginSettings: undefined,
       acpSessionId: !changesAgent && this.agentHasRecorded(conversationId) ? conversation.acpSessionId : null,
       configOptions: changesAgent ? [] : conversation.configOptions.filter(({ id }) => id !== "model"),
     });
@@ -663,6 +664,16 @@ export class ConversationService {
 
   setAskMode(conversationId: string, askMode: AskMode) {
     this.save({ ...this.get(conversationId), askMode });
+  }
+
+  /** Null follows the profile again. */
+  setPluginSetting(conversationId: string, plugin: string, setting: string, value: string | null) {
+    const conversation = this.get(conversationId);
+    const { [setting]: _replaced, ...othersOfPlugin } = conversation.pluginSettings?.[plugin] ?? {};
+    const ofPlugin = value === null ? othersOfPlugin : { ...othersOfPlugin, [setting]: value };
+    const { [plugin]: _plugin, ...otherPlugins } = conversation.pluginSettings ?? {};
+    const pluginSettings = Object.keys(ofPlugin).length > 0 ? { ...otherPlugins, [plugin]: ofPlugin } : otherPlugins;
+    this.save({ ...conversation, pluginSettings: Object.keys(pluginSettings).length > 0 ? pluginSettings : undefined });
   }
 
   /** Switching YOLO on also approves the requests already waiting for the user. */

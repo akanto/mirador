@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { profileSettingValue, type PluginProfileSetting } from "../shared/apps.ts";
+import { profileSettingValue } from "../shared/apps.ts";
 import { knownChoices } from "../shared/config-options.ts";
 import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Pastel, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
@@ -8,7 +8,7 @@ import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { usePluginSettings } from "./plugin-settings.ts";
+import { choicesOf, usePluginSettings } from "./plugin-settings.ts";
 import { ProfileDot } from "./ProfileDot.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
@@ -93,12 +93,6 @@ function profileChoices(conversations: Conversation[], harness: HarnessId, categ
 
 /** A new profile runs an agent this machine has; one named after its agent keeps following the agent picked until it is renamed. */
 type ProfilePluginSettings = Record<string, Record<string, string>>;
-
-/** A setting whose choices are the profiles offers the others, never the profile itself, and none. */
-const choicesOf = (setting: PluginProfileSetting, profiles: Profile[], ownId: string | undefined) =>
-  setting.choices === "profiles"
-    ? [{ value: "", label: "None" }, ...profiles.filter(({ id }) => id !== ownId).map(({ id, name }) => ({ value: id, label: name }))]
-    : setting.choices;
 
 /** What installed plugins let each profile set, such as the profile the delegate plugin hands tasks to. */
 function PluginProfileFields({

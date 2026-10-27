@@ -10,7 +10,7 @@ import {
   type StartedConversation,
 } from "../../shared/canvas-plugins.ts";
 import type { PluginCanvasItem, StartedBy } from "../../shared/model.ts";
-import { profileSettingValue } from "../../shared/apps.ts";
+import { conversationSettingValue } from "../../shared/apps.ts";
 import { canvasViewPath, messageOf, type CanvasPlugin } from "../apps/plugins.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
@@ -91,7 +91,7 @@ export class CanvasPlugins {
     if (this.store.findConversation(conversationId)?.startedBy) return guidance;
     const added = this.plugins.flatMap((plugin) => {
       try {
-        return plugin.host.guidanceFor?.((id) => this.profileSettingOf(plugin, conversationId, id)) ?? [];
+        return plugin.host.guidanceFor?.((id) => this.settingFor(plugin, conversationId, id)) ?? [];
       } catch (error) {
         console.error(`the ${plugin.manifest.name} plugin failed to give guidance for conversation ${conversationId}:`, error);
         return [];
@@ -104,14 +104,45 @@ export class CanvasPlugins {
     };
   }
 
-  private profileSettingOf(plugin: CanvasPlugin, conversationId: string, id: string): string | null {
+  private profileSettingNamed(plugin: CanvasPlugin, id: string) {
     const setting = plugin.manifest.profileSettings?.find((each) => each.id === id);
     if (!setting) throw new Error(`${plugin.manifest.name} has no profile setting ${id}; its plugin.json names ${plugin.manifest.profileSettings?.map((each) => each.id).join(", ") || "none"}.`);
-    const profileId = this.store.findConversation(conversationId)?.profileId;
-    const profile = profileId ? this.store.findProfile(profileId) : undefined;
-    const value = profileSettingValue(profile?.pluginSettings, plugin.manifest.name, setting);
+    return setting;
+  }
+
+  /** What the conversation chose in its top bar, else what its profile set, else the default; a profile by its name as it is now. */
+  private settingFor(plugin: CanvasPlugin, conversationId: string, id: string): string | null {
+    const setting = this.profileSettingNamed(plugin, id);
+    const conversation = this.store.findConversation(conversationId);
+    const profile = conversation?.profileId ? this.store.findProfile(conversation.profileId) : undefined;
+    const value = conversationSettingValue(conversation, profile, plugin.manifest.name, setting);
     if (setting.choices !== "profiles") return value || null;
     return (value && this.store.findProfile(value)?.name) || null;
+  }
+
+  private readonly settingNotes = new Map<string, Map<string, string>>();
+
+  /**
+   * The user changed one of a plugin's profile settings in a conversation's top bar. Its session read its guidance when it
+   * began, so the agent hears of the change with the next message; a conversation without a session yet will read it then.
+   */
+  settingChanged(conversationId: string, pluginName: string, id: string) {
+    const conversation = this.store.findConversation(conversationId);
+    const plugin = this.plugins.find(({ manifest }) => manifest.name === pluginName);
+    if (!conversation?.acpSessionId || !plugin) return;
+    const { label } = this.profileSettingNamed(plugin, id);
+    const value = this.settingFor(plugin, conversationId, id) ?? "none";
+    const overridden = conversation.pluginSettings?.[pluginName]?.[id] !== undefined;
+    const text = overridden
+      ? `${label} for this conversation is now ${value}: the user chose it, in place of what your instructions say of it.`
+      : `${label} for this conversation is back to its profile's: ${value}.`;
+    const notes = this.settingNotes.get(conversationId) ?? new Map<string, string>();
+    this.settingNotes.set(conversationId, notes.set(`${pluginName}/${id}`, text));
+  }
+
+  private settingNotesFor(conversationId: string): CanvasNote[] {
+    const notes = this.settingNotes.get(conversationId);
+    return [...(notes ?? [])].map(([key, text]) => ({ text, heard: () => void (notes?.get(key) === text && notes.delete(key)) }));
   }
 
   /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
@@ -161,9 +192,9 @@ export class CanvasPlugins {
     await plugin?.host.replied?.(started, reply, this.actionContext(plugin, conversationId));
   }
 
-  /** What the plugins have for the agent to hear of with the user's next message; a plugin whose note fails is left out. */
+  /** What the plugins, and the user's changes to their settings, have for the agent to hear of with the next message; a plugin whose note fails is left out. */
   notesForAgent(conversationId: string): CanvasNote[] {
-    return this.plugins.flatMap((plugin) => {
+    const fromPlugins = this.plugins.flatMap((plugin) => {
       try {
         const note = plugin.host.note?.(this.context(plugin, conversationId, { byAgent: false }));
         return note ? [note] : [];
@@ -172,6 +203,7 @@ export class CanvasPlugins {
         return [];
       }
     });
+    return [...this.settingNotesFor(conversationId), ...fromPlugins];
   }
 
   private toolContext(plugin: CanvasPlugin, conversationId: string): CanvasToolContext {
@@ -196,7 +228,7 @@ export class CanvasPlugins {
       items: () => this.itemsOf(plugin, conversationId).map(pluginItemOf),
       change: (itemId, change) => pluginItemOf(this.change(plugin, conversationId, itemId, change, byAgent)),
       storage: this.storageOf(plugin),
-      profileSetting: (id) => this.profileSettingOf(plugin, conversationId, id),
+      profileSetting: (id) => this.settingFor(plugin, conversationId, id),
     };
   }
 

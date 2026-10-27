@@ -68,8 +68,8 @@ export interface CanvasPluginContext<Data = unknown> {
   /** What the plugin keeps across conversations and restarts, such as how its views were laid out; values are JSON. */
   storage: CanvasPluginStorage;
   /**
-   * What the conversation's profile set for one of the plugin's profile settings, else its default; for a setting whose
-   * choices are the profiles, that profile's name. Null for none, or for a profile since deleted.
+   * What the conversation chose for one of the plugin's profile settings in its header, else what its profile set, else
+   * the default; for a setting whose choices are the profiles, that profile's name. Null for none, or for a profile since deleted.
    */
   profileSetting(id: string): string | null;
 }

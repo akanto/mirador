@@ -190,6 +190,49 @@ describe("CanvasPlugins", () => {
     expect(plugins.guidanceFor("c1").instructions.join("\n")).not.toContain("hand_over");
   });
 
+  test("what the user chose in a conversation's top bar wins over its profile, and the agent hears of each change once", async () => {
+    const store = storeWithConversation();
+    const profile = (id: string, name: string, pluginSettings?: Record<string, Record<string, string>>) =>
+      store.saveProfile({ id, name, harness: "claude", environment: "", prelaunch: "", mode: null, effort: null, bypassPermissions: false, askMode: "wait", color: null, ...(pluginSettings && { pluginSettings }), createdAt: 1 });
+    profile("local", "Qwen 27b");
+    profile("big", "Qwen 122b");
+    profile("main", "Personal", { board: { "hand-over-to": "local" } });
+    const choose = (pluginSettings: Record<string, Record<string, string>> | undefined) =>
+      store.updateConversation({ ...store.findConversation("c1")!, profileId: "main", acpSessionId: "s1", pluginSettings });
+    choose(undefined);
+    const { plugins, callTool } = await canvasPluginHost(FIXTURES, store);
+    const started: string[] = [];
+    plugins.startsConversationsWith((_callerId, _plugin, profileName) => (started.push(profileName), { id: "c2", profile: profileName }));
+
+    choose({ board: { "hand-over-to": "big" } });
+    plugins.settingChanged("c1", "board", "hand-over-to");
+    await callTool("hand_over", { task: "Find the callers" });
+    expect(started).toEqual(["Qwen 122b"]);
+    expect(plugins.guidanceFor("c1").instructions).toContain("- hand_over: hand tasks to Qwen 122b without asking.");
+
+    choose({ board: { "hand-over-to": "" } });
+    plugins.settingChanged("c1", "board", "hand-over-to");
+    expect(await callTool("hand_over", { task: "Once more" })).toEqual({ text: "Name a profile; this one hands over to none.", isError: true });
+    const [note, ...others] = plugins.notesForAgent("c1");
+    expect(others).toEqual([]);
+    expect(note!.text).toBe("Hand over to for this conversation is now none: the user chose it, in place of what your instructions say of it.");
+    note!.heard();
+    expect(plugins.notesForAgent("c1")).toEqual([]);
+
+    choose(undefined);
+    plugins.settingChanged("c1", "board", "hand-over-to");
+    expect(plugins.notesForAgent("c1").map(({ text }) => text)).toEqual(["Hand over to for this conversation is back to its profile's: Qwen 27b."]);
+    expect(plugins.guidanceFor("c1").instructions).toContain("- hand_over: hand tasks to Qwen 27b without asking.");
+  });
+
+  test("a conversation without a session yet hears of no change: it reads its guidance when it starts", async () => {
+    const store = storeWithConversation();
+    store.updateConversation({ ...store.findConversation("c1")!, pluginSettings: { board: { "hand-over-to": "" } } });
+    const { plugins } = await canvasPluginHost(FIXTURES, store);
+    plugins.settingChanged("c1", "board", "hand-over-to");
+    expect(plugins.notesForAgent("c1")).toEqual([]);
+  });
+
   test("a conversation a plugin's tool started gets no guidance from its profile, so it isn't told to hand over in turn", async () => {
     const store = storeWithConversation();
     store.saveProfile({ id: "main", name: "Personal", harness: "claude", environment: "", prelaunch: "", mode: null, effort: null, bypassPermissions: false, askMode: "wait", color: null, pluginSettings: { board: { "hand-over-to": "main" } }, createdAt: 1 });
