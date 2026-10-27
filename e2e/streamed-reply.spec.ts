@@ -108,3 +108,26 @@ test("a reader who scrolled up while a reply streams in stays on the line they w
   expect(Math.abs(place.top - 100)).toBeLessThanOrEqual(2);
   expect(place.unread).toBeGreaterThan(1000);
 });
+
+test("a reader at the bottom who opens a tool call stays where they are", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 560 });
+  await signIn(page, host);
+  await page.getByLabel("Agent", { exact: true }).selectOption({ label: "stream · opencode" });
+  await page.getByRole("button", { name: "+ New conversation" }).click();
+  await expect(page.locator(".chat-header:visible h2")).toHaveText("New conversation");
+  await sendMessage(page, "STREAM PARAGRAPHS 60");
+  await waitForTurnToEnd(page);
+  await sendMessage(page, 'RUN TOOLS [{"title":"Read a.ts","kind":"read","rawInput":{"path":"a.ts"}}]');
+  await waitForTurnToEnd(page);
+  const timeline = page.locator(".timeline:visible");
+  const toolCall = timeline.locator("details.tool").last();
+  await expect(toolCall).toHaveJSProperty("open", false);
+  const atTheBottom = await timeline.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+    return element.scrollTop;
+  });
+  await toolCall.locator(":scope > summary").click();
+  await expect(toolCall).toHaveJSProperty("open", true);
+  expect(Math.abs((await timeline.evaluate((element) => element.scrollTop)) - atTheBottom)).toBeLessThanOrEqual(2);
+});
