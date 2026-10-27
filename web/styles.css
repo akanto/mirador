@@ -3441,6 +3441,8 @@ button.edits-waiting {
 }
 
 .changes-diff {
+  position: relative;
+  background: var(--panel);
   display: flex;
   flex-direction: column;
   gap: 12px;

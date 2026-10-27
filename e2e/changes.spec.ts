@@ -222,6 +222,15 @@ test("All files shows every file of the project in its folders, the changed ones
     expect(guide).toBe("solid");
   });
 
+  await test.step("an open file's changes cover the guide lines of the folders around it", async () => {
+    await fileRow(page, "src/app.ts").click();
+    const diff = fileRow(page, "src/app.ts").locator("xpath=..").locator(".changes-diff");
+    const panelBackground = await page.locator(".canvas-panel:visible").evaluate((panel) => getComputedStyle(panel).backgroundColor);
+    const diffStyle = await diff.evaluate((element) => ({ position: getComputedStyle(element).position, background: getComputedStyle(element).backgroundColor }));
+    expect(diffStyle).toEqual({ position: "relative", background: panelBackground });
+    await fileRow(page, "src/app.ts").click();
+  });
+
   await test.step("folding a folder with a change says how many changed", async () => {
     await folderRow(page, "src").click();
     await expect(folderRow(page, "src").locator(".folder-file-count")).toHaveText("2 changed");
