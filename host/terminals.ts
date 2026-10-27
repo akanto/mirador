@@ -217,10 +217,10 @@ export class TerminalService {
    * ignores the hangup the kernel sends it once the shell is gone, too. Windows has neither, so there it is killed at
    * once with everything it started.
    */
-  close(terminalId: string) {
+  async close(terminalId: string) {
     const child = this.shells.get(terminalId)?.child;
     if (!child) return;
-    if (process.platform === "win32") return void killProcessTree(child.pid);
+    if (process.platform === "win32") return void (await killProcessTree(child.pid));
     child.kill("SIGHUP");
     setTimeout(() => isRunning(child) && killGroupOf(child), HANGUP_GRACE_MS).unref();
   }
@@ -262,8 +262,8 @@ export class TerminalService {
     this.stopping = true;
     this.saveScrollback();
     const exits = [...this.shells.values()].map(({ child }) => child.exited);
-    this.shells.forEach(({ id }) => this.close(id));
-    await Promise.all(exits);
+    const closes = [...this.shells.values()].map(({ id }) => this.close(id));
+    await Promise.all([...exits, ...closes]);
   }
 
   private folderOf(conversationId: string) {

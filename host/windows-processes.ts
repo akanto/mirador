@@ -99,26 +99,39 @@ const microsecondsNow = () => Date.now() * 1000;
 
 /**
  * Windows has no hangup and no process groups: a process and everything it started end together only this way. Each
- * goes before what it started, so nothing sees its child end and carries on. A process the tree was starting as it was
- * killed shows up only later, as a child of a killed one, so the tree is looked at again a few times; a process that
- * started after the one it names as parent was killed got that pid reused, and is no one's to kill.
+ * goes before what it started, so nothing sees its child end and carries on. Settles once the tree as it stands is
+ * dead; a process the tree was starting as it was killed shows up only later, as a child of a killed one, so the tree is
+ * looked at again a few times after, until `lateStartersKilled` settles. A process that started after the one it names
+ * as parent was killed got that pid reused, and is no one's to kill.
  */
-export async function killProcessTree(pid: number, { snapshot = processSnapshot, kill = taskkill, lookAgainAfterMs = LOOK_AGAIN_AFTER_MS } = {}) {
+export async function killProcessTree(
+  pid: number,
+  { snapshot = processSnapshot, kill = taskkill, lookAgainAfterMs = LOOK_AGAIN_AFTER_MS } = {},
+): Promise<{ lateStartersKilled: Promise<void> }> {
   const root = snapshot().find((process) => process.pid === pid);
-  if (!root) return void (await kill([pid]));
+  if (!root) {
+    await kill([pid]);
+    return { lateStartersKilled: Promise.resolve() };
+  }
   const killed: (WindowsProcess & { killedAt: number })[] = [];
   const startedBeforeItsParentWasKilled = ({ parentPid, startedAt }: WindowsProcess) =>
     killed.filter(({ pid }) => pid === parentPid).every(({ killedAt }) => startedAt <= killedAt);
-  for (const pause of [0, ...lookAgainAfterMs]) {
-    await Bun.sleep(pause);
-    const known = [root, ...killed, ...snapshot().filter(startedBeforeItsParentWasKilled)];
-    const tree = [root, ...descendantsOf(root.pid, known)];
+  const killWhatIsLeft = async () => {
+    const tree = [root, ...descendantsOf(root.pid, [root, ...killed, ...snapshot().filter(startedBeforeItsParentWasKilled)])];
     const unkilled = tree.filter((process, index) => tree.findIndex(sameProcess(process)) === index && !killed.some(sameProcess(process)));
     for (const process of unkilled) {
       await kill([process.pid]);
       killed.push({ ...process, killedAt: microsecondsNow() });
     }
-  }
+  };
+  await killWhatIsLeft();
+  const lateStartersKilled = (async () => {
+    for (const pause of lookAgainAfterMs) {
+      await Bun.sleep(pause);
+      await killWhatIsLeft();
+    }
+  })();
+  return { lateStartersKilled };
 }
 
 /** The programs `pid` started that still run, by name. */

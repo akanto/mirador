@@ -138,8 +138,7 @@ afterEach(async () => {
   await terminals.shutdown();
   process.env.SHELL = originalShell;
   process.env.HOME = originalHome;
-  // On Windows what a shell started is killed a moment after the shell, and keeps the folder until then.
-  await rm(workspaceDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  await rm(workspaceDir, { recursive: true, force: true });
 });
 
 test("a terminal runs a shell in the workspace folder, sized as asked, and streams to browsers attached to its conversation, not to another of the workspace", async () => {
