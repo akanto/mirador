@@ -1441,10 +1441,12 @@ function DelegatedTasks({ tasks, profiles }: { tasks: Conversation[]; profiles: 
   );
 }
 
+const withoutBlankLines = (text: string) => text.replace(/\n\s*\n/g, "\n");
+
 function DelegatedTaskRow({ task, profile }: { task: Conversation; profile: string }) {
   const reply = task.startedBy?.reply ?? null;
   const now = useClock(reply === null);
-  const detail = reply ? reply.opening : task.activity?.title;
+  const detail = reply ? reply.opening && withoutBlankLines(reply.opening) : task.activity?.title;
   return (
     <>
       <div className="delegated-task-text">

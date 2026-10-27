@@ -266,6 +266,14 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(page.locator(".delegated-tasks:visible")).toHaveCount(0);
   });
 
+  await test.step("a reply over several lines keeps its line breaks above the composer, without the blank ones", async () => {
+    expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "local", task: "SAY Found 2 callers:\n\n- in a.ts\n- in b.ts" })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
+    const task = delegatedTask(page, "SAY Found 2 callers:");
+    await expect.poll(() => task.locator(".delegated-task-detail").innerText()).toBe("Found 2 callers:\n- in a.ts\n- in b.ts");
+    await task.getByRole("button", { name: "Dismiss" }).click();
+    await expect(page.locator(".delegated-tasks:visible")).toHaveCount(0);
+  });
+
   await test.step("a handed-over task that a restart cuts short carries on after it, and Stop above the composer ends it, which the caller's agent hears", async () => {
     const title = "STOPPED QUIET Look for the callers";
     const timesSent = () => agentSaw().split(title).length - 1;
