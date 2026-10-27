@@ -86,10 +86,39 @@ export function descendantsOf(pid: number, processes: WindowsProcess[]): Windows
   return root ? descendantsBelow(root) : [];
 }
 
-/** Windows has no hangup and no process groups: a process and everything it started end together only this way. */
-export async function killProcessTree(pid: number) {
-  const tree = [pid, ...descendantsOf(pid, processSnapshot()).map((process) => process.pid)];
-  await Bun.spawn(["taskkill", "/F", ...tree.flatMap((member) => ["/PID", String(member)])], { stdout: "ignore", stderr: "ignore", windowsHide: true }).exited;
+/** Git Bash's bash.exe only starts the real bash: one Stop kills before it has done so would leave that bash running. */
+const LOOK_AGAIN_AFTER_MS = [100, 250, 500, 1000];
+
+const taskkill = (pids: number[]): Promise<unknown> =>
+  Bun.spawn(["taskkill", "/F", ...pids.flatMap((pid) => ["/PID", String(pid)])], { stdout: "ignore", stderr: "ignore", windowsHide: true }).exited;
+
+const sameProcess = (one: WindowsProcess) => (other: WindowsProcess) => other.pid === one.pid && other.startedAt === one.startedAt;
+
+/** In microseconds since 1970, as a process's start is. */
+const microsecondsNow = () => Date.now() * 1000;
+
+/**
+ * Windows has no hangup and no process groups: a process and everything it started end together only this way. Each
+ * goes before what it started, so nothing sees its child end and carries on. A process the tree was starting as it was
+ * killed shows up only later, as a child of a killed one, so the tree is looked at again a few times; a process that
+ * started after the one it names as parent was killed got that pid reused, and is no one's to kill.
+ */
+export async function killProcessTree(pid: number, { snapshot = processSnapshot, kill = taskkill, lookAgainAfterMs = LOOK_AGAIN_AFTER_MS } = {}) {
+  const root = snapshot().find((process) => process.pid === pid);
+  if (!root) return void (await kill([pid]));
+  const killed: (WindowsProcess & { killedAt: number })[] = [];
+  const startedBeforeItsParentWasKilled = ({ parentPid, startedAt }: WindowsProcess) =>
+    killed.filter(({ pid }) => pid === parentPid).every(({ killedAt }) => startedAt <= killedAt);
+  for (const pause of [0, ...lookAgainAfterMs]) {
+    await Bun.sleep(pause);
+    const known = [root, ...killed, ...snapshot().filter(startedBeforeItsParentWasKilled)];
+    const tree = [root, ...descendantsOf(root.pid, known)];
+    const unkilled = tree.filter((process, index) => tree.findIndex(sameProcess(process)) === index && !killed.some(sameProcess(process)));
+    for (const process of unkilled) {
+      await kill([process.pid]);
+      killed.push({ ...process, killedAt: microsecondsNow() });
+    }
+  }
 }
 
 /** The programs `pid` started that still run, by name. */

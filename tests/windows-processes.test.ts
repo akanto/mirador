@@ -26,6 +26,47 @@ describe("a Windows process tree", () => {
   });
 });
 
+describe("killing a Windows process tree", () => {
+  /** Snapshots that show what is still running: the processes listed, but not those already killed. */
+  function fakeWindows(snapshots: WindowsProcess[][]) {
+    const kills: number[][] = [];
+    let taken = 0;
+    const snapshot = () => (snapshots[Math.min(taken++, snapshots.length - 1)] ?? []).filter(({ pid }) => !kills.flat().includes(pid));
+    const kill = async (pids: number[]) => void kills.push(pids);
+    return { kills, killTree: (pid: number) => killProcessTree(pid, { snapshot, kill, lookAgainAfterMs: [0, 0] }) };
+  }
+
+  test("kills the process before what it started", async () => {
+    const windows = fakeWindows([[started(10, 1, 100), started(20, 10, 200), started(30, 20, 300)]]);
+    await windows.killTree(10);
+    expect(windows.kills).toEqual([[10], [20], [30]]);
+  });
+
+  test("also kills what the process had begun to start as it was killed, which shows only later", async () => {
+    const launcher = started(10, 1, 100, "bash.exe");
+    const realBash = started(20, 10, 200, "bash.exe");
+    const sleep = started(30, 20, 300, "sleep.exe");
+    const windows = fakeWindows([[launcher], [launcher], [realBash], [realBash, sleep]]);
+    await windows.killTree(10);
+    expect(windows.kills).toEqual([[10], [20], [30]]);
+  });
+
+  test("leaves alone a process started by a later one that got a killed process's pid", async () => {
+    const killedAtLatest = Date.now() * 1000 + 60_000_000;
+    const reusedPid = started(10, 1, killedAtLatest + 1, "code.exe");
+    const itsChild = started(40, 10, killedAtLatest + 2, "git.exe");
+    const windows = fakeWindows([[started(10, 1, 100)], [started(10, 1, 100)], [reusedPid, itsChild]]);
+    await windows.killTree(10);
+    expect(windows.kills).toEqual([[10]]);
+  });
+
+  test("kills a pid the snapshot doesn't show all the same", async () => {
+    const windows = fakeWindows([[]]);
+    await windows.killTree(10);
+    expect(windows.kills).toEqual([[10]]);
+  });
+});
+
 test.if(process.platform === "win32")("on Windows the snapshot has this process with its parent, program and start", () => {
   const startedAtMs = Date.now() - process.uptime() * 1000;
   const thisProcess = processSnapshot().find(({ pid }) => pid === process.pid);
