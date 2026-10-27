@@ -121,29 +121,37 @@ export class CanvasPlugins {
     return (value && this.store.findProfile(value)?.name) || null;
   }
 
-  private readonly settingNotes = new Map<string, Map<string, string>>();
+  /** By conversation, the plugins' settings the user changed in its top bar since the agent last heard, worded when it hears. */
+  private readonly changedSettings = new Map<string, Map<string, { plugin: CanvasPlugin; id: string }>>();
 
   /**
    * The user changed one of a plugin's profile settings in a conversation's top bar. Its session read its guidance when it
    * began, so the agent hears of the change with the next message; a conversation without a session yet will read it then.
    */
   settingChanged(conversationId: string, pluginName: string, id: string) {
-    const conversation = this.store.findConversation(conversationId);
     const plugin = this.plugins.find(({ manifest }) => manifest.name === pluginName);
-    if (!conversation?.acpSessionId || !plugin) return;
+    if (!this.store.findConversation(conversationId)?.acpSessionId || !plugin) return;
+    this.profileSettingNamed(plugin, id);
+    const changed = this.changedSettings.get(conversationId) ?? new Map<string, { plugin: CanvasPlugin; id: string }>();
+    this.changedSettings.set(conversationId, changed.set(`${pluginName}/${id}`, { plugin, id }));
+  }
+
+  /** As the setting is now, so a profile switch since the change, which clears the conversation's choice, is told right. */
+  private settingNoteText(plugin: CanvasPlugin, conversationId: string, id: string) {
     const { label } = this.profileSettingNamed(plugin, id);
     const value = this.settingFor(plugin, conversationId, id) ?? "none";
-    const overridden = conversation.pluginSettings?.[pluginName]?.[id] !== undefined;
-    const text = overridden
+    const chosen = this.store.findConversation(conversationId)?.pluginSettings?.[plugin.manifest.name]?.[id] !== undefined;
+    return chosen
       ? `${label} for this conversation is now ${value}: the user chose it, in place of what your instructions say of it.`
       : `${label} for this conversation is back to its profile's: ${value}.`;
-    const notes = this.settingNotes.get(conversationId) ?? new Map<string, string>();
-    this.settingNotes.set(conversationId, notes.set(`${pluginName}/${id}`, text));
   }
 
   private settingNotesFor(conversationId: string): CanvasNote[] {
-    const notes = this.settingNotes.get(conversationId);
-    return [...(notes ?? [])].map(([key, text]) => ({ text, heard: () => void (notes?.get(key) === text && notes.delete(key)) }));
+    const changed = this.changedSettings.get(conversationId);
+    return [...(changed ?? [])].map(([key, { plugin, id }]) => {
+      const text = this.settingNoteText(plugin, conversationId, id);
+      return { text, heard: () => void (this.settingNoteText(plugin, conversationId, id) === text && changed?.delete(key)) };
+    });
   }
 
   /** Where the canvas assets serve each plugin's canvas view, by plugin name. */

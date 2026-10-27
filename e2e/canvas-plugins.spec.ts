@@ -352,6 +352,8 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(handOverTo.locator("option:checked")).toHaveText("None");
     await page.getByLabel("Profile", { exact: true }).filter({ visible: true }).selectOption({ label: "Local" });
     await expect(handOverTo.locator("option:checked"), "switching profile goes back to following it").toHaveText("Profile's (None)");
+    await sendAndWait(page, "SAY Switched.");
+    expect(agentSaw(), "the agent hears the setting as it is after the switch").toContain("Hand over to for this conversation is back to its profile's: none.\n\nSAY Switched.");
   });
 
   await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {

@@ -223,6 +223,13 @@ describe("CanvasPlugins", () => {
     plugins.settingChanged("c1", "board", "hand-over-to");
     expect(plugins.notesForAgent("c1").map(({ text }) => text)).toEqual(["Hand over to for this conversation is back to its profile's: Qwen 27b."]);
     expect(plugins.guidanceFor("c1").instructions).toContain("- hand_over: hand tasks to Qwen 27b without asking.");
+
+    choose({ board: { "hand-over-to": "big" } });
+    plugins.settingChanged("c1", "board", "hand-over-to");
+    choose(undefined);
+    expect(plugins.notesForAgent("c1").map(({ text }) => text), "a profile switch clears the choice before the agent hears of it").toEqual([
+      "Hand over to for this conversation is back to its profile's: Qwen 27b.",
+    ]);
   });
 
   test("a conversation without a session yet hears of no change: it reads its guidance when it starts", async () => {
