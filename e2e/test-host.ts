@@ -310,10 +310,15 @@ export class TestHost {
     });
     const deadline = Date.now() + 15_000;
     while (timesRunningIn(this.output) === timesRunningBefore) {
-      if (Date.now() > deadline || hasEnded(child)) throw new Error(`host did not start:\n${this.output}`);
+      if (Date.now() > deadline || hasEnded(child)) throw new Error(`host did not start:\n${this.output}\n[files in its data folder: ${this.dataFolderFiles()}]`);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     this.authUrl = `http://127.0.0.1:${port}/auth?token=${readFileSync(join(this.dataDir, "browser-token"), "utf8").trim()}`;
+  }
+
+  /** What the host made in its data folder, by name only: how far a host that hung got. */
+  private dataFolderFiles() {
+    return existsSync(this.dataDir) ? readdirSync(this.dataDir, { recursive: true }).join(", ") || "none" : "no data folder";
   }
 
   /**
