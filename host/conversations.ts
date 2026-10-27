@@ -36,9 +36,10 @@ import { panelCommandRun } from "../shared/panel-commands.ts";
 import { historyEntry } from "../shared/prompt-history.ts";
 import { inSidebarOrder, movedBefore } from "../shared/sidebar-order.ts";
 import { isClearCommand, toSlashCommand } from "../shared/slash-commands.ts";
-import { lastWordsOf } from "../shared/last-words.ts";
+import { firstReplyOf, lastWordsOf } from "../shared/last-words.ts";
 import { cutWithEllipsis, firstGraphemes } from "../shared/text-cut.ts";
 import { isInformational } from "../shared/timeline.ts";
+import type { StartedConversation } from "../shared/canvas-plugins.ts";
 import { canTryAgain } from "../shared/try-again.ts";
 import { currentActivity, OpenToolCalls } from "./activity.ts";
 import { editDiffsOf } from "./edit-diff.ts";
@@ -349,6 +350,18 @@ export class ConversationService {
     const conversation = this.insertConversation(workspaceId, launch, UNTITLED);
     this.ensureSession(conversation.id).catch(() => {});
     return conversation;
+  }
+
+  /** For a plugin's tool: a conversation beside the caller's, on another profile, working on `prompt` at once. */
+  startBeside(callerId: string, profileName: string, prompt: string): StartedConversation {
+    const caller = this.get(callerId);
+    const profiles = this.store.listProfiles();
+    const profile = profiles.find(({ name }) => name.toLowerCase() === profileName.trim().toLowerCase());
+    if (!profile) throw new Error(`There is no profile named ${profileName}; the profiles are ${profiles.map(({ name }) => name).join(", ")}.`);
+    const conversation = this.create(caller.workspaceId, { harness: profile.harness, profileId: profile.id });
+    if (caller.bypassPermissions) this.setBypassPermissions(conversation.id, true);
+    const firstReply = this.prompt(conversation.id, prompt, { startsTurn: true }).then(() => firstReplyOf(this.store.listEvents(conversation.id)));
+    return { id: conversation.id, firstReply };
   }
 
   /** The newest sessions the harness knows for the workspace directory, including ones started outside the app. */

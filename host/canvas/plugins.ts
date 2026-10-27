@@ -1,5 +1,5 @@
 import { fromJsonSchema, type McpServer, type ServerContext } from "@modelcontextprotocol/server";
-import { pluginItemOf, type CanvasActionContext, type CanvasPluginContext, type CanvasPluginStorage, type CanvasToolContext, type PluginItemType } from "../../shared/canvas-plugins.ts";
+import { pluginItemOf, type StartedConversation, type CanvasActionContext, type CanvasPluginContext, type CanvasPluginStorage, type CanvasToolContext, type PluginItemType } from "../../shared/canvas-plugins.ts";
 import type { PluginCanvasItem } from "../../shared/model.ts";
 import { canvasViewPath, messageOf, type CanvasPlugin } from "../apps/plugins.ts";
 import type { Hub } from "../hub.ts";
@@ -28,6 +28,8 @@ const shownOf = (type: PluginItemType | undefined, data: unknown) => ({ ...count
 
 export type SendPrompt = (conversationId: string, text: string, options: { afterTurn: boolean }) => Promise<void>;
 
+export type StartBeside = (callerId: string, profileName: string, prompt: string) => StartedConversation;
+
 /**
  * The canvas plugins Mirador loaded when it started: their tools on every conversation's canvas server, the items those
  * tools publish, the user's actions in the items' views, and what the agent hears of with the user's next message.
@@ -35,6 +37,10 @@ export type SendPrompt = (conversationId: string, text: string, options: { after
 export class CanvasPlugins {
   private sendPrompt: SendPrompt = async () => {
     throw new Error("Mirador can't send messages yet.");
+  };
+
+  private startBeside: StartBeside = () => {
+    throw new Error("Mirador can't start conversations yet.");
   };
 
   constructor(
@@ -46,6 +52,10 @@ export class CanvasPlugins {
   /** Conversations come after the plugins, whose guidance they take. */
   sendsPromptsWith(send: SendPrompt) {
     this.sendPrompt = send;
+  }
+
+  startsConversationsWith(start: StartBeside) {
+    this.startBeside = start;
   }
 
   private catalog: PluginCatalog | null = null;
@@ -123,6 +133,8 @@ export class CanvasPlugins {
     return {
       ...this.context(plugin, conversationId, { byAgent: true }),
       publish: ({ type, title, data }) => pluginItemOf(this.publish(plugin, conversationId, type, title, data)),
+      prompt: (text, { afterTurn = false } = {}) => this.sendPrompt(conversationId, text, { afterTurn }),
+      startConversation: async ({ profile, prompt }) => this.startBeside(conversationId, profile, prompt),
     };
   }
 

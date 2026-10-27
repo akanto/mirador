@@ -203,6 +203,16 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(pageView(page).locator("#typing")).toHaveText("Autocorrect on");
   });
 
+  await test.step("the plugin's tool hands a task to a conversation on another profile, whose reply comes back as the next message", async () => {
+    const profiles = await createProfile(page, "Local", "", "", "opencode");
+    await profiles.getByRole("button", { name: "Close" }).click();
+    expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "nope", task: "SAY Found 3 callers." })).toMatch(/^There is no profile named nope; the profiles are .*Local/);
+
+    expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "local", task: "SAY Found 3 callers." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
+    await expect(page.locator(".sidebar").getByText("SAY Found 3 callers.")).toBeVisible();
+    await expect.poll(agentSaw).toContain("The handed-over task finished: Found 3 callers.\n");
+  });
+
   await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {
     rmSync(boardFolder, { recursive: true });
     await host.restart();

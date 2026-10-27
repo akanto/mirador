@@ -1,9 +1,10 @@
 /**
  * The plugin API version this Mirador speaks; a plugin.json names the one it was written for, and Mirador loads every
  * version up to its own. API 2 brought host tasks, streamed files and images in a view's message; API 3 brought canvas
- * tools and items; API 4 tells apply who made the change.
+ * tools and items; API 4 tells apply who made the change; API 5 lets a canvas tool message its agent and start a
+ * conversation on another profile.
  */
-export const APP_PLUGIN_API = 4;
+export const APP_PLUGIN_API = 5;
 
 /** The first plugin API whose plugin.json may have a canvas part. */
 export const CANVAS_PLUGIN_API = 3;

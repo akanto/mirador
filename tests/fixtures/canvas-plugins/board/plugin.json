@@ -2,6 +2,6 @@
   "name": "board",
   "title": "Board",
   "version": "1.0.0",
-  "api": 3,
+  "api": 5,
   "canvas": { "host": "host.ts", "view": "canvas.js" }
 }

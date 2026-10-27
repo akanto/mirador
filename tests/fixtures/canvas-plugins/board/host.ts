@@ -83,6 +83,16 @@ const host: CanvasHost<BoardData> = {
         return `${data.done + 1} done.`;
       },
     },
+    hand_over: {
+      description: "Hand a task to a conversation on another profile; its reply comes as your next message.",
+      input: { type: "object", properties: { profile: { type: "string" }, task: { type: "string" } }, required: ["profile", "task"] },
+      async run(input, context) {
+        const { profile, task } = input as { profile: string; task: string };
+        const started = await context.startConversation({ profile, prompt: task });
+        void started.firstReply.then(({ text, ended }) => context.prompt(`The handed-over task ${ended}: ${text ?? "no reply"}`, { afterTurn: true }));
+        return `Handed over to ${started.id}.`;
+      },
+    },
   },
   guidance: {
     instructions: "- show_card: show a card the user can press.",

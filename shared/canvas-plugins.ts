@@ -83,6 +83,28 @@ export interface CanvasActionContext<Data = unknown> extends CanvasPluginContext
 export interface CanvasToolContext<Data = unknown> extends CanvasPluginContext<Data> {
   /** Shows a new item, of one of the plugin's types, in the canvas. */
   publish(item: { type: string; title: string; data: Data }): PluginItem<Data>;
+  /** Sends the agent a message, as if the user wrote it; `afterTurn` keeps it queued until the agent's turn ends. */
+  prompt(text: string, options?: { afterTurn?: boolean }): Promise<void>;
+  /**
+   * Starts a conversation in this one's workspace on the profile of that name, with `prompt` as its first message, and
+   * bypassing permissions if this one does. Throws, naming the profiles there are, when none has that name.
+   */
+  startConversation(start: { profile: string; prompt: string }): Promise<StartedConversation>;
+}
+
+/**
+ * A conversation a plugin's tool started, and what its agent said when its first turn ended; a restart of Mirador during
+ * that turn leaves `firstReply` unsettled.
+ */
+export interface StartedConversation {
+  id: string;
+  firstReply: Promise<FirstReply>;
+}
+
+/** The agent's last message in the turn, null when it said nothing in words; `ended` says how the turn ended. */
+export interface FirstReply {
+  text: string | null;
+  ended: "finished" | "stopped" | "failed";
 }
 
 /** A tool the agent calls on the canvas server, next to show, ask and the rest. */

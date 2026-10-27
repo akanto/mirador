@@ -8,6 +8,7 @@ import { canvasInstructions, canvasUseGuidance } from "../host/canvas/guidance.t
 import type { PluginCanvasItem } from "../shared/model.ts";
 import { Store } from "../host/store.ts";
 import type { PluginCatalog } from "../host/plugin-catalog.ts";
+import type { FirstReply } from "../shared/canvas-plugins.ts";
 import { canvasPluginHost, storeWithConversation } from "./canvas-plugin-host.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures", "canvas-plugins");
@@ -22,7 +23,7 @@ describe("CanvasPlugins", () => {
     expect(tools.find(({ name }: { name: string }) => name === "show_card")).toMatchObject({ description: "Show a card the user can press.", _meta: { "anthropic/alwaysLoad": true } });
 
     const { guidance } = plugins;
-    expect(guidance.toolNames).toEqual(["show_card", "change_card", "show_report", "change_verdict", "track_steps", "finish_step"]);
+    expect(guidance.toolNames).toEqual(["show_card", "change_card", "show_report", "change_verdict", "track_steps", "finish_step", "hand_over"]);
     expect(canvasInstructions("http://127.0.0.1:4601", guidance)).toContain("\"change some answers\" as options.\n- show_card: show a card the user can press.\n\nRendering environment:");
     expect(canvasUseGuidance(guidance)).toContain("add a preview when it helps.\n- show_card: when a card says it better than words.\n- Keep pages lean");
     expect(claudeSessionMeta("often", { canvasPlugins: guidance }).claudeCode.options.allowedTools).toContain("mcp__canvas__show_card");
@@ -150,6 +151,33 @@ describe("CanvasPlugins", () => {
       { conversationId: "c1", text: "Look again", options: { afterTurn: true } },
       { conversationId: "c1", text: "Now", options: { afterTurn: false } },
     ]);
+  });
+
+  test("a tool starts a conversation on another profile, and messages its agent after the turn with that conversation's first reply", async () => {
+    const { plugins, prompts, callTool } = await setUp();
+    let finishFirstTurn = () => {};
+    const started: unknown[] = [];
+    plugins.startsConversationsWith((callerId, profileName, prompt) => {
+      started.push({ callerId, profileName, prompt });
+      const firstReply = new Promise<FirstReply>((resolve) => (finishFirstTurn = () => resolve({ text: "Found 3 callers.", ended: "finished" })));
+      return { id: "c2", firstReply };
+    });
+
+    expect(await callTool("hand_over", { profile: "Local", task: "Find the callers of run" })).toEqual({ text: "Handed over to c2.", isError: false });
+    expect(started).toEqual([{ callerId: "c1", profileName: "Local", prompt: "Find the callers of run" }]);
+    expect(prompts).toEqual([]);
+
+    finishFirstTurn();
+    await Bun.sleep(0);
+    expect(prompts).toEqual([{ conversationId: "c1", text: "The handed-over task finished: Found 3 callers.", afterTurn: true }]);
+  });
+
+  test("a conversation that can't be started reaches the agent as a tool error", async () => {
+    const { plugins, callTool } = await setUp();
+    plugins.startsConversationsWith(() => {
+      throw new Error("There is no profile named Nope; the profiles are Local.");
+    });
+    expect(await callTool("hand_over", { profile: "Nope", task: "Anything" })).toEqual({ text: "There is no profile named Nope; the profiles are Local.", isError: true });
   });
 
   test("the user dismisses an item in the tab, and its plugin knows; a page can't be dismissed", async () => {
