@@ -7,8 +7,11 @@ export type ClipInfo = { name: string; seconds: number; moments: Record<string, 
 /** A point in a clip: seconds from its start, a moment's name, or a moment's name with seconds before (-) or after (+). */
 export type ClipTime = number | string | [string, number];
 
-/** A stretch of a clip, played at a speed: typing can run faster than the agent's answer. */
-export type Shot = { from: ClipTime; to: ClipTime; speed?: number };
+/**
+ * A stretch of a clip, played at a speed: typing can run faster than the agent's answer. It comes in over the last frame
+ * of the shot before for `fadeInFrames` frames, or cuts straight to it.
+ */
+export type Shot = { from: ClipTime; to: ClipTime; speed?: number; fadeInFrames?: number };
 
 /** Where the camera looks from a point of the clip on: the whole app, one of the clip's boxes, or a box given here, at a zoom. */
 export type CameraKey = { at: ClipTime; look: "app" | string | Rect; zoom?: number };

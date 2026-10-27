@@ -21,10 +21,12 @@ const MEDIA_EDITOR = { x: 836, y: 80, width: 700, height: 640 };
 
 /**
  * A page the agent shows shows its diagram's source for a few frames before Mermaid draws it: a shot ends just before a
- * drawing starts, and the next starts once it's drawn.
+ * drawing starts, and the next starts once it's drawn. One that redraws a diagram fades in over the old drawing, so the
+ * page doesn't jump.
  */
 const BEFORE_DRAWING = -0.2;
 const ONCE_DRAWN = -0.05;
+const OVER_THE_OLD_DRAWING = 15;
 
 /** When the narrator starts the statement, in seconds of the wall scene; its parts land as they're said. */
 const STATEMENT_AT = 8;
@@ -84,7 +86,7 @@ export const STORYBOARD: Scene[] = [
       { from: ["picked", 0.3], to: "typed", speed: 1.8 },
       { from: "typed", to: ["asked", 0.3] },
       { from: ["asked", 0.3], to: ["redrawn", BEFORE_DRAWING], speed: 1.5 },
-      { from: ["redrawn", ONCE_DRAWN], to: ["redrawn", 2] },
+      { from: ["redrawn", ONCE_DRAWN], to: ["redrawn", 2], fadeInFrames: OVER_THE_OLD_DRAWING },
     ],
     camera: [
       { at: 1, look: TOP_OF_DIAGRAM, zoom: 1.6 },
