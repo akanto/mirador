@@ -1,6 +1,6 @@
-import { readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 const MAX_COMPLETIONS = 30;
 
@@ -19,9 +19,26 @@ export function expandHome(path: string, platform = process.platform) {
   return pathSeparators(platform).some((separator) => path.startsWith(`~${separator}`)) ? join(homedir(), path.slice(2)) : path;
 }
 
+const absolutePath = (path: string) => resolve(expandHome(path.trim()));
+
+const statOrNull = (path: string) => stat(path).catch(() => null);
+
+/** Whether adding the typed path makes a new folder: nothing is there yet and its parent is a folder. */
+export async function createsDirectory(path: string): Promise<boolean> {
+  const absolute = absolutePath(path);
+  if (await statOrNull(absolute)) return false;
+  return Boolean((await statOrNull(dirname(absolute)))?.isDirectory());
+}
+
+/** The typed folder, made first when `createsDirectory` says so. */
+export async function directoryToAdd(path: string): Promise<string> {
+  if (await createsDirectory(path)) await mkdir(absolutePath(path), { recursive: true });
+  return existingDirectory(path);
+}
+
 export async function existingDirectory(path: string): Promise<string> {
-  const absolute = resolve(expandHome(path.trim()));
-  const info = await stat(absolute).catch(() => null);
+  const absolute = absolutePath(path);
+  const info = await statOrNull(absolute);
   if (!info?.isDirectory()) throw new Error(`${absolute} is not a directory.`);
   return absolute.replace(/\/+$/, "") || "/";
 }

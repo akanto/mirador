@@ -36,12 +36,14 @@ import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
 import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
 function useDirectoryCompletions(prefix: string) {
-  const [completions, setCompletions] = useState<string[]>([]);
+  const [completions, setCompletions] = useState({ directories: [] as string[], createsDirectory: false });
   const latestRequest = useRef("");
   useEffect(
     () =>
       connection.onMessage((message) => {
-        if (message.type === "fs.completions" && message.requestId === latestRequest.current) setCompletions(message.directories);
+        if (message.type === "fs.completions" && message.requestId === latestRequest.current) {
+          setCompletions({ directories: message.directories, createsDirectory: message.createsDirectory });
+        }
       }),
     [],
   );
@@ -53,6 +55,11 @@ function useDirectoryCompletions(prefix: string) {
   return completions;
 }
 
+function folderHint(completionHighlighted: boolean, createsDirectory: boolean) {
+  if (completionHighlighted) return "Enter or Tab takes the highlighted folder, Esc cancels";
+  return createsDirectory ? "Enter creates the folder and adds it, Esc cancels" : "Enter adds, Tab completes, Esc cancels";
+}
+
 /**
  * With more than one profile, Enter on the folder asks which one its conversations start on, with none picked: adding in a
  * hurry, Enter twice still adds nothing. With one profile, it takes that one.
@@ -62,7 +69,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
   const [pickingProfile, setPickingProfile] = useState(false);
   const [highlightedProfile, setHighlightedProfile] = useState<number | null>(null);
   const typingAidAttributes = useTypingAidAttributes();
-  const completions = useDirectoryCompletions(path);
+  const { directories: completions, createsDirectory } = useDirectoryCompletions(path);
   const [picked, setPicked] = useState<number | null>(null);
   useEffect(() => setPicked(null), [completions]);
   const highlighted = highlightedCompletion(path, completions, picked);
@@ -146,7 +153,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
         </>
       ) : (
         <>
-          <div className="hint">{highlighted === null ? "Enter adds, Tab completes, Esc cancels" : "Enter or Tab takes the highlighted folder, Esc cancels"}</div>
+          <div className="hint">{folderHint(highlighted !== null, createsDirectory)}</div>
           <ul className="completions">
             {completions.map((completion, index) => (
               <li key={completion} className={index === highlighted ? "highlighted" : ""} onMouseDown={() => setPath(completion)}>

@@ -57,7 +57,7 @@ import { cookieValue, sameSecret, signedInWith } from "./sign-in.ts";
 import { MAX_DROPPED_FILE_BYTES, type DroppedFiles } from "./dropped-files.ts";
 import { MAX_IMAGE_BYTES, type ImageStore } from "./images.ts";
 import { imagesOf, lowDataEvent, pageEvent, wholeToolOutput } from "./low-data.ts";
-import { completeDirectories, existingDirectory } from "./paths.ts";
+import { completeDirectories, createsDirectory, directoryToAdd } from "./paths.ts";
 import { launchForNewWorkspace, profileFor, type ProfileService } from "./profiles.ts";
 import type { DesktopAppCheck } from "./desktop-app-check.ts";
 import type { Lookout } from "./lookout.ts";
@@ -814,7 +814,7 @@ export function startServer(services: HostServices) {
   }
 
   async function createWorkspace(path: string, profileId: string | null): Promise<Workspace> {
-    const directory = await existingDirectory(path);
+    const directory = await directoryToAdd(path);
     const existing = store.findWorkspaceByPath(directory);
     if (existing) return existing;
     return store.insertWorkspace({
@@ -1112,7 +1112,12 @@ export function startServer(services: HostServices) {
             reply(error instanceof OutsideWorkspace ? { type: "files.ask-to-open", conversationId: message.conversationId, file: error.file } : { type: "error", message: errorMessage(error) }),
           );
       case "fs.complete":
-        return reply({ type: "fs.completions", requestId: message.requestId, directories: await completeDirectories(message.prefix) });
+        return reply({
+          type: "fs.completions",
+          requestId: message.requestId,
+          directories: await completeDirectories(message.prefix),
+          createsDirectory: await createsDirectory(message.prefix),
+        });
       case "statusline.render":
         // A page asks a moment after each change of the conversation, so the conversation may have been deleted meanwhile.
         if (!store.findConversation(message.conversationId)) return;

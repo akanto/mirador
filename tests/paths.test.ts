@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { completeDirectories, existingDirectory, expandHome, parentOf } from "../host/paths.ts";
+import { completeDirectories, createsDirectory, directoryToAdd, existingDirectory, expandHome, parentOf } from "../host/paths.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "mirador-paths-"));
 ["alpha", "beta", ".hidden"].forEach((name) => mkdirSync(join(folder, name)));
@@ -29,6 +29,17 @@ describe("paths typed by the user", () => {
     expect(await completeDirectories(`${folder}/b`)).toEqual([`${folder}/beta/`]);
     expect(await completeDirectories(`${folder}/.h`)).toEqual([`${folder}/.hidden/`]);
     expect((await completeDirectories("~")).every((path) => path.startsWith("~/"))).toBe(true);
+  });
+
+  test("adding a path that is not there yet makes the folder, but only in a folder that is", async () => {
+    const parent = join(folder, "alpha");
+    expect(await createsDirectory(`${folder}/beta`)).toBe(false);
+    expect(await createsDirectory(`${parent}/missing/new`)).toBe(false);
+    expect(await createsDirectory(`${parent}/new`)).toBe(true);
+    expect(await directoryToAdd(`${parent}/new/`)).toBe(join(parent, "new"));
+    expect(statSync(join(parent, "new")).isDirectory()).toBe(true);
+    await expect(directoryToAdd(`${parent}/missing/new`)).rejects.toThrow("is not a directory");
+    expect(existsSync(join(parent, "missing"))).toBe(false);
   });
 
   test.if(process.platform === "win32")("on Windows a folder typed with backslashes completes, and ~\\ is home", async () => {

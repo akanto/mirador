@@ -382,7 +382,8 @@ export type ServerMessage =
   | { type: "canvas.saved-to-project"; requestId: string; path: string }
   /** `alreadyThere` when the path names a file that is there already, which the user may choose to replace. */
   | { type: "canvas.export-failed"; requestId: string; message: string; alreadyThere: boolean }
-  | { type: "fs.completions"; requestId: string; directories: string[] }
+  /** `createsDirectory`: nothing is at the typed path yet and its parent is a folder, so adding it makes that folder. */
+  | { type: "fs.completions"; requestId: string; directories: string[]; createsDirectory: boolean }
   | { type: "statusline.rendered"; requestId: string; statusline: StatuslineRender }
   | { type: "subagent-usage.got"; requestId: string; usage: Record<string, SubagentUsage> }
   | { type: "sessions.listed"; requestId: string; sessions: ExternalSession[] }

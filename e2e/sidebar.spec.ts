@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -141,6 +141,27 @@ test("a workspace added while the page reconnects to the host is added once it h
   await pickProfileIfAsked(page, directory);
   await host.start();
   await expect(workspaceCard(page, directory)).toBeVisible({ timeout: 30_000 });
+});
+
+test("a folder that is not there yet is made and added, in a folder that is", async ({ page }) => {
+  const parent = join(host.root, "new-projects");
+  mkdirSync(parent, { recursive: true });
+  const directory = join(parent, "fresh");
+  await signIn(page, host);
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const input = page.getByLabel("Workspace directory");
+  const hint = page.locator(".add-workspace .hint");
+
+  await input.fill(directory);
+  await expect(hint).toHaveText("Enter creates the folder and adds it, Esc cancels");
+  await input.fill(join(parent, "missing", "fresh"));
+  await expect(hint).toHaveText("Enter adds, Tab completes, Esc cancels");
+  await input.fill(directory);
+  await expect(hint).toHaveText("Enter creates the folder and adds it, Esc cancels");
+  await input.press("Enter");
+  await pickProfileIfAsked(page, directory);
+  await expect(workspaceCard(page, directory)).toBeVisible();
+  expect(statSync(directory).isDirectory()).toBe(true);
 });
 
 test("Enter takes the highlighted folder while its name is being typed, and adds a path that names a folder", async ({ page }) => {
