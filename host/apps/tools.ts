@@ -75,7 +75,7 @@ export function registerAppTools(
     "app_run",
     {
       description:
-        "Run one of the tasks of the app open in this workspace, such as a render, and wait until it ends; the user sees its progress in the app and can stop it. app_state lists the app's tasks. Run one when your operations are done and the user should see their result.",
+        "Run one of the tasks of the app open in this workspace, such as a render, and wait until it ends; the app's tab comes forward, where the user sees its progress and can stop it. app_state lists the app's tasks. Run one when your operations are done and the user should see their result.",
       inputSchema: z.object({
         task: z.string().describe("The task's name, as app_state lists it."),
         app: appNameSchema,

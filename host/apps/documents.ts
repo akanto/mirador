@@ -161,6 +161,13 @@ export class AppDocuments {
     if (this.noteUsedIn(this.openIn(workspaceId, appName), conversationId)) this.publisher.openAppsChanged(this.openApps());
   }
 
+  /** Brings the app's tab forward in the conversation, as its agent wants the user to see the app. */
+  private showIn(opened: AppDocument, conversationId: string) {
+    this.noteUsedIn(opened, conversationId);
+    opened.shownBy = { conversationId, at: Date.now() };
+    this.publisher.openAppsChanged(this.openApps());
+  }
+
   /** Whether the conversation is new to the app. */
   private noteUsedIn(opened: AppDocument, conversationId: string) {
     const conversations = this.conversationsUsing(keyOf(opened));
@@ -229,11 +236,7 @@ export class AppDocuments {
     const openedFile = documentFile === file ? undefined : toPosix(relative(dirname(target.path), fileInWorkspace(workspace.path, file).path));
     const already = this.documents.get(appKey({ workspaceId, app: appName }));
     if (already?.file === target.file && !already.problem) {
-      if (conversationId) {
-        this.noteUsedIn(already, conversationId);
-        already.shownBy = { conversationId, at: Date.now() };
-        this.publisher.openAppsChanged(this.openApps());
-      }
+      if (conversationId) this.showIn(already, conversationId);
       return this.openAppOf(already);
     }
     const text = existsSync(target.path) ? readFileSync(target.path, "utf8") : null;
@@ -290,6 +293,7 @@ export class AppDocuments {
     };
     opened.running = running;
     this.showTask(opened, running.state);
+    if (author.kind === "agent") this.showIn(opened, author.conversationId);
     const ended = (async () => {
       try {
         const summary = await task.run(this.taskContext(opened, running));

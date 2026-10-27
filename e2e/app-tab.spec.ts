@@ -257,12 +257,16 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(page.locator(".chat-header:visible .badge")).toHaveText("idle", { timeout: 60_000 });
   });
 
-  await test.step("the user runs the app's task from the view and sees it end; the agent runs one with app_run and hears its summary", async () => {
+  await test.step("the user runs the app's task from the view and sees it end; the agent runs one with app_run, which brings the app forward, and hears its summary", async () => {
     await view(page).getByRole("button", { name: "Count up" }).click();
     await expect(view(page).locator("#task")).toHaveText("count-up done 100% (step 3 of 3): Counted up from 40 to 43.");
     await expect(view(page).locator("#last-change")).toHaveText("you: Added 1; the count is 43.");
     expect(await callCanvasTool(host, first, "app_state", {})).toContain("- count-up: Count up three times");
-    expect(await callCanvasTool(host, first, "app_run", { task: "count-up" })).toBe("Counted up from 43 to 46.");
+    await appToggle(page).click();
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");
+    const shownConversation = new URL(page.url()).hash.slice("#/c/".length);
+    expect(await callCanvasTool(host, shownConversation, "app_run", { task: "count-up" })).toBe("Counted up from 43 to 46.");
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(view(page).locator("#last-change")).toHaveText("agent: Added 1; the count is 46.");
     expect(JSON.parse(readFileSync(counterFile(), "utf8"))).toEqual({ count: 46 });
   });

@@ -26,6 +26,14 @@ async function setUp(store = new Store(":memory:"), workspacePath = mkdtempSync(
   return { store, workspacePath, apps, fileText, ...recorded };
 }
 
+/** Workspace w1, in a folder of its own, with conversations c1 and c2. */
+async function setUpWithTwoConversations() {
+  const setup = await setUp();
+  const { position: _, ...conversation } = storeWithConversation().findConversation("c1")!;
+  for (const id of ["c1", "c2"]) setup.store.insertConversation({ ...conversation, id });
+  return setup;
+}
+
 async function eventually(check: () => void, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -152,7 +160,7 @@ describe("AppDocuments", () => {
   });
 
   test("tells the plugin who made each operation: the agent, the user in the view, or whoever ran the task that applied it", async () => {
-    const { apps } = await setUp();
+    const { apps } = await setUpWithTwoConversations();
     await apps.open("w1", "counter", "counter.json");
     const signed = async (author: AppAuthor) => (await apps.apply("w1", undefined, { op: "sign" }, author)).summary;
     expect(await signed({ kind: "agent", conversationId: "c1", turnSeq: 4 })).toBe("Signed by agent.");
@@ -314,7 +322,7 @@ describe("AppDocuments tasks", () => {
   const agent = { kind: "agent", conversationId: "c1", turnSeq: 4 } as const;
 
   async function opened() {
-    const set = await setUp();
+    const set = await setUpWithTwoConversations();
     await set.apps.open("w1", "counter", "counter.json");
     const taskStates = () => set.states.map(({ task }) => task).filter((task) => task !== null);
     return { ...set, taskStates };
@@ -487,14 +495,6 @@ describe("AppDocuments.mediaGrant", () => {
 });
 
 describe("the conversations an app shows in", () => {
-  /** Workspace w1, in a folder of its own, with conversations c1 and c2. */
-  async function setUpWithTwoConversations() {
-    const setup = await setUp();
-    const { position: _, ...conversation } = storeWithConversation().findConversation("c1")!;
-    for (const id of ["c1", "c2"]) setup.store.insertConversation({ ...conversation, id });
-    return setup;
-  }
-
   test("an app shows only in the conversations that used it, each noted once, also once it opens another file", async () => {
     const { apps, openAppLists } = await setUpWithTwoConversations();
     await apps.open("w1", "counter", "counter.json");
@@ -529,6 +529,16 @@ describe("the conversations an app shows in", () => {
     expect(openAppLists.at(-1)![0]!.shownBy!.at).toBeGreaterThan(firstOpening.at);
     await apps.open("w1", "counter", "counter.json", "c2");
     expect(openAppLists.at(-1)![0]!.shownBy!.conversationId).toBe("c2");
+    apps.stop();
+  });
+
+  test("an agent running a task brings the app's tab forward in its conversation; the user running one doesn't", async () => {
+    const { apps, openAppLists } = await setUpWithTwoConversations();
+    await apps.open("w1", "counter", "counter.json", "c1");
+    await apps.startTask("w1", undefined, "count-up", { kind: "you" }).ended;
+    expect(openAppLists).toHaveLength(1);
+    await apps.startTask("w1", undefined, "count-up", { kind: "agent", conversationId: "c2", turnSeq: 1 }).ended;
+    expect(openAppLists.at(-1)![0]).toMatchObject({ conversationIds: ["c1", "c2"], shownBy: { conversationId: "c2" } });
     apps.stop();
   });
 

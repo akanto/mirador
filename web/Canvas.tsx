@@ -670,7 +670,7 @@ export interface WorkspaceApps {
 
 const openedDocument = ({ app, file }: OpenApp) => `${app}:${file}`;
 
-/** A document, and the latest time this conversation's agent opened it, if it was the last to: an agent opening the file already open shows its tab again. */
+/** A document, and the latest time this conversation's agent opened it or ran one of its tasks, if it was the last to: either shows its tab again. */
 const openingsHere = (conversationId: string) => (app: OpenApp) =>
   app.shownBy?.conversationId === conversationId ? [openedDocument(app), `${openedDocument(app)}@${app.shownBy.at}`] : [openedDocument(app)];
 
@@ -679,7 +679,7 @@ const seenOpenApps = new Map<string, Set<string>>();
 
 /**
  * Opens an app's tab when the app opens in the workspace, or opens another file, or this conversation's agent opens it
- * again, as the agent's app_open says the user will see it: at once while the panel is up, or when the user comes back
+ * again or runs one of its tasks, as app_open and app_run say the user will see it: at once while the panel is up, or when the user comes back
  * to the conversation, its canvas kept hidden or made again.
  */
 function useAppTabOnOpen(conversationId: string, open: OpenApp[], showTab: (tab: AppTab) => void, shown: boolean) {
