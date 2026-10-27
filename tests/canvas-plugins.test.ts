@@ -152,7 +152,7 @@ describe("CanvasPlugins", () => {
     ]);
   });
 
-  test("a tool starts a conversation on another profile, and its plugin hears that conversation's reply in the caller's conversation", async () => {
+  test("a tool starts a conversation on another profile, and its plugin hears that conversation's reply in the caller's conversation, sending it as from the plugin", async () => {
     const { plugins, prompts, callTool } = await setUp();
     const started: unknown[] = [];
     plugins.startsConversationsWith((callerId, plugin, profileName, prompt) => {
@@ -165,7 +165,7 @@ describe("CanvasPlugins", () => {
     expect(prompts).toEqual([]);
 
     await plugins.replied({ id: "c2", profile: "Local" }, { conversationId: "c1", plugin: "board", reply: null, dismissed: false }, { text: "Found 3 callers.", ended: "finished" });
-    expect(prompts).toEqual([{ conversationId: "c1", text: "The handed-over task finished: Found 3 callers.", afterTurn: true }]);
+    expect(prompts).toEqual([{ conversationId: "c1", text: "The handed-over task finished: Found 3 callers.", afterTurn: true, fromPlugin: "Board" }]);
   });
 
   test("what a conversation's profile set for a plugin reaches its tools and adds to its guidance, by the chosen profile's name as it is now", async () => {

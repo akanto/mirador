@@ -6,12 +6,13 @@ const stored = (events: ConversationEvent[]): StoredEvent[] => events.map((event
 const texts = (events: ConversationEvent[], typedElsewhere: string[] = []) => promptHistory(stored(events), typedElsewhere).map(({ text }) => text);
 
 describe("prompt history", () => {
-  test("holds what the user typed, newest first: messages and shell commands, not what a script sent", () => {
+  test("holds what the user typed, newest first: messages and shell commands, not what a script or a plugin sent", () => {
     const events: ConversationEvent[] = [
       { type: "user-message", text: "first" },
       { type: "turn-end", stopReason: "end_turn" },
       { type: "user-command", commandId: "c1", command: "ls -la" },
       { type: "user-message", text: "from a script", fromScript: true },
+      { type: "user-message", text: "from a plugin", fromPlugin: "Delegate" },
       { type: "user-message", text: "/compact" },
     ];
     expect(texts(events)).toEqual(["/compact", "!ls -la", "first"]);
@@ -79,7 +80,8 @@ describe("stopped message", () => {
     expect(stoppedMessage(stored([]))).toBeNull();
   });
 
-  test("is none when a script sent the stopped message, as it is not the user's to edit", () => {
+  test("is none when a script or a plugin sent the stopped message, as it is not the user's to edit", () => {
     expect(stoppedMessage(stored([...answered, ...stopped("from a script", { fromScript: true })]))).toBeNull();
+    expect(stoppedMessage(stored([...answered, ...stopped("from a plugin", { fromPlugin: "Delegate" })]))).toBeNull();
   });
 });

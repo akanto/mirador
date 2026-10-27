@@ -36,7 +36,8 @@ const roomOf = (type: PluginItemType | undefined) => {
 /** What the type says of the item, kept with it for the page and the phone, which have no host code. */
 const shownOf = (type: PluginItemType | undefined, data: unknown) => ({ ...countOf(type, data), ...outcomeOf(type, data), ...roomOf(type) });
 
-export type SendPrompt = (conversationId: string, text: string, options: { afterTurn: boolean }) => Promise<void>;
+/** `fromPlugin`: the title of the plugin that sends it on its own, rather than for the user from its view. */
+export type SendPrompt = (conversationId: string, text: string, options: { afterTurn: boolean; fromPlugin?: string }) => Promise<void>;
 
 export type StartBeside = (callerId: string, plugin: string, profileName: string, prompt: string) => StartedConversation;
 
@@ -189,7 +190,8 @@ export class CanvasPlugins {
   /** The plugin whose tool started a conversation hears how its work ended; one no longer installed hears nothing. */
   async replied(started: StartedConversation, { conversationId, plugin: name }: StartedBy, reply: ConversationReply) {
     const plugin = this.plugins.find(({ manifest }) => manifest.name === name);
-    await plugin?.host.replied?.(started, reply, this.actionContext(plugin, conversationId));
+    if (!plugin) return;
+    await plugin.host.replied?.(started, reply, { ...this.actionContext(plugin, conversationId), prompt: this.promptOfItsOwn(plugin, conversationId) });
   }
 
   /** What the plugins, and the user's changes to their settings, have for the agent to hear of with the next message; a plugin whose note fails is left out. */
@@ -210,9 +212,14 @@ export class CanvasPlugins {
     return {
       ...this.context(plugin, conversationId, { byAgent: true }),
       publish: ({ type, title, data }) => pluginItemOf(this.publish(plugin, conversationId, type, title, data)),
-      prompt: (text, { afterTurn = false } = {}) => this.sendPrompt(conversationId, text, { afterTurn }),
+      prompt: this.promptOfItsOwn(plugin, conversationId),
       startConversation: async ({ profile, prompt }) => this.startBeside(conversationId, plugin.manifest.name, profile, prompt),
     };
+  }
+
+  /** A message the plugin sends on its own, which the conversation shows as the plugin's; one from its view, for the user, stays the user's. */
+  private promptOfItsOwn(plugin: CanvasPlugin, conversationId: string) {
+    return (text: string, { afterTurn = false } = {}) => this.sendPrompt(conversationId, text, { afterTurn, fromPlugin: plugin.manifest.title });
   }
 
   private actionContext(plugin: CanvasPlugin, conversationId: string): CanvasActionContext {

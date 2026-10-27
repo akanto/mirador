@@ -222,6 +222,11 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
 
   await test.step("the handed-over task shows above the caller's composer with the start of its reply, and folded under the caller in the sidebar, until dismissed", async () => {
     await backToTheMessageBox(page);
+    const fromBoard = page.locator(".timeline-entry:visible", { has: page.locator(".author", { hasText: "From Board" }) }).locator(".message.user");
+    await expect(fromBoard, "the reply is the plugin's message, not the user's").toContainText("The handed-over task finished: Found 3 callers.");
+    await page.locator(".composer:visible textarea").press("ArrowUp");
+    await expect(page.locator(".composer:visible textarea"), "↑ brings back the user's last message, skipping the plugin's").toHaveValue("What about the cache?");
+    await page.locator(".composer:visible textarea").fill("");
     const task = delegatedTask(page, "SAY Found 3 callers.");
     await expect(task.locator(".delegated-task-text > span").first()).toHaveText("Finished: SAY Found 3 callers. on Local");
     await expect(task.locator(".delegated-task-detail")).toHaveText("Found 3 callers.");
@@ -244,6 +249,21 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await expect(page.locator(".delegated-tasks:visible")).toHaveCount(0);
     await expect(page.locator(".sidebar").getByText("SAY Found 3 callers.")).toHaveCount(0);
     await expect(callerRow.locator(".delegated-toggle")).toHaveCount(0);
+  });
+
+  await test.step("a reply that comes while the caller's agent works waits in the queue, tagged with the plugin's title", async () => {
+    const release = join(host.root, "release-caller");
+    await sendMessage(page, `WRITE ${JSON.stringify([{ waitFor: release }])}`);
+    await expect(page.locator(".chat-header:visible .badge")).not.toHaveText("idle");
+    expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "local", task: "SAY Found 4 callers." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
+    const queued = page.locator("li.queued:visible");
+    await expect(queued.locator(".queued-source")).toHaveText("Board");
+    await expect(queued.locator(".queued-text")).toHaveText("The handed-over task finished: Found 4 callers.");
+    writeFileSync(release, "");
+    await expect(queued).toHaveCount(0);
+    await expect(page.locator(".timeline-entry:visible .message.user").last()).toHaveText("The handed-over task finished: Found 4 callers.");
+    await delegatedTask(page, "SAY Found 4 callers.").getByRole("button", { name: "Dismiss" }).click();
+    await expect(page.locator(".delegated-tasks:visible")).toHaveCount(0);
   });
 
   await test.step("a handed-over task that a restart cuts short carries on after it, and Stop above the composer ends it, which the caller's agent hears", async () => {

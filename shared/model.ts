@@ -290,6 +290,8 @@ export interface QueuedMessage {
   imageIds: string[];
   /** Posted by a script the agent started (mirador message) rather than typed by the user. */
   fromScript?: true;
+  /** Sent by a plugin on its own, such as Delegate with a delegated task's reply: the plugin's title, as it was then. */
+  fromPlugin?: string;
   /** Waits for the running turn to end, then goes out as the next message, instead of joining the turn (⌥Enter). */
   afterTurn?: true;
 }
@@ -502,6 +504,7 @@ export type ConversationEvent =
       attachedRevertIds?: string[];
       imageIds?: string[];
       fromScript?: true;
+      fromPlugin?: string;
       /** The workspace's files as they were when this turn started, so the turn can be undone. */
       checkpoint?: string;
     }

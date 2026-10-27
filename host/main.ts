@@ -79,7 +79,7 @@ void catalog.refresh();
 canvasPlugins.offersFrom(catalog);
 const pluginSettings = new PluginSettingsStore(store, [...loadedPlugins.canvases, ...loadedPlugins.apps].map(({ manifest }) => manifest));
 const conversations = new ConversationService(store, hub, config, notifierMute, images, droppedFiles, notifications, (conversationId) => canvasPlugins.guidanceFor(conversationId));
-canvasPlugins.sendsPromptsWith((conversationId, text, { afterTurn }) => conversations.send(conversationId, text, [], { afterTurn }));
+canvasPlugins.sendsPromptsWith((conversationId, text, { afterTurn, fromPlugin }) => conversations.send(conversationId, text, [], { afterTurn, fromPlugin }));
 canvasPlugins.startsConversationsWith((callerId, plugin, profileName, prompt) => conversations.startBeside(callerId, plugin, profileName, prompt));
 conversations.hearRepliesWith((started, startedBy, reply) => canvasPlugins.replied(started, startedBy, reply));
 const canvasAssetsOrigins = [

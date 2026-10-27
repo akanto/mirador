@@ -8,7 +8,7 @@ export interface PromptHistoryEntry {
 }
 
 export function historyEntry(event: ConversationEvent): PromptHistoryEntry | null {
-  if (event.type === "user-message" && !event.fromScript) return { text: event.text, imageIds: event.imageIds ?? [] };
+  if (event.type === "user-message" && !event.fromScript && !event.fromPlugin) return { text: event.text, imageIds: event.imageIds ?? [] };
   if (event.type === "user-command") return { text: `!${event.command}`, imageIds: [] };
   return null;
 }
@@ -46,7 +46,7 @@ export function steppedTo(history: PromptHistoryEntry[], shownText: string | nul
 export function stoppedMessage(events: StoredEvent[]): Turn | null {
   const latest = events.findLastIndex(({ event }) => event.type === "user-message" || event.type === "user-command");
   const message = events[latest];
-  if (message?.event.type !== "user-message" || message.event.fromScript) return null;
+  if (message?.event.type !== "user-message" || message.event.fromScript || message.event.fromPlugin) return null;
   const stopped = events.slice(latest + 1).some(({ event }) => event.type === "turn-end" && event.stopReason === "cancelled");
   return stopped ? { seq: message.seq, text: message.event.text } : null;
 }

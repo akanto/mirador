@@ -810,8 +810,30 @@ function ScriptIcon() {
   );
 }
 
+function PluginIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M6 2.5h1.2a1.3 1.3 0 0 1 2.6 0H11a.5.5 0 0 1 .5.5v2.2a1.3 1.3 0 0 1 0 2.6V10a.5.5 0 0 1-.5.5H9.8a1.3 1.3 0 0 0-2.6 0H6a.5.5 0 0 1-.5-.5V7.8a1.3 1.3 0 0 0 0-2.6V3a.5.5 0 0 1 .5-.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+        transform="translate(-0.5 1.5)"
+      />
+    </svg>
+  );
+}
+
 function Avatar({ author, harness }: { author: Author; harness: HarnessId }) {
   const picture = useContext(UserPicture);
+  if (typeof author === "object") {
+    return (
+      <span className="avatar plugin" aria-hidden="true">
+        <PluginIcon />
+      </span>
+    );
+  }
   if (author === "script") {
     return (
       <span className="avatar script" aria-hidden="true">
@@ -839,6 +861,7 @@ function Timestamp({ at }: { at: number }) {
 }
 
 function authorName(author: Author, harness: HarnessId) {
+  if (typeof author === "object") return <span data-hint={hints.pluginMessage}>From {author.plugin}</span>;
   if (author === "script") return <span data-hint={hints.scriptMessage}>From a script</span>;
   return author === "user" ? "You" : agentNames[harness];
 }
@@ -1185,6 +1208,11 @@ function QueuedMessages({
             {message.fromScript && (
               <span className="queued-source" data-hint={hints.scriptMessage}>
                 script
+              </span>
+            )}
+            {message.fromPlugin && (
+              <span className="queued-source" data-hint={hints.pluginMessage}>
+                {message.fromPlugin}
               </span>
             )}
             {harnessSteers[harness] && <DeliveryTag conversationId={conversationId} message={message} />}

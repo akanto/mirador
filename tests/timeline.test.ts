@@ -369,6 +369,19 @@ describe("startsAuthorGroup", () => {
     expect(timeline.map(authorOf)).toEqual(["user", "script", "user"]);
     expect(timeline.map((_, index) => startsAuthorGroup(timeline, index))).toEqual([true, true, true]);
   });
+
+  test("a message from a plugin is the plugin's, and each plugin's messages group apart from another's", () => {
+    const timeline = buildTimeline(
+      stored([
+        { type: "user-message", text: "find the callers" },
+        { type: "user-message", text: "The task delegated to Local finished.", fromPlugin: "Delegate" },
+        { type: "user-message", text: "The task delegated to Local failed.", fromPlugin: "Delegate" },
+        { type: "user-message", text: "The user pressed the card.", fromPlugin: "Board" },
+      ]),
+    );
+    expect(timeline.map(authorOf)).toEqual(["user", { plugin: "Delegate" }, { plugin: "Delegate" }, { plugin: "Board" }]);
+    expect(timeline.map((_, index) => startsAuthorGroup(timeline, index))).toEqual([true, true, false, true]);
+  });
 });
 
 describe("lineDiff", () => {

@@ -1675,6 +1675,10 @@ input.picker-search {
   background: #3f7d64;
 }
 
+.avatar.plugin {
+  background: #6e56cf;
+}
+
 .avatar.agent-claude {
   background: #d97757;
 }

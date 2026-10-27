@@ -170,7 +170,7 @@ export const spokenSeverity = ({ severity }: Pick<AgentNoticeBlock, "severity">)
 
 export type TimelineBlock =
   | (Origin & { kind: "agent" | "thought" | "notice" | "info"; text: string } & CarriedImages)
-  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; turnSeq?: number; filesKept?: true } & CarriedImages)
+  | (Origin & { kind: "user"; text: string; imageIds?: string[]; fromScript?: true; fromPlugin?: string; turnSeq?: number; filesKept?: true } & CarriedImages)
   | AgentNoticeBlock
   | ToolBlock
   | PlanBlock
@@ -184,17 +184,22 @@ export type TimelineBlock =
  */
 type ErrorBlock = Origin & { kind: "error"; message: string; usageLimit?: true; authRequired?: true; signedInSince?: true; tryAgainSeq?: number };
 
-export type Author = "user" | "script" | "agent";
+/** A plugin is named by its title. */
+export type Author = "user" | "script" | "agent" | { plugin: string };
 
 export function authorOf(block: TimelineBlock | undefined): Author | null {
   if (!block || block.kind === "notice" || block.kind === "agent-notice") return null;
+  if (block.kind === "user" && block.fromPlugin) return { plugin: block.fromPlugin };
   if (block.kind === "user" && block.fromScript) return "script";
   return block.kind === "user" || block.kind === "command" ? "user" : "agent";
 }
 
+const sameAuthor = (one: Author | null, other: Author | null) =>
+  typeof one === "object" && one !== null && typeof other === "object" && other !== null ? one.plugin === other.plugin : one === other;
+
 export function startsAuthorGroup(timeline: TimelineBlock[], index: number) {
   const author = authorOf(timeline[index]);
-  return author !== null && author !== authorOf(timeline[index - 1]);
+  return author !== null && !sameAuthor(author, authorOf(timeline[index - 1]));
 }
 
 type TextBlockKind = "user" | "agent" | "thought";
@@ -393,6 +398,7 @@ class TimelineBuilder {
           text: event.text,
           ...(event.imageIds && { imageIds: event.imageIds }),
           ...(event.fromScript && { fromScript: event.fromScript }),
+          ...(event.fromPlugin && { fromPlugin: event.fromPlugin }),
           ...(seq > 0 && { turnSeq: seq }),
           ...(event.checkpoint && { filesKept: true as const }),
         });

@@ -245,6 +245,7 @@ export const hints = {
   blockedImage: "Opens the image in your browser. Mirador does not load images from other sites itself, so an agent cannot send them what it read; Settings → Conversations can change that.",
   scriptMessage:
     "A script the agent started sent this as your next message, so the agent picks up when the script is done. Scripts send with mirador message.",
+  pluginMessage: "A plugin sent this as your next message, such as Delegate with the reply of a task the agent handed off, so the agent picks up from there.",
   gitBranch: "The git branch checked out in the workspace directory.",
   model: "The model the agent uses, as chosen in the Model menu above.",
   cost: "What the conversation has cost so far, as the agent reports it.",

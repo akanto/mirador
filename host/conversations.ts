@@ -141,6 +141,7 @@ interface PendingPermission {
 interface PromptStart {
   imageIds?: string[];
   fromScript?: boolean;
+  fromPlugin?: string;
   /** A message of the user's starts a turn of its own, so the files are snapshotted and that turn can be undone. */
   startsTurn?: boolean;
 }
@@ -689,7 +690,7 @@ export class ConversationService {
     this.save({ ...this.get(conversationId), configOptions: response.configOptions });
   }
 
-  async prompt(conversationId: string, text: string, { imageIds = [], fromScript = false, startsTurn = false }: PromptStart = {}) {
+  async prompt(conversationId: string, text: string, { imageIds = [], fromScript = false, fromPlugin, startsTurn = false }: PromptStart = {}) {
     const runtime = this.runtime(conversationId);
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
     if (isClearCommand(text)) return this.clearContext(conversationId);
@@ -707,7 +708,7 @@ export class ConversationService {
     this.setStatus(conversationId, "starting");
     const checkpoint = startsTurn ? await this.snapshotFiles(conversationId) : null;
     this.store.turnStarted(conversationId);
-    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(checkpoint && { checkpoint }) }, notes);
+    this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(fromPlugin && { fromPlugin }), ...(checkpoint && { checkpoint }) }, notes);
     let response: acp.PromptResponse | undefined;
     try {
       const sessionId = await this.ensureSession(conversationId);
@@ -781,11 +782,11 @@ export class ConversationService {
    * writing, or, while the agent waits on tools, once they have finished. Sent `afterTurn`, it waits in the queue for the
    * turn to end.
    */
-  async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, afterTurn = false } = {}) {
+  async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, fromPlugin, afterTurn = false }: { fromScript?: boolean; fromPlugin?: string; afterTurn?: boolean } = {}) {
     const runtime = this.runtime(conversationId);
     const sendsAtOnce = !runtime.running && !this.holdsQueue(runtime) && runtime.queuedMessages.length === 0;
-    if (sendsAtOnce) return this.prompt(conversationId, text, { imageIds, fromScript, startsTurn: true });
-    const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(afterTurn && { afterTurn }) };
+    if (sendsAtOnce) return this.prompt(conversationId, text, { imageIds, fromScript, fromPlugin, startsTurn: true });
+    const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(fromPlugin && { fromPlugin }), ...(afterTurn && { afterTurn }) };
     this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
     this.publish(this.get(conversationId));
     if (!runtime.running) this.sendNextQueuedMessage(conversationId);
@@ -1932,12 +1933,12 @@ export class ConversationService {
     const [next, ...rest] = runtime?.queuedMessages ?? [];
     if (!runtime || !next || runtime.running || this.holdsQueue(runtime)) return;
     this.setQueue(conversationId, runtime, rest);
-    this.prompt(conversationId, next.text, { imageIds: next.imageIds, fromScript: next.fromScript, startsTurn: true }).catch(() => {});
+    this.prompt(conversationId, next.text, { imageIds: next.imageIds, fromScript: next.fromScript, fromPlugin: next.fromPlugin, startsTurn: true }).catch(() => {});
   }
 
   private appendUserMessage(
     conversationId: string,
-    { text, imageIds, fromScript, checkpoint }: Omit<QueuedMessage, "id"> & { checkpoint?: string | null },
+    { text, imageIds, fromScript, fromPlugin, checkpoint }: Omit<QueuedMessage, "id"> & { checkpoint?: string | null },
     { commands, reverts, canvas }: NotesForAgent,
   ) {
     canvas.forEach((note) => note.heard());
@@ -1950,6 +1951,7 @@ export class ConversationService {
       ...(attachedRevertIds.length > 0 && { attachedRevertIds }),
       ...(imageIds.length > 0 && { imageIds }),
       ...(fromScript && { fromScript }),
+      ...(fromPlugin && { fromPlugin }),
       ...(checkpoint && { checkpoint }),
     });
   }
