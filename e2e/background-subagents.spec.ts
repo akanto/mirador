@@ -95,7 +95,7 @@ test("a message joins the turn also while a background subagent waits for permis
   await test.step("the request scrolled away shows above the message box, and leads back to it", async () => {
     await expect(permission).not.toBeInViewport();
     await expect(dock.getByRole("button")).toHaveCount(1);
-    await expect(dock.locator(".approval-subject")).toHaveText("Permission needed: rm -rf scratch; sleep 1; echo removed");
+    await expect(dock.locator(".approval-subject")).toHaveText(/^Permission needed: (Run )?rm -rf scratch; sleep 1; echo removed$/);
     await expect(dock.locator(".approval-facts")).toHaveText(/^asked by Scripted subagent · waiting \d+ s$/);
     await dock.getByRole("button").click();
     await expect(permission).toBeInViewport();

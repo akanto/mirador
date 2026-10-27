@@ -8,6 +8,8 @@ const api = new FakeClaudeApi();
 const PROFILE = "usage limited";
 const CONTINUE = "Continue where you left off.";
 const AUTO_COMPACT_WINDOW = 100_000;
+/** Claude Code names the window it hit, such as "session limit" or "5-hour limit". */
+const LIMIT_REACHED = /You've hit your .+ limit · resets/;
 
 test.beforeAll(async () => {
   await api.start();
@@ -34,7 +36,7 @@ test("at Claude's usage limit, queued messages wait for the reset instead of fai
 
   await test.step("the turn the limit stops shows Claude Code's words, and when the agent continues", async () => {
     await sendMessage(page, "first task");
-    await expect(page.locator(".usage-limit-line")).toContainText("You've hit your session limit · resets", { timeout: 120_000 });
+    await expect(page.locator(".usage-limit-line")).toContainText(LIMIT_REACHED, { timeout: 120_000 });
     await expect(page.locator(".error-line")).toHaveCount(0);
     await expect(notice(page)).toContainText("the agent continues by itself at");
     await waitForTurnToEnd(page);
@@ -87,7 +89,7 @@ test("a reset further off than a timer can wait leaves continuing to you, rather
   await startConversation(page);
 
   await sendMessage(page, "far-off reset");
-  await expect(page.locator(".timeline:visible .usage-limit-line")).toContainText("You've hit your session limit · resets", { timeout: 120_000 });
+  await expect(page.locator(".timeline:visible .usage-limit-line")).toContainText(LIMIT_REACHED, { timeout: 120_000 });
   await waitForTurnToEnd(page);
   await expect(notice(page).filter({ visible: true })).toContainText("it resets at");
   await page.waitForTimeout(3_000);
@@ -113,7 +115,7 @@ test("a limit the same turn's context compaction ran into waits for the reset to
     api.refuseAfterCompaction = "task after the compaction";
     await sendMessage(page, "task after the compaction");
     await expect(page.locator(".timeline:visible")).toContainText("Compact conversation", { timeout: 180_000 });
-    await expect(page.locator(".timeline:visible .usage-limit-line")).toContainText("You've hit your session limit · resets", { timeout: 180_000 });
+    await expect(page.locator(".timeline:visible .usage-limit-line")).toContainText(LIMIT_REACHED, { timeout: 180_000 });
     await expect(page.locator(".timeline:visible .error-line")).toHaveCount(0);
     await expect(notice(page).filter({ visible: true })).toContainText("the agent continues by itself at");
     await waitForTurnToEnd(page);
