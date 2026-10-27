@@ -12,5 +12,3 @@ export function takeArrivedReview(item: CanvasItem | undefined) {
   placedOnArrival.add(item.id);
   return true;
 }
-
-export const isFreshReview = (item: CanvasItem | undefined) => item !== undefined && opensWithRoom(item) && Date.now() - item.createdAt <= FRESH_REVIEW_MS;

@@ -322,6 +322,15 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
   });
 
+  await test.step("a canvas the user hid comes back with the app's tab when the agent opens the app again", async () => {
+    const { hash } = new URL(page.url());
+    await page.locator(".chat-header:visible").getByRole("button", { name: "Hide canvas" }).click();
+    await expect(page.locator(".canvas-panel:visible")).toHaveCount(0);
+    expect(await callCanvasTool(host, hash.slice("#/c/".length), "app_open", { app: "counter", file: "second.json" })).toContain("Counter is open on second.json");
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(view(page).locator("#count")).toHaveText("0");
+  });
+
   await test.step("an app the agent opens while the user is in another conversation is in front when they come back", async () => {
     await appToggle(page).click();
     await expect(appToggle(page)).toHaveAttribute("aria-pressed", "false");

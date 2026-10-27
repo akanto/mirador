@@ -158,6 +158,26 @@ test("panes resize, swap by their grips without reloading, go fullscreen, hide, 
   expect(await placesOf(page)).toEqual({ conversation: "left", canvas: "right bottom", terminals: "right top" });
 });
 
+test("a canvas the user hid comes back when the agent shows something new on it", async ({ page }) => {
+  await signIn(page, host);
+  const [newConversation, addProject] = [page.getByRole("button", { name: "+ New conversation" }), page.getByRole("button", { name: "+ Add a project directory" })];
+  await expect(newConversation.or(addProject)).toBeVisible();
+  if (await addProject.isVisible()) await addWorkspace(page, host.projectDir);
+  const conversationId = await startConversation(page);
+  const header = page.locator(".chat-header:visible");
+  await callCanvasTool(host, conversationId, "show", { title: "Before hiding", html: "<h1>before</h1>" });
+  await expect(page.locator(".canvas-title:visible")).toHaveText("Before hiding");
+  await header.getByRole("button", { name: "Hide canvas" }).click();
+  await expect(pane(page, "canvas")).toHaveCount(0);
+  await page.reload();
+  await expect(header.getByRole("button", { name: "Show canvas" })).toBeVisible();
+  await expect(pane(page, "canvas")).toHaveCount(0);
+
+  await callCanvasTool(host, conversationId, "show", { title: "After hiding", html: "<h1>after</h1>" });
+  await expect(page.locator(".canvas-title:visible")).toHaveText("After hiding");
+  await expect(header.getByRole("button", { name: "Hide canvas" })).toBeVisible();
+});
+
 test("the sidebar resizes between its limits, keeps its width after a reload, and a double-click restores it", async ({ page }) => {
   await signIn(page, host);
   const sidebarWidth = async () => (await page.locator(".sidebar").boundingBox())!.width;

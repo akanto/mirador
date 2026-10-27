@@ -13,6 +13,11 @@ export interface PaneLayout extends LayoutDefault {
   leftShare: number;
   topShare: number;
   fullscreen: PaneId | null;
+  /**
+   * The time of the agent's latest news on the canvas when the user last hid it, in the host's clock as the news has
+   * it: newer news shows it again. Missing from layouts kept before it was.
+   */
+  canvasHiddenAfter?: number;
 }
 
 export const paneLabels: Record<PaneId, string> = { conversation: "Conversation", canvas: "Canvas", terminals: "Terminals" };

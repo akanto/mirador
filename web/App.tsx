@@ -1,9 +1,10 @@
 import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
-import { harnessRewinds, launchLabel, pastelLabels, type CanvasItem, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
+import { harnessRewinds, launchLabel, pastelLabels, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { sidebarItems } from "../shared/sidebar-order.ts";
 import { countWaiting } from "../shared/waiting.ts";
 import { findInOpenConversation, focusPane, startConversationIn, startRenamingOpenConversation } from "./actions.ts";
+import { bringsHiddenCanvasBack, latestCanvasNews, type CanvasNews } from "./canvas-news.ts";
 import { ChatPanel } from "./Chat.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { useClosesAsDialog } from "./desktop-close.ts";
@@ -26,7 +27,6 @@ import { DEFAULT_SIDEBAR_WIDTH, inView, paneLabels, sidebarWidthWithinLimits, sw
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { FirstProfile, ProfilesDialog } from "./Profiles.tsx";
 import { AskToRevert, RevertDialog } from "./Revert.tsx";
-import { isFreshReview, opensWithRoom } from "./review-placement.ts";
 import { SessionsDialog } from "./Sessions.tsx";
 import { SettingsDialog } from "./Settings.tsx";
 import { shortcutKeys, typingStateOf, type ShortcutCommand } from "./shortcuts.ts";
@@ -251,11 +251,11 @@ const isModal = (state: AppState) => state.overlay !== null && state.overlay.kin
 const outOfCanvasPagesReach = (command: ShortcutCommand) =>
   ["new-conversation", "new-workspace", "restart-host", "reload-page", "toggle-terminal"].includes(command.type) || (command.type === "focus" && command.pane === "terminals");
 
-function useShowCanvasForNewReview(items: CanvasItem[] | undefined, canvasVisible: boolean, showCanvas: () => void) {
-  const newestReview = items?.filter(opensWithRoom).at(-1);
+/** A canvas the user hid comes back when the agent puts something new on it: a page, a question, a review, a checklist or an app. */
+function useShowCanvasForNews(news: CanvasNews | undefined, layout: PaneLayout, showCanvas: () => void) {
   useEffect(() => {
-    if (!canvasVisible && isFreshReview(newestReview)) showCanvas();
-  }, [newestReview?.id]);
+    if (layout.hidden.canvas && bringsHiddenCanvasBack(news, layout.canvasHiddenAfter)) showCanvas();
+  }, [news?.key]);
 }
 
 /** Moving a drawn conversation within the page would lose its scroll position, so they keep one order whichever is selected. */
@@ -321,7 +321,13 @@ export function App() {
   const terminalVisible = !layout.hidden.terminals;
   const canvasInView = inView(layout, "canvas");
   const terminalInView = inView(layout, "terminals");
-  const toggleCanvas = () => changeLayout((current) => toggledInView(current, "canvas"));
+  const open = selectedOpen(state);
+  const canvasNews = open && state.selectedConversationId ? latestCanvasNews(open.canvas, state.openApps, state.selectedConversationId) : undefined;
+  const toggleCanvas = () =>
+    changeLayout((current) => {
+      const toggled = toggledInView(current, "canvas");
+      return toggled.hidden.canvas && !current.hidden.canvas ? { ...toggled, canvasHiddenAfter: canvasNews?.at ?? 0 } : toggled;
+    });
   const latestToggleCanvas = useRef(toggleCanvas);
   latestToggleCanvas.current = toggleCanvas;
   const hideCanvas = useCallback(() => latestToggleCanvas.current(), []);
@@ -332,12 +338,11 @@ export function App() {
   };
   const setFullscreen = (pane: PaneId | null) => changeLayout((current) => ({ ...current, fullscreen: pane }));
 
-  const open = selectedOpen(state);
   const programRequest = useProgramRequest();
   useEffect(() => {
     if (programRequest) setHidden("terminals", () => false);
   }, [programRequest]);
-  useShowCanvasForNewReview(open?.canvas, canvasVisible, () => setHidden("canvas", () => false));
+  useShowCanvasForNews(canvasNews, layout, () => setHidden("canvas", () => false));
 
   const closeOverlay = useCallback(() => {
     dispatch({ type: "close-overlay" });
