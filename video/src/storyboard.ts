@@ -18,6 +18,8 @@ const RISKS_AND_QUESTION = { x: 836, y: 300, width: 700, height: 564 };
 const INSTALL_QUESTION = { x: 836, y: 0, width: 700, height: 520 };
 /** Media's frame, its timeline and the note under it. */
 const MEDIA_EDITOR = { x: 836, y: 80, width: 700, height: 640 };
+/** The workspace with the delegated conversation under its caller, and the task working above the composer. */
+const DELEGATED_TASK = { x: 0, y: 290, width: 830, height: 467 };
 
 /**
  * A page the agent shows shows its diagram's source for a few frames before Mermaid draws it: a shot ends just before a
@@ -63,9 +65,9 @@ export const STORYBOARD: Scene[] = [
     id: "show",
     clip: "show",
     shots: [
-      { from: ["typing", -0.5], to: "sent", speed: 1.6 },
+      { from: ["typing", -0.5], to: "sent", speed: 2 },
       { from: "sent", to: ["canvasShown", BEFORE_DRAWING], speed: 1.25 },
-      { from: ["canvasShown", ONCE_DRAWN], to: ["turnEnded", 1.5], fadeInFrames: OVER_THE_FRAME_BEFORE },
+      { from: ["canvasShown", ONCE_DRAWN], to: ["turnEnded", 1.5], speed: 1.25, fadeInFrames: OVER_THE_FRAME_BEFORE },
     ],
     camera: [
       { at: ["typing", -0.5], look: "composer", zoom: 1.6 },
@@ -81,11 +83,11 @@ export const STORYBOARD: Scene[] = [
     id: "point",
     clip: "point",
     shots: [
-      { from: 1, to: ["picked", 0.3], speed: 1.3 },
+      { from: 1, to: ["picked", 0.3], speed: 1.6 },
       { from: ["picked", 0.3], to: "typed", speed: 1.8 },
-      { from: "typed", to: ["asked", 0.3] },
+      { from: "typed", to: ["asked", 0.3], speed: 1.3 },
       { from: ["asked", 0.3], to: ["redrawn", BEFORE_DRAWING], speed: 1.5 },
-      { from: ["redrawn", ONCE_DRAWN], to: ["redrawn", 2], fadeInFrames: OVER_THE_FRAME_BEFORE },
+      { from: ["redrawn", ONCE_DRAWN], to: ["redrawn", 1.5], fadeInFrames: OVER_THE_FRAME_BEFORE },
     ],
     camera: [
       { at: 1, look: TOP_OF_DIAGRAM, zoom: 1.6 },
@@ -134,15 +136,15 @@ export const STORYBOARD: Scene[] = [
     shots: [
       { from: ["typing", -0.4], to: "sent", speed: 1.8 },
       { from: "sent", to: ["reviewShown", -0.2], speed: 1.5 },
-      { from: ["reviewShown", -0.2], to: "flow", speed: 1.2 },
-      { from: "flow", to: ["flowStep3", -0.2], speed: 1.8 },
+      { from: ["reviewShown", -0.2], to: "flow", speed: 1.5 },
+      { from: "flow", to: ["flowStep3", -0.2], speed: 2.4 },
       { from: ["findings", -0.1], to: "askOpened", speed: 1.2 },
-      { from: "askOpened", to: "questionTyped", speed: 1.6 },
-      { from: "questionTyped", to: ["asked", 0.5], speed: 1.2 },
+      { from: "askOpened", to: "questionTyped", speed: 2.4 },
+      { from: "questionTyped", to: ["asked", 0.5], speed: 1.6 },
       { from: ["asked", 0.5], to: "chatShown", speed: 1.3 },
-      { from: "chatShown", to: ["answered", 1.6], speed: 0.8 },
-      { from: ["answered", 1.6], to: ["dropped", -0.9], speed: 1.8 },
-      { from: ["dropped", -0.9], to: ["postClicked", -0.3], speed: 2.2 },
+      { from: "chatShown", to: ["answered", 1.6] },
+      { from: ["answered", 1.6], to: ["dropped", -0.9], speed: 2.4 },
+      { from: ["dropped", -0.9], to: ["postClicked", -0.3], speed: 3 },
       { from: ["postClicked", -0.3], to: ["posted", 0.9], speed: 1.2 },
     ],
     camera: [
@@ -158,8 +160,8 @@ export const STORYBOARD: Scene[] = [
     captions: [{ kicker: "Review", title: "A guided tour of the change.", at: 4.2, seconds: 3.4 }],
     narration: [
       { line: "review", at: 3.4 },
-      { line: "reviewAsk", at: 10.8 },
-      { line: "reviewPost", at: 19.2 },
+      { line: "reviewAsk", at: 10.6 },
+      { line: "reviewPost", at: 14.8 },
     ],
   },
   {
@@ -204,16 +206,36 @@ export const STORYBOARD: Scene[] = [
   },
   {
     kind: "clip",
+    id: "delegate",
+    clip: "delegate",
+    shots: [
+      { from: ["typing", -0.3], to: "sent", speed: 2.6 },
+      { from: "sent", to: ["delegated", 0.4], speed: 2 },
+      { from: ["delegated", 0.4], to: ["unfolded", 0.6], speed: 1.5 },
+      { from: ["unfolded", 0.6], to: ["replied", -0.3], speed: 3.5 },
+      { from: ["replied", -0.3], to: ["checked", 1.4], speed: 1.8 },
+    ],
+    camera: [
+      { at: ["typing", -0.3], look: "composer", zoom: 1.6 },
+      { at: ["sent", 0.2], look: "timeline", zoom: 1.4 },
+      { at: ["delegated", 0.1], look: DELEGATED_TASK, zoom: 1.85 },
+      { at: ["replied", 0.1], look: "timeline", zoom: 1.4 },
+    ],
+    captions: [{ kicker: "Delegate", title: "Long reads go to a local model.", at: 1.6, seconds: 3.4 }],
+    narration: [{ line: "delegate", at: 0.4 }],
+  },
+  {
+    kind: "clip",
     id: "voice",
     clip: "voice",
     shots: [
-      { from: ["listening", -1.25], to: ["listening", 3.3] },
+      { from: ["listening", -0.6], to: ["listening", 3.3] },
       { from: ["listening", 3.3], to: "sent", speed: 3 },
       { from: "sent", to: "reading", speed: 3 },
       { from: "reading", to: ["listeningAgain", 0.6] },
     ],
     camera: [
-      { at: ["listening", -1.25], look: "composer", zoom: 1.6 },
+      { at: ["listening", -0.6], look: "composer", zoom: 1.6 },
       { at: ["sent", -0.2], look: "timeline", zoom: 1.4 },
       { at: ["listeningAgain", -0.3], look: "composer", zoom: 1.6 },
     ],
@@ -269,9 +291,9 @@ export const STORYBOARD: Scene[] = [
     kind: "clip",
     id: "groups",
     clip: "groups",
-    shots: [{ from: 0.3, to: ["moved", 0.9], speed: 1.35 }],
+    shots: [{ from: 0.5, to: ["movedInView", 0.9], speed: 1.5 }],
     camera: [
-      { at: 0.3, look: { x: 0, y: 0, width: 300, height: 520 }, zoom: 1.6 },
+      { at: 0.5, look: { x: 0, y: 0, width: 300, height: 520 }, zoom: 1.6 },
       { at: ["grouped", 0.2], look: "app" },
     ],
     captions: [{ kicker: "Groups", title: "Your projects, in your order.", at: 0.4, seconds: 3, side: "right" }],

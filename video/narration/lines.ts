@@ -27,6 +27,7 @@ export const LINES = {
   point: "Point at anything it drew, and ask about it, or have it changed.",
   plugins: "Mirador grows with plugins. Your agent knows the official ones, and installs one when you say so.",
   media: "Like Media. Mark what's wrong on the frame, and the agent cuts the video and renders it.",
+  delegate: "Long reads go to a local model, and the answer comes back to your agent to check.",
   voice: "Or just talk to it.",
   voiceAsk: { text: "How long will the switch-over take, and what could go wrong?", voice: USER_VOICE },
   voiceReply: { text: "About ten minutes, read-only. It waits for replication to catch up before it switches.", voice: AGENT_VOICE },

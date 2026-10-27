@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
-import { openSettings, signIn, useOwnVoiceServer, voiceSection, waitForTurnToEnd, walkthroughView, workspaceCard } from "../../e2e/helpers.ts";
+import { addWorkspaceFromSidebar, openSettings, signIn, useOwnVoiceServer, voiceSection, waitForTurnToEnd, walkthroughView, workspaceCard } from "../../e2e/helpers.ts";
 import type { Demo, DemoConversation } from "../../e2e/seed-demo.ts";
 import { TestHost } from "../../e2e/test-host.ts";
 import { Cursor } from "./cursor.ts";
@@ -15,7 +15,7 @@ import { CHECKOUT_TEST, checkoutTest, CLAUDE_SETTINGS, createWorld, git, REPLAY_
 import { Director } from "./director.ts";
 import { MEDIA_FROM_CACHE, setUpPlugins } from "./plugins.ts";
 import { ClipRecorder } from "./recorder.ts";
-import { LAYOUT_CHOICE, MEDIA_INSTALLED, MEDIA_INSTALLED_REPLY, PULL_REQUEST, prompts, scripts } from "./scenes.ts";
+import { DEAD_FLAGS_ANSWER, LAYOUT_CHOICE, MEDIA_INSTALLED, MEDIA_INSTALLED_REPLY, PULL_REQUEST, prompts, scripts } from "./scenes.ts";
 import { expect, test } from "./studio.ts";
 import { typeLikeAPerson } from "./typing.ts";
 
@@ -119,14 +119,6 @@ test.afterAll(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-async function addWorkspace(page: Page, directory: string) {
-  await page.getByRole("button", { name: "Add workspace" }).click();
-  const input = page.getByLabel("Workspace directory");
-  await input.fill(directory);
-  await input.press("Enter");
-  await expect(workspaceCard(page, directory)).toBeVisible();
-}
-
 async function newConversationIn(page: Page, directory: string) {
   const previousUrl = page.url();
   await workspaceCard(page, directory).getByRole("button", { name: "+ New conversation" }).click();
@@ -198,6 +190,12 @@ async function timelinePoint(page: Page, seconds: number) {
 const sidebarItem = (page: Page, directory: string, title: string) => workspaceCard(page, directory).locator("li", { hasText: title });
 const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
 
+/** Reaching the last workspace scrolls the sidebar down; a person scrolls back up to see where it went. */
+async function scrollSmoothlyToTop(scroller: Locator) {
+  await scroller.evaluate((element) => element.scrollTo({ top: 0, behavior: "smooth" }));
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
+}
+
 /** Scrolls a target to the middle of its scroller as a person's wheel would, instead of the jump Playwright makes. */
 async function scrollSmoothlyTo(page: Page, target: Locator) {
   await target.evaluate((element) => element.scrollIntoView({ behavior: "smooth", block: "center" }));
@@ -219,7 +217,7 @@ test("the trailer's clips", async ({ page }) => {
   const cursor = new Cursor(page, { x: 980, y: 620 });
   await cursor.install();
   await signIn(page, host);
-  for (const directory of [infra, storefront, mobileApp, shopApi]) await addWorkspace(page, directory);
+  for (const directory of [infra, storefront, mobileApp, shopApi]) await addWorkspaceFromSidebar(page, directory, "Claude Code");
 
   const ids = {
     flakyLogin: await newConversationIn(page, shopApi),
@@ -229,6 +227,7 @@ test("the trailer's clips", async ({ page }) => {
     tightenVideo: await newConversationIn(page, storefront),
     coldStart: await newConversationIn(page, mobileApp),
     settingsLayout: await newConversationIn(page, mobileApp),
+    deadFlags: await newConversationIn(page, mobileApp),
     translate: await newConversationIn(page, storefront),
     postgres: await newConversationIn(page, infra),
   };
@@ -260,6 +259,7 @@ test("the trailer's clips", async ({ page }) => {
       conversation(ids.explainCheckout, "Explain the checkout flow", 1, []),
       conversation(ids.coldStart, "Speed up the cold start", 30, [userSays("Profile the cold start on a mid-range phone and cut it below a second."), agentSays("Starting a trace on the emulator…"), { type: "turn-end", stopReason: "refusal" }], "error"),
       conversation(ids.settingsLayout, "Pick a settings layout", 2, []),
+      conversation(ids.deadFlags, "Find the dead feature flags", 5, []),
       conversation(ids.translate, "Translate the checkout pages", 2, []),
       conversation(ids.tightenVideo, "Tighten the checkout video", 4, []),
       conversation(ids.postgres, "Plan the Postgres 18 upgrade", 90, [userSays("Plan the upgrade to Postgres 18 with no downtime."), agentSays("Logical replication to a new 18 cluster, then a switch-over in the next maintenance window."), turnEnd]),
@@ -518,6 +518,34 @@ test("the trailer's clips", async ({ page }) => {
     });
   });
 
+  await scene("delegate: the agent hands the reading to a local model, and checks what comes back", async () => {
+    await openConversation(page, ids.deadFlags);
+    const caller = sidebarItem(page, mobileApp, "Find the dead feature flags");
+    const delegatedTask = page.locator(".delegated-tasks:visible li");
+    await film("delegate", async () => {
+      await page.waitForTimeout(400);
+      await recorder.markRect("composer", page.locator(".composer:visible"));
+      await recorder.markRect("caller", caller);
+      await sendOnCamera(page, cursor, recorder, prompts.deadFlags);
+      await expect(delegatedTask).toContainText("Working");
+      recorder.mark("delegated");
+      await recorder.markRect("timeline", page.locator(".timeline:visible"));
+      await recorder.markRect("conversation", page.locator('[data-pane="conversation"]:visible'));
+      await page.waitForTimeout(800);
+      await cursor.click(caller.getByRole("button", { name: "1 delegated" }));
+      recorder.mark("unfolded");
+      await recorder.markRect("workspace", workspaceCard(page, mobileApp));
+      await expect(delegatedTask.locator(".delegated-task-detail")).toBeVisible({ timeout: 60_000 });
+      recorder.mark("working");
+      await expect(delegatedTask).toContainText("Finished", { timeout: 60_000 });
+      recorder.mark("replied");
+      await expect(page.locator(".timeline:visible .message.agent").last()).toContainText(DEAD_FLAGS_ANSWER, { timeout: 60_000 });
+      await waitForTurnToEnd(page);
+      recorder.mark("checked");
+      await page.waitForTimeout(2200);
+    });
+  });
+
   await scene("voice: ask out loud, hear the gist of the reply, and keep talking", async () => {
     await setUpVoice(page);
     await openConversation(page, ids.postgres);
@@ -551,7 +579,7 @@ test("the trailer's clips", async ({ page }) => {
     await film("edit", async () => {
       await page.waitForTimeout(400);
       await sendOnCamera(page, cursor, recorder, prompts.fix);
-      const approval = page.locator(".canvas-panel .edit-approval");
+      const approval = page.locator(".canvas-panel:visible .edit-approval");
       await expect(approval).toBeVisible();
       recorder.mark("approval");
       await recorder.markRect("canvas", canvasPane(page));
@@ -564,7 +592,7 @@ test("the trailer's clips", async ({ page }) => {
       await page.waitForTimeout(700);
       await cursor.click(canvasPane(page).getByRole("button", { name: "Changes" }));
       recorder.mark("changes");
-      const changes = page.locator(".changes");
+      const changes = page.locator(".changes:visible");
       await expect(changes.getByRole("button", { name: /checkout\.ts .*Changed by the agent/ })).toBeVisible();
       await expect(canvasPane(page).getByText(/Allowed: edit/)).toBeHidden({ timeout: 15_000 });
       recorder.mark("turnListed");
@@ -624,6 +652,9 @@ test("the trailer's clips", async ({ page }) => {
       await dragWorkspaceInto(page, cursor, workspaceCard(page, infra).locator(":scope > header"), platform.locator(":scope > header"));
       await expect(platform.locator("section.workspace")).toHaveCount(1);
       recorder.mark("moved");
+      await page.waitForTimeout(500);
+      await scrollSmoothlyToTop(page.locator(".sidebar-scroll"));
+      recorder.mark("movedInView");
       await page.waitForTimeout(1800);
     });
   });

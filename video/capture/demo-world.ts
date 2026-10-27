@@ -24,7 +24,7 @@ export function createWorld({ home, projects }: ReturnType<typeof worldIn>) {
     ".gitconfig": "[user]\n\tname = Ada\n\temail = ada@example.com\n[commit]\n\tgpgsign = false\n[init]\n\tdefaultBranch = main\n",
   });
   createShopApi(projects.shopApi);
-  createProject(projects.mobileApp, { "README.md": "# mobile-app\n", "src/settings/SettingsScreen.tsx": settingsScreen }, "Settings screen with every option on one page");
+  createProject(projects.mobileApp, { "README.md": "# mobile-app\n", "src/settings/SettingsScreen.tsx": settingsScreen, ...featureFlags }, "Settings screen with every option on one page");
   createProject(projects.storefront, { "README.md": "# storefront\n", "pages/checkout.tsx": "export default function Checkout() {\n  return <main>Checkout</main>;\n}\n" }, "Checkout page");
   createProject(projects.infra, { "README.md": "# infra\n", "postgres/cluster.tf": 'resource "postgres_cluster" "main" {\n  version = "16"\n}\n' }, "Postgres 16 cluster");
 }
@@ -140,3 +140,37 @@ const settingsScreen = `export function SettingsScreen() {
   return <ScrollView>{allSettings.map((setting) => <SettingRow key={setting.id} setting={setting} />)}</ScrollView>;
 }
 `;
+
+/** The mobile app's feature flags, and the screens that read them: three flags nothing reads any more. */
+const featureFlags = {
+  "src/flags.ts": `export const flags = {
+  newOnboarding: true,
+  quickReorder: true,
+  offlineCart: false,
+  biometricLogin: true,
+  darkModeToggle: true,
+  legacyPushTokens: false,
+  holidayBanner: false,
+  oldSettingsMenu: false,
+};
+`,
+  "src/home/HomeScreen.tsx": `import { flags } from "../flags";
+
+export function HomeScreen() {
+  if (flags.newOnboarding) return <Onboarding />;
+  return <Home showReorder={flags.quickReorder} />;
+}
+`,
+  "src/cart/CartScreen.tsx": `import { flags } from "../flags";
+
+export const CartScreen = () => <Cart offline={flags.offlineCart} />;
+`,
+  "src/auth/LoginScreen.tsx": `import { flags } from "../flags";
+
+export const LoginScreen = () => <Login biometric={flags.biometricLogin} />;
+`,
+  "src/theme/ThemeToggle.tsx": `import { flags } from "../flags";
+
+export const ThemeToggle = () => (flags.darkModeToggle ? <Toggle /> : null);
+`,
+};

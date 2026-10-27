@@ -113,6 +113,13 @@
       "voice": "am_fenrir",
       "speed": 1
     },
+    "delegate": {
+      "text": "Long reads go to a local model, and the answer comes back to your agent to check.",
+      "file": "delegate.wav",
+      "seconds": 4.8213333333333335,
+      "voice": "am_fenrir",
+      "speed": 1
+    },
     "voice": {
       "text": "Or just talk to it.",
       "file": "voice.wav",

@@ -18,11 +18,19 @@ export const prompts = {
   openVideo: `Open ${DEMO_VIDEO.file} in Media.`,
   spinnerNote: "The spinner drags on here. Keep a second of it.",
   switchOverTime: "How long will the switch-over take, and what could go wrong?",
+  deadFlags: "Which of our feature flags can we delete? Check every screen.",
 };
 
 /** What Mirador tells the agent once the user answers Install; the agent's next turn answers to it. */
 export const MEDIA_INSTALLED = "installed the Media plugin";
 export const MEDIA_INSTALLED_REPLY = "Media is installed. Once Mirador restarts, I'll open the video in it.";
+
+/** The task the agent hands to the local model, whose first line titles the conversation it starts. */
+const DEAD_FLAGS_TASK = "Find the feature flags in src/flags.ts that nothing reads.";
+/** How Mirador starts the message that brings the local model's reply back to the agent. */
+const LOCAL_MODEL_REPLIED = "The task delegated to Local";
+const DEAD_FLAGS = ["legacyPushTokens", "holidayBanner", "oldSettingsMenu"];
+export const DEAD_FLAGS_ANSWER = "Checked: three flags are dead";
 
 export const LAYOUT_CHOICE = "Grouped list (recommended)";
 
@@ -140,8 +148,8 @@ const review = (shopApi: string) => ({
 });
 
 /** The director's scripts, for the projects of the demo world. */
-export function scripts({ projects, assetsOrigin }: { projects: { shopApi: string; storefront: string; infra: string }; assetsOrigin: string }): Script[] {
-  const { shopApi, infra } = projects;
+export function scripts({ projects, assetsOrigin }: { projects: { shopApi: string; mobileApp: string; storefront: string; infra: string }; assetsOrigin: string }): Script[] {
+  const { shopApi, mobileApp, infra } = projects;
   return [
     {
       prompt: prompts.explainCheckout,
@@ -269,6 +277,36 @@ export function scripts({ projects, assetsOrigin }: { projects: { shopApi: strin
         { thinkMs: 400, call: { tool: "canvas.apply", input: { app: "media", op: { op: "mark-done", mark: "m1" } } } },
         { thinkMs: 400, call: { tool: "canvas.app_run", input: { app: "media", task: "render" } } },
         { thinkMs: 500, say: `Done: the spinner shows for a second instead of six, and the video is ${DEMO_VIDEO.seconds - (DEMO_VIDEO.spinnerEnds - DEMO_VIDEO.spinnerStarts - 0.5)} seconds long. The render is in \`checkout-demo.edited.mp4\`.` },
+      ],
+    },
+    {
+      prompt: prompts.deadFlags,
+      steps: [
+        {
+          thinkMs: 1200,
+          say: "That's a lot of reading for a short answer, so I'm handing the sweep to Local, the model on this machine.",
+          call: {
+            tool: "canvas.delegate",
+            input: { profile: "Local", task: `${DEAD_FLAGS_TASK}\n\nRead src/flags.ts for the flags' names, then search src for where each is read. Answer with the flags nothing reads, one per line.` },
+          },
+        },
+        { thinkMs: 400, say: "Local is on it. I'll check what it finds." },
+      ],
+    },
+    {
+      prompt: DEAD_FLAGS_TASK,
+      title: "Unread feature flags in src/flags.ts",
+      steps: [
+        { thinkMs: 1800, call: { tool: "Read", input: { file_path: join(mobileApp, "src/flags.ts") } } },
+        { thinkMs: 2400, call: { tool: "Bash", input: { command: 'grep -rn "flags\\." src --include=*.tsx', description: "Find where each flag is read" } } },
+        { thinkMs: 2000, say: `Three flags are never read:\n\n${DEAD_FLAGS.map((flag) => `- ${flag}`).join("\n")}` },
+      ],
+    },
+    {
+      prompt: LOCAL_MODEL_REPLIED,
+      steps: [
+        { thinkMs: 900, say: "Checking Local's list before we rely on it.", call: { tool: "Bash", input: { command: `grep -rn "${DEAD_FLAGS.join("\\|")}" src`, description: "Check that nothing reads them" } } },
+        { thinkMs: 700, say: `${DEAD_FLAGS_ANSWER}, as only \`src/flags.ts\` names them: ${new Intl.ListFormat("en").format(DEAD_FLAGS.map((flag) => `\`${flag}\``))}. Want me to delete them?` },
       ],
     },
     {

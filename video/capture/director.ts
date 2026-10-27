@@ -9,16 +9,20 @@ type MessagesRequest = {
   stream?: boolean;
   tools?: { name: string }[];
   messages: { role: string; content: Content }[];
+  output_config?: { format?: { schema?: { properties?: Record<string, unknown> } } };
 };
 
 /** A tool by Claude Code's own name, or one of the canvas's by its action, whatever the canvas server is called. */
-export type ToolCall = { tool: "Read" | "Bash" | "Edit" | "Write" | "canvas.show" | "canvas.ask" | "canvas.review" | "canvas.update_review" | "canvas.plugin_install" | "canvas.app_open" | "canvas.apply" | "canvas.app_run"; input: Record<string, unknown> };
+export type ToolCall = { tool: "Read" | "Bash" | "Edit" | "Write" | "canvas.show" | "canvas.ask" | "canvas.review" | "canvas.update_review" | "canvas.plugin_install" | "canvas.app_open" | "canvas.apply" | "canvas.app_run" | "canvas.delegate"; input: Record<string, unknown> };
 
 /** One reply of the agent: a pause as if thinking, some text, and the tool it calls next, if any. */
 export type Step = { thinkMs?: number; say?: string; call?: ToolCall };
 
-/** What the agent does when the user's message contains `prompt`: one step per reply, the next after each tool result. */
-export type Script = { prompt: string; steps: Step[] };
+/**
+ * What the agent does when the user's message contains `prompt`: one step per reply, the next after each tool result.
+ * A conversation it starts, which nobody named, is titled `title`, as Claude Code would have its model name it.
+ */
+export type Script = { prompt: string; steps: Step[]; title?: string };
 
 const textOf = (content: Content) => (typeof content === "string" ? content : content.map(({ text }) => text ?? "").join(""));
 const typedText = (content: Content) => textOf(content).split(/<\/system-reminder>/).at(-1)!.trim();
@@ -92,6 +96,9 @@ export class Director {
     // A message sent while a turn runs reaches the model in the same user message as a tool's result.
     const typedIndex = body.messages.findLastIndex(({ role, content }) => role === "user" && typedText(content) !== "");
     const typed = typedIndex < 0 ? "" : typedText(body.messages[typedIndex]!.content);
+    const asksForATitle = body.output_config?.format?.schema?.properties?.title !== undefined;
+    const titled = asksForATitle ? this.scripts.find(({ prompt, title }) => title && typed.includes(prompt)) : undefined;
+    if (titled) return this.send(body, response, { say: JSON.stringify({ title: titled.title }) }, false);
     const script = mainLoop ? this.scripts.find(({ prompt }) => typed.includes(prompt)) : undefined;
     this.requests.push({ typed, mainLoop, scripted: Boolean(script) });
     if (process.env.MIRADOR_VIDEO_DIRECTOR_LOG) appendFileSync(process.env.MIRADOR_VIDEO_DIRECTOR_LOG, `${JSON.stringify({ typed, mainLoop, script: script?.prompt, lastMessage: body.messages.at(-1) })}\n`);

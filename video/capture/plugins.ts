@@ -6,7 +6,8 @@ import { join } from "node:path";
 /**
  * The plugins the trailer films, each a clean clone of its official repo at a release tag, kept in a cache so the capture
  * clones them once. The checklist and the code review come with Mirador, so they are linked in built, at the tags
- * plugins/defaults.json names; Media is the official plugin the agent recommends and installs on camera.
+ * plugins/defaults.json names; Media is the official plugin the agent recommends and installs on camera, and Delegate is
+ * installed already, for the agent to hand a task to a local model.
  */
 const cache = join(homedir(), ".cache", "mirador-video", "plugins");
 const repoRoot = join(import.meta.dirname, "..", "..");
@@ -16,6 +17,7 @@ type Release = { name: string; repo: string; tag: string };
 const comesWithMirador = () => (JSON.parse(readFileSync(join(repoRoot, "plugins", "defaults.json"), "utf8")) as { plugins: Release[] }).plugins;
 
 export const MEDIA: Release = { name: "media", repo: "https://github.com/sodre90/mirador-media.git", tag: "v1.0.0" };
+const DELEGATE: Release = { name: "delegate", repo: "https://github.com/sodre90/mirador-delegate.git", tag: "v0.3.0" };
 
 const cachedClone = ({ name, tag }: Release) => join(cache, `${name}@${tag}`);
 
@@ -79,11 +81,11 @@ function cloned(release: Release, built: boolean) {
   return folder;
 }
 
-/** Links the plugins that come with Mirador into the host's plugins folder, and writes the catalog for MIRADOR_PLUGIN_CATALOG. */
+/** Links the plugins that come with Mirador, and Delegate, into the host's plugins folder, and writes the catalog for MIRADOR_PLUGIN_CATALOG. */
 export function setUpPlugins(dataDir: string, catalogFile: string) {
   const plugins = join(dataDir, "plugins");
   mkdirSync(plugins, { recursive: true });
-  for (const release of comesWithMirador()) symlinkSync(cloned(release, true), join(plugins, release.name));
+  for (const release of [...comesWithMirador(), DELEGATE]) symlinkSync(cloned(release, true), join(plugins, release.name));
   cloned(MEDIA, false);
   writeFileSync(catalogFile, JSON.stringify(catalog));
 }
