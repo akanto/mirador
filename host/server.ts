@@ -1030,7 +1030,10 @@ export function startServer(services: HostServices) {
       case "app.apply":
         return void apps
           .apply(message.workspaceId, message.app, message.op, { kind: "you" })
-          .catch((error) => hub.send(socket, { type: "error", message: messageOf(error) }));
+          .catch((error) => {
+            console.warn(`${message.app}'s view applied an operation that failed: ${messageOf(error)}`);
+            hub.send(socket, { type: "error", message: messageOf(error) });
+          });
       case "app.use-in":
         try {
           return apps.useIn(message.workspaceId, message.app, message.conversationId);

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type AppMediaGrant, type AppTaskContext, type AppTaskState, type OpenApp } from "../../shared/apps.ts";
 import { toPosix } from "../paths.ts";
+import { renameWhenFree } from "../rename-when-free.ts";
 import type { Store } from "../store.ts";
 import { AppMediaGrants } from "./media.ts";
 import { AppProblem, appViewPath, installedApp, messageOf, type AppPlugin } from "./plugins.ts";
@@ -443,7 +444,7 @@ export class AppDocuments {
     mkdirSync(dirname(opened.path), { recursive: true });
     const temporary = join(dirname(opened.path), `.${basename(opened.path)}.mirador-${process.pid}`);
     await Bun.write(temporary, text);
-    renameSync(temporary, opened.path);
+    await renameWhenFree(temporary, opened.path);
     opened.knownHash = hashOf(text);
   }
 
