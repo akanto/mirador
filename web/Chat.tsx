@@ -1428,7 +1428,7 @@ function DelegatedTaskRow({ task, profile }: { task: Conversation; profile: stri
           on {profile}
           {!reply && ` for ${formatDuration(now - task.createdAt)}`}
         </span>
-        {detail && <span className="delegated-task-detail">{detail}</span>}
+        {(detail || !reply) && <span className="delegated-task-detail">{detail}</span>}
       </div>
       {!reply && isBusy(task) && (
         <button type="button" className="link" data-hint={hints.stopDelegatedTask} onClick={() => connection.send({ type: "conversation.cancel", conversationId: task.id })}>

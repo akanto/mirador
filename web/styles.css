@@ -4546,6 +4546,7 @@ button.shell-more:hover {
 }
 
 .delegated-task-detail {
+  min-height: 1lh;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;

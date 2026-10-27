@@ -253,6 +253,8 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     const task = delegatedTask(page, title);
     await expect(task.locator(".delegated-task-text > span").first()).toHaveText(new RegExp(`^Working: ${title} on Local for \\d+ s$`));
     await expect.poll(timesSent).toBe(1);
+    const detailHeight = () => task.locator(".delegated-task-detail").evaluate((line) => line.getBoundingClientRect().height);
+    expect(await detailHeight(), "a working task keeps the line its tool calls show in, so the row doesn't jump between them").toBeGreaterThan(0);
 
     const runningBefore = host.log.match(/Mirador is running/g)?.length ?? 0;
     const loadedFromTheNextHost = page.waitForEvent("load", { timeout: 60_000 });
