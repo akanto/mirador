@@ -16,6 +16,8 @@ export interface ChangedFile {
   removed: number | null;
   /** Whether this conversation's agent changed it with its edit tools, within the scope. */
   byAgent: boolean;
+  /** Whether git ignores it: the session scope lists these only where the agent's commands wrote them, so a view can leave them out. */
+  ignored?: boolean;
 }
 
 /**

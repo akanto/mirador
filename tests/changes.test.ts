@@ -444,7 +444,7 @@ test("ignored files written since a timestamp are found, while unignored and old
   const future = now + 60_000;
 
   const found = await ignoredFilesWritten(projectDir, writtenSince(past));
-  expect(found.changes).toEqual([{ path: "build/output.log", status: "added", added: 2, removed: 0 }]);
+  expect(found.changes).toEqual([{ path: "build/output.log", status: "added", added: 2, removed: 0, ignored: true }]);
   expect(found.truncated).toBe(false);
 
   const none = await ignoredFilesWritten(projectDir, writtenSince(future));
@@ -752,7 +752,7 @@ test("the session scope lists the tracked, untracked and git-ignored files the a
   const session = await changes.list("c1", "session");
   expect(session.project).toEqual([
     { path: "app.ts", status: "modified", added: 1, removed: 1, byAgent: false },
-    { path: "build/out.js", status: "added", added: 1, removed: 0, byAgent: false },
+    { path: "build/out.js", status: "added", added: 1, removed: 0, byAgent: false, ignored: true },
     { path: "new.txt", status: "added", added: 1, removed: 0, byAgent: false },
   ]);
   expect((await changes.diff("c1", "session", "app.ts")).diffs[0]?.hunks[0]?.rows.map(({ kind }) => kind)).toEqual(["removed", "added"]);
@@ -897,7 +897,7 @@ test("a git-ignored file a script rewrote in the session says git ignores it, ra
   await Bun.sleep(50);
   await startTurn();
   await agentRuns("build", () => writeFile(join(projectDir, "build", "cache.js"), "rewritten by a script\n"));
-  expect((await changes.list("c1", "session")).project).toEqual([{ path: "build/cache.js", status: "modified", added: null, removed: null, byAgent: false }]);
+  expect((await changes.list("c1", "session")).project).toEqual([{ path: "build/cache.js", status: "modified", added: null, removed: null, byAgent: false, ignored: true }]);
   expect((await changes.diff("c1", "session", "build/cache.js")).diffs[0]).toMatchObject({ hiddenBecause: "git ignores this file, so there is no earlier version to compare with" });
 });
 

@@ -283,6 +283,7 @@ export const hints = {
     all: "Every file of the project in its folders, the changed ones marked. Only the folders holding a change start open. Remembered in this browser.",
   },
   changesFoldAll: "Fold every folder, so only the top level shows. Click a folder to open it again.",
+  changesIgnored: "Show or hide the files git ignores that the agent's commands wrote, such as build output. Remembered in this browser.",
   changesEditedByAgent: "The project's files this conversation's agent changed with its edit tools in this turn.",
   changesChangedOtherwise: "The project's files changed in this turn without the agent's edit tools: by commands the agent ran, by you, or by another conversation or tool working in this folder.",
   changesFromCommit: "A commit since the turn began changed this file, such as a pull's or the agent's own.",

@@ -11,6 +11,8 @@ export interface TreeChange {
   /** Null for a binary file. */
   added: number | null;
   removed: number | null;
+  /** Whether git ignores the file, which only the list of ignored files' writes has. */
+  ignored?: boolean;
 }
 
 const SUBMODULE_MODE = "160000";
@@ -214,7 +216,8 @@ export async function ignoredFilesWritten(
   const hiddenFolders = listed.filter((path) => path.endsWith("/")).map((folder) => folder.slice(0, -1)).filter(isScannedPath);
   const walked = await scannedFiles(directory, limit, { folders: hiddenFolders, skipOtherRepositories: true });
   const hidden = [...new Set([...hiddenFiles, ...walked.files])];
-  return { changes: await writtenChangesOf(directory, hidden.slice(0, limit), counts), truncated: walked.truncated || hidden.length > limit };
+  const written = await writtenChangesOf(directory, hidden.slice(0, limit), counts);
+  return { changes: written.map((change) => ({ ...change, ignored: true })), truncated: walked.truncated || hidden.length > limit };
 }
 
 /**

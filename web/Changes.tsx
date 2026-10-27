@@ -11,6 +11,7 @@ import { withHomeAsTilde } from "./workspace-folder.ts";
 
 const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted", session: "This session" };
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
+const ignoredFiles = storedChoice<"shown" | "hidden">("mirador-changes-ignored", ["shown", "hidden"] as const, "shown");
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 const listViews = ["list", "tree", "all"] as const;
 type ListView = (typeof listViews)[number];
@@ -289,7 +290,10 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
   const [selectedPath, setSelectedPath] = useState(selectedPaths.get(conversationId) ?? null);
   const loadedList = useKeptLoad(`list ${conversationId} ${scope}`, () => listChanges(conversationId, scope), reloadWhen);
   const list = loadedList && "value" in loadedList ? loadedList.value : null;
-  const files = list ? [...list.project, ...list.committed, ...list.outside] : [];
+  const showIgnored = ignoredFiles.use() === "shown";
+  const hiddenIgnored = list && !showIgnored ? list.project.filter(({ ignored }) => ignored) : [];
+  const visible = list && hiddenIgnored.length > 0 ? { ...list, project: list.project.filter(({ ignored }) => !ignored) } : list;
+  const files = visible ? [...visible.project, ...visible.committed, ...visible.outside] : [];
   const selected = files.find(({ path }) => path === selectedPath) ?? null;
   const loadedDiff = useKeptLoad<FileChanges | null>(
     `diff ${conversationId} ${scope} ${selected?.path}`,
@@ -305,16 +309,16 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
   );
   const projectFiles = everyFile && loadedProjectFiles && "value" in loadedProjectFiles ? loadedProjectFiles.value : null;
   const sections = useMemo(() => {
-    if (!list) return null;
-    const splitByAgent = list.scope === "turn" && !projectFiles;
+    if (!visible) return null;
+    const splitByAgent = visible.scope === "turn" && !projectFiles;
     return {
-      project: projectFiles ? projectFilesWithChanges(list, projectFiles.paths) : splitByAgent ? [] : changedFiles(list.project),
-      editedByAgent: splitByAgent ? changedFiles(list.project.filter(({ byAgent }) => byAgent)) : [],
-      changedOtherwise: splitByAgent ? changedFiles(list.project.filter(({ byAgent }) => !byAgent)) : [],
-      committed: projectFiles ? [] : changedFiles(list.committed),
-      outside: changedFiles(list.outside),
+      project: projectFiles ? projectFilesWithChanges(visible, projectFiles.paths) : splitByAgent ? [] : changedFiles(visible.project),
+      editedByAgent: splitByAgent ? changedFiles(visible.project.filter(({ byAgent }) => byAgent)) : [],
+      changedOtherwise: splitByAgent ? changedFiles(visible.project.filter(({ byAgent }) => !byAgent)) : [],
+      committed: projectFiles ? [] : changedFiles(visible.committed),
+      outside: changedFiles(visible.outside),
     };
-  }, [list, projectFiles]);
+  }, [visible, projectFiles]);
   const unchangedSelected = !selected && selectedPath !== null && Boolean(sections?.project.some(({ path, change }) => path === selectedPath && !change));
   const toggle = (path: string) => {
     const next = path === selectedPath ? null : path;
@@ -354,6 +358,19 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
             </button>
           ))}
         </div>
+        {scope === "session" && (
+          <div className="diff-style" role="group" aria-label="Git-ignored files">
+            <button
+              type="button"
+              className={showIgnored ? "on" : ""}
+              aria-pressed={showIgnored}
+              data-hint={hints.changesIgnored}
+              onClick={() => ignoredFiles.set(showIgnored ? "hidden" : "shown")}
+            >
+              Git-ignored files
+            </button>
+          </div>
+        )}
         <span className="spacer" />
         {view !== "list" && (
           <button type="button" className="link" data-hint={hints.changesFoldAll} onClick={foldEveryFolder}>
@@ -371,12 +388,13 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
           Refresh
         </button>
       </div>
-      {loadedList && "error" in loadedList ? <p className="review-empty">{loadedList.error}</p> : !list && <p className="changes-none">Loading…</p>}
-      {list && listNotes[list.base] && <p className="hint">{listNotes[list.base]}</p>}
-      {list?.filesCheckedAtMost !== undefined && (
-        <p className="review-empty">This folder holds more than {list.filesCheckedAtMost.toLocaleString("en")} files, so only that many were checked and some changed files may be missing.</p>
+      {loadedList && "error" in loadedList ? <p className="review-empty">{loadedList.error}</p> : !visible && <p className="changes-none">Loading…</p>}
+      {visible && listNotes[visible.base] && <p className="hint">{listNotes[visible.base]}</p>}
+      {visible?.filesCheckedAtMost !== undefined && (
+        <p className="review-empty">This folder holds more than {visible.filesCheckedAtMost.toLocaleString("en")} files, so only that many were checked and some changed files may be missing.</p>
       )}
-      {list && files.length === 0 && <p className="changes-none">{nothingChanged(list)}</p>}
+      {hiddenIgnored.length > 0 && <p className="hint">{hiddenIgnored.length === 1 ? "1 git-ignored file hidden." : `${hiddenIgnored.length} git-ignored files hidden.`}</p>}
+      {visible && files.length === 0 && hiddenIgnored.length === 0 && <p className="changes-none">{nothingChanged(visible)}</p>}
       {everyFile && loadedProjectFiles && "error" in loadedProjectFiles && <p className="review-empty">{loadedProjectFiles.error}</p>}
       {projectFiles?.filesListedAtMost !== undefined && (
         <p className="review-empty">This project holds more than {projectFiles.filesListedAtMost.toLocaleString("en")} files, so only that many are shown.</p>

@@ -547,3 +547,31 @@ test("This turn lists the files commits since the turn began changed in a sectio
     await expect(changes(page).locator(".changes-diff")).toContainText("committed by the agent");
   });
 });
+
+test("This session leaves out the git-ignored files its commands wrote while Git-ignored files is off, and remembers the choice", async ({ page }) => {
+  writeFileSync(join(host.projectDir, ".gitignore"), "build/\n");
+  const built = join(host.projectDir, "build", "hidden.js");
+  await signIn(page, host);
+  await page.goto(`${host.origin}/#/c/${conversationId}`);
+  await startConversation(page);
+  await writeFiles(page, [
+    { edit: appFile, content: withLine15("changed with git-ignored files off") },
+    { shell: built, content: "built by a script\n" },
+  ]);
+  await waitForTurnToEnd(page);
+
+  await changes(page).getByRole("button", { name: "This session" }).click();
+  const ignoredToggle = changes(page).getByRole("button", { name: "Git-ignored files", exact: true });
+  await expect(ignoredToggle).toHaveAttribute("aria-pressed", "true");
+  await expectListed(page, "Project", ["build/hidden.js", "src/app.ts"]);
+
+  await ignoredToggle.click();
+  await expect(ignoredToggle).toHaveAttribute("aria-pressed", "false");
+  await expectListed(page, "Project", ["src/app.ts"]);
+  await expect(changes(page)).toContainText("1 git-ignored file hidden.");
+
+  await page.reload();
+  await expect(changes(page).getByRole("button", { name: "This session" })).toHaveAttribute("aria-pressed", "true");
+  await expect(changes(page).getByRole("button", { name: "Git-ignored files", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expectListed(page, "Project", ["src/app.ts"]);
+});
