@@ -355,6 +355,15 @@ async function streamWords(client: acp.AgentContext, sessionId: string, count: n
   return { stopReason: "end_turn" as const };
 }
 
+async function streamParagraphs(client: acp.AgentContext, sessionId: string, count: number) {
+  for (let position = 1; position <= count; position++) {
+    const text = `Paragraph ${position} is long enough to wrap onto a second line in a narrow chat pane, as replies do.\n\n`;
+    await client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return { stopReason: "end_turn" as const };
+}
+
 async function finishedOnStop(client: acp.AgentContext, sessionId: string, text: string) {
   const notify = (chunk: string) => client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: chunk } } });
   await notify(`Begun on ${text}. `);
@@ -421,6 +430,7 @@ acp
     if (startsWith(ctx.params.prompt, "ASYNC TASK")) return startAsyncTask(ctx.client, ctx.params.sessionId, false);
     if (startsWith(ctx.params.prompt, "FAIL ")) throw acp.RequestError.internalError(undefined, text.slice("FAIL ".length));
     if (startsWith(ctx.params.prompt, "PLAN ")) return makePlan(ctx.client, ctx.params.sessionId, JSON.parse(text.slice("PLAN ".length)));
+    if (startsWith(ctx.params.prompt, "STREAM PARAGRAPHS ")) return streamParagraphs(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM PARAGRAPHS ".length)));
     if (startsWith(ctx.params.prompt, "STREAM ")) return streamWords(ctx.client, ctx.params.sessionId, Number(text.slice("STREAM ".length)));
     if (startsWith(ctx.params.prompt, "FINISHED ON STOP ")) return finishedOnStop(ctx.client, ctx.params.sessionId, text.slice("FINISHED ON STOP ".length));
     if (startsWith(ctx.params.prompt, "STOPPED REPLY ")) return stoppedReply(ctx.client, ctx.params.sessionId, text.slice("STOPPED REPLY ".length), true);
