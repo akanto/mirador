@@ -302,4 +302,14 @@ describe("adding, updating and removing plugins", () => {
     new InstalledPlugins(plugins, []);
     expect(leftInStaging(plugins)).toEqual([]);
   });
+
+  test("a list under way while a plugin is removed lists the plugins as they are once it is gone", async () => {
+    const plugins = pluginsIn("list-while-removing");
+    const installed = new InstalledPlugins(plugins, []);
+    await installed.add(builtCounterRepo("list-while-removing-repo"), null);
+
+    const listed = installed.list();
+    await installed.remove("counter");
+    expect(await listed).toEqual([]);
+  });
 });

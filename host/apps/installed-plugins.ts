@@ -117,6 +117,7 @@ export class InstalledPlugins {
   private readonly staging: string;
   private readonly changed = new Set<string>();
   private lastChange: Promise<unknown> = Promise.resolve();
+  private changesEnded = 0;
 
   constructor(
     readonly folder: string,
@@ -130,8 +131,11 @@ export class InstalledPlugins {
     return this.changed.size > 0;
   }
 
+  /** Lists again when a change ended while it listed, so that it never shows a plugin half gone. */
   async list(): Promise<PluginInfo[]> {
+    const changesEndedBefore = this.changesEnded;
     const plugins = await Promise.all(pluginFolders(this.folder).map(async (folder) => this.info(folder, await sourceOf(folder).catch((): PluginSource => ({ kind: "folder" })))));
+    if (this.changesEnded !== changesEndedBefore) return this.list();
     return plugins.sort((one, other) => byTitle(one).localeCompare(byTitle(other)));
   }
 
@@ -250,7 +254,7 @@ export class InstalledPlugins {
   }
 
   private oneAtATime<T>(change: () => Promise<T>): Promise<T> {
-    const done = this.lastChange.then(change);
+    const done = this.lastChange.then(change).finally(() => this.changesEnded++);
     this.lastChange = done.catch(() => {});
     return done;
   }
