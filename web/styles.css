@@ -767,6 +767,18 @@ body.resizing iframe {
   margin-left: 14px;
 }
 
+.workspace li .delegated-toggle {
+  flex: none;
+  font-size: calc(11px * var(--font-scale));
+  color: var(--faint);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.workspace li .delegated-toggle:hover {
+  color: var(--text);
+}
+
 .profile-edge {
   position: absolute;
   left: 3px;

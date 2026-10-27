@@ -134,8 +134,14 @@ const foldedWorkspaces = createFoldStore("mirador-folded-workspaces");
 export const setWorkspaceFolded = foldedWorkspaces.setFolded;
 export const useFoldedWorkspaces = foldedWorkspaces.useFolded;
 
-/** Once the host has said which workspaces and groups there are, the folds of deleted ones are dropped. */
-export function forgetFoldsOfDeleted(workspaces: { id: string }[], groups: { id: string }[]) {
+/** Callers whose delegated conversations the sidebar shows; the rest keep theirs folded away. */
+const openedDelegations = createFoldStore("mirador-opened-delegations");
+export const setDelegationsOpen = openedDelegations.setFolded;
+export const useOpenedDelegations = openedDelegations.useFolded;
+
+/** Once the host has said which workspaces, groups and conversations there are, the folds of deleted ones are dropped. */
+export function forgetFoldsOfDeleted(workspaces: { id: string }[], groups: { id: string }[], conversations: { id: string }[]) {
   foldedWorkspaces.keepOnly(workspaces.map(({ id }) => id));
   foldedGroups.keepOnly(groups.map(({ id }) => id));
+  openedDelegations.keepOnly(conversations.map(({ id }) => id));
 }

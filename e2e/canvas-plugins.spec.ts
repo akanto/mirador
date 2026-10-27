@@ -35,6 +35,12 @@ const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
 const tabView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
 const delegatedTask = (page: Page, title: string) => page.locator(".delegated-tasks:visible li", { hasText: title });
 
+/** The report opens with room, so after a reload the canvas can cover the chat again; the user goes back to the message box. */
+async function backToTheMessageBox(page: Page) {
+  await page.keyboard.press(`${await primaryModifier(page)}+Shift+ArrowLeft`);
+  await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
+}
+
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
 async function startConversationWithoutModel(page: Page) {
   const previousUrl = page.url();
@@ -210,22 +216,33 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "nope", task: "SAY Found 3 callers." })).toMatch(/^There is no profile named nope; the profiles are .*Local/);
 
     expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "local", task: "SAY Found 3 callers." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
-    await expect(page.locator(".sidebar").getByText("SAY Found 3 callers.")).toBeVisible();
+    await expect(page.locator(`.sidebar li[data-reorder-id="${conversationId}"]`).getByRole("button", { name: "1 delegated" })).toBeVisible();
     await expect.poll(agentSaw).toContain("The handed-over task finished: Found 3 callers.\n");
   });
 
-  await test.step("the handed-over task shows above the caller's composer with the start of its reply, and under the caller in the sidebar, until dismissed", async () => {
+  await test.step("the handed-over task shows above the caller's composer with the start of its reply, and folded under the caller in the sidebar, until dismissed", async () => {
+    await backToTheMessageBox(page);
     const task = delegatedTask(page, "SAY Found 3 callers.");
     await expect(task.locator(".delegated-task-text > span").first()).toHaveText("Finished: SAY Found 3 callers. on Local");
     await expect(task.locator(".delegated-task-detail")).toHaveText("Found 3 callers.");
+    const callerRow = page.locator(`.sidebar li[data-reorder-id="${conversationId}"]`);
+    const fold = callerRow.getByRole("button", { name: "1 delegated" });
+    await expect(fold).toHaveText("▸ 1");
+    await expect(page.locator(".sidebar li.under-caller")).toHaveCount(0);
+    await fold.click();
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator(`.sidebar li[data-reorder-id="${conversationId}"] + li.under-caller`)).toContainText("SAY Found 3 callers.");
+    await fold.click();
+    await expect(page.locator(".sidebar li.under-caller")).toHaveCount(0);
 
     await task.getByRole("button", { name: "SAY Found 3 callers." }).click();
     await expect(page.locator(".chat-header:visible")).toContainText("SAY Found 3 callers.");
+    await expect(page.locator(".sidebar li.under-caller.selected"), "opening a folded delegated conversation unfolds it").toContainText("SAY Found 3 callers.");
     await page.evaluate((caller) => (location.hash = `#/c/${caller}`), conversationId);
     await task.getByRole("button", { name: "Dismiss" }).click();
     await expect(page.locator(".delegated-tasks:visible")).toHaveCount(0);
-    await expect(page.locator(".sidebar li.under-caller")).toContainText("SAY Found 3 callers.");
+    await expect(page.locator(".sidebar").getByText("SAY Found 3 callers.")).toHaveCount(0);
+    await expect(callerRow.locator(".delegated-toggle")).toHaveCount(0);
   });
 
   await test.step("a handed-over task that a restart cuts short carries on after it, and Stop above the composer ends it, which the caller's agent hears", async () => {
@@ -233,16 +250,19 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     const timesSent = () => agentSaw().split(title).length - 1;
     expect(await callCanvasTool(host, conversationId, "hand_over", { profile: "local", task: title })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
     const task = delegatedTask(page, title);
-    await expect(task.locator(".delegated-task-text > span").first()).toHaveText(new RegExp(`^Working: ${title} on Local for \\d+s$`));
+    await expect(task.locator(".delegated-task-text > span").first()).toHaveText(new RegExp(`^Working: ${title} on Local for \\d+ s$`));
     await expect.poll(timesSent).toBe(1);
 
     const runningBefore = host.log.match(/Mirador is running/g)?.length ?? 0;
+    const loadedFromTheNextHost = page.waitForEvent("load", { timeout: 60_000 });
     await page.keyboard.press(`${await primaryModifier(page)}+Shift+R`);
     await expect.poll(() => host.log.match(/Mirador is running/g)?.length, { timeout: 60_000 }).toBe(runningBefore + 1);
+    await loadedFromTheNextHost;
     await expect.poll(timesSent, { message: "the next host sends the task's turn again" }).toBe(2);
     expect(agentSaw(), "the turn the restart stopped is no reply yet").not.toContain("The handed-over task stopped");
 
-    await task.getByRole("button", { name: "Stop" }).click();
+    await backToTheMessageBox(page);
+    await task.getByRole("button", { name: "Stop", exact: true }).click();
     await expect.poll(agentSaw).toContain("The handed-over task stopped: no reply\n");
     await expect(task.locator(".delegated-task-text > span").first()).toHaveText(`Stopped: ${title} on Local`);
   });

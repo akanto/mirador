@@ -33,7 +33,7 @@ import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, w
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
-import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
+import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setDelegationsOpen, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, useOpenedDelegations, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
 function useDirectoryCompletions(prefix: string) {
   const [completions, setCompletions] = useState({ directories: [] as string[], createsDirectory: false });
@@ -245,6 +245,31 @@ function ConversationMenu({ conversation, at, dispatch, onClose }: { conversatio
 const rowClasses = (conversation: Conversation, listed: Conversation[], selectedConversationId: string | null) =>
   [conversation.id === selectedConversationId && "selected", conversation.waitingFor && "waiting", isUnderCaller(conversation, listed) && "under-caller"].filter(Boolean);
 
+const isWorking = ({ status }: Conversation) => status === "starting" || status === "running";
+
+/** In a caller's row: how many conversations its plugin tools started, how many still work, and whether they show below it. */
+function DelegatedToggle({ callerId, delegated, open }: { callerId: string; delegated: Conversation[]; open: boolean }) {
+  if (delegated.length === 0) return null;
+  const working = delegated.filter(isWorking).length;
+  return (
+    <button
+      type="button"
+      className="link delegated-toggle"
+      aria-expanded={open}
+      aria-label={`${delegated.length} delegated`}
+      data-hint={hints.delegatedFold}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        setDelegationsOpen(callerId, !open);
+      }}
+    >
+      {open ? "▾" : "▸"} {delegated.length}
+      {working > 0 && <span className="delegated-toggle-working"> · {working} working</span>}
+    </button>
+  );
+}
+
 const markColors = ["#6e56cf", "#0e9384", "#d9822b", "#3e63dd", "#d6409f", "#12a594", "#8e4ec6", "#ad7f58"];
 
 function initialsOf(name: string) {
@@ -349,6 +374,9 @@ function WorkspaceSection({
   const waitingHere = folded ? waitingInFoldedGroup(conversations) : null;
   const deleteWorkspace = () => connection.send({ type: "workspace.delete", workspaceId: workspace.id });
   const deleteConversation = (conversation: Conversation) => connection.send({ type: "conversation.delete", conversationId: conversation.id });
+  const openedDelegations = useOpenedDelegations();
+  const delegatedTo = (caller: Conversation) => conversations.filter((conversation) => isUnderCaller(conversation, conversations) && conversation.startedBy!.conversationId === caller.id);
+  const shown = conversations.filter((conversation) => !isUnderCaller(conversation, conversations) || openedDelegations.has(conversation.startedBy!.conversationId));
   const conversationList = useRef<HTMLUListElement>(null);
   const conversationDrag = useDragToReorder((conversationId, beforeConversationId) =>
     connection.send({ type: "conversation.move", conversationId, beforeConversationId }),
@@ -406,12 +434,12 @@ function WorkspaceSection({
       {pickingColor && <WorkspaceColorPicker workspace={workspace} mark={mark} onClose={closePicker} />}
       {!folded && conversations.length > 0 && (
         <ul ref={conversationList}>
-          {conversations.map((conversation, index) => (
+          {shown.map((conversation, index) => (
             <li
               key={conversation.id}
               data-reorder-id={conversation.id}
               data-waiting-tone={conversation.waitingFor ? waitingTones[conversation.waitingFor] : undefined}
-              className={[...rowClasses(conversation, conversations, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === conversations.length - 1)].join(" ")}
+              className={[...rowClasses(conversation, conversations, selectedConversationId), ...conversationDrag.classesOf(conversation.id, index === shown.length - 1)].join(" ")}
               onPointerDown={(event) => conversationDrag.startDrag(conversation.id, conversationList.current, event)}
               onClick={() => dispatch({ type: "select", conversationId: conversation.id })}
               onContextMenu={(event) => onConversationMenu(conversation, event)}
@@ -419,6 +447,7 @@ function WorkspaceSection({
               <ProfileEdge profile={profileOf(profiles, conversation)} />
               {statusDot(conversation)}
               <ConversationTitle conversation={conversation} startEditingOn="double-click" className="conversation-title" />
+              <DelegatedToggle callerId={conversation.id} delegated={delegatedTo(conversation)} open={openedDelegations.has(conversation.id)} />
               {conversation.waitingFor && <WaitingPill waitingFor={conversation.waitingFor} />}
               <ConfirmButton
                 className="icon"
@@ -581,10 +610,15 @@ function sidebarRows(sidebar: HTMLElement): SidebarRow[] {
   });
 }
 
-/** Picking a conversation in a folded workspace or group unfolds them, the open one picked again too, so the open conversation always shows in the sidebar. */
+/**
+ * Picking a conversation in a folded workspace or group, or among a caller's folded delegated conversations, unfolds
+ * them, the open one picked again too, so the open conversation always shows in the sidebar.
+ */
 function useUnfoldAroundOpenConversation(state: AppState) {
   useEffect(() => {
-    const workspaceId = state.conversations.find(({ id }) => id === state.selectedConversationId)?.workspaceId;
+    const selected = state.conversations.find(({ id }) => id === state.selectedConversationId);
+    if (selected?.startedBy) setDelegationsOpen(selected.startedBy.conversationId, true);
+    const workspaceId = selected?.workspaceId;
     if (workspaceId) setWorkspaceFolded(workspaceId, false);
     const groupId = state.workspaces.find(({ id }) => id === workspaceId)?.groupId;
     if (groupId) setGroupFolded(groupId, false);
@@ -594,8 +628,8 @@ function useUnfoldAroundOpenConversation(state: AppState) {
 function useFoldsOfDeletedForgotten(state: AppState) {
   const hostHasListedThem = state.hostRunId !== null;
   useEffect(() => {
-    if (hostHasListedThem) forgetFoldsOfDeleted(state.workspaces, state.workspaceGroups);
-  }, [hostHasListedThem, state.workspaces, state.workspaceGroups]);
+    if (hostHasListedThem) forgetFoldsOfDeleted(state.workspaces, state.workspaceGroups, state.conversations);
+  }, [hostHasListedThem, state.workspaces, state.workspaceGroups, state.conversations]);
 }
 
 function WaitingEdge({ side, hidden, onClick }: { side: "above" | "below"; hidden: HiddenWaiting | null; onClick: () => void }) {

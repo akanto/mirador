@@ -289,6 +289,13 @@ describe("navigation", () => {
     expect(adjacentWorkspaceConversation({ ...reordered, selectedConversationId: "b-only" }, 1)).toBe("a-new");
   });
 
+  test("lists a conversation a plugin's tool started right under its caller, and leaves it out once its task is dismissed", () => {
+    const startedBy = (dismissed: boolean) => ({ conversationId: "a-old", plugin: "delegate", reply: null, dismissed });
+    const delegated = (id: string, dismissed: boolean) => ({ ...conversation(id, "a", 4, 4), startedBy: startedBy(dismissed) });
+    const withDelegated = { ...base, conversations: [...base.conversations, delegated("a-task", false), delegated("a-done", true)] };
+    expect(conversationsIn(withDelegated, "a").map(({ id }) => id)).toEqual(["a-old", "a-task", "a-new"]);
+  });
+
   test("has nowhere to go without conversations", () => {
     const empty = { workspaces: [workspace("a")], conversations: [], selectedConversationId: null };
     expect(adjacentConversation(empty, 1)).toBeNull();

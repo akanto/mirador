@@ -220,7 +220,8 @@ export const hints = {
     "A plugin's tool, such as delegate, started this conversation on another profile to work on a task for this one. When its first turn ends, its agent's last message comes to this conversation's agent as your next message.\n\nThe reply survives a host restart.",
   openDelegatedTask: "Open the conversation working on this task, to watch it or answer what it asks.",
   stopDelegatedTask: "Stop its turn. The agent here hears that the task stopped, with whatever the other agent said so far.",
-  dismissDelegatedTask: "Dismiss this task: remove it from above the message box. Its conversation stays in the sidebar.",
+  dismissDelegatedTask: "Dismiss this task: remove it from above the message box, and its conversation from the sidebar. Search still finds the conversation.",
+  delegatedFold: "Conversations this one handed tasks to, such as with delegate. Click to show or hide them under it.",
   claudeProgram: (installFolders: string) =>
     `The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ${installFolders}.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.`,
   canvasUse:

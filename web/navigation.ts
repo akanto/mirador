@@ -9,10 +9,11 @@ export interface NavigationState {
 
 /**
  * A workspace's conversations in the order the sidebar lists them: where the user put them, a new one last, next to the
- * button that made it, and one a plugin's tool started right under the conversation that started it.
+ * button that made it, and one a plugin's tool started right under the conversation that started it, until the user
+ * dismisses its task.
  */
 export function conversationsIn(state: Pick<NavigationState, "conversations">, workspaceId: string): Conversation[] {
-  const inOrder = state.conversations.filter((conversation) => conversation.workspaceId === workspaceId).sort(inSidebarOrder);
+  const inOrder = state.conversations.filter((conversation) => conversation.workspaceId === workspaceId && !conversation.startedBy?.dismissed).sort(inSidebarOrder);
   const callerOf = (conversation: Conversation) => (isUnderCaller(conversation, inOrder) ? conversation.startedBy!.conversationId : null);
   return inOrder.filter((conversation) => !callerOf(conversation)).flatMap((caller) => [caller, ...inOrder.filter((conversation) => callerOf(conversation) === caller.id)]);
 }
