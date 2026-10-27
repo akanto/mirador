@@ -1061,6 +1061,10 @@ button.icon.workspace-fold {
   background: var(--accent-soft);
 }
 
+.completions li.create-folder {
+  color: var(--accent);
+}
+
 .sidebar > footer {
   padding: 12px 10px;
   display: flex;

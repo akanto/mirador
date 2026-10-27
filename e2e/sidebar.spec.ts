@@ -181,6 +181,37 @@ test("⇧Enter makes a new folder whose name begins a folder's that is there, wh
   expect(statSync(directory).isDirectory()).toBe(true);
 });
 
+test("a new folder whose name begins a folder's that is there is made by a click too, and ⇧Enter adds what is typed as it is", async ({ page }) => {
+  const parent = join(host.root, "prefixes-by-click");
+  mkdirSync(join(parent, "web-app"), { recursive: true });
+  mkdirSync(join(parent, "webby"), { recursive: true });
+  const directory = join(parent, "web");
+  await signIn(page, host);
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const input = page.getByLabel("Workspace directory");
+  const newFolder = page.locator(".add-workspace .create-folder");
+
+  await input.fill(join(parent, "webb"));
+  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}/webby/`);
+  await expect(newFolder).toHaveText("+ New folder webb");
+  await input.fill(directory);
+  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}/web-app/`);
+  await newFolder.click();
+  await pickProfileIfAsked(page, directory);
+  await expect(workspaceCard(page, directory)).toBeVisible();
+  expect(statSync(directory).isDirectory()).toBe(true);
+
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  await input.fill(join(parent, "webby"));
+  await expect(page.locator(".add-workspace .completions li")).toHaveCount(1);
+  await input.press("ArrowDown");
+  await expect(page.locator(".add-workspace .hint")).toHaveText("Enter or Tab takes the highlighted folder, ⇧Enter adds webby, Esc cancels");
+  await expect(newFolder).toHaveCount(0);
+  await input.press("Shift+Enter");
+  await pickProfileIfAsked(page, join(parent, "webby"));
+  await expect(workspaceCard(page, join(parent, "webby"))).toBeVisible();
+});
+
 test("Enter takes the highlighted folder while its name is being typed, and adds a path that names a folder", async ({ page }) => {
   const parent = join(host.root, "completions");
   ["alpha-one", "alpha-two", "beta"].forEach((name) => mkdirSync(join(parent, name), { recursive: true }));
