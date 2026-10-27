@@ -19,6 +19,13 @@ const INSTALL_QUESTION = { x: 836, y: 0, width: 700, height: 520 };
 /** Media's frame, its timeline and the note under it. */
 const MEDIA_EDITOR = { x: 836, y: 80, width: 700, height: 640 };
 
+/**
+ * A page the agent shows shows its diagram's source for a few frames before Mermaid draws it: a shot ends just before a
+ * drawing starts, and the next starts once it's drawn.
+ */
+const BEFORE_DRAWING = -0.2;
+const ONCE_DRAWN = -0.05;
+
 /** When the narrator starts the statement, in seconds of the wall scene; its parts land as they're said. */
 const STATEMENT_AT = 8;
 
@@ -56,8 +63,8 @@ export const STORYBOARD: Scene[] = [
     clip: "show",
     shots: [
       { from: ["typing", -0.5], to: "sent", speed: 1.6 },
-      { from: "sent", to: ["canvasShown", -0.2], speed: 1.25 },
-      { from: ["canvasShown", -0.2], to: ["turnEnded", 1.5] },
+      { from: "sent", to: ["canvasShown", BEFORE_DRAWING], speed: 1.25 },
+      { from: ["canvasShown", ONCE_DRAWN], to: ["turnEnded", 1.5] },
     ],
     camera: [
       { at: ["typing", -0.5], look: "composer", zoom: 1.6 },
@@ -76,8 +83,8 @@ export const STORYBOARD: Scene[] = [
       { from: 1, to: ["picked", 0.3], speed: 1.3 },
       { from: ["picked", 0.3], to: "typed", speed: 1.8 },
       { from: "typed", to: ["asked", 0.3] },
-      { from: ["asked", 0.3], to: ["redrawn", -0.2], speed: 1.5 },
-      { from: ["redrawn", -0.2], to: ["redrawn", 2] },
+      { from: ["asked", 0.3], to: ["redrawn", BEFORE_DRAWING], speed: 1.5 },
+      { from: ["redrawn", ONCE_DRAWN], to: ["redrawn", 2] },
     ],
     camera: [
       { at: 1, look: TOP_OF_DIAGRAM, zoom: 1.6 },
@@ -159,17 +166,17 @@ export const STORYBOARD: Scene[] = [
     id: "plugins",
     clip: "plugins",
     shots: [
-      { from: ["typing", -0.3], to: "sent", speed: 1.8 },
-      { from: "sent", to: ["asked", -0.2], speed: 1.5 },
-      { from: ["asked", -0.2], to: ["picked", 0.3], speed: 1.2 },
-      { from: ["picked", 0.3], to: ["submitted", 1], speed: 1.2 },
+      { from: ["typing", -0.3], to: "sent", speed: 2.6 },
+      { from: "sent", to: ["asked", -0.2], speed: 2.5 },
+      { from: ["asked", -0.2], to: ["picked", 0.3], speed: 1.6 },
+      { from: ["picked", 0.3], to: ["submitted", 0.6], speed: 1.6 },
     ],
     camera: [
       { at: ["typing", -0.3], look: "composer", zoom: 1.6 },
       { at: ["sent", 0.2], look: "timeline", zoom: 1.4 },
       { at: ["asked", -0.3], look: INSTALL_QUESTION, zoom: 1.65 },
     ],
-    captions: [{ kicker: "Plugins", title: "Official plugins, installed when you say so.", at: 4.2, seconds: 3.8 }],
+    captions: [{ kicker: "Plugins", title: "Official plugins, installed when you say so.", at: 3, seconds: 3.6 }],
     narration: [{ line: "plugins", at: 0.4 }],
   },
   {
@@ -177,13 +184,13 @@ export const STORYBOARD: Scene[] = [
     id: "media",
     clip: "media",
     shots: [
-      { from: ["opened", -0.8], to: "seeked", speed: 1.5 },
-      { from: "seeked", to: "ranged", speed: 1.3 },
-      { from: "ranged", to: "boxed", speed: 1.3 },
-      { from: "boxed", to: "markSent", speed: 2 },
-      { from: "markSent", to: "cut", speed: 1.2 },
-      { from: "cut", to: "rendered", speed: 3 },
-      { from: "rendered", to: ["playing", 2.2], speed: 2 },
+      { from: ["opened", -0.8], to: "seeked", speed: 2.2 },
+      { from: "seeked", to: "ranged", speed: 2 },
+      { from: "ranged", to: "boxed", speed: 2 },
+      { from: "boxed", to: "markSent", speed: 3 },
+      { from: "markSent", to: "cut", speed: 1.8 },
+      { from: "cut", to: "rendered", speed: 4 },
+      { from: "rendered", to: ["playing", 2.2], speed: 2.5 },
     ],
     camera: [
       { at: ["opened", -0.8], look: "canvas", zoom: 1.3 },
@@ -191,7 +198,7 @@ export const STORYBOARD: Scene[] = [
       { at: ["markSent", 0.2], look: "app" },
       { at: ["rendered", -0.3], look: "canvas", zoom: 1.3 },
     ],
-    captions: [{ kicker: "Media", title: "Mark it on the frame. The agent edits.", at: 5.4, seconds: 3.6 }],
+    captions: [{ kicker: "Media", title: "Mark it on the frame. The agent edits.", at: 3.6, seconds: 3.4 }],
     narration: [{ line: "media", at: 0.5 }],
   },
   {
@@ -199,19 +206,19 @@ export const STORYBOARD: Scene[] = [
     id: "voice",
     clip: "voice",
     shots: [
-      { from: ["listening", -1.4], to: ["listening", 3.4] },
-      { from: ["listening", 3.4], to: "sent", speed: 2 },
-      { from: "sent", to: "reading", speed: 2 },
-      { from: "reading", to: ["listeningAgain", 1] },
+      { from: ["listening", -1.25], to: ["listening", 3.3] },
+      { from: ["listening", 3.3], to: "sent", speed: 3 },
+      { from: "sent", to: "reading", speed: 3 },
+      { from: "reading", to: ["listeningAgain", 0.6] },
     ],
     camera: [
-      { at: ["listening", -1.4], look: "composer", zoom: 1.6 },
+      { at: ["listening", -1.25], look: "composer", zoom: 1.6 },
       { at: ["sent", -0.2], look: "timeline", zoom: 1.4 },
       { at: ["listeningAgain", -0.3], look: "composer", zoom: 1.6 },
     ],
-    captions: [{ kicker: "Voice", title: "It reads you the gist, then listens again.", at: 5.2, seconds: 4 }],
+    captions: [{ kicker: "Voice", title: "It reads you the gist, then listens again.", at: 4.6, seconds: 4 }],
     narration: [
-      { line: "voice", at: 0.1 },
+      { line: "voice", at: 0 },
       { line: "voiceAsk", at: 0.15, from: "listening" },
       { line: "voiceReply", at: 0.05, from: "reading" },
     ],
