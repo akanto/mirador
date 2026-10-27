@@ -15,9 +15,9 @@ import {
  * dead for the voice: in the silence, each part of the statement lands on a clap, and from its stressed part on a hit.
  * Pumping chords and a climbing arpeggio swell under the picture into a hit on the logo. Then a half-time groove with a
  * rolling bass runs under the first features and builds into a four-on-the-floor drop on the review, where a synth hook
- * plays in the gaps between lines. The plugins bring a lighter half-time breakdown, which builds again into the montage,
- * where the music steps up to E minor. Its last chord rings over the backdrop
- * and resolves to E major on the end card's hit.
+ * plays in the gaps between lines, and goes on into the montage with the whole hook doubled an octave up. The plugins
+ * bring a lighter half-time breakdown, which builds into the voice scene, where the music steps up to E minor and leaves
+ * room for the conversation. Its last chord rings over the backdrop and resolves to E major on the end card's hit.
  * Each stretch's tempo bends a little so the scene changes land on beats; it is timed by the storyboard, so the hits land
  * on the scene changes however long the scenes run. While the narrator speaks, the band where words are heard is turned
  * down, on top of the ducking in src/mix.ts.
@@ -53,6 +53,7 @@ function timeline() {
     review: starts.review!,
     plugins: starts.plugins!,
     media: starts.media!,
+    delegate: starts.delegate!,
     voice: starts.voice!,
     montage: starts.edit!,
     terminals: starts.terminals!,
@@ -101,8 +102,9 @@ class Score {
     const firstFeatureBeat = this.features();
     this.logo(firstFeatureBeat);
     this.drop();
-    this.breakdown();
     this.montage();
+    this.breakdown();
+    this.closer();
     this.ending();
     const mix = new Mix(at.seconds);
     const wall = this.intro.bounce({ depth: 0.5, release: 0.25, delaySeconds: (0.75 * 60) / TEMPO });
@@ -254,10 +256,10 @@ class Score {
     return g;
   }
 
-  /** From the review to the plugins: four on the floor, with the hook in the gaps between lines. */
+  /** From the review to the montage: four on the floor, with the hook in the gaps between lines. */
   private drop() {
     const { at, main } = this;
-    const g = grid(at.review, at.plugins, TEMPO, true);
+    const g = grid(at.review, at.montage, TEMPO, true);
     main.add(at.review, crash(), 0.5, { verb: 0.3 });
     range(0, g.bars).forEach((bar) => {
       this.harmony(g, bar, PROGRESSION[bar % 4]!, { cutoff: 5000, gain: 0.32, arp: true });
@@ -265,13 +267,13 @@ class Score {
     });
     this.playHook(g, 0, 0, 2);
     this.playHook(g, 9, 0, 3);
-    main.add(at.plugins - 2 * g.beat, swell(2 * g.beat), 0.2);
+    main.add(at.montage - 2 * g.beat, swell(2 * g.beat), 0.2);
   }
 
-  /** From the plugins to the montage: the groove falls back to half time and a darker chord, then builds again. */
+  /** From the plugins to the voice scene: the groove falls back to half time and a darker chord, then builds again. */
   private breakdown() {
     const { at, main, drums } = this;
-    const g = grid(at.plugins, at.montage, TEMPO, true);
+    const g = grid(at.plugins, at.voice, TEMPO, true);
     const buildFrom = g.bars - 2;
     main.add(at.plugins, crash(), 0.4, { verb: 0.35 });
     range(0, g.bars).forEach((bar) => {
@@ -289,24 +291,36 @@ class Score {
     roll(main, g, buildFrom * 4, g.beats, { from: 0.06, to: 0.32 });
     main.add(g.at(buildFrom * 4), tonalRiser([62, 69, 74], 2 * g.bar), 0.24, { verb: 0.2 });
     main.add(g.at(buildFrom * 4), riser(2 * g.bar), 0.24);
-    [at.media, at.voice].forEach((time) => this.accent(g, time));
+    [at.media, at.delegate].forEach((time) => this.accent(g, time));
   }
 
-  /** From the montage to the backdrop, a step higher, with the whole hook doubled an octave up; the last chord rings on. */
+  /** From the montage to the plugins, still four on the floor, with the whole hook doubled an octave up. */
   private montage() {
     const { at, main, drums } = this;
-    const g = grid(at.montage, at.lastChord, TEMPO, true);
-    const lifted = PROGRESSION.map((chord) => up(chord, 2));
+    const g = grid(at.montage, at.plugins, TEMPO, true);
     main.add(at.montage, crash(), 0.5, { verb: 0.3 });
     range(0, g.bars).forEach((bar) => {
-      const last = bar === g.bars - 1;
-      this.harmony(g, bar, lifted[bar % 4]!, { cutoff: bar === 7 ? (t) => 1500 * 4 ** (t / g.bar) : 6500, gain: 0.33, arp: true, arpGain: 0.07, ringsOn: last ? at.ending - at.lastChord + 0.9 : 0 });
+      this.harmony(g, bar, PROGRESSION[bar % 4]!, { cutoff: bar === 7 ? (t) => 1500 * 4 ** (t / g.bar) : 6500, gain: 0.33, arp: true, arpGain: 0.07 });
       this.fourOnTheFloor(g, bar);
       if (bar >= 4) range(0, 4).forEach((offset) => main.add(g.at(bar * 4 + offset + 0.5), drums.snare, 0.05, { verb: 0.1 }));
     });
     roll(main, g, 7 * 4, 8 * 4, { from: 0.04, to: 0.2 });
-    this.playHook(g, 8, 0, 4, 2, true);
+    this.playHook(g, 8, 0, 4, 0, true);
     [at.terminals, at.groups].forEach((time) => this.accent(g, time));
+    main.add(at.plugins - 2 * g.beat, swell(2 * g.beat), 0.2);
+  }
+
+  /** From the voice scene to the backdrop, a step higher and in half time, quiet under the conversation; the last chord rings on. */
+  private closer() {
+    const { at, main } = this;
+    const g = grid(at.voice, at.lastChord, TEMPO, true);
+    const lifted = PROGRESSION.map((chord) => up(chord, 2));
+    main.add(at.voice, crash(), 0.45, { verb: 0.35 });
+    range(0, g.bars).forEach((bar) => {
+      const last = bar === g.bars - 1;
+      this.harmony(g, bar, lifted[bar % 4]!, { cutoff: 2200, gain: 0.26, arp: true, arpGain: 0.05, ringsOn: last ? at.ending - at.lastChord + 0.9 : 0 });
+      this.halfTime(g, bar, false);
+    });
   }
 
   private ending() {
@@ -325,7 +339,7 @@ function compose() {
   const at = timeline();
   writeWav(output, new Score(at).render(), LEVEL);
   console.log(
-    `${output}: ${at.seconds.toFixed(1)} s; black at ${at.goesBlack.toFixed(2)} s, picture at ${at.picture.toFixed(2)} s, logo at ${at.logo.toFixed(2)} s, groove from ${at.show.toFixed(2)} s, drop at ${at.review.toFixed(2)} s, breakdown at ${at.plugins.toFixed(2)} s, montage from ${at.montage.toFixed(2)} s, last chord at ${at.lastChord.toFixed(2)} s, end card at ${at.ending.toFixed(2)} s`,
+    `${output}: ${at.seconds.toFixed(1)} s; black at ${at.goesBlack.toFixed(2)} s, picture at ${at.picture.toFixed(2)} s, logo at ${at.logo.toFixed(2)} s, groove from ${at.show.toFixed(2)} s, drop at ${at.review.toFixed(2)} s, montage from ${at.montage.toFixed(2)} s, breakdown at ${at.plugins.toFixed(2)} s, voice at ${at.voice.toFixed(2)} s, last chord at ${at.lastChord.toFixed(2)} s, end card at ${at.ending.toFixed(2)} s`,
   );
 }
 

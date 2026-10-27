@@ -166,6 +166,59 @@ export const STORYBOARD: Scene[] = [
   },
   {
     kind: "clip",
+    id: "edit",
+    clip: "edit",
+    shots: [
+      { from: "approval", to: ["allowed", 0.6] },
+      { from: ["allowed", 0.6], to: ["turnListed", 0.3], speed: 1.4 },
+      { from: ["turnListed", 0.3], to: "uncommitted", speed: 1.4 },
+      { from: "uncommitted", to: ["uncommittedListed", 2.5] },
+    ],
+    camera: [
+      { at: "approval", look: CANVAS_AND_CHAT, zoom: 1.2 },
+      { at: ["allowed", 0.5], look: TOP_OF_CANVAS, zoom: 2.19 },
+    ],
+    captions: [
+      { kicker: "Approve", title: "Every edit, with its diff.", at: 0.3, seconds: 3 },
+      { kicker: "Changes", title: "Even changes outside the project.", at: 4.1, seconds: 4.5 },
+    ],
+    narration: [
+      { line: "edit", at: 0.5, musicDipsTo: 0.6 },
+      { line: "changes", at: 4, musicDipsTo: 0.6 },
+    ],
+    seconds: 16 * BEAT,
+  },
+  {
+    kind: "clip",
+    id: "terminals",
+    clip: "terminals",
+    shots: [
+      { from: ["shown", -0.3], to: ["logged", 0.3], speed: 2.6 },
+      { from: ["logged", 0.3], to: ["diffed", 0.1], speed: 2.9 },
+      { from: ["diffed", 0.1], to: ["diffed", 1.75] },
+    ],
+    camera: [
+      { at: ["shown", -0.3], look: "app" },
+      { at: ["shown", 0.4], look: "terminals" },
+    ],
+    captions: [{ kicker: "Terminals", title: "A shell beside every conversation.", at: 0.3, seconds: 2.8 }],
+    narration: [{ line: "terminals", at: 0.3, musicDipsTo: 0.6 }],
+    seconds: 8 * BEAT,
+  },
+  {
+    kind: "clip",
+    id: "groups",
+    clip: "groups",
+    shots: [{ from: 0.5, to: ["movedInView", 0.9], speed: 1.5 }],
+    camera: [
+      { at: 0.5, look: { x: 0, y: 0, width: 300, height: 520 }, zoom: 1.6 },
+      { at: ["grouped", 0.2], look: "app" },
+    ],
+    captions: [{ kicker: "Groups", title: "Your projects, in your order.", at: 0.4, seconds: 3, side: "right" }],
+    seconds: 8 * BEAT,
+  },
+  {
+    kind: "clip",
     id: "plugins",
     clip: "plugins",
     shots: [
@@ -221,7 +274,7 @@ export const STORYBOARD: Scene[] = [
       { at: ["delegated", 0.1], look: DELEGATED_TASK, zoom: 1.85 },
       { at: ["replied", 0.1], look: "timeline", zoom: 1.4 },
     ],
-    captions: [{ kicker: "Delegate", title: "Long reads go to a local model.", at: 0.3, seconds: 2.6, side: "right" }],
+    captions: [{ kicker: "Delegate", title: "Long reads go to a local model.", at: 0.3, seconds: 1.9, side: "right" }],
     narration: [{ line: "delegate", at: 0.4 }],
   },
   {
@@ -245,59 +298,6 @@ export const STORYBOARD: Scene[] = [
       { line: "voiceAsk", at: 0.15, from: "listening" },
       { line: "voiceReply", at: 0.05, from: "reading" },
     ],
-  },
-  {
-    kind: "clip",
-    id: "edit",
-    clip: "edit",
-    shots: [
-      { from: "approval", to: ["allowed", 0.6] },
-      { from: ["allowed", 0.6], to: ["turnListed", 0.3], speed: 1.4 },
-      { from: ["turnListed", 0.3], to: "uncommitted", speed: 1.4 },
-      { from: "uncommitted", to: ["uncommittedListed", 2.5] },
-    ],
-    camera: [
-      { at: "approval", look: CANVAS_AND_CHAT, zoom: 1.2 },
-      { at: ["allowed", 0.5], look: TOP_OF_CANVAS, zoom: 2.19 },
-    ],
-    captions: [
-      { kicker: "Approve", title: "Every edit, with its diff.", at: 0.3, seconds: 3 },
-      { kicker: "Changes", title: "Even changes outside the project.", at: 4.1, seconds: 4.5 },
-    ],
-    narration: [
-      { line: "edit", at: 0.5, musicDipsTo: 0.6 },
-      { line: "changes", at: 4, musicDipsTo: 0.6 },
-    ],
-    seconds: 16 * BEAT,
-  },
-  {
-    kind: "clip",
-    id: "terminals",
-    clip: "terminals",
-    shots: [
-      { from: ["shown", -0.3], to: ["logged", 0.3], speed: 2.6 },
-      { from: ["logged", 0.3], to: ["diffed", 0.1], speed: 2.9 },
-      { from: ["diffed", 0.1], to: ["diffed", 1.75] },
-    ],
-    camera: [
-      { at: ["shown", -0.3], look: "app" },
-      { at: ["shown", 0.4], look: "terminals" },
-    ],
-    captions: [{ kicker: "Terminals", title: "A shell beside every conversation.", at: 0.3, seconds: 2.8 }],
-    narration: [{ line: "terminals", at: 0.3, musicDipsTo: 0.6 }],
-    seconds: 8 * BEAT,
-  },
-  {
-    kind: "clip",
-    id: "groups",
-    clip: "groups",
-    shots: [{ from: 0.5, to: ["movedInView", 0.9], speed: 1.5 }],
-    camera: [
-      { at: 0.5, look: { x: 0, y: 0, width: 300, height: 520 }, zoom: 1.6 },
-      { at: ["grouped", 0.2], look: "app" },
-    ],
-    captions: [{ kicker: "Groups", title: "Your projects, in your order.", at: 0.4, seconds: 3, side: "right" }],
-    seconds: 8 * BEAT,
   },
   { kind: "backdrop", id: "backdrop", seconds: BEAT },
   {
