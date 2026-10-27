@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { profileSettingValue, type PluginProfileSetting } from "../shared/apps.ts";
 import { knownChoices } from "../shared/config-options.ts";
 import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Pastel, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
@@ -7,6 +8,7 @@ import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { usePluginSettings } from "./plugin-settings.ts";
 import { ProfileDot } from "./ProfileDot.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
@@ -90,8 +92,44 @@ function profileChoices(conversations: Conversation[], harness: HarnessId, categ
 }
 
 /** A new profile runs an agent this machine has; one named after its agent keeps following the agent picked until it is renamed. */
+type ProfilePluginSettings = Record<string, Record<string, string>>;
+
+/** A setting whose choices are the profiles offers the others, never the profile itself, and none. */
+const choicesOf = (setting: PluginProfileSetting, profiles: Profile[], ownId: string | undefined) =>
+  setting.choices === "profiles"
+    ? [{ value: "", label: "None" }, ...profiles.filter(({ id }) => id !== ownId).map(({ id, name }) => ({ value: id, label: name }))]
+    : setting.choices;
+
+/** What installed plugins let each profile set, such as the profile the delegate plugin hands tasks to. */
+function PluginProfileFields({
+  profileId,
+  profiles,
+  chosen,
+  onChoose,
+}: {
+  profileId: string | undefined;
+  profiles: Profile[];
+  chosen: ProfilePluginSettings;
+  onChoose: (plugin: string, settingId: string, value: string) => void;
+}) {
+  const withProfileSettings = usePluginSettings().flatMap(({ plugin, profileSettings }) => (profileSettings ?? []).map((setting) => ({ plugin, setting })));
+  return withProfileSettings.map(({ plugin, setting }) => (
+    <label key={`${plugin}/${setting.id}`} data-hint={setting.hint}>
+      <span>{setting.label}</span>
+      <select aria-label={`Profile ${setting.label}`} value={profileSettingValue(chosen, plugin, setting)} onChange={(event) => onChoose(plugin, setting.id, event.target.value)}>
+        {choicesOf(setting, profiles, profileId).map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  ));
+}
+
 function ProfileEditor({
   profile,
+  profiles,
   conversations,
   installedAgents,
   namedAfterAgent = false,
@@ -99,6 +137,7 @@ function ProfileEditor({
   onSaved,
 }: {
   profile: Profile | undefined;
+  profiles: Profile[];
   conversations: Conversation[];
   installedAgents: HarnessId[];
   namedAfterAgent?: boolean;
@@ -115,6 +154,9 @@ function ProfileEditor({
   const [bypassPermissions, setBypassPermissions] = useState(profile?.bypassPermissions ?? false);
   const [askMode, setAskMode] = useState<AskMode>(profile?.askMode ?? "wait");
   const [color, setColor] = useState<Pastel | null>(profile?.color ?? null);
+  const [pluginSettings, setPluginSettings] = useState<ProfilePluginSettings>(profile?.pluginSettings ?? {});
+  const choosePluginSetting = (plugin: string, settingId: string, value: string) =>
+    setPluginSettings((settings) => ({ ...settings, [plugin]: { ...settings[plugin], [settingId]: value } }));
   const [savedOnce, setSavedOnce] = useState(false);
   const typingAidAttributes = useTypingAidAttributes();
   const { save, saving } = useSaveProfile((profileId) => {
@@ -131,7 +173,8 @@ function ProfileEditor({
     effort === (profile.effort ?? AGENTS_OWN_CHOICE) &&
     bypassPermissions === profile.bypassPermissions &&
     askMode === profile.askMode &&
-    color === profile.color;
+    color === profile.color &&
+    JSON.stringify(pluginSettings) === JSON.stringify(profile.pluginSettings ?? {});
 
   const deleteProfile = () => profile && connection.send({ type: "profile.delete", profileId: profile.id });
 
@@ -140,7 +183,7 @@ function ProfileEditor({
       className="profile-editor"
       onSubmit={(event) => {
         event.preventDefault();
-        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, effort: effort || null, bypassPermissions, askMode, color });
+        save({ id: profile?.id, name, harness, environment, prelaunch, mode: mode || null, effort: effort || null, bypassPermissions, askMode, color, pluginSettings });
       }}
     >
       <label>
@@ -211,6 +254,7 @@ function ProfileEditor({
         change them after that. The modes and effort levels are the ones the agent last listed, so they show once one of its
         conversations has run. A conversation whose model does not offer the level keeps its own effort.
       </div>
+      <PluginProfileFields profileId={profile?.id} profiles={profiles} chosen={pluginSettings} onChoose={choosePluginSetting} />
       <div className="field-label">Environment</div>
       <EnvironmentField value={environment} harness={harness} onChange={setEnvironment} startRevealed={!profile} />
       <div className="hint">
@@ -276,7 +320,7 @@ export function FirstProfile({ installedAgents, conversations }: { installedAgen
         Every conversation runs on a profile: an agent and the environment it starts with. With nothing more set, it runs the agent as
         it is set up on this machine. You can add profiles for other accounts, gateways or local models later in Profiles.
       </p>
-      <ProfileEditor profile={undefined} conversations={conversations} installedAgents={installedAgents} namedAfterAgent onSaved={() => {}} />
+      <ProfileEditor profile={undefined} profiles={[]} conversations={conversations} installedAgents={installedAgents} namedAfterAgent onSaved={() => {}} />
     </div>
   );
 }
@@ -334,6 +378,7 @@ export function ProfilesDialog({
           <ProfileEditor
             key={selected?.id ?? NEW_PROFILE}
             profile={selected}
+            profiles={profiles}
             conversations={conversations}
             installedAgents={installedAgents}
             isOnlyProfile={profiles.length === 1 && selected !== undefined}

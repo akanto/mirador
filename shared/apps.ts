@@ -2,12 +2,15 @@
  * The plugin API version this Mirador speaks; a plugin.json names the one it was written for, and Mirador loads every
  * version up to its own. API 2 brought host tasks, streamed files and images in a view's message; API 3 brought canvas
  * tools and items; API 4 tells apply who made the change; API 5 lets a canvas tool message its agent and start a
- * conversation on another profile.
+ * conversation on another profile, and brings profile settings.
  */
 export const APP_PLUGIN_API = 5;
 
 /** The first plugin API whose plugin.json may have a canvas part. */
 export const CANVAS_PLUGIN_API = 3;
+
+/** The first plugin API whose plugin.json may have profile settings. */
+export const PROFILE_SETTINGS_PLUGIN_API = 5;
 
 /**
  * A plugin's plugin.json. A plugin brings an app, a document that the agent and the user change together; canvas tools
@@ -41,6 +44,8 @@ export interface PluginManifest {
   build?: string;
   /** What the user can set for the plugin, listed under it in Settings. */
   settings?: PluginSetting[];
+  /** What the user can set for the plugin per profile, in the Profiles dialog; plugin API 5 brought them. */
+  profileSettings?: PluginProfileSetting[];
 }
 
 /**
@@ -281,12 +286,31 @@ export interface PluginSetting {
   default: string;
 }
 
+/**
+ * What a profile can set for a plugin: one of its choices, or, with `choices: "profiles"`, another profile by its id, or
+ * none as "", which is then the default.
+ */
+export interface PluginProfileSetting {
+  id: string;
+  label: string;
+  /** A sentence on what it does, its tooltip in the Profiles dialog. */
+  hint?: string;
+  choices: { value: string; label: string }[] | "profiles";
+  default: string;
+}
+
 /** A loaded plugin's settings, with the values the user chose; a setting not chosen yet has its default. */
 export interface PluginSettings {
   plugin: string;
   settings: PluginSetting[];
   chosen: Record<string, string>;
+  /** Kept with each profile, as its `pluginSettings`. */
+  profileSettings?: PluginProfileSetting[];
 }
+
+/** What a profile set for a plugin's profile setting, else the setting's default. */
+export const profileSettingValue = (profilePluginSettings: Record<string, Record<string, string>> | undefined, plugin: string, setting: PluginProfileSetting) =>
+  profilePluginSettings?.[plugin]?.[setting.id] ?? setting.default;
 
 export const settingValue = (settings: PluginSettings | undefined, id: string): string | undefined =>
   settings?.chosen[id] ?? settings?.settings.find((setting) => setting.id === id)?.default;
@@ -309,12 +333,21 @@ function isPluginSetting(value: unknown): value is PluginSetting {
   );
 }
 
+function isPluginProfileSetting(value: unknown): value is PluginProfileSetting {
+  if (typeof value !== "object" || value === null) return false;
+  const { choices, default: fallback } = value as Partial<PluginProfileSetting>;
+  if (choices === "profiles") return isPluginSetting({ ...value, choices: [{ value: "none", label: "None" }], default: "none" }) && (fallback ?? "") === "";
+  return isPluginSetting(value);
+}
+
+const haveDistinctIds = (settings: { id: string }[]) => new Set(settings.map(({ id }) => id)).size === settings.length;
+
 /** A release number as plugins give it: x.y.z, nothing after. */
 export const isPluginVersion = (version: unknown): version is string => typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version);
 
 export function isPluginManifest(value: unknown): value is PluginManifest {
   if (typeof value !== "object" || value === null) return false;
-  const { name, title, version, api, app, canvas, build, settings } = value as Partial<PluginManifest>;
+  const { name, title, version, api, app, canvas, build, settings, profileSettings } = value as Partial<PluginManifest>;
   return (
     typeof name === "string" &&
     /^[a-z0-9][a-z0-9-]*$/.test(name) &&
@@ -325,6 +358,7 @@ export function isPluginManifest(value: unknown): value is PluginManifest {
     (app === undefined || isHostAndView(app)) &&
     (canvas === undefined || isHostAndView(canvas)) &&
     (build === undefined || typeof build === "string") &&
-    (settings === undefined || (Array.isArray(settings) && settings.every(isPluginSetting) && new Set(settings.map(({ id }) => id)).size === settings.length))
+    (settings === undefined || (Array.isArray(settings) && settings.every(isPluginSetting) && haveDistinctIds(settings))) &&
+    (profileSettings === undefined || (Array.isArray(profileSettings) && profileSettings.every(isPluginProfileSetting) && haveDistinctIds(profileSettings)))
   );
 }

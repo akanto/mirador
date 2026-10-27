@@ -1,7 +1,7 @@
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, primaryModifier, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, openProfiles, primaryModifier, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 import type { DesktopMenuMessage } from "../shared/desktop-menu.ts";
 
@@ -282,6 +282,27 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     await deleteButton.click();
     await expect.poll(() => agentSaw().split("The handed-over task stopped: no reply\n").length - 1).toBe(2);
     await expect(delegatedTask(page, title)).toHaveCount(0);
+  });
+
+  await test.step("a plugin's profile setting shows in the Profiles dialog, offering the other profiles, and its tool takes what the profile chose", async () => {
+    const dialog = await openProfiles(page);
+    await dialog.locator(".profile-list li", { hasText: profileName }).click();
+    const handOverTo = dialog.getByLabel("Profile Hand over to");
+    await expect(handOverTo).toHaveValue("");
+    await expect(handOverTo.locator("option").first()).toHaveText("None");
+    await expect(handOverTo.locator("option", { hasText: "Local" })).toHaveCount(1);
+    await expect(handOverTo.locator("option", { hasText: profileName }), "a profile doesn't hand over to itself").toHaveCount(0);
+    await handOverTo.selectOption({ label: "Local" });
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog.locator(".saved")).toHaveText("Saved");
+    await dialog.getByRole("button", { name: "Close" }).click();
+    const reopened = await openProfiles(page);
+    await reopened.locator(".profile-list li", { hasText: profileName }).click();
+    await expect(reopened.getByLabel("Profile Hand over to").locator("option:checked")).toHaveText("Local");
+    await reopened.getByRole("button", { name: "Close" }).click();
+
+    expect(await callCanvasTool(host, conversationId, "hand_over", { task: "SAY Handed over by default." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
+    await expect.poll(agentSaw).toContain("The handed-over task finished: Handed over by default.\n");
   });
 
   await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {

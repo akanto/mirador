@@ -10,6 +10,7 @@ import {
   type StartedConversation,
 } from "../../shared/canvas-plugins.ts";
 import type { PluginCanvasItem, StartedBy } from "../../shared/model.ts";
+import { profileSettingValue } from "../../shared/apps.ts";
 import { canvasViewPath, messageOf, type CanvasPlugin } from "../apps/plugins.ts";
 import type { Hub } from "../hub.ts";
 import type { Store } from "../store.ts";
@@ -82,6 +83,35 @@ export class CanvasPlugins {
       instructions: [...this.plugins.flatMap(({ host }) => host.guidance?.instructions ?? []), ...offeredPluginsGuidance(offered)],
       often: this.plugins.flatMap(({ host }) => host.guidance?.often ?? []),
     };
+  }
+
+  /** The guidance, with what each plugin adds for the conversation's profile, which a conversation a plugin's tool started doesn't get. */
+  guidanceFor(conversationId: string): CanvasPluginGuidance {
+    const { guidance } = this;
+    if (this.store.findConversation(conversationId)?.startedBy) return guidance;
+    const added = this.plugins.flatMap((plugin) => {
+      try {
+        return plugin.host.guidanceFor?.((id) => this.profileSettingOf(plugin, conversationId, id)) ?? [];
+      } catch (error) {
+        console.error(`the ${plugin.manifest.name} plugin failed to give guidance for conversation ${conversationId}:`, error);
+        return [];
+      }
+    });
+    return {
+      ...guidance,
+      instructions: [...guidance.instructions, ...added.flatMap(({ instructions }) => instructions ?? [])],
+      often: [...guidance.often, ...added.flatMap(({ often }) => often ?? [])],
+    };
+  }
+
+  private profileSettingOf(plugin: CanvasPlugin, conversationId: string, id: string): string | null {
+    const setting = plugin.manifest.profileSettings?.find((each) => each.id === id);
+    if (!setting) throw new Error(`${plugin.manifest.name} has no profile setting ${id}; its plugin.json names ${plugin.manifest.profileSettings?.map((each) => each.id).join(", ") || "none"}.`);
+    const profileId = this.store.findConversation(conversationId)?.profileId;
+    const profile = profileId ? this.store.findProfile(profileId) : undefined;
+    const value = profileSettingValue(profile?.pluginSettings, plugin.manifest.name, setting);
+    if (setting.choices !== "profiles") return value || null;
+    return (value && this.store.findProfile(value)?.name) || null;
   }
 
   /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
@@ -166,6 +196,7 @@ export class CanvasPlugins {
       items: () => this.itemsOf(plugin, conversationId).map(pluginItemOf),
       change: (itemId, change) => pluginItemOf(this.change(plugin, conversationId, itemId, change, byAgent)),
       storage: this.storageOf(plugin),
+      profileSetting: (id) => this.profileSettingOf(plugin, conversationId, id),
     };
   }
 

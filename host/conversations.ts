@@ -284,7 +284,7 @@ export class ConversationService {
     private readonly images: ImageStore,
     private readonly droppedFiles: DroppedFiles,
     private readonly notifications: SystemNotifications,
-    private readonly canvasPlugins: () => CanvasPluginGuidance = () => NO_CANVAS_PLUGINS,
+    private readonly canvasPlugins: (conversationId: string) => CanvasPluginGuidance = () => NO_CANVAS_PLUGINS,
   ) {
     this.checkpoints = new Checkpoints(config.dataDir);
     this.changes = new Changes(store, this.checkpoints, (conversationId) => this.workspaceOf(conversationId), launchIdea, openWithSystemDefault, (file) =>
@@ -1411,7 +1411,7 @@ export class ConversationService {
   private async sessionRequest(conversationId: string, workspace: Workspace) {
     const conversation = this.get(conversationId);
     const withoutUserSettings = this.config.testSkipsUserSettings && this.onUsersOwnSetup(conversation);
-    return { cwd: await recordedDirectory(workspace), mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings, canvasPlugins: this.canvasPlugins() }) };
+    return { cwd: await recordedDirectory(workspace), mcpServers: [this.canvasServerFor(conversationId)], _meta: sessionMeta(conversation.harness, this.store.canvasUse(), { canvasAssetsOrigin: this.config.canvasAssetsOrigin, withoutUserSettings, canvasPlugins: this.canvasPlugins(conversationId) }) };
   }
 
   /** claude-notifier hooks into Claude Code only. */

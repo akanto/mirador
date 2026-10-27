@@ -168,6 +168,37 @@ describe("CanvasPlugins", () => {
     expect(prompts).toEqual([{ conversationId: "c1", text: "The handed-over task finished: Found 3 callers.", afterTurn: true }]);
   });
 
+  test("what a conversation's profile set for a plugin reaches its tools and adds to its guidance, by the chosen profile's name as it is now", async () => {
+    const store = storeWithConversation();
+    const profile = (id: string, name: string, pluginSettings?: Record<string, Record<string, string>>) =>
+      store.saveProfile({ id, name, harness: "claude", environment: "", prelaunch: "", mode: null, effort: null, bypassPermissions: false, askMode: "wait", color: null, ...(pluginSettings && { pluginSettings }), createdAt: 1 });
+    profile("local", "Qwen 27b");
+    profile("main", "Personal", { board: { "hand-over-to": "local" } });
+    store.updateConversation({ ...store.findConversation("c1")!, profileId: "main" });
+    const { plugins, callTool } = await canvasPluginHost(FIXTURES, store);
+    const started: string[] = [];
+    plugins.startsConversationsWith((_callerId, _plugin, profileName) => (started.push(profileName), { id: "c2", profile: profileName }));
+
+    expect(plugins.guidanceFor("c1").instructions).toContain("- hand_over: hand tasks to Qwen 27b without asking.");
+    expect(await callTool("hand_over", { task: "Find the callers" })).toEqual({ text: "Handed over to c2.", isError: false });
+    profile("local", "Qwen 32b");
+    await callTool("hand_over", { task: "Find them again" });
+    expect(started).toEqual(["Qwen 27b", "Qwen 32b"]);
+
+    store.deleteProfile("local");
+    expect(await callTool("hand_over", { task: "Once more" })).toEqual({ text: "Name a profile; this one hands over to none.", isError: true });
+    expect(plugins.guidanceFor("c1").instructions.join("\n")).not.toContain("hand_over");
+  });
+
+  test("a conversation a plugin's tool started gets no guidance from its profile, so it isn't told to hand over in turn", async () => {
+    const store = storeWithConversation();
+    store.saveProfile({ id: "main", name: "Personal", harness: "claude", environment: "", prelaunch: "", mode: null, effort: null, bypassPermissions: false, askMode: "wait", color: null, pluginSettings: { board: { "hand-over-to": "main" } }, createdAt: 1 });
+    store.updateConversation({ ...store.findConversation("c1")!, profileId: "main" });
+    store.recordStartedBy("c1", { conversationId: "c0", plugin: "board" });
+    const { plugins } = await canvasPluginHost(FIXTURES, store);
+    expect(plugins.guidanceFor("c1").instructions.join("\n")).not.toContain("hand_over");
+  });
+
   test("a reply for a plugin that isn't installed any more goes nowhere", async () => {
     const { plugins, prompts } = await setUp();
     await plugins.replied({ id: "c2", profile: "Local" }, { conversationId: "c1", plugin: "gone", reply: null, dismissed: false }, { text: "Found", ended: "finished" });
@@ -248,6 +279,14 @@ describe("loading canvas plugins", () => {
       expect(canvases).toEqual([]);
       expect(problems[0]!.message).toContain("each of its settings, if any, an id of its own");
     }
+  });
+
+  test("refuses profile settings in plugin.json whose profiles choice has a default, or in a plugin for an API before them", async () => {
+    const handOverTo = { id: "hand-over-to", label: "Hand over to", choices: "profiles", default: "" };
+    const withDefault = await loadPlugins(boardCopy((manifest) => ({ ...manifest, profileSettings: [{ ...handOverTo, default: "local" }] })));
+    expect(withDefault.problems[0]!.message).toContain("or choices of profiles with an empty default");
+    const tooOld = await loadPlugins(boardCopy((manifest) => ({ ...manifest, api: 4, profileSettings: [handOverTo] })));
+    expect(tooOld.problems[0]!.message).toBe("plugin.json has profile settings, which plugin API 5 brought; it names API 4");
   });
 
   test("an item opens with the room a setting of its plugin says only if that setting's choices are the rooms", async () => {

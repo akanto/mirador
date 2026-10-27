@@ -58,7 +58,7 @@ function buildCanvasServer(
 ) {
   const server = new McpServer(
     { name: CANVAS_SERVER_NAME, version: MIRADOR_VERSION },
-    { instructions: canvasInstructions(assetsOrigin, canvasPlugins?.guidance ?? NO_CANVAS_PLUGINS) },
+    { instructions: canvasInstructions(assetsOrigin, canvasPlugins?.guidanceFor(conversationId) ?? NO_CANVAS_PLUGINS) },
   );
 
   /**

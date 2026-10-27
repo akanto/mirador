@@ -102,6 +102,7 @@ export class ProfileService {
       bypassPermissions: draft.bypassPermissions,
       askMode: draft.askMode,
       color: draft.color,
+      ...(draft.pluginSettings && { pluginSettings: draft.pluginSettings }),
       createdAt: existing?.createdAt ?? Date.now(),
     };
     this.store.saveProfile(profile);

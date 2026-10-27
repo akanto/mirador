@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, watch } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { APP_PLUGIN_API, CANVAS_PLUGIN_API, isPluginManifest, type AppHost, type AppTask, type InstalledApp, type PluginManifest, type PluginSetting } from "../../shared/apps.ts";
+import { APP_PLUGIN_API, CANVAS_PLUGIN_API, PROFILE_SETTINGS_PLUGIN_API, isPluginManifest, type AppHost, type AppTask, type InstalledApp, type PluginManifest, type PluginSetting } from "../../shared/apps.ts";
 import { itemRooms, pluginItemPlacements, type CanvasHost } from "../../shared/canvas-plugins.ts";
 import { BUILT_IN_CANVAS_TOOLS } from "../canvas/tool-names.ts";
 
@@ -102,12 +102,15 @@ export async function readManifest(folder: string): Promise<PluginManifest> {
   if (!existsSync(file)) throw new Error("there's no plugin.json at the top of its folder");
   const manifest: unknown = await Bun.file(file).json();
   if (!isPluginManifest(manifest)) {
-    throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, a version as x.y.z if any, an api number, and app.host and app.view, canvas.host and canvas.view, or both; each of its settings, if any, an id of its own (lower case, digits and dashes), a label, choices with a value and a label each, and one of them as its default");
+    throw new Error("plugin.json needs a name (lower case, digits and dashes), a title, a version as x.y.z if any, an api number, and app.host and app.view, canvas.host and canvas.view, or both; each of its settings, if any, an id of its own (lower case, digits and dashes), a label, choices with a value and a label each, and one of them as its default; and each of its profile settings, if any, the same, or choices of profiles with an empty default");
   }
   if (!Number.isInteger(manifest.api) || manifest.api < 1 || manifest.api > APP_PLUGIN_API) {
     throw new Error(`plugin.json is for plugin API ${manifest.api}; this Mirador speaks plugin API 1 to ${APP_PLUGIN_API}, so the plugin needs a newer Mirador`);
   }
   if (manifest.canvas && manifest.api < CANVAS_PLUGIN_API) throw new Error(`plugin.json has a canvas part, which plugin API ${CANVAS_PLUGIN_API} brought; it names API ${manifest.api}`);
+  if (manifest.profileSettings && manifest.api < PROFILE_SETTINGS_PLUGIN_API) {
+    throw new Error(`plugin.json has profile settings, which plugin API ${PROFILE_SETTINGS_PLUGIN_API} brought; it names API ${manifest.api}`);
+  }
   return manifest;
 }
 

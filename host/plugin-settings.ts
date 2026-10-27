@@ -10,14 +10,19 @@ export class PluginSettingsStore {
 
   all(): PluginSettings[] {
     const chosen = this.store.listPluginSettings();
-    return this.withSettings().map(({ name, settings }) => ({ plugin: name, settings: settings!, chosen: chosen[name] ?? {} }));
+    return this.withSettings().map(({ name, settings, profileSettings }) => ({
+      plugin: name,
+      settings: settings ?? [],
+      chosen: chosen[name] ?? {},
+      ...(profileSettings && profileSettings.length > 0 && { profileSettings }),
+    }));
   }
 
   /** Keeps one of the setting's own choices; throws for anything else. */
   choose(plugin: string, settingId: string, value: string) {
     const setting = this.withSettings()
       .find(({ name }) => name === plugin)
-      ?.settings!.find(({ id }) => id === settingId);
+      ?.settings?.find(({ id }) => id === settingId);
     if (!setting) throw new Error(`${plugin} has no setting ${settingId}.`);
     if (!setting.choices.some((choice) => choice.value === value)) throw new Error(`${value} is not one of the choices of ${setting.label}.`);
     this.store.savePluginSetting(plugin, settingId, value);
@@ -25,6 +30,7 @@ export class PluginSettingsStore {
 
   private withSettings() {
     const seen = new Set<string>();
-    return this.manifests.filter(({ name, settings }) => settings && settings.length > 0 && !seen.has(name) && seen.add(name));
+    const hasAny = ({ settings, profileSettings }: PluginManifest) => (settings?.length ?? 0) + (profileSettings?.length ?? 0) > 0;
+    return this.manifests.filter((manifest) => hasAny(manifest) && !seen.has(manifest.name) && seen.add(manifest.name));
   }
 }
