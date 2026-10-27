@@ -28,7 +28,9 @@ const root = join(realpathSync(tmpdir()), `mirador-video-${crypto.randomUUID().s
 const world = worldIn(root);
 const { shopApi, mobileApp, storefront, infra } = world.projects;
 const catalogFile = join(root, "official-plugins.json");
+/** It runs a copy of the source, so another edit of the checkout during a take can't show the host's restart warning. */
 const host = new TestHost({
+  copiesSource: true,
   shell: "/bin/zsh",
   fakePrograms: true,
   environment: { HOME: world.home, ZDOTDIR: world.home, GIT_PAGER: "cat", MIRADOR_TEST_MODEL: "default", MIRADOR_TEST_EFFORT: "default", MIRADOR_PLUGIN_CATALOG: `file://${catalogFile}`, ...MEDIA_FROM_CACHE },
