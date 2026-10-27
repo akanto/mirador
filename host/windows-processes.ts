@@ -98,11 +98,11 @@ const sameProcess = (one: WindowsProcess) => (other: WindowsProcess) => other.pi
 const microsecondsNow = () => Date.now() * 1000;
 
 /**
- * Windows has no hangup and no process groups: a process and everything it started end together only this way. Each
- * goes before what it started, so nothing sees its child end and carries on. Settles once the tree as it stands is
- * dead; a process the tree was starting as it was killed shows up only later, as a child of a killed one, so the tree is
- * looked at again a few times after, until `lateStartersKilled` settles. A process that started after the one it names
- * as parent was killed got that pid reused, and is no one's to kill.
+ * Windows has no hangup and no process groups: a process and everything it started end together only this way, all at
+ * once: Git Bash's fork copies a child from its parent, and a child whose parent died first says so in its output.
+ * Settles once the tree as it stands is dead; a process the tree was starting as it was killed shows up only later, as
+ * a child of a killed one, so the tree is looked at again a few times after, until `lateStartersKilled` settles. A
+ * process that started after the one it names as parent was killed got that pid reused, and is no one's to kill.
  */
 export async function killProcessTree(
   pid: number,
@@ -119,10 +119,10 @@ export async function killProcessTree(
   const killWhatIsLeft = async () => {
     const tree = [root, ...descendantsOf(root.pid, [root, ...killed, ...snapshot().filter(startedBeforeItsParentWasKilled)])];
     const unkilled = tree.filter((process, index) => tree.findIndex(sameProcess(process)) === index && !killed.some(sameProcess(process)));
-    for (const process of unkilled) {
-      await kill([process.pid]);
-      killed.push({ ...process, killedAt: microsecondsNow() });
-    }
+    if (unkilled.length === 0) return;
+    await kill(unkilled.map((process) => process.pid));
+    const killedAt = microsecondsNow();
+    killed.push(...unkilled.map((process) => ({ ...process, killedAt })));
   };
   await killWhatIsLeft();
   const lateStartersKilled = (async () => {

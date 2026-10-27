@@ -36,10 +36,10 @@ describe("killing a Windows process tree", () => {
     return { kills, killTree: async (pid: number) => (await killProcessTree(pid, { snapshot, kill, lookAgainAfterMs: [0, 0] })).lateStartersKilled };
   }
 
-  test("kills the process before what it started", async () => {
+  test("kills the process and what it started at once", async () => {
     const windows = fakeWindows([[started(10, 1, 100), started(20, 10, 200), started(30, 20, 300)]]);
     await windows.killTree(10);
-    expect(windows.kills).toEqual([[10], [20], [30]]);
+    expect(windows.kills).toEqual([[10, 20, 30]]);
   });
 
   test("also kills what the process had begun to start as it was killed, which shows only later", async () => {
@@ -68,9 +68,9 @@ describe("killing a Windows process tree", () => {
     const snapshots = [[shell, program], [shell, program], [lateStarter]];
     const snapshot = () => snapshots.shift() ?? [];
     const { lateStartersKilled } = await killProcessTree(10, { snapshot, kill: async (pids) => void kills.push(pids), lookAgainAfterMs: [0] });
-    expect(kills).toEqual([[10], [20]]);
+    expect(kills).toEqual([[10, 20]]);
     await lateStartersKilled;
-    expect(kills).toEqual([[10], [20], [30]]);
+    expect(kills).toEqual([[10, 20], [30]]);
   });
 
   test("kills a pid the snapshot doesn't show all the same", async () => {
