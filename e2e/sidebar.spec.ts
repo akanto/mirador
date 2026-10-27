@@ -173,7 +173,7 @@ test("⇧Enter makes a new folder whose name begins a folder's that is there, wh
   const input = page.getByLabel("Workspace directory");
 
   await input.fill(directory);
-  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}/api-server/`);
+  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}${sep}api-server/`);
   await expect(page.locator(".add-workspace .hint")).toHaveText("Enter or Tab takes the highlighted folder, ⇧Enter creates api, Esc cancels");
   await input.press("Shift+Enter");
   await pickProfileIfAsked(page, directory);
@@ -192,10 +192,10 @@ test("a new folder whose name begins a folder's that is there is made by a click
   const newFolder = page.locator(".add-workspace .create-folder");
 
   await input.fill(join(parent, "webb"));
-  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}/webby/`);
+  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}${sep}webby/`);
   await expect(newFolder).toHaveText("+ New folder webb");
   await input.fill(directory);
-  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}/web-app/`);
+  await expect(page.locator(".add-workspace .completions li.highlighted")).toHaveText(`${parent}${sep}web-app/`);
   await newFolder.click();
   await pickProfileIfAsked(page, directory);
   await expect(workspaceCard(page, directory)).toBeVisible();
