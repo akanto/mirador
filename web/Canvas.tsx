@@ -140,13 +140,22 @@ export function CanvasFrame({
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
 
+  const shellLoaded = useRef<Window | null>(null);
+  const pageSentTo = useRef<Window | null>(null);
+  const sendPage = () => {
+    const shell = frame.current?.contentWindow;
+    if (!shell) return;
+    pageSentTo.current = shell;
+    shell.postMessage(canvasPageMessage(document), "*");
+  };
+
   useEffect(() => {
     setErrors([]);
     setContentSize(undefined);
     const listener = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || !isCanvasFrameMessage(event.data)) return;
       const message = event.data;
-      if (message.kind === "shell-ready") frame.current?.contentWindow?.postMessage(canvasPageMessage(document), "*");
+      if (message.kind === "shell-ready") sendPage();
       if (message.kind === "error") setErrors((current) => [...current, message.message]);
       if (message.kind === "rendered") onRenderedRef.current?.(message.errors);
       if (message.kind === "size") {
@@ -158,6 +167,9 @@ export function CanvasFrame({
       onMessageRef.current?.(message);
     };
     window.addEventListener("message", listener);
+    // React keeps a hidden conversation's frames loading but runs no effects there, so a shell that became ready meanwhile was never answered.
+    const shell = frame.current?.contentWindow;
+    if (shell && shellLoaded.current === shell && pageSentTo.current !== shell) sendPage();
     return () => window.removeEventListener("message", listener);
   }, [document]);
 
@@ -183,7 +195,10 @@ export function CanvasFrame({
         src={canvasShellUrl(assetsOrigin, { imagesFromOtherSites })}
         title={frameId}
         style={fitted.frame}
-        onLoad={() => postThemeTo(frame)}
+        onLoad={() => {
+          shellLoaded.current = frame.current?.contentWindow ?? null;
+          postThemeTo(frame);
+        }}
       />
       {errors.length > 0 && (
         <ul className="frame-errors">
