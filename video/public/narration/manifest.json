@@ -123,15 +123,15 @@
     "voiceAsk": {
       "text": "How long will the switch-over take, and what could go wrong?",
       "file": "voiceAsk.wav",
-      "seconds": 3.050666666666667,
-      "voice": "af_bella",
+      "seconds": 2.88,
+      "voice": "af_heart",
       "speed": 1
     },
     "voiceReply": {
       "text": "About ten minutes, read-only. It waits for replication to catch up before it switches.",
       "file": "voiceReply.wav",
-      "seconds": 5.589333333333333,
-      "voice": "bm_george",
+      "seconds": 5.312,
+      "voice": "am_puck",
       "speed": 1
     },
     "mirador": {
