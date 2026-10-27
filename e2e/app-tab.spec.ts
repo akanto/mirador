@@ -349,7 +349,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await expect(view(page).locator("#count")).toHaveText("0");
   });
 
-  await test.step("a question the agent asks after opening the app while the user is away is in front when they come back, not the app", async () => {
+  await test.step("a question the agent asks after opening the app while the user is away is in front when they come back, and the app once it is answered", async () => {
     const { hash } = new URL(page.url());
     const here = hash.slice("#/c/".length);
     const elsewhere = here === first ? second : first;
@@ -366,7 +366,7 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     await question.getByRole("radio", { name: "Yes" }).check();
     await question.getByRole("button", { name: "Submit" }).click();
     expect(await answer).toBe("The user chose: Yes");
-    await appToggle(page).click();
+    await expect(appToggle(page)).toHaveAttribute("aria-pressed", "true");
     await expect(view(page).locator("#count")).toHaveText("0");
   });
 
