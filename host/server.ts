@@ -1325,6 +1325,7 @@ export function startServer(services: HostServices) {
       installedApps: apps.installed(),
       openApps: apps.openApps(),
       canvasViews: canvasPlugins.viewPaths(),
+      pluginToolTitles: canvasPlugins.toolTitles(),
       pluginSettings: pluginSettings.all(),
     });
     hub.send(socket, { type: "join-requests.listed", joinRequests: joinRequests.waiting() });

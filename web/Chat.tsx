@@ -24,7 +24,8 @@ import {
   type UsageLimitWait,
 } from "../shared/model.ts";
 import { profileSettingValue } from "../shared/apps.ts";
-import { choicesOf, usePluginSettings } from "./plugin-settings.ts";
+import { choicesOf, toolTitlesOfPlugins, usePluginSettings } from "./plugin-settings.ts";
+import { readableToolTitle as readableToolTitleOf } from "../shared/tool-title.ts";
 import { panelCommandLine, refusedPanelCommand } from "../shared/panel-commands.ts";
 import { adjacentPlaceholder, placeholdersIn, type TextRange } from "../shared/prompt-templates.ts";
 import { commandShownClosed, outputStartsOpen } from "../shared/shell-output.ts";
@@ -404,10 +405,7 @@ function RawOutput({ block, conversationId }: { block: ToolBlock; conversationId
   );
 }
 
-function readableToolTitle(title: string) {
-  const mcpTool = title.match(/^mcp__(.+?)__(.+)$/);
-  return mcpTool ? `${mcpTool[1]} · ${mcpTool[2]}` : title;
-}
+const readableToolTitle = (title: string) => readableToolTitleOf(title, toolTitlesOfPlugins());
 
 const statusIcons: Record<string, string> = { pending: "○", in_progress: "◐", completed: "●", failed: "✕" };
 

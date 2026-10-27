@@ -154,6 +154,11 @@ export class CanvasPlugins {
     });
   }
 
+  /** Each plugin's tools, by name, with the plugin's title, for the timeline to name the plugin a tool call is from. */
+  toolTitles(): Record<string, string> {
+    return Object.fromEntries(this.plugins.flatMap(({ manifest, host }) => Object.keys(host.tools).map((tool) => [tool, manifest.title])));
+  }
+
   /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
   viewPaths(): Record<string, string> {
     return Object.fromEntries(this.plugins.map((plugin) => [plugin.manifest.name, canvasViewPath(plugin)]));

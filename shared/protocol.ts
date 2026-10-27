@@ -309,6 +309,8 @@ export type ServerMessage =
       openApps: OpenApp[];
       /** Where the canvas assets serve each plugin's canvas view, by plugin name. */
       canvasViews: Record<string, string>;
+      /** Each plugin's tools by their name on the canvas server, with the plugin's title; missing from an older host. */
+      pluginToolTitles?: Record<string, string>;
       /** Missing from a host older than plugin settings. */
       pluginSettings?: PluginSettings[];
     }

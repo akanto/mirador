@@ -356,6 +356,17 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
     expect(agentSaw(), "the agent hears the setting as it is after the switch").toContain("Hand over to for this conversation is back to its profile's: none.\n\nSAY Switched.");
   });
 
+  await test.step("a plugin's tool call in the conversation names the plugin, where Mirador's own canvas tools name the canvas", async () => {
+    await backToTheMessageBox(page);
+    const calls = [
+      { title: "mcp__canvas__hand_over", kind: "other", rawInput: { task: "Find the callers" } },
+      { title: "mcp__canvas__show", kind: "other", rawInput: { title: "Plan" } },
+    ];
+    await sendAndWait(page, `RUN TOOLS ${JSON.stringify(calls)}`);
+    await expect(page.locator(".timeline:visible .tool-title").filter({ hasText: "hand_over" })).toHaveText("Board · hand_over");
+    await expect(page.locator(".timeline:visible .tool-title").filter({ hasText: " · show" })).toHaveText("canvas · show");
+  });
+
   await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {
     rmSync(boardFolder, { recursive: true });
     await host.restart();

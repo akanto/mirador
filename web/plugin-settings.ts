@@ -13,7 +13,13 @@ function receive(pluginSettings: PluginSettings[]) {
   moveReviewPlacementFromThisBrowser();
 }
 
+let pluginToolTitles: Record<string, string> = {};
+
+/** Each plugin's tools with the plugin's title, as the host last said; plugins change only with a restart, which sends a new snapshot. */
+export const toolTitlesOfPlugins = () => pluginToolTitles;
+
 connection.onMessage((message) => {
+  if (message.type === "snapshot") pluginToolTitles = message.pluginToolTitles ?? {};
   if (message.type === "snapshot") receive(message.pluginSettings ?? []);
   if (message.type === "plugins.settings") receive(message.pluginSettings);
 });
