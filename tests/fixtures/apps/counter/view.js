@@ -25,9 +25,10 @@ const clip = document.getElementById("clip");
 const showText = (id) => (text) => (document.getElementById(id).textContent = text);
 clip.addEventListener("loadeddata", () => showText("clip-state")(`showing ${clip.videoWidth}×${clip.videoHeight}`));
 clip.addEventListener("error", () => showText("clip-state")("the clip didn't load"));
-document.getElementById("show-clip").addEventListener("click", () =>
-  window.mirador.mediaUrl("clip.webm").then((url) => (clip.src = url), (error) => showText("clip-state")(error.message)),
-);
+document.getElementById("show-clip").addEventListener("click", () => {
+  showText("clip-state")("loading");
+  window.mirador.mediaUrl("clip.webm").then((url) => (clip.src = url), (error) => showText("clip-state")(error.message));
+});
 const frameOfClip = () => {
   const canvas = Object.assign(document.createElement("canvas"), { width: clip.videoWidth, height: clip.videoHeight });
   canvas.getContext("2d").drawImage(clip, 0, 0);
