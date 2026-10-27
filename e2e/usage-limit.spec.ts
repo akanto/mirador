@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, lastAgentMessage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -45,7 +45,7 @@ test("at Claude's usage limit, queued messages wait for the reset instead of fai
     await sendMessage(page, "third task");
     await expect(queued(page)).toHaveText(["second task", "third task"]);
     await host.restart();
-    await page.reload();
+    await reloadFromRestartedHost(page);
     await expect(notice(page)).toContainText("the agent continues by itself at", { timeout: 60_000 });
     await expect(queued(page)).toHaveText(["second task", "third task"]);
     expect(api.refused).toContain("first task");

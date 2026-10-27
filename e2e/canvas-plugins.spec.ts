@@ -1,7 +1,7 @@
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, primaryModifier, sendMessage, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, chooseInSettings, createProfile, primaryModifier, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 import type { DesktopMenuMessage } from "../shared/desktop-menu.ts";
 
@@ -206,7 +206,7 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
   await test.step("with the plugin gone, its item shows what it published instead of a blank page", async () => {
     rmSync(boardFolder, { recursive: true });
     await host.restart();
-    await page.reload();
+    await reloadFromRestartedHost(page);
     await expect(canvasTitle(page)).toHaveText("Report");
     await expect(page.locator(".canvas-panel:visible .plugin-item-missing")).toContainText("The board plugin isn't installed, so this is what it published, as it is.");
     await expect(page.locator(".canvas-panel:visible .plugin-item-missing pre")).toContainText('"verdict": "Request changes"');

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { FakeClaudeApi, subscriptionEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, createProfile, lastAgentMessage, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, lastAgentMessage, reloadFromRestartedHost, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -42,7 +42,7 @@ test("a turn an API error ended is tried again from the error, and the agent sti
 
   await test.step("and still does after a host restart", async () => {
     await host.restart();
-    await page.reload();
+    await reloadFromRestartedHost(page);
     await expect(tryAgain).toBeVisible({ timeout: 60_000 });
   });
 
