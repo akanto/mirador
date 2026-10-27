@@ -76,6 +76,7 @@ export function shotsOf(scene: ClipScene, clip: ClipInfo) {
     const clipFrom = clipSeconds(clip, from);
     const clipTo = clipSeconds(clip, to);
     if (clipTo <= clipFrom) throw new Error(`${scene.id}: a shot ends (${clipTo}s) before it starts (${clipFrom}s)`);
+    if (clipTo > clip.seconds) throw new Error(`${scene.id}: a shot ends (${clipTo}s) after its clip does (${clip.seconds}s)`);
     const placed = { clipFrom, clipTo, speed, sceneFrom: sceneAt, sceneTo: sceneAt + (clipTo - clipFrom) / speed };
     sceneAt = placed.sceneTo;
     return placed;

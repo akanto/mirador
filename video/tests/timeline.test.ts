@@ -43,6 +43,10 @@ describe("a scene's shots", () => {
     expect(() => shotsOf({ ...scene, shots: [{ from: "shown", to: "sent" }] }, clip)).toThrow("demo: a shot ends (4s) before it starts (10s)");
   });
 
+  test("can't run past the end of their clip, which would show no footage", () => {
+    expect(() => shotsOf({ ...scene, shots: [{ from: "shown", to: 21 }] }, clip)).toThrow("demo: a shot ends (21s) after its clip does (20s)");
+  });
+
   test("place a moment of the clip in the scene, and one that was cut where the next shot starts", () => {
     expect(sceneSecondsOf(scene, clip, ["sent", -1])).toBe(0.5);
     expect(sceneSecondsOf(scene, clip, 6)).toBe(1);

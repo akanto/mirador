@@ -101,7 +101,7 @@ export const STORYBOARD: Scene[] = [
     clip: "overview",
     shots: [
       { from: 3.5, to: ["needsYou", -0.3], speed: 1.3 },
-      { from: ["needsYou", -0.3], to: 12 },
+      { from: ["needsYou", -0.3], to: ["runbookDone", 1.6] },
     ],
     camera: [
       { at: 3.5, look: "app" },
