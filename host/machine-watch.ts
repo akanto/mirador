@@ -50,7 +50,7 @@ class MachineSocket {
     try {
       this.events.message(JSON.parse(String(data)) as ServerMessage);
     } catch (error) {
-      console.error(`${new Date().toISOString()} skipped a message from ${this.url} it could not follow:`, error);
+      console.error(`skipped a message from ${this.url} it could not follow:`, error);
     }
   }
 

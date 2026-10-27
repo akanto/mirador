@@ -8,7 +8,7 @@ import { MIRADOR_VERSION } from "../../shared/version.ts";
 import { asyncTaskUpdateOf } from "../async-tasks.ts";
 import { commandLine, commandShell, withOutputAppendedTo } from "../command-shell.ts";
 import { killProcessTree } from "../windows-processes.ts";
-import { timestampedLines } from "./timestamped-lines.ts";
+import { timestampedLines } from "../timestamped-lines.ts";
 
 export type ConfigValue = string | boolean;
 
@@ -250,7 +250,7 @@ export class HarnessProcess {
     const log = createWriteStream(this.logPath(), { flags: "a" });
     const stamped = timestampedLines();
     log.on("error", (error) => {
-      console.error(`${new Date().toISOString()} could not write the ${this.spec.label} agent's log:`, error.message);
+      console.error(`could not write the ${this.spec.label} agent's log:`, error.message);
       child.stderr!.unpipe(stamped);
       child.stderr!.resume();
     });

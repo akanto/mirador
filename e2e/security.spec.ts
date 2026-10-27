@@ -78,9 +78,9 @@ test("the page loads nothing and connects to nothing but its own host, as its Co
   expect(inlineScriptRan).toBe(false);
 });
 
-test("a browser signs in with a one-time link from mirador sign-in, and the host prints no token where no terminal reads it", async ({ page }) => {
+test("a browser signs in with a one-time link from mirador sign-in, and the host logs with timestamps and no token where no terminal reads it", async ({ page }) => {
   const browserToken = new URL(host.authUrl).searchParams.get("token")!;
-  expect(host.log).toContain("Mirador is running");
+  expect(host.log).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z Mirador is running/m);
   expect(host.log).not.toContain(browserToken);
   expect(host.log).not.toContain("/auth?");
 

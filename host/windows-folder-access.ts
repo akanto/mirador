@@ -55,6 +55,6 @@ export function keepDataFolderToHostAccount(dataDir: string) {
   try {
     keepFolderToHostAccount(dataDir);
   } catch (error) {
-    console.warn(`${new Date().toISOString()} could not leave the data folder ${dataDir} to this account alone: ${error instanceof Error ? error.message : error}`);
+    console.warn(`could not leave the data folder ${dataDir} to this account alone: ${error instanceof Error ? error.message : error}`);
   }
 }

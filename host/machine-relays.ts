@@ -102,7 +102,7 @@ export class MachineRelays {
   start(machine: Machine) {
     const portBefore = machine.relayPort !== null && this.ports.includes(machine.relayPort) ? machine.relayPort : null;
     const server = (portBefore && this.listen(machine.id, portBefore)) || this.listenOnFreePort(machine.id);
-    if (!server) return console.error(`${new Date().toISOString()} no free port to show the machine ${machine.name} on`);
+    if (!server) return console.error(`no free port to show the machine ${machine.name} on`);
     this.servers.set(machine.id, server);
     if (server.port !== machine.relayPort) this.store.setMachineRelayPort(machine.id, server.port!);
   }

@@ -47,7 +47,7 @@ export class PluginCatalog {
       this.plugins = plugins;
       this.store.savePluginCatalog(catalog);
     } catch (error) {
-      console.warn(`${new Date().toISOString()} the catalog of official plugins at ${this.url} couldn't be fetched: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`the catalog of official plugins at ${this.url} couldn't be fetched: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

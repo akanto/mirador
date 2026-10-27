@@ -1366,7 +1366,7 @@ export function startServer(services: HostServices) {
       hub.remove(socket);
       desktopApp.disconnected(socket);
       if (socket.data.deviceId) deviceCameOrLeft(socket.data.deviceId);
-      if (code !== 1000 && code !== 1001) console.log(`${new Date().toISOString()} browser socket closed: ${code} ${reason}`);
+      if (code !== 1000 && code !== 1001) console.log(`browser socket closed: ${code} ${reason}`);
     },
     async message(socket, raw) {
       if (socket.data.role === "notifier") return;

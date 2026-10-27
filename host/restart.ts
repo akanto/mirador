@@ -44,7 +44,7 @@ export function relaunch(how: Relaunch) {
   if (how.by === "scheduled-task") {
     const schtasks = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "schtasks.exe");
     const queued = Bun.spawnSync([schtasks, "/run", "/tn", how.task], { windowsHide: true });
-    if (queued.exitCode !== 0) console.error(`${new Date().toISOString()} could not run the task ${how.task} to start the host again: ${queued.stderr.toString().trim()}`);
+    if (queued.exitCode !== 0) console.error(`could not run the task ${how.task} to start the host again: ${queued.stderr.toString().trim()}`);
     process.exit(0);
   }
   process.exit(how.exitCode);
@@ -107,10 +107,10 @@ export class HostRestart {
     if (!relaunchHost) throw new Error("This host cannot restart itself here; restart it from the tray or the terminal instead.");
     if (this.restarting) return;
     this.restarting = true;
-    console.log(`${new Date().toISOString()} restarting the host in place`);
+    console.log(`restarting the host in place`);
     this.hub.broadcast({ type: "host.restarting" });
     await this.stopTurnsForTheNextHostToContinue();
-    await stoppedWithinTimeout(this.stopServices).catch((error) => console.error(`${new Date().toISOString()} stopping the services failed:`, error));
+    await stoppedWithinTimeout(this.stopServices).catch((error) => console.error(`stopping the services failed:`, error));
     relaunchHost();
   }
 
@@ -119,7 +119,7 @@ export class HostRestart {
       const stoppedTurns = await this.conversations.prepareForRestart();
       writeFileSync(join(this.dataDir, STOPPED_TURNS_FILE), JSON.stringify(stoppedTurns), { mode: 0o600 });
     } catch (error) {
-      console.error(`${new Date().toISOString()} the turns stopped for the restart will not continue after it:`, error);
+      console.error(`the turns stopped for the restart will not continue after it:`, error);
     }
   }
 }

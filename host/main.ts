@@ -1,3 +1,5 @@
+// First, so that what any module logs as it loads is stamped too.
+import "./stamped-log.ts";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { serveCanvasAssets } from "./canvas/assets.ts";
@@ -158,7 +160,7 @@ const voiceEngine = new VoiceEngine(
     onChange: voiceEngineChanged,
   }),
 );
-voiceEngineInstaller.load().catch((error) => console.error(`${new Date().toISOString()} reading how voice is set up on this Mac failed:`, error));
+voiceEngineInstaller.load().catch((error) => console.error(`reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
 const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, pluginUpdates, devices, joinRequests, signInCodes, search, relays, watch, certificate });
 const sourceWatcher = new SourceWatcher(sourceDir, {
@@ -215,13 +217,13 @@ let stopping = false;
 async function shutdown() {
   if (stopping) process.exit(0);
   stopping = true;
-  await stoppedWithinTimeout(stopServices).catch((error) => console.error(`${new Date().toISOString()} stopping the services failed:`, error));
+  await stoppedWithinTimeout(stopServices).catch((error) => console.error(`stopping the services failed:`, error));
   process.exit(0);
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => {
-    console.log(`${new Date().toISOString()} received ${signal}, stopping`);
+    console.log(`received ${signal}, stopping`);
     shutdown();
   });
 }

@@ -606,7 +606,7 @@ export class ConversationService {
   /** A turn whose agent cannot take the cancel, such as one still starting, is waited for all the same. */
   private async stopTurn(conversationId: string) {
     const { turnEnded } = this.runtime(conversationId);
-    await this.cancel(conversationId).catch((error) => console.error(`${new Date().toISOString()} cancelling the turn failed; waiting for it to end:`, error));
+    await this.cancel(conversationId).catch((error) => console.error(`cancelling the turn failed; waiting for it to end:`, error));
     await turnEnded;
   }
 
@@ -685,7 +685,7 @@ export class ConversationService {
           : undefined;
       if (response?.stopReason !== "end_turn") {
         await this.returnUnansweredSteers(conversationId, runtime, turn.steered, response).catch((error: unknown) =>
-          console.error(`${new Date().toISOString()} could not tell whether the agent answered the messages that joined the turn of conversation ${conversationId}: ${errorMessage(error)}`),
+          console.error(`could not tell whether the agent answered the messages that joined the turn of conversation ${conversationId}: ${errorMessage(error)}`),
         );
       }
       runtime.running = false;
@@ -850,7 +850,7 @@ export class ConversationService {
     try {
       return await this.checkpoints.snapshot(this.workspaceOf(conversationId));
     } catch (error) {
-      console.error(`${new Date().toISOString()} could not keep the files of a turn: ${errorMessage(error)}`);
+      console.error(`could not keep the files of a turn: ${errorMessage(error)}`);
       return null;
     }
   }
@@ -1638,7 +1638,7 @@ export class ConversationService {
       .catch((error: unknown) => `failed: ${errorMessage(error)}`);
     runtime.steerInFlight = false;
     if (outcome !== "injected") {
-      console.error(`${new Date().toISOString()} could not steer queued messages into the turn of conversation ${conversationId}, so they go back to the queue: ${outcome}`);
+      console.error(`could not steer queued messages into the turn of conversation ${conversationId}, so they go back to the queue: ${outcome}`);
       this.setQueue(conversationId, runtime, [...messages, ...runtime.queuedMessages]);
       this.publish(this.get(conversationId));
       if (!runtime.running) this.sendNextQueuedMessage(conversationId);
@@ -1660,7 +1660,7 @@ export class ConversationService {
   private logWhatKeepsQueuedMessagesOut(conversationId: string, { turn }: Runtime, keptOutBy: string | null) {
     if (!turn || turn.queuedMessagesKeptOutBy === keptOutBy) return;
     turn.queuedMessagesKeptOutBy = keptOutBy;
-    if (keptOutBy) console.log(`${new Date().toISOString()} queued messages of conversation ${conversationId} wait outside its running turn: ${keptOutBy}`);
+    if (keptOutBy) console.log(`queued messages of conversation ${conversationId} wait outside its running turn: ${keptOutBy}`);
   }
 
   /**

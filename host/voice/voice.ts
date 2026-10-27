@@ -46,8 +46,6 @@ export function profileVoiceModel(profile: Profile, model: string): ChatEndpoint
 /** An own server may answer without the language it heard, as OpenAI's newer speech models do. */
 const tellsLanguage = (source: VoiceSource) => source.kind === "this-mac" && choosableModel(source.model)?.tellsLanguage === true;
 
-const logLine = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
-
 /** 16 kHz mono 16-bit WAV. */
 const WAV_BYTES_PER_SECOND = 32_000;
 
@@ -58,7 +56,7 @@ export class Voice {
     private readonly settings: () => VoiceSettings,
     private readonly profileById: (profileId: string) => Profile | undefined,
     private readonly thisMac: ThisMac = notSetUpOnThisMac,
-    private readonly log: (line: string) => void = logLine,
+    private readonly log: (line: string) => void = console.log,
   ) {}
 
   /** How long each step of speaking with the agent takes, in the host log, to tell which keeps the user waiting. */

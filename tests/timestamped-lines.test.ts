@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HarnessProcess } from "../host/acp/harness.ts";
-import { timestampedLines } from "../host/acp/timestamped-lines.ts";
+import { timestampedLines } from "../host/timestamped-lines.ts";
 
 const stampedOutputOf = async (chunks: (string | Buffer)[]) => {
   const stamp = timestampedLines(() => new Date("2026-10-27T09:00:00.000Z"));
@@ -44,5 +44,36 @@ describe("HarnessProcess.start", () => {
     await Bun.sleep(100);
     const lines = readFileSync(join(directory, "noisy.log"), "utf8").trimEnd().split("\n");
     expect(lines.map((line) => line.replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z /, ""))).toEqual(["one", "two"]);
+  }, 15_000);
+});
+
+const STAMP = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z /;
+const stampedLog = join(import.meta.dir, "../host/stamped-log.ts");
+const crashingHost = `
+  await import(${JSON.stringify(stampedLog)});
+  console.log("started");
+  console.error("failed:", new Error("boom"));
+  setTimeout(() => { throw new Error("crash"); }, 10);
+`;
+
+describe("the host's log", () => {
+  test("stamps every line the host logs, and the time it exits after a crash, written to a file", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "mirador-host-log-")), "host.log");
+    const fd = openSync(log, "a");
+    const host = Bun.spawn([process.execPath, "-e", crashingHost], { stdout: fd, stderr: fd });
+    await host.exited;
+    closeSync(fd);
+    const lines = readFileSync(log, "utf8").trimEnd().split("\n");
+    expect(lines).toContainEqual(expect.stringMatching(new RegExp(`${STAMP.source}started$`)));
+    const boomTrace = lines.slice(lines.findIndex((line) => line.includes("Error: boom")));
+    expect(boomTrace.slice(0, 2).every((line) => STAMP.test(line))).toBe(true);
+    expect(lines.slice(lines.findIndex((line) => line.includes("error: crash")))).toContainEqual(expect.stringMatching(new RegExp(`${STAMP.source}the host exits with code 1$`)));
+  }, 15_000);
+
+  test("stamps the exit line when the host's output goes to a pipe", async () => {
+    const host = Bun.spawn([process.execPath, "-e", crashingHost], { stdout: "pipe", stderr: "pipe" });
+    const [output, errors] = await Promise.all([new Response(host.stdout).text(), new Response(host.stderr).text()]);
+    expect(output).toMatch(new RegExp(`${STAMP.source}started\\n$`));
+    expect(errors.slice(errors.indexOf("error: crash"))).toMatch(new RegExp(`${STAMP.source}the host exits with code 1$`, "m"));
   }, 15_000);
 });

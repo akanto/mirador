@@ -34,7 +34,7 @@ export async function installDefaultPlugins(defaults: DefaultPlugin[], plugins: 
       if (!installedFolders.has(plugin.name)) await plugins.add(plugin.repo, plugin.tag);
       store.rememberDefaultPluginInstalled(plugin.name);
     } catch (error) {
-      console.warn(`${new Date().toISOString()} the ${plugin.name} plugin, which Mirador installs by itself, didn't install from ${basename(plugin.repo)}: ${messageOf(error)}`);
+      console.warn(`the ${plugin.name} plugin, which Mirador installs by itself, didn't install from ${basename(plugin.repo)}: ${messageOf(error)}`);
     }
   }
 }

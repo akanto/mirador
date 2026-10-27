@@ -123,7 +123,7 @@ export class CanvasPlugins {
         const note = plugin.host.note?.(this.context(plugin, conversationId, { byAgent: false }));
         return note ? [note] : [];
       } catch (error) {
-        console.error(`${new Date().toISOString()} the note of the ${plugin.manifest.name} plugin failed:`, error);
+        console.error(`the note of the ${plugin.manifest.name} plugin failed:`, error);
         return [];
       }
     });
@@ -173,7 +173,7 @@ export class CanvasPlugins {
       if (data !== item.data) return { ...shown, updatedAt: Date.now() };
       return shown.outcome === item.outcome && shown.count === item.count && shown.roomSetting === item.roomSetting ? item : shown;
     } catch (error) {
-      console.error(`${new Date().toISOString()} the ${item.plugin} plugin failed to list ${item.id}:`, error);
+      console.error(`the ${item.plugin} plugin failed to list ${item.id}:`, error);
       return item;
     }
   }
