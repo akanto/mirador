@@ -44,7 +44,7 @@ function wholeFile(change: ProposedChange, file: FileBefore, replaceAll: boolean
 }
 
 function hunksBetween(before: string, after: string, context: number, timeout = DIFF_TIMEOUT_MS): DiffHunk[] | null {
-  const patch = structuredPatch("", "", before, after, undefined, undefined, { context, timeout });
+  const patch = structuredPatch("", "", before, after, undefined, undefined, { context, timeout, stripTrailingCr: true });
   if (!patch) return null;
   return patch.hunks.map(({ oldStart, newStart, lines }) => {
     let [oldLine, newLine] = [oldStart, newStart];

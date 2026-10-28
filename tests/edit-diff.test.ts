@@ -112,6 +112,12 @@ describe("a file's line changes, asked for again after every tool call", () => {
     expect(rowsOf(first).filter(({ kind }) => kind !== "context")).toEqual([row("removed", 15, null, "line 15"), row("added", null, 15, "line fifteen")]);
   });
 
+  test("a file git checked out with Windows line endings shows only the lines that changed, as git counts them", () => {
+    const withWindowsLineEndings = withLine(15, "line fifteen").replaceAll("\n", "\r\n");
+    const diff = fileChangeDiff("a.ts", text(numbered(30)), text(withWindowsLineEndings));
+    expect(rowsOf(diff).filter(({ kind }) => kind !== "context")).toEqual([row("removed", 15, null, "line 15"), row("added", null, 15, "line fifteen")]);
+  });
+
   test("another version or another path is diffed anew", () => {
     const first = fileChangeDiff("a.ts", text(numbered(30)), text(withLine(15, "line fifteen")));
     const changedAgain = fileChangeDiff("a.ts", text(numbered(30)), text(withLine(16, "line sixteen")));
