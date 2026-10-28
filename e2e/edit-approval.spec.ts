@@ -157,6 +157,11 @@ test("with edits kept out of the canvas in Settings, or the canvas hidden, the c
   await expect(pendingCard(page).locator(".diff")).toContainText("line eight");
   await expect(pendingCard(page).locator(".diff-removed .word-changed")).toHaveText("8");
   await expect(pendingCard(page).locator(".diff-added .word-changed")).toHaveText("eight");
+  const fontSizes = await pendingCard(page).locator(".diff-added").evaluate((line) => ({
+    line: getComputedStyle(line).fontSize,
+    text: getComputedStyle(line.querySelector(".code-text")!).fontSize,
+  }));
+  expect(fontSizes.text).toBe(fontSizes.line);
   await page.locator(".chat-header:visible").getByRole("button", { name: "Show canvas" }).click();
   await expect(editView(page).locator(".code-row.added")).toContainText("line eight");
   await expect(pendingCard(page)).toContainText("Shown in the canvas");

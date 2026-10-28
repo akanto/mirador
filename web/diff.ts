@@ -2,7 +2,7 @@ export type DiffLine = { kind: "same" | "added" | "removed"; text: string };
 
 const MAX_LCS_CELLS = 400_000;
 
-function longestCommonSubsequenceTable(before: string[], after: string[]) {
+export function longestCommonSubsequenceTable(before: string[], after: string[]) {
   const table = Array.from({ length: before.length + 1 }, () => new Uint32Array(after.length + 1));
   for (let i = before.length - 1; i >= 0; i--) {
     for (let j = after.length - 1; j >= 0; j--) {

@@ -1,3 +1,6 @@
+import { longestCommonSubsequenceTable } from "./diff.ts";
+import { splitRows } from "./edit-approval.ts";
+
 /** A run of a line's characters, from `start` up to `end`. */
 export interface TextRange {
   start: number;
@@ -5,19 +8,22 @@ export interface TextRange {
 }
 
 const MAX_TOKEN_CELLS = 250_000;
-/** Below this share of the two lines' characters kept, the line was rewritten rather than edited, and marking words only adds noise. */
+/**
+ * Below this share of the two lines' word characters kept, the line was rewritten rather than edited, and marking words
+ * only adds noise. Punctuation is left out: lines that keep only their brackets and commas were still rewritten.
+ */
 const MIN_KEPT_SHARE = 0.4;
+/** A line kept this nearly whole inside a longer one grew rather than was rewritten, as in `foo()` → `foo(a, b)`. */
+const MIN_GROWN_SHARE = 0.9;
+/** Shorter lines than this, as `x = 1`, turn up by chance inside an unrelated long line they happen to face. */
+const MIN_GROWN_WORD_LENGTH = 3;
 
 const tokensOf = (line: string) => line.match(/[\p{L}\p{N}_]+|\s+|[^\p{L}\p{N}_\s]/gu) ?? [];
+const isWord = (token: string) => /^[\p{L}\p{N}_]/u.test(token);
 
 /** Which tokens of each line are in a longest common subsequence of the two. */
 function keptTokens(before: string[], after: string[]) {
-  const table = Array.from({ length: before.length + 1 }, () => new Uint32Array(after.length + 1));
-  for (let i = before.length - 1; i >= 0; i--) {
-    for (let j = after.length - 1; j >= 0; j--) {
-      table[i]![j] = before[i] === after[j] ? table[i + 1]![j + 1]! + 1 : Math.max(table[i + 1]![j]!, table[i]![j + 1]!);
-    }
-  }
+  const table = longestCommonSubsequenceTable(before, after);
   const keptBefore = before.map(() => false);
   const keptAfter = after.map(() => false);
   let [i, j] = [0, 0];
@@ -47,8 +53,17 @@ function changedRanges(line: string, tokens: string[], kept: boolean[]): TextRan
   return ranges;
 }
 
-const keptLength = (tokens: string[], kept: boolean[]) => tokens.reduce((sum, token, index) => sum + (kept[index] && /\S/.test(token) ? token.length : 0), 0);
-const visibleLength = (tokens: string[]) => tokens.reduce((sum, token) => sum + (/\S/.test(token) ? token.length : 0), 0);
+const wordLength = (tokens: string[], counted: (index: number) => boolean = () => true) =>
+  tokens.reduce((sum, token, index) => sum + (counted(index) && isWord(token) ? token.length : 0), 0);
+
+function editedRatherThanRewritten(beforeTokens: string[], afterTokens: string[], keptBefore: boolean[]) {
+  const kept = wordLength(beforeTokens, (index) => keptBefore[index]!);
+  const [beforeLength, afterLength] = [wordLength(beforeTokens), wordLength(afterTokens)];
+  const shorter = Math.min(beforeLength, afterLength);
+  const keepsEnoughOfBoth = kept > 0 && 2 * kept >= MIN_KEPT_SHARE * (beforeLength + afterLength);
+  const grewFromShorter = shorter >= MIN_GROWN_WORD_LENGTH && kept >= MIN_GROWN_SHARE * shorter;
+  return keepsEnoughOfBoth || grewFromShorter;
+}
 
 /**
  * What changed between a removed line and the added line that replaces it, as ranges of each; null when the two have
@@ -58,8 +73,7 @@ export function wordChanges(before: string, after: string): { removed: TextRange
   const [beforeTokens, afterTokens] = [tokensOf(before), tokensOf(after)];
   if (beforeTokens.length * afterTokens.length > MAX_TOKEN_CELLS) return null;
   const { keptBefore, keptAfter } = keptTokens(beforeTokens, afterTokens);
-  const kept = keptLength(beforeTokens, keptBefore);
-  if (2 * kept < MIN_KEPT_SHARE * (visibleLength(beforeTokens) + visibleLength(afterTokens))) return null;
+  if (!editedRatherThanRewritten(beforeTokens, afterTokens, keptBefore)) return null;
   return { removed: changedRanges(before, beforeTokens, keptBefore), added: changedRanges(after, afterTokens, keptAfter) };
 }
 
@@ -69,23 +83,12 @@ export function wordChanges(before: string, after: string): { removed: TextRange
  */
 export function rowWordChanges(rows: { kind: string; text: string }[]): (TextRange[] | null)[] {
   const changes: (TextRange[] | null)[] = rows.map(() => null);
-  let removed: number[] = [];
-  let added: number[] = [];
-  const faceRuns = () => {
-    removed.slice(0, added.length).forEach((left, line) => {
-      const right = added[line]!;
+  splitRows(rows)
+    .flatMap(({ left, right }) => (left !== null && right !== null && left !== right ? [{ left, right }] : []))
+    .forEach(({ left, right }) => {
       const ranges = wordChanges(rows[left]!.text, rows[right]!.text);
       if (ranges) [changes[left], changes[right]] = [ranges.removed, ranges.added];
     });
-    [removed, added] = [[], []];
-  };
-  rows.forEach((row, index) => {
-    if (row.kind === "removed" && added.length > 0) faceRuns();
-    if (row.kind === "removed") removed.push(index);
-    else if (row.kind === "added") added.push(index);
-    else faceRuns();
-  });
-  faceRuns();
   return changes;
 }
 

@@ -1,6 +1,6 @@
 import type { PermissionOption } from "@agentclientprotocol/sdk";
 import type { StoredEvent } from "../shared/model.ts";
-import type { DiffRow, EditDiff } from "../shared/review.ts";
+import type { EditDiff } from "../shared/review.ts";
 import type { SettledNote } from "./SettledNote.tsx";
 
 /** A permission request to change files, and what the user answered. */
@@ -50,7 +50,7 @@ export interface SplitRow {
 }
 
 /** Lays rows out side by side: each run of removed lines faces the run of added lines after it, line by line. */
-export function splitRows(rows: DiffRow[]): SplitRow[] {
+export function splitRows(rows: { kind: string }[]): SplitRow[] {
   const split: SplitRow[] = [];
   let removed: number[] = [];
   let added: number[] = [];

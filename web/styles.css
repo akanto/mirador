@@ -5947,6 +5947,7 @@ button.picture-option.chosen {
 .diff .code-text {
   white-space: inherit;
   padding-right: 0;
+  font-size: inherit;
 }
 
 :is(.added, .diff-added) > .code-text .word-changed {

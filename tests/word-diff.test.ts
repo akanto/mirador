@@ -28,6 +28,24 @@ describe("the words that changed between a removed line and the line replacing i
   test("are not marked on a line rewritten from scratch", () => {
     expect(wordChanges("import { a } from 'x';", "export default function main() {}")).toBeNull();
   });
+
+  test("are marked when a short line grows, keeping all of itself", () => {
+    const [before, after] = ["// TODO", "// TODO: fix this later please"];
+    expect(changedText(after, wordChanges(before, after)?.added)).toEqual([": fix this later please"]);
+  });
+
+  test("are not marked on a long line a short unrelated one happens to face", () => {
+    expect(wordChanges("x = 1", "const total = items.reduce((sum, x) => sum + x.price, 1);")).toBeNull();
+    expect(wordChanges("i++;", "for (let i = 0; i < n; i++) {")).toBeNull();
+  });
+
+  test("are not marked on a line that keeps only its punctuation", () => {
+    expect(wordChanges("foo(a, b, c);", "bar(x, y, z);")).toBeNull();
+  });
+
+  test("are not marked on a blank line replaced with code", () => {
+    expect(wordChanges("", "foo();")).toBeNull();
+  });
 });
 
 describe("the changed words of a diff's rows", () => {
