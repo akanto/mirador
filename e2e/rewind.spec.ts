@@ -32,7 +32,7 @@ test.afterAll(async () => {
 });
 
 /** The turn that began with this message, and the way back to it, which shows while the turn is pointed at. */
-const turn = (page: Page, text: string) => page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(`.message.user:text-is("${text}")`) });
+const turn = (page: Page, text: string) => page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(".message.user").getByText(text, { exact: true }) });
 const rewindButton = (page: Page, text: string) => turn(page, text).locator(".undo-files");
 
 async function answer(page: Page, task: string) {

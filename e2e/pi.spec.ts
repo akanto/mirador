@@ -76,7 +76,7 @@ function killPiSessionProcesses() {
 }
 
 async function rewindTo(message: string) {
-  const turn = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(`.message.user:text-is("${message}")`) });
+  const turn = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(".message.user").getByText(message, { exact: true }) });
   await turn.hover();
   await turn.locator(".undo-files").click();
   const dialog = page.getByRole("dialog", { name: "Rewind to here" });
@@ -415,7 +415,7 @@ test("a pi conversation from before pi marked its replies can't be taken back pa
   await host.start();
   await reloadFromRestartedHost(page);
 
-  const turn = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator('.message.user:text-is("Old second")') });
+  const turn = page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(".message.user").getByText("Old second", { exact: true }) });
   await turn.hover();
   await turn.locator(".undo-files").click();
   const dialog = page.getByRole("dialog", { name: "Rewind to here" });

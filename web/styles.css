@@ -1976,6 +1976,19 @@ input.picker-search {
   color: var(--accent);
 }
 
+.markdown blockquote {
+  margin: 4px 0;
+  padding: 0 0 0 10px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+.slack-message ul,
+.slack-message ol {
+  margin: 2px 0;
+  padding-left: 22px;
+}
+
 .thought {
   color: var(--muted);
   font-size: calc(13px * var(--font-scale));

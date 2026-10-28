@@ -31,7 +31,7 @@ test.afterAll(async () => {
   api.stop();
 });
 
-const turn = (page: Page, text: string) => page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(`.message.user:text-is("${text}")`) });
+const turn = (page: Page, text: string) => page.locator(".timeline:visible .timeline-entry").filter({ has: page.locator(".message.user").getByText(text, { exact: true }) });
 
 async function answer(page: Page, task: string) {
   await sendMessage(page, task);

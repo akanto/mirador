@@ -84,19 +84,19 @@ test("a file path the agent writes in backticks in its reply is a link that open
   for (const path of [appFile, "src/app.ts"]) {
     await test.step(`the path ${path} opens`, async () => {
       const before = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
-      await page.locator(".markdown").getByRole("button", { name: path, exact: true }).click();
+      await page.locator(".message.agent .markdown").getByRole("button", { name: path, exact: true }).click();
       // The host opens the file at its real path: absolute, every link followed, with this system's separators.
       await expect.poll(() => (existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").slice(before.length)).toContain(realpathSync.native(resolve(host.projectDir, path)));
     });
   }
-  await expect(page.locator(".markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
+  await expect(page.locator(".message.agent .markdown button.file-link", { hasText: "not a file" })).toHaveCount(0);
 
   await test.step("a path that opens looks unlike the code around it that does not", async () => {
     const looksOf = (code: Locator) => code.evaluate((element) => ({ color: getComputedStyle(element).color, underline: getComputedStyle(element).textDecorationStyle }));
-    const linkCode = page.locator(".markdown button.file-link code").getByText("src/app.ts", { exact: true });
+    const linkCode = page.locator(".message.agent .markdown button.file-link code").getByText("src/app.ts", { exact: true });
     await page.mouse.move(0, 0);
     const link = await looksOf(linkCode);
-    const plain = await looksOf(page.locator(".markdown code", { hasText: "not a file" }));
+    const plain = await looksOf(page.locator(".message.agent .markdown code", { hasText: "not a file" }));
     expect(link.color).not.toBe(plain.color);
     expect(link.underline).toBe("dotted");
     await linkCode.hover();
@@ -114,7 +114,7 @@ test("code in a table cell beside a long one stays on one line", async ({ page }
   await waitForTurnToEnd(page);
 
   for (const name of ["src/app.ts", "proxy.mjs"]) {
-    const code = page.locator(".markdown td code").getByText(name, { exact: true });
+    const code = page.locator(".message.agent .markdown td code").getByText(name, { exact: true });
     await expect(code).toBeVisible();
     const linesOfText = await code.evaluate((element) => {
       const text = document.createRange();
@@ -152,12 +152,12 @@ test("a link to a file outside the workspace that the agent did not change asks 
   const openedBefore = openedSoFar();
 
   await test.step("the reply's link asks, naming the file, and Cancel or Esc opens nothing", async () => {
-    await page.locator(".markdown").getByRole("button", { name: writtenFromShell, exact: true }).click();
+    await page.locator(".message.agent .markdown").getByRole("button", { name: writtenFromShell, exact: true }).click();
     await expect(prompt).toContainText(`${realpathSync.native(writtenFromShell)} is outside this workspace, and the agent did not change it in this conversation.`);
     await expect(prompt.getByRole("button", { name: "Cancel" })).toBeFocused();
     await prompt.getByRole("button", { name: "Cancel" }).click();
     await expect(prompt).toBeHidden();
-    await page.locator(".markdown").getByRole("button", { name: writtenFromShell, exact: true }).click();
+    await page.locator(".message.agent .markdown").getByRole("button", { name: writtenFromShell, exact: true }).click();
     await expect(prompt).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(prompt).toBeHidden();
@@ -174,7 +174,7 @@ test("a link to a file outside the workspace that the agent did not change asks 
   });
 
   await test.step("a path that is not in the workspace says which folder it looked in", async () => {
-    await page.locator(".markdown").getByRole("button", { name: "missing/notes.md", exact: true }).click();
+    await page.locator(".message.agent .markdown").getByRole("button", { name: "missing/notes.md", exact: true }).click();
     await expect(page.locator(".notices .notice", { hasText: `missing/notes.md does not exist in ${host.projectDir}.` })).toBeVisible();
     await expect(prompt).toBeHidden();
   });
@@ -192,7 +192,7 @@ test("a link to a program says Mirador does not run it, and opens nothing", asyn
   await waitForTurnToEnd(page);
 
   const openedBefore = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
-  await page.locator(".markdown").getByRole("button", { name: "tools/run.jar", exact: true }).click();
+  await page.locator(".message.agent .markdown").getByRole("button", { name: "tools/run.jar", exact: true }).click();
   await expect(page.locator(".notices .notice", { hasText: "tools/run.jar would run as a program, so Mirador does not open it." })).toBeVisible();
   expect(existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").toBe(openedBefore);
 });
@@ -210,7 +210,7 @@ test("a link named like a document that leads to a program says Mirador does not
   await waitForTurnToEnd(page);
 
   const openedBefore = existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "";
-  await page.locator(".markdown").getByRole("button", { name: "docs/guide.md", exact: true }).click();
+  await page.locator(".message.agent .markdown").getByRole("button", { name: "docs/guide.md", exact: true }).click();
   await expect(page.locator(".notices .notice", { hasText: "docs/guide.md would run as a program, so Mirador does not open it." })).toBeVisible();
   expect(existsSync(openedLog) ? readFileSync(openedLog, "utf8") : "").toBe(openedBefore);
 });
@@ -230,7 +230,7 @@ test("a link to a script opens it as text in the system's text editor, which wou
   for (const script of SCRIPTS) {
     await test.step(`${script} opens as text`, async () => {
       const before = openedSoFar();
-      await page.locator(".markdown").getByRole("button", { name: script, exact: true }).click();
+      await page.locator(".message.agent .markdown").getByRole("button", { name: script, exact: true }).click();
       await expect.poll(() => openedSoFar().slice(before.length)).toContain(systemTextEditorOpening(realpathSync.native(join(host.projectDir, script))));
     });
   }
@@ -259,7 +259,7 @@ test("Settings can name the program scripts open in, which every window shows an
   await sendMessage(page, `SAY Run \`${SCRIPTS[0]}\`.`);
   await waitForTurnToEnd(page);
   const before = openedSoFar();
-  await page.locator(".markdown").getByRole("button", { name: SCRIPTS[0], exact: true }).click();
+  await page.locator(".message.agent .markdown").getByRole("button", { name: SCRIPTS[0], exact: true }).click();
   await expect.poll(() => openedSoFar().slice(before.length)).toContain(`${SCRIPT_EDITOR} ${realpathSync.native(join(host.projectDir, SCRIPTS[0]!))}`);
 });
 
@@ -279,20 +279,20 @@ test("a link to a file no program is set to open opens it as text in the program
 
   await test.step("the text file opens as text", async () => {
     const before = openedSoFar();
-    await page.locator(".markdown").getByRole("button", { name: text, exact: true }).click();
+    await page.locator(".message.agent .markdown").getByRole("button", { name: text, exact: true }).click();
     await expect.poll(() => openedSoFar().slice(before.length)).toContain(`${SCRIPT_EDITOR} ${realpathSync.native(join(host.projectDir, text))}`);
   });
 
   await test.step("a text file outside the workspace opens as text once the owner agrees", async () => {
     const before = openedSoFar();
-    await page.locator(".markdown").getByRole("button", { name: textOutside, exact: true }).click();
+    await page.locator(".message.agent .markdown").getByRole("button", { name: textOutside, exact: true }).click();
     await page.getByRole("alertdialog", { name: "Open a file outside this workspace?" }).getByRole("button", { name: "Open" }).click();
     await expect.poll(() => openedSoFar().slice(before.length)).toContain(`${SCRIPT_EDITOR} ${realpathSync.native(textOutside)}`);
   });
 
   await test.step("the other file says no program is set to open it, and does not open as text", async () => {
     const before = openedSoFar();
-    await page.locator(".markdown").getByRole("button", { name: binary, exact: true }).click();
+    await page.locator(".message.agent .markdown").getByRole("button", { name: binary, exact: true }).click();
     await expect(page.locator(".notices .notice", { hasText: `No program is set to open ${binary}, and it is not text, so Mirador cannot open it.` })).toBeVisible();
     expect(openedSoFar().slice(before.length)).not.toContain(SCRIPT_EDITOR);
   });

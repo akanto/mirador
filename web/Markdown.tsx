@@ -1,10 +1,11 @@
-import { createContext, memo, useContext, useEffect, useRef, useState, type ComponentProps } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { isFromAnotherSite, siteOf, useExternalImagesBlocked } from "./external-images.ts";
 import { hints } from "./hints.ts";
 import { looksLikeFilePath } from "../shared/file-paths.ts";
 import { connection } from "./connection.ts";
+import { blocksOfMessage, type Block, type Inline, type Mark } from "../shared/slack-markdown.ts";
 
 const COPY_OUTCOME_SHOWN_MS = 1_500;
 
@@ -123,6 +124,83 @@ export const MarkdownText = memo(function MarkdownText({ text, conversationId }:
     <FilesOfConversation.Provider value={conversationId ?? null}>
       <div className="markdown">
         <RenderedMarkdown text={shown} />
+      </div>
+    </FilesOfConversation.Provider>
+  );
+});
+
+/** Innermost first, so the elements nest the way the markers do. */
+const MARK_TAGS: [Mark, "s" | "em" | "strong"][] = [
+  ["strike", "s"],
+  ["italic", "em"],
+  ["bold", "strong"],
+];
+
+function SlackInline({ inline }: { inline: Exclude<Inline, { kind: "break" }> }) {
+  if (inline.kind === "link")
+    return (
+      <a href={inline.url} target="_blank" rel="noreferrer">
+        {inline.text}
+      </a>
+    );
+  if (inline.marks.includes("code")) return <MarkdownCode>{inline.text}</MarkdownCode>;
+  return MARK_TAGS.reduce<ReactNode>((content, [mark, Tag]) => (inline.marks.includes(mark) ? <Tag>{content}</Tag> : content), inline.text);
+}
+
+const linesOfInlines = (inlines: Inline[]) =>
+  inlines.reduce<Exclude<Inline, { kind: "break" }>[][]>(
+    (lines, inline) => (inline.kind === "break" ? [...lines, []] : [...lines.slice(0, -1), [...lines.at(-1)!, inline]]),
+    [[]],
+  );
+
+/** One element per line, so a blank line keeps its height wherever it falls, even last in a block. */
+function SlackLines({ inlines }: { inlines: Inline[] }) {
+  return linesOfInlines(inlines).map((line, index) => (
+    <div key={index} className="message-line">
+      {line.length ? line.map((inline, at) => <SlackInline key={at} inline={inline} />) : <br />}
+    </div>
+  ));
+}
+
+function SlackBlock({ block }: { block: Block }) {
+  switch (block.kind) {
+    case "lines":
+      return <SlackLines inlines={block.inlines} />;
+    case "code":
+      return (
+        <CodeBlock>
+          <code className={block.language ? `language-${block.language}` : undefined}>{block.code}</code>
+        </CodeBlock>
+      );
+    case "quote":
+      return (
+        <blockquote>
+          <SlackLines inlines={block.inlines} />
+        </blockquote>
+      );
+    case "list": {
+      const List = block.ordered ? "ol" : "ul";
+      return (
+        <List>
+          {block.items.map((item, index) => (
+            <li key={index}>
+              <SlackLines inlines={item} />
+            </li>
+          ))}
+        </List>
+      );
+    }
+  }
+}
+
+/** A message the person wrote, in Slack's set of markdown, every line kept where it was typed. */
+export const SlackMessageText = memo(function SlackMessageText({ text, conversationId }: { text: string; conversationId?: string }) {
+  return (
+    <FilesOfConversation.Provider value={conversationId ?? null}>
+      <div className="markdown slack-message">
+        {blocksOfMessage(text).map((block, index) => (
+          <SlackBlock key={index} block={block} />
+        ))}
       </div>
     </FilesOfConversation.Provider>
   );

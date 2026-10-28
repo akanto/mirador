@@ -151,7 +151,7 @@ export async function sendMessage(page: Page, text: string) {
   const composer = page.locator(".composer:visible textarea");
   await expect(composer).toBeEditable();
   await expect(page.locator(".composer:visible .send")).toBeVisible({ timeout: 120_000 });
-  const taken = page.locator(".timeline:visible .message.user, .queue:visible .queued-text").filter({ hasText: text });
+  const taken = page.locator(".timeline:visible .message.user, .queue:visible .queued-text");
   const takenBefore = await taken.count();
   await composer.fill(text);
   await composer.press("Enter");

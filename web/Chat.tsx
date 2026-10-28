@@ -54,7 +54,7 @@ import { useStoppedMessageEdit } from "./edit-stopped.ts";
 import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
-import { MarkdownText } from "./Markdown.tsx";
+import { MarkdownText, SlackMessageText } from "./Markdown.tsx";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
 import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
@@ -900,7 +900,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
       return (
         <>
           <div className="message user">
-            {block.text}
+            <SlackMessageText text={block.text} conversationId={conversationId} />
             <MessageImages conversationId={conversationId} imageIds={block.imageIds} carried={block.images} />
           </div>
           {block.turnSeq !== undefined && (block.filesKept || canRewind) && (
