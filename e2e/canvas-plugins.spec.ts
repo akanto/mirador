@@ -35,10 +35,15 @@ const canvasPane = (page: Page) => page.locator('[data-pane="canvas"]');
 const tabView = (page: Page) => page.frameLocator(".checklist:visible .canvas-frame.plugin iframe");
 const delegatedTask = (page: Page, title: string) => page.locator(".delegated-tasks:visible li", { hasText: title });
 
-/** The report opens with room, so after a reload the canvas can cover the chat again; the user goes back to the message box. */
+/**
+ * The report opens with room, so after a reload the canvas can cover the chat again; the user goes back to the message box.
+ * It waits for the canvas first: a page loaded from a restarted host shows it, full screen again, only a moment later.
+ */
 async function backToTheMessageBox(page: Page) {
+  const shownCanvas = canvasPane(page).filter({ visible: true });
+  await expect(shownCanvas).toHaveCount(1);
   await page.keyboard.press(`${await primaryModifier(page)}+Shift+ArrowLeft`);
-  await expect(canvasPane(page)).not.toHaveClass(/fullscreen/);
+  await expect(shownCanvas).not.toHaveClass(/fullscreen/);
 }
 
 /** The stub agent offers no model to pick, so this is `startConversation` without that wait. */
@@ -347,6 +352,7 @@ test("a plugin's tools show its items on the canvas and in the tab, its view tak
 
     await handOverTo.selectOption({ label: "Profile's (Local)" });
     await expect.poll(() => callCanvasTool(host, conversationId, "hand_over", { task: "SAY Handed over again." })).toMatch(/^Handed over to [0-9a-f-]+\.$/);
+    await expect.poll(agentSaw, "the handed-over task ends before the switch, so its end isn't the prompt that tells of it").toContain("The handed-over task finished: Handed over again.\n");
 
     await handOverTo.selectOption({ label: "None" });
     await expect(handOverTo.locator("option:checked")).toHaveText("None");
