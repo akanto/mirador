@@ -81,5 +81,14 @@ test("a machine takes a pastel colour on its rail button, and a strip along the 
     await picker.getByRole("radio", { name: "No colour" }).click();
     await expect(railButton).toHaveCSS("background-color", uncoloured);
   });
+
+  await test.step("a machine's mark reads as a workspace's: a letter from each of two words, or the first two of one", async () => {
+    await expect(mark).toHaveText("HS");
+    await machines.getByLabel("Name").fill("Mac");
+    await machines.getByLabel("Address or invite link").fill("http://127.0.0.1:9");
+    await machines.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(machines.locator(".machine-list li", { hasText: "Mac" }).getByRole("button", { name: "Machine colour" })).toHaveText("MA");
+    await expect(rail.getByRole("button", { name: "Mac", exact: true })).toContainText("MA");
+  });
   await serverPage.close();
 });

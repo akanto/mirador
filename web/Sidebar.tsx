@@ -32,7 +32,7 @@ import { canMarkUnread, markRead, markUnread } from "./unread.ts";
 import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, waitingTones } from "./waiting.ts";
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
-import { workspaceInitials, workspaceMarkColor } from "../shared/marks.ts";
+import { markInitials, workspaceMarkColor } from "../shared/marks.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
 import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setDelegationsOpen, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, useOpenedDelegations, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
@@ -401,7 +401,7 @@ function WorkspaceSection({
           data-hint={hints.workspaceColor}
           onClick={togglePicker}
         >
-          {workspaceInitials(workspace.name)}
+          {markInitials(workspace.name)}
         </button>
         <div className="workspace-heading" title={workspace.path}>
           <div className="workspace-name">{workspace.name}</div>

@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { machineAddress } from "../shared/machines.ts";
+import { markInitials } from "../shared/marks.ts";
 import type { Machine, Pastel } from "../shared/model.ts";
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { machineInitials } from "../shared/marks.ts";
 import { colorAttributes } from "./MachineRail.tsx";
 
 /** Where this host cannot show the machine (a page opened from another device), a tab of its own, used again next time. */
@@ -67,7 +67,7 @@ function MachineRow({ machine, onOpen }: { machine: Machine; onOpen: (machine: M
         data-hint={hints.machineColor}
         onClick={() => setPickingColor(!pickingColor)}
       >
-        {machineInitials(machine.name)}
+        {markInitials(machine.name)}
       </button>
       <span className="machine-name">{machine.name}</span>
       <span className="machine-origin">{machine.origin}</span>

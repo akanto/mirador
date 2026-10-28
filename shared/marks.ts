@@ -6,18 +6,17 @@ export function workspaceMarkColor(name: string) {
   return workspaceMarkColors[hash % workspaceMarkColors.length]!;
 }
 
-/** The first letters of two words, or the first two of one. */
-export function workspaceInitials(name: string) {
-  const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  const initials = words.length > 1 ? words.slice(0, 2).map((word) => word.charAt(0)).join("") : name.slice(0, 2);
-  return initials.toUpperCase();
-}
+const firstCharacters = (text: string, count: number) => [...text].slice(0, count).join("");
 
-/** The first letters of up to two words. */
-export const machineInitials = (name: string) =>
-  name
-    .split(/[\s.\-_]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]!.toUpperCase())
-    .join("");
+/**
+ * What a workspace's or a machine's mark reads: the first letters of two words, or the first two of one. A name
+ * without letters or digits, such as one of only emoji, shows its first two characters whole, and an empty one "?".
+ * Names are composed first, as macOS may give a folder's name decomposed.
+ */
+export function markInitials(name: string) {
+  const composed = name.normalize("NFC").trim();
+  const words = composed.match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}'’]*/gu) ?? [];
+  const initials =
+    words.length > 1 ? words.slice(0, 2).map((word) => firstCharacters(word, 1)).join("") : firstCharacters(words[0]?.replace(/['’]/g, "") ?? composed, 2);
+  return initials.toUpperCase() || "?";
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { machineInitials } from "../shared/marks.ts";
+import { markInitials } from "../shared/marks.ts";
 import { spacedNumber } from "../shared/join-requests.ts";
 import { inviteIn } from "../shared/machines.ts";
 import type { Machine, MachineStatus, Pastel } from "../shared/model.ts";
@@ -124,7 +124,7 @@ export function MachineRail({
             data-hint={machineHint(machine, status)}
             onClick={() => onShow(machine.id)}
           >
-            {machineInitials(machine.name)}
+            {markInitials(machine.name)}
             <WaitingBadge status={status} />
           </button>
         );
