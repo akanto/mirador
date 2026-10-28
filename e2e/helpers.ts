@@ -229,6 +229,28 @@ export async function pasteImage(target: Locator, { width, height, color = "#5b5
   );
 }
 
+/** Pastes HTML on the element as the browser does when copying from a web page or an editor, with `text` as the plain version, by default the HTML's text. */
+export async function pasteHtml(target: Locator, html: string, text?: string) {
+  await target.evaluate(
+    (element, { html, text }) => {
+      const transfer = new DataTransfer();
+      transfer.setData("text/html", html);
+      transfer.setData("text/plain", text ?? new DOMParser().parseFromString(html, "text/html").body.textContent ?? "");
+      element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }));
+    },
+    { html, text },
+  );
+}
+
+/** Pastes plain text on the element, as copying from a terminal does. */
+export async function pasteText(target: Locator, text: string) {
+  await target.evaluate((element, pasted) => {
+    const transfer = new DataTransfer();
+    transfer.setData("text/plain", pasted);
+    element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }));
+  }, text);
+}
+
 /** Drops files on the element as the browser does from the Finder: an image for each name without text, else a text file. */
 export async function dropFiles(target: Locator, files: { name: string; text?: string }[]) {
   await target.evaluate(async (element, dropped) => {

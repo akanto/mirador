@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, dropFiles, openSettings, pasteImage, primaryModifier, signIn, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, createProfile, dropFiles, openSettings, pasteHtml, pasteImage, pasteText, primaryModifier, signIn, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost, writeBunProgram } from "./test-host.ts";
 
 const COMMANDS = [
@@ -212,5 +212,47 @@ export function formattedBoxTests() {
     await page.keyboard.press("ControlOrMeta+z");
     await expect.poll(boxValue).toBe("sent once");
     await expectSent("sent once");
+  });
+
+  test("text pasted from Slack keeps its bold, italic, strikethrough, code, links, quotes, lists and code blocks", async () => {
+    await page.keyboard.type("from Slack: ");
+    await pasteHtml(
+      box(),
+      '<b data-stringify-type="bold">bold</b> and <i data-stringify-type="italic">it</i> and <s data-stringify-type="strike">old</s> and <code data-stringify-type="code">x()</code> and <a href="https://x.dev">docs</a>',
+    );
+    await expect(box().locator(".box-bold")).toHaveText("bold");
+    await expect.poll(boxValue).toBe("from Slack: **bold** and *it* and ~~old~~ and `x()` and [docs](https://x.dev)");
+    await expectSent("from Slack: **bold** and *it* and ~~old~~ and `x()` and [docs](https://x.dev)");
+
+    await pasteHtml(
+      box(),
+      '<blockquote>said so</blockquote><ul data-stringify-type="unordered-list"><li>one</li><li>two</li></ul><pre class="c-mrkdwn__pre">npm test</pre>',
+    );
+    await expect.poll(boxValue).toBe("> said so\n- one\n- two\n```\nnpm test\n```");
+    await expectSent("> said so\n- one\n- two\n```\nnpm test\n```", "ControlOrMeta+Enter");
+  });
+
+  test("a pasted heading or table goes in as its text, as Slack has neither", async () => {
+    await pasteHtml(box(), "<h2>Plan</h2><table><tr><td>a</td><td>b</td></tr></table>", "Plan\na\tb");
+    await expect.poll(boxValue).toBe("Plan\na\tb");
+    await expectSent("Plan\na\tb");
+  });
+
+  test("code pasted from an editor or a terminal arrives as it was copied", async () => {
+    const code = "function f(a, b) {\n    return a * b; // some_var `x\n\tindented   \n\n}";
+    await pasteText(box(), code);
+    await expect.poll(boxValue).toBe(code);
+    await expectSent(code);
+
+    const editorLines = code
+      .split("\n")
+      .map((line) => `<div>${line ? `<span style="color: #569cd6">${line.replaceAll("\t", "&nbsp;&nbsp;&nbsp;&nbsp;").replaceAll(" ", "&nbsp;")}</span>` : "<br>"}</div>`);
+    await page.keyboard.type("Look: ");
+    await pasteHtml(box(), `<div style="white-space: pre; font-family: Menlo">${editorLines.join("")}</div>`, code);
+    await expect.poll(boxValue).toBe(`Look: ${code}`);
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect.poll(boxValue).toBe("Look: ");
+    await pasteHtml(box(), `<div style="white-space: pre; font-family: Menlo">${editorLines.join("")}</div>`, code);
+    await expectSent(`Look: ${code}`);
   });
 }

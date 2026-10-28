@@ -24,6 +24,7 @@ import {
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   PASTE_COMMAND,
+  PASTE_TAG,
   type ElementNode,
   type LexicalEditor,
   type TextFormatType,
@@ -238,7 +239,18 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
           (event) => {
             if (!(event instanceof ClipboardEvent)) return false;
             handlers.current.onPaste(event as unknown as ClipboardEvent<HTMLTextAreaElement>);
-            return event.defaultPrevented;
+            if (event.defaultPrevented) return true;
+            const plain = event.clipboardData?.getData("text/plain");
+            if (!plain || !clipboardIsUnformatted(event)) return false;
+            event.preventDefault();
+            editor.update(
+              () => {
+                const selection = $getSelection();
+                if ($isRangeSelection(selection)) selection.insertRawText(plain);
+              },
+              { tag: PASTE_TAG },
+            );
+            return true;
           },
           COMMAND_PRIORITY_CRITICAL,
         ),
@@ -261,6 +273,14 @@ function $selectAsOnPage(editor: LexicalEditor) {
   const anchor = onPage.anchor.getNode();
   if (onPage.isCollapsed() && $isTextNode(anchor)) onPage.setFormat(anchor.getFormat());
   $setSelection(onPage);
+}
+
+const SLACK_FORMATS = "b, strong, i, em, s, del, strike, code, pre, a[href], blockquote, ul, ol";
+
+/** Clipboard HTML with none of Slack's formats, as code copied from an editor: its plain text is the code exactly, its HTML spaces and lines need not be. */
+function clipboardIsUnformatted(event: globalThis.ClipboardEvent) {
+  const html = event.clipboardData?.getData("text/html");
+  return !!html && !new DOMParser().parseFromString(html, "text/html").body.querySelector(SLACK_FORMATS);
 }
 
 const carriesFiles = (event: DragEvent) => [...(event.dataTransfer?.types ?? [])].includes("Files");
