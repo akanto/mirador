@@ -7,6 +7,7 @@ import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { FontSizePreview, MachineColorPreview, ShellLookPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
+import { messageBoxLabels, setMessageBox, useMessageBox, type MessageBox } from "./message-box.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
@@ -488,8 +489,22 @@ function ShellLookSettings() {
 
 function SendingSettings() {
   const enterWhileBusy = useEnterWhileBusy();
+  const messageBox = useMessageBox();
   return (
     <>
+      <h3>Message box</h3>
+      <div className="sending-settings">
+        <label data-hint={hints.messageBox}>
+          Box
+          <select value={messageBox} onChange={(event) => setMessageBox(event.target.value as MessageBox)}>
+            {Object.entries(messageBoxLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <h3>Sending while the agent works</h3>
       <p className="hint">⌥Enter (Alt+Enter) does the other; each queued message shows which way it goes out. Remembered in this browser.</p>
       <div className="sending-settings">

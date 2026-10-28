@@ -55,6 +55,8 @@ import { isLoginCommand, requestLogin } from "./login-request.ts";
 import { requestProgram } from "./program-request.ts";
 import { AskToRevert, UndoButton } from "./Revert.tsx";
 import { MarkdownText, SlackMessageText } from "./Markdown.tsx";
+import { FormattedBox, type FormattedBoxExtras } from "./FormattedBox.tsx";
+import { useMessageBox } from "./message-box.ts";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
 import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
@@ -1769,6 +1771,9 @@ function Composer({
     textarea.current?.focus();
   };
   const afterTurnFor = (event: KeyboardEvent<HTMLTextAreaElement>) => (enterWhileBusy === "after-turn") !== event.altKey;
+  /** In the formatted box, Enter in a list or code block adds a line, and ⌘Enter (Ctrl+Enter) sends from anywhere. */
+  const enterSends = (event: KeyboardEvent<HTMLTextAreaElement>) =>
+    event.metaKey || event.ctrlKey || !(textarea.current as Partial<FormattedBoxExtras> | null)?.enterAddsLine?.();
   const slashCommands = useSlashCommandMenu({
     conversationId: conversation.id,
     harness: conversation.harness,
@@ -1792,6 +1797,17 @@ function Composer({
     },
   });
   const suggestions = history.showing ? noSuggestions : slashCommands.menu ? slashCommands : mentions;
+  const messageBox = useMessageBox();
+  const placeholder = busy
+    ? stopStage === "force"
+      ? "The agent is not responding. Force stop ends its process; other conversations on the profile continue"
+      : busyPlaceholder(canSteer, enterWhileBusy)
+    : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, / for its commands, @ for a path, ! to run a shell command)`;
+  const typed = (value: string, caret: number) => {
+    setText(value);
+    setCaret(caret);
+    if (!value) stoppedEdit.stopEditing();
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (findsTemplate(event.nativeEvent)) {
       event.preventDefault();
@@ -1801,7 +1817,7 @@ function Composer({
     }
     if (suggestions.onKeyDown(event) || goToPlaceholder(event) || movedCaretToLineEdge(event.nativeEvent)) return;
     const lastQueued = queued.at(-1);
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && enterSends(event)) {
       event.preventDefault();
       send(afterTurnFor(event));
     } else if (event.key === "ArrowUp" && !text && lastQueued) {
@@ -1860,29 +1876,33 @@ function Composer({
         }}
       >
         {suggestions.menu}
-        <textarea
-          {...typingAidAttributes}
-          {...suggestions.textareaAttributes}
-          ref={textarea}
-          value={text}
-          rows={Math.min(10, Math.max(2, text.split("\n").length))}
-          style={composerHeight === null ? undefined : { minHeight: composerHeight }}
-          placeholder={
-            busy
-              ? stopStage === "force"
-                ? "The agent is not responding. Force stop ends its process; other conversations on the profile continue"
-                : busyPlaceholder(canSteer, enterWhileBusy)
-              : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, / for its commands, @ for a path, ! to run a shell command)`
-          }
-          onChange={(event) => {
-            setText(event.target.value);
-            setCaret(event.target.selectionStart);
-            if (!event.target.value) stoppedEdit.stopEditing();
-          }}
-          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          onKeyDown={onKeyDown}
-          onPaste={images.onPaste}
-        />
+        {messageBox === "formatted" ? (
+          <FormattedBox
+            text={text}
+            facade={textarea}
+            placeholder={placeholder}
+            attributes={{ ...typingAidAttributes, ...suggestions.textareaAttributes }}
+            style={composerHeight === null ? undefined : { minHeight: composerHeight }}
+            onText={typed}
+            onCaret={setCaret}
+            onKeyDown={onKeyDown}
+            onPaste={images.onPaste}
+          />
+        ) : (
+          <textarea
+            {...typingAidAttributes}
+            {...suggestions.textareaAttributes}
+            ref={textarea}
+            value={text}
+            rows={Math.min(10, Math.max(2, text.split("\n").length))}
+            style={composerHeight === null ? undefined : { minHeight: composerHeight }}
+            placeholder={placeholder}
+            onChange={(event) => typed(event.target.value, event.target.selectionStart)}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+            onKeyDown={onKeyDown}
+            onPaste={images.onPaste}
+          />
+        )}
         {findingTemplate && <TemplateFinder templates={promptTemplates} opener={textarea} onInsert={insertTemplateAtCaret} onClose={closeTemplateFinder} />}
         {pickingTemplate && (
           <TemplatePicker

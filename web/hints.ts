@@ -235,6 +235,7 @@ export const hints = {
   queuedDelivery: "How this message goes out: into the running turn once the agent's tools finish, or after the turn ends. Click to switch.",
   steerMessage: "Adds the message to the running turn: Claude Code reads it at once, cutting off what it is writing, or, while it runs tools, as soon as they finish. pi reads it once it finishes writing or running its tools.",
   afterTurnMessage: "Keeps the message until the running turn ends (or you press Stop), then sends it as your next message.",
+  messageBox: "Formats as you type turns **bold**, *italic*, ~~strike~~, `code`, ``` code blocks, > quotes and - lists into formatting as you type them, as in Slack; ⌘B, ⌘I, ⌘⇧X and ⌘E format a selection. The agent gets the same markdown either way.",
   enterWhileBusy: "What Enter does with a message while the agent works; ⌥Enter (Alt+Enter) does the other. With opencode, messages always wait for the turn to end.",
   openFile:
     "Opens the file in the program the host's system uses for it, on the machine Mirador runs on. A script opens as text, in the program Settings › Conversations choose. A program does not open.",

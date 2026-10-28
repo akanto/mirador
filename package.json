@@ -13,6 +13,12 @@
     "@agentclientprotocol/claude-agent-acp": "0.88.0",
     "@agentclientprotocol/sdk": "1.5.1",
     "@anthropic-ai/sdk": "0.129.0",
+    "@lexical/code": "0.52.0",
+    "@lexical/link": "0.52.0",
+    "@lexical/list": "0.52.0",
+    "@lexical/react": "0.52.0",
+    "@lexical/rich-text": "0.52.0",
+    "@lexical/utils": "0.52.0",
     "@modelcontextprotocol/server": "2.2.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
@@ -20,6 +26,7 @@
     "@xterm/xterm": "^6.0.0",
     "d3": "7",
     "diff": "9.0.0",
+    "lexical": "0.52.0",
     "mermaid": "12",
     "modern-screenshot": "4.7.0",
     "pi-acp": "0.0.34",
@@ -34,6 +41,7 @@
     "zod": "4"
   },
   "devDependencies": {
+    "@lexical/headless": "0.52.0",
     "@playwright/test": "1.63.0",
     "@types/bun": "^1.4.2",
     "@types/prismjs": "1.26.5",

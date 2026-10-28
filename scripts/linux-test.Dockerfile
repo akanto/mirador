@@ -26,10 +26,10 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" \
  && mkdir -p .bun/install/cache
 
 USER root
-RUN /home/ubuntu/.bun/bin/bunx playwright@${PLAYWRIGHT_VERSION} install-deps chromium && rm -rf /var/lib/apt/lists/*
+RUN /home/ubuntu/.bun/bin/bunx playwright@${PLAYWRIGHT_VERSION} install-deps chromium webkit && rm -rf /var/lib/apt/lists/*
 
 USER ubuntu
-RUN bunx playwright@${PLAYWRIGHT_VERSION} install chromium
+RUN bunx playwright@${PLAYWRIGHT_VERSION} install chromium webkit
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 xvfb xauth && rm -rf /var/lib/apt/lists/*
