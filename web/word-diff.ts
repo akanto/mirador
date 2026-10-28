@@ -10,16 +10,18 @@ export interface TextRange {
 const MAX_TOKEN_CELLS = 250_000;
 /**
  * Below this share of the two lines' word characters kept, the line was rewritten rather than edited, and marking words
- * only adds noise. Punctuation is left out: lines that keep only their brackets and commas were still rewritten.
+ * only adds noise. Punctuation is left out, since lines that keep only their brackets and commas were still rewritten,
+ * unless neither line has a word, as in `});` → `}));`.
  */
 const MIN_KEPT_SHARE = 0.4;
 /** A line kept this nearly whole inside a longer one grew rather than was rewritten, as in `foo()` → `foo(a, b)`. */
 const MIN_GROWN_SHARE = 0.9;
 /** Shorter lines than this, as `x = 1`, turn up by chance inside an unrelated long line they happen to face. */
-const MIN_GROWN_WORD_LENGTH = 3;
+const MIN_GROWN_LENGTH = 3;
 
 const tokensOf = (line: string) => line.match(/[\p{L}\p{N}_]+|\s+|[^\p{L}\p{N}_\s]/gu) ?? [];
 const isWord = (token: string) => /^[\p{L}\p{N}_]/u.test(token);
+const isVisible = (token: string) => /\S/.test(token);
 
 /** Which tokens of each line are in a longest common subsequence of the two. */
 function keptTokens(before: string[], after: string[]) {
@@ -53,15 +55,16 @@ function changedRanges(line: string, tokens: string[], kept: boolean[]): TextRan
   return ranges;
 }
 
-const wordLength = (tokens: string[], counted: (index: number) => boolean = () => true) =>
-  tokens.reduce((sum, token, index) => sum + (counted(index) && isWord(token) ? token.length : 0), 0);
+const lengthOf = (tokens: string[], counts: (token: string) => boolean, counted: (index: number) => boolean = () => true) =>
+  tokens.reduce((sum, token, index) => sum + (counted(index) && counts(token) ? token.length : 0), 0);
 
 function editedRatherThanRewritten(beforeTokens: string[], afterTokens: string[], keptBefore: boolean[]) {
-  const kept = wordLength(beforeTokens, (index) => keptBefore[index]!);
-  const [beforeLength, afterLength] = [wordLength(beforeTokens), wordLength(afterTokens)];
+  const counts = [...beforeTokens, ...afterTokens].some(isWord) ? isWord : isVisible;
+  const kept = lengthOf(beforeTokens, counts, (index) => keptBefore[index]!);
+  const [beforeLength, afterLength] = [lengthOf(beforeTokens, counts), lengthOf(afterTokens, counts)];
   const shorter = Math.min(beforeLength, afterLength);
   const keepsEnoughOfBoth = kept > 0 && 2 * kept >= MIN_KEPT_SHARE * (beforeLength + afterLength);
-  const grewFromShorter = shorter >= MIN_GROWN_WORD_LENGTH && kept >= MIN_GROWN_SHARE * shorter;
+  const grewFromShorter = shorter >= MIN_GROWN_LENGTH && kept >= MIN_GROWN_SHARE * shorter;
   return keepsEnoughOfBoth || grewFromShorter;
 }
 

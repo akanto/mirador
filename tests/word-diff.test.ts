@@ -43,6 +43,10 @@ describe("the words that changed between a removed line and the line replacing i
     expect(wordChanges("foo(a, b, c);", "bar(x, y, z);")).toBeNull();
   });
 
+  test("are marked on a line of only punctuation", () => {
+    expect(wordChanges("});", "}));")).toEqual({ removed: [], added: [{ start: 2, end: 3 }] });
+  });
+
   test("are not marked on a blank line replaced with code", () => {
     expect(wordChanges("", "foo();")).toBeNull();
   });
