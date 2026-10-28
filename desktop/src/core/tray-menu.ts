@@ -1,6 +1,6 @@
 import { newerVersionLabel, type NewerVersion } from "../../../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../../../shared/version.ts";
-import type { WaitingTone } from "../../../shared/waiting.ts";
+import type { WaitingSummary, WaitingTone } from "../../../shared/waiting.ts";
 import type { HostStatus } from "./host-supervisor.ts";
 import type { UpdateOffer } from "./self-update.ts";
 
@@ -67,7 +67,7 @@ export function trayMenu(state: TrayState): TrayItem[] {
   ];
 }
 
-export const trayTitle = (waitingCount: number) => (waitingCount > 0 ? String(waitingCount) : "");
+export const waitingBadge = (waitingCount: number) => (waitingCount > 0 ? String(waitingCount) : "");
 
 export type TrayDot = "needs-you" | "done";
 
@@ -78,13 +78,19 @@ export function trayDot(mostUrgent: WaitingTone | null): TrayDot | null {
   return null;
 }
 
-const dotImages: Record<TrayDot, string> = {
-  "needs-you": "views://assets/tray-icon-needs-you.png",
-  done: "views://assets/tray-icon-done.png",
-};
+const dotEmoji: Record<TrayDot, string> = { "needs-you": "🔴", done: "🟢" };
 
-/** The colour icon of Linux and Windows panels, with the dot in its corner while there is one. */
-export const colourTrayImage = (dot: TrayDot | null) => (dot ? dotImages[dot] : "views://assets/app-icon.png");
+/** macOS draws its template icon in one colour, so the dot goes beside it, before the count. */
+export function trayTitle({ count, mostUrgent }: WaitingSummary) {
+  const dot = trayDot(mostUrgent);
+  return [dot && dotEmoji[dot], waitingBadge(count)].filter(Boolean).join(" ");
+}
+
+/** The colour icon of Linux and Windows panels, with the dot in its corner while there is one. Windows reads tray icons only as .ico. */
+export function colourTrayImage(dot: TrayDot | null, platform: NodeJS.Platform) {
+  const extension = platform === "win32" ? "ico" : "png";
+  return `views://assets/${dot ? `tray-icon-${dot}` : "app-icon"}.${extension}`;
+}
 
 /** On macOS a tray title is text beside the icon, kept for the waiting count; Linux panels show it as the icon's tooltip. */
 export const firstTrayTitle = (platform: NodeJS.Platform, appName: string) => (platform === "darwin" ? "" : appName);

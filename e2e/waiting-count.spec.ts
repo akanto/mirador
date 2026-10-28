@@ -1,14 +1,21 @@
 import { createInterface } from "node:readline";
 import { expect, test } from "@playwright/test";
-import { addWorkspace, answerCanvasQuestion, callCanvasTool, signIn, startConversation, startDesktopNotifier } from "./helpers.ts";
+import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
+import { addWorkspace, answerCanvasQuestion, callCanvasTool, sendMessage, signIn, startConversation, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
-const host = new TestHost();
+const api = new FakeClaudeApi();
+const host = new TestHost({ environment: () => fakeClaudeEnvironment(api) });
 
-test.beforeAll(() => host.start());
+test.beforeAll(async () => {
+  api.limited = false;
+  await api.start();
+  await host.start();
+});
 test.afterAll(async () => {
   await host.stop();
   await host.cleanUp();
+  api.stop();
 });
 
 /** The agent waits on its question until it is answered, so the call is left running. */
@@ -20,7 +27,7 @@ async function browserToken() {
   return signedIn.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
 }
 
-test("the waiting count shows in the browser tab title and travels to the desktop app with the most urgent tone, which colours the tray icon's dot", async ({ page }) => {
+test("the waiting count shows in the browser tab title and travels to the desktop app with the most urgent tone", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const first = await startConversation(page);
@@ -60,6 +67,16 @@ test("the waiting count shows in the browser tab title and travels to the deskto
       await page.locator(".workspace li").nth(1).click();
       await answerCanvasQuestion(page, "Yes");
       await expect(page).toHaveTitle("Mirador");
+      await untilLine("waiting 0");
+    });
+
+    await test.step("a turn that ends while you look elsewhere tells the desktop app it is done, until you open it", async () => {
+      api.hold();
+      await sendMessage(page, "Reply with just the word OK.");
+      await page.locator(".workspace li").nth(0).click();
+      api.answerHeld();
+      await untilLine("waiting 1 done");
+      await page.locator(".workspace li").nth(1).click();
       await untilLine("waiting 0");
     });
   } finally {
