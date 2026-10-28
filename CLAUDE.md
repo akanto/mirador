@@ -63,7 +63,8 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - **Author and committer:** whoever owns the checkout, from its git config. Never pass `--author`, set `user.name` or `user.email`, or write a name here.
 - **Beads hook:** the beads `prepare-commit-msg` hook, which adds agent trailers, was removed on purpose. Never reinstall it.
 - **One commit per finished change**, with only that change's files. Other work in the tree stays uncommitted. Include `.beads/interactions.jsonl` when it changed.
-- **Never amend or rebase a commit that's already on origin:** make a new commit instead. Rewriting a pushed commit leaves main and origin/main with two copies of it.
+- **A pull request holds a single squashed commit:** fold follow-up fixes into it and update the branch with `git push --force-with-lease`.
+- **Never amend or rebase a commit that's already on main:** make a new commit instead. Rewriting a pushed commit leaves main and origin/main with two copies of it. A pull request's own branch is the exception above.
 - **Messages:** one plain sentence saying what the user gets, as in "Reorder queued messages by dragging them".
 
 ## Build & Test
