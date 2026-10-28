@@ -2787,10 +2787,34 @@ button.edits-waiting {
   margin: 0;
 }
 
+/* Markers of its own: the desktop app drew no native marker for an empty item, the one just started. */
 .formatted-box ul,
 .formatted-box ol {
   margin: 0;
   padding-left: 22px;
+  list-style: none;
+  counter-reset: box-item;
+}
+
+.formatted-box li {
+  position: relative;
+  counter-increment: box-item;
+}
+
+.formatted-box li::before {
+  position: absolute;
+  right: 100%;
+  padding-right: 6px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.formatted-box ul > li::before {
+  content: "•";
+}
+
+.formatted-box ol > li::before {
+  content: counter(box-item) ".";
 }
 
 .formatted-box-placeholder {

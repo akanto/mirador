@@ -45,6 +45,16 @@ export function formattedBoxTests() {
   const promptsSoFar = () => readFileSync(promptsFile, "utf8");
   /** The box's text and selection as the composer reads them: the markdown the agent gets, with offsets into it. */
   const boxValue = () => box().evaluate((element) => (element as unknown as HTMLTextAreaElement).value);
+  /** The kind of marker drawn before each list item in the box: a number, a bullet, or none. */
+  const markers = () =>
+    box()
+      .locator("li")
+      .evaluateAll((items) =>
+        items.map((item) => {
+          const content = getComputedStyle(item, "::before").content;
+          return content.includes("counter(") ? "number" : content === '"•"' ? "bullet" : "none";
+        }),
+      );
   const boxSelected = () => box().evaluate((element) => {
     const { value, selectionStart, selectionEnd } = element as unknown as HTMLTextAreaElement;
     return value.slice(selectionStart, selectionEnd);
@@ -307,6 +317,7 @@ export function formattedBoxTests() {
     await expect(bar.getByRole("button", { name: "Bulleted list" })).toHaveAttribute("aria-pressed", "true");
     await bar.getByRole("button", { name: "Numbered list" }).click();
     await expect.poll(boxValue).toBe("1. one\n2. two");
+    await expect.poll(() => markers()).toEqual(["number", "number"]);
     await bar.getByRole("button", { name: "Numbered list" }).click();
     await expect.poll(boxValue).toBe("one\ntwo");
     await bar.getByRole("button", { name: "Code block" }).click();
@@ -368,5 +379,17 @@ export function formattedBoxTests() {
     await expect(page.getByRole("button", { name: "Formatting" })).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "Formatting" }).click();
     await expect(bar).toHaveCount(0);
+  });
+
+  test("a list just started shows its marker before anything is typed in it", async () => {
+    await page.keyboard.type("1. ");
+    await expect.poll(() => markers()).toEqual(["number"]);
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type("- ");
+    await expect.poll(() => markers()).toEqual(["bullet"]);
+    await page.keyboard.type("item");
+    await expectSent("- item", "ControlOrMeta+Enter");
   });
 }
