@@ -1,6 +1,18 @@
 import { Tray } from "electrobun/main";
 import type { WaitingSummary } from "../../../shared/waiting.ts";
-import { colourTrayImage, firstTrayTitle, isTrayAction, trayDot, trayMenu, trayTitle, waitingBadge, type TrayAction, type TrayDot, type TrayState } from "../core/tray-menu.ts";
+import {
+  clickedTrayItem,
+  colourTrayImage,
+  firstTrayTitle,
+  nativeTrayMenu,
+  trayDot,
+  trayMenu,
+  trayTitle,
+  waitingBadge,
+  type TrayAction,
+  type TrayDot,
+  type TrayState,
+} from "../core/tray-menu.ts";
 import { setDockBadgeLabel } from "./dock.ts";
 
 /** macOS tints the black template image to suit the menu bar; Linux panels are light or dark, so they get the colour icon. */
@@ -14,11 +26,11 @@ export class AppTray {
   private shownTitle = "";
   private shownDot: TrayDot | null = null;
 
-  constructor(appName: string, onAction: (action: TrayAction) => void) {
+  constructor(appName: string, onAction: (action: TrayAction, conversationId?: string) => void) {
     this.tray = new Tray({ ...trayIcon, title: firstTrayTitle(process.platform, appName) });
     this.tray.on("tray-clicked", (event) => {
-      const action = (event as { data?: { action?: unknown } }).data?.action;
-      if (isTrayAction(action)) onAction(action);
+      const clicked = clickedTrayItem((event as { data?: { action?: unknown } }).data?.action);
+      if (clicked) onAction(clicked.action, clicked.conversationId);
     });
   }
 
@@ -42,6 +54,6 @@ export class AppTray {
   }
 
   render(state: TrayState) {
-    this.tray.setMenu(trayMenu(state));
+    this.tray.setMenu(nativeTrayMenu(trayMenu(state)));
   }
 }

@@ -32,13 +32,24 @@ export const lastsUntilOpened = (waitingFor: WaitingFor | null) => waitingFor !=
 /** A running turn takes the dot from a mark that lasts until opened, which the pill still shows; a decision keeps the dot, as it needs you now. */
 export const waitingShowsOnDot = ({ waitingFor, status }: Conversation) => waitingFor !== null && !(lastsUntilOpened(waitingFor) && status === "running");
 
-/** What the desktop app hears of the conversations waiting for you: how many, and the tone of the most urgent. */
+export interface WaitingConversation {
+  conversationId: string;
+  title: string;
+  workspace: string;
+  tone: WaitingTone;
+}
+
+/** What the desktop app hears of the conversations waiting for you: how many, the tone of the most urgent, and which, most urgent first. */
 export interface WaitingSummary {
   count: number;
   mostUrgent: WaitingTone | null;
+  conversations: WaitingConversation[];
 }
 
-export const summarizeWaiting = (waiting: WaitingFor[]): WaitingSummary => ({ count: waiting.length, mostUrgent: mostUrgentTone(waiting) ?? null });
+export function summarizeWaiting(waiting: WaitingConversation[]): WaitingSummary {
+  const conversations = waiting.toSorted((a, b) => tonesByUrgency.indexOf(a.tone) - tonesByUrgency.indexOf(b.tone));
+  return { count: conversations.length, mostUrgent: conversations[0]?.tone ?? null, conversations };
+}
 
 export const countWaiting = (conversations: Conversation[]) => conversations.filter(isWaiting).length;
 

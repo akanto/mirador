@@ -1,6 +1,7 @@
 import { Utils } from "electrobun/main";
 import { readFileSync } from "node:fs";
 import type { NewerVersion } from "../../../shared/newer-version.ts";
+import type { WaitingConversation } from "../../../shared/waiting.ts";
 import { HostNotifications, nativeNotification } from "../core/host-notifications.ts";
 import { hostAnswers, spawnOwnedHost } from "../core/host-process.ts";
 import { HostSupervisor, type HostStatus } from "../core/host-supervisor.ts";
@@ -12,7 +13,18 @@ import { authUrl, hostEnvironmentOverrides, type DataPaths, type Runtime } from 
 import type { SettingsStore } from "../core/settings.ts";
 import { restartDetail, type TrayAction, type TrayState } from "../core/tray-menu.ts";
 import { hostRunsReplacedFiles, markUpdatePending, takePendingUpdate, updateRestartStopsTheHost } from "../core/update-checks.ts";
-import { closeWhatHasFocusScript, desktopUpdate, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../core/window-menu.ts";
+import {
+  closeWhatHasFocusScript,
+  conversationRoute,
+  desktopUpdate,
+  giveNonceScript,
+  pageMayRun,
+  pageRequest,
+  showMenuScript,
+  showRouteScript,
+  showUpdateScript,
+  windowMenu,
+} from "../core/window-menu.ts";
 import { giveAppAppearance } from "./app-appearance.ts";
 import { AppTray } from "./app-tray.ts";
 import { selfUpdateFromReleases } from "./app-updates.ts";
@@ -49,6 +61,7 @@ export class DesktopApp {
   private knowsWhetherItUpdatesItself = false;
   private update: UpdateOffer | null = null;
   private runningTurns = 0;
+  private waiting: WaitingConversation[] = [];
   private busy = false;
   /** Only the window's own page gets it, never a frame in it, so only that page makes the app act. */
   private readonly pageNonce = crypto.randomUUID();
@@ -81,12 +94,16 @@ export class DesktopApp {
       pause: Bun.sleep,
     });
     this.window = new MainWindow(environment.appName, runtime.origin, [runtime.canvasOrigin, ...runtime.relayOrigins], (detail) => this.answerPage(detail));
-    this.tray = new AppTray(environment.appName, (action) => void this.handle(action));
+    this.tray = new AppTray(environment.appName, (action, conversationId) => void this.handle(action, conversationId));
     this.notifications = new HostNotifications({
       origin: runtime.origin,
       token: () => this.browserTokenOnceWritten(),
       show: (notification) => Utils.showNotification(nativeNotification(notification, process.platform)),
-      showWaiting: (waiting) => this.tray.showWaiting(waiting),
+      showWaiting: (waiting) => {
+        this.tray.showWaiting(waiting);
+        this.waiting = waiting.conversations;
+        this.renderTray();
+      },
       showRunningTurnsCount: (count) => {
         this.runningTurns = count;
       },
@@ -125,13 +142,13 @@ export class DesktopApp {
     this.selfUpdate?.start();
   }
 
-  async openWindow() {
+  async openWindow(route = "") {
     if (this.window.isOpen) return this.window.bringToFront();
     await this.busyWith("starting", async () => {
       const statusBeforeStart = await this.supervisor.status();
       await this.supervisor.start();
       await this.reloadHostAfterUpdate(statusBeforeStart);
-      this.window.open(authUrl(this.environment.runtime, this.browserToken()));
+      this.window.open(`${authUrl(this.environment.runtime, this.browserToken())}${route}`);
     });
     if (!this.window.isOpen) setDockIconVisible(false);
   }
@@ -156,8 +173,9 @@ export class DesktopApp {
     }
   }
 
-  private async handle(action: TrayAction) {
+  private async handle(action: TrayAction, conversationId?: string) {
     if (action === "open") return this.openWindow();
+    if (action === "open-conversation") return conversationId && this.openConversation(conversationId);
     if (action === "download-newer-version") return this.openNewerVersionDownload();
     if (action === "check-for-update") return this.selfUpdate?.look();
     if (action === "install-update") return this.installUpdate();
@@ -165,6 +183,13 @@ export class DesktopApp {
     if (action === "restart-host") return this.busyWith("starting", () => this.supervisor.restart());
     if (action === "toggle-background") return this.busyWith("starting", () => this.toggleBackground());
     return this.toggleOpenAtLogin();
+  }
+
+  private openConversation(conversationId: string) {
+    const route = conversationRoute(conversationId);
+    if (!this.window.isOpen) return this.openWindow(route);
+    this.window.runInPage(showRouteScript(route));
+    this.window.bringToFront();
   }
 
   private openNewerVersionDownload() {
@@ -264,7 +289,15 @@ export class DesktopApp {
 
   private trayState(): TrayState {
     const { hostRunsInBackground, openAtLogin } = this.environment.settings.current();
-    return { status: this.status, hostRunsInBackground, openAtLogin, newerVersion: this.newerVersion, updatesItself: this.selfUpdate !== null, update: this.update };
+    return {
+      status: this.status,
+      hostRunsInBackground,
+      openAtLogin,
+      newerVersion: this.newerVersion,
+      updatesItself: this.selfUpdate !== null,
+      update: this.update,
+      waiting: this.waiting,
+    };
   }
 
   private showMenuInWindow() {

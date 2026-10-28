@@ -13,9 +13,9 @@ import { webUrl } from "./navigation.ts";
 import type { UpdateOffer } from "./self-update.ts";
 import { isTrayAction, trayMenu, type TrayAction, type TrayState } from "./tray-menu.ts";
 
-/** The tray's menu, less Open, which the window it would show is already showing. */
+/** The tray's menu, less Open and the conversations waiting for you, which the window it would show is already showing. */
 export const windowMenu = (state: TrayState): DesktopMenuItem[] =>
-  trayMenu(state).filter((item) => item.type === "separator" || item.action !== "open");
+  trayMenu({ ...state, waiting: [] }).filter((item) => item.type === "separator" || item.action !== "open");
 
 export const showMenuScript = (menu: DesktopMenu) =>
   `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_MENU_EVENT)}, { detail: ${JSON.stringify(menu)} }))`;
@@ -31,6 +31,11 @@ export const showUpdateScript = (update: DesktopUpdate) =>
   `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_UPDATE_EVENT)}, { detail: ${JSON.stringify(update)} }))`;
 
 export const giveNonceScript = (nonce: string) => `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_NONCE_EVENT)}, { detail: ${JSON.stringify(nonce)} }))`;
+
+/** The page's own address for a conversation, which it selects from the hash. */
+export const conversationRoute = (conversationId: string) => `#/c/${encodeURIComponent(conversationId)}`;
+
+export const showRouteScript = (route: string) => `window.location.hash = ${JSON.stringify(route)}`;
 
 export const closeWhatHasFocusScript = `window.dispatchEvent(new CustomEvent(${JSON.stringify(DESKTOP_CLOSE_EVENT)}))`;
 

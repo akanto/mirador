@@ -70,19 +70,20 @@ describe("host notifications in the desktop app", () => {
     notifications.stop();
   });
 
-  test("shows the number of conversations waiting and the most urgent tone that the host sends", () => {
+  test("shows which conversations wait, how many and the most urgent tone, as the host sends them", () => {
     const { notifications, sockets, waitings } = listen();
     notifications.start();
-    sockets[0]!.receive({ type: "waiting.counted", count: 2, mostUrgent: "decision" });
-    expect(waitings).toEqual([{ count: 2, mostUrgent: "decision" }]);
+    const waiting: WaitingSummary = { count: 1, mostUrgent: "decision", conversations: [{ conversationId: "c1", title: "Fix the tray menu", workspace: "mirador", tone: "decision" }] };
+    sockets[0]!.receive({ type: "waiting.counted", ...waiting });
+    expect(waitings).toEqual([waiting]);
     notifications.stop();
   });
 
-  test("takes no urgent tone from an older host that sends only the count", () => {
+  test("takes no urgent tone and no conversations from an older host that sends only the count", () => {
     const { notifications, sockets, waitings } = listen();
     notifications.start();
     sockets[0]!.receive({ type: "waiting.counted", count: 2 } as unknown as ServerMessage);
-    expect(waitings).toEqual([{ count: 2, mostUrgent: null }]);
+    expect(waitings).toEqual([{ count: 2, mostUrgent: null, conversations: [] }]);
     notifications.stop();
   });
 
@@ -101,13 +102,16 @@ describe("host notifications in the desktop app", () => {
   test("forgets what waits when the host goes away, and takes the next summary on reconnecting", async () => {
     const { notifications, sockets, waitings } = listen();
     notifications.start();
-    sockets[0]!.receive({ type: "waiting.counted", count: 2, mostUrgent: "done" });
+    sockets[0]!.receive({ type: "waiting.counted", count: 2, mostUrgent: "done", conversations: [] });
     sockets[0]!.hostGoesAway();
-    expect(waitings).toEqual([{ count: 2, mostUrgent: "done" }, { count: 0, mostUrgent: null }]);
+    expect(waitings).toEqual([
+      { count: 2, mostUrgent: "done", conversations: [] },
+      { count: 0, mostUrgent: null, conversations: [] },
+    ]);
     await Bun.sleep(20);
     expect(sockets).toHaveLength(2);
-    sockets[1]!.receive({ type: "waiting.counted", count: 1, mostUrgent: "decision" });
-    expect(waitings.at(-1)).toEqual({ count: 1, mostUrgent: "decision" });
+    sockets[1]!.receive({ type: "waiting.counted", count: 1, mostUrgent: "decision", conversations: [] });
+    expect(waitings.at(-1)).toEqual({ count: 1, mostUrgent: "decision", conversations: [] });
     notifications.stop();
   });
 

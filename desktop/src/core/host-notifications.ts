@@ -4,7 +4,7 @@ import { bodyWithWorkspace, type SystemNotification } from "../../../shared/syst
 import type { WaitingSummary } from "../../../shared/waiting.ts";
 
 const RETRY_DELAY_MILLISECONDS = 2_000;
-const NOTHING_WAITING: WaitingSummary = { count: 0, mostUrgent: null };
+const NOTHING_WAITING: WaitingSummary = { count: 0, mostUrgent: null, conversations: [] };
 
 export interface NativeNotification {
   title: string;
@@ -42,7 +42,7 @@ export interface HostNotificationsOptions {
   /** Read again for every connection: the host writes it on its first start, which may come after the app's. */
   token: () => string | null;
   show: (notification: SystemNotification) => void;
-  /** How many conversations wait for you and the most urgent one's tone, which the host sends on connecting and whenever they may have changed. */
+  /** Which conversations wait for you, how many and the most urgent one's tone, which the host sends on connecting and whenever they may have changed. */
   showWaiting?: (waiting: WaitingSummary) => void;
   /** The number of running turns, which the host sends on connecting and whenever it changes. */
   showRunningTurnsCount?: (count: number) => void;
@@ -82,7 +82,7 @@ export class HostNotifications {
     socket.onmessage = ({ data }) => {
       const message = JSON.parse(String(data)) as ServerMessage;
       if (message.type === "system-notification") show(message.notification);
-      if (message.type === "waiting.counted") showWaiting({ count: message.count, mostUrgent: message.mostUrgent ?? null });
+      if (message.type === "waiting.counted") showWaiting({ count: message.count, mostUrgent: message.mostUrgent ?? null, conversations: message.conversations ?? [] });
       if (message.type === "running-turns.counted") showRunningTurnsCount(message.count);
       if (message.type === "newer-version.found") showNewerVersion(message.newerVersion);
     };

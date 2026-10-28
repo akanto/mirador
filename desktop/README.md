@@ -98,7 +98,7 @@ Then start *Mirador* from your applications menu once, so *Open at login* regist
 
 | | macOS | Linux |
 | --- | --- | --- |
-| The app's menu | A menu bar item, with the number of conversations waiting for you next to it (after a red dot while one needs you or failed, a green one while one is done) and as a badge on the Dock icon | A tray icon, with a red dot while a conversation needs you or failed and a green one while one is done, and *Desktop app…* in Mirador's sidebar |
+| The app's menu | A menu bar item, with the number of conversations waiting for you next to it (after a red dot while one needs you or failed, a green one while one is done) and as a badge on the Dock icon; the menu lists them, and choosing one opens it | A tray icon, with a red dot while a conversation needs you or failed and a green one while one is done and a menu listing the conversations waiting for you, and *Desktop app…* in Mirador's sidebar |
 | Closing the window | The app stays in the menu bar; its Dock icon hides until the window comes back | The app keeps running; *Open* in the tray, or launching it again, brings the window back |
 | Launching it again | Brings the window back | Hands over to the running app (through `<data dir>/desktop-<port>.sock`) and quits |
 | Quit | The menu, or ⌘Q while the window is focused | The tray menu or *Desktop app…* |

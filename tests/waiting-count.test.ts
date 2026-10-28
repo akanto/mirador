@@ -2,7 +2,16 @@ import { expect, test } from "bun:test";
 import { Hub, socketData, type BrowserSocket, type SocketData } from "../host/hub.ts";
 import type { Conversation } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
-import { countWaiting, lastsUntilOpened, summarizeWaiting, waitingByUrgency, waitingShowsOnDot } from "../shared/waiting.ts";
+import {
+  countWaiting,
+  lastsUntilOpened,
+  summarizeWaiting,
+  waitingByUrgency,
+  waitingShowsOnDot,
+  type WaitingConversation,
+  type WaitingSummary,
+  type WaitingTone,
+} from "../shared/waiting.ts";
 import { tabTitle } from "../web/tab-title.ts";
 
 const c = (waitingFor: Conversation["waitingFor"]) => ({ waitingFor }) as Conversation;
@@ -36,35 +45,44 @@ function connect(hub: Hub, role: SocketData["role"]) {
   return received;
 }
 
-test("summarizes how many wait and the most urgent tone among them", () => {
-  expect(summarizeWaiting(["finished", "unread", "permission"])).toEqual({ count: 3, mostUrgent: "decision" });
-  expect(summarizeWaiting([])).toEqual({ count: 0, mostUrgent: null });
+const waitingConversation = (conversationId: string, tone: WaitingTone, title = `Conversation ${conversationId}`): WaitingConversation => ({
+  conversationId,
+  title,
+  workspace: "mirador",
+  tone,
+});
+
+const summary = (...conversations: WaitingConversation[]): WaitingSummary => ({ count: conversations.length, mostUrgent: conversations[0]?.tone ?? null, conversations });
+
+test("summarizes how many wait, the most urgent tone among them, and which, most urgent first", () => {
+  const [finished, unread, decision] = [waitingConversation("a", "done"), waitingConversation("b", "unread"), waitingConversation("c", "decision")];
+  expect(summarizeWaiting([finished, unread, decision])).toEqual({ count: 3, mostUrgent: "decision", conversations: [decision, finished, unread] });
+  expect(summarizeWaiting([])).toEqual({ count: 0, mostUrgent: null, conversations: [] });
 });
 
 test("only the desktop app hears what waits", () => {
   const hub = new Hub();
   const page = connect(hub, "page");
   const notifier = connect(hub, "notifier");
-  hub.announceWaiting({ count: 3, mostUrgent: "decision" });
-  expect(notifier).toEqual([{ type: "waiting.counted", count: 3, mostUrgent: "decision" }]);
+  const waiting = summary(waitingConversation("a", "decision"));
+  hub.announceWaiting(waiting);
+  expect(notifier).toEqual([{ type: "waiting.counted", ...waiting }]);
   expect(page).toEqual([]);
 });
 
-test("the desktop app hears what waits only when the count or the most urgent tone changed", () => {
+test("the desktop app hears what waits only when something about it changed, a title included", () => {
   const hub = new Hub();
   const notifier = connect(hub, "notifier");
-  hub.announceWaiting({ count: 2, mostUrgent: "done" });
-  hub.announceWaiting({ count: 2, mostUrgent: "done" });
-  hub.announceWaiting({ count: 2, mostUrgent: "decision" });
-  hub.announceWaiting({ count: 2, mostUrgent: "decision" });
-  hub.announceWaiting({ count: 1, mostUrgent: "decision" });
-  hub.announceWaiting({ count: 0, mostUrgent: null });
-  expect(notifier).toEqual([
-    { type: "waiting.counted", count: 2, mostUrgent: "done" },
-    { type: "waiting.counted", count: 2, mostUrgent: "decision" },
-    { type: "waiting.counted", count: 1, mostUrgent: "decision" },
-    { type: "waiting.counted", count: 0, mostUrgent: null },
-  ]);
+  const announced = [
+    summary(waitingConversation("a", "done")),
+    summary(waitingConversation("a", "done")),
+    summary(waitingConversation("a", "done", "Renamed")),
+    summary(waitingConversation("b", "decision"), waitingConversation("a", "done", "Renamed")),
+    summary(waitingConversation("b", "decision"), waitingConversation("a", "done", "Renamed")),
+    summary(),
+  ];
+  announced.forEach((waiting) => hub.announceWaiting(waiting));
+  expect(notifier).toEqual([announced[0], announced[2], announced[3], announced[5]].map((waiting) => ({ type: "waiting.counted", ...waiting })));
 });
 
 test("only the desktop app hears the running turns count, and only when it changed", () => {

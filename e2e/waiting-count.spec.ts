@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
 import { addWorkspace, answerCanvasQuestion, callCanvasTool, sendMessage, signIn, startConversation, startDesktopNotifier } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
+import { conversationRoute } from "../desktop/src/core/window-menu.ts";
 
 const api = new FakeClaudeApi();
 const host = new TestHost({ environment: () => fakeClaudeEnvironment(api) });
@@ -27,7 +28,7 @@ async function browserToken() {
   return signedIn.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!;
 }
 
-test("the waiting count shows in the browser tab title and travels to the desktop app with the most urgent tone", async ({ page }) => {
+test("the waiting count shows in the browser tab title and travels to the desktop app with the most urgent tone", async ({ page, browser }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const first = await startConversation(page);
@@ -51,6 +52,18 @@ test("the waiting count shows in the browser tab title and travels to the deskto
       askInBackground(first, "Which layout?");
       await expect(page).toHaveTitle("(1) Mirador");
       await untilLine("waiting 1 decision");
+      await untilLine(`waiting in: ${first} decision New conversation · project`);
+    });
+
+    await test.step("the desktop app opens that conversation through its sign-in link, which keeps the conversation's address", async () => {
+      for (const conversationId of [first, second]) {
+        const desktopWindow = await browser.newContext();
+        const desktopPage = await desktopWindow.newPage();
+        await desktopPage.goto(`${host.authUrl}${conversationRoute(conversationId)}`);
+        await expect(desktopPage.locator(".chat-header:visible")).toContainText("New conversation");
+        await expect(desktopPage).toHaveURL(new RegExp(`/#/c/${conversationId}$`));
+        await desktopWindow.close();
+      }
     });
 
     await test.step("a second one raises it", async () => {

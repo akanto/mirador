@@ -52,7 +52,7 @@ import { PlanQuotasByProfile, reportedQuotas } from "./plan-quotas.ts";
 import { turnEndReason, type TurnOutcome } from "../shared/system-notifications.ts";
 import { hasBegun, updatesTheAgentRecords } from "../shared/conversation-begun.ts";
 import { isUsageLimitError, usageLimitMessage, usageLimitResetIn } from "../shared/usage-limit.ts";
-import { summarizeWaiting, type WaitingSummary } from "../shared/waiting.ts";
+import { summarizeWaiting, waitingTones, type WaitingConversation, type WaitingSummary } from "../shared/waiting.ts";
 import { awaitingDelivery, USER_COMMAND_EVENT_TYPES, userCommandsIn, withCommandOutputs, type UserCommand } from "../shared/user-commands.ts";
 import { withCanvasNotes, type CanvasNote } from "./canvas/notes.ts";
 import { NO_CANVAS_PLUGINS, type CanvasPluginGuidance } from "./canvas/guidance.ts";
@@ -311,7 +311,15 @@ export class ConversationService {
   }
 
   waiting(): WaitingSummary {
-    return summarizeWaiting([...this.conversationsThatMayWait()].map((conversationId) => this.waitingFor(conversationId)).filter((waitingFor) => waitingFor !== null));
+    return summarizeWaiting([...this.conversationsThatMayWait()].flatMap((conversationId) => this.waitingConversation(conversationId) ?? []));
+  }
+
+  private waitingConversation(conversationId: string): WaitingConversation | null {
+    const waitingFor = this.waitingFor(conversationId);
+    const conversation = waitingFor && this.store.findConversation(conversationId);
+    if (!waitingFor || !conversation) return null;
+    const workspace = this.store.findWorkspace(conversation.workspaceId)?.name ?? "";
+    return { conversationId, title: conversation.title, workspace, tone: waitingTones[waitingFor] };
   }
 
   runningTurnsCount(): number {
@@ -2043,7 +2051,7 @@ export class ConversationService {
     return currentActivity(runtime.openToolCalls, [...runtime.pendingPermissions.values()].map(({ request }) => request.title));
   }
 
-  /** Every conversation `waitingFor` could find waiting, from the three things it reads, so counting reads no database. */
+  /** Every conversation `waitingFor` could find waiting, from the three things it reads, so only those that wait are read from the database. */
   private conversationsThatMayWait() {
     return new Set([...this.runtimes.keys(), ...this.asksWaitedOn.keys(), ...this.unseenTurnEnds.keys()]);
   }

@@ -1,8 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { MIRADOR_VERSION } from "../shared/version.ts";
-import { closeWhatHasFocusScript, desktopUpdate, giveNonceScript, pageMayRun, pageRequest, showMenuScript, showUpdateScript, windowMenu } from "../desktop/src/core/window-menu.ts";
+import {
+  closeWhatHasFocusScript,
+  conversationRoute,
+  desktopUpdate,
+  giveNonceScript,
+  pageMayRun,
+  pageRequest,
+  showMenuScript,
+  showRouteScript,
+  showUpdateScript,
+  windowMenu,
+} from "../desktop/src/core/window-menu.ts";
 
-const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null, updatesItself: false, update: null } as const;
+const state = { status: "owned", hostRunsInBackground: true, openAtLogin: false, newerVersion: null, updatesItself: false, update: null, waiting: [] } as const;
 
 describe("menu in the window", () => {
   test("is the tray's menu without Open", () => {
@@ -18,6 +29,11 @@ describe("menu in the window", () => {
       "Quit",
     ]);
     expect(windowMenu(state).find((item) => item.type === "normal" && item.action === "toggle-background")).toMatchObject({ checked: true });
+  });
+
+  test("leaves out the conversations waiting for you, which the sidebar beside it shows", () => {
+    const waiting = [{ conversationId: "c1", title: "Fix the tray menu", workspace: "mirador", tone: "decision" }] as const;
+    expect(windowMenu({ ...state, waiting: [...waiting] })).toEqual(windowMenu(state));
   });
 
   test("has the tray's newer release, which the Linux sidebar's menu then offers too", () => {
@@ -99,5 +115,16 @@ describe("menu in the window", () => {
     for (const appearance of ["sepia", "", null, 1]) {
       expect(pageRequest({ type: "desktop-appearance", nonce: "n-1", appearance }, "n-1")).toBeNull();
     }
+  });
+});
+
+describe("opening a conversation from the tray", () => {
+  test("goes to the page's address for it", () => {
+    expect(conversationRoute("c-1")).toBe("#/c/c-1");
+    expect(conversationRoute("a/b#c")).toBe("#/c/a%2Fb%23c");
+  });
+
+  test("moves an open window's page there", () => {
+    expect(showRouteScript("#/c/c-1")).toBe('window.location.hash = "#/c/c-1"');
   });
 });

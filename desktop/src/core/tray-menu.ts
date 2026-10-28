@@ -1,17 +1,36 @@
 import { newerVersionLabel, type NewerVersion } from "../../../shared/newer-version.ts";
 import { MIRADOR_VERSION } from "../../../shared/version.ts";
-import type { WaitingSummary, WaitingTone } from "../../../shared/waiting.ts";
+import { waitingLabels, type WaitingConversation, type WaitingSummary, type WaitingTone } from "../../../shared/waiting.ts";
 import type { HostStatus } from "./host-supervisor.ts";
 import type { UpdateOffer } from "./self-update.ts";
 
-export type TrayAction = "open" | "download-newer-version" | "check-for-update" | "install-update" | "restart-host" | "toggle-background" | "toggle-open-at-login" | "quit";
+export type TrayAction =
+  | "open"
+  | "open-conversation"
+  | "download-newer-version"
+  | "check-for-update"
+  | "install-update"
+  | "restart-host"
+  | "toggle-background"
+  | "toggle-open-at-login"
+  | "quit";
 
-const trayActions: readonly string[] = ["open", "download-newer-version", "check-for-update", "install-update", "restart-host", "toggle-background", "toggle-open-at-login", "quit"] satisfies TrayAction[];
+const trayActions: readonly string[] = [
+  "open",
+  "open-conversation",
+  "download-newer-version",
+  "check-for-update",
+  "install-update",
+  "restart-host",
+  "toggle-background",
+  "toggle-open-at-login",
+  "quit",
+] satisfies TrayAction[];
 export const isTrayAction = (action: unknown): action is TrayAction => typeof action === "string" && trayActions.includes(action);
 
 export type TrayItem =
   | { type: "separator" }
-  | { type: "normal"; label: string; action?: TrayAction; enabled?: boolean; checked?: boolean };
+  | { type: "normal"; label: string; action?: TrayAction; data?: { conversationId: string }; enabled?: boolean; checked?: boolean };
 
 export interface TrayState {
   status: HostStatus | "starting";
@@ -21,6 +40,8 @@ export interface TrayState {
   /** A release build that downloads and installs newer releases itself; any other only links to them. */
   updatesItself: boolean;
   update: UpdateOffer | null;
+  /** Most urgent first. */
+  waiting: readonly WaitingConversation[];
 }
 
 const statusLabels: Record<TrayState["status"], string> = {
@@ -50,9 +71,60 @@ function newerVersionItems({ newerVersion, updatesItself, update }: TrayState): 
   return [{ type: "normal", label: `${newerVersionLabel(newerVersion)}: download`, action }];
 }
 
-export function trayMenu(state: TrayState): TrayItem[] {
+const MAX_WAITING_SHOWN = 10;
+const MAX_TITLE_LENGTH = 48;
+
+/**
+ * Linux's tray reads its menu with a JSON parser that ends a string at its first quote and counts every bracket, so a
+ * title keeps none of those, and Windows takes & for a shortcut key.
+ */
+export function menuLabel(text: string, platform: NodeJS.Platform) {
+  const plain = text.replace(/\s+/g, " ").trim().replace(/["\\]/g, "'").replace(/[{[]/g, "(").replace(/[}\]]/g, ")");
+  const characters = Array.from(plain);
+  const short = characters.length > MAX_TITLE_LENGTH ? `${characters.slice(0, MAX_TITLE_LENGTH - 1).join("").trimEnd()}…` : plain;
+  return platform === "win32" ? short.replaceAll("&", "&&") : short;
+}
+
+function waitingItem({ conversationId, title, workspace, tone }: WaitingConversation, platform: NodeJS.Platform): TrayItem {
+  const where = workspace ? ` · ${menuLabel(workspace, platform)}` : "";
+  return { type: "normal", label: `${waitingLabels[tone]}: ${menuLabel(title, platform)}${where}`, action: "open-conversation", data: { conversationId } };
+}
+
+function waitingItems(waiting: readonly WaitingConversation[], platform: NodeJS.Platform): TrayItem[] {
+  if (waiting.length === 0) return [];
+  const hidden = waiting.length - MAX_WAITING_SHOWN;
+  return [
+    { type: "normal", label: "Waiting for you", enabled: false },
+    ...waiting.slice(0, MAX_WAITING_SHOWN).map((conversation) => waitingItem(conversation, platform)),
+    ...(hidden > 0 ? [{ type: "normal", label: `${hidden} more…`, action: "open" } satisfies TrayItem] : []),
+    { type: "separator" },
+  ];
+}
+
+const OPEN_CONVERSATION_PREFIX = "open-conversation:";
+
+export type NativeTrayItem = { type: "separator" } | { type: "normal"; label: string; action?: string; enabled?: boolean; checked?: boolean };
+
+/** Electrobun forgets an item's data once it is clicked, so a conversation's id travels in the item's action instead. */
+export const nativeTrayMenu = (items: TrayItem[]): NativeTrayItem[] =>
+  items.map((item) => {
+    if (item.type === "separator" || !item.data) return item;
+    const { data, ...rest } = item;
+    return { ...rest, action: `${OPEN_CONVERSATION_PREFIX}${data.conversationId}` };
+  });
+
+export function clickedTrayItem(action: unknown): { action: TrayAction; conversationId?: string } | null {
+  if (typeof action === "string" && action.startsWith(OPEN_CONVERSATION_PREFIX)) {
+    const conversationId = action.slice(OPEN_CONVERSATION_PREFIX.length);
+    return conversationId ? { action: "open-conversation", conversationId } : null;
+  }
+  return isTrayAction(action) && action !== "open-conversation" ? { action } : null;
+}
+
+export function trayMenu(state: TrayState, platform: NodeJS.Platform = process.platform): TrayItem[] {
   const restartable = state.status !== "external" && state.status !== "starting";
   return [
+    ...waitingItems(state.waiting, platform),
     { type: "normal", label: statusLabels[state.status], enabled: false },
     { type: "normal", label: `Mirador ${MIRADOR_VERSION}`, enabled: false },
     ...updateItems(state.update),
@@ -81,7 +153,7 @@ export function trayDot(mostUrgent: WaitingTone | null): TrayDot | null {
 const dotEmoji: Record<TrayDot, string> = { "needs-you": "🔴", done: "🟢" };
 
 /** macOS draws its template icon in one colour, so the dot goes beside it, before the count. */
-export function trayTitle({ count, mostUrgent }: WaitingSummary) {
+export function trayTitle({ count, mostUrgent }: Pick<WaitingSummary, "count" | "mostUrgent">) {
   const dot = trayDot(mostUrgent);
   return [dot && dotEmoji[dot], waitingBadge(count)].filter(Boolean).join(" ");
 }

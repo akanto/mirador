@@ -12,7 +12,10 @@ new HostNotifications({
   origin,
   token: () => token,
   show: (notification) => console.log(JSON.stringify(notification)),
-  showWaiting: ({ count, mostUrgent }) => console.log(`waiting ${count}${mostUrgent ? ` ${mostUrgent}` : ""}`),
+  showWaiting: ({ count, mostUrgent, conversations }) => {
+    console.log(`waiting ${count}${mostUrgent ? ` ${mostUrgent}` : ""}`);
+    console.log(`waiting in: ${conversations.map(({ conversationId, tone, title, workspace }) => `${conversationId} ${tone} ${title} · ${workspace}`).join(", ")}`);
+  },
   showRunningTurnsCount: (count) => console.log(`running-turns ${count}`),
   showNewerVersion: (newerVersion) => newerVersion && console.log(`newer: ${newerVersionLabel(newerVersion)}`),
   builtFromCode,

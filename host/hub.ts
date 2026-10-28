@@ -81,7 +81,7 @@ const once = (make: () => string) => {
 export class Hub {
   private readonly sockets = new Set<BrowserSocket>();
   private readonly notifiers = new Set<BrowserSocket>();
-  private announcedWaiting: WaitingSummary | null = null;
+  private announcedWaiting: string | null = null;
   private announcedRunningTurnsCount: number | null = null;
 
   add(socket: BrowserSocket) {
@@ -121,9 +121,9 @@ export class Hub {
 
   /** Only the desktop app's notification sockets hear it, and only when it changed; pages work it out from the conversations they already hold. */
   announceWaiting(waiting: WaitingSummary) {
-    if (waiting.count === this.announcedWaiting?.count && waiting.mostUrgent === this.announcedWaiting.mostUrgent) return;
-    this.announcedWaiting = waiting;
     const payload = JSON.stringify({ type: "waiting.counted", ...waiting } satisfies ServerMessage);
+    if (payload === this.announcedWaiting) return;
+    this.announcedWaiting = payload;
     this.notifiers.forEach((socket) => deliver(socket, payload));
   }
 
