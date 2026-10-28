@@ -32,6 +32,7 @@ import { canMarkUnread, markRead, markUnread } from "./unread.ts";
 import { lastsUntilOpened, waitingByUrgency, waitingLabels, waitingShowsOnDot, waitingTones } from "./waiting.ts";
 import { scrollToNearestWaiting, useWaitingOutOfView, waitingInFoldedGroup, type HiddenWaiting } from "./waiting-edges.ts";
 import { parentFolder } from "./workspace-folder.ts";
+import { workspaceInitials, workspaceMarkColor } from "../shared/marks.ts";
 import { sidebarItems, type SidebarItem } from "../shared/sidebar-order.ts";
 import { forgetFoldsOfDeleted, landingBefore, movesWorkspace, setDelegationsOpen, setGroupFolded, setWorkspaceFolded, useFoldedGroups, useFoldedWorkspaces, useOpenedDelegations, workspaceDropAt, type SidebarRow, type WorkspaceDrop } from "./workspace-groups.ts";
 
@@ -270,19 +271,6 @@ function DelegatedToggle({ callerId, delegated, open }: { callerId: string; dele
   );
 }
 
-const markColors = ["#6e56cf", "#0e9384", "#d9822b", "#3e63dd", "#d6409f", "#12a594", "#8e4ec6", "#ad7f58"];
-
-function initialsOf(name: string) {
-  const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  const initials = words.length > 1 ? words.slice(0, 2).map((word) => word.charAt(0)).join("") : name.slice(0, 2);
-  return initials.toUpperCase();
-}
-
-function markColorOf(name: string) {
-  const hash = [...name].reduce((sum, character) => (sum * 31 + character.charCodeAt(0)) >>> 0, 7);
-  return markColors[hash % markColors.length];
-}
-
 /**
  * A chip as wide as the chosen profile's name, with the select laid invisibly over it to open the choices. With no
  * profile yet, it leads to setting one up, which the main pane offers when no conversation is open.
@@ -407,13 +395,13 @@ function WorkspaceSection({
           ref={mark}
           type="button"
           className="workspace-mark"
-          style={{ background: markColorOf(workspace.name) }}
+          style={{ background: workspaceMarkColor(workspace.name) }}
           aria-label="Workspace colour"
           aria-expanded={pickingColor}
           data-hint={hints.workspaceColor}
           onClick={togglePicker}
         >
-          {initialsOf(workspace.name)}
+          {workspaceInitials(workspace.name)}
         </button>
         <div className="workspace-heading" title={workspace.path}>
           <div className="workspace-name">{workspace.name}</div>

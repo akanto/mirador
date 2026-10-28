@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { machineInitials } from "../shared/marks.ts";
 import { spacedNumber } from "../shared/join-requests.ts";
 import { inviteIn } from "../shared/machines.ts";
 import type { Machine, MachineStatus, Pastel } from "../shared/model.ts";
@@ -16,14 +17,6 @@ const machineFromHash = () => location.hash.match(/^#\/m\/([\w-]+)$/)?.[1] ?? nu
 export const showsMachinesHere = () => ["127.0.0.1", "localhost"].includes(location.hostname);
 
 const relayAddress = (machine: Machine) => `${location.protocol}//${location.hostname}:${machine.relayPort}/`;
-
-export const machineInitials = (name: string) =>
-  name
-    .split(/[\s.\-_]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]!.toUpperCase())
-    .join("");
 
 /** For the stylesheet: the machine's pastel, which its rail button, mark and strip draw with. */
 export const colorAttributes = (color: Pastel | null) => (color ? { "data-color": color, style: pastelVariables(color) } : {});
