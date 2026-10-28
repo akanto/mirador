@@ -229,6 +229,23 @@ export async function pasteImage(target: Locator, { width, height, color = "#5b5
   );
 }
 
+/** Drops files on the element as the browser does from the Finder: an image for each name without text, else a text file. */
+export async function dropFiles(target: Locator, files: { name: string; text?: string }[]) {
+  await target.evaluate(async (element, dropped) => {
+    const transfer = new DataTransfer();
+    for (const { name, text } of dropped) {
+      if (text === undefined) {
+        const canvas = new OffscreenCanvas(40, 30);
+        canvas.getContext("2d")!.fillRect(0, 0, 40, 30);
+        transfer.items.add(new File([await canvas.convertToBlob({ type: "image/png" })], name, { type: "image/png" }));
+      } else {
+        transfer.items.add(new File([text], name, { type: "text/plain" }));
+      }
+    }
+    element.dispatchEvent(new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }));
+  }, files);
+}
+
 /** The match the find bar is on: its text, the entry it is in, and whether it shows in its conversation's view. */
 export const currentMatch = (page: Page) =>
   page.evaluate(() => {

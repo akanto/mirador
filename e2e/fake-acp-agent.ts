@@ -42,8 +42,10 @@ import * as acp from "@agentclientprotocol/sdk";
  * each with the name in `FAKE_ACP_NAME`. FAKE_ACP_IGNORES_SIGTERM=1 makes it survive SIGTERM, and FAKE_ACP_PID_FILE
  * names a file it writes its pid to. `FAKE_ACP_STEERS=1` offers claude-agent-acp's `_session/steering`: a message
  * steered into a `REPLY STEERED ` turn joins it, any other is refused as needing a prompt of its own.
+ * `FAKE_ACP_COMMANDS`, a JSON list of ACP available commands, is announced as each session starts, for its / menu.
  */
 const promptsFile = process.env.FAKE_ACP_PROMPTS;
+const availableCommands: acp.AvailableCommand[] | null = process.env.FAKE_ACP_COMMANDS ? JSON.parse(process.env.FAKE_ACP_COMMANDS) : null;
 const offersModes = process.env.FAKE_ACP_MODES === "1";
 const answersAfterMs = Number(process.env.FAKE_ACP_ANSWERS_AFTER_MS ?? 0);
 const ignoresSigterm = process.env.FAKE_ACP_IGNORES_SIGTERM === "1";
@@ -391,8 +393,10 @@ acp
       ...(offersSteering ? { _meta: { steering: { supported: true } } } : {}),
     };
   })
-  .onRequest(acp.methods.agent.session.new, () => {
+  .onRequest(acp.methods.agent.session.new, (ctx) => {
     const sessionId = `fake-session-${process.pid}-${++nextSession}`;
+    if (availableCommands)
+      setTimeout(() => ctx.client.notify(acp.methods.client.session.update, { sessionId, update: { sessionUpdate: "available_commands_update", availableCommands } }), 50);
     return offersModes ? { sessionId, configOptions: configOptions(sessionId) } : { sessionId };
   })
   .onRequest(acp.methods.agent.session.resume, () => {

@@ -10,6 +10,7 @@ import {
   $createParagraphNode,
   $createRangeSelectionFromDom,
   $setSelection,
+  CLEAR_HISTORY_COMMAND,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
@@ -148,6 +149,7 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
 
   useLayoutEffect(() => {
     if (text === box.current.written.markdown) return;
+    editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
     editor.update(
       () => {
         $readBox(text);
@@ -159,7 +161,7 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
   }, [editor, text]);
 
   useLayoutEffect(() => {
-    const select = (start: number, end: number) => editor.update(() => $selectOffsets(box.current.written, start, end), { discrete: true });
+    const select = (start: number, end: number) => editor.update(() => $selectOffsets($writeBox(), start, end), { discrete: true });
     const root = element.current;
     if (!root) return;
     const nativeFocus = HTMLElement.prototype.focus;

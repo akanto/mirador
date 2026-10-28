@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, sep } from "node:path";
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { addWorkspace, createProfile, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { expect, test, type Page } from "@playwright/test";
+import { addWorkspace, createProfile, dropFiles, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { ScriptedModel, scriptedOpencodeEnvironment } from "./scripted-model.ts";
 import { TestHost } from "./test-host.ts";
 
@@ -24,23 +24,6 @@ test.afterAll(async () => {
 
 const composer = (page: Page) => page.locator(".composer:visible textarea");
 const literally = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** What dragging files from the Finder onto the message box hands the page: each file's name and contents, never its path. */
-async function dropFiles(target: Locator, files: { name: string; text?: string }[]) {
-  await target.evaluate(async (element, dropped) => {
-    const transfer = new DataTransfer();
-    for (const { name, text } of dropped) {
-      if (text === undefined) {
-        const canvas = new OffscreenCanvas(40, 30);
-        canvas.getContext("2d")!.fillRect(0, 0, 40, 30);
-        transfer.items.add(new File([await canvas.convertToBlob({ type: "image/png" })], name, { type: "image/png" }));
-      } else {
-        transfer.items.add(new File([text], name, { type: "text/plain" }));
-      }
-    }
-    element.dispatchEvent(new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }));
-  }, files);
-}
 
 test("a file dropped on the message box goes in as the path of a copy on the host, and an image dropped with it as an image", async ({ page }) => {
   await signIn(page, host);
