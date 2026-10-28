@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { blocksOfMessage, inlinesOfLine, markdownOf, parseMessage, type Block, type Inline } from "../shared/slack-markdown.ts";
+import { blocksOfMessage, inlinesOfLine, markdownOf, markdownOfRuns, parseMessage, type Block, type Inline } from "../shared/slack-markdown.ts";
 
 /** Text a person might send, much of it code-like, which must come back exactly as typed. */
 const AS_TYPED = [
@@ -38,6 +38,9 @@ const AS_TYPED = [
   "```\n```",
   "naïve 日本語 🎉 **ünï**",
   "| a | b |\n|---|---|\n| 1 | 2 |",
+  "***both*** and **bold *and italic*** and **a *b* c**",
+  "**`code` in bold** and *~~struck~~*",
+  "**fine**\n3. odd list\n4. two\n- **ok** list",
 ];
 
 const marked = (inlines: Inline[]) => inlines.flatMap((inline) => (inline.kind === "text" && inline.marks.length ? [[inline.text, ...inline.marks]] : []));
@@ -85,6 +88,24 @@ describe("Slack's set", () => {
   });
 });
 
+describe("pairs inside pairs", () => {
+  test.each([
+    ["***both***", [["both", "bold", "italic"]]],
+    ["**bold *and italic***", [["bold ", "bold"], ["and italic", "bold", "italic"]]],
+    ["**a *b* c**", [["a ", "bold"], ["b", "bold", "italic"], [" c", "bold"]]],
+    ["**`x`**", [["x", "bold", "code"]]],
+  ])("%s", (line, expected) => {
+    expect(marked(inlinesOfLine(line))).toEqual(expected);
+  });
+});
+
+test("one block that can't be written back the same reads as typed, and the others are still formatted", () => {
+  const blocks = parseMessage("**fine**\n3. odd list\n4. two\n- **ok** list");
+  expect(kinds(blocks)).toEqual(["lines", "lines", "list"]);
+  expect(marked((blocks[0] as { inlines: Inline[] }).inlines)).toEqual([["fine", "bold"]]);
+  expect(marked((blocks[1] as { inlines: Inline[] }).inlines)).toEqual([]);
+});
+
 describe("what stays as typed", () => {
   test.each([
     ["arithmetic", "2 * 3 * 4 = 24"],
@@ -123,7 +144,32 @@ test("any other message is formatted", () => {
 describe("what the box writes", () => {
   test("formatting applied in the box gets its markers, nested in one order", () => {
     expect(markdownOf([{ kind: "lines", inlines: [{ kind: "text", text: "both", marks: ["italic", "bold"] }] }])).toBe("***both***");
-    expect(markdownOf([{ kind: "lines", inlines: [{ kind: "text", text: "x", marks: ["code", "bold"] }] }])).toBe("`x`");
+    expect(markdownOf([{ kind: "lines", inlines: [{ kind: "text", text: "x", marks: ["code", "bold"] }] }])).toBe("**`x`**");
+  });
+
+  test("spaces at the edge of a formatted run go outside its markers, so it still reads as formatted", () => {
+    expect(markdownOfRuns([{ text: "foo ", marks: ["bold"] }, { text: "bar", marks: [] }]).markdown).toBe("**foo** bar");
+    expect(markdownOfRuns([{ text: " a ", marks: ["italic"] }]).markdown).toBe(" *a* ");
+  });
+
+  test("runs that share a mark share its markers", () => {
+    expect(markdownOfRuns([{ text: "a ", marks: ["bold"] }, { text: "b", marks: ["bold", "italic"] }, { text: " c", marks: ["bold"] }]).markdown).toBe("**a *b* c**");
+  });
+
+  test("a code run holding a backtick is written plain, as markdown can't hold it", () => {
+    expect(markdownOfRuns([{ text: "a`b", marks: ["code"] }]).markdown).toBe("a`b");
+  });
+
+  test("each piece of a run is placed where its text went", () => {
+    const { markdown, placed } = markdownOfRuns([{ text: "go ", marks: [] }, { text: "bold ", marks: ["bold"] }, { text: "docs", marks: [], url: "https://x.dev" }]);
+    expect(markdown).toBe("go **bold** [docs](https://x.dev)");
+    expect(placed.map(({ run, from, at, length }) => [run, from, markdown.slice(at, at + length)])).toEqual([
+      [0, 0, "go"],
+      [0, 2, " "],
+      [1, 0, "bold"],
+      [1, 4, " "],
+      [2, 0, "docs"],
+    ]);
   });
 
   test("blocks go on lines of their own", () => {
@@ -135,4 +181,12 @@ describe("what the box writes", () => {
       ]),
     ).toBe("Run:\n```\nnpm test\n```\n1. a\n2. b");
   });
+});
+
+test("a long line of openers that never close, or of ordinary formatting, is read in one pass", () => {
+  for (const line of ["x *a ".repeat(20_000), " **a".repeat(20_000), "some **bold** and *it* text ".repeat(3_000)]) {
+    const start = performance.now();
+    expect(markdownOf(parseMessage(line))).toBe(line);
+    expect(performance.now() - start).toBeLessThan(300);
+  }
 });

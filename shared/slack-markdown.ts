@@ -18,30 +18,41 @@ export type Block =
   | { kind: "list"; ordered: boolean; items: Inline[][] };
 
 /** Markers in the order they nest, outermost first, each in the one spelling the message is written in. */
-const MARKERS: [Exclude<Mark, "code">, string][] = [
+const MARKERS: [Mark, string][] = [
   ["bold", "**"],
   ["italic", "*"],
   ["strike", "~~"],
+  ["code", "`"],
 ];
+const markerOf = (mark: Mark) => MARKERS.find(([each]) => each === mark)![1];
+const inMarkerOrder = (marks: Mark[]) => MARKERS.map(([mark]) => mark).filter((mark) => marks.includes(mark));
 
 /**
  * A pair formats only where Slack's would: opening at the start, after a space or an opening bracket, and closing before
  * the end, a space or punctuation, with no space just inside either marker. So `2 * 3 * 4`, `src/**\/*.ts` and
- * `some_var_name` stay as typed.
+ * `some_var_name` stay as typed. A pair may hold others, as `***both***` and `**bold *and italic***` do.
  */
 const OPENS = String.raw`(?<=^|[\s(])`;
 const CLOSES = String.raw`(?=$|[\s).,:;!?'"])`;
-const paired = (marker: string, inner: string) => `${OPENS}${marker}(?!\\s)(${inner})(?<!\\s)${marker}${CLOSES}`;
+/** How far a pair reaches: a bound, so a line full of openers that never close is read in one pass, not one per opener. */
+const LONGEST_PAIR = 500;
+const paired = (opening: string, closing: string) => `${OPENS}${opening}(.{1,${LONGEST_PAIR}}?)${closing}${CLOSES}`;
 const INLINE = new RegExp(
   [
     "`([^`\\n]+)`",
     String.raw`\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)`,
-    paired(String.raw`\*\*`, String.raw`[^*\n]+?`),
-    paired("~~", String.raw`[^~\n]+?`),
-    paired(String.raw`\*`, String.raw`[^*\n]+?`),
+    paired(String.raw`\*\*(?!\s)`, String.raw`(?<!\s)\*\*`),
+    paired(String.raw`~~(?!\s)`, String.raw`(?<!\s)~~`),
+    paired(String.raw`\*(?![\s*])`, String.raw`(?<![\s*])\*`),
   ].join("|"),
   "g",
 );
+
+/** Whether the text ends with a pair just closed, as `see **this**` does: a code span, a link or a formatted run. */
+export const closesPairAt = (text: string) => [...text.matchAll(INLINE)].some((match) => match.index + match[0].length === text.length);
+
+const withMark = (inlines: Inline[], mark: Mark): Inline[] =>
+  inlines.map((inline) => (inline.kind === "text" ? { ...inline, marks: inMarkerOrder([...inline.marks, mark]) } : inline));
 
 export function inlinesOfLine(line: string): Inline[] {
   const inlines: Inline[] = [];
@@ -54,9 +65,9 @@ export function inlinesOfLine(line: string): Inline[] {
     text(last, match.index);
     if (code !== undefined) inlines.push({ kind: "text", text: code, marks: ["code"] });
     else if (url !== undefined) inlines.push({ kind: "link", url, text: linkText! });
-    else if (bold !== undefined) inlines.push({ kind: "text", text: bold, marks: ["bold"] });
-    else if (strike !== undefined) inlines.push({ kind: "text", text: strike, marks: ["strike"] });
-    else inlines.push({ kind: "text", text: italic!, marks: ["italic"] });
+    else if (bold !== undefined) inlines.push(...withMark(inlinesOfLine(bold), "bold"));
+    else if (strike !== undefined) inlines.push(...withMark(inlinesOfLine(strike), "strike"));
+    else inlines.push(...withMark(inlinesOfLine(italic!), "italic"));
     last = match.index + whole.length;
   }
   text(last, line.length);
@@ -83,12 +94,18 @@ function blockOfRun(kind: LineKind, run: string[]): Block {
   return { kind: "list", ordered: kind === "numbered", items: run.map((line) => inlinesOfLine(line.replace(PATTERNS[kind], ""))) };
 }
 
-function blocksOf(text: string): Block[] {
+/** A block with the lines it was read from. */
+interface Read {
+  block: Block;
+  lines: string[];
+}
+
+function blocksOf(text: string): Read[] {
   const lines = text.split("\n");
-  const blocks: Block[] = [];
+  const blocks: Read[] = [];
   let prose: string[] = [];
   const endProse = () => {
-    if (prose.length) blocks.push({ kind: "lines", inlines: linesOf(prose, inlinesOfLine) });
+    if (prose.length) blocks.push({ block: { kind: "lines", inlines: linesOf(prose, inlinesOfLine) }, lines: prose });
     prose = [];
   };
   let index = 0;
@@ -98,7 +115,7 @@ function blocksOf(text: string): Block[] {
     const closing = fence ? lines.indexOf(FENCE_CLOSES, index + 1) : -1;
     if (fence && closing > index) {
       endProse();
-      blocks.push({ kind: "code", language: fence[1]!, code: lines.slice(index + 1, closing).join("\n") });
+      blocks.push({ block: { kind: "code", language: fence[1]!, code: lines.slice(index + 1, closing).join("\n") }, lines: lines.slice(index, closing + 1) });
       index = closing + 1;
       continue;
     }
@@ -111,7 +128,7 @@ function blocksOf(text: string): Block[] {
     endProse();
     const run: string[] = [];
     while (index < lines.length && PATTERNS[kind].test(lines[index]!)) run.push(lines[index++]!);
-    blocks.push(blockOfRun(kind, run));
+    blocks.push({ block: blockOfRun(kind, run), lines: run });
   }
   endProse();
   return blocks;
@@ -120,24 +137,124 @@ function blocksOf(text: string): Block[] {
 /** The message as plain lines, nothing formatted. */
 export const plainMessage = (text: string): Block[] => [{ kind: "lines", inlines: linesOf(text.split("\n"), asTyped) }];
 
+/** Each block as read, or as the plain lines it was read from where it wouldn't give them back the same, as a list from 3 would. */
 export function parseMessage(text: string): Block[] {
-  const blocks = blocksOf(text);
+  const blocks = blocksOf(text).map(({ block, lines }) => {
+    const source = lines.join("\n");
+    return markdownOfBlock(block) === source ? block : plainMessage(source)[0]!;
+  });
   return markdownOf(blocks) === text ? blocks : plainMessage(text);
 }
 
 /** A slash command or a shell line is shown as plain lines: it is run as typed, so it must read as typed. */
 export const blocksOfMessage = (text: string): Block[] => (/^\s*[/!]/.test(text) ? plainMessage(text) : parseMessage(text));
 
+/** A stretch of one line with one set of marks. A link's text is a run of its own, with its address and no marks. */
+export interface Run {
+  text: string;
+  marks: Mark[];
+  url?: string;
+}
+
+/** Where a piece of a run went: its text from `from` in the run, `length` long, starts at `at` in the markdown. */
+export interface Placed {
+  run: number;
+  from: number;
+  at: number;
+  length: number;
+}
+
+interface Piece extends Run {
+  index: number;
+  from: number;
+  edge: boolean;
+}
+
+const WHITESPACE_AT_EDGES = /^(\s*)(.*?)(\s*)$/s;
+const commonPrefix = (...lists: Mark[][]) => lists.reduce((shared, list) => shared.filter((mark, index) => list[index] === mark));
+
+/**
+ * Each run split at the whitespace at its edges, which goes outside any marker that opens or closes there: `**foo **`
+ * wouldn't read as bold, `**foo** ` does. A code span keeps its spaces, and one holding a backtick can't be written, so
+ * it is plain.
+ */
+function piecesOf(runs: Run[]): Piece[] {
+  const pieces = runs.flatMap((run, index): Piece[] => {
+    if (run.url !== undefined || run.marks.includes("code")) {
+      const marks = run.url === undefined && !run.text.includes("`") ? inMarkerOrder(run.marks) : inMarkerOrder(run.marks.filter((mark) => mark !== "code"));
+      return [{ ...run, marks, index, from: 0, edge: false }];
+    }
+    const [, lead, core, trail] = WHITESPACE_AT_EDGES.exec(run.text)!;
+    const marks = inMarkerOrder(run.marks);
+    return [
+      { text: lead!, marks, index, from: 0, edge: true },
+      { text: core!, marks, index, from: lead!.length, edge: false },
+      { text: trail!, marks, index, from: lead!.length + core!.length, edge: true },
+    ].filter((piece) => piece.text);
+  });
+  const marksBefore = nearestInnerMarks(pieces);
+  const marksAfter = nearestInnerMarks(pieces.toReversed()).toReversed();
+  return pieces.map((piece, at) => (piece.edge ? { ...piece, marks: commonPrefix(piece.marks, marksBefore[at]!, marksAfter[at]!) } : piece));
+}
+
+/** For each piece, the marks of the nearest piece before it that isn't whitespace at a run's edge. */
+function nearestInnerMarks(pieces: Piece[]) {
+  let last: Mark[] = [];
+  return pieces.map((piece) => {
+    const before = last;
+    if (!piece.edge) last = piece.marks;
+    return before;
+  });
+}
+
+/** One line's runs as markdown, its markers opened and closed as the marks change, and where each piece of a run went. */
+export function markdownOfRuns(runs: Run[]): { markdown: string; placed: Placed[] } {
+  let markdown = "";
+  const open: Mark[] = [];
+  const placed: Placed[] = [];
+  const closeTo = (depth: number) => {
+    while (open.length > depth) markdown += markerOf(open.pop()!);
+  };
+  for (const piece of piecesOf(runs)) {
+    if (piece.url !== undefined) {
+      closeTo(0);
+      markdown += "[";
+      placed.push({ run: piece.index, from: piece.from, at: markdown.length, length: piece.text.length });
+      markdown += `${piece.text}](${piece.url})`;
+      continue;
+    }
+    const shared = commonPrefix(open, piece.marks).length;
+    closeTo(shared);
+    for (const mark of piece.marks.slice(shared)) {
+      markdown += markerOf(mark);
+      open.push(mark);
+    }
+    placed.push({ run: piece.index, from: piece.from, at: markdown.length, length: piece.text.length });
+    markdown += piece.text;
+  }
+  closeTo(0);
+  return { markdown, placed };
+}
+
+const runOf = (inline: LineInline): Run =>
+  inline.kind === "link" ? { text: inline.text, marks: [], url: inline.url } : { text: inline.text, marks: inline.marks };
+
+export type LineInline = Exclude<Inline, { kind: "break" }>;
+
+/** The inlines of each line, split at the breaks. */
+export function linesOfInlines(inlines: Inline[]): LineInline[][] {
+  const lines: LineInline[][] = [[]];
+  for (const inline of inlines) {
+    if (inline.kind === "break") lines.push([]);
+    else lines.at(-1)!.push(inline);
+  }
+  return lines;
+}
+
 function markdownOfInlines(inlines: Inline[]): string {
-  return inlines
-    .map((inline) => {
-      if (inline.kind === "break") return "\n";
-      if (inline.kind === "link") return `[${inline.text}](${inline.url})`;
-      if (inline.marks.includes("code")) return `\`${inline.text}\``;
-      const markers = MARKERS.filter(([mark]) => inline.marks.includes(mark)).map(([, marker]) => marker);
-      return markers.join("") + inline.text + markers.toReversed().join("");
-    })
-    .join("");
+  return linesOfInlines(inlines)
+    .map((line) => markdownOfRuns(line.map(runOf)).markdown)
+    .join("\n");
 }
 
 function markdownOfBlock(block: Block): string {

@@ -5,7 +5,7 @@ import { isFromAnotherSite, siteOf, useExternalImagesBlocked } from "./external-
 import { hints } from "./hints.ts";
 import { looksLikeFilePath } from "../shared/file-paths.ts";
 import { connection } from "./connection.ts";
-import { blocksOfMessage, type Block, type Inline, type Mark } from "../shared/slack-markdown.ts";
+import { blocksOfMessage, linesOfInlines, type Block, type Inline, type LineInline, type Mark } from "../shared/slack-markdown.ts";
 
 const COPY_OUTCOME_SHOWN_MS = 1_500;
 
@@ -136,7 +136,7 @@ const MARK_TAGS: [Mark, "s" | "em" | "strong"][] = [
   ["bold", "strong"],
 ];
 
-function SlackInline({ inline }: { inline: Exclude<Inline, { kind: "break" }> }) {
+function SlackInline({ inline }: { inline: LineInline }) {
   if (inline.kind === "link")
     return (
       <a href={inline.url} target="_blank" rel="noreferrer">
@@ -146,12 +146,6 @@ function SlackInline({ inline }: { inline: Exclude<Inline, { kind: "break" }> })
   if (inline.marks.includes("code")) return <MarkdownCode>{inline.text}</MarkdownCode>;
   return MARK_TAGS.reduce<ReactNode>((content, [mark, Tag]) => (inline.marks.includes(mark) ? <Tag>{content}</Tag> : content), inline.text);
 }
-
-const linesOfInlines = (inlines: Inline[]) =>
-  inlines.reduce<Exclude<Inline, { kind: "break" }>[][]>(
-    (lines, inline) => (inline.kind === "break" ? [...lines, []] : [...lines.slice(0, -1), [...lines.at(-1)!, inline]]),
-    [[]],
-  );
 
 /** One element per line, so a blank line keeps its height wherever it falls, even last in a block. */
 function SlackLines({ inlines }: { inlines: Inline[] }) {
