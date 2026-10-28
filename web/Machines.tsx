@@ -5,7 +5,8 @@ import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { colorAttributes, machineInitials } from "./MachineRail.tsx";
+import { machineInitials } from "../shared/marks.ts";
+import { colorAttributes } from "./MachineRail.tsx";
 
 /** Where this host cannot show the machine (a page opened from another device), a tab of its own, used again next time. */
 export function openMachine(origin: string, conversationId: string | null = null) {
