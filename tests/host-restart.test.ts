@@ -7,7 +7,7 @@ import { ConversationService, agentFinishedItsTurn, lastTurnRequest, openTurnThe
 import { Hub } from "../host/hub.ts";
 import { HostRestart, hostCommandLine, relaunchOf, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import { Store } from "../host/store.ts";
-import type { ConversationEvent } from "../shared/model.ts";
+import type { AskMode, ConversationEvent } from "../shared/model.ts";
 import { isEdit, SourceWatcher } from "../host/source-watcher.ts";
 
 describe("hostCommandLine", () => {
@@ -189,6 +189,74 @@ describe("a host continuing turns the previous one stopped for a restart", () =>
     const conversations = hostWithEvents([said("What colour is the sky?"), worked, ended, cancelled]);
     conversations.resumeAfterRestart(["c1"]);
     expect(conversations.get("c1").status).toBe("idle");
+    void conversations.shutdown();
+  });
+});
+
+describe("questions still waiting when a new host starts", () => {
+  function hostWithWaitingAsks() {
+    const scratch = mkdtempSync(join(tmpdir(), "mirador-restart-asks-"));
+    const workspacePath = join(scratch, "project");
+    mkdirSync(workspacePath);
+    const store = new Store(":memory:");
+    store.insertWorkspace({ id: "w1", name: "project", path: workspacePath, defaultLaunch: { harness: "claude", profileId: null }, createdAt: 1 });
+    const conversation = (id: string, askMode: AskMode) =>
+      store.insertConversation({
+        id,
+        workspaceId: "w1",
+        harness: "claude",
+        profileId: null,
+        title: id,
+        titleSetByUser: false,
+        acpSessionId: "session-of-an-earlier-turn",
+        askMode,
+        bypassPermissions: false,
+        status: "idle",
+        statusDetail: null,
+        openInTerminal: null,
+        contextUsage: null,
+        queuedMessages: [],
+        usageLimit: null,
+        jobWaits: [],
+        asyncTasks: [],
+        waitingFor: null,
+        pendingRequest: null,
+        lastWords: null,
+        activity: null,
+        configOptions: [],
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    conversation("blocked-turn", "wait");
+    conversation("next-message-turn", "next-message");
+    const waitingAsk = (id: string, conversationId: string) => ({
+      id,
+      conversationId,
+      kind: "ask" as const,
+      title: "Which fix?",
+      question: "Which fix?",
+      options: [{ label: "Restart" }, { label: "Patch" }],
+      status: "waiting" as const,
+      createdAt: 1,
+    });
+    store.saveCanvasItem(waitingAsk("ask-on-waiting-turn", "blocked-turn"));
+    store.saveCanvasItem(waitingAsk("ask-for-next-message", "next-message-turn"));
+    const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
+    return { store, conversations: new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never) };
+  }
+
+  test("the question a blocked tool call waited on is withdrawn, as the host that was waiting on it is gone", () => {
+    const { store, conversations } = hostWithWaitingAsks();
+    expect(store.findCanvasItem("ask-on-waiting-turn")?.status).toBe("cancelled");
+    expect(conversations.get("blocked-turn").waitingFor).toBeNull();
+    void conversations.shutdown();
+  });
+
+  test("the question whose answer comes as the next message goes on needing one", () => {
+    const { store, conversations } = hostWithWaitingAsks();
+    expect(store.findCanvasItem("ask-for-next-message")?.status).toBe("waiting");
+    expect(conversations.get("next-message-turn").waitingFor).toBe("question");
+    expect(conversations.get("next-message-turn").pendingRequest).not.toBeNull();
     void conversations.shutdown();
   });
 });

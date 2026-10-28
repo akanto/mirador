@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, answerCanvasQuestion, callCanvasTool, openSettings, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
+import { addWorkspace, answerCanvasQuestion, callCanvasTool, openCanvasHistory, openSettings, sendMessage, signIn, startConversation, waitForTurnToEnd } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const api = new FakeClaudeApi();
@@ -26,7 +26,7 @@ test("the sidebar marks the conversations waiting for you, in the look chosen in
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const first = await startConversation(page);
-  await startConversation(page);
+  const second = await startConversation(page);
   const firstRow = page.locator(".workspace li").nth(0);
   const secondRow = page.locator(".workspace li").nth(1);
   const firstPill = firstRow.locator(".waiting-pill");
@@ -88,5 +88,22 @@ test("the sidebar marks the conversations waiting for you, in the look chosen in
     await firstRow.click();
     await expect(firstPill).toHaveCount(0);
     await expect(waitingList).toHaveCount(0);
+  });
+
+  await test.step("a host restart takes back a question whose blocked tool call died with it, and keeps one meant for the next message", async () => {
+    askInBackground(first, "Which layout now?");
+    await expect(firstPill).toHaveText("Needs you");
+    await secondRow.click();
+    await page.getByLabel("Questions").filter({ visible: true }).selectOption("next-message");
+    askInBackground(second, "Which name?");
+    const secondPill = secondRow.locator(".waiting-pill");
+    await expect(secondPill).toHaveText("Needs you");
+    await host.restart();
+    await expect(secondPill).toHaveText("Needs you", { timeout: 30_000 });
+    await expect(firstPill).toHaveCount(0);
+    await firstRow.click();
+    const history = await openCanvasHistory(page);
+    await expect(history.locator(".history-entry", { hasText: "Which layout now?" })).toContainText("withdrawn");
+    await expect(waitingList.locator("li")).toHaveCount(1);
   });
 });

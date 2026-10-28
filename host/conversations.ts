@@ -292,6 +292,7 @@ export class ConversationService {
       openAsText(file, store.scriptProgramSetting()),
     );
     this.cancelPermissionsOrphanedByRestart();
+    this.cancelAsksOrphanedByRestart();
     this.turnsCutShortByCrash = new Set(this.endTurnsOrphanedByRestart());
     this.contextUsage = new Map(store.listContextUsages());
     this.unseenTurnEnds = new Map(store.listUnseenTurnEnds());
@@ -1851,6 +1852,18 @@ export class ConversationService {
           this.store.appendEvent(conversation.id, { type: "permission-resolved", permissionId, optionId: null }),
         );
     });
+  }
+
+  /**
+   * The canvas MCP server died with the previous host, so no question a waiting turn left open can still be
+   * answered as its tool result; only one whose answer was always to be the next message still asks for one.
+   */
+  private cancelAsksOrphanedByRestart() {
+    this.store
+      .listCanvasItemsWithStatus("waiting")
+      .filter((item): item is AskItem => item.kind === "ask")
+      .filter((item) => this.store.findConversation(item.conversationId)?.askMode !== "next-message")
+      .forEach((item) => this.store.saveCanvasItem({ ...item, status: "cancelled" }));
   }
 
   /** The queue is kept in the database too, so messages waiting for the agent survive a host restart or crash. */
