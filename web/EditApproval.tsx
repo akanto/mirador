@@ -9,6 +9,7 @@ import { CodeText } from "./CodeText.tsx";
 import { gapsOf, type Gap } from "./review-context.ts";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
 import { storedChoice } from "./stored-choice.ts";
+import { rowWordChanges, type TextRange } from "./word-diff.ts";
 
 const diffStyles = ["unified", "split"] as const;
 type DiffStyle = (typeof diffStyles)[number];
@@ -51,28 +52,34 @@ function GapLine({ gap, lineCount }: { gap: Gap | undefined; lineCount: number |
   return <div className="edit-gap">⋯ {end === gap.start ? `line ${end}` : `lines ${gap.start}–${end}`}</div>;
 }
 
-function UnifiedRows({ rows, highlighted }: { rows: DiffRow[]; highlighted: CodeSpan[][] | null }) {
+interface RowsProps {
+  rows: DiffRow[];
+  highlighted: CodeSpan[][] | null;
+  wordChanges: (TextRange[] | null)[];
+}
+
+function UnifiedRows({ rows, highlighted, wordChanges }: RowsProps) {
   return (
     <div className="code-block">
       {rows.map((row, index) => (
         <div key={index} className={`code-row ${row.kind}`}>
           <span className="line-number">{row.newLine ?? row.oldLine}</span>
           <span className="diff-marker">{marker(row)}</span>
-          <CodeText text={row.text} spans={highlighted?.[index]} />
+          <CodeText text={row.text} spans={highlighted?.[index]} changes={wordChanges[index]} />
         </div>
       ))}
     </div>
   );
 }
 
-function SplitRows({ rows, highlighted }: { rows: DiffRow[]; highlighted: CodeSpan[][] | null }) {
+function SplitRows({ rows, highlighted, wordChanges }: RowsProps) {
   const sides = useMemo(() => splitRows(rows), [rows]);
   const side = (index: number | null, lineOf: (row: DiffRow) => number | null) => {
     const row = index === null ? undefined : rows[index];
     return (
       <div className={`split-side ${row?.kind ?? "blank"}`}>
         <span className="line-number">{row && lineOf(row)}</span>
-        {row && index !== null ? <CodeText text={row.text} spans={highlighted?.[index]} /> : <span />}
+        {row && index !== null ? <CodeText text={row.text} spans={highlighted?.[index]} changes={wordChanges[index]} /> : <span />}
       </div>
     );
   };
@@ -90,7 +97,12 @@ function SplitRows({ rows, highlighted }: { rows: DiffRow[]; highlighted: CodeSp
 
 function EditedRows({ path, rows, style }: { path: string; rows: DiffRow[]; style: DiffStyle }) {
   const highlighted = useMemo(() => highlightRows(path, rows), [path, rows]);
-  return style === "split" ? <SplitRows rows={rows} highlighted={highlighted} /> : <UnifiedRows rows={rows} highlighted={highlighted} />;
+  const wordChanges = useMemo(() => rowWordChanges(rows), [rows]);
+  return style === "split" ? (
+    <SplitRows rows={rows} highlighted={highlighted} wordChanges={wordChanges} />
+  ) : (
+    <UnifiedRows rows={rows} highlighted={highlighted} wordChanges={wordChanges} />
+  );
 }
 
 const UNLOCATED_EDIT = "The change could not be found in the file as it is now, so this is the agent's own snippet, without line numbers.";

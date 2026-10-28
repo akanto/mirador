@@ -60,6 +60,13 @@ test("an edit the agent waits to make takes the canvas with the file's line numb
   await expect(view.locator(".code-row.removed .line-number")).toHaveText("15");
   await expect(view.locator(".code-row.added .line-number")).toHaveText(["15", "16"]);
   await expect(view.locator(".code-row.context .line-number").first()).toHaveText("12");
+  await expect(view.locator(".code-row.removed .word-changed")).toHaveText("15");
+  await expect(view.locator(".code-row.added .word-changed")).toHaveText(["fifteen"]);
+  const backgrounds = await view.locator(".code-row.added").first().evaluate((row) => ({
+    line: getComputedStyle(row).backgroundColor,
+    word: getComputedStyle(row.querySelector(".word-changed")!).backgroundColor,
+  }));
+  expect(backgrounds.word).not.toBe(backgrounds.line);
   await expect(view.locator(".edit-gap")).toHaveText(["⋯ lines 1–11", "⋯ lines 20–31"]);
   await expect(pendingCard(page)).toContainText("+2 −1 · Shown in the canvas");
   await expect(pendingCard(page).locator(".diff")).toHaveCount(0);
@@ -68,6 +75,8 @@ test("an edit the agent waits to make takes the canvas with the file's line numb
     await view.getByRole("button", { name: "Split" }).click();
     await expect(view.locator(".split-row").filter({ hasText: "line 15" })).toContainText("line fifteen");
     await expect(view.locator(".split-side.added")).toHaveCount(2);
+    await expect(view.locator(".split-side.removed .word-changed")).toHaveText("15");
+    await expect(view.locator(".split-side.added .word-changed")).toHaveText(["fifteen"]);
     const rowHeights = await view.locator(".split-row").evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
     expect(new Set(rowHeights).size).toBe(1);
     await page.reload();
@@ -146,6 +155,8 @@ test("with edits kept out of the canvas in Settings, or the canvas hidden, the c
   await page.locator(".chat-header:visible").getByRole("button", { name: "Hide canvas" }).click();
   await askToEdit(page, edit("Edit src/app.ts", "line 8\n", "line eight\n"));
   await expect(pendingCard(page).locator(".diff")).toContainText("line eight");
+  await expect(pendingCard(page).locator(".diff-removed .word-changed")).toHaveText("8");
+  await expect(pendingCard(page).locator(".diff-added .word-changed")).toHaveText("eight");
   await page.locator(".chat-header:visible").getByRole("button", { name: "Show canvas" }).click();
   await expect(editView(page).locator(".code-row.added")).toContainText("line eight");
   await expect(pendingCard(page)).toContainText("Shown in the canvas");

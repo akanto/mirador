@@ -43,6 +43,8 @@ import { DictateButton, DictationLines, useDictation } from "./Dictation.tsx";
 import { setComposerHeight, useComposerHeight } from "./composer-height.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { lineDiff } from "./diff.ts";
+import { CodeText } from "./CodeText.tsx";
+import { rowWordChanges } from "./word-diff.ts";
 import { answerPermission, EditCounts, PermissionOptions } from "./EditApproval.tsx";
 import { useEditsInCanvas } from "./edits-in-canvas.ts";
 import { isRawOutputOnHost } from "../shared/low-data.ts";
@@ -339,6 +341,7 @@ function ChatHeader({
 
 function DiffView({ path, oldText, newText }: { path: string; oldText?: string | null; newText: string }) {
   const lines = useMemo(() => lineDiff(oldText, newText), [oldText, newText]);
+  const wordChanges = useMemo(() => rowWordChanges(lines), [lines]);
   return (
     <div className="diff">
       <div className="diff-path">{path}</div>
@@ -346,7 +349,7 @@ function DiffView({ path, oldText, newText }: { path: string; oldText?: string |
         {lines.map((line, index) => (
           <div key={index} className={`diff-${line.kind}`}>
             {line.kind === "added" ? "+ " : line.kind === "removed" ? "- " : "  "}
-            {line.text}
+            {wordChanges[index] ? <CodeText text={line.text} spans={undefined} changes={wordChanges[index]} /> : line.text}
           </div>
         ))}
       </pre>
