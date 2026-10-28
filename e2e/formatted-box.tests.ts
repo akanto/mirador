@@ -255,4 +255,20 @@ export function formattedBoxTests() {
     await pasteHtml(box(), `<div style="white-space: pre; font-family: Menlo">${editorLines.join("")}</div>`, code);
     await expectSent(`Look: ${code}`);
   });
+
+  test("in a code block, Enter and Shift+Enter each add a line, however many are empty, and ↓ at its end steps out of it", async () => {
+    await page.keyboard.type("```");
+    await page.keyboard.type("abc");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type("def");
+    for (let line = 0; line < 3; line++) await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type("x");
+    for (let line = 0; line < 3; line++) await page.keyboard.press("Enter");
+    await page.keyboard.type("y");
+    await expect.poll(boxValue).toBe("```\nabc\ndef\n\n\nx\n\n\ny\n```");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.type("after");
+    await expect(box().locator(".box-code-block")).not.toContainText("after");
+    await expectSent("```\nabc\ndef\n\n\nx\n\n\ny\n```\nafter");
+  });
 }

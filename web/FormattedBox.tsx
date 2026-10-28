@@ -21,6 +21,7 @@ import {
   FORMAT_TEXT_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
+  KEY_ARROW_DOWN_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   PASTE_COMMAND,
@@ -85,10 +86,22 @@ function $startBlock({ paragraph, first, typed, start }: NonNullable<ReturnType<
   holder.selectStart();
 }
 
+/** The last block of the box when it is a code block with the caret at its end, where ↓ steps out of it, as Enter there adds a line. */
+function $codeBlockWithCaretAtItsEnd() {
+  const block = topBlockOfSelection();
+  const selection = $getSelection();
+  if (!$isCodeNode(block) || block.getNextSibling() || !$isRangeSelection(selection) || !selection.isCollapsed()) return null;
+  const { anchor } = selection;
+  const last = block.getLastDescendant();
+  const atEnd =
+    (anchor.type === "element" && anchor.key === block.getKey() && anchor.offset === block.getChildrenSize()) ||
+    (anchor.type === "text" && anchor.key === last?.getKey() && anchor.offset === last.getTextContentSize());
+  return atEnd ? block : null;
+}
+
 /** Shift+Enter: a new paragraph or list item; in a quote, a new line, and on an empty last line, out of the quote. */
 function $shiftEnter(editor: LexicalEditor): boolean {
   const block = topBlockOfSelection();
-  if ($isCodeNode(block)) return false;
   if (!$isQuoteNode(block)) return editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
   const last = block.getLastChild();
   const selection = $getSelection();
@@ -227,9 +240,26 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
         editor.registerCommand(
           KEY_ENTER_COMMAND,
           (event) => {
+            if ($isCodeNode(topBlockOfSelection())) {
+              event?.preventDefault();
+              return editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+            }
             if (!event?.shiftKey) return false;
             event.preventDefault();
             return $shiftEnter(editor);
+          },
+          COMMAND_PRIORITY_HIGH,
+        ),
+        editor.registerCommand(
+          KEY_ARROW_DOWN_COMMAND,
+          (event) => {
+            const code = $codeBlockWithCaretAtItsEnd();
+            if (!code) return false;
+            event.preventDefault();
+            const paragraph = $createParagraphNode();
+            code.insertAfter(paragraph);
+            paragraph.select();
+            return true;
           },
           COMMAND_PRIORITY_HIGH,
         ),
