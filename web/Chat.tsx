@@ -57,6 +57,7 @@ import { AskToRevert, UndoButton } from "./Revert.tsx";
 import { MarkdownText, SlackMessageText } from "./Markdown.tsx";
 import { FormattedBox, type FormattedBoxExtras } from "./FormattedBox.tsx";
 import { useMessageBox } from "./message-box.ts";
+import { FormatBarToggle } from "./FormatBar.tsx";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
 import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
@@ -1918,6 +1919,7 @@ function Composer({
           />
         )}
         <div className="composer-actions">
+          {messageBox === "formatted" && <FormatBarToggle />}
           <DictateButton dictation={dictation} />
           {command === null && (
             <button

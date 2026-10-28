@@ -271,4 +271,102 @@ export function formattedBoxTests() {
     await expect(box().locator(".box-code-block")).not.toContainText("after");
     await expectSent("```\nabc\ndef\n\n\nx\n\n\ny\n```\nafter");
   });
+
+  test("Aa shows the formatting buttons, which format the selection or what is typed next, and tell what to type instead", async () => {
+    const bar = page.getByRole("toolbar", { name: "Formatting" });
+    await expect(bar).toHaveCount(0);
+    await page.getByRole("button", { name: "Formatting" }).click();
+    await expect(bar).toBeVisible();
+
+    await page.keyboard.type("make this bold");
+    for (let step = 0; step < "bold".length; step++) await page.keyboard.press("Shift+ArrowLeft");
+    await bar.getByRole("button", { name: "Bold" }).click();
+    await expect.poll(boxValue).toBe("make this **bold**");
+    await expect(bar.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("End");
+    await bar.getByRole("button", { name: "Bold" }).click();
+    await bar.getByRole("button", { name: "Italic" }).click();
+    await page.keyboard.type(" now");
+    await expect.poll(boxValue).toBe("make this **bold** *now*");
+
+    await bar.getByRole("button", { name: "Bold" }).hover();
+    await expect(page.getByRole("tooltip")).toContainText("Bold, or type **text**");
+    await expect(page.getByRole("tooltip")).toContainText(`${(await primaryModifier(page)) === "Meta" ? "⌘" : "Ctrl+"}B`);
+    await expectSent("make this **bold** *now*");
+  });
+
+  test("the block buttons turn the lines selected into a list, a quote or a code block, and back", async () => {
+    const bar = page.getByRole("toolbar", { name: "Formatting" });
+    await page.keyboard.type("one");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type("two");
+    await page.keyboard.press("ControlOrMeta+a");
+    await bar.getByRole("button", { name: "Bulleted list" }).click();
+    await expect.poll(boxValue).toBe("- one\n- two");
+    await expect(box().locator("li")).toHaveCount(2);
+    await expect(bar.getByRole("button", { name: "Bulleted list" })).toHaveAttribute("aria-pressed", "true");
+    await bar.getByRole("button", { name: "Numbered list" }).click();
+    await expect.poll(boxValue).toBe("1. one\n2. two");
+    await bar.getByRole("button", { name: "Numbered list" }).click();
+    await expect.poll(boxValue).toBe("one\ntwo");
+    await bar.getByRole("button", { name: "Code block" }).click();
+    await expect.poll(boxValue).toBe("```\none\ntwo\n```");
+    await expect(box().locator(".box-code-block")).toHaveCount(1);
+
+    for (const name of ["Bold", "Italic", "Link", "Quote", "Bulleted list"]) await expect(bar.getByRole("button", { name })).toBeDisabled();
+    await page.keyboard.press("End");
+    await page.keyboard.press("ControlOrMeta+b");
+    await page.keyboard.type("!");
+    await expect(box().locator(".box-bold")).toHaveCount(0);
+    await bar.getByRole("button", { name: "Code block" }).click();
+    await expect.poll(boxValue).toBe("one\ntwo!");
+    await bar.getByRole("button", { name: "Quote" }).click();
+    await expect.poll(boxValue).toBe("one\n> two!");
+    await expectSent("one\n> two!");
+  });
+
+  test("Link asks for the address of the selected text, and an empty address unlinks it", async () => {
+    const bar = page.getByRole("toolbar", { name: "Formatting" });
+    await page.keyboard.type("read the docs");
+    for (let step = 0; step < "docs".length; step++) await page.keyboard.press("Shift+ArrowLeft");
+    await bar.getByRole("button", { name: "Link" }).click();
+    await page.getByLabel("Link address").fill("https://x.dev");
+    await page.getByLabel("Link address").press("Enter");
+    await expect.poll(boxValue).toBe("read the [docs](https://x.dev)");
+    await expect(box().locator("a")).toHaveText("docs");
+    await expect(box()).toBeFocused();
+
+    await page.keyboard.press("ArrowLeft");
+    await bar.getByRole("button", { name: "Link" }).click();
+    await expect(page.getByLabel("Link address")).toHaveValue("https://x.dev");
+    await page.getByLabel("Link address").fill("");
+    await page.getByLabel("Link address").press("Enter");
+    await expect.poll(boxValue).toBe("read the docs");
+
+    await page.keyboard.press("End");
+    await page.keyboard.type(" at ");
+    await bar.getByRole("button", { name: "Link" }).click();
+    await page.getByLabel("Link address").fill("https://y.dev");
+    await page.getByLabel("Link address").press("Escape");
+    await expect(page.getByLabel("Link address")).toHaveCount(0);
+    await bar.getByRole("button", { name: "Link" }).click();
+    await page.getByLabel("Link address").fill("https://y.dev");
+    await page.getByLabel("Link address").press("Enter");
+    await expect.poll(boxValue).toBe("read the docs at [https://y.dev](https://y.dev)");
+    await expectSent("read the docs at [https://y.dev](https://y.dev)");
+  });
+
+  test("Aa hides the buttons, and Settings can keep them shown, the choice Aa makes", async () => {
+    const bar = page.getByRole("toolbar", { name: "Formatting" });
+    await page.getByRole("button", { name: "Formatting" }).click();
+    await expect(bar).toHaveCount(0);
+    const settings = await openSettings(page, "Conversations");
+    await expect(settings.getByLabel("Formatting buttons")).toHaveValue("hidden");
+    await settings.getByLabel("Formatting buttons").selectOption({ label: "Shown" });
+    await settings.getByRole("button", { name: "Close" }).click();
+    await expect(bar).toBeVisible();
+    await expect(page.getByRole("button", { name: "Formatting" })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Formatting" }).click();
+    await expect(bar).toHaveCount(0);
+  });
 }

@@ -8,8 +8,6 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import {
   $createParagraphNode,
-  $createRangeSelectionFromDom,
-  $setSelection,
   CLEAR_HISTORY_COMMAND,
   $getSelection,
   $isRangeSelection,
@@ -37,6 +35,8 @@ import { $createCodeNode, $isCodeNode, CodeNode } from "@lexical/code";
 import { LinkNode } from "@lexical/link";
 import { $readBox, $selectOffsets, $writeBox, offsetOf, type WrittenBox } from "./box-markdown.ts";
 import { closesPairAt } from "../shared/slack-markdown.ts";
+import { $formatSelection, FormatBar } from "./FormatBar.tsx";
+import { useFormatBar } from "./message-box.ts";
 
 /** What the composer reads off its box beyond a textarea's own: whether Enter, there, adds a line instead of sending. */
 export interface FormattedBoxExtras {
@@ -229,8 +229,7 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
             const format = FORMAT_KEYS.find(({ code, shift }) => event.code === code && event.shiftKey === shift && (event.metaKey || event.ctrlKey) && !event.altKey);
             if (format) {
               event.preventDefault();
-              $selectAsOnPage(editor);
-              return editor.dispatchCommand(FORMAT_TEXT_COMMAND, format.format);
+              return $formatSelection(editor, format.format);
             }
             handlers.current.onKeyDown(reactKeyEvent(event, element.current!));
             return event.defaultPrevented;
@@ -263,7 +262,11 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
           },
           COMMAND_PRIORITY_HIGH,
         ),
-        editor.registerCommand(FORMAT_TEXT_COMMAND, (format) => !WRITTEN_FORMATS.has(format), COMMAND_PRIORITY_CRITICAL),
+        editor.registerCommand(
+          FORMAT_TEXT_COMMAND,
+          (format) => !WRITTEN_FORMATS.has(format) || $isCodeNode(topBlockOfSelection()),
+          COMMAND_PRIORITY_CRITICAL,
+        ),
         editor.registerCommand(
           PASTE_COMMAND,
           (event) => {
@@ -290,19 +293,6 @@ function Bridge({ text, facade, onText, onCaret, onKeyDown, onPaste, element }: 
     [editor, element],
   );
   return null;
-}
-
-/**
- * Lexical hears of a selection change a moment after it; a shortcut pressed right after selecting applies to the range on
- * the page. Where it is where Lexical has it, Lexical's own selection stays, with the formats toggled for the next text.
- */
-function $selectAsOnPage(editor: LexicalEditor) {
-  const onPage = $createRangeSelectionFromDom(getSelection(), editor);
-  const known = $getSelection();
-  if (!onPage || ($isRangeSelection(known) && onPage.anchor.is(known.anchor) && onPage.focus.is(known.focus))) return;
-  const anchor = onPage.anchor.getNode();
-  if (onPage.isCollapsed() && $isTextNode(anchor)) onPage.setFormat(anchor.getFormat());
-  $setSelection(onPage);
 }
 
 const SLACK_FORMATS = "b, strong, i, em, s, del, strike, code, pre, a[href], blockquote, ul, ol";
@@ -349,6 +339,7 @@ const NODES = [QuoteNode, ListNode, ListItemNode, CodeNode, LinkNode];
  * markdown the agent gets, with its caret and selection in that text.
  */
 export function FormattedBox(props: Props) {
+  const formatBar = useFormatBar();
   const element = useRef<HTMLDivElement | null>(null);
   const setElement = useCallback((node: HTMLDivElement | null) => {
     element.current = node;
@@ -364,6 +355,7 @@ export function FormattedBox(props: Props) {
         },
       }}
     >
+      {formatBar === "shown" && <FormatBar />}
       <div className="formatted-box-frame">
         <RichTextPlugin
           contentEditable={

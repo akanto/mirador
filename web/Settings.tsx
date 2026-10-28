@@ -7,7 +7,7 @@ import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { FontSizePreview, MachineColorPreview, ShellLookPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
-import { messageBoxLabels, setMessageBox, useMessageBox, type MessageBox } from "./message-box.ts";
+import { formatBarLabels, messageBoxLabels, setFormatBar, setMessageBox, useFormatBar, useMessageBox, type FormatBarChoice, type MessageBox } from "./message-box.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { DeviceSettings } from "./Devices.tsx";
@@ -490,6 +490,7 @@ function ShellLookSettings() {
 function SendingSettings() {
   const enterWhileBusy = useEnterWhileBusy();
   const messageBox = useMessageBox();
+  const formatBar = useFormatBar();
   return (
     <>
       <h3>Message box</h3>
@@ -504,6 +505,18 @@ function SendingSettings() {
             ))}
           </select>
         </label>
+        {messageBox === "formatted" && (
+          <label data-hint={hints.formatBarSetting}>
+            Formatting buttons
+            <select value={formatBar} onChange={(event) => setFormatBar(event.target.value as FormatBarChoice)}>
+              {Object.entries(formatBarLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <h3>Sending while the agent works</h3>
       <p className="hint">⌥Enter (Alt+Enter) does the other; each queued message shows which way it goes out. Remembered in this browser.</p>
