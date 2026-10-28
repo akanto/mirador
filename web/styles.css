@@ -24,6 +24,8 @@
   --code-bg: light-dark(#f6f6f8, #1c1d22);
   --added: light-dark(#e9f6ee, #15281d);
   --removed: light-dark(#fcebec, #2e1719);
+  --added-word: light-dark(#b5ecc5, #23573a);
+  --removed-word: light-dark(#f9c5c8, #6b2a2e);
   --rail: light-dark(#f3f3f6, #0d0e11);
   --rail-card: light-dark(#ffffff, rgb(255 255 255 / 0.035));
   --rail-line: light-dark(#e3e3e9, rgb(255 255 255 / 0.07));
@@ -5916,6 +5918,19 @@ button.picture-option.chosen {
   overflow-wrap: anywhere;
   padding-right: 8px;
   background: none;
+}
+
+.diff .code-text {
+  white-space: inherit;
+  padding-right: 0;
+}
+
+:is(.added, .diff-added) > .code-text .word-changed {
+  background: var(--added-word);
+}
+
+:is(.removed, .diff-removed) > .code-text .word-changed {
+  background: var(--removed-word);
 }
 
 .code-text .token:is(.comment, .prolog, .doctype, .cdata) {
