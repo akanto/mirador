@@ -42,6 +42,12 @@ describe("asksInChat", () => {
     expect(asksInChat("| Does it build? | yes |\n|---|---|")).toBe(false);
     expect(asksInChat("Why? Because the lock is held, so the second run waits.")).toBe(false);
   });
+
+  test("a bold line with more after it is a heading, but a bold question that ends the reply asks", () => {
+    const answer = "Three checks:\n\n**1. Network layer: can the other browser even *reach* the site?**\nThe site sits behind the gateway.\n\n__Who presents the session?__\nThe managed browser.";
+    expect(asksInChat(answer)).toBe(false);
+    expect(asksInChat("Done.\n**Go ahead?**")).toBe(true);
+  });
 });
 
 describe("repeatsPageInChat", () => {

@@ -12,6 +12,8 @@ const MARKUP_AFTER_QUESTION_MARK = /[\s*_)\]"'”’]+$/;
 const INLINE_CODE = /`[^`]*`/g;
 /** Headings, quotes and table rows: a "?" there is structure or someone else's words, not a question to the user. */
 const NOT_PROSE = /^\s*(#|>|\|)/;
+/** A line all in bold, such as "**1. Can the browser reach the site?**": a heading when more of the reply follows it. */
+const BOLD_LINE = /^\s*(\*\*|__).*\1\s*$/;
 
 /** A reply after a page that is longer than this, outside code blocks, repeats what the page says. */
 export const MOST_LINES_AFTER_A_PAGE = 5;
@@ -34,8 +36,10 @@ export function proseLines(reply: string): string[] {
 }
 
 export function asksInChat(reply: string): boolean {
-  return proseLines(reply)
-    .filter((line) => !NOT_PROSE.test(line))
+  const lines = proseLines(reply);
+  const isHeading = (line: string, index: number) => NOT_PROSE.test(line) || (BOLD_LINE.test(line) && index < lines.length - 1);
+  return lines
+    .filter((line, index) => !isHeading(line, index))
     .some((line) => line.replace(INLINE_CODE, "").replace(MARKUP_AFTER_QUESTION_MARK, "").endsWith("?"));
 }
 
