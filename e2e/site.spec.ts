@@ -7,7 +7,7 @@ import { extname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const PAGES_PATH = "/mirador/";
-const TRAILER = "VmlHwR-yV4I";
+const TRAILER = "ZMpbOZdF4bU";
 const INSTALL = "curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh";
 const WINDOWS_INSTALL = "irm https://github.com/sodre90/mirador/releases/latest/download/install.ps1 | iex";
 const CONTENT_TYPES: Record<string, string> = {

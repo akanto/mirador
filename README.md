@@ -4,9 +4,9 @@
 
 Mirador runs your coding agents (Claude Code, opencode and pi) and gives them a **canvas** beside the conversation. On the canvas they draw what they mean, ask you with pictures, walk you through code, and hand you code reviews you can walk through. It runs on your own computer, with your own agent settings.
 
-[![The trailer: no more walls of text, your agent draws now. A chat transcript crossed out beside a checkout sequence diagram on the canvas](docs/screenshots/trailer.jpg)](https://youtu.be/VmlHwR-yV4I)
+[![The trailer: no more walls of text, your agent draws now. A chat transcript crossed out beside a checkout sequence diagram on the canvas](docs/screenshots/trailer.jpg)](https://youtu.be/ZMpbOZdF4bU)
 
-▶ [Watch the trailer](https://youtu.be/VmlHwR-yV4I) (1:37) · [Website](https://mirador.sodre90.com/)
+▶ [Watch the trailer](https://youtu.be/ZMpbOZdF4bU) (2:33) · [Website](https://mirador.sodre90.com/)
 
 ```bash
 curl -fsSL https://github.com/sodre90/mirador/releases/latest/download/install.sh | sh
