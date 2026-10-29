@@ -20,6 +20,7 @@ import { shortcutKeys } from "./shortcuts.ts";
 import { onShownThemeChange, shownTheme } from "./theme.ts";
 import { formatClockTime, formatFullTime } from "./timestamps.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
+import { openWebAddress } from "./outside-links.ts";
 import { opensWithRoom, takeArrivedReview } from "./review-placement.ts";
 import { roomOf } from "./plugin-settings.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
@@ -83,6 +84,11 @@ function fittedStyles(contentSize: ContentSize | undefined, roomWidth: number): 
     frame: { position: "absolute", width, height, transform: `scale(${scale})`, transformOrigin: "0 0" },
   };
 }
+
+const openable = (href: unknown): href is string => typeof href === "string" && /^(https?|mailto):/i.test(href);
+
+/** A web link goes the way the app's own do, so the desktop app hands it to the browser rather than dropping it. */
+const openFromPage = (href: string) => (/^mailto:/i.test(href) ? window.open(href, "_blank", "noopener,noreferrer") : openWebAddress(href));
 
 /** Whether the canvas is in sight, or kept live behind another conversation's canvas. */
 export const CanvasShown = createContext(true);
@@ -164,6 +170,7 @@ export function CanvasFrame({
         if (askedWidth) onContentWidthRef.current?.(askedWidth);
       }
       if (message.kind === "wheel") scrollPanelBy(frame.current, message);
+      if (message.kind === "open-link" && openable(message.href)) openFromPage(message.href);
       onMessageRef.current?.(message);
     };
     window.addEventListener("message", listener);

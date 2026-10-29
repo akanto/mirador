@@ -19,7 +19,6 @@ import { showFramedHint } from "./Hint.tsx";
 import { useShownTheme } from "./theme.ts";
 import { useTypingAids } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
-import { openWebAddress } from "./outside-links.ts";
 
 /** Hands the user's action to the item's plugin on the host and waits for its reply. */
 async function replyTo(itemId: string, action: unknown): Promise<unknown> {
@@ -65,11 +64,6 @@ function promptFrom(conversationId: string, text: string, afterTurn: boolean) {
   if (!text.trim()) throw new Error("The message is empty.");
   if (!connection.send({ type: "conversation.prompt", conversationId, text, imageIds: [], afterTurn })) throw new Error("Mirador is not connected.");
 }
-
-const openable = (href: unknown): href is string => typeof href === "string" && /^(https?|mailto):/i.test(href);
-
-/** A web link goes the way the page's own do, so the desktop app hands it to the browser rather than dropping it. */
-const openFromView = (href: string) => (/^mailto:/i.test(href) ? window.open(href, "_blank", "noopener,noreferrer") : openWebAddress(href));
 
 /** What a plugin published, when its plugin isn't installed to draw it: never a blank page. */
 function WithoutItsPlugin({ item }: { item: PluginCanvasItem }) {
@@ -153,7 +147,6 @@ export function PluginItemView({
       showFramedHint(anchor && { text: message.text, anchor });
     }
     if (message.kind === "item-hint-gone") showFramedHint(null);
-    if (message.kind === "item-open" && openable(message.href)) openFromView(message.href);
     if (message.kind === "item-open-file" && typeof message.path === "string") connection.send({ type: "files.open", conversationId: item.conversationId, path: message.path });
   };
 

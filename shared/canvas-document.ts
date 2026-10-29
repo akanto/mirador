@@ -13,6 +13,8 @@ export type CanvasFrameMessage =
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "size"; height: number; overflowWidth: number | null }
   /** A wheel turn the page has no use for, for the panel behind it to take instead. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "wheel"; deltaX: number; deltaY: number; deltaMode: number }
+  /** A link to another site the user followed on the page, which the sandbox keeps from opening there. */
+  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "open-link"; href: unknown }
   | {
       source: typeof CANVAS_MESSAGE_SOURCE;
       itemId: string;
@@ -50,8 +52,6 @@ export type CanvasFrameMessage =
   /** What a plugin item's view has its `data-hint` on, pointed at or focused with the keyboard; the panel shows the hint as its own. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-hint"; text: unknown; anchor: unknown }
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-hint-gone" }
-  /** A link the user followed in a plugin item's view, which the sandbox keeps from opening there. */
-  | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-open"; href: unknown }
   /** A file the user asked the view to open, a path as the agent wrote it, which opens as a file link in the chat does. */
   | { source: typeof CANVAS_MESSAGE_SOURCE; itemId: string; kind: "item-open-file"; path: unknown }
   /** The view asks for the canvas to fill the workspace, or to sit beside the chat again. */
@@ -337,8 +337,7 @@ export function pluginItemReplyFailedMessage(requestId: string, message: string)
  * sends the agent a message as the composer would, `setFullscreen` asks for the canvas to fill the workspace or not, and,
  * where files open, `openFile` opens one as a file link in the chat does, a path relative to the conversation's workspace
  * or absolute.
- * Mirador's look arrives as CSS variables on the page's root, `data-hint` shows as Mirador's own hints, and links open in
- * a new tab, as the sandbox would not let them.
+ * Mirador's look arrives as CSS variables on the page's root, and `data-hint` shows as Mirador's own hints.
  */
 function pluginItemBridge(frameId: string, opensFiles: boolean) {
   return `(() => {
@@ -385,12 +384,6 @@ function pluginItemBridge(frameId: string, opensFiles: boolean) {
   });
   addEventListener("focusout", noHint);
   addEventListener("scroll", noHint, true);
-  addEventListener("click", (event) => {
-    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-    if (!link || event.defaultPrevented) return;
-    event.preventDefault();
-    post({ kind: "item-open", href: link.href });
-  });
   const request = (message) => {
     const requestId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
@@ -981,6 +974,18 @@ ${pageDrawing(assetsOrigin)}
     }
     if (data.kind === "capture") capture(data.requestId);
     if (data.kind === "hidden") document.querySelectorAll("video, audio").forEach((media) => media.pause());
+  });
+  // The frame never leaves its page: a link within it, such as #section, goes where it points there, one to another site
+  // opens outside, and any other link does nothing.
+  const withinThePage = (url) => url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;
+  const toAnotherSite = (url) => /^(https?|mailto):$/.test(url.protocol) && url.origin !== location.origin;
+  addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!link || event.defaultPrevented) return;
+    const url = new URL(link.href);
+    if (withinThePage(url) && url.hash) return;
+    event.preventDefault();
+    if (toAnotherSite(url)) post({ kind: "open-link", href: url.href });
   });
   const record = (message) => {
     if (errors.length >= 20 || /ResizeObserver loop/.test(message)) return;
