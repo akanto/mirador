@@ -141,6 +141,7 @@ interface PendingPermission {
 interface PromptStart {
   imageIds?: string[];
   fromScript?: boolean;
+  fromMirador?: boolean;
   fromPlugin?: string;
   /** A message of the user's starts a turn of its own, so the files are snapshotted and that turn can be undone. */
   startsTurn?: boolean;
@@ -703,7 +704,7 @@ export class ConversationService {
     this.save({ ...this.get(conversationId), configOptions: response.configOptions });
   }
 
-  async prompt(conversationId: string, text: string, { imageIds = [], fromScript = false, fromPlugin, startsTurn = false }: PromptStart = {}) {
+  async prompt(conversationId: string, text: string, { imageIds = [], fromScript = false, fromMirador = false, fromPlugin, startsTurn = false }: PromptStart = {}) {
     const runtime = this.runtime(conversationId);
     if (runtime.running) throw new Error("The agent is still working on the previous message.");
     if (isClearCommand(text)) return this.clearContext(conversationId);
@@ -720,7 +721,7 @@ export class ConversationService {
     const notes = this.notesForAgent(conversationId);
     this.setStatus(conversationId, "starting");
     this.store.turnStarted(conversationId);
-    const turnSeq = this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(fromPlugin && { fromPlugin }) }, notes);
+    const turnSeq = this.appendUserMessage(conversationId, { text, imageIds, ...(fromScript && { fromScript }), ...(fromMirador && { fromMirador }), ...(fromPlugin && { fromPlugin }) }, notes);
     if (startsTurn && turnSeq !== undefined) await this.keepFilesOfTurn(conversationId, turnSeq);
     let response: acp.PromptResponse | undefined;
     try {
@@ -795,7 +796,7 @@ export class ConversationService {
     };
     if (!nudgesAfterStall(runtime.stallNudges, carriedOnOtherwise)) return false;
     runtime.stallNudges += 1;
-    this.send(conversationId, CONTINUE_AFTER_STALL, [], { fromScript: true }).catch(() => {});
+    this.sendFromMirador(conversationId, CONTINUE_AFTER_STALL);
     return true;
   }
 
@@ -825,7 +826,11 @@ export class ConversationService {
         jobWaitsSince: this.jobWaits.in(conversationId).map(({ since }) => since),
       }),
     });
-    if (followUp) this.send(conversationId, followUp, [], { fromScript: true }).catch(() => {});
+    if (followUp) this.sendFromMirador(conversationId, followUp);
+  }
+
+  private sendFromMirador(conversationId: string, text: string) {
+    this.send(conversationId, text, [], { fromScript: true, fromMirador: true }).catch(() => {});
   }
 
   /**
@@ -834,11 +839,16 @@ export class ConversationService {
    * writing, or, while the agent waits on tools, once they have finished. Sent `afterTurn`, it waits in the queue for the
    * turn to end.
    */
-  async send(conversationId: string, text: string, imageIds: string[] = [], { fromScript = false, fromPlugin, afterTurn = false }: { fromScript?: boolean; fromPlugin?: string; afterTurn?: boolean } = {}) {
+  async send(
+    conversationId: string,
+    text: string,
+    imageIds: string[] = [],
+    { fromScript = false, fromMirador = false, fromPlugin, afterTurn = false }: { fromScript?: boolean; fromMirador?: boolean; fromPlugin?: string; afterTurn?: boolean } = {},
+  ) {
     const runtime = this.runtime(conversationId);
     const sendsAtOnce = !runtime.running && !this.holdsQueue(runtime) && runtime.queuedMessages.length === 0;
-    if (sendsAtOnce) return this.prompt(conversationId, text, { imageIds, fromScript, fromPlugin, startsTurn: true });
-    const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(fromPlugin && { fromPlugin }), ...(afterTurn && { afterTurn }) };
+    if (sendsAtOnce) return this.prompt(conversationId, text, { imageIds, fromScript, fromMirador, fromPlugin, startsTurn: true });
+    const message: QueuedMessage = { id: crypto.randomUUID(), text, imageIds, ...(fromScript && { fromScript }), ...(fromMirador && { fromMirador }), ...(fromPlugin && { fromPlugin }), ...(afterTurn && { afterTurn }) };
     this.setQueue(conversationId, runtime, [...runtime.queuedMessages, message]);
     this.publish(this.get(conversationId));
     if (!runtime.running) this.sendNextQueuedMessage(conversationId);
@@ -2018,12 +2028,12 @@ export class ConversationService {
     const [next, ...rest] = runtime?.queuedMessages ?? [];
     if (!runtime || !next || runtime.running || this.holdsQueue(runtime)) return;
     this.setQueue(conversationId, runtime, rest);
-    this.prompt(conversationId, next.text, { imageIds: next.imageIds, fromScript: next.fromScript, fromPlugin: next.fromPlugin, startsTurn: true }).catch(() => {});
+    this.prompt(conversationId, next.text, { imageIds: next.imageIds, fromScript: next.fromScript, fromMirador: next.fromMirador, fromPlugin: next.fromPlugin, startsTurn: true }).catch(() => {});
   }
 
   private appendUserMessage(
     conversationId: string,
-    { text, imageIds, fromScript, fromPlugin }: Omit<QueuedMessage, "id">,
+    { text, imageIds, fromScript, fromMirador, fromPlugin }: Omit<QueuedMessage, "id">,
     { commands, reverts, canvas }: NotesForAgent,
   ) {
     canvas.forEach((note) => note.heard());
@@ -2036,6 +2046,7 @@ export class ConversationService {
       ...(attachedRevertIds.length > 0 && { attachedRevertIds }),
       ...(imageIds.length > 0 && { imageIds }),
       ...(fromScript && { fromScript }),
+      ...(fromMirador && { fromMirador }),
       ...(fromPlugin && { fromPlugin }),
     });
   }

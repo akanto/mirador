@@ -30,7 +30,7 @@ test.afterAll(async () => {
   api.stop();
 });
 
-const fromMirador = () => page.locator(".timeline-entry:visible", { has: page.locator(".author", { hasText: "From a script" }) }).locator(".message.user");
+const fromMirador = () => page.locator(".timeline-entry:visible", { has: page.locator(".author", { hasText: "From Mirador" }) }).locator(".message.user");
 
 /** The turn, and the follow-up's turn when there is one, have ended, and nothing else is on its way. */
 async function settle() {

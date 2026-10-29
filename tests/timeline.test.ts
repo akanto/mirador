@@ -387,6 +387,17 @@ describe("startsAuthorGroup", () => {
     expect(timeline.map((_, index) => startsAuthorGroup(timeline, index))).toEqual([true, true, true]);
   });
 
+  test("a message Mirador sent is Mirador's, though it goes to the agent as a script's would", () => {
+    const timeline = buildTimeline(
+      stored([
+        { type: "user-message", text: "build finished", fromScript: true },
+        { type: "user-message", text: "Continue where you left off", fromScript: true, fromMirador: true },
+      ]),
+    );
+    expect(timeline.map(authorOf)).toEqual(["script", "mirador"]);
+    expect(timeline.map((_, index) => startsAuthorGroup(timeline, index))).toEqual([true, true]);
+  });
+
   test("a message from a plugin is the plugin's, and each plugin's messages group apart from another's", () => {
     const timeline = buildTimeline(
       stored([

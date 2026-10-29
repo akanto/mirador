@@ -814,6 +814,19 @@ function ScriptIcon() {
   );
 }
 
+function MiradorIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M8 7V2.5" />
+        <path d="M9.6 7.4l1.8-3.1M6.4 7.4L4.6 4.3" />
+        <path d="M10.8 8.6l2-1.2M5.2 8.6l-2-1.2" />
+      </g>
+      <circle cx="8" cy="12" r="1.9" fill="currentColor" />
+    </svg>
+  );
+}
+
 function PluginIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -835,6 +848,13 @@ function Avatar({ author, harness }: { author: Author; harness: HarnessId }) {
     return (
       <span className="avatar plugin" aria-hidden="true">
         <PluginIcon />
+      </span>
+    );
+  }
+  if (author === "mirador") {
+    return (
+      <span className="avatar mirador" aria-hidden="true">
+        <MiradorIcon />
       </span>
     );
   }
@@ -866,6 +886,7 @@ function Timestamp({ at }: { at: number }) {
 
 function authorName(author: Author, harness: HarnessId) {
   if (typeof author === "object") return <span data-hint={hints.pluginMessage}>From {author.plugin}</span>;
+  if (author === "mirador") return <span data-hint={hints.miradorMessage}>From Mirador</span>;
   if (author === "script") return <span data-hint={hints.scriptMessage}>From a script</span>;
   return author === "user" ? "You" : agentNames[harness];
 }
@@ -1209,10 +1230,16 @@ function QueuedMessages({
                 ⋮⋮
               </span>
             )}
-            {message.fromScript && (
-              <span className="queued-source" data-hint={hints.scriptMessage}>
-                script
+            {message.fromMirador ? (
+              <span className="queued-source" data-hint={hints.miradorMessage}>
+                Mirador
               </span>
+            ) : (
+              message.fromScript && (
+                <span className="queued-source" data-hint={hints.scriptMessage}>
+                  script
+                </span>
+              )
             )}
             {message.fromPlugin && (
               <span className="queued-source" data-hint={hints.pluginMessage}>

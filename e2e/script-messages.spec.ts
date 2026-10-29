@@ -49,6 +49,9 @@ function recordAgentSessions(page: Page) {
 const messagesFromScripts = (page: Page) =>
   page.locator(".timeline-entry", { has: page.locator(".author", { hasText: "From a script" }) }).locator(".message.user");
 
+const messagesFromMirador = (page: Page) =>
+  page.locator(".timeline-entry", { has: page.locator(".author", { hasText: "From Mirador" }) }).locator(".message.user");
+
 test("a script the agent starts, or anything with the agent's session, messages the conversation as the user would", async ({ page }) => {
   const sessionByConversation = recordAgentSessions(page);
   await signIn(page, host);
@@ -86,7 +89,7 @@ test("a script the agent starts, or anything with the agent's session, messages 
   });
 
   await test.step("a script's turn whose reply stops at a step it announced is nudged on, until a reply ends otherwise", async () => {
-    const nudges = messagesFromScripts(page).filter({ hasText: "your reply ended announcing a next step" });
+    const nudges = messagesFromMirador(page).filter({ hasText: "your reply ended announcing a next step" });
     expect(await runMiradorMessage(["--session", sessionId, "Next I check the logs:"])).toEqual({ exitCode: 0, stderr: "" });
     await expect(nudges).toHaveCount(1);
     await expect(lastAgentMessage(page)).toHaveText(/^Answered: Continue where you left off/);
