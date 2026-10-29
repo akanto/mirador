@@ -1,4 +1,5 @@
 import { answersSummary, questionsOf } from "../../shared/ask.ts";
+import type { PluginOffer } from "../../shared/apps.ts";
 import type {
   AskAnswerEntry,
   AskItem,
@@ -70,7 +71,7 @@ export class CanvasService {
     return { item, render };
   }
 
-  openAsk(conversationId: string, request: AskRequest, { installsPlugin }: { installsPlugin?: string } = {}): AskItem {
+  openAsk(conversationId: string, request: AskRequest, { installsPluginOffer }: { installsPluginOffer?: string } = {}): AskItem {
     const shownBefore = this.pagesShownSinceUserSpoke(conversationId).map(({ id }) => id);
     const asked = "questions" in request ? severalQuestionsAsked(request.questions) : singleQuestionAsked(request);
     const item = this.save({
@@ -79,7 +80,7 @@ export class CanvasService {
       kind: "ask",
       ...asked,
       ...(shownBefore.length > 0 && { shownBefore }),
-      ...(installsPlugin && { installsPlugin }),
+      ...(installsPluginOffer && { installsPluginOffer }),
       status: "waiting",
       createdAt: Date.now(),
     });
@@ -118,19 +119,29 @@ export class CanvasService {
     this.answerWaiters.delete(itemId);
     this.save({ ...item, status: "answered", answer: { ...given, deliveredAs: waiter ? "tool-result" : "next-message" } });
     if (waiter) waiter.answered(given);
-    else if (item.installsPlugin) void this.installThenTell(item, item.installsPlugin, given);
+    else if (item.installsPluginOffer) void this.installThenTell(item, item.installsPluginOffer, given);
     else this.conversations.send(item.conversationId, answerAsMessage(item, given)).catch(() => {});
   }
 
-  private installPlugin: (name: string) => Promise<string> = async () => "Mirador can't install plugins here.";
+  private pluginInstaller: PluginInstaller = {
+    offer: async () => {
+      throw new Error("Mirador can't install plugins here.");
+    },
+    settle: async () => "Mirador can't install plugins here.",
+  };
 
-  /** How an official plugin is installed once the user says so: resolves to what came of it, in words for the agent. */
-  installsPluginsWith(install: (name: string) => Promise<string>) {
-    this.installPlugin = install;
+  /** How an official plugin is offered to the user, and installed once they say so. */
+  installsPluginsWith(installer: PluginInstaller) {
+    this.pluginInstaller = installer;
   }
 
-  private async installThenTell(item: AskItem, plugin: string, given: GivenAnswer) {
-    const outcome = given.label === INSTALL_ANSWER ? await this.installPlugin(plugin) : "Nothing was installed.";
+  /** Clones the official plugin for the user to see what it brings; nothing of it runs until they answer Install. */
+  offerPlugin(name: string): Promise<PluginOffer> {
+    return this.pluginInstaller.offer(name);
+  }
+
+  private async installThenTell(item: AskItem, offerId: string, given: GivenAnswer) {
+    const outcome = await this.pluginInstaller.settle(offerId, given.label === INSTALL_ANSWER);
     await this.conversations.send(item.conversationId, `${answerAsMessage(item, given)}\n${outcome}`).catch(() => {});
   }
 
@@ -276,6 +287,12 @@ export function answerAsToolResult({ label, note, answers }: GivenAnswer) {
 
 /** The answer to an install question that has Mirador install the plugin. */
 export const INSTALL_ANSWER = "Install";
+
+/** Offers an official plugin by its name, then installs or discards the offer once the user answers; `settle` resolves to what came of it, in words for the agent. */
+export interface PluginInstaller {
+  offer(name: string): Promise<PluginOffer>;
+  settle(offerId: string, accepted: boolean): Promise<string>;
+}
 
 function answerAsMessage(item: AskItem, { label, note, answers }: GivenAnswer) {
   if (answers) {

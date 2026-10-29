@@ -13,11 +13,11 @@ const tallyRepo = () => join(host.root, "tally-repo");
 const git = (folder: string, ...args: string[]) =>
   execFileSync("git", ["-C", folder, "-c", "user.name=Test", "-c", "user.email=test@example.com", ...args], { encoding: "utf8" }).trim();
 
-/** The counter app in a repo of its own, under `name`. */
-function counterRepoNamed(folder: string, name: string) {
+/** The counter app in a repo of its own, under `name` and `title`. */
+function counterRepoNamed(folder: string, name: string, title: string) {
   cpSync(join(import.meta.dirname, "..", "tests", "fixtures", "apps", "counter"), folder, { recursive: true });
   const manifest = join(folder, "plugin.json");
-  writeFileSync(manifest, readFileSync(manifest, "utf8").replace('"name": "counter"', `"name": "${name}"`));
+  writeFileSync(manifest, readFileSync(manifest, "utf8").replace('"name": "counter"', `"name": "${name}"`).replace('"title": "Counter"', `"title": "${title}"`));
   git(folder, "init", "--quiet", "-b", "main");
   git(folder, "add", ".");
   git(folder, "commit", "--quiet", "-m", "Count by one");
@@ -25,8 +25,8 @@ function counterRepoNamed(folder: string, name: string) {
 
 /** A catalog of two plugins, each with a repo of its own. */
 function publishCatalog() {
-  counterRepoNamed(counterRepo(), "counter");
-  counterRepoNamed(tallyRepo(), "tally");
+  counterRepoNamed(counterRepo(), "counter", "Counter");
+  counterRepoNamed(tallyRepo(), "tally", "Tally");
   const counter = { name: "counter", title: "Counter", description: "Counts by one.", recommendWhen: "the user wants to count", repo: counterRepo(), branch: "main" };
   const tally = { name: "tally", title: "Tally", description: "Keeps a tally.", recommendWhen: "the user keeps a tally", repo: tallyRepo() };
   writeFileSync(catalogFile(), JSON.stringify({ plugins: [counter, tally] }));
@@ -68,6 +68,7 @@ test("the agent recommends an official plugin, and Mirador installs it only once
   await test.step("Install clones the plugin into Mirador's plugins folder, and the agent hears to have the user restart", async () => {
     await callCanvasTool(host, conversationId, "plugin_install", { name: "counter", reason: "You keep counting by hand." });
     await expect(ask.frameLocator("iframe").first().getByText("You keep counting by hand.")).toBeVisible();
+    await expect(ask.frameLocator("iframe").first().getByText("host.ts, the host code of its app, runs inside Mirador with your permissions from its next start.")).toBeVisible();
     await ask.getByRole("radio", { name: /^Install/ }).check();
     await ask.getByRole("button", { name: "Submit" }).click();
     await expect(page.locator(".message.user:visible").last()).toContainText("Mirador installed the Counter plugin and uses it from its next restart.", { timeout: 30_000 });
@@ -81,8 +82,12 @@ test("the agent recommends an official plugin, and Mirador installs it only once
     await expect(page.locator(".restart-needed")).toBeVisible();
   });
 
-  await test.step("Install in Settings clones the plugin too, which then leaves the plugins to install", async () => {
+  await test.step("Install in Settings asks first too: Don't install leaves it to install, and Install then installs it", async () => {
     await moreOfficialPlugins(page).getByRole("button", { name: "Install" }).click();
+    await moreOfficialPlugins(page).getByRole("group", { name: "Install Tally?" }).getByRole("button", { name: "Don't install" }).click();
+    await expect(moreOfficialPlugins(page).getByRole("listitem")).toHaveText(["TallytallyKeeps a tally.Install"]);
+    await moreOfficialPlugins(page).getByRole("button", { name: "Install" }).click();
+    await moreOfficialPlugins(page).getByRole("group", { name: "Install Tally?" }).getByRole("button", { name: "Install", exact: true }).click();
     await expect(pluginRows(page).filter({ hasText: "Tally" }).locator(".plugin-description")).toHaveText("Keeps a tally.", { timeout: 30_000 });
     await expect(pluginRows(page).filter({ hasText: "Tally" }).locator(".plugin-official")).toHaveText("Official");
     await expect(moreOfficialPlugins(page)).toHaveCount(0);

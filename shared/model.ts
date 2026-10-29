@@ -639,8 +639,8 @@ export interface AskItem extends CanvasItemBase {
   answer?: CanvasAnswer;
   /** Pages the agent showed since the user last wrote or answered, which a question carries so both are seen together. */
   shownBefore?: string[];
-  /** The official plugin Mirador installs when the user answers Install. */
-  installsPlugin?: string;
+  /** The offer of an official plugin, cloned but not built, which Mirador installs when the user answers Install. */
+  installsPluginOffer?: string;
 }
 
 /** An item a plugin's tool published; the plugin's canvas view draws it in a frame. */

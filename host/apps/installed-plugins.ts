@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
-import { isPluginVersion, type PluginManifest, type PluginNews, type PluginInfo, type PluginSource, type PluginUpdate } from "../../shared/apps.ts";
+import { isPluginVersion, type PluginManifest, type PluginNews, type PluginInfo, type PluginOffer, type PluginSource, type PluginUpdate } from "../../shared/apps.ts";
 import { isNewerVersion } from "../../shared/newer-version.ts";
 import { environmentWithoutPrompts } from "../git-environment.ts";
 import { renameWhenFree } from "../rename-when-free.ts";
@@ -102,6 +102,18 @@ async function manifestFields(folder: string): Promise<{ name: string | null; ti
   }
 }
 
+/** `git log --format=%h%x09%s` as commits. */
+const commitsOfLog = (log: string) =>
+  log
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [commit = "", ...subject] = line.split("\t");
+      return { commit, subject: subject.join("\t") };
+    });
+
+const shownWithoutCredentials = (error: unknown) => new AppProblem(withoutCredentials(messageOf(error)));
+
 const isLink = (folder: string) => lstatSync(folder).isSymbolicLink();
 
 const byTitle = ({ title, folder }: PluginInfo) => title ?? folder;
@@ -116,6 +128,8 @@ export class InstalledPlugins {
    */
   private readonly staging: string;
   private readonly changed = new Set<string>();
+  /** The clones offered to the user, by offer id, until they agree or decline; the next start empties the staging folder of them. */
+  private readonly offers = new Map<string, { staged: string; manifest: PluginManifest; offer: PluginOffer }>();
   private lastChange: Promise<unknown> = Promise.resolve();
   private changesStarted = 0;
   private changesEnded = 0;
@@ -156,23 +170,121 @@ export class InstalledPlugins {
 
   /**
    * Clones the repo at the branch or tag given, or else at its newest release, or its default branch when it tags no
-   * release; builds it and puts it in the plugins folder, in a folder named as the plugin.
+   * release, without building it: what it brings, for the user to agree to before any of its code runs.
    */
-  add(url: string, branch: string | null): Promise<void> {
+  offer(url: string, branch: string | null): Promise<PluginOffer> {
     return this.oneAtATime(async () => {
       const repo = expandedHome(url.trim());
       const given = branch?.trim() || null;
       const release = given || !repo ? null : await newestRelease(repo);
-      const { staged, manifest } = await this.clonedAndBuilt(repo, given ?? (release && releaseTag(release)));
+      const { staged, manifest } = await this.cloned(repo, given ?? (release && releaseTag(release)));
       try {
         await this.refuseTakenName(manifest.name);
-        mkdirSync(this.folder, { recursive: true });
-        await renameWhenFree(staged, join(this.folder, manifest.name));
-        this.changed.add(manifest.name);
+      } catch (error) {
+        rmSync(staged, { recursive: true, force: true });
+        throw error;
+      }
+      return this.offered(staged, manifest, { remote: repo, branch: given && !releaseOfTag(given) ? given : null, release: release ?? releaseOfTag(given) }, null);
+    });
+  }
+
+  /** Clones what updating the plugin brings, the newest release or the branch as it is now, without building it, for the user to agree to. */
+  offerUpdate(folderName: string): Promise<PluginOffer> {
+    return this.oneAtATime(async () => {
+      const folder = this.clonedPlugin(folderName);
+      const followed = await this.followed(folder);
+      const newest = followed.release && ((await newestRelease(followed.remote)) ?? followed.release);
+      const installed = await readManifest(folder).catch(() => null);
+      const { staged, manifest } = await this.cloned(followed.remote, newest ? releaseTag(newest) : followed.branch);
+      try {
+        if (installed && manifest.name !== installed.name) {
+          throw new AppProblem(`The repo's plugin is named ${manifest.name} now, not ${installed.name}; remove ${folderName} and add the repo again.`);
+        }
+        const commits = await this.commitsSince(staged, (await gitOutput(folder, ["rev-parse", "HEAD"])) ?? "HEAD");
+        return this.offered(staged, manifest, { remote: followed.remote, branch: followed.branch, release: newest }, { folder: folderName, commits });
+      } catch (error) {
+        rmSync(staged, { recursive: true, force: true });
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Builds the offer the user agreed to, the very commit they saw, and only then puts it in the plugins folder, in a
+   * folder named as the plugin, or swaps it in for the plugin it updates, so a failed update leaves the plugin as it was.
+   */
+  install(offerId: string): Promise<PluginOffer> {
+    return this.oneAtATime(async () => {
+      const staging = this.offers.get(offerId);
+      if (!staging) throw new AppProblem("Mirador no longer has that plugin's clone, as after a restart; add it again to see what it brings.");
+      this.offers.delete(offerId);
+      const { staged, manifest, offer } = staging;
+      try {
+        await this.built(staged, manifest);
+        if (offer.replaces) {
+          const folder = this.clonedPlugin(offer.replaces.folder);
+          await renameWhenFree(folder, join(this.staging, `${offer.replaces.folder}-replaced-${crypto.randomUUID()}`));
+          await renameWhenFree(staged, folder);
+          this.changed.add(offer.replaces.folder);
+        } else {
+          await this.refuseTakenName(manifest.name);
+          mkdirSync(this.folder, { recursive: true });
+          await renameWhenFree(staged, join(this.folder, manifest.name));
+          this.changed.add(manifest.name);
+        }
+        return offer;
       } finally {
         rmSync(staged, { recursive: true, force: true });
       }
     });
+  }
+
+  /** The user didn't agree: the clone goes, and nothing of it ran. */
+  discard(offerId: string) {
+    const staging = this.offers.get(offerId);
+    this.offers.delete(offerId);
+    if (staging) rmSync(staging.staged, { recursive: true, force: true });
+  }
+
+  /** Installs without asking, for the plugins Mirador installs by itself. */
+  async add(url: string, branch: string | null): Promise<void> {
+    await this.install((await this.offer(url, branch)).id);
+  }
+
+  /** Updates without asking. */
+  async update(folderName: string): Promise<void> {
+    await this.install((await this.offerUpdate(folderName)).id);
+  }
+
+  private async offered(
+    staged: string,
+    manifest: PluginManifest,
+    source: Pick<PluginOffer, "remote" | "branch" | "release">,
+    replaces: PluginOffer["replaces"],
+  ): Promise<PluginOffer> {
+    const [commit, subject] = await Promise.all([gitOutput(staged, ["rev-parse", "HEAD"]), gitOutput(staged, ["log", "-1", "--format=%s"])]);
+    const hostCode = (["app", "canvas"] as const).flatMap((part) => (manifest[part] ? [{ part, file: manifest[part].host }] : []));
+    const offer: PluginOffer = {
+      id: crypto.randomUUID(),
+      name: manifest.name,
+      title: manifest.title,
+      version: manifest.version ?? "",
+      ...source,
+      remote: withoutCredentials(source.remote),
+      commit: commit ?? "",
+      subject: subject ?? "",
+      build: manifest.build ?? null,
+      hostCode,
+      replaces,
+    };
+    this.offers.set(offer.id, { staged, manifest, offer });
+    return offer;
+  }
+
+  /** The commits of the clone since the commit the plugin is at, newest first; none when the clone doesn't have it. */
+  private async commitsSince(staged: string, installedCommit: string) {
+    const log = (await gitOutput(staged, ["log", "--format=%h%x09%s", `${installedCommit}..HEAD`])) ?? "";
+    return commitsOfLog(log);
   }
 
   /** What updating would bring: the newer release, or the commits on the plugin's branch it doesn't have yet. */
@@ -193,14 +305,7 @@ export class InstalledPlugins {
   private async commitsOf(folder: string, ref: string) {
     const fetched = await run(["git", "fetch", "--quiet", "--no-tags", "origin", ref], folder, environmentWithoutPrompts(), GIT_GIVES_UP_AFTER_MS);
     if (!fetched.ok) throw new AppProblem(`git fetch failed:\n${fetched.output}`);
-    const log = (await gitOutput(folder, ["log", "--format=%h%x09%s", "HEAD..FETCH_HEAD"])) ?? "";
-    return log
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const [commit = "", ...subject] = line.split("\t");
-        return { commit, subject: subject.join("\t") };
-      });
+    return commitsOfLog((await gitOutput(folder, ["log", "--format=%h%x09%s", "HEAD..FETCH_HEAD"])) ?? "");
   }
 
   /** The plugins from git repos with news; one whose fetch fails, offline for one, keeps what was last found for it. */
@@ -216,30 +321,6 @@ export class InstalledPlugins {
       }),
     );
     return found.filter((update): update is PluginUpdate => update !== null && (update.release !== null || update.commits.length > 0));
-  }
-
-  /**
-   * Clones and builds the newest release, or the branch as it is now, and only then swaps it in, so a failed update
-   * leaves the plugin as it was.
-   */
-  update(folderName: string): Promise<void> {
-    return this.oneAtATime(async () => {
-      const folder = this.clonedPlugin(folderName);
-      const followed = await this.followed(folder);
-      const newest = followed.release && ((await newestRelease(followed.remote)) ?? followed.release);
-      const installed = await readManifest(folder).catch(() => null);
-      const { staged, manifest } = await this.clonedAndBuilt(followed.remote, newest ? releaseTag(newest) : followed.branch);
-      try {
-        if (installed && manifest.name !== installed.name) {
-          throw new AppProblem(`The repo's plugin is named ${manifest.name} now, not ${installed.name}; remove ${folderName} and add the repo again.`);
-        }
-        await renameWhenFree(folder, join(this.staging, `${folderName}-replaced-${crypto.randomUUID()}`));
-        await renameWhenFree(staged, folder);
-        this.changed.add(folderName);
-      } finally {
-        rmSync(staged, { recursive: true, force: true });
-      }
-    });
   }
 
   /** Takes the plugin out of the plugins folder; a link goes, the folder it points to stays. The plugin's name, for forgetting where its app was open. */
@@ -269,8 +350,8 @@ export class InstalledPlugins {
     return done;
   }
 
-  /** Clones the repo at the branch or tag, or its default branch, and builds it in the staging folder. */
-  private async clonedAndBuilt(url: string, branchOrTag: string | null): Promise<{ staged: string; manifest: PluginManifest }> {
+  /** Clones the repo at the branch or tag, or its default branch, into the staging folder, and reads its plugin.json; runs none of its code. */
+  private async cloned(url: string, branchOrTag: string | null): Promise<{ staged: string; manifest: PluginManifest }> {
     if (!url) throw new AppProblem("Give the git URL or the path of the plugin's repo.");
     mkdirSync(this.staging, { recursive: true });
     const staged = join(this.staging, crypto.randomUUID());
@@ -289,6 +370,16 @@ export class InstalledPlugins {
         });
       const tagged = releaseOfTag(branchOrTag);
       if (tagged && manifest.version !== tagged) throw new AppProblem(`Its tag ${branchOrTag} is release ${tagged}, but its plugin.json says version ${manifest.version}.`);
+      return { staged, manifest };
+    } catch (error) {
+      rmSync(staged, { recursive: true, force: true });
+      throw shownWithoutCredentials(error);
+    }
+  }
+
+  /** Runs the plugin's build command in its clone, and checks the files plugin.json names are there then. */
+  private async built(staged: string, manifest: PluginManifest) {
+    try {
       if (manifest.build) {
         const built = await run(shellCommand(manifest.build), staged, buildEnvironment(), BUILD_GIVES_UP_AFTER_MS);
         if (!built.ok) throw new AppProblem(`Its build command, ${manifest.build}, failed:\n${lastPart(built.output)}`);
@@ -298,10 +389,8 @@ export class InstalledPlugins {
       } catch (error) {
         throw new AppProblem(`After ${manifest.build ? "its build" : "cloning"}, ${messageOf(error)}.`);
       }
-      return { staged, manifest };
     } catch (error) {
-      rmSync(staged, { recursive: true, force: true });
-      throw error instanceof AppProblem ? new AppProblem(withoutCredentials(error.message)) : new AppProblem(withoutCredentials(messageOf(error)));
+      throw shownWithoutCredentials(error);
     }
   }
 

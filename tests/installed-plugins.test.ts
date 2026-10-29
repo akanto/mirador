@@ -191,6 +191,77 @@ describe("adding, updating and removing plugins", () => {
     expect(git(join(plugins, "counter"), "log", "-1", "--format=%s")).toBe("Count by two");
   });
 
+  test("an offer clones without running any of the plugin's code and says what of it would run; declining it leaves nothing behind", async () => {
+    const repo = builtCounterRepo("offer-repo");
+    const buildRan = join(root, "offer-build-ran");
+    commit(repo, "build.ts", `await Bun.write(${JSON.stringify(buildRan)}, "");\nawait Bun.write("view.js", Bun.file("src/view.js"));\n`, "Say when the build runs");
+    const plugins = pluginsIn("offer");
+    const installed = new InstalledPlugins(plugins, []);
+
+    const offer = await installed.offer(repo, "main");
+    expect(offer).toEqual({
+      id: expect.any(String),
+      name: "counter",
+      title: "Counter",
+      version: "1.0.0",
+      remote: repo,
+      branch: "main",
+      release: null,
+      commit: git(repo, "rev-parse", "HEAD"),
+      subject: "Say when the build runs",
+      build: "bun build.ts",
+      hostCode: [{ part: "app", file: "host.ts" }],
+      replaces: null,
+    });
+    expect(existsSync(buildRan)).toBe(false);
+    expect(readdirSync(plugins)).toEqual([]);
+    expect(leftInStaging(plugins)).toHaveLength(1);
+
+    installed.discard(offer.id);
+    expect(leftInStaging(plugins)).toEqual([]);
+    await expect(installed.install(offer.id)).rejects.toThrow("Mirador no longer has that plugin's clone");
+    expect(existsSync(buildRan)).toBe(false);
+    expect(readdirSync(plugins)).toEqual([]);
+    expect(installed.restartNeeded).toBe(false);
+  });
+
+  test("installing an offer builds the very commit offered, even once the branch has moved on", async () => {
+    const repo = builtCounterRepo("offered-commit-repo");
+    const plugins = pluginsIn("offered-commit");
+    const installed = new InstalledPlugins(plugins, []);
+    const offer = await installed.offer(repo, "main");
+    commit(repo, "src/view.js", "document.body.textContent = 'Pushed after the offer';\n", "Push after the offer");
+
+    expect(await installed.install(offer.id)).toEqual(offer);
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe(counterViewAsCommitted());
+    expect(git(join(plugins, "counter"), "rev-parse", "HEAD")).toBe(offer.commit);
+    expect(leftInStaging(plugins)).toEqual([]);
+    await expect(installed.install(offer.id)).rejects.toThrow("Mirador no longer has that plugin's clone");
+  });
+
+  test("an update's offer names the commits it brings and builds nothing until it is installed", async () => {
+    const repo = builtCounterRepo("update-offer-repo");
+    const plugins = pluginsIn("update-offer");
+    const installed = new InstalledPlugins(plugins, []);
+    await installed.add(repo, null);
+    commit(repo, "src/view.js", "document.body.textContent = 'Counting by two';\n", "Count by two");
+    commit(repo, "src/view.js", "document.body.textContent = 'Counting by three';\n", "Count by three");
+
+    const offer = await installed.offerUpdate("counter");
+    expect(offer.replaces).toEqual({
+      folder: "counter",
+      commits: [
+        { commit: git(repo, "rev-parse", "--short", "HEAD"), subject: "Count by three" },
+        { commit: git(repo, "rev-parse", "--short", "HEAD~1"), subject: "Count by two" },
+      ],
+    });
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe(counterViewAsCommitted());
+
+    await installed.install(offer.id);
+    expect(readFileSync(join(plugins, "counter", "view.js"), "utf8")).toBe("document.body.textContent = 'Counting by three';\n");
+    expect(leftInStaging(plugins).filter((left) => !left.includes("-replaced-"))).toEqual([]);
+  });
+
   test("the updates found by itself name each git plugin with new commits and its commit then; offline, a plugin keeps what was found last", async () => {
     const repo = builtCounterRepo("updates-found-repo");
     const plugins = pluginsIn("updates-found");

@@ -231,6 +231,39 @@ export interface PluginNews {
   commits: PluginCommit[];
 }
 
+/**
+ * A plugin's repo, cloned but not built, for the user to agree to before any of its code runs: what installing it, or
+ * updating to it, brings. Only the user's consent builds and installs it, by its id.
+ */
+export interface PluginOffer {
+  id: string;
+  name: string;
+  title: string;
+  version: string;
+  /** Shown without credentials. */
+  remote: string;
+  branch: string | null;
+  release: string | null;
+  commit: string;
+  subject: string;
+  /** Runs as soon as the user agrees, with their permissions. */
+  build: string | null;
+  /** The modules that run inside Mirador with the user's permissions, by the part they serve. */
+  hostCode: { part: "app" | "canvas"; file: string }[];
+  /** For an update: the plugin's folder, and the commits it doesn't have yet, newest first. */
+  replaces: { folder: string; commits: PluginCommit[] } | null;
+}
+
+/** Where the offer's code comes from: its repo, release or branch, and commit. */
+export const offerSource = ({ remote, release, branch, commit, subject }: PluginOffer) =>
+  [remote, release ? `release ${release}` : (branch ?? "default branch"), `${commit.slice(0, 12)} ${subject}`].join(" · ");
+
+/** What of the offer's code runs, and when, a sentence each. */
+export const offerRuns = ({ build, hostCode }: PluginOffer) => [
+  build ? `Its build command, ${build}, runs as soon as you agree, with your permissions.` : "It has no build command.",
+  ...hostCode.map(({ part, file }) => `${file}, the host code of its ${part === "app" ? "app" : "canvas tools"}, runs inside Mirador with your permissions from its next start.`),
+];
+
 /** A plugin from a git repo with news, as Mirador found by itself. */
 export interface PluginUpdate extends PluginNews {
   folder: string;

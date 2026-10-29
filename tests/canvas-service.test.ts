@@ -131,18 +131,27 @@ describe("CanvasService", () => {
     expect(asAsk(store.findCanvasItem(item.id))?.answer?.deliveredAs).toBe("next-message");
   });
 
-  test("an install question installs the plugin only on Install, then tells the agent what came of it", async () => {
+  test("an install question installs the offered plugin only on Install, discards it otherwise, then tells the agent what came of it", async () => {
     const { canvas, nextMessages } = setUp();
-    const installed: string[] = [];
-    canvas.installsPluginsWith(async (name) => {
-      installed.push(name);
-      return "Mirador installed the Media plugin.";
+    const settled: [string, boolean][] = [];
+    canvas.installsPluginsWith({
+      offer: async () => {
+        throw new Error("not offered here");
+      },
+      settle: async (offerId, accepted) => {
+        settled.push([offerId, accepted]);
+        return accepted ? "Mirador installed the Media plugin." : "Nothing was installed.";
+      },
     });
-    const installQuestion = () => canvas.openAsk("c1", { question: "Install the Media plugin?", options: [{ label: "Install" }, { label: "Not now" }] }, { installsPlugin: "media" });
-    canvas.answer(installQuestion().id, "Not now");
-    canvas.answer(installQuestion().id, "Install");
+    const installQuestion = (offerId: string) =>
+      canvas.openAsk("c1", { question: "Install the Media plugin?", options: [{ label: "Install" }, { label: "Not now" }] }, { installsPluginOffer: offerId });
+    canvas.answer(installQuestion("declined").id, "Not now");
+    canvas.answer(installQuestion("agreed").id, "Install");
     await Bun.sleep(0);
-    expect(installed).toEqual(["media"]);
+    expect(settled).toEqual([
+      ["declined", false],
+      ["agreed", true],
+    ]);
     expect(nextMessages).toEqual([
       'My answer to your question "Install the Media plugin?": Not now\nNothing was installed.',
       'My answer to your question "Install the Media plugin?": Install\nMirador installed the Media plugin.',

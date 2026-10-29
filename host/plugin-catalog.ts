@@ -2,6 +2,7 @@ import { catalogPluginsOf, type CatalogPlugin } from "../shared/apps.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { withoutCredentials, type InstalledPlugins } from "./apps/installed-plugins.ts";
 import { messageOf } from "./apps/plugins.ts";
+import type { PluginInstaller } from "./canvas/service.ts";
 import type { Store } from "./store.ts";
 
 const GIVE_UP_AFTER_MILLISECONDS = 20_000;
@@ -60,14 +61,23 @@ export const pluginsListed = async (plugins: InstalledPlugins, catalog: PluginCa
   restartNeeded: plugins.restartNeeded,
 });
 
-/** Installs an official plugin the user said yes to, and says what came of it in words for the agent. */
-export async function installOfficialPlugin(name: string, catalog: PluginCatalog, plugins: InstalledPlugins, listed: (message: ServerMessage) => void) {
-  try {
+/** Offers an official plugin for the user to agree to, then installs the offer they said yes to, or discards it. */
+export const officialPluginInstaller = (catalog: PluginCatalog, plugins: InstalledPlugins, listed: (message: ServerMessage) => void): PluginInstaller => ({
+  offer: async (name) => {
     const plugin = catalog.installable(name);
-    await plugins.add(plugin.repo, plugin.branch ?? null);
-    listed(await pluginsListed(plugins, catalog));
-    return `Mirador installed the ${plugin.title} plugin and uses it from its next restart. Tell the user to restart Mirador to use it: ⌘⇧R, or Restart host in Settings → Plugins.`;
-  } catch (error) {
-    return `Installing the ${name} plugin failed: ${withoutCredentials(messageOf(error))}`;
-  }
-}
+    return plugins.offer(plugin.repo, plugin.branch ?? null);
+  },
+  settle: async (offerId, accepted) => {
+    if (!accepted) {
+      plugins.discard(offerId);
+      return "Nothing was installed.";
+    }
+    try {
+      const { title } = await plugins.install(offerId);
+      listed(await pluginsListed(plugins, catalog));
+      return `Mirador installed the ${title} plugin and uses it from its next restart. Tell the user to restart Mirador to use it: ⌘⇧R, or Restart host in Settings → Plugins.`;
+    } catch (error) {
+      return `Installing the plugin failed: ${withoutCredentials(messageOf(error))}`;
+    }
+  },
+});

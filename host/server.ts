@@ -1191,10 +1191,16 @@ export function startServer(services: HostServices) {
           .then(pluginsListed)
           .then((listed) => hub.send(socket, listed))
           .catch((error) => console.warn(`Listing the plugins failed: ${messageOf(error)}`));
-      case "plugins.add":
-        return void changePlugins(socket, message.requestId, () => plugins.add(message.url, message.branch));
-      case "plugins.update":
-        return void changePlugins(socket, message.requestId, () => plugins.update(message.folder));
+      case "plugins.offer":
+      case "plugins.offer-update":
+        return void (message.type === "plugins.offer" ? plugins.offer(message.url, message.branch) : plugins.offerUpdate(message.folder)).then(
+          (offer) => reply({ type: "plugins.offered", requestId: message.requestId, offer, problem: null }),
+          (error) => reply({ type: "plugins.offered", requestId: message.requestId, offer: null, problem: withoutCredentials(messageOf(error)) }),
+        );
+      case "plugins.install":
+        return void changePlugins(socket, message.requestId, () => plugins.install(message.offerId));
+      case "plugins.discard":
+        return plugins.discard(message.offerId);
       case "plugins.remove":
         return void changePlugins(socket, message.requestId, async () => {
           const name = await plugins.remove(message.folder);

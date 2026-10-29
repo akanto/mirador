@@ -1,5 +1,16 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { settingValue, type CatalogPlugin, type PluginInfo, type PluginNews, type PluginSettings as SettingsOfPlugin, type PluginSource, type PluginUpdate as FoundUpdate } from "../shared/apps.ts";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  offerRuns,
+  offerSource,
+  settingValue,
+  type CatalogPlugin,
+  type PluginInfo,
+  type PluginNews,
+  type PluginOffer,
+  type PluginSettings as SettingsOfPlugin,
+  type PluginSource,
+  type PluginUpdate as FoundUpdate,
+} from "../shared/apps.ts";
 import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
@@ -15,6 +26,87 @@ async function changePlugins(send: (requestId: string) => ClientMessage): Promis
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
+}
+
+type Offered = { offer: PluginOffer; problem: null } | { offer: null; problem: string };
+
+/** Has the host clone a plugin, or what updating one brings, without building it, for the user to agree to. */
+async function offerPlugin(send: (requestId: string) => ClientMessage): Promise<Offered> {
+  try {
+    return await connection.sendAndAwait(send, (message, requestId) =>
+      message.type === "plugins.offered" && message.requestId === requestId ? (message.offer ? { offer: message.offer, problem: null } : { offer: null, problem: message.problem ?? "" }) : undefined,
+    );
+  } catch (error) {
+    return { offer: null, problem: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+const discard = (offers: PluginOffer[]) => offers.forEach(({ id }) => connection.send({ type: "plugins.discard", offerId: id }));
+
+function OfferDetails({ offer }: { offer: PluginOffer }) {
+  return (
+    <div className="plugin-offer">
+      <span className="plugin-title">{offer.title}</span>
+      <span className="plugin-version">{offer.version}</span>
+      <span className="plugin-source">{offerSource(offer)}</span>
+      {offer.replaces && offer.replaces.commits.length > 0 && (
+        <ul className="plugin-commits" aria-label={`Commits the update of ${offer.title} brings`}>
+          {offer.replaces.commits.map(({ commit, subject }) => (
+            <li key={commit}>
+              <code>{commit}</code> {subject}
+            </li>
+          ))}
+        </ul>
+      )}
+      <ul className="plugin-runs" aria-label={`What runs of ${offer.title}`}>
+        {offerRuns(offer).map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+type Settled = { agreed: boolean; problem: string | null };
+
+/**
+ * What the cloned plugins bring, for the user to agree to before any of their code runs. Agreeing builds and installs
+ * them one after the other, stopping at the first that fails; declining, or closing Settings first, discards the clones.
+ */
+function PluginConsent({ question, offers, agree, decline, onSettled }: { question: string; offers: PluginOffer[]; agree: string; decline: string; onSettled: (settled: Settled) => void }) {
+  const [installing, setInstalling] = useState<string | null>(null);
+  const notSentToInstall = useRef(offers);
+  useEffect(() => () => discard(notSentToInstall.current), []);
+  const install = async () => {
+    for (const offer of offers) {
+      notSentToInstall.current = notSentToInstall.current.filter(({ id }) => id !== offer.id);
+      setInstalling(offer.title);
+      const problem = await changePlugins((requestId) => ({ type: "plugins.install", requestId, offerId: offer.id }));
+      if (problem) return onSettled({ agreed: true, problem: offers.length > 1 ? `${offer.title}: ${problem}` : problem });
+    }
+    onSettled({ agreed: true, problem: null });
+  };
+  return (
+    <div className="plugin-consent" role="group" aria-label={question}>
+      <p className="plugin-question">{question}</p>
+      {offers.map((offer) => (
+        <OfferDetails key={offer.id} offer={offer} />
+      ))}
+      <p className="hint">Mirador has cloned it and run none of its code. Agree only to code you trust.</p>
+      {installing ? (
+        <span className="plugin-status">Building {installing}…</span>
+      ) : (
+        <span className="plugin-actions">
+          <button type="button" data-hint={hints.agreeToPlugin} onClick={install}>
+            {agree}
+          </button>
+          <button type="button" onClick={() => onSettled({ agreed: false, problem: null })}>
+            {decline}
+          </button>
+        </span>
+      )}
+    </div>
+  );
 }
 
 async function findNews(folder: string): Promise<PluginNews & { problem: string | null }> {
@@ -43,7 +135,8 @@ type Updating =
   | { step: "idle" }
   | { step: "checking" }
   | { step: "found"; news: PluginNews }
-  | { step: "updating" }
+  | { step: "cloning"; news: PluginNews }
+  | { step: "consenting"; news: PluginNews; offer: PluginOffer }
   | { step: "failed"; problem: string };
 
 /** How many plugins have new commits, as Mirador found by itself; nothing when none has. */
@@ -66,11 +159,12 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews
     const { problem, ...news } = await findNews(plugin.folder);
     setUpdating(problem ? { step: "failed", problem } : { step: "found", news });
   };
-  const update = async () => {
-    setUpdating({ step: "updating" });
-    const problem = await changePlugins((requestId) => ({ type: "plugins.update", requestId, folder: plugin.folder }));
-    if (problem) setUpdating({ step: "failed", problem });
+  const offerUpdate = async (news: PluginNews) => {
+    setUpdating({ step: "cloning", news });
+    const { offer, problem } = await offerPlugin((requestId) => ({ type: "plugins.offer-update", requestId, folder: plugin.folder }));
+    setUpdating(offer ? { step: "consenting", news, offer } : { step: "failed", problem });
   };
+  const settled = (news: PluginNews, { problem }: Settled) => setUpdating(problem ? { step: "failed", problem } : { step: "found", news });
   switch (updating.step) {
     case "idle":
       return (
@@ -105,13 +199,23 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews
               </li>
             ))}
           </ul>
-          <button type="button" data-hint={hints.updatePlugin} onClick={update}>
+          <button type="button" data-hint={hints.updatePlugin} onClick={() => offerUpdate(updating.news)}>
             Update
           </button>
         </>
       );
-    case "updating":
-      return <span className="plugin-status">Cloning and building…</span>;
+    case "cloning":
+      return <span className="plugin-status">Cloning…</span>;
+    case "consenting":
+      return (
+        <PluginConsent
+          question={`Update ${updating.offer.title}?`}
+          offers={[updating.offer]}
+          agree="Update"
+          decline="Don't update"
+          onSettled={(outcome) => settled(updating.news, outcome)}
+        />
+      );
     case "failed":
       return (
         <>
@@ -182,23 +286,33 @@ function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?:
 }
 
 function OfficialPluginToInstall({ plugin }: { plugin: CatalogPlugin }) {
-  const [installing, setInstalling] = useState(false);
+  const [step, setStep] = useState<"idle" | "cloning" | PluginOffer>("idle");
   const [problem, setProblem] = useState<string | null>(null);
-  const install = async () => {
-    setInstalling(true);
-    setProblem(await changePlugins((requestId) => ({ type: "plugins.add", requestId, url: plugin.repo, branch: plugin.branch ?? null })));
-    setInstalling(false);
+  const offer = async () => {
+    setStep("cloning");
+    setProblem(null);
+    const offered = await offerPlugin((requestId) => ({ type: "plugins.offer", requestId, url: plugin.repo, branch: plugin.branch ?? null }));
+    setStep(offered.offer ?? "idle");
+    setProblem(offered.problem);
+  };
+  const settled = (outcome: Settled) => {
+    setStep("idle");
+    setProblem(outcome.problem);
   };
   return (
     <li>
       <span className="plugin-title">{plugin.title}</span>
       <span className="plugin-name">{plugin.name}</span>
       <span className="plugin-description">{plugin.description}</span>
-      <span className="plugin-actions">
-        <button type="button" data-hint={hints.installOfficialPlugin} disabled={installing} onClick={install}>
-          {installing ? "Cloning and building…" : "Install"}
-        </button>
-      </span>
+      {typeof step === "object" ? (
+        <PluginConsent question={`Install ${step.title}?`} offers={[step]} agree="Install" decline="Don't install" onSettled={settled} />
+      ) : (
+        <span className="plugin-actions">
+          <button type="button" data-hint={hints.installOfficialPlugin} disabled={step === "cloning"} onClick={offer}>
+            {step === "cloning" ? "Cloning…" : "Install"}
+          </button>
+        </span>
+      )}
       {problem && <pre className="plugin-output">{problem}</pre>}
     </li>
   );
@@ -210,27 +324,35 @@ const toInstall = (official: CatalogPlugin[], installed: PluginInfo[]) =>
 function AddPlugin() {
   const [url, setUrl] = useState("");
   const [branch, setBranch] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const [offer, setOffer] = useState<PluginOffer | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const add = async (event: FormEvent) => {
     event.preventDefault();
-    setAdding(true);
+    setCloning(true);
     setProblem(null);
-    const problem = await changePlugins((requestId) => ({ type: "plugins.add", requestId, url, branch: branch.trim() || null }));
-    setAdding(false);
+    const offered = await offerPlugin((requestId) => ({ type: "plugins.offer", requestId, url, branch: branch.trim() || null }));
+    setCloning(false);
+    setOffer(offered.offer);
+    setProblem(offered.problem);
+  };
+  const settled = ({ agreed, problem }: Settled) => {
+    setOffer(null);
     setProblem(problem);
-    if (!problem) {
+    if (agreed && !problem) {
       setUrl("");
       setBranch("");
     }
   };
+  const busy = cloning || offer !== null;
   return (
     <form className="plugin-add" aria-label="Add a plugin" onSubmit={add}>
-      <input aria-label="Git URL or path" placeholder="Git URL or path of the plugin's repo" value={url} disabled={adding} onChange={(event) => setUrl(event.target.value)} />
-      <input aria-label="Branch" placeholder="Branch (optional)" value={branch} disabled={adding} onChange={(event) => setBranch(event.target.value)} />
-      <button type="submit" data-hint={hints.addPlugin} disabled={adding || !url.trim()}>
-        {adding ? "Cloning and building…" : "Add"}
+      <input aria-label="Git URL or path" placeholder="Git URL or path of the plugin's repo" value={url} disabled={busy} onChange={(event) => setUrl(event.target.value)} />
+      <input aria-label="Branch" placeholder="Branch (optional)" value={branch} disabled={busy} onChange={(event) => setBranch(event.target.value)} />
+      <button type="submit" data-hint={hints.addPlugin} disabled={busy || !url.trim()}>
+        {cloning ? "Cloning…" : "Add"}
       </button>
+      {offer && <PluginConsent question={`Install ${offer.title}?`} offers={[offer]} agree="Install" decline="Don't install" onSettled={settled} />}
       {problem && <pre className="plugin-output">{problem}</pre>}
     </form>
   );
@@ -260,28 +382,39 @@ function newsFor(plugin: PluginInfo, pluginUpdates: FoundUpdate[]): PluginNews |
   return found && plugin.source.kind === "git" && plugin.source.commit === found.from ? found : undefined;
 }
 
-/** Updates every plugin with new commits, one after the other, and stops at the first that fails. */
+/** Clones every plugin's update, then asks once for all of them; stops at the first clone or build that fails. */
 function UpdateAll({ updates }: { updates: FoundUpdate[] }) {
-  const [updating, setUpdating] = useState<string | null>(null);
+  const [cloning, setCloning] = useState<string | null>(null);
+  const [offers, setOffers] = useState<PluginOffer[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const updateAll = async () => {
+  const offerAll = async () => {
     setProblem(null);
+    const offered: PluginOffer[] = [];
     for (const { folder, title } of updates) {
-      setUpdating(title);
-      const failed = await changePlugins((requestId) => ({ type: "plugins.update", requestId, folder }));
-      if (failed) {
-        setProblem(`${title}: ${failed}`);
-        break;
+      setCloning(title);
+      const { offer, problem } = await offerPlugin((requestId) => ({ type: "plugins.offer-update", requestId, folder }));
+      if (!offer) {
+        discard(offered);
+        setCloning(null);
+        return setProblem(`${title}: ${problem}`);
       }
+      offered.push(offer);
     }
-    setUpdating(null);
+    setCloning(null);
+    setOffers(offered);
+  };
+  const settled = (outcome: Settled) => {
+    setOffers(null);
+    setProblem(outcome.problem);
   };
   return (
     <div className="plugin-update-all">
-      {updating ? (
-        <span className="plugin-status">Updating {updating}…</span>
+      {cloning ? (
+        <span className="plugin-status">Cloning {cloning}…</span>
+      ) : offers ? (
+        <PluginConsent question={`Update ${offers.length === 1 ? offers[0]!.title : `${offers.length} plugins`}?`} offers={offers} agree="Update all" decline="Don't update" onSettled={settled} />
       ) : (
-        <button type="button" data-hint={hints.updateAllPlugins} onClick={updateAll}>
+        <button type="button" data-hint={hints.updateAllPlugins} onClick={offerAll}>
           Update all ({updates.length})
         </button>
       )}
@@ -334,8 +467,9 @@ export function PluginSettings({ pluginUpdates }: { pluginUpdates: FoundUpdate[]
       )}
       <h3>Add a plugin from a git repo</h3>
       <p className="hint">
-        Its code runs inside Mirador with your permissions, and adding it runs the build command its plugin.json names. Add only repos you trust. A
-        plugin stays on the commit it was added at until you update it.
+        Its code runs inside Mirador with your permissions, and installing it runs the build command its plugin.json names. Mirador clones it
+        first and shows you what of it runs, and runs none of it until you agree; an update asks again. A plugin stays on the commit it was
+        added at until you update it.
       </p>
       <AddPlugin />
     </>

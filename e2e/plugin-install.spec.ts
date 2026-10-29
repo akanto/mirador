@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, openSettings, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
@@ -47,6 +47,11 @@ test.afterAll(async () => {
 
 const pluginRows = (settings: ReturnType<Page["getByRole"]>) => settings.getByRole("list", { name: "Plugins" }).getByRole("listitem");
 const counterRow = (settings: ReturnType<Page["getByRole"]>) => pluginRows(settings).filter({ hasText: "Counter" });
+const consent = (settings: ReturnType<Page["getByRole"]>, question: string) => settings.getByRole("group", { name: question });
+const staged = () => {
+  const staging = join(host.dataDir, "plugins-staging");
+  return existsSync(staging) ? readdirSync(staging) : [];
+};
 const view = (page: Page) => page.frameLocator(".canvas-panel:visible .canvas-frame.app iframe");
 const appToggle = (page: Page) => page.locator(".canvas-header:visible .app-toggle");
 
@@ -81,7 +86,7 @@ async function startConversationWithoutModel(page: Page) {
   return page.url().match(/#\/c\/(.+)$/)![1]!;
 }
 
-test("a plugin added from a git repo is built, works after a restart, updates to new commits, goes when removed, and follows releases", async ({ page }) => {
+test("a plugin added from a git repo is built only once the user agrees, works after a restart, updates to new commits, goes when removed, and follows releases", async ({ page }) => {
   await signIn(page, host);
   await addWorkspace(page, host.projectDir);
   const profiles = await createProfile(page, profileName, "", "", "opencode");
@@ -99,11 +104,32 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await expect(pluginRows(settings)).toHaveText(["No plugin is installed."]);
   });
 
-  await test.step("adding clones and builds the repo, and the app works from the next start", async () => {
+  await test.step("adding clones the repo and shows what of it would run, and Don't install leaves nothing, its build never run", async () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings.getByLabel("Git URL or path").fill(repo());
     await settings.getByLabel("Branch").fill("main");
     await settings.getByRole("button", { name: "Add" }).click();
+    const asked = consent(settings, "Install Counter?");
+    await expect(asked.getByRole("list", { name: "What runs of Counter" }).getByRole("listitem")).toHaveText([
+      "Its build command, bun build.ts, runs as soon as you agree, with your permissions.",
+      "host.ts, the host code of its app, runs inside Mirador with your permissions from its next start.",
+    ]);
+    await expect(asked.locator(".plugin-source")).toHaveText(`${repo()} · main · ${git(repo(), "rev-parse", "HEAD").slice(0, 12)} Count by one`);
+    const [clone] = staged();
+    expect(existsSync(join(host.dataDir, "plugins-staging", clone!, "plugin.json")), "the repo is cloned").toBe(true);
+    expect(existsSync(join(host.dataDir, "plugins-staging", clone!, "view.js")), "its build hasn't run").toBe(false);
+
+    await asked.getByRole("button", { name: "Don't install" }).click();
+    await expect(asked).toHaveCount(0);
+    await expect(pluginRows(settings)).toHaveText(["No plugin is installed."]);
+    await expect.poll(staged).toEqual([]);
+    await expect(settings.getByLabel("Git URL or path")).toHaveValue(repo());
+  });
+
+  await test.step("Install builds the repo, and the app works from the next start", async () => {
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    await settings.getByRole("button", { name: "Add" }).click();
+    await consent(settings, "Install Counter?").getByRole("button", { name: "Install", exact: true }).click();
     await expect(counterRow(settings)).toContainText(`Countercounter1.0.0used from the next start${repo()} · main · ${git(repo(), "rev-parse", "--short", "HEAD")} Count by one`);
     await expect(settings.getByText("Mirador uses the changed plugins from its next start.")).toBeVisible();
     await expect(settings.getByLabel("Git URL or path")).toHaveValue("");
@@ -113,7 +139,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await expect(view(page).getByRole("button", { name: "Add one" })).toBeVisible();
   });
 
-  await test.step("Mirador finds a plugin's new commits by itself when it starts, and Update all installs them for the next start", async () => {
+  await test.step("Mirador finds a plugin's new commits by itself when it starts, and Update all asks again, then installs them for the next start", async () => {
     writeFileSync(join(repo(), "src", "view.js"), "document.body.innerHTML = '<p id=\"count\">Counting by two</p>';\n");
     git(repo(), "commit", "--quiet", "-am", "Count by two");
     await host.restart();
@@ -124,6 +150,9 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await expect(settings.getByRole("tab", { name: "Plugins" }).locator(".updates-waiting")).toHaveText("1");
     await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by two`);
     await settings.getByRole("button", { name: "Update all (1)" }).click();
+    const asked = consent(settings, "Update Counter?");
+    await expect(asked.getByRole("list", { name: "Commits the update of Counter brings" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by two`);
+    await asked.getByRole("button", { name: "Update all", exact: true }).click();
     await expect(counterRow(settings)).toContainText("used from the next start");
     await expect(counterRow(settings)).toContainText("Count by two");
     await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveCount(0);
@@ -144,6 +173,12 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by three`);
     await expect(page.getByRole("button", { name: "Settings…" }).locator(".updates-waiting")).toHaveText("1");
     await settings.getByRole("button", { name: "Update", exact: true }).click();
+    await consent(settings, "Update Counter?").getByRole("button", { name: "Don't update" }).click();
+    await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Count by three`);
+    await expect(counterRow(settings)).toContainText("Count by two");
+    await expect.poll(staged).toEqual([]);
+    await settings.getByRole("button", { name: "Update", exact: true }).click();
+    await consent(settings, "Update Counter?").getByRole("button", { name: "Update", exact: true }).click();
     await expect(counterRow(settings)).toContainText("used from the next start");
     await expect(counterRow(settings)).toContainText("Count by three");
     await restartFromSettings(page);
@@ -166,6 +201,8 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     const settings = await openSettings(page, "Plugins");
     await settings.getByLabel("Git URL or path").fill(repo());
     await settings.getByRole("button", { name: "Add" }).click();
+    await expect(consent(settings, "Install Counter?").locator(".plugin-source")).toHaveText(`${repo()} · release 1.1.0 · ${git(repo(), "rev-parse", "HEAD").slice(0, 12)} Release 1.1.0`);
+    await consent(settings, "Install Counter?").getByRole("button", { name: "Install", exact: true }).click();
     await expect(counterRow(settings)).toContainText(`Countercounter1.1.0used from the next start${repo()} · releases · ${git(repo(), "rev-parse", "--short", "HEAD")} Release 1.1.0`);
     await settings.getByRole("button", { name: "Check for updates" }).click();
     await expect(settings.getByText("Up to date.")).toBeVisible();
@@ -175,6 +212,7 @@ test("a plugin added from a git repo is built, works after a restart, updates to
     await expect(counterRow(settings).locator(".plugin-release")).toHaveText("1.1.0 → 1.2.0");
     await expect(settings.getByRole("list", { name: "New commits of Counter" })).toHaveText(`${git(repo(), "rev-parse", "--short", "HEAD")} Release 1.2.0`);
     await settings.getByRole("button", { name: "Update", exact: true }).click();
+    await consent(settings, "Update Counter?").getByRole("button", { name: "Update", exact: true }).click();
     await expect(counterRow(settings)).toContainText(`Countercounter1.2.0used from the next start${repo()} · releases · ${git(repo(), "rev-parse", "--short", "HEAD")} Release 1.2.0`);
   });
 });

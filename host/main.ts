@@ -11,7 +11,7 @@ import { InstalledPlugins } from "./apps/installed-plugins.ts";
 import { loadPlugins, watchViews } from "./apps/plugins.ts";
 import { CanvasPlugins } from "./canvas/plugins.ts";
 import { PluginSettingsStore } from "./plugin-settings.ts";
-import { installOfficialPlugin, PluginCatalog } from "./plugin-catalog.ts";
+import { officialPluginInstaller, PluginCatalog } from "./plugin-catalog.ts";
 import { CanvasService } from "./canvas/service.ts";
 import { agentLogsDirectory, loadConfig } from "./config.ts";
 import { ConversationService } from "./conversations.ts";
@@ -93,7 +93,7 @@ const canvas = new CanvasService(store, hub, conversations, notifications, canva
 // The checklist plugin's note about the user's ticks came before the page errors when the checklist was Mirador's own.
 conversations.hearCanvasNotesFrom((conversationId) => [...canvasPlugins.notesForAgent(conversationId), ...canvas.notesForAgent(conversationId)]);
 const plugins = new InstalledPlugins(pluginsFolder, loadedPlugins.problems);
-canvas.installsPluginsWith((name) => installOfficialPlugin(name, catalog, plugins, (listed) => hub.broadcast(listed)));
+canvas.installsPluginsWith(officialPluginInstaller(catalog, plugins, (listed) => hub.broadcast(listed)));
 const apps = new AppDocuments(store, loadedPlugins.apps, {
   openAppsChanged: (openApps) => hub.broadcast({ type: "apps.open", openApps }),
   stateChanged: (state) => hub.publishAppState(state),

@@ -75,17 +75,17 @@ export const hints = {
   machines: "Other computers running Mirador, such as a server whose agents keep working while this one sleeps.",
   revokeDeviceArmed: "Click again to sign this device out. It needs a new invite code to join again.",
   officialPlugin: "One of the official Mirador plugins, listed in the sodre90/mirador-plugins catalog.",
-  installOfficialPlugin: "Clones the plugin's repo, builds it and puts it in Mirador's plugins folder. Mirador uses it from its next start.",
-  addPlugin:
-    "Clones the repo into Mirador's plugins folder and runs the build command its plugin.json names. Mirador loads the plugin from its next start.",
+  installOfficialPlugin: "Clones the plugin's repo and shows what of it runs. Nothing of it runs until you agree.",
+  addPlugin: "Clones the repo and shows what of it runs: its build command and host code. Nothing of it runs until you agree.",
+  agreeToPlugin: "Runs the build command, then puts the plugin in Mirador's plugins folder. Mirador loads it, host code included, from its next start.",
   checkForUpdates: "Looks for a newer Mirador now, rather than at the next look by itself, which comes every 6 hours.",
   checkPluginUpdates:
     "Looks for a newer release of the plugin, or for a plugin that follows a branch, the branch's new commits. Nothing changes until you update.",
   pluginUpdatesWaiting:
     "Plugins from git repos with a newer release or new commits. Mirador looks when it starts and every 6 hours, and installs nothing by itself: update them in Settings › Plugins.",
-  updateAllPlugins: "Updates every plugin with a newer release or new commits, one after the other. Mirador uses them from its next start.",
+  updateAllPlugins: "Clones every plugin's newer release or new commits and shows what of each runs, then asks once for all of them.",
   updatePlugin:
-    "Clones the newest release, or the branch as it is now, and builds it, and only then replaces the plugin, so a failed update leaves it as it was. Mirador uses the new one from its next start.",
+    "Clones the newest release, or the branch as it is now, and shows what of it runs. Once you agree it builds it, and only then replaces the plugin, so a failed update leaves it as it was.",
   removePluginArmed: "Click again to remove this plugin. Mirador stops loading it from its next start.",
   unlinkPluginArmed: "Click again to remove the link. The folder it points to stays as it is.",
   copyOnSelect: "Text you select in a terminal, by dragging or double- or triple-clicking, goes to the clipboard at once, as in iTerm2 and Linux terminals.",

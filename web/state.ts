@@ -345,6 +345,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
     case "plugins.listed":
     case "plugins.changed":
     case "plugins.commits-found":
+    case "plugins.offered":
     case "newer-version.checked":
     case "plugins.settings":
     case "canvas.item-acted":

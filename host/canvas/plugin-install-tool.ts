@@ -1,14 +1,18 @@
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
+import { offerRuns, offerSource, type PluginOffer } from "../../shared/apps.ts";
 import type { PluginCatalog } from "../plugin-catalog.ts";
 import { PLUGIN_INSTALL_TOOL } from "./guidance.ts";
 import { INSTALL_ANSWER, type CanvasService } from "./service.ts";
 
 const escaped = (text: string) => text.replace(/[&<>"]/g, (character) => `&#${character.charCodeAt(0)};`);
 
-/** The install question: what the plugin does and where its code comes from, for the user to decide on. */
-const aboutPlugin = ({ title, description, repo }: { title: string; description: string; repo: string }, reason: string) =>
-  `<h3>${escaped(title)}</h3><p>${escaped(description)}</p><p><b>Why:</b> ${escaped(reason)}</p><p>Mirador clones and builds <code>${escaped(repo)}</code>, an official Mirador plugin, and uses it from its next restart.</p>`;
+/** What installing the plugin brings, as Settings shows it before an install: where its code comes from and what of it runs. */
+const offerHtml = (offer: PluginOffer) => `<p>${escaped(offerSource(offer))}</p><ul>${offerRuns(offer).map((line) => `<li>${escaped(line)}</li>`).join("")}</ul>`;
+
+/** The install question: what the plugin does, where its code comes from and what of it runs, for the user to decide on. */
+const aboutPlugin = (offer: PluginOffer, description: string, reason: string) =>
+  `<h3>${escaped(offer.title)} ${escaped(offer.version)}</h3><p>${escaped(description)}</p><p><b>Why:</b> ${escaped(reason)}</p>${offerHtml(offer)}<p>An official Mirador plugin. Mirador builds it only if you answer Install, and uses it from its next restart.</p>`;
 
 /** The agent asks to install an official plugin; Mirador installs it only once the user answers Install. */
 export function registerPluginInstallTool(server: McpServer, catalog: PluginCatalog, canvas: CanvasService, callingConversation: (ctx: ServerContext) => Promise<string>) {
@@ -25,17 +29,18 @@ export function registerPluginInstallTool(server: McpServer, catalog: PluginCata
     async ({ name, reason }, ctx) => {
       try {
         const plugin = catalog.installable(name);
+        const offer = await canvas.offerPlugin(plugin.name);
         canvas.openAsk(
           await callingConversation(ctx),
           {
             question: `Install the ${plugin.title} plugin?`,
-            html: aboutPlugin(plugin, reason),
+            html: aboutPlugin(offer, plugin.description, reason),
             options: [
-              { label: INSTALL_ANSWER, description: "Clone and build it now; Mirador uses it from its next restart.", recommended: true },
+              { label: INSTALL_ANSWER, description: "Build it now; Mirador uses it from its next restart.", recommended: true },
               { label: "Not now", description: "Nothing is installed." },
             ],
           },
-          { installsPlugin: plugin.name },
+          { installsPluginOffer: offer.id },
         );
         return { content: [{ type: "text" as const, text: "The question is showing in the user's browser. Their answer, and whether the install went through, arrive as their next message. End your turn now." }] };
       } catch (error) {

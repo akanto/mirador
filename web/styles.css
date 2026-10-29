@@ -6483,6 +6483,39 @@ body.reordering * {
   flex: 1 1 120px;
 }
 
+.plugin-consent {
+  display: grid;
+  flex-basis: 100%;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+
+.plugin-question {
+  margin: 0;
+  font-weight: 600;
+}
+
+.plugin-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.plugin-runs {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 18px;
+  font-size: calc(12px * var(--font-scale));
+}
+
+.plugin-consent .hint {
+  margin: 0;
+}
+
 .plugin-list > li.plugin-none {
   border-style: dashed;
   color: var(--muted);

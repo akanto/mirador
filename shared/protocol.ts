@@ -33,7 +33,7 @@ import type {
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges, ProjectFiles } from "./changes.ts";
 import type { PageLibraries } from "./canvas-export.ts";
-import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginSettings, PluginUpdate } from "./apps.ts";
+import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginOffer, PluginSettings, PluginUpdate } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
 import type { NewerVersion } from "./newer-version.ts";
@@ -241,10 +241,13 @@ export type ClientMessage =
   | { type: "plugins.list" }
   /** The user's choice for one of a plugin's settings. */
   | { type: "plugins.choose-setting"; plugin: string; setting: string; value: string }
-  /** `url` is anything git clones, a local path too; without a branch, the repo's default one. */
-  | { type: "plugins.add"; requestId: string; url: string; branch: string | null }
+  /** Clones without building, for the user to agree to; answered with "plugins.offered". `url` is anything git clones, a local path too; without a branch, its newest release or default branch. */
+  | { type: "plugins.offer"; requestId: string; url: string; branch: string | null }
+  | { type: "plugins.offer-update"; requestId: string; folder: string }
+  /** The user agreed to the offer: builds it and installs it, or swaps it in for the plugin it updates. */
+  | { type: "plugins.install"; requestId: string; offerId: string }
+  | { type: "plugins.discard"; offerId: string }
   | { type: "plugins.find-commits"; requestId: string; folder: string }
-  | { type: "plugins.update"; requestId: string; folder: string }
   | { type: "plugins.remove"; requestId: string; folder: string }
   | { type: "devices.invite"; requestId: string }
   /** Looks for the addresses other devices reach this host at; address.serve first puts its ports on the tailnet, when Tailscale is installed. */
@@ -438,8 +441,9 @@ export type ServerMessage =
   | { type: "plugins.views"; installedApps: InstalledApp[]; canvasViews: Record<string, string> }
   /** Every plugin's settings, whenever the user chooses one. */
   | { type: "plugins.settings"; pluginSettings: PluginSettings[] }
-  /** The answer to plugins.add, plugins.update and plugins.remove. */
+  /** The answer to plugins.install and plugins.remove. */
   | { type: "plugins.changed"; requestId: string; problem: string | null }
+  | { type: "plugins.offered"; requestId: string; offer: PluginOffer | null; problem: string | null }
   /** The plugin's reply to an item's action, or why there is none. */
   | { type: "canvas.item-acted"; requestId: string; reply: unknown; problem: string | null }
   /** What updating the plugin would bring: a newer release and its commits, or the commits on its branch it lacks, newest first. */
