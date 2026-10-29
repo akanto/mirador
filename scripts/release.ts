@@ -377,6 +377,7 @@ function startWindowsRun(release: Release, head: string) {
   const started = readBoth(["gh", "workflow", "run", WINDOWS_WORKFLOW, "--repo", RELEASES_REPOSITORY, "--ref", release.branch, "-f", `commit=${head}`]);
   const runId = runIdIn(started);
   if (!runId) throw new Error(`gh started the Windows build without naming its run; find "Windows release of ${head}" with gh run list --workflow ${WINDOWS_WORKFLOW}`);
+  mkdirSync(release.dist, { recursive: true });
   writeFileSync(join(release.dist, WINDOWS_RUN_FILE), JSON.stringify({ id: runId, commit: head } satisfies WindowsRun));
   return runId;
 }
