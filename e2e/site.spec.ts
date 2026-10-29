@@ -131,3 +131,17 @@ test("on a phone the page fits the screen without sideways scrolling, and the qu
   await question.locator("summary").click();
   await expect(question.getByText("There is no telemetry.")).toBeVisible();
 });
+
+test("the footer leads to the privacy policy, which loads without errors and leads back home", async ({ page }) => {
+  const { problems } = await openSite(page);
+  await page.locator("footer").getByRole("link", { name: "Privacy" }).click();
+  await expect(page).toHaveURL(`${siteUrl}privacy.html`);
+  await expect(page).toHaveTitle("Privacy policy · Mirador");
+  await expect(page.getByRole("heading", { level: 2, name: "Mirador for Android" })).toBeVisible();
+  await expect(page.getByText("The microphone is used only while you hold the send button to dictate.", { exact: false })).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 760 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  await page.locator(".brand").click();
+  await expect(page).toHaveURL(siteUrl);
+  expect(problems).toEqual([]);
+});

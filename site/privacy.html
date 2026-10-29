@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy policy · Mirador</title>
+  <meta name="description" content="What Mirador and Mirador for Android do with your data: it stays on your own devices.">
+  <link rel="canonical" href="https://mirador.sodre90.com/privacy.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#0c0b16">
+  <link rel="preload" href="inter.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="32" height="32">Mirador</a>
+    <nav aria-label="Sections">
+      <a href="./#features">Features</a>
+      <a href="./#install">Install</a>
+      <a href="https://github.com/sodre90/mirador">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <article class="policy">
+      <h1>Privacy policy</h1>
+      <p class="updated">Last updated 29 October 2026</p>
+
+      <p>This policy covers Mirador, the app you run on your computer, and Mirador for Android, the phone app that connects to it. Both are made by Péter Erdős. In short: your data stays on your own devices. Neither app has accounts, analytics, advertising or crash reporting, and nothing is sent to us.</p>
+
+      <h2>Mirador on your computer</h2>
+      <p>Mirador keeps your conversations, settings and the devices you invited in a database on your computer. The coding agents you run with it talk to their own model providers, under those providers' terms, as they do without Mirador. Mirador itself only reaches GitHub, to see whether a newer release is out and to download the plugins it installs.</p>
+
+      <h2>Mirador for Android</h2>
+      <p>The phone app connects only to the Mirador computers you pair it with, directly or through a network you choose, such as Tailscale. What it shows comes from them, and what you send goes to them:</p>
+      <ul>
+        <li><strong>Messages and answers</strong> you write go to the computer the conversation runs on.</li>
+        <li><strong>Photos and screenshots</strong> you attach, from the camera, your gallery or another app's share, are uploaded to that computer.</li>
+        <li><strong>The camera</strong> scans the QR code that pairs the phone with a computer, and takes photos you choose to attach.</li>
+        <li><strong>The microphone</strong> is used only while you hold the send button to dictate. Where the phone has its own speech recognition, what you say stays on the phone. Otherwise Android's voice typing service turns it into text, and that service may process it on its servers under its own privacy policy.</li>
+        <li><strong>Replies read aloud</strong> are made on your computer and played on the phone.</li>
+      </ul>
+      <p>The phone keeps the computers it is paired with, your settings and unsent drafts in its own storage, with the computers' access tokens in Android's secure storage. Fingerprint or face unlock, when you turn the app lock on, is checked by Android; the app never sees it. Notifications are made on the phone from what your computers tell it, without any push service.</p>
+      <p>Uninstalling the app deletes everything it stored. To stop a phone reaching a computer, remove it in Mirador's <strong>Settings → Devices</strong>.</p>
+
+      <h2>Sharing and selling</h2>
+      <p>We don't collect your data, so we don't share or sell it. Google Play may collect data about installs and app crashes under Google's own privacy policy.</p>
+
+      <h2>Children</h2>
+      <p>Mirador is a tool for software developers and isn't meant for children.</p>
+
+      <h2>Changes and questions</h2>
+      <p>Changes to this policy are published on this page with a new date. For questions, open an issue at <a href="https://github.com/sodre90/mirador/issues">github.com/sodre90/mirador/issues</a>.</p>
+    </article>
+  </main>
+
+  <footer>
+    <p><img src="icon.svg" alt="" width="20" height="20"> Mirador · MIT license · Made by Péter Erdős</p>
+    <p><a href="https://github.com/sodre90/mirador">GitHub</a> · <a href="https://github.com/sodre90/mirador/releases/latest">Releases</a> · <a href="privacy.html">Privacy</a></p>
+  </footer>
+</body>
+</html>
