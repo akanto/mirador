@@ -406,7 +406,7 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
 
   return (
     <section className="reachability" aria-label="How other devices reach this Mirador">
-      <h3>How other devices reach it</h3>
+      <h3>How other devices reach Mirador</h3>
       <p className="hint" data-hint={hints.reachRoute}>
         One at a time. The host uses the chosen one from its next start, for invite links and for the devices that already joined.
       </p>
