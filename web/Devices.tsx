@@ -471,22 +471,34 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
   );
 }
 
-function InviteLink({ link }: { link: string }) {
+function InviteLink({ link, appOnly }: { link: string; appOnly: boolean }) {
   return (
     <>
       <QrCode text={link} label="Link as a QR code" />
-      <span>
-        Or scan this with the Mirador app on a phone, or open <code className="invite-link">{link}</code> on the device.
-      </span>
+      {appOnly ? (
+        <div>
+          Scan this with the Mirador app on a phone.
+          <details className="invite-link-details">
+            <summary>Show the link</summary>
+            Only the Mirador app opens it, not a browser: <code className="invite-link">{link}</code>
+          </details>
+        </div>
+      ) : (
+        <span>
+          Or scan this with the Mirador app on a phone, or open <code className="invite-link">{link}</code> on the device.
+        </span>
+      )}
     </>
   );
 }
 
 type InviteRoute = "address" | "tunnel";
 
+const joinsThroughTunnel = (invite: Invite, route: InviteRoute, publicOrigin: string | null) => Boolean(invite.tunnel) && (route === "tunnel" || !publicOrigin);
+
 /** The link an invite opens: at the address other devices reach this Mirador at, or into its tunnel, which only the Mirador app can join through. */
 function inviteLinkThrough(invite: Invite, route: InviteRoute, publicOrigin: string | null, authorityFingerprint: string | null) {
-  if (invite.tunnel && (route === "tunnel" || !publicOrigin)) return inviteLink(tunnelOrigin(invite.tunnel), invite.code, null, invite.tunnel);
+  if (invite.tunnel && joinsThroughTunnel(invite, route, publicOrigin)) return inviteLink(tunnelOrigin(invite.tunnel), invite.code, null, invite.tunnel);
   return publicOrigin && inviteLink(publicOrigin, invite.code, authorityFingerprint);
 }
 
@@ -494,14 +506,31 @@ function InviteRouteChoice({ address, route, onChange }: { address: string; rout
   return (
     <div className="invite-routes" role="radiogroup" aria-label="How the device joins" data-hint={hints.inviteRoute}>
       <label>
-        <input type="radio" name="invite-route" checked={route === "address"} onChange={() => onChange("address")} />
-        At {new URL(address).host}
-      </label>
-      <label>
         <input type="radio" name="invite-route" checked={route === "tunnel"} onChange={() => onChange("tunnel")} />
         Peer to peer, with the Mirador app
       </label>
+      <label>
+        <input type="radio" name="invite-route" checked={route === "address"} onChange={() => onChange("address")} />
+        At {new URL(address).host}
+      </label>
     </div>
+  );
+}
+
+function InviteRouteHint({ throughTunnel, address }: { throughTunnel: boolean; address: string | null }) {
+  if (throughTunnel)
+    return (
+      <span className="hint invite-route-hint">
+        The app connects straight to this Mac from most networks, over mobile data or another Wi-Fi, with no VPN. A server of yours only introduces the two;
+        what they send is encrypted end to end.
+      </span>
+    );
+  return (
+    address && (
+      <span className="hint invite-route-hint">
+        A browser or the app joins at {new URL(address).host}, so the device has to reach that address, for example by being on the same tailnet.
+      </span>
+    )
   );
 }
 
@@ -516,7 +545,7 @@ function InviteWithoutLink() {
 
 export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
-  const [inviteRoute, setInviteRoute] = useState<InviteRoute>("address");
+  const [inviteRoute, setInviteRoute] = useState<InviteRoute>("tunnel");
   const shownInSidebar = useConnectedDevicesInSidebar();
 
   const createInvite = async () => {
@@ -576,8 +605,9 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
               Code <code className="invite-code">{invite.code}</code>, works once until {timeOf(invite.expiresAt)}.
             </span>
             {publicOrigin && invite.tunnel && <InviteRouteChoice address={publicOrigin} route={inviteRoute} onChange={setInviteRoute} />}
+            {invite.tunnel && <InviteRouteHint throughTunnel={joinsThroughTunnel(invite, inviteRoute, publicOrigin)} address={publicOrigin} />}
             {link ? (
-              <InviteLink link={link} />
+              <InviteLink link={link} appOnly={joinsThroughTunnel(invite, inviteRoute, publicOrigin)} />
             ) : (
               <InviteWithoutLink />
             )}

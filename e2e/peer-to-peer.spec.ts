@@ -98,7 +98,9 @@ test("a device joins through the tunnel with an invite's one-time key, then reac
   const link = (await settings.locator(".invite-link").textContent())!;
   const invite = tunnelIn(new URL(link).hash)!;
 
-  await test.step("with no public address, the invite link points at the host's own address in the tunnel", () => {
+  await test.step("with no public address, the invite link points at the host's own address in the tunnel", async () => {
+    await expect(settings.getByRole("radiogroup", { name: "How the device joins" })).toHaveCount(0);
+    await expect(settings.getByLabel("Invite")).toContainText("The app connects straight to this Mac from most networks");
     expect(new URL(link).origin).toBe(`http://[${invite.hostAddress}]:4600`);
     expect(invite.broker).toEqual({ address: `localhost:${brokerPort}`, key: brokerKey });
   });
@@ -179,7 +181,7 @@ test("a device joins through the tunnel with an invite's one-time key, then reac
   });
 });
 
-test("with an address of its own as well, an invite joins there unless peer to peer is chosen", async ({ page }) => {
+test("with an address of its own as well, an invite joins peer to peer unless the address is chosen", async ({ page }) => {
   const addressed = new TestHost({
     environment: () => ({
       MIRADOR_P2P_BINARY: binary,
@@ -194,17 +196,25 @@ test("with an address of its own as well, an invite joins there unless peer to p
     await signIn(page, addressed);
     const settings = await openSettings(page, "Devices");
     await settings.getByRole("button", { name: "Invite a device" }).click();
-    const link = settings.locator(".invite-link");
-    const routes = settings.getByRole("radiogroup", { name: "How the device joins" });
+    const invite = settings.getByLabel("Invite");
+    const link = invite.locator(".invite-link");
+    const routes = invite.getByRole("radiogroup", { name: "How the device joins" });
 
-    await expect(routes.getByRole("radio", { name: "At mirador.example.ts.net" })).toBeChecked();
+    await expect(routes.getByRole("radio", { name: "Peer to peer, with the Mirador app" })).toBeChecked();
+    await expect(invite).toContainText("from most networks, over mobile data or another Wi-Fi, with no VPN");
+    await expect(invite).toContainText("Scan this with the Mirador app on a phone.");
+    await expect(link).toBeHidden();
+    await invite.getByText("Show the link").click();
+    await expect(link).toBeVisible();
+    await expect(link).toHaveText(/^http:\/\/\[fd/);
+    const tunnel = tunnelIn(new URL((await link.textContent())!).hash)!;
+    expect(new URL((await link.textContent())!).origin).toBe(`http://[${tunnel.hostAddress}]:4600`);
+
+    await routes.getByRole("radio", { name: "At mirador.example.ts.net" }).check();
     await expect(link).toHaveText(/^https:\/\/mirador\.example\.ts\.net\//);
     expect(tunnelIn(new URL((await link.textContent())!).hash)).toBeNull();
-
-    await routes.getByRole("radio", { name: "Peer to peer, with the Mirador app" }).check();
-    await expect(link).toHaveText(/^http:\/\/\[fd/);
-    const invite = tunnelIn(new URL((await link.textContent())!).hash)!;
-    expect(new URL((await link.textContent())!).origin).toBe(`http://[${invite.hostAddress}]:4600`);
+    await expect(invite).toContainText("A browser or the app joins at mirador.example.ts.net");
+    await expect(invite).toContainText("or open");
   } finally {
     await addressed.stop();
     await addressed.cleanUp();
