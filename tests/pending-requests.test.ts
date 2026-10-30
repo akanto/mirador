@@ -57,13 +57,13 @@ describe("the kind of tool a pending permission request is about", () => {
 });
 
 describe("a pending ask", () => {
-  test("carries its question and answers, and whether it shows pages", () => {
-    const plain = ask({ question: "Which layout?", options: [{ label: "Grid", description: "Cards in rows" }, { label: "List" }], allowOther: true });
+  test("carries its question and answers, the recommended one marked, and whether it shows pages", () => {
+    const plain = ask({ question: "Which layout?", options: [{ label: "Grid", description: "Cards in rows" }, { label: "List", recommended: true }], allowOther: true });
     expect(pendingAsk(plain)).toEqual({
       kind: "ask",
       itemId: "a1",
       question: "Which layout?",
-      choices: [{ label: "Grid", description: "Cards in rows" }, { label: "List" }],
+      choices: [{ label: "Grid", description: "Cards in rows" }, { label: "List", recommended: true }],
       allowOther: true,
       questions: 1,
       previews: false,

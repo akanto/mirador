@@ -358,7 +358,7 @@ export interface PendingAsk {
   kind: "ask";
   itemId: string;
   question: string;
-  choices: Pick<AskOption, "label" | "description">[];
+  choices: Pick<AskOption, "label" | "description" | "recommended">[];
   allowOther: boolean;
   /** How many questions it asks; the ones after the first show only in the conversation. */
   questions: number;

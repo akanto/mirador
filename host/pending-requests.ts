@@ -40,7 +40,7 @@ export function pendingAsk(item: AskItem): PendingAsk {
     kind: "ask",
     itemId: item.id,
     question: first?.question ?? item.title,
-    choices: (first?.options ?? []).map(({ label, description }) => ({ label, ...(description && { description }) })),
+    choices: (first?.options ?? []).map(({ label, description, recommended }) => ({ label, ...(description && { description }), ...(recommended && { recommended }) })),
     allowOther: first?.allowOther ?? false,
     questions: questions.length,
     previews: questions.some(({ html, options }) => Boolean(html) || options.some((option) => Boolean(option.html))),
