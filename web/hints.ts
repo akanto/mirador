@@ -66,6 +66,8 @@ export const hints = {
     "Mirador serves HTTPS itself on this port, with a certificate authority it makes, so devices on the same network need no proxy and no address. Each browser warns once about the certificate (or trusts it for good once it installs mirador-ca.pem).",
   inviteDevice:
     "Makes a one-time code another browser or app joins this Mirador with, within 15 minutes. A joined device can do everything here, including run commands in terminals.",
+  inviteRoute:
+    "Peer to peer reaches this Mac from anywhere, with no VPN, through the Mirador app on a phone; a browser can only join at the address. The QR code and the link change with the choice.",
   removeMachineArmed: "Click again to remove this machine from the list. It keeps running, and this computer stays among its devices until you revoke it there.",
   thisComputer: "This computer's own workspaces and conversations",
   manageMachines: "Add or remove machines",

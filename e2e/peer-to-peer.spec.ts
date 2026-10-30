@@ -178,3 +178,35 @@ test("a device joins through the tunnel with an invite's one-time key, then reac
     expect(afterRevoking).toBe("no answer");
   });
 });
+
+test("with an address of its own as well, an invite joins there unless peer to peer is chosen", async ({ page }) => {
+  const addressed = new TestHost({
+    environment: () => ({
+      MIRADOR_P2P_BINARY: binary,
+      MIRADOR_P2P_BROKER: `localhost:${brokerPort}`,
+      MIRADOR_P2P_BROKER_KEY: brokerKey,
+      MIRADOR_PUBLIC_ORIGIN: "https://mirador.example.ts.net",
+      MIRADOR_PUBLIC_CANVAS_ORIGIN: "https://mirador.example.ts.net:4601",
+    }),
+  });
+  await addressed.start();
+  try {
+    await signIn(page, addressed);
+    const settings = await openSettings(page, "Devices");
+    await settings.getByRole("button", { name: "Invite a device" }).click();
+    const link = settings.locator(".invite-link");
+    const routes = settings.getByRole("radiogroup", { name: "How the device joins" });
+
+    await expect(routes.getByRole("radio", { name: "At mirador.example.ts.net" })).toBeChecked();
+    await expect(link).toHaveText(/^https:\/\/mirador\.example\.ts\.net\//);
+    expect(tunnelIn(new URL((await link.textContent())!).hash)).toBeNull();
+
+    await routes.getByRole("radio", { name: "Peer to peer, with the Mirador app" }).check();
+    await expect(link).toHaveText(/^http:\/\/\[fd/);
+    const invite = tunnelIn(new URL((await link.textContent())!).hash)!;
+    expect(new URL((await link.textContent())!).origin).toBe(`http://[${invite.hostAddress}]:4600`);
+  } finally {
+    await addressed.stop();
+    await addressed.cleanUp();
+  }
+});

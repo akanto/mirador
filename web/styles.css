@@ -6526,6 +6526,12 @@ body.reordering * {
   gap: 4px;
 }
 
+.invite-routes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
 .invite-code {
   font-size: calc(15px * var(--font-scale));
   letter-spacing: 0.06em;

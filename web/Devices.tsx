@@ -482,6 +482,29 @@ function InviteLink({ link }: { link: string }) {
   );
 }
 
+type InviteRoute = "address" | "tunnel";
+
+/** The link an invite opens: at the address other devices reach this Mirador at, or into its tunnel, which only the Mirador app can join through. */
+function inviteLinkThrough(invite: Invite, route: InviteRoute, publicOrigin: string | null, authorityFingerprint: string | null) {
+  if (invite.tunnel && (route === "tunnel" || !publicOrigin)) return inviteLink(tunnelOrigin(invite.tunnel), invite.code, null, invite.tunnel);
+  return publicOrigin && inviteLink(publicOrigin, invite.code, authorityFingerprint);
+}
+
+function InviteRouteChoice({ address, route, onChange }: { address: string; route: InviteRoute; onChange: (route: InviteRoute) => void }) {
+  return (
+    <div className="invite-routes" role="radiogroup" aria-label="How the device joins" data-hint={hints.inviteRoute}>
+      <label>
+        <input type="radio" name="invite-route" checked={route === "address"} onChange={() => onChange("address")} />
+        At {new URL(address).host}
+      </label>
+      <label>
+        <input type="radio" name="invite-route" checked={route === "tunnel"} onChange={() => onChange("tunnel")} />
+        Peer to peer, with the Mirador app
+      </label>
+    </div>
+  );
+}
+
 function InviteWithoutLink() {
   return (
     <span className="hint invite-without-link">
@@ -493,6 +516,7 @@ function InviteWithoutLink() {
 
 export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
+  const [inviteRoute, setInviteRoute] = useState<InviteRoute>("address");
   const shownInSidebar = useConnectedDevicesInSidebar();
 
   const createInvite = async () => {
@@ -508,7 +532,7 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   };
 
   const publicOrigin = listed?.reachability.publicAddress?.origin ?? null;
-  const inviteOrigin = publicOrigin ?? (invite?.tunnel ? tunnelOrigin(invite.tunnel) : null);
+  const link = invite && inviteLinkThrough(invite, inviteRoute, publicOrigin, listed?.reachability.authorityFingerprint ?? null);
   return (
     <>
       <h3>Devices</h3>
@@ -551,8 +575,9 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
             <span>
               Code <code className="invite-code">{invite.code}</code>, works once until {timeOf(invite.expiresAt)}.
             </span>
-            {inviteOrigin ? (
-              <InviteLink link={inviteLink(inviteOrigin, invite.code, listed?.reachability.authorityFingerprint, invite.tunnel)} />
+            {publicOrigin && invite.tunnel && <InviteRouteChoice address={publicOrigin} route={inviteRoute} onChange={setInviteRoute} />}
+            {link ? (
+              <InviteLink link={link} />
             ) : (
               <InviteWithoutLink />
             )}
