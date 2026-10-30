@@ -103,6 +103,9 @@ export function writeCompiledBunProgram(directory: string, name: string, script:
 /** Windows names it Path; a second key named PATH beside it would leave which one the host gets to chance. */
 const pathVariableOf = (environment: NodeJS.ProcessEnv) => Object.keys(environment).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
 
+const withoutPeerToPeer = (environment: NodeJS.ProcessEnv) =>
+  Object.fromEntries(Object.entries(environment).filter(([variable]) => !variable.startsWith("MIRADOR_P2P_")));
+
 /** A host environment whose PATH is just `folders`, under the name the system gives PATH. */
 export const pathOf = (folders: string[]) => ({ [pathVariableOf(process.env)]: folders.join(delimiter) });
 
@@ -220,9 +223,12 @@ export class TestHost {
     return process.env.MIRADOR_E2E_MINIMAL_ENV ? programOnPath("bun") : "bun";
   }
 
-  /** MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. */
+  /**
+   * MIRADOR_E2E_MINIMAL_ENV=1 starts the host like a bare terminal would: no inherited agent or shell variables. The
+   * owner's own peer-to-peer settings never reach it: a spec that wants a tunnel sets its own.
+   */
   private baseEnvironment(): NodeJS.ProcessEnv {
-    if (!process.env.MIRADOR_E2E_MINIMAL_ENV) return process.env;
+    if (!process.env.MIRADOR_E2E_MINIMAL_ENV) return withoutPeerToPeer(process.env);
     const bunDir = dirname(programOnPath("bun"));
     return {
       HOME: homedir(),
