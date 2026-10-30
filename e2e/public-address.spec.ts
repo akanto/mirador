@@ -62,7 +62,8 @@ test("Settings offers one way at a time to reach it, and names what each one nee
   await signIn(page, host);
   const settings = await openSettings(page, "Devices");
 
-  await test.step("a fresh host reaches no other device, and only that choice shows no controls", async () => {
+  await test.step("a fresh host reaches no other device, the first choice, and only that choice shows no controls", async () => {
+    await expect(settings.getByRole("radiogroup", { name: "How other devices reach this Mirador" }).locator(".route-choice")).toHaveText([ALONE_ROUTE, ADDRESS_ROUTE, NETWORK_ROUTE]);
     await expect(routeChoice(settings, ALONE_ROUTE)).toBeChecked();
     await expect(addressForm(settings)).toHaveCount(0);
     await expect(settings.getByRole("button", { name: "Find the address" })).toHaveCount(0);

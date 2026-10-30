@@ -412,6 +412,15 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
       </p>
       <div className="routes" role="radiogroup" aria-label="How other devices reach this Mirador">
         <RouteOption
+          title="Only on this machine"
+          chosen={route === "none"}
+          locked={locked}
+          onChoose={() => reveal("none")}
+          description="No other device reaches it, and the host serves nothing on the network."
+        >
+          {useThis("none")}
+        </RouteOption>
+        <RouteOption
           title="At an address a proxy gives it"
           chosen={route === "address"}
           locked={locked}
@@ -441,15 +450,6 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
           }
         >
           {useThis("network")}
-        </RouteOption>
-        <RouteOption
-          title="Only on this machine"
-          chosen={route === "none"}
-          locked={locked}
-          onChoose={() => reveal("none")}
-          description="No other device reaches it, and the host serves nothing on the network."
-        >
-          {useThis("none")}
         </RouteOption>
       </div>
       {locked && (
