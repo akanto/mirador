@@ -10,6 +10,8 @@ const DEVICE_NAME_LENGTH = 80;
 
 export const hashed = (secret: string) => createHash("sha256").update(secret).digest("hex");
 const withoutSeparators = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+/** The same for every way an invite code is written, and kept instead of the code. */
+export const inviteKey = (code: string) => hashed(withoutSeparators(code));
 const inGroupsOfFour = (code: string) => code.match(/.{1,4}/g)!.join("-");
 
 export interface Invite {
@@ -29,13 +31,13 @@ export class DeviceService {
   invite(): Invite {
     const code = Array.from({ length: INVITE_LENGTH }, () => INVITE_ALPHABET[randomInt(INVITE_ALPHABET.length)]).join("");
     const expiresAt = this.now() + INVITE_LIFETIME_MILLISECONDS;
-    this.store.addInvite(hashed(code), expiresAt);
+    this.store.addInvite(inviteKey(code), expiresAt);
     return { code: inGroupsOfFour(code), expiresAt };
   }
 
   /** Uses the invite up and gives the new device its token; null if the code is wrong, used or expired. */
   join(code: string, name: string) {
-    return this.store.takeInvite(hashed(withoutSeparators(code)), this.now()) ? this.admit(name) : null;
+    return this.store.takeInvite(inviteKey(code), this.now()) ? this.admit(name) : null;
   }
 
   /** Lets a new device in, with the token it signs in with from now on; only its hash is kept. */

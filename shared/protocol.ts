@@ -34,6 +34,7 @@ import type {
 } from "./model.ts";
 import type { ChangeList, ChangeScope, FileChanges, ProjectFiles } from "./changes.ts";
 import type { PageLibraries } from "./canvas-export.ts";
+import type { InviteTunnel } from "./tunnel.ts";
 import type { AppDocumentState, AppStorageItems, CatalogPlugin, InstalledApp, OpenApp, PluginCommit, PluginInfo, PluginOffer, PluginSettings, PluginUpdate } from "./apps.ts";
 import type { LowDataSubscription } from "./low-data.ts";
 import type { MentionSuggestion } from "./mentions.ts";
@@ -453,7 +454,7 @@ export type ServerMessage =
   | { type: "canvas.item-acted"; requestId: string; reply: unknown; problem: string | null }
   /** What updating the plugin would bring: a newer release and its commits, or the commits on its branch it lacks, newest first. */
   | { type: "plugins.commits-found"; requestId: string; release: string | null; commits: PluginCommit[]; problem: string | null }
-  | { type: "devices.invited"; requestId: string; code: string; expiresAt: number }
+  | { type: "devices.invited"; requestId: string; code: string; expiresAt: number; tunnel: InviteTunnel | null }
   /** The addresses that answered as this Mirador, and whether this machine has Tailscale to put its ports on the tailnet. */
   | { type: "address.found"; requestId: string; addresses: FoundAddress[]; tailscale: "absent" | "present"; problem: string | null }
   | { type: "machines.changed"; machines: Machine[] }

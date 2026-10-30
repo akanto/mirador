@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
 import { askToJoin, spacedNumber } from "../shared/join-requests.ts";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
+import { tunnelOrigin } from "../shared/tunnel.ts";
 import type { PublicAddress, ReachabilitySettings } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
@@ -507,6 +508,7 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   };
 
   const publicOrigin = listed?.reachability.publicAddress?.origin ?? null;
+  const inviteOrigin = publicOrigin ?? (invite?.tunnel ? tunnelOrigin(invite.tunnel) : null);
   return (
     <>
       <h3>Devices</h3>
@@ -549,8 +551,8 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
             <span>
               Code <code className="invite-code">{invite.code}</code>, works once until {timeOf(invite.expiresAt)}.
             </span>
-            {publicOrigin ? (
-              <InviteLink link={inviteLink(publicOrigin, invite.code, listed?.reachability.authorityFingerprint)} />
+            {inviteOrigin ? (
+              <InviteLink link={inviteLink(inviteOrigin, invite.code, listed?.reachability.authorityFingerprint, invite.tunnel)} />
             ) : (
               <InviteWithoutLink />
             )}

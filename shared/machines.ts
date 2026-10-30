@@ -1,13 +1,23 @@
-/** An invite link's #part: the code, then the fingerprint of the machine's own certificate authority when it has one. */
-const joinPath = /^#\/join\/([\w-]+?)(?:\/([\w-]+))?$/;
+import { decodedInviteTunnel, encodedInviteTunnel, type InviteTunnel } from "./tunnel.ts";
+
+/**
+ * An invite link's #part: the code, then the fingerprint of the machine's own certificate authority when it has one,
+ * then how to reach it peer to peer when it can.
+ */
+const joinPath = /^#\/join\/([\w-]+?)(?:\/([\w-]+))?(?:\?tunnel=([\w-]+))?$/;
 
 /** The invite code in an invite link's #part, e.g. #/join/ABCD-EFGH-JKLM. */
 export const joinCodeIn = (hash: string) => joinPath.exec(hash)?.[1] ?? null;
 
 export const authorityFingerprintIn = (hash: string) => joinPath.exec(hash)?.[2] ?? null;
 
-export const inviteLink = (origin: string, code: string, authorityFingerprint: string | null = null) =>
-  `${origin}/#/join/${code}${authorityFingerprint ? `/${authorityFingerprint}` : ""}`;
+export function tunnelIn(hash: string) {
+  const encoded = joinPath.exec(hash)?.[3];
+  return encoded ? decodedInviteTunnel(encoded) : null;
+}
+
+export const inviteLink = (origin: string, code: string, authorityFingerprint: string | null = null, tunnel: InviteTunnel | null = null) =>
+  `${origin}/#/join/${code}${authorityFingerprint ? `/${authorityFingerprint}` : ""}${tunnel ? `?tunnel=${encodedInviteTunnel(tunnel)}` : ""}`;
 
 /** What someone pastes to join a machine: the invite code itself, or the whole invite link. */
 export function inviteIn(text: string) {

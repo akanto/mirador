@@ -116,6 +116,12 @@ export interface SavedTerminalTab {
   scrollback: Map<string, string>;
 }
 
+/** A paired device's key in the peer-to-peer tunnel, and its address there. */
+export interface StoredDeviceTunnel {
+  key: string;
+  address: string;
+}
+
 const addedColumns = [
   { table: "workspaces", column: "default_profile_id", definition: "TEXT" },
   { table: "machines", column: "relay_port", definition: "INTEGER" },
@@ -146,6 +152,8 @@ const addedColumns = [
   { table: "conversations", column: "delegation_dismissed", definition: "INTEGER NOT NULL DEFAULT 0" },
   { table: "profiles", column: "effort", definition: "TEXT" },
   { table: "conversations", column: "plugin_settings", definition: "TEXT" },
+  { table: "devices", column: "tunnel_key", definition: "TEXT" },
+  { table: "devices", column: "tunnel_address", definition: "TEXT" },
 ];
 
 /** A turn that ended while nobody looked at its conversation, or the owner's Unread mark, until someone opens it. */
@@ -1012,6 +1020,21 @@ export class Store {
 
   deleteDevice(id: string) {
     this.db.query("DELETE FROM devices WHERE id = ?").run(id);
+  }
+
+  setDeviceTunnel(id: string, { key, address }: StoredDeviceTunnel) {
+    this.db.query("UPDATE devices SET tunnel_key = ?, tunnel_address = ? WHERE id = ?").run(key, address, id);
+  }
+
+  deviceTunnels(): (StoredDeviceTunnel & { deviceId: string })[] {
+    return this.db
+      .query("SELECT id AS deviceId, tunnel_key AS key, tunnel_address AS address FROM devices WHERE tunnel_key IS NOT NULL ORDER BY joined_at")
+      .all() as (StoredDeviceTunnel & { deviceId: string })[];
+  }
+
+  /** A device's place in the tunnel, kept when its key changes; its key is null until it sends one. */
+  deviceTunnel(id: string): { key: string | null; address: string | null } | undefined {
+    return (this.db.query("SELECT tunnel_key AS key, tunnel_address AS address FROM devices WHERE id = ?").get(id) as { key: string | null; address: string | null } | null) ?? undefined;
   }
 
   appendEvent(conversationId: string, event: ConversationEvent): StoredEvent {

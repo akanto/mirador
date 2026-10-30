@@ -73,6 +73,7 @@ import type { TerminalService } from "./terminals.ts";
 import { VoiceUnavailable, type Voice } from "./voice/voice.ts";
 import type { VoiceEngine } from "./voice/engine/engine.ts";
 import type { KeepAwakeHold } from "./keep-awake.ts";
+import { TunnelRefused, type PeerToPeer, type TunnelEnd, type TunnelListener } from "./p2p/service.ts";
 import { thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 
 export interface HostServices {
@@ -107,6 +108,8 @@ export interface HostServices {
   /** What the network listener serves with; null while the host listens on 127.0.0.1 only. */
   certificate: ServingCertificate | null;
   keepAwake: KeepAwakeHold;
+  /** Null unless the environment turns peer to peer on. */
+  p2p: PeerToPeer | null;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -185,6 +188,7 @@ export function startServer(services: HostServices) {
     watch,
     certificate,
     keepAwake,
+    p2p,
   } = services;
   const appStorage = new AppStorage(store, (name) => apps.installed().some((app) => app.name === name));
   const { network } = config.reachability;
@@ -192,9 +196,20 @@ export function startServer(services: HostServices) {
   const publicHost = config.publicOrigin ? [new URL(config.publicOrigin).host] : [];
   const networkHosts = network && certificate ? certificate.names.map((name) => `${name}:${network.port}`) : [];
   const allowedHosts = new Set([...localHosts, ...publicHost, ...networkHosts]);
-  const hasAllowedHost = (request: Request) => allowedHosts.has(request.headers.get("host") ?? "");
+  /**
+   * Requests that came through the peer-to-peer tunnel, and from whom. The phone's proxy reaches the tunnel at an
+   * address of its own choosing, so these are checked by the socket they arrived on, not by their Host.
+   */
+  const tunnelEnds = new WeakMap<Request, TunnelEnd>();
+  const hasAllowedHost = (request: Request) => tunnelEnds.has(request) || allowedHosts.has(request.headers.get("host") ?? "");
   const pageOrigins = [config.appOrigin, config.publicOrigin, ...networkHosts.map((host) => `https://${host}`)].filter((origin) => origin !== null);
-  const isPageOrigin = (origin: string | null) => origin !== null && pageOrigins.includes(origin);
+  const isOwnOrigin = (origin: string, host: string | null) => origin === `http://${host}` || origin === `https://${host}`;
+  /** Through the tunnel, a page is served from whatever address the device's proxy listens on, so its origin matches its Host. */
+  const isPageOrigin = (request: Request) => {
+    const origin = request.headers.get("origin");
+    if (origin === null) return false;
+    return tunnelEnds.has(request) ? isOwnOrigin(origin, request.headers.get("host")) : pageOrigins.includes(origin);
+  };
   const localCanvasAssetsOrigin = `http://127.0.0.1:${config.canvasAssetsPort}`;
 
   /** Each page loads canvas libraries from the address it reached the host at, so it never needs to trust another. */
@@ -216,7 +231,14 @@ export function startServer(services: HostServices) {
       ? new Response(certificate.authority, { headers: { "Content-Type": "application/x-pem-file", "Content-Disposition": 'attachment; filename="mirador-ca.pem"' } })
       : new Response("This Mirador has no certificate authority of its own.", { status: 404 });
 
-  const signedInAs = signedInWith(config.browserToken, devices);
+  const signedInWithCookie = signedInWith(config.browserToken, devices);
+  /** Through the tunnel, only the device whose socket a request arrived on signs in, and never with this machine's own token. */
+  const signedInAs = (request: Request) => {
+    const end = tunnelEnds.get(request);
+    if (!end) return signedInWithCookie(request);
+    const signedIn = "deviceId" in end ? signedInWithCookie(request) : null;
+    return signedIn?.deviceId && "deviceId" in end && signedIn.deviceId === end.deviceId ? signedIn : null;
+  };
 
   function authenticate(request: Request) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
@@ -237,23 +259,48 @@ export function startServer(services: HostServices) {
   /** From a page of this host, or from no page at all, as when another Mirador joins. */
   function refusedSender(request: Request) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
-    const origin = request.headers.get("origin");
-    if (origin !== null && !isPageOrigin(origin)) return new Response("forbidden origin", { status: 403 });
+    if (request.headers.has("origin") && !isPageOrigin(request)) return new Response("forbidden origin", { status: 403 });
     return null;
   }
 
   /** A browser joins with the cookie it gets here; an app without cookies keeps the token from the reply. */
   const admittedWith = (request: Request, token: string) => ({ "Set-Cookie": tokenCookie(token, request.headers.get("origin")?.startsWith("https://") ?? false) });
 
+  /**
+   * A device that joins with its tunnel key gets its place in the tunnel too. One that joins through the tunnel, with
+   * an invite's one-time key, must send its own key, or it would have no way back in.
+   */
   async function join(request: Request) {
     const refused = refusedSender(request);
     if (refused) return refused;
-    const { code, name } = (await request.json().catch(() => ({}))) as { code?: unknown; name?: unknown };
+    const { code, name, tunnelKey } = (await request.json().catch(() => ({}))) as { code?: unknown; name?: unknown; tunnelKey?: unknown };
     if (typeof code !== "string") return new Response("The invite code is missing.", { status: 400 });
+    const joiningThroughTunnel = tunnelEnds.has(request);
+    const sendsKey = p2p !== null && (tunnelKey !== undefined || joiningThroughTunnel);
+    const refusedKey = sendsKey ? p2p.refusedKey(tunnelKey) : null;
+    if (refusedKey) return new Response(refusedKey.message, { status: refusedKey.status });
     const joined = devices.join(code, deviceName(name));
     if (!joined) return new Response("This invite code is wrong, used or expired. Ask for a new one.", { status: 403 });
+    p2p?.inviteUsed(code);
+    const tunnel = sendsKey ? p2p.register(joined.device.id, tunnelKey) : undefined;
     sendDevicesToEveryPage();
-    return Response.json({ deviceId: joined.device.id, token: joined.token }, { headers: admittedWith(request, joined.token) });
+    return Response.json({ deviceId: joined.device.id, token: joined.token, tunnel }, { headers: admittedWith(request, joined.token) });
+  }
+
+  /** A device that joined some other way, or has a new key, takes its place in the tunnel here. */
+  async function registerTunnel(request: Request) {
+    const refused = refusedSender(request);
+    if (refused) return refused;
+    if (!p2p) return new Response("This Mirador doesn't connect peer to peer.", { status: 404 });
+    const deviceId = signedInAs(request)?.deviceId;
+    if (!deviceId) return new Response("Only a device that joined this Mirador has a place in its tunnel.", { status: 401 });
+    const { tunnelKey } = (await request.json().catch(() => ({}))) as { tunnelKey?: unknown };
+    try {
+      return Response.json(p2p.register(deviceId, tunnelKey));
+    } catch (error) {
+      if (error instanceof TunnelRefused) return new Response(error.message, { status: error.status });
+      throw error;
+    }
   }
 
   const askingToJoin = new SenderLimit();
@@ -273,6 +320,7 @@ export function startServer(services: HostServices) {
 
   /** Behind a proxy on this machine, such as `tailscale serve`, the device's own address is the one the proxy forwards. */
   function clientAddressOf(request: Request, server: Bun.Server<SocketData>): ClientAddress {
+    if (tunnelEnds.has(request)) return { fromAddress: "the peer-to-peer tunnel", tailscaleUser: null };
     const peer = server.requestIP(request)?.address ?? "an unknown address";
     const viaProxyHere = isLoopback(peer);
     const fromAddress = (viaProxyHere && request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()) || peer;
@@ -390,6 +438,7 @@ export function startServer(services: HostServices) {
   }
 
   function revokeDevice(deviceId: string) {
+    p2p?.forget(deviceId);
     devices.revoke(deviceId);
     hub.disconnectWhere((socket) => socket.data.deviceId === deviceId, "device revoked");
     sendDevicesToEveryPage();
@@ -484,7 +533,7 @@ export function startServer(services: HostServices) {
     if (!signedInAs(request)) return new Response("unauthorized", { status: 401 });
     const site = request.headers.get("sec-fetch-site");
     if (site && site !== "same-origin") return new Response("forbidden", { status: 403 });
-    if (request.method !== "GET" && !isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
+    if (request.method !== "GET" && !isPageOrigin(request)) return new Response("forbidden origin", { status: 403 });
     return null;
   }
 
@@ -677,12 +726,12 @@ export function startServer(services: HostServices) {
     if (!hasAllowedHost(request)) return new Response("forbidden host", { status: 403 });
     const signedIn = signedInAs(request);
     if (!signedIn) return new Response("unauthorized", { status: 401 });
-    if (!isPageOrigin(request.headers.get("origin"))) return new Response("forbidden origin", { status: 403 });
+    if (!isPageOrigin(request)) return new Response("forbidden origin", { status: 403 });
     const readsDeflatedMessages = request.headers.has(DEFLATED_MESSAGES_HEADER);
     const { searchParams } = new URL(request.url);
     const readsProfileLaunch = searchParams.has(PROFILE_LAUNCH_PARAMETER);
     const desktopAppCode = role === "notifier" ? searchParams.get(DESKTOP_APP_CODE_PARAMETER) : null;
-    rememberAddressUsed(request.headers.get("host"));
+    if (!tunnelEnds.has(request)) rememberAddressUsed(request.headers.get("host"));
     const data = socketData(role, signedIn.deviceId, canvasAssetsOriginFor(request), clientAddressOf(request, server), readsDeflatedMessages, readsProfileLaunch, desktopAppCode);
     const upgraded = server.upgrade(request, { data });
     return upgraded ? undefined : new Response("upgrade failed", { status: 400 });
@@ -1228,8 +1277,11 @@ export function startServer(services: HostServices) {
           },
           (error) => reply({ type: "plugins.commits-found", requestId: message.requestId, release: null, commits: [], problem: withoutCredentials(messageOf(error)) }),
         );
-      case "devices.invite":
-        return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...devices.invite() });
+      case "devices.invite": {
+        const invite = devices.invite();
+        const tunnel = p2p?.invite(invite.code, invite.expiresAt) ?? null;
+        return hub.send(socket, { type: "devices.invited", requestId: message.requestId, ...invite, tunnel });
+      }
       case "address.find":
       case "address.serve":
         return void foundAddresses(message.type === "address.serve").then((found) =>
@@ -1307,6 +1359,7 @@ export function startServer(services: HostServices) {
     "/workspaces/:workspaceId/apps/:app/media": { POST: grantAppMedia },
     "/mirador-ca.pem": serveAuthority,
     "/mirador-here": here,
+    "/tunnel": { POST: registerTunnel },
   };
   /** Only this machine's own browser, agents and scripts sign in with these tokens, so they are served on 127.0.0.1 alone. */
   const routesForThisMachine = {
@@ -1430,12 +1483,61 @@ export function startServer(services: HostServices) {
       : null;
   const server = Bun.serve(options);
   const networkServer = networkOptions && Bun.serve(networkOptions);
+  const tunnelServers = new Set<() => void>();
+
+  /** Marks each request a route takes as come through the tunnel from `end`, before the route's own checks run. */
+  function throughTunnel<R extends Record<string, unknown>>(routes: R, end: TunnelEnd): R {
+    const marked =
+      (handler: (request: Request, server: unknown) => unknown) =>
+      (request: Request, server: unknown) => {
+        tunnelEnds.set(request, end);
+        return handler(request, server);
+      };
+    const isMethods = (route: object) => Object.keys(route).length > 0 && Object.keys(route).every((key) => /^[A-Z]+$/.test(key));
+    const markedRoute = (route: unknown): unknown => {
+      if (typeof route === "function") return marked(route as (request: Request, server: unknown) => unknown);
+      if (route && typeof route === "object" && isMethods(route)) return Object.fromEntries(Object.entries(route).map(([method, handler]) => [method, markedRoute(handler)]));
+      return route;
+    };
+    return Object.fromEntries(Object.entries(routes).map(([path, route]) => [path, markedRoute(route)])) as R;
+  }
+
+  /** A device's own listener serves the device routes alone; the joining listener, reached with an invite's one-time key, serves joining alone. */
+  function serveTunnel(socket: string, end: TunnelEnd): TunnelListener {
+    const notFound = () => new Response("not found", { status: 404 });
+    const tunnelOptions =
+      "deviceId" in end
+        ? serveOptions({
+            unix: socket,
+            development: config.developmentMode,
+            routes: throughTunnel(routesForDevices, end),
+            fetch: (request, server) => {
+              tunnelEnds.set(request, end);
+              return upgradeSockets(request, server);
+            },
+            websocket,
+          })
+        : serveOptions({ unix: socket, development: config.developmentMode, routes: throughTunnel({ "/join": { POST: join } }, end), fetch: notFound, websocket });
+    const tunnelServer = Bun.serve(tunnelOptions);
+    const reload = () => tunnelServer.reload(tunnelOptions);
+    tunnelServers.add(reload);
+    return {
+      stop: () => {
+        tunnelServers.delete(reload);
+        tunnelServer.stop(true);
+      },
+    };
+  }
+
+  p2p?.start(serveTunnel);
   /** The page bundle is built once per set of routes, so setting the same routes again rebuilds it from the current source. */
   const rebuildUi = () => {
     server.reload(options);
     if (networkServer && networkOptions) networkServer.reload(networkOptions);
+    tunnelServers.forEach((reload) => reload());
   };
   const stop = () => {
+    p2p?.stop();
     server.stop(true);
     networkServer?.stop(true);
   };
