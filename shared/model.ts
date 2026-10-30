@@ -226,6 +226,13 @@ export interface ClaudeProgram {
 
 export const isCanvasUse = (value: unknown): value is CanvasUse => typeof value === "string" && Object.hasOwn(canvasUseLabels, value);
 
+/** When the host keeps its computer from sleeping while idle. */
+export type KeepAwake = "never" | "while-working" | "always";
+
+export const keepAwakeLabels: Record<KeepAwake, string> = { never: "Never", "while-working": "While agents work", always: "Always" };
+
+export const isKeepAwake = (value: unknown): value is KeepAwake => typeof value === "string" && Object.hasOwn(keepAwakeLabels, value);
+
 export interface Workspace {
   id: string;
   name: string;

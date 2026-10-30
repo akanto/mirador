@@ -1,4 +1,4 @@
-import type { CanvasItem, CanvasUse, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
+import type { CanvasItem, CanvasUse, KeepAwake, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { appKey, type AppDocumentState, type InstalledApp, type OpenApp, type PluginUpdate } from "../shared/apps.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
@@ -45,6 +45,7 @@ export interface AppState {
   profiles: Profile[];
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
+  keepAwake: KeepAwake;
   claudeProgram: ClaudeProgram;
   /** The program the host opens scripts in, as text; empty for the system's text editor. */
   scriptProgram: string;
@@ -108,6 +109,7 @@ export const initialState: AppState = {
   profiles: [],
   promptTemplates: [],
   canvasUse: "often",
+  keepAwake: "never",
   claudeProgram: { configured: "", found: null, version: null, installFolders: "", installCommand: "" },
   scriptProgram: "",
   avatar: null,
@@ -206,6 +208,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         profiles: message.profiles,
         promptTemplates: message.promptTemplates,
         canvasUse: message.canvasUse,
+        keepAwake: message.keepAwake ?? "never",
         claudeProgram: message.claudeProgram,
         scriptProgram: message.scriptProgram,
         avatar: message.avatar,
@@ -288,6 +291,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, promptTemplates: upsert(state.promptTemplates, message.template).sort((a, b) => a.name.localeCompare(b.name)) };
     case "settings.canvas-use":
       return { ...state, canvasUse: message.canvasUse };
+    case "settings.keep-awake":
+      return { ...state, keepAwake: message.keepAwake };
     case "settings.claude-program":
       return { ...state, claudeProgram: message.claudeProgram };
     case "settings.script-program":

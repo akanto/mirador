@@ -478,6 +478,17 @@ describe("Store", () => {
     reopened.close();
   });
 
+  test("lets the computer sleep until Settings say to keep it awake, also after reopening", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    expect(store.keepAwake()).toBe("never");
+    store.setKeepAwake("while-working");
+    store.close();
+    const reopened = new Store(path);
+    expect(reopened.keepAwake()).toBe("while-working");
+    reopened.close();
+  });
+
   test("tells Claude Code to use the canvas often until Settings say otherwise, also after reopening", () => {
     const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
     const store = new Store(path);

@@ -83,6 +83,7 @@ export class Hub {
   private readonly notifiers = new Set<BrowserSocket>();
   private announcedWaiting: string | null = null;
   private announcedRunningTurnsCount: number | null = null;
+  private readonly runningTurnsListeners: ((count: number) => void)[] = [];
 
   add(socket: BrowserSocket) {
     (socket.data.role === "notifier" ? this.notifiers : this.sockets).add(socket);
@@ -127,12 +128,17 @@ export class Hub {
     this.notifiers.forEach((socket) => deliver(socket, payload));
   }
 
-  /** Only the desktop app's notification sockets hear it, and only when it changed. */
+  /** Of pages, only the desktop app's notification sockets hear it; it goes out only when it changed. */
   announceRunningTurnsCount(count: number) {
     if (count === this.announcedRunningTurnsCount) return;
     this.announcedRunningTurnsCount = count;
     const payload = JSON.stringify({ type: "running-turns.counted", count } satisfies ServerMessage);
     this.notifiers.forEach((socket) => deliver(socket, payload));
+    this.runningTurnsListeners.forEach((listener) => listener(count));
+  }
+
+  whenRunningTurnsCounted(listener: (count: number) => void) {
+    this.runningTurnsListeners.push(listener);
   }
 
   /** Pages show it whichever device they are on, as it is about this host; another machine's desktop app runs an install of its own. */

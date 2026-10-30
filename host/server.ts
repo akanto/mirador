@@ -3,8 +3,10 @@ import { basename } from "node:path";
 import index from "../web/index.html";
 import {
   isCanvasUse,
+  isKeepAwake,
   isPastel,
   type CanvasUse,
+  type KeepAwake,
   type ClientAddress,
   type FoundAddress,
   type ListedDevice,
@@ -70,6 +72,7 @@ import type { Store } from "./store.ts";
 import type { TerminalService } from "./terminals.ts";
 import { VoiceUnavailable, type Voice } from "./voice/voice.ts";
 import type { VoiceEngine } from "./voice/engine/engine.ts";
+import type { KeepAwakeHold } from "./keep-awake.ts";
 import { thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 
 export interface HostServices {
@@ -103,6 +106,7 @@ export interface HostServices {
   watch: MachineWatch;
   /** What the network listener serves with; null while the host listens on 127.0.0.1 only. */
   certificate: ServingCertificate | null;
+  keepAwake: KeepAwakeHold;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -180,6 +184,7 @@ export function startServer(services: HostServices) {
     relays,
     watch,
     certificate,
+    keepAwake,
   } = services;
   const appStorage = new AppStorage(store, (name) => apps.installed().some((app) => app.name === name));
   const { network } = config.reachability;
@@ -801,6 +806,13 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "settings.canvas-use", canvasUse });
   }
 
+  function setKeepAwake(setting: KeepAwake) {
+    if (!isKeepAwake(setting)) throw new Error(`Unknown keep awake setting ${setting}`);
+    store.setKeepAwake(setting);
+    keepAwake.setKeepAwake(setting);
+    hub.broadcast({ type: "settings.keep-awake", keepAwake: setting });
+  }
+
   function deletePromptTemplate(templateId: string) {
     store.deletePromptTemplate(templateId);
     hub.broadcast({ type: "prompt-template.deleted", templateId });
@@ -865,6 +877,8 @@ export function startServer(services: HostServices) {
         return deletePromptTemplate(message.templateId);
       case "settings.set-canvas-use":
         return setCanvasUse(message.canvasUse);
+      case "settings.set-keep-awake":
+        return setKeepAwake(message.keepAwake);
       case "settings.set-claude-program":
         return setClaudeProgram(message.path);
       case "newer-version.check":
@@ -1313,6 +1327,7 @@ export function startServer(services: HostServices) {
       profiles: store.listProfiles().map((profile) => profileFor(socket, profile)),
       promptTemplates: store.listPromptTemplates(),
       canvasUse: store.canvasUse(),
+      keepAwake: store.keepAwake(),
       claudeProgram,
       scriptProgram: store.scriptProgramSetting(),
       avatar: store.avatarSetting(),

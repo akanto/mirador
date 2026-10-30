@@ -225,6 +225,8 @@ export const hints = {
   delegatedFold: "Conversations this one handed tasks to, such as with delegate. Click to show or hide them under it.",
   claudeProgram: (installFolders: string) =>
     `The claude program Mirador runs Claude Code with, on the host's computer. Empty: the claude on PATH, else in ${installFolders}.\n\nA profile can run another one through CLAUDE_CODE_EXECUTABLE in its environment.`,
+  keepAwake:
+    "Stops the computer Mirador runs on from going to sleep while it is idle.\n\nWhile agents work: until every running turn ends, so long jobs finish.\n\nAlways: while Mirador runs, so your phone and other devices can reach it at any time.\n\nOn macOS and Linux.",
   canvasUse:
     "As needed: the agent decides from the canvas's own instructions.\n\nOften: Claude Code's and pi's system prompts also tell them to put explanations, comparisons, plans and the summary of a larger piece of work on the canvas, and to ask you choices there.\n\nPages cost more tokens than the same answer as text.",
   terminalCommand:

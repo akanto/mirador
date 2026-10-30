@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { PluginUpdate } from "../shared/apps.ts";
-import { canvasUseLabels, type CanvasUse, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
+import { canvasUseLabels, keepAwakeLabels, type CanvasUse, type KeepAwake, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
 import type { VoiceSettings as VoiceSettingsValue } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { shellOutputStyleLabels } from "../shared/shell-output.ts";
@@ -109,6 +109,7 @@ export function SettingsDialog({
   devices,
   promptTemplates,
   canvasUse,
+  keepAwake,
   claudeProgram,
   scriptProgram,
   avatar,
@@ -126,6 +127,7 @@ export function SettingsDialog({
   devices: DevicesListed | null;
   promptTemplates: PromptTemplate[];
   canvasUse: CanvasUse;
+  keepAwake: KeepAwake;
   claudeProgram: ClaudeProgram;
   scriptProgram: string;
   avatar: string | null;
@@ -162,7 +164,12 @@ export function SettingsDialog({
         {isMac && <TypingSettings />}
       </>
     ),
-    agents: () => <AgentSettings claudeProgram={claudeProgram} />,
+    agents: () => (
+      <>
+        <AgentSettings claudeProgram={claudeProgram} />
+        <KeepAwakeSettings keepAwake={keepAwake} />
+      </>
+    ),
     voice: () => <VoiceSettings settings={voiceSettings} engine={voiceEngine} profiles={profiles} />,
     terminal: () => <TerminalSettings />,
     canvas: () => (
@@ -719,6 +726,27 @@ function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
       <p className="hint claude-program-found" role="status">
         {foundClaudeProgram(claudeProgram)}
       </p>
+    </>
+  );
+}
+
+function KeepAwakeSettings({ keepAwake }: { keepAwake: KeepAwake }) {
+  return (
+    <>
+      <h3>Sleep</h3>
+      <p className="hint">Kept by the host. Its computer can still sleep when you close a laptop's lid, and its display still turns off.</p>
+      <div className="sending-settings">
+        <label data-hint={hints.keepAwake}>
+          Keep the computer awake
+          <select value={keepAwake} onChange={(event) => connection.send({ type: "settings.set-keep-awake", keepAwake: event.target.value as KeepAwake })}>
+            {Object.entries(keepAwakeLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
     </>
   );
 }

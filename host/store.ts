@@ -22,7 +22,7 @@ import type {
   Workspace,
   WorkspaceGroup,
 } from "../shared/model.ts";
-import { isCanvasUse, isPastel, type CanvasUse, type Pastel } from "../shared/model.ts";
+import { isCanvasUse, isKeepAwake, isPastel, type CanvasUse, type KeepAwake, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { APP_TOOLS } from "./canvas/tool-names.ts";
 import { pluginItemOfSavedChecklist, type SavedChecklist } from "./saved-checklists.ts";
@@ -717,6 +717,15 @@ export class Store {
 
   setCanvasUse(canvasUse: CanvasUse) {
     this.db.query("INSERT INTO settings (key, value) VALUES ('canvas_use', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(canvasUse);
+  }
+
+  keepAwake(): KeepAwake {
+    const value = (this.db.query("SELECT value FROM settings WHERE key = 'keep_awake'").get() as { value: string } | null)?.value;
+    return isKeepAwake(value) ? value : "never";
+  }
+
+  setKeepAwake(keepAwake: KeepAwake) {
+    this.db.query("INSERT INTO settings (key, value) VALUES ('keep_awake', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(keepAwake);
   }
 
   /** The Claude Code program set in Settings; empty to find claude on its own. */

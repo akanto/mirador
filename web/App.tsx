@@ -615,6 +615,7 @@ export function App() {
           devices={state.devices}
           promptTemplates={state.promptTemplates}
           canvasUse={state.canvasUse}
+          keepAwake={state.keepAwake}
           claudeProgram={state.claudeProgram}
           scriptProgram={state.scriptProgram}
           avatar={state.avatar}

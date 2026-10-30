@@ -46,6 +46,7 @@ import { SystemNotifications } from "./system-notifications.ts";
 import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
+import { KeepAwakeHold } from "./keep-awake.ts";
 import { keepDataFolderToHostAccount } from "./windows-folder-access.ts";
 import { stopIgnoringCtrlC } from "./windows-processes.ts";
 
@@ -163,7 +164,9 @@ const voiceEngine = new VoiceEngine(
 );
 voiceEngineInstaller.load().catch((error) => console.error(`reading how voice is set up on this Mac failed:`, error));
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
-const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, pluginUpdates, devices, joinRequests, signInCodes, search, relays, watch, certificate });
+const keepAwake = new KeepAwakeHold(store.keepAwake());
+hub.whenRunningTurnsCounted((count) => keepAwake.setRunningTurns(count));
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, pluginUpdates, devices, joinRequests, signInCodes, search, relays, watch, certificate, keepAwake });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();
@@ -208,6 +211,7 @@ async function stopServices() {
   networkAssetsServer?.stop(true);
   relays.stopAll();
   watch.stopAll();
+  keepAwake.stop();
   apps.stop();
   // An agent's exit is handled before its stop resolves, and that handling still reads and writes the store.
   await Promise.all([childrenExited, voiceEngineStopped]);
