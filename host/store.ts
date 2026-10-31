@@ -24,6 +24,8 @@ import type {
 } from "../shared/model.ts";
 import { isCanvasUse, isKeepAwake, isPastel, type CanvasUse, type KeepAwake, type Pastel } from "../shared/model.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
+import { LONGEST_MACHINE_NAME } from "../shared/machines.ts";
+import { computerName } from "./machine-name.ts";
 import { APP_TOOLS } from "./canvas/tool-names.ts";
 import { pluginItemOfSavedChecklist, type SavedChecklist } from "./saved-checklists.ts";
 import { pluginItemOfSavedWalkthrough, type SavedReview, type SavedTour } from "./saved-walkthroughs.ts";
@@ -752,6 +754,19 @@ export class Store {
 
   setScriptProgramSetting(program: string) {
     this.setSetting("script_program", program || null);
+  }
+
+  /** The name this machine goes by on devices and other machines, as set in Settings; null for its computer's name. */
+  machineNameSetting(): string | null {
+    return this.setting("machine_name");
+  }
+
+  setMachineNameSetting(name: string) {
+    this.setSetting("machine_name", name.trim().slice(0, LONGEST_MACHINE_NAME) || null);
+  }
+
+  machineName(): string {
+    return this.machineNameSetting() ?? computerName();
   }
 
   /** The user's profile picture as a PNG data URL; null when they set none. */

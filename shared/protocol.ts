@@ -102,6 +102,7 @@ export type ClientMessage =
   | { type: "newer-version.check"; requestId: string }
   /** Empty for the system's text editor. */
   | { type: "settings.set-script-program"; program: string }
+  | { type: "settings.set-machine-name"; machineName: string }
   /** The user's picture as a small square PNG data URL the page drew; null takes it away, leaving the person icon. */
   | { type: "settings.set-avatar"; image: string | null }
   /** Without a launch, the conversation starts on the workspace's default as the host has it when the message arrives. */
@@ -291,6 +292,10 @@ export type ServerMessage =
       claudeProgram: ClaudeProgram;
       /** The program the host opens scripts in, as text; empty for the system's text editor. */
       scriptProgram: string;
+      /** The name Settings gave this machine, which devices show for it; null while it goes by its computer's name. Absent from hosts before names. */
+      machineName?: string | null;
+      /** The computer's own name, which the machine goes by while Settings give it none. */
+      computerName?: string;
       /** The user's profile picture as a small square PNG data URL; null when they set none. */
       avatar: string | null;
       /** The agents this machine has a program for, which a new profile can run. */
@@ -338,6 +343,7 @@ export type ServerMessage =
   | { type: "settings.keep-awake"; keepAwake: KeepAwake }
   | { type: "settings.claude-program"; claudeProgram: ClaudeProgram }
   | { type: "settings.script-program"; scriptProgram: string }
+  | { type: "settings.machine-name"; machineName: string | null }
   /** The user's picture next to every page; null when they set none, leaving the person icon. */
   | { type: "settings.avatar"; image: string | null }
   /** Sent after the snapshot and on every change; API keys are empty for clients that don't get profile environments. */

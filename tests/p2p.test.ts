@@ -7,6 +7,7 @@ import { hostAddressIn, isTunnelKey, newDeviceAddress, newKeyPair, tunnelIdentit
 import { PeerToPeer, peerToPeerSettings, type PeerToPeerSettings, type TunnelEnd } from "../host/p2p/service.ts";
 import { Sidecar } from "../host/p2p/sidecar.ts";
 import { Store } from "../host/store.ts";
+import { computerName } from "../host/machine-name.ts";
 
 const brokerKey = newKeyPair().publicKey;
 /** The fake sidecar is a shell script, and the identity's files are kept by Unix permissions; peer to peer is Unix-only on the host anyway. */
@@ -109,6 +110,14 @@ unixOnlyTest("the host's tunnel identity is made once, kept from other accounts,
   expect(isTunnelKey(identity.publicKey)).toBe(true);
   expect(identity.prefix).toMatch(/^fd[0-9a-f]{2}(:[0-9a-f]{1,4}){2}$/);
   expect(tunnelIdentity(join(folder, "identity"))).toEqual(identity);
+});
+
+unixOnlyTest("an invite names the machine as Settings name it, and by its computer's name before", async () => {
+  const { p2p, store } = host();
+  expect(p2p.invite("ABCDEFGHJK", Date.now() + 60_000).name).toBe(computerName());
+  store.setMachineNameSetting("Studio Mac");
+  expect(p2p.invite("BCDEFGHJKL", Date.now() + 60_000).name).toBe("Studio Mac");
+  await commandsRead(2);
 });
 
 test("devices get addresses of their own in the host's tunnel network", () => {

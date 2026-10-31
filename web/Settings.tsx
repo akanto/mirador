@@ -19,6 +19,7 @@ import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export
 import { setPageLibraries, usePageLibraries } from "./page-libraries.ts";
 import { rememberSettingsSize } from "./paneLayouts.ts";
 import { hints } from "./hints.ts";
+import { LONGEST_MACHINE_NAME } from "../shared/machines.ts";
 import { NewerVersionNote, UpdateCheckButton } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
 import { profilePictureDataUrl } from "./profile-picture.ts";
@@ -112,6 +113,8 @@ export function SettingsDialog({
   keepAwake,
   claudeProgram,
   scriptProgram,
+  machineName,
+  computerName,
   avatar,
   voiceSettings,
   voiceEngine,
@@ -130,6 +133,8 @@ export function SettingsDialog({
   keepAwake: KeepAwake;
   claudeProgram: ClaudeProgram;
   scriptProgram: string;
+  machineName: string | null;
+  computerName: string;
   avatar: string | null;
   voiceSettings: VoiceSettingsValue;
   voiceEngine: VoiceEngineStatus;
@@ -181,7 +186,12 @@ export function SettingsDialog({
     ),
     plugins: () => <PluginSettings pluginUpdates={pluginUpdates} />,
     layout: () => <LayoutSettings layoutDefault={layoutDefault} onChange={onChange} />,
-    devices: () => <DeviceSettings listed={devices} />,
+    devices: () => (
+      <>
+        <MachineNameSettings machineName={machineName} computerName={computerName} />
+        <DeviceSettings listed={devices} />
+      </>
+    ),
     notifications: () => <NotificationSettings />,
     about: () => <AboutSettings version={version} newerVersion={newerVersion} claudeProgram={claudeProgram} />,
   };
@@ -932,6 +942,35 @@ function FileLinkSettings({ scriptProgram }: { scriptProgram: string }) {
             />
           </label>
         )}
+      </div>
+    </>
+  );
+}
+
+function MachineNameSettings({ machineName, computerName }: { machineName: string | null; computerName: string }) {
+  const [name, setName] = useState(machineName ?? "");
+  useEffect(() => setName(machineName ?? ""), [machineName]);
+  const save = () => {
+    if (name.trim() !== (machineName ?? "")) connection.send({ type: "settings.set-machine-name", machineName: name });
+  };
+  return (
+    <>
+      <h3>This machine</h3>
+      <div className="sending-settings">
+        <label data-hint={hints.machineName}>
+          Name
+          <input
+            type="text"
+            className="machine-name"
+            value={name}
+            placeholder={computerName}
+            maxLength={LONGEST_MACHINE_NAME}
+            spellCheck={false}
+            onChange={(event) => setName(event.target.value)}
+            onBlur={save}
+            onKeyDown={(event) => event.key === "Enter" && save()}
+          />
+        </label>
       </div>
     </>
   );

@@ -618,6 +618,8 @@ export function App() {
           keepAwake={state.keepAwake}
           claudeProgram={state.claudeProgram}
           scriptProgram={state.scriptProgram}
+          machineName={state.machineName}
+          computerName={state.computerName}
           avatar={state.avatar}
           voiceSettings={state.voiceSettings}
           voiceEngine={state.voiceEngine}

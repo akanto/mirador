@@ -1,4 +1,3 @@
-import { hostname } from "node:os";
 import { askToJoin as askToJoinThere } from "../shared/join-requests.ts";
 import type { Machine } from "../shared/model.ts";
 import { CANVAS_ASSETS_ORIGIN_HEADER, TOKEN_COOKIE } from "../shared/protocol.ts";
@@ -16,7 +15,7 @@ const UNFORWARDED_REQUEST_HEADERS = new Set(["host", "cookie", "origin", "refere
  */
 const UNRELAYED_RESPONSE_HEADERS = new Set(["set-cookie", "content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"]);
 
-export const thisHostAsDevice = () => `Mirador on ${hostname().replace(/\.local$/, "")}`;
+export const thisHostAsDevice = (store: Store) => `Mirador on ${store.machineName()}`;
 
 export interface RelayedSocket {
   upstream: WebSocket;
@@ -127,7 +126,7 @@ export class MachineRelays {
     const response = await fetch(`${machine.origin}/join`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code, name: thisHostAsDevice() }),
+      body: JSON.stringify({ code, name: thisHostAsDevice(this.store) }),
       ...trusting(authority),
     }).catch(() => null);
     if (!response && authority) throw new Error(`${machine.name}'s certificate is not from its own certificate authority, or does not name ${new URL(machine.origin).hostname}.`);
@@ -155,7 +154,7 @@ export class MachineRelays {
         body: JSON.stringify(body),
         ...trusting(authority),
       }).catch(() => null);
-    const token = await askToJoinThere(send, { name: thisHostAsDevice(), authorityFingerprint: offered?.fingerprint ?? null, machineName: machine.name }, asked);
+    const token = await askToJoinThere(send, { name: thisHostAsDevice(this.store), authorityFingerprint: offered?.fingerprint ?? null, machineName: machine.name }, asked);
     this.signInFromNowOn(machine, authority, token);
   }
 

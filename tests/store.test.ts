@@ -7,6 +7,8 @@ import type { CanvasItem, ContextUsage, Conversation, ConversationEvent, JobWait
 import { Store } from "../host/store.ts";
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { sidebarIds, sidebarItems } from "../shared/sidebar-order.ts";
+import { computerName } from "../host/machine-name.ts";
+import { LONGEST_MACHINE_NAME } from "../shared/machines.ts";
 
 function seededStore() {
   const store = new Store(":memory:");
@@ -462,6 +464,23 @@ describe("Store", () => {
     expect(reopened.scriptProgramSetting()).toBe("code");
     reopened.setScriptProgramSetting("");
     expect(reopened.scriptProgramSetting()).toBe("");
+    reopened.close();
+  });
+
+  test("goes by its computer's name until Settings name the machine, trimmed and kept short, also after reopening", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "mirador-store-")), "state.sqlite");
+    const store = new Store(path);
+    expect(store.machineNameSetting()).toBeNull();
+    expect(store.machineName()).toBe(computerName());
+    store.setMachineNameSetting("  Studio Mac  ");
+    store.close();
+    const reopened = new Store(path);
+    expect(reopened.machineName()).toBe("Studio Mac");
+    reopened.setMachineNameSetting("x".repeat(LONGEST_MACHINE_NAME + 5));
+    expect(reopened.machineName()).toBe("x".repeat(LONGEST_MACHINE_NAME));
+    reopened.setMachineNameSetting("   ");
+    expect(reopened.machineNameSetting()).toBeNull();
+    expect(reopened.machineName()).toBe(computerName());
     reopened.close();
   });
 

@@ -1,5 +1,8 @@
 import { decodedInviteTunnel, encodedInviteTunnel, type InviteTunnel } from "./tunnel.ts";
 
+/** How long a name Settings give a machine can be, so it fits a device's lists. */
+export const LONGEST_MACHINE_NAME = 40;
+
 /**
  * An invite link's #part: the code, then the fingerprint of the machine's own certificate authority when it has one,
  * then how to reach it peer to peer when it can.

@@ -73,6 +73,7 @@ import type { TerminalService } from "./terminals.ts";
 import { VoiceUnavailable, type Voice } from "./voice/voice.ts";
 import type { VoiceEngine } from "./voice/engine/engine.ts";
 import type { KeepAwakeHold } from "./keep-awake.ts";
+import { computerName } from "./machine-name.ts";
 import { TunnelRefused, type PeerToPeer, type TunnelEnd, type TunnelListener } from "./p2p/service.ts";
 import { thisMacModelsInUse, voiceSettingsProblem, voiceSettingsWithoutKeys, type VoiceSettings } from "../shared/voice.ts";
 
@@ -843,6 +844,11 @@ export function startServer(services: HostServices) {
     return lookUpClaudeProgram(store.claudeProgramSetting());
   }
 
+  function setMachineName(name: string) {
+    store.setMachineNameSetting(name);
+    hub.broadcast({ type: "settings.machine-name", machineName: store.machineNameSetting() });
+  }
+
   function setScriptProgram(program: string) {
     store.setScriptProgramSetting(program.trim());
     hub.broadcast({ type: "settings.script-program", scriptProgram: store.scriptProgramSetting() });
@@ -942,6 +948,8 @@ export function startServer(services: HostServices) {
         return void newerVersion.lookNow().then((failure) => reply({ type: "newer-version.checked", requestId: message.requestId, failure }));
       case "settings.set-script-program":
         return setScriptProgram(message.program);
+      case "settings.set-machine-name":
+        return setMachineName(message.machineName);
       case "settings.set-avatar":
         return setAvatar(message.image);
       case "conversation.create":
@@ -1391,6 +1399,8 @@ export function startServer(services: HostServices) {
       keepAwake: store.keepAwake(),
       claudeProgram,
       scriptProgram: store.scriptProgramSetting(),
+      machineName: store.machineNameSetting(),
+      computerName: computerName(),
       avatar: store.avatarSetting(),
       installedAgents: installedHarnesses(store.claudeProgramSetting()),
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,

@@ -49,6 +49,9 @@ export interface AppState {
   claudeProgram: ClaudeProgram;
   /** The program the host opens scripts in, as text; empty for the system's text editor. */
   scriptProgram: string;
+  /** The name Settings gave this machine; null while it goes by its computer's name. */
+  machineName: string | null;
+  computerName: string;
   /** The user's profile picture as a small square PNG data URL; null when they set none. */
   avatar: string | null;
   voiceSettings: VoiceSettings;
@@ -112,6 +115,8 @@ export const initialState: AppState = {
   keepAwake: "never",
   claudeProgram: { configured: "", found: null, version: null, installFolders: "", installCommand: "" },
   scriptProgram: "",
+  machineName: null,
+  computerName: "",
   avatar: null,
   voiceSettings: defaultVoiceSettings,
   voiceEngine: { setup: { state: "unsupported", reason: "" }, servers: { speech: "stopped", voiceModel: "stopped", speaking: "stopped" }, onDisk: [], memoryBytes: 0 },
@@ -211,6 +216,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         keepAwake: message.keepAwake ?? "never",
         claudeProgram: message.claudeProgram,
         scriptProgram: message.scriptProgram,
+        machineName: message.machineName ?? null,
+        computerName: message.computerName ?? "",
         avatar: message.avatar,
         installedAgents: message.installedAgents,
         version: message.version,
@@ -297,6 +304,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, claudeProgram: message.claudeProgram };
     case "settings.script-program":
       return { ...state, scriptProgram: message.scriptProgram };
+    case "settings.machine-name":
+      return { ...state, machineName: message.machineName };
     case "settings.avatar":
       return { ...state, avatar: message.image };
     case "voice.settings":
