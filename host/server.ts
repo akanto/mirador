@@ -217,9 +217,17 @@ export function startServer(services: HostServices) {
     const viewingComputersCopy = request.headers.get(CANVAS_ASSETS_ORIGIN_HEADER);
     if (viewingComputersCopy && /^http:\/\/127\.0\.0\.1:\d+$/.test(viewingComputersCopy)) return viewingComputersCopy;
     const host = request.headers.get("host") ?? "";
+    if (tunnelEnds.has(request)) return canvasProxyBeside(host) ?? config.canvasAssetsOrigin;
     if (localHosts.includes(host)) return localCanvasAssetsOrigin;
     if (network && networkHosts.includes(host)) return `https://${host.slice(0, host.lastIndexOf(":"))}:${network.canvasPort}`;
     return config.canvasAssetsOrigin;
+  }
+
+  /** A device's proxy for the canvas server listens one port above its proxy for the web server, on its own loopback. */
+  function canvasProxyBeside(host: string) {
+    const proxy = /^(127\.0\.0\.1|localhost):(\d+)$/.exec(host);
+    const canvasPort = proxy && Number(proxy[2]) + 1;
+    return canvasPort && canvasPort <= 65535 ? `http://127.0.0.1:${canvasPort}` : null;
   }
 
   /** Public, so Settings can tell whether an address reaches this Mirador before it believes it. */

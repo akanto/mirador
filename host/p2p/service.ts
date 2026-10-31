@@ -10,6 +10,8 @@ import { Sidecar } from "./sidecar.ts";
 
 /** Inside the tunnel, devices reach the host's web server at this port of its tunnel address. */
 export const TUNNEL_PORT = 4600;
+/** And its canvas server at this one, which serves every paired device alike, as it does on the network. */
+export const CANVAS_TUNNEL_PORT = 4601;
 /**
  * A used invite's one-time key is let in a little longer, so the reply to the join that used it gets back through the
  * tunnel; it reaches nothing but joining, with a code that no longer works.
@@ -25,6 +27,8 @@ export interface PeerToPeerSettings {
   deviceBroker?: string;
   /** Addresses devices may reach the sidecar at besides this machine's own, such as a port forwarded on the router. */
   candidates?: string[];
+  /** The canvas server on this machine's loopback, which devices reach through the tunnel at CANVAS_TUNNEL_PORT. */
+  canvasAssetsPort?: number;
 }
 
 /** On only when the environment names the sidecar and the broker; anything else is a mistake worth saying. */
@@ -74,7 +78,7 @@ function localCandidates(udpPort: number) {
 /**
  * Devices reach this host peer to peer through the sidecar: each paired device's tunnel connections arrive on a Unix
  * socket of its own, so the socket says which device it is, and an invite's one-time key reaches only a socket that
- * serves joining.
+ * serves joining. Every key, a one-time key too, also reaches the canvas server, which serves no one's data.
  */
 export class PeerToPeer {
   private readonly identity: TunnelIdentity;
@@ -106,6 +110,7 @@ export class PeerToPeer {
       `--port=${TUNNEL_PORT}`,
       `--broker=${settings.broker.address}`,
       `--broker-key=${settings.broker.key}`,
+      ...(settings.canvasAssetsPort ? [`--forward=${CANVAS_TUNNEL_PORT}=127.0.0.1:${settings.canvasAssetsPort}`] : []),
       ...[...localCandidates(udpPort), ...(settings.candidates ?? [])].map((candidate) => `--candidate=${candidate}`),
     ]);
   }
@@ -128,7 +133,13 @@ export class PeerToPeer {
   }
 
   places(): TunnelPlaces {
-    return { hostKey: this.identity.publicKey, hostAddress: hostAddressIn(this.identity.prefix), port: TUNNEL_PORT, broker: { ...this.settings.broker, address: this.settings.deviceBroker ?? this.settings.broker.address } };
+    return {
+      hostKey: this.identity.publicKey,
+      hostAddress: hostAddressIn(this.identity.prefix),
+      port: TUNNEL_PORT,
+      ...(this.settings.canvasAssetsPort && { canvasPort: CANVAS_TUNNEL_PORT }),
+      broker: { ...this.settings.broker, address: this.settings.deviceBroker ?? this.settings.broker.address },
+    };
   }
 
   /** Why `key` can't be a device's tunnel key, or null when it can. */
@@ -163,7 +174,7 @@ export class PeerToPeer {
     this.listeners.delete(deviceId);
   }
 
-  /** A one-time key for the invite with `code`, which reaches only the joining socket and only until the invite expires. */
+  /** A one-time key for the invite with `code`, which reaches only the joining socket and the canvas server, and only until the invite expires. */
   invite(code: string, expiresAt: number): InviteTunnel {
     const { privateKey, publicKey } = newKeyPair();
     const joinAddress = newDeviceAddress(this.identity.prefix);

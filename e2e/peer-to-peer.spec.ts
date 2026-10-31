@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 import { tunnelIn } from "../shared/machines.ts";
 import type { DeviceTunnel, InviteTunnel } from "../shared/tunnel.ts";
 import { TOKEN_COOKIE } from "../shared/protocol.ts";
-import { openSettings, signIn } from "./helpers.ts";
+import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 /** mirador-p2p is built from its own repository, which only the owner's machines have; elsewhere this spec is skipped. */
@@ -30,13 +30,23 @@ function keyPair(name: string) {
   return { keyFile, publicKey };
 }
 
-const freePort = () =>
-  new Promise<number>((resolve) => {
-    const server = createServer().listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
+const freePort = (port = 0) =>
+  new Promise<number | null>((resolve) => {
+    const server = createServer()
+      .once("error", () => resolve(null))
+      .listen(port, "127.0.0.1", () => {
+        const { port } = server.address() as { port: number };
+        server.close(() => resolve(port));
+      });
   });
+
+/** A free port with a free one above it, for the canvas server's proxy. */
+async function freePortPair() {
+  for (;;) {
+    const port = (await freePort())!;
+    if (port < 65535 && (await freePort(port + 1))) return port;
+  }
+}
 
 function run(args: string[]) {
   const child = spawn(binary, args, { stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, RUST_LOG: "warn" } });
@@ -44,9 +54,12 @@ function run(args: string[]) {
   return child;
 }
 
-/** A device's side of the tunnel, as the phone runs it: local connections to the returned port reach the host's web server. */
+/**
+ * A device's side of the tunnel, as the phone runs it: local connections to the returned port reach the host's web
+ * server, and to the port above it, the host's canvas server.
+ */
 async function dial(keyFile: string, address: string, tunnel: InviteTunnel | DeviceTunnel) {
-  const proxyPort = await freePort();
+  const proxyPort = await freePortPair();
   const device = run([
     "dial",
     "--udp=127.0.0.1:0",
@@ -57,6 +70,7 @@ async function dial(keyFile: string, address: string, tunnel: InviteTunnel | Dev
     `--broker=${tunnel.broker.address}`,
     `--broker-key=${tunnel.broker.key}`,
     `--forward=127.0.0.1:${proxyPort}=${tunnel.port}`,
+    ...(tunnel.canvasPort ? [`--forward=127.0.0.1:${proxyPort + 1}=${tunnel.canvasPort}`] : []),
   ]);
   return { device, origin: `http://127.0.0.1:${proxyPort}` };
 }
@@ -77,9 +91,10 @@ async function throughTunnel(url: string, init: RequestInit = {}) {
 
 test.beforeAll(async () => {
   mkdirSync(join(host.root, "p2p-test"), { recursive: true });
+  cpSync(join(import.meta.dirname, "..", "tests", "fixtures", "canvas-plugins", "board"), join(host.dataDir, "plugins", "board"), { recursive: true });
   const broker = keyPair("broker");
   brokerKey = broker.publicKey;
-  brokerPort = await freePort();
+  brokerPort = (await freePort())!;
   run(["broker", `--udp=127.0.0.1:${brokerPort}`, `--key-file=${broker.keyFile}`]);
   await host.start();
 });
@@ -110,7 +125,7 @@ test("a device joins through the tunnel with an invite's one-time key, then reac
   const joining = await dial(joinKeyFile, invite.joinAddress, invite);
   const phone = keyPair("phone");
 
-  await test.step("the one-time key reaches joining alone, and joining through the tunnel needs the device's own key", async () => {
+  await test.step("the one-time key reaches joining and the canvas server alone, and joining through the tunnel needs the device's own key", async () => {
     expect((await throughTunnel(`${joining.origin}/mirador-here`)).status).toBe(404);
     const withoutKey = await throughTunnel(`${joining.origin}/join`, { method: "POST", body: JSON.stringify({ code, name: "Phone" }) });
     expect(withoutKey.status).toBe(400);
@@ -145,6 +160,31 @@ test("a device joins through the tunnel with an invite's one-time key, then reac
     await expect(phoneRow).toHaveClass(/connected/);
     await expect(phoneRow.locator(".device-seen")).toHaveText(/from the peer-to-peer tunnel/);
     await context.close();
+  });
+
+  await test.step("a canvas page and a plugin's view on the device load from the host's canvas server, through the tunnel", async () => {
+    expect(tunnel.canvasPort).toBe(4601);
+    const hostPage = await page.context().newPage();
+    await hostPage.goto(host.origin);
+    await addWorkspace(hostPage, host.projectDir);
+    const conversationId = await startConversation(hostPage);
+    const hostsCanvas = `http://127.0.0.1:${host.port + 1}`;
+    const html = `<div id="out"></div><script src="${hostsCanvas}/d3.min.js"></script><script>document.getElementById("out").textContent = "d3 " + d3.version;</script>`;
+    await callCanvasTool(host, conversationId, "show", { title: "Through the tunnel", html });
+    const context = await browser.newContext();
+    await context.addCookies([{ name: TOKEN_COOKIE, value: token, url: device.origin }]);
+    const phonePage = await context.newPage();
+    await phonePage.goto(`${device.origin}/#/c/${conversationId}`);
+    const canvasFrame = phonePage.locator(".canvas-panel:visible .canvas-frame.show iframe");
+    const devicesCanvas = `http://127.0.0.1:${Number(new URL(device.origin).port) + 1}`;
+    await expect(canvasFrame.contentFrame().locator("#out")).toHaveText(/^d3 7/);
+    expect(new URL((await canvasFrame.getAttribute("src"))!).origin).toBe(devicesCanvas);
+    await callCanvasTool(host, conversationId, "show_card", { title: "Card", text: "Drawn by the plugin" });
+    const pluginFrame = phonePage.locator(".canvas-panel:visible .canvas-body > .canvas-frame.plugin iframe");
+    await expect(pluginFrame.contentFrame().locator("#text")).toHaveText("Drawn by the plugin (pressed 0 times)");
+    expect(new URL((await pluginFrame.getAttribute("src"))!).origin).toBe(devicesCanvas);
+    await context.close();
+    await hostPage.close();
   });
 
   await test.step("a device that joined over the network takes its place in the tunnel with its token, and no other device's token works through it", async () => {

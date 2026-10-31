@@ -3,6 +3,11 @@ export interface TunnelPlaces {
   hostKey: string;
   hostAddress: string;
   port: number;
+  /**
+   * The host's canvas server in the tunnel. A device's proxy for it listens one port above its proxy for the web
+   * server, where the host tells pages that came through the tunnel to load canvas pages from.
+   */
+  canvasPort?: number;
   broker: { address: string; key: string };
 }
 

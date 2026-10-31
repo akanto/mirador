@@ -93,6 +93,14 @@ unixOnlyTest("the sidecar uses the host's broker and announces the extra places,
   expect(sidecarArguments.at(-2)).toBe("--candidate=10.0.2.2:41641");
 });
 
+unixOnlyTest("devices reach the canvas server through the tunnel at a port of its own, which their tunnel places name", async () => {
+  const { p2p, devices } = host({ canvasAssetsPort: 24601 });
+  expect(p2p.invite("ABCDEFGHJK", Date.now() + 60_000).canvasPort).toBe(4601);
+  expect(p2p.register(devices.admit("Phone").device.id, newKeyPair().publicKey).canvasPort).toBe(4601);
+  await commandsRead(2);
+  expect(readFileSync(argumentsFile, "utf8").split("\n")).toContain("--forward=4601=127.0.0.1:24601");
+});
+
 unixOnlyTest("the host's tunnel identity is made once, kept from other accounts, and the same after a restart", () => {
   const identity = tunnelIdentity(join(folder, "identity"));
   expect(statSync(join(folder, "identity")).mode & 0o777).toBe(0o700);
