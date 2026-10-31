@@ -1,4 +1,6 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import type { PushRelaySetting } from "../shared/push.ts";
+import { saveSetting } from "./saved-setting.ts";
 import type { PluginUpdate } from "../shared/apps.ts";
 import { canvasUseLabels, keepAwakeLabels, type CanvasUse, type KeepAwake, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
 import type { VoiceSettings as VoiceSettingsValue } from "../shared/voice.ts";
@@ -115,6 +117,7 @@ export function SettingsDialog({
   scriptProgram,
   machineName,
   computerName,
+  pushRelay,
   avatar,
   voiceSettings,
   voiceEngine,
@@ -135,6 +138,7 @@ export function SettingsDialog({
   scriptProgram: string;
   machineName: string | null;
   computerName: string;
+  pushRelay: PushRelaySetting;
   avatar: string | null;
   voiceSettings: VoiceSettingsValue;
   voiceEngine: VoiceEngineStatus;
@@ -192,7 +196,12 @@ export function SettingsDialog({
         <DeviceSettings listed={devices} />
       </>
     ),
-    notifications: () => <NotificationSettings />,
+    notifications: () => (
+      <>
+        <NotificationSettings />
+        <PushRelaySettings pushRelay={pushRelay} />
+      </>
+    ),
     about: () => <AboutSettings version={version} newerVersion={newerVersion} claudeProgram={claudeProgram} />,
   };
 
@@ -972,6 +981,46 @@ function MachineNameSettings({ machineName, computerName }: { machineName: strin
           />
         </label>
       </div>
+    </>
+  );
+}
+
+function PushRelaySettings({ pushRelay }: { pushRelay: PushRelaySetting }) {
+  const [address, setAddress] = useState(pushRelay.address ?? "");
+  const [token, setToken] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => setAddress(pushRelay.address ?? ""), [pushRelay.address]);
+  const save = async () => {
+    const saved = await saveSetting((requestId) => ({ type: "settings.set-push-relay", requestId, address, token: token.trim() || null }));
+    setProblem(saved);
+    if (!saved) setToken("");
+  };
+  return (
+    <>
+      <h3>Phones away from Mirador</h3>
+      <p className="hint">A push relay tells your phones when an agent needs you while Mirador isn't open on them. It can't read what it passes on.</p>
+      <div className="sending-settings push-relay">
+        <label data-hint={hints.pushRelayAddress}>
+          Relay address
+          <input type="url" className="push-relay-address" value={address} placeholder="https://push.example.com" spellCheck={false} onChange={(event) => setAddress(event.target.value)} />
+        </label>
+        <label data-hint={hints.pushRelayToken}>
+          This Mac's token
+          <input
+            type="password"
+            className="push-relay-token"
+            value={token}
+            placeholder={pushRelay.tokenSet ? "Set" : ""}
+            autoComplete="off"
+            onChange={(event) => setToken(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && void save()}
+          />
+        </label>
+        <button className="push-relay-save" onClick={() => void save()}>
+          Save
+        </button>
+      </div>
+      {problem && <p className="push-relay-problem">{problem}</p>}
     </>
   );
 }

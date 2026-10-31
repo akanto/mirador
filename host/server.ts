@@ -21,6 +21,7 @@ import { readJobWaitRequest } from "../shared/job-waits.ts";
 import { avatarProblem } from "../shared/avatar.ts";
 import { promptTemplateProblem } from "../shared/prompt-templates.ts";
 import { joinRequestNotification } from "../shared/system-notifications.ts";
+import { pushRelayAddressProblem, type PushNotifications } from "./push-notifications.ts";
 import { CANVAS_ASSETS_ORIGIN_HEADER, DESKTOP_APP_CODE_PARAMETER, PROFILE_LAUNCH_PARAMETER, TOKEN_COOKIE, type ClientMessage, type ServerMessage } from "../shared/protocol.ts";
 import { claudeProgramLookUps, claudeProgramReport } from "./acp/claude-program.ts";
 import { installedHarnesses } from "./acp/harnesses.ts";
@@ -111,6 +112,7 @@ export interface HostServices {
   keepAwake: KeepAwakeHold;
   /** Null unless the environment turns peer to peer on. */
   p2p: PeerToPeer | null;
+  pushes: PushNotifications;
 }
 
 const MAX_SCRIPT_MESSAGE_BYTES = 64 * 1024;
@@ -190,6 +192,7 @@ export function startServer(services: HostServices) {
     certificate,
     keepAwake,
     p2p,
+    pushes,
   } = services;
   const appStorage = new AppStorage(store, (name) => apps.installed().some((app) => app.name === name));
   const { network } = config.reachability;
@@ -849,6 +852,16 @@ export function startServer(services: HostServices) {
     hub.broadcast({ type: "settings.machine-name", machineName: store.machineNameSetting() });
   }
 
+  function setPushRelay(address: string, token: string | null) {
+    const trimmed = address.trim();
+    const problem = trimmed ? pushRelayAddressProblem(trimmed) : null;
+    if (problem) throw new Error(problem);
+    const keepsToken = trimmed === store.pushRelaySetting().address && store.pushRelaySetting().tokenSet;
+    if (trimmed && !token?.trim() && !keepsToken) throw new Error("The push relay needs this Mac's token.");
+    store.setPushRelay(trimmed || null, token?.trim() || null);
+    hub.broadcast({ type: "settings.push-relay", pushRelay: store.pushRelaySetting() });
+  }
+
   function setScriptProgram(program: string) {
     store.setScriptProgramSetting(program.trim());
     hub.broadcast({ type: "settings.script-program", scriptProgram: store.scriptProgramSetting() });
@@ -950,6 +963,17 @@ export function startServer(services: HostServices) {
         return setScriptProgram(message.program);
       case "settings.set-machine-name":
         return setMachineName(message.machineName);
+      case "settings.set-push-relay":
+        return reply({ type: "settings.saved", requestId: message.requestId, problem: problemSaving(() => setPushRelay(message.address, message.token)) });
+      case "push.register":
+        if (socket.data.deviceId) pushes.register(socket.data.deviceId, message);
+        return;
+      case "push.unregister":
+        if (socket.data.deviceId) pushes.unregister(socket.data.deviceId);
+        return;
+      case "notification.shown":
+        if (socket.data.deviceId) pushes.shown(socket.data.deviceId, message.notificationId);
+        return;
       case "settings.set-avatar":
         return setAvatar(message.image);
       case "conversation.create":
@@ -1401,6 +1425,7 @@ export function startServer(services: HostServices) {
       scriptProgram: store.scriptProgramSetting(),
       machineName: store.machineNameSetting(),
       computerName: computerName(),
+      pushRelay: store.pushRelaySetting(),
       avatar: store.avatarSetting(),
       installedAgents: installedHarnesses(store.claudeProgramSetting()),
       canvasAssetsOrigin: socket.data.canvasAssetsOrigin,

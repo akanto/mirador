@@ -14,6 +14,8 @@ export type NotificationReason =
 export type NotificationKind = NotificationReason["kind"] | "join-request";
 
 export interface SystemNotification {
+  /** Set on the ones phones may also get as pushes; a phone answers notification.shown with it. */
+  id?: string;
   kind: NotificationKind;
   /** Set when another machine sent it on through this host; the conversation is that machine's. */
   machineId?: string;

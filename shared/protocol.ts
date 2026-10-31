@@ -44,6 +44,7 @@ import type { SlashCommand } from "./slash-commands.ts";
 import type { WaitingSummary } from "./waiting.ts";
 import type { SplitAxis } from "./terminal-layout.ts";
 import type { SystemNotification } from "./system-notifications.ts";
+import type { PushRegistration, PushRelaySetting } from "./push.ts";
 import type { SubagentUsage } from "./subagent-usage.ts";
 import type { VoiceSettings } from "./voice.ts";
 import type { VoiceEngineStatus } from "./voice-engine.ts";
@@ -103,6 +104,16 @@ export type ClientMessage =
   /** Empty for the system's text editor. */
   | { type: "settings.set-script-program"; program: string }
   | { type: "settings.set-machine-name"; machineName: string }
+  /** An empty address stops pushes and forgets the token; a null token keeps the one set before. Answered with settings.saved. */
+  | { type: "settings.set-push-relay"; requestId: string; address: string; token: string | null }
+  /** From a joined phone only. */
+  | ({ type: "push.register" } & PushRegistration)
+  | { type: "push.unregister" }
+  /**
+   * A phone that registered for pushes sends this exactly when it showed the system notification with this id, or chose
+   * not to; one it doesn't answer within a few seconds is pushed to it, as its connection may be gone without its knowing.
+   */
+  | { type: "notification.shown"; notificationId: string }
   /** The user's picture as a small square PNG data URL the page drew; null takes it away, leaving the person icon. */
   | { type: "settings.set-avatar"; image: string | null }
   /** Without a launch, the conversation starts on the workspace's default as the host has it when the message arrives. */
@@ -296,6 +307,8 @@ export type ServerMessage =
       machineName?: string | null;
       /** The computer's own name, which the machine goes by while Settings give it none. */
       computerName?: string;
+      /** Absent from hosts before pushes. */
+      pushRelay?: PushRelaySetting;
       /** The user's profile picture as a small square PNG data URL; null when they set none. */
       avatar: string | null;
       /** The agents this machine has a program for, which a new profile can run. */
@@ -344,6 +357,7 @@ export type ServerMessage =
   | { type: "settings.claude-program"; claudeProgram: ClaudeProgram }
   | { type: "settings.script-program"; scriptProgram: string }
   | { type: "settings.machine-name"; machineName: string | null }
+  | { type: "settings.push-relay"; pushRelay: PushRelaySetting }
   /** The user's picture next to every page; null when they set none, leaving the person icon. */
   | { type: "settings.avatar"; image: string | null }
   /** Sent after the snapshot and on every change; API keys are empty for clients that don't get profile environments. */

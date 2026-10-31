@@ -26,6 +26,7 @@ import { isCanvasUse, isKeepAwake, isPastel, type CanvasUse, type KeepAwake, typ
 import { defaultPromptTemplates } from "../shared/prompt-templates.ts";
 import { LONGEST_MACHINE_NAME } from "../shared/machines.ts";
 import { computerName } from "./machine-name.ts";
+import type { PushRegistration, PushRelaySetting } from "../shared/push.ts";
 import { APP_TOOLS } from "./canvas/tool-names.ts";
 import { pluginItemOfSavedChecklist, type SavedChecklist } from "./saved-checklists.ts";
 import { pluginItemOfSavedWalkthrough, type SavedReview, type SavedTour } from "./saved-walkthroughs.ts";
@@ -78,6 +79,8 @@ const schema = `
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, joined_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS push_registrations (
+    device_id TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE, registration TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS invites (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS sign_in_codes (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS join_requests (
@@ -767,6 +770,39 @@ export class Store {
 
   machineName(): string {
     return this.machineNameSetting() ?? computerName();
+  }
+
+  pushRelaySetting(): PushRelaySetting {
+    return { address: this.setting("push_relay_address"), tokenSet: this.setting("push_relay_token") !== null };
+  }
+
+  /** The address and token to send pushes with; null until both are set. */
+  pushRelay(): { address: string; token: string } | null {
+    const address = this.setting("push_relay_address");
+    const token = this.setting("push_relay_token");
+    return address && token ? { address, token } : null;
+  }
+
+  /** A null token keeps the one set, but only for the same address: a token is for its relay alone. */
+  setPushRelay(address: string | null, token: string | null) {
+    const sameRelay = address !== null && address === this.setting("push_relay_address");
+    this.setSetting("push_relay_address", address);
+    if (token !== null || !sameRelay) this.setSetting("push_relay_token", token);
+  }
+
+  setPushRegistration(deviceId: string, registration: PushRegistration) {
+    this.db.query("INSERT OR REPLACE INTO push_registrations (device_id, registration) VALUES (?, ?)").run(deviceId, JSON.stringify(registration));
+  }
+
+  deletePushRegistration(deviceId: string) {
+    this.db.query("DELETE FROM push_registrations WHERE device_id = ?").run(deviceId);
+  }
+
+  pushRegistrations(): { deviceId: string; registration: PushRegistration }[] {
+    return this.db
+      .query<{ device_id: string; registration: string }, []>("SELECT device_id, registration FROM push_registrations")
+      .all()
+      .map(({ device_id, registration }) => ({ deviceId: device_id, registration: JSON.parse(registration) }));
   }
 
   /** The user's profile picture as a PNG data URL; null when they set none. */

@@ -74,7 +74,7 @@ test("questions elsewhere notify, in the browser or else through the desktop app
     try {
       expect(await nextLine()).toBe("connected");
       askInBackground(second, "Desktop?");
-      expect(JSON.parse(await nextLine()) as SystemNotification).toEqual({ kind: "question", conversationId: second, title: "New conversation", workspace: "project", body: "Asks: Desktop?" });
+      expect(JSON.parse(await nextLine()) as SystemNotification).toEqual({ id: expect.any(String), kind: "question", conversationId: second, title: "New conversation", workspace: "project", body: "Asks: Desktop?" });
       await page.waitForTimeout(1_000);
       expect(await notificationsShown(page)).toHaveLength(1);
     } finally {

@@ -44,6 +44,7 @@ import { PeerToPeer, peerToPeerSettings } from "./p2p/service.ts";
 import { SourceWatcher } from "./source-watcher.ts";
 import { StatuslineService } from "./statusline.ts";
 import { SystemNotifications } from "./system-notifications.ts";
+import { PushNotifications } from "./push-notifications.ts";
 import { Store } from "./store.ts";
 import { TerminalSessionWatcher } from "./terminal-sessions.ts";
 import { TerminalService } from "./terminals.ts";
@@ -66,7 +67,8 @@ store.rememberAuthorityFingerprint(ownAuthorityFingerprint);
 const hub = new Hub();
 const images = new ImageStore(join(config.dataDir, "images"));
 const droppedFiles = new DroppedFiles(join(config.dataDir, "dropped-files"));
-const notifications = new SystemNotifications(store, hub);
+const pushes = new PushNotifications(store);
+const notifications = new SystemNotifications(store, hub, pushes);
 const notifierMute = new NotifierMute(config.notifierDir, join(config.dataDir, MUTED_LIST_FILE));
 notifierMute.unmuteSessionsOfEarlierRuns();
 const sourceDir = dirname(import.meta.dir);
@@ -169,7 +171,7 @@ voiceEngineInstaller.load().catch((error) => console.error(`reading how voice is
 const voice = new Voice(() => store.voiceSettings(), (profileId) => store.findProfile(profileId), voiceEngine.use);
 const keepAwake = new KeepAwakeHold(store.keepAwake());
 hub.whenRunningTurnsCounted((count) => keepAwake.setRunningTurns(count));
-const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, pluginUpdates, devices, joinRequests, signInCodes, search, relays, watch, certificate, keepAwake, p2p });
+const server = startServer({ config, store, hub, conversations, canvas, mcp, apps, plugins, canvasPlugins, pluginSettings, catalog, profiles, statusline, terminals, images, droppedFiles, voice, voiceEngine, restart, desktopApp, newerVersion, pluginUpdates, devices, joinRequests, signInCodes, search, relays, watch, certificate, keepAwake, p2p, pushes });
 const sourceWatcher = new SourceWatcher(sourceDir, {
   uiEdited: () => {
     server.rebuildUi();

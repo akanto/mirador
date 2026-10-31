@@ -1843,9 +1843,14 @@ input.picker-search {
   animation: var(--pulse) 1.4s var(--pulse-timing) infinite;
 }
 
-.read-aloud-problem {
+.read-aloud-problem,
+.push-relay-problem {
   color: var(--danger);
   font-size: calc(12px * var(--font-scale));
+}
+
+.push-relay .push-relay-address {
+  width: 260px;
 }
 
 .modal.revert {

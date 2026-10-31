@@ -1,4 +1,5 @@
 import type { CanvasItem, CanvasUse, KeepAwake, ClaudeProgram, Conversation, HarnessId, JoinRequest, Machine, MachineStatus, Profile, PromptTemplate, StoredEvent, Workspace, WorkspaceGroup } from "../shared/model.ts";
+import type { PushRelaySetting } from "../shared/push.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { appKey, type AppDocumentState, type InstalledApp, type OpenApp, type PluginUpdate } from "../shared/apps.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
@@ -52,6 +53,7 @@ export interface AppState {
   /** The name Settings gave this machine; null while it goes by its computer's name. */
   machineName: string | null;
   computerName: string;
+  pushRelay: PushRelaySetting;
   /** The user's profile picture as a small square PNG data URL; null when they set none. */
   avatar: string | null;
   voiceSettings: VoiceSettings;
@@ -117,6 +119,7 @@ export const initialState: AppState = {
   scriptProgram: "",
   machineName: null,
   computerName: "",
+  pushRelay: { address: null, tokenSet: false },
   avatar: null,
   voiceSettings: defaultVoiceSettings,
   voiceEngine: { setup: { state: "unsupported", reason: "" }, servers: { speech: "stopped", voiceModel: "stopped", speaking: "stopped" }, onDisk: [], memoryBytes: 0 },
@@ -218,6 +221,7 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
         scriptProgram: message.scriptProgram,
         machineName: message.machineName ?? null,
         computerName: message.computerName ?? "",
+        pushRelay: message.pushRelay ?? { address: null, tokenSet: false },
         avatar: message.avatar,
         installedAgents: message.installedAgents,
         version: message.version,
@@ -306,6 +310,8 @@ function applyServerMessage(state: AppState, message: ServerMessage): AppState {
       return { ...state, scriptProgram: message.scriptProgram };
     case "settings.machine-name":
       return { ...state, machineName: message.machineName };
+    case "settings.push-relay":
+      return { ...state, pushRelay: message.pushRelay };
     case "settings.avatar":
       return { ...state, avatar: message.image };
     case "voice.settings":

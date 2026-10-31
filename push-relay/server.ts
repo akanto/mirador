@@ -1,11 +1,9 @@
-import { PUSH_BLOB_BYTES, type PushOutcome, type PushRequest } from "../shared/push.ts";
+import { DEVICE_TOKEN_PATTERNS, PUSH_BLOB_BYTES, type PushOutcome, type PushRequest } from "../shared/push.ts";
 import type { ApnsPush } from "./apns.ts";
 import { hostOf } from "./host-tokens.ts";
 
 /** The largest body a valid request can be, with room for the JSON around the blob and the longest device token. */
 export const LONGEST_BODY = 4096;
-const APNS_TOKEN = /^[0-9a-f]{64,200}$/i;
-const FCM_TOKEN = /^[\w:.-]{20,512}$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export interface Senders {
@@ -70,9 +68,9 @@ function validPush(body: string): PushRequest | null {
   if (typeof push !== "object" || push === null) return null;
   const { platform, deviceToken, kind, blob, sandbox } = push;
   if (sandbox !== undefined && typeof sandbox !== "boolean") return null;
-  if (typeof deviceToken !== "string" || !(platform === "ios" ? APNS_TOKEN : FCM_TOKEN).test(deviceToken)) return null;
+  if (platform !== "ios" && platform !== "android") return null;
+  if (typeof deviceToken !== "string" || !DEVICE_TOKEN_PATTERNS[platform].test(deviceToken)) return null;
   if (platform === "android") return kind === "alert" && isFullBlob(blob) ? push : null;
-  if (platform !== "ios") return null;
   if (kind === "alert") return isFullBlob(blob) ? push : null;
   return kind === "live-activity-end" && blob === undefined ? push : null;
 }

@@ -620,6 +620,7 @@ export function App() {
           scriptProgram={state.scriptProgram}
           machineName={state.machineName}
           computerName={state.computerName}
+          pushRelay={state.pushRelay}
           avatar={state.avatar}
           voiceSettings={state.voiceSettings}
           voiceEngine={state.voiceEngine}
