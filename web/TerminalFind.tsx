@@ -2,13 +2,16 @@ import type { ISearchResultChangeEvent, SearchAddon } from "@xterm/addon-search"
 import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
 import { FindToggle, keepsFocusInQuery } from "./FindToggle.tsx";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { findTally, isSearchable, noToggles, searchOptions, type FindToggles } from "./terminal-find.ts";
 import { terminalKeyAction } from "./terminal-keys.ts";
 
+const words = t.terminals.find;
+
 export const toggleButtons: { toggle: keyof FindToggles; label: string; name: string; hint: string }[] = [
-  { toggle: "caseSensitive", label: "Aa", name: "Match case", hint: hints.findMatchCase },
-  { toggle: "wholeWord", label: "ab", name: "Match whole word", hint: hints.terminalFindWholeWord },
-  { toggle: "regex", label: ".*", name: "Use regular expression", hint: hints.terminalFindRegex },
+  { toggle: "caseSensitive", label: "Aa", name: words.matchCase, hint: hints.findMatchCase },
+  { toggle: "wholeWord", label: "ab", name: words.wholeWord, hint: hints.terminalFindWholeWord },
+  { toggle: "regex", label: ".*", name: words.regex, hint: hints.terminalFindRegex },
 ];
 
 /** Finds in a terminal's scrollback: every match highlighted, and the current one selected and scrolled to. */
@@ -60,8 +63,8 @@ export function TerminalFind({ search, inputRef, onClose }: { search: SearchAddo
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Find"
-        aria-label="Find in this terminal"
+        placeholder={words.placeholder}
+        aria-label={words.label}
         spellCheck={false}
         autoComplete="off"
       />
@@ -79,13 +82,13 @@ export function TerminalFind({ search, inputRef, onClose }: { search: SearchAddo
       <span className="find-tally" aria-live="polite">
         {findTally(query, toggles, results)}
       </span>
-      <button type="button" className="icon" aria-label="Older match" data-hint={hints.findOlder} disabled={!searchable} onMouseDown={keepsFocusInQuery} onClick={() => step("up")}>
+      <button type="button" className="icon" aria-label={words.older} data-hint={hints.findOlder} disabled={!searchable} onMouseDown={keepsFocusInQuery} onClick={() => step("up")}>
         ↑
       </button>
-      <button type="button" className="icon" aria-label="Newer match" data-hint={hints.findNewer} disabled={!searchable} onMouseDown={keepsFocusInQuery} onClick={() => step("down")}>
+      <button type="button" className="icon" aria-label={words.newer} data-hint={hints.findNewer} disabled={!searchable} onMouseDown={keepsFocusInQuery} onClick={() => step("down")}>
         ↓
       </button>
-      <button type="button" className="icon" aria-label="Close find" onClick={onClose}>
+      <button type="button" className="icon" aria-label={words.close} onClick={onClose}>
         ×
       </button>
     </div>

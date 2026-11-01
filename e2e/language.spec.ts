@@ -77,6 +77,12 @@ test("in Hungarian, the sidebar, the palette and the chat's header, message box 
   await expect(canvas.locator(".canvas-title")).toHaveText("Vászon");
   await expect(canvas.getByRole("button", { name: "Elrejtés" })).toBeVisible();
 
+  const showTerminal = header.getByRole("button", { name: "Terminál mutatása" });
+  if (await showTerminal.isVisible()) await showTerminal.click();
+  const terminals = page.locator(".terminal-pane:visible");
+  await expect(terminals.getByRole("button", { name: "Új terminállap" })).toBeVisible();
+  await expect(terminals.getByRole("button", { name: "Felosztás jobbra" })).toBeVisible();
+
   await header.getByRole("button", { name: "Keresés" }).click();
   await expect(page.getByRole("search").getByPlaceholder("Keresés ebben a beszélgetésben")).toBeVisible();
   await page.keyboard.press("Escape");

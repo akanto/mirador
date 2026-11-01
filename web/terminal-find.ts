@@ -1,4 +1,7 @@
 import type { ISearchOptions, ISearchResultChangeEvent } from "@xterm/addon-search";
+import { t } from "./i18n/index.ts";
+
+const words = t.terminals.find;
 
 /** The search addon counts and highlights this many matches at most, from the top of the scrollback down. */
 export const HIGHLIGHT_LIMIT = 1_000;
@@ -37,8 +40,8 @@ export const isSearchable = (query: string, toggles: FindToggles) => query !== "
 /** Where the current match is among them all, counted from the top, or why there is none. */
 export function findTally(query: string, toggles: FindToggles, results: ISearchResultChangeEvent | null) {
   if (query === "") return "";
-  if (!isSearchable(query, toggles)) return "Invalid pattern";
-  if (!results || results.resultCount === 0) return "No matches";
+  if (!isSearchable(query, toggles)) return words.invalidPattern;
+  if (!results || results.resultCount === 0) return words.noMatches;
   const total = results.resultCount >= HIGHLIGHT_LIMIT ? `${HIGHLIGHT_LIMIT}+` : String(results.resultCount);
-  return results.resultIndex >= 0 ? `${results.resultIndex + 1} of ${total}` : `${total} matches`;
+  return results.resultIndex >= 0 ? words.position(results.resultIndex + 1, total) : words.matches(total);
 }

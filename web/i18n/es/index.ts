@@ -7,5 +7,6 @@ import { labels } from "./labels.ts";
 import { revert } from "./revert.ts";
 import { settings } from "./settings.ts";
 import { shell } from "./shell.ts";
+import { terminals } from "./terminals.ts";
 
-export const es: Messages = { hints, waitingHints, statusHints, labels, settings, chat, revert, dictation, shell, canvas };
+export const es: Messages = { hints, waitingHints, statusHints, labels, settings, chat, revert, dictation, shell, canvas, terminals };

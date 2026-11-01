@@ -9,6 +9,7 @@ import { isTerminal, layoutKey, terminalsIn, type TerminalLayout } from "../shar
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { takeProgramRequest, useProgramRequest, type ProgramRequest } from "./program-request.ts";
 import { takeTerminalPaneRequest, useTerminalPaneRequest, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { shortcutKeys, terminalShortcutKeys } from "./shortcuts.ts";
@@ -30,6 +31,8 @@ import { scrollWithAFinger } from "./terminal-touch.ts";
 import { wheelPastTheScrollAreaInFullScreenPrograms } from "./terminal-wheel.ts";
 import { terminalAfter, terminalToward, type PlacedTerminal } from "./terminal-navigation.ts";
 import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
+
+const words = t.terminals;
 
 const INITIAL_COLUMNS = 80;
 const INITIAL_ROWS = 24;
@@ -63,7 +66,7 @@ interface TerminalEvents {
 }
 
 const tabLabel = (tab: TerminalTab) => tab.terminals[0]?.title ?? tab.name;
-const splitLabel = (terminal: TabTerminal, index: number) => terminal.title ?? `Terminal ${index + 1}`;
+const splitLabel = (terminal: TabTerminal, index: number) => terminal.title ?? words.terminalNumber(index + 1);
 
 /** The host answers this window alone with terminal.opened. */
 function requestTerminal(conversationId: string, split: TerminalSplit | null) {
@@ -258,7 +261,7 @@ function TerminalView({ terminalId, focus, events }: { terminalId: string; focus
       return false;
     });
     view.open(screenElement);
-    const startSelecting = () => copySelectionWhenReleased(view, () => showCopyNote(`Couldn't copy the selection. Press ${terminalCopyKey()} to copy it.`));
+    const startSelecting = () => copySelectionWhenReleased(view, () => showCopyNote(words.copyFailed(terminalCopyKey())));
     screenElement.addEventListener("mousedown", startSelecting);
     const stopTouchScrolling = scrollWithAFinger(view, screenElement);
     const stopWheelingPastTheScrollArea = wheelPastTheScrollAreaInFullScreenPrograms(view);
@@ -393,14 +396,14 @@ function TabLayout({
             <span className="split-title">{splitLabel(tab.terminals[index]!, index)}</span>
             {zoomedHere === terminalId && (
               <button type="button" className="link show-all-splits" data-hint={hints.terminalShowAll} data-shortcut={terminalShortcutKeys()?.zoom} onClick={onShowAll}>
-                Show all
+                {words.showAll}
               </button>
             )}
             <ConfirmButton
               className="icon close-split"
-              label={`Close terminal ${index + 1}`}
+              label={words.closeTerminal(index + 1)}
               hint={hints.terminalCloseSplit}
-              armedText="Close?"
+              armedText={words.closeArmed}
               armedHint={asksAgain ? hints.terminalCloseBusy(busy.command) : hints.terminalCloseSplitArmed}
               armRequest={asksAgain ? busy : null}
               confirmsOnCloseKey={asksAgain}
@@ -428,7 +431,7 @@ function TabLayout({
                   axis={layout.axis}
                   share={shareOf(previous) / (shareOf(previous) + shareOf(child))}
                   onChange={(share) => resize(previous, child, share)}
-                  label="Resize terminals"
+                  label={words.resize}
                   resetShare={0.5}
                   minimumSize={MIN_SPLIT_SIZE[layout.axis]}
                 />
@@ -584,12 +587,12 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
   return (
     <section
       className="terminal-pane"
-      aria-label={`Terminals in ${workspace.name}`}
+      aria-label={words.paneLabel(workspace.name)}
       style={{ "--terminal-background": theme.background } as CSSProperties}
     >
       <header className="terminal-bar" data-pane-bar>
         <PaneGrip pane="terminals" />
-        <div className="terminal-tabs" role="tablist" aria-label="Terminal tabs">
+        <div className="terminal-tabs" role="tablist" aria-label={words.tabs}>
           {tabs?.map((tab) => {
             const asksAgain = tabCloseAsksAgain(tab, busy);
             return (
@@ -599,9 +602,9 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
                 </button>
                 <ConfirmButton
                   className="icon close-tab"
-                  label={`Close ${tabLabel(tab)}`}
+                  label={words.closeTab(tabLabel(tab))}
                   hint={hints.terminalCloseTab}
-                  armedText="Close?"
+                  armedText={words.closeArmed}
                   armedHint={asksAgain ? (raisedByCloseKey(busy) ? hints.terminalCloseBusy(busy.command) : hints.terminalCloseTabBusy(busy.command)) : hints.terminalCloseTabArmed}
                   armRequest={asksAgain ? busy : null}
                   confirmsOnCloseKey={asksAgain && raisedByCloseKey(busy)}
@@ -614,7 +617,7 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
             );
           })}
           {tabs && (
-            <button type="button" className="icon new-tab" aria-label="New terminal tab" data-hint={hints.terminalNewTab} data-shortcut={keys?.newTab} onClick={() => open(null)}>
+            <button type="button" className="icon new-tab" aria-label={words.newTab} data-hint={hints.terminalNewTab} data-shortcut={keys?.newTab} onClick={() => open(null)}>
               +
             </button>
           )}
@@ -622,7 +625,7 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
         <button
           type="button"
           className="icon split-terminal"
-          aria-label="Split right"
+          aria-label={words.splitRight}
           data-hint={hints.terminalSplit}
           data-shortcut={keys?.splitRight}
           disabled={!canSplit}
@@ -633,7 +636,7 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
         <button
           type="button"
           className="icon split-terminal"
-          aria-label="Split down"
+          aria-label={words.splitDown}
           data-hint={hints.terminalSplitDown}
           data-shortcut={keys?.splitDown}
           disabled={!canSplit}
@@ -643,7 +646,7 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
         </button>
         <FullscreenToggle pane="terminals" />
         <button type="button" className="link" data-hint={hints.terminalHide} data-shortcut={shortcutKeys().toggleTerminal} onClick={onHide}>
-          Hide
+          {words.hide}
         </button>
       </header>
       {tabs && activeTab ? (
@@ -669,7 +672,7 @@ export function TerminalPane({ conversationId, workspace, status, onHide }: Term
         <div className="terminal-view terminal-start">
           {tabs && (
             <button type="button" onClick={() => open(null)}>
-              Start a shell
+              {words.startShell}
             </button>
           )}
         </div>
