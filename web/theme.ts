@@ -1,10 +1,11 @@
 import { useState, useSyncExternalStore } from "react";
 import { DESKTOP_NONCE_EVENT, isDesktopAppearance } from "../shared/desktop-menu.ts";
 import { desktopNonce, inDesktopApp, sendToDesktopApp } from "./desktop-bridge.ts";
+import { t } from "./i18n/index.ts";
 
 export type Theme = "light" | "dark" | "system";
 
-export const themeLabels: Record<Theme, string> = { light: "Light", dark: "Dark", system: "Match system" };
+export const themeLabels: Record<Theme, string> = t.labels.theme;
 
 const STORAGE_KEY = "mirador-theme";
 

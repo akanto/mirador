@@ -1,3 +1,5 @@
+import { t } from "./i18n/index.ts";
+
 export type PaneId = "conversation" | "canvas" | "terminals";
 export type HideablePane = Exclude<PaneId, "conversation">;
 
@@ -20,7 +22,7 @@ export interface PaneLayout extends LayoutDefault {
   canvasHiddenAfter?: number;
 }
 
-export const paneLabels: Record<PaneId, string> = { conversation: "Conversation", canvas: "Canvas", terminals: "Terminals" };
+export const paneLabels: Record<PaneId, string> = t.labels.pane;
 
 export const DEFAULT_LEFT_SHARE = 0.45;
 export const DEFAULT_TOP_SHARE = 0.55;

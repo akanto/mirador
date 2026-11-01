@@ -1,11 +1,9 @@
 import { storedChoice } from "./stored-choice.ts";
+import { t } from "./i18n/index.ts";
 
 export type MachineColorStyle = "rail" | "strip";
 
-export const machineColorStyleLabels: Record<MachineColorStyle, string> = {
-  rail: "Rail button only",
-  strip: "Rail button and a strip on its view",
-};
+export const machineColorStyleLabels: Record<MachineColorStyle, string> = t.labels.machineColorStyle;
 
 const machineColorStyle = storedChoice<MachineColorStyle>("mirador-machine-colors", ["rail", "strip"], "strip");
 

@@ -1,0 +1,35 @@
+import { describe, expect, test } from "bun:test";
+import { isLanguage, LANGUAGES } from "../shared/i18n/languages.ts";
+import { en } from "../web/i18n/en/index.ts";
+import { hu } from "../web/i18n/hu/index.ts";
+
+type Entry = string | ((...values: string[]) => string) | { [key: string]: Entry } | Entry[];
+
+const SAMPLE = "«value»";
+/** Stands in for any value a text is given: a string, or a list it joins. */
+const sample = Object.assign(new String(SAMPLE), { join: () => SAMPLE }) as unknown as string;
+
+function texts(entry: Entry, path: string): [string, string][] {
+  if (typeof entry === "string") return [[path, entry]];
+  if (typeof entry === "function") return [[path, entry(...Array.from({ length: entry.length }, () => sample))]];
+  return Object.entries(entry).flatMap(([key, value]) => texts(value as Entry, `${path}.${key}`));
+}
+
+describe("languages", () => {
+  test("only the listed languages are languages", () => {
+    expect(LANGUAGES.every(isLanguage)).toBe(true);
+    expect(isLanguage("de")).toBe(false);
+    expect(isLanguage(null)).toBe(false);
+  });
+
+  test("Hungarian has every text English has, in the same order, none of them empty, and fills in every value it is given", () => {
+    const english = new Map(texts(en as unknown as Entry, ""));
+    const hungarian = texts(hu as unknown as Entry, "");
+    expect(hungarian.map(([path]) => path)).toEqual([...english.keys()]);
+    for (const [path, text] of hungarian) {
+      expect(text.trim(), path).not.toBe("");
+      const valuesGiven = english.get(path)!.split(SAMPLE).length - 1;
+      expect(text.split(SAMPLE).length - 1, path).toBe(valuesGiven);
+    }
+  });
+});

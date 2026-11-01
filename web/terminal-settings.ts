@@ -1,12 +1,13 @@
 import { useSyncExternalStore } from "react";
 import { TERMINAL_FONT, terminalPresetLabels, terminalPresetTheme, type TerminalPreset } from "./terminal-look.ts";
 import { isFontFamily } from "./shell-look.ts";
+import { t } from "./i18n/index.ts";
 
 export { type TerminalPreset, terminalPresetLabels, terminalPresetTheme } from "./terminal-look.ts";
 
 export type TerminalCursorStyle = "block" | "underline" | "bar";
 
-export const cursorStyleLabels: Record<TerminalCursorStyle, string> = { block: "Block", underline: "Underline", bar: "Bar" };
+export const cursorStyleLabels: Record<TerminalCursorStyle, string> = t.labels.cursorStyle;
 
 export const TERMINAL_PRESETS: readonly TerminalPreset[] = ["default", "dracula", "solarized-dark", "nord", "monokai"];
 export const TERMINAL_FONT_SIZES = Array.from({ length: 14 }, (_, index) => 11 + index);

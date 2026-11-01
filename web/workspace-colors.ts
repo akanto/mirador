@@ -1,12 +1,9 @@
 import { storedChoice } from "./stored-choice.ts";
+import { t } from "./i18n/index.ts";
 
 export type WorkspaceColorStyle = "card" | "heading" | "stripe";
 
-export const workspaceColorStyleLabels: Record<WorkspaceColorStyle, string> = {
-  card: "Whole card",
-  heading: "Heading only",
-  stripe: "Stripe and soft tint",
-};
+export const workspaceColorStyleLabels: Record<WorkspaceColorStyle, string> = t.labels.workspaceColorStyle;
 
 const workspaceColorStyle = storedChoice<WorkspaceColorStyle>("mirador-workspace-colors", ["card", "heading", "stripe"], "card");
 

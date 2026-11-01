@@ -1,16 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { contrastRatio } from "./readable-color.ts";
+import { t } from "./i18n/index.ts";
 
 /** How shell blocks in a conversation look: the agent's shell commands, the user's own, and commands awaiting approval. */
 export type ShellLook = "theme" | "terminal-dark" | "soft-dark" | "paper" | "custom";
 
-export const shellLookLabels: Record<ShellLook, string> = {
-  theme: "Follow the theme",
-  "terminal-dark": "Terminal dark",
-  "soft-dark": "Soft dark",
-  paper: "Paper",
-  custom: "Custom",
-};
+export const shellLookLabels: Record<ShellLook, string> = t.labels.shellLook;
 
 export type ShellFontSize = "90" | "100" | "110" | "120" | "130";
 
@@ -22,7 +17,7 @@ export interface ShellColours {
   prompt: string;
 }
 
-export const shellColourLabels: Record<keyof ShellColours, string> = { background: "Background", text: "Text", prompt: "Prompt" };
+export const shellColourLabels: Record<keyof ShellColours, string> = t.labels.shellColour;
 
 export interface ShellAppearance {
   look: ShellLook;

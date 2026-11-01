@@ -7,6 +7,7 @@ import { openOutsideLinksInTheBrowser } from "./outside-links.ts";
 import { applyFontScale, currentFontScale } from "./font-scale.ts";
 import { applyPulses, keepPulsesInStep, storedPulsesOn } from "./pulses.ts";
 import { applyShellAppearance, storedShellAppearance } from "./shell-look.ts";
+import { applyLanguage } from "./language.ts";
 import { applyTheme, giveThemeToDesktopApp, storedTheme } from "./theme.ts";
 import { applyTimestampsShown, storedTimestampsShown } from "./timestamps.ts";
 import { applyWaitingStyle, storedWaitingStyle } from "./waiting.ts";
@@ -14,6 +15,7 @@ import { applyWorkspaceColorStyle } from "./workspace-colors.ts";
 
 applyExternalImages(externalImages.get());
 applyFontScale(currentFontScale());
+applyLanguage();
 applyTheme(storedTheme());
 applyShellAppearance(storedShellAppearance());
 applyTimestampsShown(storedTimestampsShown());

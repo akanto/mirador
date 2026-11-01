@@ -9,14 +9,11 @@ export {
   waitingTones,
   type WaitingTone,
 } from "../shared/waiting.ts";
+import { t } from "./i18n/index.ts";
 
 export type WaitingStyle = "pills" | "dots" | "list";
 
-export const waitingStyleLabels: Record<WaitingStyle, string> = {
-  pills: "Pill and count",
-  dots: "Dot only",
-  list: "Pills and a list on top",
-};
+export const waitingStyleLabels: Record<WaitingStyle, string> = t.labels.waitingStyle;
 
 const STORAGE_KEY = "mirador-waiting-style";
 

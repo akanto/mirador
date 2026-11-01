@@ -2,10 +2,9 @@ import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type Rea
 import type { PushRelaySetting } from "../shared/push.ts";
 import { saveSetting } from "./saved-setting.ts";
 import type { PluginUpdate } from "../shared/apps.ts";
-import { canvasUseLabels, keepAwakeLabels, type CanvasUse, type KeepAwake, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
+import { type CanvasUse, type KeepAwake, type ClaudeProgram, type Profile, type PromptTemplate } from "../shared/model.ts";
 import type { VoiceSettings as VoiceSettingsValue } from "../shared/voice.ts";
 import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
-import { shellOutputStyleLabels } from "../shared/shell-output.ts";
 import type { NewerVersion } from "../shared/newer-version.ts";
 import { FontSizePreview, MachineColorPreview, ShellLookPreview, ShellOutputPreview, ThemePreview, WaitingPreview, WorkspaceColorPreview } from "./appearance-previews.tsx";
 import { enterWhileBusyLabels, setEnterWhileBusy, useEnterWhileBusy, type EnterWhileBusy } from "./busy-sending.ts";
@@ -17,10 +16,13 @@ import { PluginSettings, UpdatesWaiting } from "./PluginSettings.tsx";
 import { externalImages, setExternalImages, useExternalImagesBlocked } from "./external-images.ts";
 import { setEditsInCanvas, useEditsInCanvas } from "./edits-in-canvas.ts";
 import { fontScaleLabels, useFontScale } from "./font-scale.ts";
-import { pageLibrariesLabels, type PageLibraries } from "../shared/canvas-export.ts";
+import type { PageLibraries } from "../shared/canvas-export.ts";
 import { setPageLibraries, usePageLibraries } from "./page-libraries.ts";
 import { rememberSettingsSize } from "./paneLayouts.ts";
 import { hints } from "./hints.ts";
+import { formatNumber, t } from "./i18n/index.ts";
+import { chooseLanguage, language } from "./language.ts";
+import { languageNames, type Language } from "../shared/i18n/languages.ts";
 import { LONGEST_MACHINE_NAME } from "../shared/machines.ts";
 import { NewerVersionNote, UpdateCheckButton } from "./NewerVersion.tsx";
 import { machineColorStyleLabels, setMachineColorStyle, useMachineColorStyle } from "./machine-colors.ts";
@@ -67,16 +69,16 @@ import { setTypingAids, useTypingAids, type TypingAids } from "./typing-aids.ts"
 import { useWaitingStyle, waitingStyleLabels } from "./waiting.ts";
 import { setWorkspaceColorStyle, useWorkspaceColorStyle, workspaceColorStyleLabels } from "./workspace-colors.ts";
 
-const thumbnailLabels: Record<PaneId, string> = { conversation: "Chat", canvas: "Canvas", terminals: "Terminals" };
-const startHiddenLabels: Record<HideablePane, string> = { canvas: "Canvas starts hidden", terminals: "Terminals start hidden" };
+const text = t.settings;
+const thumbnailLabels: Record<PaneId, string> = t.labels.thumbnail;
+const startHiddenLabels: Record<HideablePane, string> = t.labels.startHidden;
 
 const typingAidLabels: Record<keyof TypingAids, string> = {
-  autocorrect: "Correct spelling automatically",
-  predictions: "Inline predictions",
+  autocorrect: text.typing.autocorrect,
+  predictions: text.typing.predictions,
 };
 
-const describe = ([left, top, bottom]: Slots) =>
-  `${paneLabels[left]} on the left, ${paneLabels[top].toLowerCase()} top right, ${paneLabels[bottom].toLowerCase()} bottom right`;
+const describe = ([left, top, bottom]: Slots) => text.layout.describe(paneLabels[left], paneLabels[top], paneLabels[bottom]);
 
 function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hidden"] }) {
   const isHidden = (pane: PaneId) => pane !== "conversation" && hidden[pane];
@@ -91,19 +93,7 @@ function Thumbnail({ slots, hidden }: { slots: Slots; hidden: LayoutDefault["hid
   );
 }
 
-const pageLabels: Record<SettingsPage, string> = {
-  appearance: "Appearance",
-  conversations: "Conversations",
-  agents: "Agents",
-  voice: "Voice",
-  terminal: "Terminal",
-  canvas: "Canvas",
-  plugins: "Plugins",
-  layout: "Layout",
-  devices: "Devices",
-  notifications: "Notifications",
-  about: "About",
-};
+const pageLabels: Record<SettingsPage, string> = t.labels.settingsPage;
 const settingsPages = Object.keys(pageLabels) as SettingsPage[];
 const pageSteps: Partial<Record<string, 1 | -1>> = { ArrowDown: 1, ArrowUp: -1 };
 
@@ -207,10 +197,10 @@ export function SettingsDialog({
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal settings" role="dialog" aria-label="Settings" ref={rememberSettingsSize}>
+      <div className="modal settings" role="dialog" aria-label={text.title} ref={rememberSettingsSize}>
         <header>
-          <h2>Settings</h2>
-          <button className="icon" title="Close" aria-label="Close" onClick={onClose}>
+          <h2>{text.title}</h2>
+          <button className="icon" title={text.close} aria-label={text.close} onClick={onClose}>
             ×
           </button>
         </header>
@@ -236,7 +226,7 @@ function PageList({ page, onChoose, pluginUpdates }: { page: SettingsPage; onCho
     event.currentTarget.querySelector<HTMLElement>(`#settings-tab-${next}`)?.focus();
   };
   return (
-    <nav className="settings-pages" role="tablist" aria-orientation="vertical" aria-label="Settings pages" onKeyDown={chooseWithArrows}>
+    <nav className="settings-pages" role="tablist" aria-orientation="vertical" aria-label={text.pagesLabel} onKeyDown={chooseWithArrows}>
       {settingsPages.map((id) => (
         <button
           key={id}
@@ -260,12 +250,11 @@ function LayoutSettings({ layoutDefault, onChange }: { layoutDefault: LayoutDefa
   const startHidden = (pane: HideablePane, hidden: boolean) => onChange({ ...layoutDefault, hidden: { ...layoutDefault.hidden, [pane]: hidden } });
   return (
     <>
-      <h3>Default layout</h3>
+      <h3>{text.layout.title}</h3>
       <p className="hint">
-        New conversations start with it, and so do those whose panes you haven't moved, resized, hidden or made fullscreen.{" "}
-        <em>Reset layout to default</em> in the palette brings the open conversation back to it.
+        {text.layout.hintStart} <em>{text.layout.resetCommand}</em> {text.layout.hintEnd}
       </p>
-      <div className="arrangements" role="radiogroup" aria-label="Default arrangement">
+      <div className="arrangements" role="radiogroup" aria-label={text.layout.arrangement}>
         {arrangements.map((slots) => {
           const chosen = sameSlots(slots, layoutDefault.slots);
           return (
@@ -355,20 +344,20 @@ function ProfilePictureSettings({ picture }: { picture: string | null }) {
   };
   return (
     <section data-hint={hints.profilePicture}>
-      <h3>Profile picture</h3>
-      <p className="hint">Next to your messages, kept by the host for every browser and device that joins it.</p>
+      <h3>{text.profilePicture.title}</h3>
+      <p className="hint">{text.profilePicture.hint}</p>
       <div className="profile-picture">
         {picture && <img className="profile-picture-preview" src={picture} alt="" />}
         <input
           type="file"
           accept="image/*"
-          aria-label="Profile picture"
+          aria-label={text.profilePicture.title}
           onChange={(event) => {
             void chooseFile(event.target.files?.[0]);
             event.target.value = "";
           }}
         />
-        {picture && <button type="button" onClick={() => connection.send({ type: "settings.set-avatar", image: null })}>Remove</button>}
+        {picture && <button type="button" onClick={() => connection.send({ type: "settings.set-avatar", image: null })}>{text.profilePicture.remove}</button>}
         {refusal && (
           <p className="hint profile-picture-refused" role="alert">
             {refusal}
@@ -391,10 +380,11 @@ function AppearanceSettings() {
   const shellAppearance = useShellAppearance();
   return (
     <>
-      <h3>Appearance</h3>
-      <p className="hint">Remembered in this browser.</p>
+      <h3>{text.appearance.title}</h3>
+      <p className="hint">{text.rememberedInBrowser}</p>
+      <LanguageSetting />
       <PictureChoice
-        name="Text size"
+        name={text.appearance.textSize}
         hint={hints.textSize}
         labels={fontScaleLabels}
         chosen={fontScale}
@@ -402,9 +392,9 @@ function AppearanceSettings() {
         onChoose={setFontScale}
         preview={(option) => <FontSizePreview scale={option} />}
       />
-      <PictureChoice name="Theme" hint={hints.theme} labels={themeLabels} chosen={theme} onChoose={setTheme} preview={(option) => <ThemePreview theme={option} />} />
+      <PictureChoice name={text.appearance.theme} hint={hints.theme} labels={themeLabels} chosen={theme} onChoose={setTheme} preview={(option) => <ThemePreview theme={option} />} />
       <PictureChoice
-        name="Waiting for you"
+        name={text.appearance.waitingForYou}
         hint={hints.waitingStyle}
         labels={waitingStyleLabels}
         chosen={waitingStyle}
@@ -412,7 +402,7 @@ function AppearanceSettings() {
         preview={(option) => <WaitingPreview style={option} />}
       />
       <PictureChoice
-        name="Workspace colours"
+        name={text.appearance.workspaceColours}
         hint={hints.workspaceColorStyle}
         labels={workspaceColorStyleLabels}
         chosen={workspaceColorStyle}
@@ -420,7 +410,7 @@ function AppearanceSettings() {
         preview={(option) => <WorkspaceColorPreview style={option} />}
       />
       <PictureChoice
-        name="Machine colours"
+        name={text.appearance.machineColours}
         hint={hints.machineColorStyle}
         labels={machineColorStyleLabels}
         chosen={machineColorStyle}
@@ -428,15 +418,15 @@ function AppearanceSettings() {
         preview={(option) => <MachineColorPreview style={option} />}
       />
       <PictureChoice
-        name="Shell commands"
+        name={text.appearance.shellCommands}
         hint={hints.shellOutputStyle}
-        labels={shellOutputStyleLabels}
+        labels={t.labels.shellOutputStyle}
         chosen={shellOutputStyle}
         onChoose={setShellOutputStyle}
         preview={(option) => <ShellOutputPreview style={option} />}
       />
       <PictureChoice
-        name="Shell colours"
+        name={text.appearance.shellColours}
         hint={hints.shellLook}
         labels={shellLookLabels}
         chosen={shellAppearance.look}
@@ -448,14 +438,31 @@ function AppearanceSettings() {
       <div className="appearance-settings">
         <label data-hint={hints.timestamps}>
           <input type="checkbox" checked={timestampsShown} onChange={(event) => setTimestampsShown(event.target.checked)} />
-          Show timestamps
+          {text.appearance.showTimestamps}
         </label>
         <label data-hint={hints.pulses}>
           <input type="checkbox" checked={pulsesOn} onChange={(event) => setPulsesOn(event.target.checked)} />
-          Pulse status dots
+          {text.appearance.pulseStatusDots}
         </label>
       </div>
     </>
+  );
+}
+
+function LanguageSetting() {
+  return (
+    <div className="sending-settings">
+      <label data-hint={text.appearance.languageHint}>
+        {text.appearance.language}
+        <select value={language} onChange={(event) => chooseLanguage(event.target.value as Language)}>
+          {Object.entries(languageNames).map(([value, name]) => (
+            <option key={value} value={value} lang={value}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }
 
@@ -479,16 +486,16 @@ function ShellLookSettings() {
             </label>
           ))}
           <button type="button" className="link" onClick={() => changeShellAppearance({ custom: DEFAULT_CUSTOM_SHELL_COLOURS })}>
-            Reset colours
+            {text.appearance.resetColours}
           </button>
         </div>
       )}
       <label data-hint={hints.shellFont}>
-        Shell font
-        <input type="text" value={fontTyped} placeholder="Monospace" spellCheck={false} aria-invalid={fontRefused} onChange={(event) => typeFont(event.target.value)} />
+        {text.appearance.shellFont}
+        <input type="text" value={fontTyped} placeholder={text.appearance.shellFontPlaceholder} spellCheck={false} aria-invalid={fontRefused} onChange={(event) => typeFont(event.target.value)} />
       </label>
       <label data-hint={hints.shellFontSize}>
-        Shell text size
+        {text.appearance.shellTextSize}
         <select value={size} onChange={(event) => changeShellAppearance({ size: event.target.value as ShellFontSize })}>
           {Object.entries(shellFontSizeLabels).map(([value, label]) => (
             <option key={value} value={value}>
@@ -506,9 +513,9 @@ function ShellLookSettings() {
           changeShellAppearance({ font: DEFAULT_SHELL_APPEARANCE.font, size: DEFAULT_SHELL_APPEARANCE.size });
         }}
       >
-        Reset font
+        {text.resetFont}
       </button>
-      {fontRefused && <p className="hint shell-font-refused">A font name takes letters, digits, spaces, quotes, commas, dots and hyphens.</p>}
+      {fontRefused && <p className="hint shell-font-refused">{text.fontRefused}</p>}
     </div>
   );
 }
@@ -519,10 +526,10 @@ function SendingSettings() {
   const formatBar = useFormatBar();
   return (
     <>
-      <h3>Message box</h3>
+      <h3>{text.sending.messageBox}</h3>
       <div className="sending-settings">
         <label data-hint={hints.messageBox}>
-          Box
+          {text.sending.box}
           <select value={messageBox} onChange={(event) => setMessageBox(event.target.value as MessageBox)}>
             {Object.entries(messageBoxLabels).map(([value, label]) => (
               <option key={value} value={value}>
@@ -533,7 +540,7 @@ function SendingSettings() {
         </label>
         {messageBox === "formatted" && (
           <label data-hint={hints.formatBarSetting}>
-            Formatting buttons
+            {text.sending.formattingButtons}
             <select value={formatBar} onChange={(event) => setFormatBar(event.target.value as FormatBarChoice)}>
               {Object.entries(formatBarLabels).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -544,11 +551,11 @@ function SendingSettings() {
           </label>
         )}
       </div>
-      <h3>Sending while the agent works</h3>
-      <p className="hint">⌥Enter (Alt+Enter) does the other; each queued message shows which way it goes out. Remembered in this browser.</p>
+      <h3>{text.sending.whileAgentWorks}</h3>
+      <p className="hint">{text.sending.whileAgentWorksHint}</p>
       <div className="sending-settings">
         <label data-hint={hints.enterWhileBusy}>
-          Enter
+          {text.sending.enter}
           <select value={enterWhileBusy} onChange={(event) => setEnterWhileBusy(event.target.value as EnterWhileBusy)}>
             {Object.entries(enterWhileBusyLabels).map(([value, label]) => (
               <option key={value} value={value}>
@@ -561,8 +568,6 @@ function SendingSettings() {
     </>
   );
 }
-
-const TERMINAL_FONT_PREVIEW = "Sample text — 0O 1l {} () <>";
 
 const trimmed = (value: number) => value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
 
@@ -577,11 +582,11 @@ function TerminalSettings() {
   };
   return (
     <>
-      <h3>Terminal</h3>
-      <p className="hint">Remembered in this browser.</p>
+      <h3>{text.terminal.title}</h3>
+      <p className="hint">{text.rememberedInBrowser}</p>
       <div className="terminal-settings">
         <label data-hint={hints.terminalPreset}>
-          Colour preset
+          {text.terminal.colourPreset}
           <select value={settings.preset} onChange={(event) => setTerminalSettings({ preset: event.target.value as TerminalPreset })}>
             {Object.entries(terminalPresetLabels).map(([value, label]) => (
               <option key={value} value={value}>
@@ -591,12 +596,12 @@ function TerminalSettings() {
           </select>
         </label>
         <label data-hint={hints.terminalFontFamily}>
-          Font
+          {text.terminal.font}
           <input
             type="text"
             className="terminal-font"
             value={fontTyped}
-            placeholder="The usual Nerd Fonts"
+            placeholder={text.terminal.fontPlaceholder}
             spellCheck={false}
             aria-invalid={fontRefused}
             onChange={(event) => typeFont(event.target.value)}
@@ -611,14 +616,14 @@ function TerminalSettings() {
             setTerminalSettings({ fontFamily: "" });
           }}
         >
-          Reset font
+          {text.resetFont}
         </button>
         <div className="terminal-font-preview" aria-hidden="true" style={{ fontFamily: terminalFontList(settings.fontFamily) }}>
-          {TERMINAL_FONT_PREVIEW}
+          {text.terminal.fontPreview}
         </div>
-        {fontRefused && <p className="hint terminal-font-refused">A font name takes letters, digits, spaces, quotes, commas, dots and hyphens.</p>}
+        {fontRefused && <p className="hint terminal-font-refused">{text.fontRefused}</p>}
         <label data-hint={hints.terminalFontSize}>
-          Font size
+          {text.terminal.fontSize}
           <select value={settings.fontSize} onChange={(event) => setTerminalSettings({ fontSize: Number(event.target.value) })}>
             {TERMINAL_FONT_SIZES.map((size) => (
               <option key={size} value={size}>
@@ -628,7 +633,7 @@ function TerminalSettings() {
           </select>
         </label>
         <label data-hint={hints.terminalLineHeight}>
-          Line height
+          {text.terminal.lineHeight}
           <input
             type="range"
             min={TERMINAL_LINE_HEIGHTS.min}
@@ -640,7 +645,7 @@ function TerminalSettings() {
           <span className="terminal-setting-value" aria-hidden="true">{trimmed(settings.lineHeight)}×</span>
         </label>
         <label data-hint={hints.terminalLetterSpacing}>
-          Letter spacing
+          {text.terminal.letterSpacing}
           <input
             type="range"
             min={TERMINAL_LETTER_SPACINGS.min}
@@ -652,7 +657,7 @@ function TerminalSettings() {
           <span className="terminal-setting-value" aria-hidden="true">{trimmed(settings.letterSpacing)} px</span>
         </label>
         <label data-hint={hints.terminalCursorStyle}>
-          Cursor style
+          {text.terminal.cursorStyle}
           <select value={settings.cursorStyle} onChange={(event) => setTerminalSettings({ cursorStyle: event.target.value as TerminalCursorStyle })}>
             {Object.entries(cursorStyleLabels).map(([value, label]) => (
               <option key={value} value={value}>
@@ -663,10 +668,10 @@ function TerminalSettings() {
         </label>
         <label data-hint={hints.terminalCursorBlink}>
           <input type="checkbox" checked={settings.cursorBlink} onChange={(event) => setTerminalSettings({ cursorBlink: event.target.checked })} />
-          Cursor blink
+          {text.terminal.cursorBlink}
         </label>
         <label data-hint={hints.terminalFontWeightBold}>
-          Bold weight
+          {text.terminal.boldWeight}
           <select value={settings.fontWeightBold} onChange={(event) => setTerminalSettings({ fontWeightBold: Number(event.target.value) })}>
             {TERMINAL_FONT_WEIGHTS_BOLD.map((weight) => (
               <option key={weight} value={weight}>
@@ -676,21 +681,21 @@ function TerminalSettings() {
           </select>
         </label>
         <label data-hint={hints.terminalScrollback}>
-          Scrollback
+          {text.terminal.scrollback}
           <select value={settings.scrollback} onChange={(event) => setTerminalSettings({ scrollback: Number(event.target.value) })}>
             {TERMINAL_SCROLLBACKS.map((lines) => (
               <option key={lines} value={lines}>
-                {lines.toLocaleString("en-US")} lines
+                {text.terminal.scrollbackLines(formatNumber(lines))}
               </option>
             ))}
           </select>
         </label>
         <label data-hint={hints.copyOnSelect}>
           <input type="checkbox" checked={settings.copyOnSelect} onChange={(event) => setCopyOnSelect(event.target.checked)} />
-          Copy on select
+          {text.terminal.copyOnSelect}
         </label>
         <button type="button" className="link" onClick={resetTerminalSettings}>
-          Reset to defaults
+          {text.terminal.resetToDefaults}
         </button>
       </div>
     </>
@@ -700,7 +705,7 @@ function TerminalSettings() {
 function AboutSettings({ version, newerVersion, claudeProgram }: { version: string; newerVersion: NewerVersion | null; claudeProgram: ClaudeProgram }) {
   return (
     <>
-      <h3>About</h3>
+      <h3>{text.about.title}</h3>
       <p className="hint">Mirador {version}</p>
       <NewerVersionNote newerVersion={newerVersion} />
       <UpdateCheckButton version={version} newerVersion={newerVersion} />
@@ -710,9 +715,9 @@ function AboutSettings({ version, newerVersion, claudeProgram }: { version: stri
 }
 
 function foundClaudeProgram({ configured, found, version, installCommand }: ClaudeProgram) {
-  if (found) return version ? `Runs ${found}, ${version}` : `Runs ${found}`;
-  if (configured) return "Nothing at that path can run.";
-  return `Claude Code is not installed. Install it with ${installCommand}, or enter where its claude program is.`;
+  if (found) return version ? text.about.runsVersion(found, version) : text.about.runs(found);
+  if (configured) return text.about.nothingRuns;
+  return text.about.notInstalled(installCommand);
 }
 
 function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
@@ -724,17 +729,15 @@ function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
   return (
     <>
       <h3>Claude Code</h3>
-      <p className="hint">
-        Mirador runs the Claude Code installed on the host's computer. A change restarts its agents, which stops the turns they are running.
-      </p>
+      <p className="hint">{text.agents.hint}</p>
       <div className="sending-settings">
         <label data-hint={hints.claudeProgram(claudeProgram.installFolders)}>
-          Program
+          {text.program}
           <input
             type="text"
             className="claude-program"
             value={path}
-            placeholder="Found on its own"
+            placeholder={text.agents.programPlaceholder}
             spellCheck={false}
             onChange={(event) => setPath(event.target.value)}
             onBlur={save}
@@ -752,13 +755,13 @@ function AgentSettings({ claudeProgram }: { claudeProgram: ClaudeProgram }) {
 function KeepAwakeSettings({ keepAwake }: { keepAwake: KeepAwake }) {
   return (
     <>
-      <h3>Sleep</h3>
-      <p className="hint">Kept by the host. Its computer can still sleep when you close a laptop's lid, and its display still turns off.</p>
+      <h3>{text.sleep.title}</h3>
+      <p className="hint">{text.sleep.hint}</p>
       <div className="sending-settings">
         <label data-hint={hints.keepAwake}>
-          Keep the computer awake
+          {text.sleep.keepAwake}
           <select value={keepAwake} onChange={(event) => connection.send({ type: "settings.set-keep-awake", keepAwake: event.target.value as KeepAwake })}>
-            {Object.entries(keepAwakeLabels).map(([value, label]) => (
+            {Object.entries(t.labels.keepAwake).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -773,16 +776,13 @@ function KeepAwakeSettings({ keepAwake }: { keepAwake: KeepAwake }) {
 function CanvasSettings({ canvasUse }: { canvasUse: CanvasUse }) {
   return (
     <>
-      <h3>Canvas</h3>
-      <p className="hint">
-        Kept by the host for every browser. A conversation picks up a change when its session next starts: a new one at once, an open one after the host
-        restarts. Claude Code and pi; opencode follows the canvas's own instructions.
-      </p>
+      <h3>{text.canvas.title}</h3>
+      <p className="hint">{text.canvas.hint}</p>
       <div className="sending-settings">
         <label data-hint={hints.canvasUse}>
-          Claude Code and pi use the canvas
+          {text.canvas.use}
           <select value={canvasUse} onChange={(event) => connection.send({ type: "settings.set-canvas-use", canvasUse: event.target.value as CanvasUse })}>
-            {Object.entries(canvasUseLabels).map(([value, label]) => (
+            {Object.entries(t.labels.canvasUse).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -798,13 +798,13 @@ function SavedPageSettings() {
   const libraries = usePageLibraries();
   return (
     <>
-      <h3>Copied and saved pages</h3>
-      <p className="hint">For a page you copy, download or save to the project from the canvas. Remembered in this browser.</p>
+      <h3>{text.savedPages.title}</h3>
+      <p className="hint">{text.savedPages.hint}</p>
       <div className="sending-settings">
         <label data-hint={hints.pageLibrariesSetting}>
-          Libraries
+          {text.savedPages.libraries}
           <select value={libraries} onChange={(event) => setPageLibraries(event.target.value as PageLibraries)}>
-            {Object.entries(pageLibrariesLabels).map(([value, label]) => (
+            {Object.entries(t.labels.pageLibraries).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -820,23 +820,21 @@ function EditApprovalSettings() {
   const editsInCanvas = useEditsInCanvas();
   return (
     <>
-      <h3>Edit approvals</h3>
-      <p className="hint">When the agent asks to edit or write a file. With the canvas pane hidden, the chat shows the diff either way. Remembered in this browser.</p>
+      <h3>{text.editApprovals.title}</h3>
+      <p className="hint">{text.editApprovals.hint}</p>
       <div className="sending-settings">
         <label data-hint={hints.editsInCanvasSetting}>
           <input type="checkbox" checked={editsInCanvas} onChange={(event) => setEditsInCanvas(event.target.checked)} />
-          Show edits waiting for approval in the canvas
+          {text.editApprovals.inCanvas}
         </label>
       </div>
     </>
   );
 }
 
-const WHEN_NOTIFIED = "when a conversation you're not looking at asks a question or for permission, finishes its turn, or stops with an error";
-
 const blockedNotice: Partial<Record<NotificationSetting["permission"], string>> = {
-  denied: "This browser blocks notifications from Mirador. Allow them in its settings for this site, then switch them on here.",
-  unsupported: "This browser can't show notifications.",
+  denied: text.notifications.denied,
+  unsupported: text.notifications.unsupported,
 };
 
 function NotificationSettings() {
@@ -844,18 +842,16 @@ function NotificationSettings() {
   if (inDesktopApp()) {
     return (
       <>
-        <h3>Notifications</h3>
-        <p className="hint">The desktop app notifies you {WHEN_NOTIFIED}, also while its window is closed.</p>
+        <h3>{text.notifications.title}</h3>
+        <p className="hint">{text.notifications.desktopApp}</p>
       </>
     );
   }
   const notice = blockedNotice[setting.permission];
   return (
     <>
-      <h3>Notifications</h3>
-      <p className="hint">
-        This browser notifies you {WHEN_NOTIFIED}; click one to open the conversation. While the desktop app runs on this computer, it notifies instead.
-      </p>
+      <h3>{text.notifications.title}</h3>
+      <p className="hint">{text.notifications.browser}</p>
       <div className="notification-settings">
         <label>
           <input
@@ -864,7 +860,7 @@ function NotificationSettings() {
             disabled={setting.permission === "unsupported"}
             onChange={(event) => void setNotificationsWanted(event.target.checked)}
           />
-          Notify me in this browser
+          {text.notifications.notifyInBrowser}
         </label>
       </div>
       {notice && <p className="hint">{notice}</p>}
@@ -877,22 +873,19 @@ function ExternalImageSettings() {
   const stillBlocked = useExternalImagesBlocked();
   return (
     <>
-      <h3>Images from other sites</h3>
-      <p className="hint">
-        An agent's reply can show an image from any site. Loading it tells that site the image's address, which an agent misled by
-        what it read can fill with what it read. Remembered in this browser.
-      </p>
+      <h3>{text.externalImages.title}</h3>
+      <p className="hint">{text.externalImages.hint}</p>
       <div className="external-images">
         <label>
           <input type="checkbox" checked={choice === "blocked"} onChange={(event) => setExternalImages(event.target.checked ? "blocked" : "shown")} />
-          Show images from other sites as links
+          {text.externalImages.asLinks}
         </label>
       </div>
       {choice === "shown" && stillBlocked && (
         <p className="hint">
-          They load after a reload.{" "}
+          {text.externalImages.loadAfterReload}{" "}
           <button type="button" className="link" onClick={() => location.reload()}>
-            Reload
+            {text.externalImages.reload}
           </button>
         </p>
       )}
@@ -902,7 +895,7 @@ function ExternalImageSettings() {
 
 type ScriptOpener = "text-editor" | "program";
 
-const scriptOpenerLabels: Record<ScriptOpener, string> = { "text-editor": "The system's text editor", program: "A program you name" };
+const scriptOpenerLabels: Record<ScriptOpener, string> = { "text-editor": text.fileLinks.textEditor, program: text.fileLinks.programYouName };
 
 function FileLinkSettings({ scriptProgram }: { scriptProgram: string }) {
   const [opener, setOpener] = useState<ScriptOpener>(scriptProgram ? "program" : "text-editor");
@@ -920,14 +913,11 @@ function FileLinkSettings({ scriptProgram }: { scriptProgram: string }) {
   };
   return (
     <>
-      <h3>File links</h3>
-      <p className="hint">
-        A file path in an agent's reply or tool card opens on the host's computer. A script opens as text, since the program for its type could run it.
-        Kept by the host for every browser.
-      </p>
+      <h3>{text.fileLinks.title}</h3>
+      <p className="hint">{text.fileLinks.hint}</p>
       <div className="sending-settings">
         <label data-hint={hints.scriptProgram}>
-          Scripts open in
+          {text.fileLinks.scriptsOpenIn}
           <select value={opener} onChange={(event) => choose(event.target.value as ScriptOpener)}>
             {Object.entries(scriptOpenerLabels).map(([value, label]) => (
               <option key={value} value={value}>
@@ -938,12 +928,12 @@ function FileLinkSettings({ scriptProgram }: { scriptProgram: string }) {
         </label>
         {opener === "program" && (
           <label>
-            Program
+            {text.program}
             <input
               type="text"
               className="script-program"
               value={program}
-              placeholder="Such as code or subl"
+              placeholder={text.fileLinks.programPlaceholder}
               spellCheck={false}
               onChange={(event) => setProgram(event.target.value)}
               onBlur={() => save(program)}
@@ -964,10 +954,10 @@ function MachineNameSettings({ machineName, computerName }: { machineName: strin
   };
   return (
     <>
-      <h3>This machine</h3>
+      <h3>{text.machine.title}</h3>
       <div className="sending-settings">
         <label data-hint={hints.machineName}>
-          Name
+          {text.machine.name}
           <input
             type="text"
             className="machine-name"
@@ -997,27 +987,27 @@ function PushRelaySettings({ pushRelay }: { pushRelay: PushRelaySetting }) {
   };
   return (
     <>
-      <h3>Phones away from Mirador</h3>
-      <p className="hint">A push relay tells your phones when an agent needs you while Mirador isn't open on them. It can't read what it passes on.</p>
+      <h3>{text.pushRelay.title}</h3>
+      <p className="hint">{text.pushRelay.hint}</p>
       <div className="sending-settings push-relay">
         <label data-hint={hints.pushRelayAddress}>
-          Relay address
+          {text.pushRelay.address}
           <input type="url" className="push-relay-address" value={address} placeholder="https://push.example.com" spellCheck={false} onChange={(event) => setAddress(event.target.value)} />
         </label>
         <label data-hint={hints.pushRelayToken}>
-          This Mac's token
+          {text.pushRelay.token}
           <input
             type="password"
             className="push-relay-token"
             value={token}
-            placeholder={pushRelay.tokenSet ? "Set" : ""}
+            placeholder={pushRelay.tokenSet ? text.pushRelay.tokenSet : ""}
             autoComplete="off"
             onChange={(event) => setToken(event.target.value)}
             onKeyDown={(event) => event.key === "Enter" && void save()}
           />
         </label>
         <button className="push-relay-save" onClick={() => void save()}>
-          Save
+          {text.pushRelay.save}
         </button>
       </div>
       {problem && <p className="push-relay-problem">{problem}</p>}
@@ -1029,11 +1019,8 @@ function TypingSettings() {
   const typingAids = useTypingAids();
   return (
     <>
-      <h3>Typing</h3>
-      <p className="hint">
-        What macOS may do to your words in the desktop app: fix them as you type a space, and offer the rest of a word in grey.
-        Misspellings stay underlined either way; right-click one to fix it.
-      </p>
+      <h3>{text.typing.title}</h3>
+      <p className="hint">{text.typing.hint}</p>
       <div className="typing-aids">
         {(["autocorrect", "predictions"] as const).map((aid) => (
           <label key={aid}>
