@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { loadConfig } from "../host/config.ts";
 import { ConversationService } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
+import { SystemNotifications } from "../host/system-notifications.ts";
 import { Store } from "../host/store.ts";
 import type { HarnessId } from "../shared/model.ts";
 
@@ -20,7 +21,7 @@ function hostWithAWorkspaceOnClaude() {
   store.saveProfile(profileOn("opencode-profile", "opencode"));
   store.insertWorkspace({ id: "w1", name: "p", path: join(scratch, "project"), defaultLaunch: { harness: "claude", profileId: "claude-profile" }, createdAt: 1 });
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, `data-${crypto.randomUUID()}`) });
-  return { store, conversations: new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never) };
+  return { store, conversations: new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, new SystemNotifications(store, new Hub())) };
 }
 
 test("a conversation asked for without an agent starts on the workspace's default as the host has it, just changed too", () => {

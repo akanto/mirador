@@ -10,6 +10,13 @@ const ANSWER_TIMEOUT_MS = 15_000;
 /** How long Google keeps a push for a phone that is off, the same day Apple keeps one. */
 const KEPT_FOR_AN_OFF_PHONE = "86400s";
 
+/** A clear goes at normal priority: Google lowers an app's high priority when its messages show nothing, which would slow its alerts. */
+export interface FcmPush {
+  kind: "alert" | "clear";
+  deviceToken: string;
+  blob: string;
+}
+
 /** The fields Mirador reads from the Firebase service account's JSON key. */
 export interface ServiceAccount {
   project_id: string;
@@ -36,20 +43,20 @@ export class Fcm {
     this.now = settings.now ?? Date.now;
   }
 
-  async send(deviceToken: string, blob: string): Promise<PushOutcome> {
-    const first = await this.post(deviceToken, blob).catch(() => null);
-    const answer = first?.status === 401 ? await this.post(deviceToken, blob, { renewed: true }).catch(() => null) : first;
+  async send(push: FcmPush): Promise<PushOutcome> {
+    const first = await this.post(push).catch(() => null);
+    const answer = first?.status === 401 ? await this.post(push, { renewed: true }).catch(() => null) : first;
     if (!answer) return "failed";
     if (answer.ok) return "sent";
     return answer.status === 404 || answer.errorCode === "UNREGISTERED" ? "gone" : "failed";
   }
 
-  private async post(deviceToken: string, blob: string, { renewed = false } = {}) {
+  private async post({ kind, deviceToken, blob }: FcmPush, { renewed = false } = {}) {
     if (renewed) this.accessToken = null;
     const response = await fetch(`${this.settings.origin ?? FCM_ORIGIN}/v1/projects/${this.settings.account.project_id}/messages:send`, {
       method: "POST",
       headers: { authorization: `Bearer ${await this.currentAccessToken()}`, "content-type": "application/json" },
-      body: JSON.stringify({ message: { token: deviceToken, data: { m: blob }, android: { priority: "high", ttl: KEPT_FOR_AN_OFF_PHONE } } }),
+      body: JSON.stringify({ message: { token: deviceToken, data: { m: blob }, android: { priority: kind === "alert" ? "high" : "normal", ttl: KEPT_FOR_AN_OFF_PHONE } } }),
       signal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
     });
     return { ok: response.ok, status: response.status, errorCode: response.ok ? null : await errorCodeIn(response) };

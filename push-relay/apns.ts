@@ -25,7 +25,7 @@ export interface ApnsSettings {
 }
 
 export type ApnsPush =
-  | { kind: "alert"; deviceToken: string; sandbox: boolean; blob: string }
+  | { kind: "alert" | "clear"; deviceToken: string; sandbox: boolean; blob: string }
   | { kind: "live-activity-end"; deviceToken: string; sandbox: boolean };
 
 interface Answer {
@@ -90,12 +90,14 @@ export class Apns {
   private headersFor(push: ApnsPush) {
     const expiration = String(Math.floor(this.now() / 1000) + KEPT_FOR_AN_OFF_PHONE_S);
     if (push.kind === "alert") return { "apns-push-type": "alert", "apns-topic": this.settings.topic, "apns-priority": "10", "apns-expiration": expiration };
+    if (push.kind === "clear") return { "apns-push-type": "background", "apns-topic": this.settings.topic, "apns-priority": "5", "apns-expiration": expiration };
     return { "apns-push-type": "liveactivity", "apns-topic": `${this.settings.topic}.push-type.liveactivity`, "apns-priority": "10", "apns-expiration": expiration };
   }
 
   /** The alert's own words are only the fallback for a phone that can't decrypt; the phone's extension replaces them with the blob's. */
   private payloadOf(push: ApnsPush) {
     if (push.kind === "alert") return { aps: { alert: { title: "Mirador", body: "Something on your machine needs you" }, "mutable-content": 1, sound: "default" }, m: push.blob };
+    if (push.kind === "clear") return { aps: { "content-available": 1 }, m: push.blob };
     const now = Math.floor(this.now() / 1000);
     return { aps: { timestamp: now, event: "end", "content-state": {}, "dismissal-date": now } };
   }

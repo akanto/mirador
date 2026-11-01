@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { loadConfig } from "../host/config.ts";
 import { ConversationService, agentFinishedItsTurn, lastTurnRequest, openTurnTheAgentWorkedOn, unfinishedTurnRequest } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
+import { SystemNotifications } from "../host/system-notifications.ts";
 import { HostRestart, hostCommandLine, relaunchOf, stoppedWithinTimeout, takeRelaunchEnvironment, takeTurnsStoppedForRestart } from "../host/restart.ts";
 import { Store } from "../host/store.ts";
 import type { AskMode, ConversationEvent } from "../shared/model.ts";
@@ -68,7 +69,7 @@ function conversationWithSlowStartingAgent() {
     updatedAt: 1,
   });
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
-  const conversations = new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
+  const conversations = new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, new SystemNotifications(store, new Hub()));
   return {
     conversations,
     prelaunchHasStarted: () => existsSync(prelaunchStarted),
@@ -128,7 +129,7 @@ function hostWithEvents(events: ConversationEvent[], store = new Store(":memory:
   events.forEach((event) => store.appendEvent("c1", event));
   beforeStart();
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
-  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
+  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, new SystemNotifications(store, new Hub()));
 }
 
 describe("a host continuing turns the previous one stopped for a restart", () => {
@@ -242,7 +243,7 @@ describe("questions still waiting when a new host starts", () => {
     store.saveCanvasItem(waitingAsk("ask-on-waiting-turn", "blocked-turn"));
     store.saveCanvasItem(waitingAsk("ask-for-next-message", "next-message-turn"));
     const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, "data") });
-    return { store, conversations: new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never) };
+    return { store, conversations: new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, new SystemNotifications(store, new Hub())) };
   }
 
   test("the question a blocked tool call waited on is withdrawn, as the host that was waiting on it is gone", () => {

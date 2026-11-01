@@ -5,8 +5,11 @@ export const PUSH_BLOB_BYTES = 2048;
 
 export type PushPlatform = "ios" | "android";
 
-/** An alert carries a blob encrypted to the phone; a Live Activity's end push carries nothing of the Mac's, only a fixed placeholder. */
-export type PushKind = "alert" | "live-activity-end";
+/**
+ * An alert carries a blob encrypted to the phone; a clear carries one too, telling the phone quietly which conversation's
+ * notification to take away; a Live Activity's end push carries nothing of the Mac's, only a fixed placeholder.
+ */
+export type PushKind = "alert" | "clear" | "live-activity-end";
 
 /** What a Mac posts to the push relay's /push. */
 export interface PushRequest {
@@ -16,7 +19,7 @@ export interface PushRequest {
   /** For iPhone builds signed for development, which Apple serves from its sandbox. */
   sandbox?: boolean;
   kind: PushKind;
-  /** Base64 of exactly PUSH_BLOB_BYTES bytes, for an alert only. */
+  /** Base64 of exactly PUSH_BLOB_BYTES bytes, for an alert or a clear. */
   blob?: string;
 }
 
@@ -39,6 +42,13 @@ export interface PushMessage {
   id: string;
   sentAt: number;
   notification: { kind: string; conversationId?: string; title: string; workspace: string; body: string };
+}
+
+/** A clear's blob: the conversation got read or answered, so the phone takes its notification away. A phone from before clears can't open it, as it has no notification. */
+export interface ClearMessage {
+  id: string;
+  sentAt: number;
+  cleared: { conversationId: string };
 }
 
 const KEY_ID_BYTES = 16;
@@ -87,8 +97,8 @@ const toBase64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (byte) => String.
 const aesKey = (key: string, usage: KeyUsage) => crypto.subtle.importKey("raw", fromBase64url(key), "AES-GCM", false, [usage]);
 
 /** Base64 of keyId | nonce | AES-256-GCM(plaintext) with the key id as additional data: always PUSH_BLOB_BYTES bytes. */
-export async function sealedPushBlob({ keyId, key }: PushKey, message: PushMessage, nonce = crypto.getRandomValues(new Uint8Array(NONCE_BYTES))): Promise<string> {
-  const json = encoder.encode(JSON.stringify(fittedPushMessage(message)));
+export async function sealedPushBlob({ keyId, key }: PushKey, message: PushMessage | ClearMessage, nonce = crypto.getRandomValues(new Uint8Array(NONCE_BYTES))): Promise<string> {
+  const json = encoder.encode(JSON.stringify("notification" in message ? fittedPushMessage(message) : message));
   const plaintext = new Uint8Array(PUSH_PLAINTEXT_BYTES);
   new DataView(plaintext.buffer).setUint16(0, json.length);
   plaintext.set(json, LENGTH_BYTES);
@@ -98,7 +108,7 @@ export async function sealedPushBlob({ keyId, key }: PushKey, message: PushMessa
 }
 
 /** What the phone does with a blob; here for tests and the shared test vector. */
-export async function openedPushBlob({ key }: PushKey, blob: string): Promise<PushMessage> {
+export async function openedPushBlob<Message extends PushMessage | ClearMessage = PushMessage>({ key }: PushKey, blob: string): Promise<Message> {
   const bytes = Uint8Array.from(atob(blob), (character) => character.charCodeAt(0));
   const keyIdBytes = bytes.slice(0, KEY_ID_BYTES);
   const nonce = bytes.slice(KEY_ID_BYTES, KEY_ID_BYTES + NONCE_BYTES);

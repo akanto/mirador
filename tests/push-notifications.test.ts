@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { pushRegistrationProblem, pushRelayAddressProblem, PushNotifications } from "../host/push-notifications.ts";
 import { Store } from "../host/store.ts";
-import { openedPushBlob, PUSH_BLOB_BYTES, sealedPushBlob, type PushKey, type PushMessage, type PushRegistration, type PushRequest } from "../shared/push.ts";
+import { openedPushBlob, PUSH_BLOB_BYTES, sealedPushBlob, type ClearMessage, type PushKey, type PushMessage, type PushRegistration, type PushRequest } from "../shared/push.ts";
 import type { SystemNotification } from "../shared/system-notifications.ts";
 import vector from "../shared/push-test-vector.json";
 
@@ -42,6 +42,8 @@ describe("push blobs", () => {
     const { keyId, key, nonce, message, blob } = vector;
     expect(await sealedPushBlob({ keyId, key }, message, Buffer.from(nonce, "base64"))).toBe(blob);
     expect(await openedPushBlob({ keyId, key }, blob)).toEqual(message);
+    const { clear } = vector;
+    expect(await sealedPushBlob({ keyId, key }, clear.message, Buffer.from(clear.nonce, "base64"))).toBe(clear.blob);
   });
 });
 
@@ -123,6 +125,69 @@ describe("pushing notifications", () => {
     gone.pushes.register("phone", registration());
     await gone.pushes.notify(notification);
     expect(gone.store.pushRegistrations()).toHaveLength(0);
+  });
+
+  test("once a notified conversation has waited and stops, the phones told of it get a clear", async () => {
+    const { pushes, posted } = pushingHost();
+    pushes.register("phone", registration());
+    await pushes.notify(notification);
+    await pushes.waitingChanged(new Set(["c1"]));
+    expect(posted).toHaveLength(1);
+    await pushes.waitingChanged(new Set());
+    expect(posted).toHaveLength(2);
+    const { request } = posted[1];
+    expect(request).toMatchObject({ platform: "ios", deviceToken: "ab".repeat(32), sandbox: true, kind: "clear" });
+    expect(Buffer.from(request.blob!, "base64").length).toBe(PUSH_BLOB_BYTES);
+    expect((await openedPushBlob<ClearMessage>(pushKey, request.blob!)).cleared).toEqual({ conversationId: "c1" });
+    await pushes.waitingChanged(new Set());
+    expect(posted).toHaveLength(2);
+  });
+
+  test("a conversation not yet seen waiting isn't cleared, as its notification can come first", async () => {
+    const { pushes, posted } = pushingHost();
+    pushes.register("phone", registration());
+    await pushes.notify(notification);
+    await pushes.waitingChanged(new Set(["other"]));
+    expect(posted.map(({ request }) => request.kind)).toEqual(["alert"]);
+  });
+
+  test("a conversation already waiting when notified is cleared once it stops", async () => {
+    const { pushes, posted } = pushingHost();
+    pushes.register("phone", registration());
+    await pushes.waitingChanged(new Set(["c1"]));
+    await pushes.notify(notification);
+    await pushes.waitingChanged(new Set());
+    expect(posted.map(({ request }) => request.kind)).toEqual(["alert", "clear"]);
+  });
+
+  test("a phone that showed the notification itself gets the clear too", async () => {
+    const { pushes, posted } = pushingHost();
+    pushes.register("phone", registration());
+    const pushed = pushes.notify(notification);
+    pushes.shown("phone", "n1");
+    await pushed;
+    await pushes.waitingChanged(new Set(["c1"]));
+    await pushes.waitingChanged(new Set());
+    expect(posted.map(({ request }) => request.kind)).toEqual(["clear"]);
+  });
+
+  test("a conversation read before its push went out isn't pushed", async () => {
+    const { pushes, posted } = pushingHost();
+    pushes.register("phone", registration());
+    const pushed = pushes.notify(notification);
+    await pushes.waitingChanged(new Set(["c1"]));
+    await pushes.waitingChanged(new Set());
+    await pushed;
+    expect(posted).toHaveLength(0);
+  });
+
+  test("a notification whose conversation doesn't wait for it is never cleared", async () => {
+    const { pushes, posted } = pushingHost();
+    pushes.register("phone", registration(["job-ended"]));
+    await pushes.notify({ ...notification, kind: "job-ended" });
+    await pushes.waitingChanged(new Set(["c1"]));
+    await pushes.waitingChanged(new Set());
+    expect(posted.map(({ request }) => request.kind)).toEqual(["alert"]);
   });
 
   test("a revoked phone's registration goes with it", () => {

@@ -2173,7 +2173,9 @@ export class ConversationService {
   }
 
   private announceWaiting() {
-    this.hub.announceWaiting(this.waiting());
+    const waiting = this.waiting();
+    this.hub.announceWaiting(waiting);
+    this.notifications.waitingChanged(new Set(waiting.conversations.map(({ conversationId }) => conversationId)));
   }
 
   private announceRunningTurnsCount() {

@@ -6,6 +6,7 @@ import type { SessionUpdate } from "@agentclientprotocol/sdk";
 import { loadConfig } from "../host/config.ts";
 import { ConversationService } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
+import { SystemNotifications } from "../host/system-notifications.ts";
 import { Store } from "../host/store.ts";
 import type { ConversationEvent, StoredEvent } from "../shared/model.ts";
 import { replyOf, LAST_WORDS_GRAPHEMES, lastWordsOf } from "../shared/last-words.ts";
@@ -77,7 +78,7 @@ function hostAfterTurnsEndedUnseen(...turns: ConversationEvent[][]) {
   turns.flat().forEach((event) => store.appendEvent("c1", event));
   store.setUnseenTurnEnd("c1", "finished");
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, `data-${crypto.randomUUID()}`) });
-  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
+  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, new SystemNotifications(store, new Hub()));
 }
 
 const turnFrom = (message: ConversationEvent, events: ConversationEvent[]): ConversationEvent[] => [message, ...events, { type: "turn-end", stopReason: "end_turn" }];

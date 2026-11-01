@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { loadConfig } from "../host/config.ts";
 import { ConversationService } from "../host/conversations.ts";
 import { Hub } from "../host/hub.ts";
+import { SystemNotifications } from "../host/system-notifications.ts";
 import { Store } from "../host/store.ts";
 import type { HarnessId } from "../shared/model.ts";
 
@@ -51,7 +52,7 @@ function serviceWithConversationOn(harness: HarnessId) {
     updatedAt: 1,
   });
   const config = loadConfig({ MIRADOR_DATA_DIR: join(scratch, `data-${harness}`) });
-  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, {} as never);
+  return new ConversationService(store, new Hub(), config, {} as never, {} as never, {} as never, new SystemNotifications(store, new Hub()));
 }
 
 test("a Claude conversation shows what its subagents spent", async () => {

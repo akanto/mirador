@@ -1,5 +1,6 @@
 import { DEVICE_TOKEN_PATTERNS, PUSH_BLOB_BYTES, type PushOutcome, type PushRequest } from "../shared/push.ts";
 import type { ApnsPush } from "./apns.ts";
+import type { FcmPush } from "./fcm.ts";
 import { hostOf } from "./host-tokens.ts";
 
 /** The largest body a valid request can be, with room for the JSON around the blob and the longest device token. */
@@ -8,7 +9,7 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export interface Senders {
   apns: { send(push: ApnsPush): Promise<PushOutcome> } | null;
-  fcm: { send(deviceToken: string, blob: string): Promise<PushOutcome> } | null;
+  fcm: { send(push: FcmPush): Promise<PushOutcome> } | null;
 }
 
 export interface RelaySettings {
@@ -52,10 +53,11 @@ export function relayHandler({ tokensFile, senders, perMinute = 120, now = Date.
 }
 
 async function sent(push: PushRequest, { apns, fcm }: Senders): Promise<PushOutcome> {
-  if (push.platform === "android") return fcm ? fcm.send(push.deviceToken, push.blob!) : "failed";
+  const { deviceToken, kind, blob } = push;
+  if (push.platform === "android") return fcm && kind !== "live-activity-end" ? fcm.send({ kind, deviceToken, blob: blob! }) : "failed";
   if (!apns) return "failed";
   const sandbox = push.sandbox === true;
-  return push.kind === "alert" ? apns.send({ kind: "alert", deviceToken: push.deviceToken, sandbox, blob: push.blob! }) : apns.send({ kind: "live-activity-end", deviceToken: push.deviceToken, sandbox });
+  return kind === "live-activity-end" ? apns.send({ kind, deviceToken, sandbox }) : apns.send({ kind, deviceToken, sandbox, blob: blob! });
 }
 
 function validPush(body: string): PushRequest | null {
@@ -70,8 +72,8 @@ function validPush(body: string): PushRequest | null {
   if (sandbox !== undefined && typeof sandbox !== "boolean") return null;
   if (platform !== "ios" && platform !== "android") return null;
   if (typeof deviceToken !== "string" || !DEVICE_TOKEN_PATTERNS[platform].test(deviceToken)) return null;
-  if (platform === "android") return kind === "alert" && isFullBlob(blob) ? push : null;
-  if (kind === "alert") return isFullBlob(blob) ? push : null;
+  if (kind === "alert" || kind === "clear") return isFullBlob(blob) ? push : null;
+  if (platform === "android") return null;
   return kind === "live-activity-end" && blob === undefined ? push : null;
 }
 

@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openedPushBlob, type PushKey, type PushRequest } from "../shared/push.ts";
+import { openedPushBlob, type ClearMessage, type PushKey, type PushRequest } from "../shared/push.ts";
 import { FakeClaudeApi, fakeClaudeEnvironment } from "./fake-claude-api.ts";
-import { addWorkspace, callCanvasTool, openSettings, signIn, startConversation, workspaceCard } from "./helpers.ts";
+import { addWorkspace, answerCanvasQuestion, callCanvasTool, openSettings, sendMessage, signIn, startConversation, workspaceCard } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const networkOriginAt = (port: number) => `https://127.0.0.1:${port + 2}`;
@@ -51,7 +51,7 @@ async function registerForPushes(phone: Page, { answerShown }: { answerShown: bo
       new Promise<void>((resolve) => {
         const socket = new WebSocket(`${location.origin.replace(/^http/, "ws")}/ws`);
         socket.onopen = () => {
-          socket.send(JSON.stringify({ type: "push.register", platform: "ios", deviceToken: "cd".repeat(32), sandbox: true, ...pushKey, kinds: ["question"] }));
+          socket.send(JSON.stringify({ type: "push.register", platform: "ios", deviceToken: "cd".repeat(32), sandbox: true, ...pushKey, kinds: ["question", "finished"] }));
           resolve();
         };
         socket.onmessage = async ({ data }) => {
@@ -119,9 +119,10 @@ test("a phone that doesn't show a notification gets it pushed through the relay 
     expect(relayed).toHaveLength(0);
   });
 
+  let another = "";
   await test.step("one that says nothing gets the push, which opens with its own key", async () => {
     await registerForPushes(phone, { answerShown: false });
-    const another = await startConversation(page);
+    another = await startConversation(page);
     await page.goto(`${host.origin}/#/c/${answerLater}`);
     askInBackground(another, "Pushed to the phone?");
     await expect.poll(() => relayed.length, { timeout: 15_000 }).toBe(1);
@@ -130,6 +131,30 @@ test("a phone that doesn't show a notification gets it pushed through the relay 
     expect(push).toMatchObject({ platform: "ios", deviceToken: "cd".repeat(32), sandbox: true, kind: "alert" });
     const opened = await openedPushBlob(pushKey, push.blob!);
     expect(opened.notification).toEqual({ kind: "question", conversationId: another, title: "New conversation", workspace: "project", body: "Asks: Pushed to the phone?" });
+  });
+
+  await test.step("answered on the Mac, the question's notification is cleared on the phone with a quiet push", async () => {
+    await page.goto(`${host.origin}/#/c/${another}`);
+    await answerCanvasQuestion(page, "Yes");
+    await expect.poll(() => relayed.length, { timeout: 15_000 }).toBe(2);
+    const { push } = relayed[1];
+    expect(push).toMatchObject({ platform: "ios", deviceToken: "cd".repeat(32), sandbox: true, kind: "clear" });
+    expect((await openedPushBlob<ClearMessage>(pushKey, push.blob!)).cleared).toEqual({ conversationId: another });
+  });
+
+  await test.step("a turn that ended while you looked elsewhere is cleared on the phone once you open its conversation", async () => {
+    const tidying = await startConversation(page);
+    api.hold();
+    await sendMessage(page, "Tidy the config");
+    await page.goto(`${host.origin}/#/c/${answerLater}`);
+    api.answerHeld();
+    await expect.poll(() => relayed.length, { timeout: 15_000 }).toBe(3);
+    expect(relayed[2].push.kind).toBe("alert");
+    expect((await openedPushBlob(pushKey, relayed[2].push.blob!)).notification).toMatchObject({ kind: "finished", conversationId: tidying });
+    await page.goto(`${host.origin}/#/c/${tidying}`);
+    await expect.poll(() => relayed.length, { timeout: 15_000 }).toBe(4);
+    expect(relayed[3].push.kind).toBe("clear");
+    expect((await openedPushBlob<ClearMessage>(pushKey, relayed[3].push.blob!)).cleared).toEqual({ conversationId: tidying });
   });
   await phone.close();
 });

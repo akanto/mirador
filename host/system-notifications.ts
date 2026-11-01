@@ -19,4 +19,8 @@ export class SystemNotifications {
     this.hub.notify(notification);
     void this.pushes?.notify(notification);
   }
+
+  waitingChanged(waiting: Set<string>) {
+    void this.pushes?.waitingChanged(waiting);
+  }
 }
