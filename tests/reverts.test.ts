@@ -13,12 +13,11 @@ import {
   turnsFrom,
   undoableTurns,
   whatChanged,
-  whatFiles,
-  whatLeaves,
   whatWasLeft,
   whyNoRewindTo,
   withRevertNotes,
 } from "../shared/reverts.ts";
+import { whatFiles, whatLeaves } from "../web/revert-text.ts";
 import { awaitingDelivery, USER_COMMAND_EVENT_TYPES, userCommandsIn } from "../shared/user-commands.ts";
 
 const userMessage = (text: string, extra: Partial<Extract<ConversationEvent, { type: "user-message" }>> = {}) =>

@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
 import { mentionAt, withMention, type MentionSuggestion } from "../shared/mentions.ts";
 import { connection } from "./connection.ts";
 import { SuggestionList, suggestionAttributes, suggestionKey, usePickedSuggestion } from "./SuggestionList.tsx";
+import { t } from "./i18n/index.ts";
 
 const LIST_ID = "mention-paths";
 
@@ -82,7 +83,7 @@ export function useMentionMenu({
   };
 
   const menu = open ? (
-    <SuggestionList id={LIST_ID} label="Paths" className="mention-paths" items={suggestions} keyOf={({ path }) => path} pickedIndex={pickedIndex} onPick={take}>
+    <SuggestionList id={LIST_ID} label={t.chat.menus.paths} className="mention-paths" items={suggestions} keyOf={({ path }) => path} pickedIndex={pickedIndex} onPick={take}>
       {(suggestion) => <MentionPath suggestion={suggestion} />}
     </SuggestionList>
   ) : null;

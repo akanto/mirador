@@ -1,6 +1,9 @@
 import type { VoiceSettings } from "../shared/voice.ts";
 import type { EngineServer, EngineServerState } from "../shared/voice-engine.ts";
 import { spokenWords, withoutPoliteness } from "../shared/spoken-words.ts";
+import { t } from "./i18n/index.ts";
+
+const words = t.dictation;
 
 /** A press let go of sooner than this is a tap: listening goes on until a pause or the next press. */
 export const HOLD_MS = 400;
@@ -66,11 +69,7 @@ export const onlyThinking = (text: string) => {
 /** What the microphone listens for: a message, the next turn of a spoken conversation, or the answer to a question read aloud. */
 export type ListeningFor = "message" | "conversation" | "answer";
 
-const listeningLines: Record<ListeningFor, string> = {
-  message: "Listening… It stops when you pause or let go. Esc cancels.",
-  conversation: "Listening… Say “stop” to end, “repeat that” to hear it again, or “help” for more.",
-  answer: "Listening… Say “yes”, “the others”, a number, or answer in your own words.",
-};
+const listeningLines: Record<ListeningFor, string> = words.listening;
 
 const commandIn = (sentence: string) => (Object.keys(voiceCommands) as VoiceCommand[]).find((command) => voiceCommands[command].includes(sentence)) ?? null;
 
@@ -85,11 +84,11 @@ export function voiceCommand(text: string): VoiceCommand | null {
 
 export function dictationStatus(phase: DictationPhase, settings: VoiceSettings, servers: Record<EngineServer, EngineServerState>, listeningFor: ListeningFor = "message") {
   if (phase === "idle") return null;
-  if (phase === "starting") return "Starting the microphone…";
+  if (phase === "starting") return words.startingMicrophone;
   if (phase === "listening") return listeningLines[listeningFor];
-  if (settings.recognition.kind === "this-mac" && servers.speech !== "ready") return "Loading speech recognition on this Mac…";
-  if (settings.voiceModel.kind === "this-mac" && servers.voiceModel === "loading") return "Loading the voice model on this Mac…";
-  return "Turning speech into text…";
+  if (settings.recognition.kind === "this-mac" && servers.speech !== "ready") return words.loadingRecognition;
+  if (settings.voiceModel.kind === "this-mac" && servers.voiceModel === "loading") return words.loadingVoiceModel;
+  return words.transcribing;
 }
 
 /** What was said goes in as words of their own, with a space between them and the text on either side. */
@@ -109,16 +108,16 @@ export interface MicrophonePlace {
   system: "mac" | "windows" | "other";
 }
 
-const systemMicrophoneSetting = { mac: " and in System Settings → Privacy & Security → Microphone", windows: " and in Windows Settings → Privacy & security → Microphone, which desktop apps need too", other: "" };
+const systemMicrophoneSetting = { mac: words.microphone.macSetting, windows: words.microphone.windowsSetting, other: "" };
 
 /** What to tell the user when the microphone doesn't start, by the error's name, or NO_MICROPHONE_API when the page offers none. */
 export function microphoneProblem(errorName: string, place: MicrophonePlace, detail = "") {
-  if (errorName === NO_MICROPHONE_API && !place.secure) return "Pages may use the microphone only when opened over https or at localhost. Open Mirador at one of those to dictate.";
-  if (errorName === NO_MICROPHONE_API) return place.desktopApp ? "This build of the desktop app can't use the microphone. Update or rebuild it, or dictate in a browser." : "This browser doesn't let pages use the microphone.";
+  if (errorName === NO_MICROPHONE_API && !place.secure) return words.microphone.insecure;
+  if (errorName === NO_MICROPHONE_API) return place.desktopApp ? words.microphone.desktopAppCannot : words.microphone.browserCannot;
   if (errorName === "NotAllowedError" && place.desktopApp) {
-    return `Mirador may not use the microphone. Allow it when the desktop app asks${systemMicrophoneSetting[place.system]}. Blocking it in the app holds until the app quits.`;
+    return words.microphone.desktopAppNotAllowed(systemMicrophoneSetting[place.system]);
   }
-  if (errorName === "NotAllowedError") return "Mirador may not use the microphone. The browser's settings for this site can allow it.";
-  if (errorName === "NotFoundError") return "There is no microphone to listen with.";
-  return `The microphone didn't start: ${detail}`;
+  if (errorName === "NotAllowedError") return words.microphone.notAllowed;
+  if (errorName === "NotFoundError") return words.microphone.notFound;
+  return words.microphone.didNotStart(detail);
 }

@@ -3,13 +3,10 @@ import { createContext, Fragment, memo, useContext, useEffect, useLayoutEffect, 
 import { modelLabel } from "../shared/claude-models.ts";
 import { flatSelectOptions } from "../shared/config-options.ts";
 import { hasBegun } from "../shared/conversation-begun.ts";
-import { describeJob } from "../shared/job-waits.ts";
-import { formatTokens, tokensSpent, type SubagentUsage } from "../shared/subagent-usage.ts";
+import { allInputTokens, formatTokens, type SubagentUsage } from "../shared/subagent-usage.ts";
 import {
   harnessLabels,
   harnessRewinds,
-  terminalActivityLabels,
-  askModeLabels,
   type AskMode,
   type AsyncTask,
   type AsyncTaskState,
@@ -63,6 +60,7 @@ import { FormatBarToggle } from "./FormatBar.tsx";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
 import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
+import { formatNumber, t } from "./i18n/index.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
 import { useMentionMenu } from "./MentionMenu.tsx";
 import { usePromptHistory } from "./PromptHistory.ts";
@@ -83,7 +81,6 @@ import {
   buildTimeline,
   contentText,
   runsInBackground,
-  spokenSeverity,
   startsAuthorGroup,
   stepsAtWork,
   stepsRunning,
@@ -110,6 +107,7 @@ import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 const SEARCHABLE_FROM_CHOICES = 20;
 
 /** A command Claude Code opens a panel for only in its own terminal gets one there, on the conversation's profile. */
+const words = t.chat;
 const requestPanelCommand = (conversationId: string, line: string) => requestProgram({ type: "terminal.open-panel-command", conversationId, line });
 
 const configOptionHint = (option: SessionConfigOption) => [option.description, hints.configOption].filter(Boolean).join("\n\n");
@@ -165,16 +163,16 @@ function ProfilePicker({ conversation, profiles, begun }: { conversation: Conver
   const hasItsProfile = choices.some(({ id }) => id === conversation.profileId);
   return (
     <label className="config" data-hint={hints.profile}>
-      <span>Profile</span>
+      <span>{words.header.profile}</span>
       <ProfileDot profile={profiles.find(({ id }) => id === conversation.profileId)} />
       <select
-        aria-label="Profile"
+        aria-label={words.header.profile}
         value={hasItsProfile ? conversation.profileId! : ""}
         onChange={(event) => connection.send({ type: "conversation.set-profile", conversationId: conversation.id, profileId: event.target.value })}
       >
         {!hasItsProfile && (
           <option value="" disabled>
-            {conversation.profileId === null ? "Pick a profile" : "Deleted profile"}
+            {conversation.profileId === null ? words.header.pickProfile : words.header.deletedProfile}
           </option>
         )}
         {choices.map(({ id, name }) => (
@@ -183,7 +181,7 @@ function ProfilePicker({ conversation, profiles, begun }: { conversation: Conver
           </option>
         ))}
         {otherAgents.length > 0 && (
-          <optgroup label={begun ? "Other agents: start a new conversation" : "Other agents"}>
+          <optgroup label={begun ? words.header.otherAgentsBegun : words.header.otherAgents}>
             {otherAgents.map(({ id, name, harness }) => (
               <option key={id} value={id} disabled={begun}>
                 {name} · {harnessLabels[harness]}
@@ -225,7 +223,7 @@ function PluginSettingMenus({ conversation, profiles }: { conversation: Conversa
   return withProfileSettings.map(({ plugin, setting }) => {
     const choices = choicesOf(setting, profiles, conversation.profileId);
     const profilesValue = profileSettingValue(profile?.pluginSettings, plugin, setting);
-    const profilesLabel = choices.find(({ value }) => value === profilesValue)?.label ?? "None";
+    const profilesLabel = choices.find(({ value }) => value === profilesValue)?.label ?? words.header.none;
     const chosen = conversation.pluginSettings?.[plugin]?.[setting.id] ?? FOLLOWS_PROFILE;
     return (
       <label key={`${plugin}/${setting.id}`} className="config" data-hint={[setting.hint, hints.conversationPluginSetting].filter(Boolean).join("\n\n")}>
@@ -243,7 +241,7 @@ function PluginSettingMenus({ conversation, profiles }: { conversation: Conversa
             })
           }
         >
-          <option value={FOLLOWS_PROFILE}>Profile's ({profilesLabel})</option>
+          <option value={FOLLOWS_PROFILE}>{words.header.profilesChoice(profilesLabel)}</option>
           {choices.map((choice) => (
             <option key={choice.value} value={choice.value}>
               {choice.label}
@@ -286,27 +284,27 @@ function ChatHeader({
           <ConversationTitle conversation={conversation} startEditingOn="click" className="conversation-name" />
         </h2>
         <span className={`badge status-${conversation.status}`} data-hint={statusHints[conversation.status]}>
-          {conversation.status}
+          {words.status[conversation.status]}
         </span>
         {runningSubagents > 0 && (
           <button type="button" className="subagents-running" data-hint={hints.subagentsRunning} onClick={onShowRunningSubagent}>
-            ◐ {runningSubagents === 1 ? "1 subagent running" : `${runningSubagents} subagents running`}
+            ◐ {words.header.subagentsRunning(runningSubagents)}
           </button>
         )}
         {conversation.openInTerminal && (
           <span className={`badge terminal-${conversation.openInTerminal}`} data-hint={hints.inTerminal}>
-            in a terminal · {terminalActivityLabels[conversation.openInTerminal]}
+            {words.header.inTerminal(words.terminalActivity[conversation.openInTerminal])}
           </span>
         )}
         <span className="harness">{harnessLabels[conversation.harness]}</span>
         <button type="button" className="find-trigger" data-hint={hints.find} data-shortcut={shortcutKeys().find} onClick={onFind}>
-          Find
+          {words.header.find}
         </button>
         <button className="toggle-canvas" data-hint={hints.canvasToggle} data-shortcut={shortcutKeys().toggleCanvas} onClick={onToggleCanvas}>
-          {canvasVisible ? "Hide canvas" : "Show canvas"}
+          {canvasVisible ? words.header.hideCanvas : words.header.showCanvas}
         </button>
         <button className="toggle-terminal" data-hint={hints.terminalToggle} data-shortcut={shortcutKeys().toggleTerminal} onClick={onToggleTerminal}>
-          {terminalVisible ? "Hide terminal" : "Show terminal"}
+          {terminalVisible ? words.header.hideTerminal : words.header.showTerminal}
         </button>
         <FullscreenToggle pane="conversation" />
       </div>
@@ -319,17 +317,17 @@ function ChatHeader({
         <YoloSwitch conversation={conversation} />
         <PluginSettingMenus conversation={conversation} profiles={profiles} />
         <label className="config" data-hint={hints.questions}>
-          <span>Questions</span>
+          <span>{words.header.questions}</span>
           <select
-            aria-label="Questions"
+            aria-label={words.header.questions}
             value={conversation.askMode}
             onChange={(event) =>
               connection.send({ type: "conversation.set-ask-mode", conversationId: conversation.id, askMode: event.target.value as AskMode })
             }
           >
-            {(Object.keys(askModeLabels) as AskMode[]).map((mode) => (
+            {(Object.keys(words.askMode) as AskMode[]).map((mode) => (
               <option key={mode} value={mode}>
-                {askModeLabels[mode]}
+                {words.askMode[mode]}
               </option>
             ))}
           </select>
@@ -367,7 +365,7 @@ function ToolContent({ content }: { content: ToolCallContent }) {
     case "diff":
       return <DiffView path={content.path} oldText={content.oldText} newText={content.newText} />;
     case "terminal":
-      return <pre className="tool-output">(terminal {content.terminalId})</pre>;
+      return <pre className="tool-output">{words.tool.terminal(content.terminalId)}</pre>;
   }
 }
 
@@ -402,11 +400,11 @@ function RawOutput({ block, conversationId }: { block: ToolBlock; conversationId
     connection.send({ type: "tool-raw-output.get", requestId, conversationId, toolCallId: block.toolCallId });
     return stopListening;
   }, [onHost, shown, current !== null, block.rawOutput]);
-  if (!onHost) return <RawJson label="output" value={block.rawOutput} />;
+  if (!onHost) return <RawJson label={words.tool.output} value={block.rawOutput} />;
   return (
     <details className="raw" onToggle={(event) => setShown(event.currentTarget.open)}>
-      <summary>output</summary>
-      <pre>{current ? rawJsonText(current.rawOutput) : "Loading…"}</pre>
+      <summary>{words.tool.output}</summary>
+      <pre>{current ? rawJsonText(current.rawOutput) : words.tool.loading}</pre>
     </details>
   );
 }
@@ -453,7 +451,7 @@ function TerminalOutput({ output, finished, awaitingPermission }: { output: stri
   const foldedLinesMatch = useContext(MatchesFind)(lines.slice(PREVIEW_LINES).join("\n"));
   const hiddenCount = expanded || foldedLinesMatch ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
   if (lines.length === 0) {
-    const quiet = finished ? "(no output)" : awaitingPermission ? "waiting for your approval…" : "running…";
+    const quiet = finished ? words.tool.noOutput : awaitingPermission ? words.tool.waitingForApproval : words.tool.running;
     return <div className="shell-quiet">{quiet}</div>;
   }
   return (
@@ -461,12 +459,12 @@ function TerminalOutput({ output, finished, awaitingPermission }: { output: stri
       <pre className="shell-output">{lines.slice(0, lines.length - hiddenCount).join("\n")}</pre>
       {hiddenCount > 0 && (
         <button type="button" className="shell-more" onClick={() => setExpanded(true)}>
-          Show {hiddenCount} more {hiddenCount === 1 ? "line" : "lines"}
+          {words.tool.showMoreLines(hiddenCount)}
         </button>
       )}
       {expanded && lines.length > PREVIEW_LINES && (
         <button type="button" className="shell-more" onClick={() => setExpanded(false)}>
-          Show less
+          {words.tool.showLess}
         </button>
       )}
     </>
@@ -486,8 +484,8 @@ function ShellCard({ block }: { block: ToolBlock }) {
       <summary>
         <div className="shell-header">
           <span className="tool-status">{statusIcons[status]}</span>
-          <span className="shell-description">{description ?? "Shell command"}</span>
-          {failed && <span className="shell-exit">{exitCode !== null ? `exit ${exitCode}` : "failed"}</span>}
+          <span className="shell-description">{description ?? words.tool.shellCommand}</span>
+          {failed && <span className="shell-exit">{exitCode !== null ? words.tool.exit(exitCode) : words.tool.failed}</span>}
         </div>
         {commandShownClosed(style) && <div className="shell-body">{commandLine}</div>}
       </summary>
@@ -500,9 +498,9 @@ function ShellCard({ block }: { block: ToolBlock }) {
 }
 
 function commandDelivery({ delivery, ended }: UserCommand) {
-  if (delivery === "sent") return "Sent to the agent with your message";
-  if (delivery === "dropped") return "Not sent to the agent";
-  return ended ? "Goes to the agent with your next message" : "Goes to the agent with your next message once it finishes";
+  if (delivery === "sent") return words.commandDelivery.sent;
+  if (delivery === "dropped") return words.commandDelivery.dropped;
+  return ended ? words.commandDelivery.withNextMessage : words.commandDelivery.withNextMessageOnceFinished;
 }
 
 /** A command the user ran with `!` in the message box. */
@@ -517,10 +515,10 @@ function CommandCard({ command, conversationId }: { command: UserCommand; conver
         <span className="shell-description" data-hint={hints.commandDelivery}>
           {commandDelivery(command)}
         </span>
-        {status === "failed" && <span className="shell-exit">{command.exitCode === null ? "stopped" : `exit ${command.exitCode}`}</span>}
+        {status === "failed" && <span className="shell-exit">{command.exitCode === null ? words.tool.stopped : words.tool.exit(command.exitCode)}</span>}
         {!command.ended && (
           <button type="button" className="link stop-command" onClick={stop}>
-            Stop
+            {words.tool.stop}
           </button>
         )}
       </div>
@@ -562,7 +560,7 @@ function ToolCard({ block, conversationId }: { block: ToolBlock; conversationId:
       {block.content.map((content, index) => (
         <ToolContent key={index} content={content} />
       ))}
-      <RawJson label="input" value={block.rawInput} />
+      <RawJson label={words.tool.input} value={block.rawInput} />
       <RawOutput block={block} conversationId={conversationId} />
     </details>
   );
@@ -583,7 +581,6 @@ function useClock(ticking: boolean) {
   return now;
 }
 
-const callsLabel = (count: number) => (count === 1 ? "1 call" : `${count} calls`);
 
 function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock; conversationId: string; harness: HarnessId }) {
   const state = useContext(SubagentStates).get(block.toolCallId) ?? "done";
@@ -596,24 +593,24 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
   const facts = [
     typeof subagent_type === "string" && subagent_type,
     typeof model === "string" && model,
-    callsLabel(calls.length),
+    words.subagent.calls(calls.length),
     formatDuration((state === "running" ? now : subagentEndedAt(block)) - block.at),
-    runsInBackground(block) && "in the background",
+    runsInBackground(block) && words.subagent.inBackground,
   ].filter(Boolean);
   return (
     <details className={`tool subagent subagent-${state}`} data-tool-call-id={block.toolCallId}>
       <summary>
-        <span className="tool-status" aria-label={state}>
+        <span className="tool-status" aria-label={words.subagent.state[state]}>
           {subagentIcons[state]}
         </span>
-        <span className="subagent-label">Subagent</span>
+        <span className="subagent-label">{words.subagent.label}</span>
         <span className="subagent-task">{subagentTask(block)}</span>
         <span className="subagent-facts">{facts.join(" · ")}</span>
-        {state === "running" && latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
+        {state === "running" && latestCall && <span className="subagent-now">{words.subagent.now(readableToolTitle(latestCall.title))}</span>}
       </summary>
       {typeof prompt === "string" && (
         <details className="raw subagent-prompt">
-          <summary>prompt</summary>
+          <summary>{words.tool.prompt}</summary>
           <pre>{prompt}</pre>
         </details>
       )}
@@ -627,7 +624,7 @@ function SubagentCard({ block, conversationId, harness }: { block: SubagentBlock
       {block.content.map((content, index) => (
         <ToolContent key={index} content={content} />
       ))}
-      <RawJson label="input" value={block.rawInput} />
+      <RawJson label={words.tool.input} value={block.rawInput} />
       <RawOutput block={block} conversationId={conversationId} />
     </details>
   );
@@ -654,12 +651,12 @@ function RunningSubagents({ conversationId, subagents, onShow }: { conversationI
     subagents.map(({ toolCallId }) => toolCallId),
   );
   return (
-    <div className="running-subagents" role="status" aria-label="Subagents at work">
+    <div className="running-subagents" role="status" aria-label={words.subagent.atWork}>
       {subagents.map((block) => {
         const { subagent_type, model: requestedModel } = subagentInput(block);
         const spent = spentBySubagent[block.toolCallId];
         const model = spent?.model ?? (typeof requestedModel === "string" ? requestedModel : null);
-        const facts = [typeof subagent_type === "string" && subagent_type, model && modelLabel(model), spent && tokensSpent(spent), formatDuration(now - block.at)];
+        const facts = [typeof subagent_type === "string" && subagent_type, model && modelLabel(model), spent && words.subagent.tokens(formatTokens(allInputTokens(spent)), formatTokens(spent.outputTokens)), formatDuration(now - block.at)];
         const latestCall = block.subagent.blocks.filter((child) => child.kind === "tool").at(-1);
         return (
           <button key={block.toolCallId} type="button" className="running-subagent" data-hint={hints.runningSubagent} onClick={() => onShow(block)}>
@@ -668,7 +665,7 @@ function RunningSubagents({ conversationId, subagents, onShow }: { conversationI
             <span className="subagent-facts" data-hint={spent ? tokensHint(spent) : undefined}>
               {facts.filter(Boolean).join(" · ")}
             </span>
-            {latestCall && <span className="subagent-now">now: {readableToolTitle(latestCall.title)}</span>}
+            {latestCall && <span className="subagent-now">{words.subagent.now(readableToolTitle(latestCall.title))}</span>}
           </button>
         );
       })}
@@ -707,13 +704,13 @@ function useApprovalsOutOfView(timelineRef: RefObject<HTMLDivElement | null>, wa
 function ApprovalsWaiting({ approvals, timeline, onShow }: { approvals: PermissionBlock[]; timeline: TimelineBlock[]; onShow: (approval: PermissionBlock) => void }) {
   const now = useClock(true);
   return (
-    <div className="approvals-waiting" role="status" aria-label="Approvals waiting">
+    <div className="approvals-waiting" role="status" aria-label={words.permission.approvalsWaiting}>
       {approvals.map((approval) => {
         const asker = subagentAsking(timeline, approval);
-        const facts = [asker && `asked by ${subagentTask(asker)}`, `waiting ${formatDuration(now - approval.at)}`];
+        const facts = [asker && words.permission.askedBy(subagentTask(asker)), words.permission.waiting(formatDuration(now - approval.at))];
         return (
           <button key={approval.permissionId} type="button" className="approval-waiting" data-hint={hints.approvalWaiting} onClick={() => onShow(approval)}>
-            <span className="approval-subject">Permission needed: {permissionSubject(approval.toolCall)}</span>
+            <span className="approval-subject">{words.permission.needed(permissionSubject(approval.toolCall))}</span>
             <span className="approval-facts">{facts.filter(Boolean).join(" · ")}</span>
           </button>
         );
@@ -723,9 +720,9 @@ function ApprovalsWaiting({ approvals, timeline, onShow }: { approvals: Permissi
 }
 
 function permissionSubject(toolCall: PermissionBlock["toolCall"]) {
-  if (toolCall.kind !== "execute") return toolCall.title ?? "tool call";
+  if (toolCall.kind !== "execute") return toolCall.title ?? words.permission.toolCall;
   const description = (toolCall.rawInput as { description?: unknown } | null | undefined)?.description;
-  return typeof description === "string" ? description : "run a shell command";
+  return typeof description === "string" ? description : words.permission.runShellCommand;
 }
 
 function InfoLine({ text }: { text: string }) {
@@ -740,7 +737,7 @@ function InfoLine({ text }: { text: string }) {
 function AgentNoticeLine({ block }: { block: AgentNoticeBlock }) {
   const loudness = block.severity === "warning" || block.severity === "error" ? block.severity : "info";
   const lines = block.description ? block.description.split("\n") : [];
-  const spoken = spokenSeverity(block);
+  const spoken = block.severity === "error" ? words.notice.error : block.severity === "warning" ? words.notice.warning : null;
   const severityForScreenReaders = spoken && <span className="visually-hidden">{spoken}: </span>;
   if (lines.length < 2)
     return (
@@ -754,7 +751,7 @@ function AgentNoticeLine({ block }: { block: AgentNoticeBlock }) {
     <details className={`agent-notice ${loudness}`}>
       <summary>
         {severityForScreenReaders}
-        {block.title} · {lines.length} lines
+        {block.title} · {words.notice.lines(lines.length)}
       </summary>
       <div className="notice-lines">{block.description}</div>
     </details>
@@ -767,7 +764,7 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
   return (
     <div className={`permission ${block.resolved ? "resolved" : "pending"}`} data-permission-id={block.permissionId}>
       <div className="permission-title">
-        {block.resolved ? "Permission" : "Permission needed"}: {permissionSubject(block.toolCall)}
+        {(block.resolved ? words.permission.resolved : words.permission.needed)(permissionSubject(block.toolCall))}
       </div>
       {block.toolCall.kind === "execute" ? (
         <div className="shell-body">
@@ -776,16 +773,16 @@ function PermissionCard({ block, conversationId }: { block: PermissionBlock; con
       ) : editsInCanvas ? (
         <div className="permission-edit-summary">
           <EditCounts edits={editsInCanvas} />
-          {!block.resolved && <span className="shown-in-canvas"> · Shown in the canvas</span>}
+          {!block.resolved && <span className="shown-in-canvas"> · {words.permission.shownInCanvas}</span>}
         </div>
       ) : (
         <>
           {block.toolCall.content?.map((content, index) => <ToolContent key={index} content={content} />)}
-          <RawJson label="input" value={block.toolCall.rawInput} />
+          <RawJson label={words.tool.input} value={block.toolCall.rawInput} />
         </>
       )}
       {block.resolved ? (
-        <div className="permission-outcome">{chosen ? chosen.name : "Cancelled"}</div>
+        <div className="permission-outcome">{chosen ? chosen.name : words.permission.cancelled}</div>
       ) : (
         <PermissionOptions options={block.options} onChoose={(optionId) => answerPermission(conversationId, block.permissionId, optionId)} />
       )}
@@ -885,10 +882,10 @@ function Timestamp({ at }: { at: number }) {
 }
 
 function authorName(author: Author, harness: HarnessId) {
-  if (typeof author === "object") return <span data-hint={hints.pluginMessage}>From {author.plugin}</span>;
-  if (author === "mirador") return <span data-hint={hints.miradorMessage}>From Mirador</span>;
-  if (author === "script") return <span data-hint={hints.scriptMessage}>From a script</span>;
-  return author === "user" ? "You" : agentNames[harness];
+  if (typeof author === "object") return <span data-hint={hints.pluginMessage}>{words.author.fromPlugin(author.plugin)}</span>;
+  if (author === "mirador") return <span data-hint={hints.miradorMessage}>{words.author.fromMirador}</span>;
+  if (author === "script") return <span data-hint={hints.scriptMessage}>{words.author.fromScript}</span>;
+  return author === "user" ? words.author.you : agentNames[harness];
 }
 
 /** Long conversations have hundreds of entries; one that did not change is not rendered again. */
@@ -945,7 +942,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
             {refused && (
               <div className="terminal-command">
                 <button type="button" data-hint={hints.terminalCommand} onClick={() => requestPanelCommand(conversationId, `/${refused}`)}>
-                  Open a terminal tab
+                  {words.entry.openTerminalTab}
                 </button>
               </div>
             )}
@@ -957,7 +954,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
     case "thought":
       return (
         <details className="thought">
-          <summary>Thinking</summary>
+          <summary>{words.entry.thinking}</summary>
           <MarkdownText text={block.text} conversationId={conversationId} />
         </details>
       );
@@ -972,7 +969,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
     case "plan":
       return (
         <div className="plan">
-          <div className="plan-title">Plan</div>
+          <div className="plan-title">{words.entry.plan}</div>
           <ul>
             {block.entries.map((entry, index) => (
               <li key={index} className={`plan-${entry.status}`}>
@@ -996,7 +993,7 @@ function TimelineEntry({ block, conversationId, harness, canRewind }: { block: T
           <div className="error-line sign-in-line">
             <span>{block.message}</span>
             <button type="button" data-hint={hints.logIn} onClick={() => requestLogin(conversationId)}>
-              Log in
+              {words.entry.logIn}
             </button>
           </div>
         );
@@ -1013,7 +1010,7 @@ function FailedTurnLine({ message, conversationId, errorSeq }: { message: string
       <span>{message}</span>
       {!busy && (
         <button type="button" data-hint={hints.tryAgain} onClick={() => connection.send({ type: "conversation.try-again", conversationId, errorSeq })}>
-          Try again
+          {words.entry.tryAgain}
         </button>
       )}
     </div>
@@ -1183,14 +1180,14 @@ function useLoadedEntries(
 }
 
 function earlierEntriesLabel(firstLoaded: number, earlier: EarlierHistory) {
-  if (firstLoaded > 0) return `Show earlier entries (${firstLoaded.toLocaleString()}${earlier.available ? "+" : ""} more)`;
-  return earlier.loading ? "Loading earlier entries…" : "Show earlier entries";
+  if (firstLoaded > 0) return words.timeline.showEarlierCount(`${formatNumber(firstLoaded)}${earlier.available ? "+" : ""}`);
+  return earlier.loading ? words.timeline.loadingEarlier : words.timeline.showEarlier;
 }
 
 const queuedMessagesGoOut: Record<HarnessId, string> = {
-  claude: "each joins the turn when the agent's tools finish, or waits for the turn to end, as tagged",
-  opencode: "sent when the agent finishes its turn",
-  pi: "each joins the turn when the agent's tools finish, or waits for the turn to end, as tagged",
+  claude: words.queue.goOutWithSteering,
+  opencode: words.queue.goOutAfterTurn,
+  pi: words.queue.goOutWithSteering,
 };
 
 function DeliveryTag({ conversationId, message }: { conversationId: string; message: QueuedMessage }) {
@@ -1198,7 +1195,7 @@ function DeliveryTag({ conversationId, message }: { conversationId: string; mess
     connection.send({ type: "conversation.queue.set-after-turn", conversationId, messageId: message.id, afterTurn: !message.afterTurn });
   return (
     <button type="button" className={`queued-delivery ${message.afterTurn ? "after-turn" : "joins-turn"}`} data-hint={hints.queuedDelivery} onClick={switchDelivery}>
-      {message.afterTurn ? "after the turn" : "joins the turn"}
+      {message.afterTurn ? words.queue.afterTheTurn : words.queue.joinsTheTurn}
     </button>
   );
 }
@@ -1220,8 +1217,8 @@ function QueuedMessages({
   const drag = useDragToReorder((messageId, beforeMessageId) => connection.send({ type: "conversation.queue.move", conversationId, messageId, beforeMessageId }));
   const reorderable = messages.length > 1;
   return (
-    <section className="queue" aria-label="Queued messages">
-      <header data-hint={hints.queue}>Queued · {queuedMessagesGoOut[harness]}</header>
+    <section className="queue" aria-label={words.queue.label}>
+      <header data-hint={hints.queue}>{words.queue.header(queuedMessagesGoOut[harness])}</header>
       <ol ref={list}>
         {messages.map((message, index) => (
           <li key={message.id} data-reorder-id={message.id} className={["queued", ...drag.classesOf(message.id, index === messages.length - 1)].join(" ")}>
@@ -1237,7 +1234,7 @@ function QueuedMessages({
             ) : (
               message.fromScript && (
                 <span className="queued-source" data-hint={hints.scriptMessage}>
-                  script
+                  {words.queue.script}
                 </span>
               )
             )}
@@ -1250,10 +1247,10 @@ function QueuedMessages({
             <span className="queued-text">{message.text}</span>
             <MessageImages conversationId={conversationId} imageIds={message.imageIds} />
             <button type="button" className="link" onClick={() => onEdit(message)}>
-              Edit
+              {words.queue.edit}
             </button>
             <button type="button" className="link" onClick={() => onRemove(message)}>
-              Remove
+              {words.queue.remove}
             </button>
           </li>
         ))}
@@ -1266,12 +1263,17 @@ const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
 const resetTime = (at: number) => (new Date(at).toDateString() === new Date().toDateString() ? formatClockTime(at) : `${weekday.format(at)} ${formatClockTime(at)}`);
 
 function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {
-  if (continuesAt !== null) return `Claude's usage limit is reached · the agent continues by itself at ${resetTime(continuesAt)}`;
-  if (resetsAt !== null) return `Claude's usage limit is reached · it resets at ${resetTime(resetsAt)}`;
-  return "Claude's usage limit is reached";
+  if (continuesAt !== null) return words.usageLimit.continuesAt(resetTime(continuesAt));
+  if (resetsAt !== null) return words.usageLimit.resetsAt(resetTime(resetsAt));
+  return words.usageLimit.reached;
 }
 
-const whoHears = (wait: JobWait) => (wait.resume ? "Then the agent gets: " : "Then you are told: ");
+const whoHears = (wait: JobWait) => (wait.resume ? words.jobs.agentGets : words.jobs.youAreTold);
+
+function describeJob({ job, sshHost }: Pick<JobWait, "job" | "sshHost">) {
+  const described = job.kind === "process" ? words.jobs.process(job.pid) : words.jobs.container(job.name);
+  return sshHost ? words.jobs.onHost(described, sshHost) : described;
+}
 
 /** A long message shows its first lines; a click shows all of it, and another its first lines again. */
 function JobWaitMessage({ text }: { text: string }) {
@@ -1317,13 +1319,13 @@ function useCutOff(element: RefObject<HTMLElement | null>) {
 
 function JobWaits({ conversationId, waits }: { conversationId: string; waits: JobWait[] }) {
   return (
-    <section className="job-waits" aria-label="Jobs waited for">
+    <section className="job-waits" aria-label={words.jobs.label}>
       <ul>
         {waits.map((wait) => (
           <li key={wait.id}>
             <div className="job-wait-text">
               <span className="job-wait-status" data-hint={hints.jobWait}>
-                Waiting for{" "}
+                {words.jobs.waitingForBefore}{" "}
                 <button
                   type="button"
                   className="link job-wait-follow"
@@ -1332,7 +1334,7 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
                 >
                   {describeJob(wait)}
                 </button>{" "}
-                to end, since {formatClockTime(wait.since)}
+                {words.jobs.waitingForAfter(formatClockTime(wait.since))}
               </span>
               <JobWaitMessage text={`${whoHears(wait)}${wait.message}`} />
             </div>
@@ -1342,7 +1344,7 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
               data-hint={hints.stopWaitingForJob}
               onClick={() => connection.send({ type: "conversation.job-wait.stop", conversationId, waitId: wait.id })}
             >
-              Stop waiting
+              {words.jobs.stopWaiting}
             </button>
           </li>
         ))}
@@ -1351,20 +1353,14 @@ function JobWaits({ conversationId, waits }: { conversationId: string; waits: Jo
   );
 }
 
-const asyncTaskStateLabels: Record<AsyncTaskState, string> = {
-  running: "Running",
-  paused: "Paused",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
-};
+const asyncTaskStateLabels: Record<AsyncTaskState, string> = words.tasks.state;
 
 const isFinishedTask = (task: AsyncTask) => task.state === "completed" || task.state === "failed" || task.state === "stopped" || !task.canStop;
 
 function BackgroundTasks({ conversationId, tasks }: { conversationId: string; tasks: AsyncTask[] }) {
   const finishedTasks = tasks.filter(isFinishedTask);
   return (
-    <section className="async-tasks" aria-label="Background tasks">
+    <section className="async-tasks" aria-label={words.tasks.label}>
       {finishedTasks.length >= 2 && (
         <header className="async-tasks-header">
           <button
@@ -1373,7 +1369,7 @@ function BackgroundTasks({ conversationId, tasks }: { conversationId: string; ta
             data-hint={hints.clearFinishedAsyncTasks}
             onClick={() => connection.send({ type: "conversation.async-task.clear-finished", conversationId })}
           >
-            Clear finished
+            {words.tasks.clearFinished}
           </button>
         </header>
       )}
@@ -1426,10 +1422,10 @@ function AsyncTaskRow({ conversationId, task }: { conversationId: string; task: 
           >
             {task.description}
           </button>
-          <span>for {formatDuration(now - task.since)}</span>
+          <span>{words.tasks.forDuration(formatDuration(now - task.since))}</span>
         </span>
         {task.summary && task.summary !== task.description && <span className="async-task-summary">{task.summary}</span>}
-        {open && <pre className="async-task-output">{output ?? "No output yet."}</pre>}
+        {open && <pre className="async-task-output">{output ?? words.tasks.noOutputYet}</pre>}
       </div>
       {task.canStop && (
         <button
@@ -1438,7 +1434,7 @@ function AsyncTaskRow({ conversationId, task }: { conversationId: string; task: 
           data-hint={hints.stopAsyncTask}
           onClick={() => connection.send({ type: "conversation.async-task.stop", conversationId, asyncTaskId: task.id })}
         >
-          Stop
+          {words.tasks.stop}
         </button>
       )}
       {isFinishedTask(task) && (
@@ -1448,19 +1444,19 @@ function AsyncTaskRow({ conversationId, task }: { conversationId: string; task: 
           data-hint={hints.dismissAsyncTask}
           onClick={() => connection.send({ type: "conversation.async-task.dismiss", conversationId, asyncTaskId: task.id })}
         >
-          Dismiss
+          {words.tasks.dismiss}
         </button>
       )}
     </>
   );
 }
 
-const delegatedEndLabels: Record<DelegatedReply["ended"], string> = { finished: "Finished", stopped: "Stopped", failed: "Failed" };
+const delegatedEndLabels: Record<DelegatedReply["ended"], string> = words.delegated.ended;
 
 /** The conversations this one's plugin tools started, such as delegated tasks, until the user dismisses them. */
 function DelegatedTasks({ tasks, profiles }: { tasks: Conversation[]; profiles: Profile[] }) {
   return (
-    <section className="delegated-tasks" aria-label="Delegated tasks">
+    <section className="delegated-tasks" aria-label={words.delegated.label}>
       <ul>
         {tasks.map((task) => (
           <li key={task.id}>
@@ -1482,18 +1478,18 @@ function DelegatedTaskRow({ task, profile }: { task: Conversation; profile: stri
     <>
       <div className="delegated-task-text">
         <span data-hint={hints.delegatedTask}>
-          {reply ? delegatedEndLabels[reply.ended] : "Working"}:{" "}
+          {reply ? delegatedEndLabels[reply.ended] : words.delegated.working}:{" "}
           <button type="button" className="link" data-hint={hints.openDelegatedTask} onClick={() => (location.hash = `#/c/${task.id}`)}>
             {task.title}
           </button>{" "}
-          on {profile}
-          {!reply && ` for ${formatDuration(now - task.createdAt)}`}
+          {words.delegated.onProfile(profile)}
+          {!reply && words.delegated.forDuration(formatDuration(now - task.createdAt))}
         </span>
         {(detail || !reply) && <span className="delegated-task-detail">{detail}</span>}
       </div>
       {!reply && isBusy(task) && (
         <button type="button" className="link" data-hint={hints.stopDelegatedTask} onClick={() => connection.send({ type: "conversation.cancel", conversationId: task.id })}>
-          Stop
+          {words.tasks.stop}
         </button>
       )}
       {reply && (
@@ -1503,7 +1499,7 @@ function DelegatedTaskRow({ task, profile }: { task: Conversation; profile: stri
           data-hint={hints.dismissDelegatedTask}
           onClick={() => connection.send({ type: "conversation.delegation.dismiss", conversationId: task.id })}
         >
-          Dismiss
+          {words.tasks.dismiss}
         </button>
       )}
     </>
@@ -1512,10 +1508,10 @@ function DelegatedTaskRow({ task, profile }: { task: Conversation; profile: stri
 
 function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wait: UsageLimitWait }) {
   return (
-    <section className="usage-limit" aria-label="Usage limit">
+    <section className="usage-limit" aria-label={words.usageLimit.label}>
       <span data-hint={hints.usageLimit}>{usageLimitStatus(wait)}</span>
       <button type="button" data-hint={hints.continueAfterUsageLimit} onClick={() => connection.send({ type: "conversation.usage-limit.continue", conversationId })}>
-        Continue now
+        {words.usageLimit.continueNow}
       </button>
       <button
         type="button"
@@ -1523,7 +1519,7 @@ function UsageLimitNotice({ conversationId, wait }: { conversationId: string; wa
         data-hint={hints.stopWaitingForUsageLimit}
         onClick={() => connection.send({ type: "conversation.usage-limit.stop-waiting", conversationId })}
       >
-        Stop waiting
+        {words.usageLimit.stopWaiting}
       </button>
     </section>
   );
@@ -1578,7 +1574,7 @@ function ComposerGrip({ textarea }: { textarea: RefObject<HTMLTextAreaElement | 
       className={`composer-grip ${dragging ? "dragging" : ""}`}
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Message box height"
+      aria-label={words.composer.heightLabel}
       tabIndex={0}
       data-hint={hints.composerGrip}
       onPointerDown={startDrag}
@@ -1599,8 +1595,8 @@ function CommandOutputsAttached({ commands, conversationId }: { commands: UserCo
   const drop = () => connection.send({ type: "conversation.drop-command-outputs", conversationId, commandIds: commands.map(({ commandId }) => commandId) });
   return (
     <div className="command-outputs-attached" data-hint={hints.commandOutputsAttached}>
-      <span>{commands.length === 1 ? "1 command output goes" : `${commands.length} command outputs go`} with your next message</span>
-      <button type="button" className="icon" aria-label="Don't send the command outputs" onClick={drop}>
+      <span>{words.composer.commandOutputs(commands.length)}</span>
+      <button type="button" className="icon" aria-label={words.composer.dropCommandOutputs} onClick={drop}>
         ✕
       </button>
     </div>
@@ -1608,14 +1604,14 @@ function CommandOutputsAttached({ commands, conversationId }: { commands: UserCo
 }
 
 const busyPlaceholders: Record<EnterWhileBusy, string> = {
-  steer: "adds your message to its turn",
-  "after-turn": "sends your message after its turn",
+  steer: words.composer.busySteer,
+  "after-turn": words.composer.busyAfterTurn,
 };
 
 function busyPlaceholder(canSteer: boolean, enterWhileBusy: EnterWhileBusy) {
-  if (!canSteer) return "The agent is working… Enter queues your message for after its turn, Esc stops the agent";
+  if (!canSteer) return words.composer.busyNoSteer;
   const other = enterWhileBusy === "steer" ? "after-turn" : "steer";
-  return `The agent is working… Enter ${busyPlaceholders[enterWhileBusy]}, ${keyLabels().option}Enter ${busyPlaceholders[other]}, Esc stops it`;
+  return words.composer.busy(busyPlaceholders[enterWhileBusy], keyLabels().option, busyPlaceholders[other]);
 }
 
 /** While the agent works: one button per way of sending, the one Enter does first. */
@@ -1624,7 +1620,7 @@ function BusySendButtons({ canSteer, enterWhileBusy, onSend }: { canSteer: boole
   if (!canSteer) {
     return (
       <button className="queue-message" data-shortcut={keys.send} onClick={() => onSend(true)}>
-        Queue
+        {words.composer.queue}
       </button>
     );
   }
@@ -1636,7 +1632,7 @@ function BusySendButtons({ canSteer, enterWhileBusy, onSend }: { canSteer: boole
       data-shortcut={enterWhileBusy === "steer" ? keys.send : keys.sendTheOtherWay}
       onClick={() => onSend(false)}
     >
-      Steer
+      {words.composer.steer}
     </button>
   );
   const afterTurn = (
@@ -1647,7 +1643,7 @@ function BusySendButtons({ canSteer, enterWhileBusy, onSend }: { canSteer: boole
       data-shortcut={enterWhileBusy === "after-turn" ? keys.send : keys.sendTheOtherWay}
       onClick={() => onSend(true)}
     >
-      After turn
+      {words.composer.afterTurn}
     </button>
   );
   return enterWhileBusy === "steer" ? [steer, afterTurn] : [afterTurn, steer];
@@ -1832,9 +1828,9 @@ function Composer({
   const messageBox = useMessageBox();
   const placeholder = busy
     ? stopStage === "force"
-      ? "The agent is not responding. Force stop ends its process; other conversations on the profile continue"
+      ? words.composer.notResponding
       : busyPlaceholder(canSteer, enterWhileBusy)
-    : `Message ${harnessLabels[conversation.harness]} (Enter to send, Shift+Enter for a new line, / for its commands, @ for a path, ! to run a shell command)`;
+    : words.composer.idle(harnessLabels[conversation.harness]);
   const typed = (value: string, caret: number) => {
     setText(value);
     setCaret(caret);
@@ -1892,7 +1888,7 @@ function Composer({
       )}
       {stoppedEdit.editing && (
         <div className="editing-stopped" role="status">
-          Editing your stopped message. Enter replaces it and its answer, and puts back any files it changed; Esc keeps them.
+          {words.composer.editingStopped}
         </div>
       )}
       {stoppedEdit.editing?.problem && (
@@ -1964,24 +1960,24 @@ function Composer({
               data-shortcut={shortcutKeys().templates}
               onClick={() => setPickingTemplate((open) => !open)}
             >
-              Templates
+              {words.composer.templates}
             </button>
           )}
           {command !== null ? (
             <button className="run-command" data-hint={hints.runCommand} data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!command}>
-              Run
+              {words.composer.run}
             </button>
           ) : (
             busy && text.trim() && <BusySendButtons canSteer={canSteer} enterWhileBusy={enterWhileBusy} onSend={send} />
           )}
           {busy ? (
             <button className={`stop stop-${stopStage}`} data-shortcut={shortcutKeys().stop} data-hint={hints.stop} onClick={stopStage === "idle" ? stop : forceStop}>
-              {stopStage === "idle" ? "Stop" : stopStage === "stopping" ? "Stopping…" : "Force stop"}
+              {stopStage === "idle" ? words.composer.stop : stopStage === "stopping" ? words.composer.stopping : words.composer.forceStop}
             </button>
           ) : (
             command === null && (
               <button className="send" data-shortcut={shortcutKeys().send} onClick={() => send()} disabled={!text.trim() || attaching || stoppedEdit.goingBack}>
-                Send
+                {words.composer.send}
               </button>
             )
           )}
@@ -2099,8 +2095,8 @@ export function ChatPanel({
                   {find.query !== null && <FindBar find={find} />}
                   <MatchesFind.Provider value={find.matches}>
                     <div className="timeline" ref={ref} onScroll={onTimelineScroll}>
-                      {!open.loaded && <div className="notice-line">Loading…</div>}
-                      {open.loaded && timeline.length === 0 && <div className="notice-line">{harnessLabels[conversation.harness]} runs in this workspace's directory. Ask it anything; it can draw in the canvas.</div>}
+                      {!open.loaded && <div className="notice-line">{words.timeline.loading}</div>}
+                      {open.loaded && timeline.length === 0 && <div className="notice-line">{words.timeline.empty(harnessLabels[conversation.harness])}</div>}
                       {(firstLoaded > 0 || earlier.available) && (
                         <button type="button" className="notice-line load-earlier" onClick={loadEarlier}>
                           {earlierEntriesLabel(firstLoaded, earlier)}
@@ -2115,16 +2111,14 @@ export function ChatPanel({
                           conversationId={conversation.id}
                         />
                       ))}
-                      {conversation.status === "running" && <div className="working">Working…</div>}
+                      {conversation.status === "running" && <div className="working">{words.timeline.working}</div>}
                     </div>
                   </MatchesFind.Provider>
                   {approvalsOutOfView.length > 0 && <ApprovalsWaiting approvals={approvalsOutOfView} timeline={timeline} onShow={showApproval} />}
                   {runningSubagents.length > 0 && <RunningSubagents conversationId={conversation.id} subagents={runningSubagents} onShow={showSubagent} />}
                   {conversation.openInTerminal && (
                     <div className="terminal-warning" role="status">
-                      This session is also open in Claude Code in a terminal ({terminalActivityLabels[conversation.openInTerminal]} there). What happens
-                      there doesn't show up here, and a message sent from here splits the session's history: continue in the terminal, or quit
-                      it there first.
+                      {words.timeline.openInTerminal(words.terminalActivity[conversation.openInTerminal])}
                     </div>
                   )}
                   <Composer

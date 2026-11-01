@@ -19,6 +19,7 @@ import { NewerVersionBanner } from "./NewerVersion.tsx";
 import { HintLayer } from "./Hint.tsx";
 import { SearchDialog } from "./Search.tsx";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { useProgramRequest } from "./program-request.ts";
 import { requestOfTerminalPane, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
@@ -176,7 +177,7 @@ function paletteEntries(
   const backTo = (turns: Turn[], rewind: boolean): PaletteEntry[] =>
     [...turns].reverse().slice(0, TURNS_IN_PALETTE).map((turn) => ({
       id: `${rewind ? "rewind" : "undo"}-${turn.seq}`,
-      label: rewind ? `Rewind to before “${turnTitle(turn.text)}”` : `Undo the files of “${turnTitle(turn.text)}”`,
+      label: rewind ? t.revert.rewindBefore(turnTitle(turn.text)) : t.revert.undoTheFilesOf(turnTitle(turn.text)),
       detail: openConversation?.title,
       kind: "action",
       run: () => openHistory && dispatch({ type: "open-overlay", overlay: { kind: "revert", conversationId: openHistory.conversationId, turn, rewind } }),

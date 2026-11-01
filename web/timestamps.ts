@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t } from "./i18n/index.ts";
 
 const STORAGE_KEY = "mirador-timestamps";
 
@@ -34,9 +35,9 @@ export const formatClockTime = (at: number) => clockTime.format(at);
 
 export function formatDuration(milliseconds: number) {
   const seconds = Math.max(0, Math.round(milliseconds / 1000));
-  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 60) return t.chat.duration.seconds(seconds);
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  if (minutes < 60) return t.chat.duration.minutes(minutes);
+  return t.chat.duration.hours(Math.floor(minutes / 60), minutes % 60);
 }
 export const formatFullTime = (at: number) => fullTime.format(at);

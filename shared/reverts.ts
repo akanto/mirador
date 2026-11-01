@@ -149,31 +149,10 @@ export interface UndoPreview {
   keptFrom?: string | null;
 }
 
-/** What the conversation loses: the turns from this one on, and the agent's own history with them. */
-export function whatLeaves({ turnsLeaving = 1, keptFrom }: UndoPreview) {
-  const turns = turnsLeaving === 1 ? "1 turn leaves" : `${turnsLeaving} turns leave`;
-  return keptFrom
-    ? `${turns} the conversation, and the agent's own history goes back with ${turnsLeaving === 1 ? "it" : "them"}, to before “${keptFrom}”.`
-    : "Every turn leaves the conversation, and the agent starts over with nothing of it.";
-}
-
 export const putsAnyFileBack = (plan: RestorePlan | null) => plan !== null && plan.restored + plan.removed > 0;
 
 /** A rewind always has turns to drop; an undo of a turn's files has something to do only when a file would go back. */
 export const anythingToUndo = (preview: UndoPreview, rewind: boolean) => rewind || putsAnyFileBack(preview.plan);
-
-/** What the files do: they go back too, or they stay as they are and this says why. */
-export function whatFiles(preview: UndoPreview, rewind: boolean, keepFiles: boolean) {
-  if (preview.filesNote) return rewind ? `The files stay as they are: ${preview.filesNote}` : preview.filesNote;
-  if (!preview.plan) return "";
-  if (keepFiles) return "The files stay as they are now, with what the turns that leave did to them.";
-  const putsBack = putsAnyFileBack(preview.plan);
-  const putBack = putsBack
-    ? `${rewind ? "The files go back too," : "The files go back"} to how they were when this turn began: ${whatChanged(preview.plan)}.`
-    : `${preview.plan.committed ? "No other file" : "No file"} changed since this turn began.`;
-  const changed = [putBack, whatWasLeft(preview.plan)].filter(Boolean).join(" ");
-  return rewind || !putsBack ? changed : `${changed} The turn above stays in the conversation, and the agent is told the files no longer hold it.`;
-}
 
 export const listsAnyFile = ({ deleted, putBack, committed }: RestoreFiles) => [deleted, putBack, committed].some(({ paths }) => paths.length > 0);
 

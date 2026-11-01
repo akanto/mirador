@@ -15,6 +15,7 @@ import { $isLinkNode, $toggleLink } from "@lexical/link";
 import { $readBox, $selectOffsets, $writeBox, offsetOf } from "./box-markdown.ts";
 import { blockAt, toggleBlock, type LineBlock } from "./box-lines.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { shortcutKeys } from "./shortcuts.ts";
 import { setFormatBar, useFormatBar } from "./message-box.ts";
 
@@ -67,17 +68,17 @@ function $pressed(): Pressed {
 }
 
 const INLINE: { format: TextFormatType; label: string; face: ReactNode; hint: string; shortcut: () => string }[] = [
-  { format: "bold", label: "Bold", face: <b>B</b>, hint: hints.formatBold, shortcut: () => shortcutKeys().bold },
-  { format: "italic", label: "Italic", face: <i>I</i>, hint: hints.formatItalic, shortcut: () => shortcutKeys().italic },
-  { format: "strikethrough", label: "Strikethrough", face: <s>S</s>, hint: hints.formatStrike, shortcut: () => shortcutKeys().strikethrough },
-  { format: "code", label: "Code", face: <code>{"</>"}</code>, hint: hints.formatCode, shortcut: () => shortcutKeys().code },
+  { format: "bold", label: t.chat.format.bold, face: <b>B</b>, hint: hints.formatBold, shortcut: () => shortcutKeys().bold },
+  { format: "italic", label: t.chat.format.italic, face: <i>I</i>, hint: hints.formatItalic, shortcut: () => shortcutKeys().italic },
+  { format: "strikethrough", label: t.chat.format.strikethrough, face: <s>S</s>, hint: hints.formatStrike, shortcut: () => shortcutKeys().strikethrough },
+  { format: "code", label: t.chat.format.code, face: <code>{"</>"}</code>, hint: hints.formatCode, shortcut: () => shortcutKeys().code },
 ];
 
 const BLOCKS: { block: LineBlock; label: string; face: string; hint: string }[] = [
-  { block: "bullet", label: "Bulleted list", face: "•", hint: hints.formatBullets },
-  { block: "numbered", label: "Numbered list", face: "1.", hint: hints.formatNumbers },
-  { block: "quote", label: "Quote", face: "❝", hint: hints.formatQuote },
-  { block: "code", label: "Code block", face: "{ }", hint: hints.formatCodeBlock },
+  { block: "bullet", label: t.chat.format.bullets, face: "•", hint: hints.formatBullets },
+  { block: "numbered", label: t.chat.format.numbers, face: "1.", hint: hints.formatNumbers },
+  { block: "quote", label: t.chat.format.quote, face: "❝", hint: hints.formatQuote },
+  { block: "code", label: t.chat.format.codeBlock, face: "{ }", hint: hints.formatCodeBlock },
 ];
 
 /** Keeps the focus, and with it the selection, in the box as a button is clicked. */
@@ -123,7 +124,7 @@ export function FormatBar() {
 
   return (
     <div className="format-bar-holder">
-      <div className="format-bar" role="toolbar" aria-label="Formatting">
+      <div className="format-bar" role="toolbar" aria-label={t.chat.format.formatting}>
         {INLINE.map(({ format, label, face, hint, shortcut }) => (
           <button
             key={format}
@@ -139,7 +140,7 @@ export function FormatBar() {
             {face}
           </button>
         ))}
-        <button type="button" aria-label="Link" aria-pressed={pressed.link !== null} disabled={inCode} data-hint={hints.formatLink} onMouseDown={keepFocus} onClick={startLinking}>
+        <button type="button" aria-label={t.chat.format.link} aria-pressed={pressed.link !== null} disabled={inCode} data-hint={hints.formatLink} onMouseDown={keepFocus} onClick={startLinking}>
           🔗
         </button>
         <span className="format-bar-gap" />
@@ -199,7 +200,7 @@ function LinkField({ url, onDone }: { url: string; onDone: (url: string | null) 
     >
       <input
         ref={input}
-        aria-label="Link address"
+        aria-label={t.chat.format.linkAddress}
         defaultValue={url}
         placeholder="https://…"
         data-hint={hints.formatLinkAddress}
@@ -210,7 +211,7 @@ function LinkField({ url, onDone }: { url: string; onDone: (url: string | null) 
           onDone(null);
         }}
       />
-      <button type="submit">{url ? "Change" : "Link"}</button>
+      <button type="submit">{url ? t.chat.format.change : t.chat.format.link}</button>
     </form>
   );
 }
@@ -222,7 +223,7 @@ export function FormatBarToggle() {
     <button
       type="button"
       className="format-bar-toggle"
-      aria-label="Formatting"
+      aria-label={t.chat.format.formatting}
       aria-pressed={shown}
       data-hint={hints.formatBar}
       onMouseDown={keepFocus}

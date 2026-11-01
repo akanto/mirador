@@ -4,6 +4,7 @@ import { filledIn, matchingTemplates, parametersOf, promptTemplateProblem } from
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { suggestionAttributes, usePickedSuggestion } from "./SuggestionList.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
@@ -59,18 +60,18 @@ function TemplateForm({
           />
         </label>
       ))}
-      <div className="template-preview" aria-label="Message to send">
+      <div className="template-preview" aria-label={t.chat.templates.messageToSend}>
         {text}
       </div>
       <div className="template-actions">
         <button type="submit" className="primary" autoFocus={parameters.length === 0} disabled={!complete}>
-          Send
+          {t.chat.templates.send}
         </button>
         <button type="button" onClick={() => onInsert(text)}>
-          Put in the message box
+          {t.chat.templates.putInMessageBox}
         </button>
         <button type="button" className="link" onClick={onBack}>
-          Back
+          {t.chat.templates.back}
         </button>
       </div>
     </form>
@@ -105,12 +106,12 @@ export function TemplatePicker({
     onClose();
   };
   return (
-    <div ref={popover} className="template-picker" role="dialog" aria-label="Prompt templates" onKeyDown={closeOnEscape}>
+    <div ref={popover} className="template-picker" role="dialog" aria-label={t.chat.templates.label} onKeyDown={closeOnEscape}>
       {chosen ? (
         <TemplateForm template={chosen} onSend={onSend} onInsert={onInsert} onBack={() => setChosenId(null)} />
       ) : (
         <>
-          {templates.length === 0 && <p className="hint">No templates yet.</p>}
+          {templates.length === 0 && <p className="hint">{t.chat.templates.noneYet}</p>}
           <ul className="template-choices">
             {templates.map((template, index) => (
               <li key={template.id}>
@@ -122,7 +123,7 @@ export function TemplatePicker({
             ))}
           </ul>
           <button type="button" className="link" onClick={onManage}>
-            Manage templates…
+            {t.chat.templates.manage}
           </button>
         </>
       )}
@@ -161,23 +162,23 @@ export function TemplateFinder({
     event.preventDefault();
   };
   return (
-    <div ref={popover} className="template-picker template-finder" role="dialog" aria-label="Find a prompt template">
+    <div ref={popover} className="template-picker template-finder" role="dialog" aria-label={t.chat.templates.findLabel}>
       <input
         {...typingAidAttributes}
         {...suggestionAttributes(FOUND_TEMPLATES_ID, found.length > 0, pickedIndex)}
         autoFocus
         role="combobox"
         aria-expanded={found.length > 0}
-        aria-label="Find a template"
-        placeholder="Find a template"
+        aria-label={t.chat.templates.find}
+        placeholder={t.chat.templates.find}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
       />
       {found.length === 0 ? (
-        <p className="hint">{templates.length === 0 ? "No templates yet; Settings adds them." : "No template has that."}</p>
+        <p className="hint">{templates.length === 0 ? t.chat.templates.noneYetSettingsAdds : t.chat.templates.noMatch}</p>
       ) : (
-        <ul id={FOUND_TEMPLATES_ID} className="template-choices" role="listbox" aria-label="Prompt templates">
+        <ul id={FOUND_TEMPLATES_ID} className="template-choices" role="listbox" aria-label={t.chat.templates.label}>
           {found.map((template, index) => (
             <li key={template.id} id={`${FOUND_TEMPLATES_ID}-${index}`} role="option" aria-selected={index === pickedIndex} onMouseDown={(event) => event.preventDefault()} onClick={() => onInsert(template.text)}>
               <span className="template-choice-name">{template.name}</span>
@@ -204,33 +205,33 @@ function TemplateEditor({ template, onCreated }: { template: PromptTemplate | un
   };
   const remove = () => template && connection.send({ type: "prompt-template.delete", templateId: template.id });
   return (
-    <form className="profile-editor" aria-label={template ? `Template ${template.name}` : "New template"} onSubmit={save}>
+    <form className="profile-editor" aria-label={template ? t.chat.templates.template(template.name) : t.chat.templates.newTemplate} onSubmit={save}>
       <label>
-        <span>Name</span>
-        <input {...typingAidAttributes} aria-label="Template name" value={name} placeholder="Deep PR review" onChange={(event) => setName(event.target.value)} />
+        <span>{t.chat.templates.name}</span>
+        <input {...typingAidAttributes} aria-label={t.chat.templates.nameLabel} value={name} placeholder={t.chat.templates.namePlaceholder} onChange={(event) => setName(event.target.value)} />
       </label>
       <label>
-        <span>Text</span>
+        <span>{t.chat.templates.text}</span>
         <textarea
           {...typingAidAttributes}
-          aria-label="Template text"
+          aria-label={t.chat.templates.textLabel}
           rows={6}
           value={text}
-          placeholder="Review {{Pull request}} and explain how its code flows."
+          placeholder={t.chat.templates.textPlaceholder}
           onChange={(event) => setText(event.target.value)}
         />
       </label>
       <div className="hint">
-        {parameters.length > 0 ? `Asks for: ${parameters.join(", ")}.` : "Write {{a name}} where a value goes; you fill it in each time you use the template."}
+        {parameters.length > 0 ? t.chat.templates.asksFor(parameters.join(", ")) : t.chat.templates.howToAsk}
       </div>
       {problem && <div className="form-errors">{problem}</div>}
       <div className="form-actions">
         <button type="submit" disabled={!name.trim() || !text.trim() || problem !== null || unchanged}>
-          {template ? "Save" : "Create template"}
+          {template ? t.chat.templates.save : t.chat.templates.create}
         </button>
         {template && (
-          <ConfirmButton className="danger" label="Delete template" armedText="Delete?" armedHint={hints.deleteTemplateArmed} onConfirm={remove}>
-            Delete
+          <ConfirmButton className="danger" label={t.chat.templates.deleteLabel} armedText={t.chat.templates.deleteArmed} armedHint={hints.deleteTemplateArmed} onConfirm={remove}>
+            {t.chat.templates.delete}
           </ConfirmButton>
         )}
       </div>
@@ -253,20 +254,19 @@ export function PromptTemplateSettings({ templates }: { templates: PromptTemplat
 
   return (
     <>
-      <h3>Prompt templates</h3>
+      <h3>{t.chat.templates.title}</h3>
       <p className="hint">
-        Messages you send often, from the Templates button next to Send. Write <code>{"{{Pull request}}"}</code> where a value goes, and
-        you fill it in each time. Kept by the host, so every browser has them.
+        {t.chat.templates.hintBefore} <code>{t.chat.templates.example}</code> {t.chat.templates.hintAfter}
       </p>
       <div className="profiles-body">
-        <ul className="profile-list" aria-label="Prompt templates">
+        <ul className="profile-list" aria-label={t.chat.templates.label}>
           {templates.map((template) => (
             <li key={template.id} className={template.id === selectedId ? "selected" : ""} onClick={() => setSelectedId(template.id)}>
               {template.name}
             </li>
           ))}
           <li className={selectedId === NEW_TEMPLATE ? "selected" : ""} onClick={() => setSelectedId(NEW_TEMPLATE)}>
-            + New template
+            {t.chat.templates.addNew}
           </li>
         </ul>
         <TemplateEditor key={selected?.id ?? NEW_TEMPLATE} template={selected} onCreated={setCreatedId} />

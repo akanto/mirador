@@ -6,6 +6,7 @@ import type { VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { dictationStatus, madeUpFromSilence, onlyThinking, pressed, released, spacedAtCaret, voiceCommand, type DictationPhase, type ListeningFor, type Press } from "./dictation.ts";
 import { joinDrafts } from "./drafts.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { insertAtCaret } from "./insert-at-caret.ts";
 import { KEEP_TALKING_WAIT_MS, pauseWatch, type PauseWatch, type SpeechSpan } from "./pause-watch.ts";
 import { startRecording, type Recording } from "./recorder.ts";
@@ -13,10 +14,11 @@ import { allowReplyAudio, chime, helpWithConversation, onSpokenReplyHeard, quiet
 import { dictates, shortcutKeys } from "./shortcuts.ts";
 import { answeringIn, heardAnswer, helpWithQuestion, repeatQuestion, stopAnswering } from "./spoken-ask.ts";
 
-const RECOGNITION_OFF = "Dictating needs speech recognition. Settings → Voice can turn it on.";
-const NOTHING_HEARD = "Nothing was heard, so dictation stopped.";
-const NO_WORDS = "Speech recognition heard no words.";
-const NOTHING_TO_REPEAT = "No reply has been read aloud here yet, so there is nothing to repeat.";
+const words = t.dictation;
+const RECOGNITION_OFF = words.recognitionOff;
+const NOTHING_HEARD = words.nothingHeard;
+const NO_WORDS = words.noWords;
+const NOTHING_TO_REPEAT = words.nothingToRepeat;
 
 const releasingKeys = ["Meta", "Control", "Shift"];
 const aDialogIsOpen = () => document.querySelector(".modal-backdrop") !== null;
@@ -27,9 +29,9 @@ async function transcribed(conversationId: string, clip: Blob): Promise<Dictated
   try {
     response = await fetch(`/conversations/${conversationId}/speech`, { method: "POST", headers: { "Content-Type": "audio/wav" }, body: clip });
   } catch (error) {
-    throw new Error(`What you said didn't reach Mirador: ${problemOf(error)}`);
+    throw new Error(words.didNotReachMirador(problemOf(error)));
   }
-  if (!response.ok) throw new Error((await response.text()) || `Speech recognition failed (${response.status}).`);
+  if (!response.ok) throw new Error((await response.text()) || words.recognitionFailed(String(response.status)));
   return response.json();
 }
 
@@ -313,7 +315,7 @@ export function DictateButton({ dictation }: { dictation: DictationControls }) {
     <button
       type="button"
       className={`dictate dictate-${phase}`}
-      aria-label="Dictate"
+      aria-label={words.dictate}
       aria-pressed={phase === "starting" || phase === "listening"}
       aria-disabled={!available || undefined}
       data-hint={available ? hints.dictate : hints.dictateOff}
@@ -349,8 +351,8 @@ export function DictationLines({ dictation, settings, engine }: { dictation: Dic
       )}
       {dictation.said !== null && (
         <div className="dictation-original">
-          <span>You said: {dictation.said}</span>
-          <button type="button" className="icon" aria-label="Hide what you said" onClick={dictation.hideSaid}>
+          <span>{words.youSaid(dictation.said)}</span>
+          <button type="button" className="icon" aria-label={words.hideWhatYouSaid} onClick={dictation.hideSaid}>
             ×
           </button>
         </div>

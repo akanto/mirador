@@ -16,6 +16,7 @@ import {
   withoutPlaceholder,
   type Attachment,
 } from "./pasted-images.ts";
+import { t } from "./i18n/index.ts";
 
 const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
 
@@ -47,7 +48,7 @@ export function useComposerImages(
       setAttachments(latest.current);
     } catch (error) {
       setText((current) => withoutPlaceholder(current, number));
-      setProblem(`Could not attach ${file.name || "the image"}: ${error instanceof Error ? error.message : String(error)}`);
+      setProblem(t.chat.images.couldNotAttach(file.name || t.chat.images.theImage, error instanceof Error ? error.message : String(error)));
     } finally {
       uploading.current.delete(number);
       showUploads();
@@ -123,14 +124,14 @@ export function PastedImages({
   if (attachments.length === 0 && uploadingNumbers.length === 0) return null;
   return (
     <>
-      <ul className="pasted-images" aria-label="Pasted images">
+      <ul className="pasted-images" aria-label={t.chat.images.pasted}>
       {attachments.map((attachment) => (
         <li key={attachment.imageId}>
-          <button type="button" className="thumbnail" aria-label={`Show image #${attachment.number}`} onClick={() => open(imageUrl(conversationId, attachment.imageId))}>
+          <button type="button" className="thumbnail" aria-label={t.chat.images.show(attachment.number)} onClick={() => open(imageUrl(conversationId, attachment.imageId))}>
             <img src={imageUrl(conversationId, attachment.imageId)} alt="" />
           </button>
           <span className="pasted-image-label">{placeholder(attachment.number)}</span>
-          <button type="button" className="icon" aria-label={`Remove image #${attachment.number}`} onClick={() => onRemove(attachment)}>
+          <button type="button" className="icon" aria-label={t.chat.images.remove(attachment.number)} onClick={() => onRemove(attachment)}>
             ✕
           </button>
         </li>
@@ -139,7 +140,7 @@ export function PastedImages({
         <li key={`uploading-${number}`} className="uploading">
           <span className="upload-spinner" aria-hidden="true" />
           <span className="pasted-image-label">{placeholder(number)}</span>
-          Uploading…
+          {t.chat.images.uploading}
         </li>
       ))}
       </ul>

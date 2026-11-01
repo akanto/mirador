@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { readReply, stopReading, useReplyReading } from "./reply-player.ts";
 
 /** How replies are read aloud, when Settings → Voice has a reply voice and a voice model to sum them up. */
@@ -34,7 +35,7 @@ export function ReadAloud({ conversationId, replyKey, reply }: { conversationId:
       <button
         type="button"
         className={readingThis ? `reading ${readingThis.phase}` : undefined}
-        aria-label={readingThis ? "Stop reading" : "Read aloud"}
+        aria-label={readingThis ? t.dictation.stopReading : t.dictation.readAloud}
         aria-busy={readingThis?.phase === "summing-up" || undefined}
         data-hint={readingThis ? hints.stopReadingAloud : hints.readAloud}
         onClick={() => (readingThis ? stopReading() : void readReply(conversationId, replyKey, reply, readingAs))}

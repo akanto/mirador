@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openSettings, signIn } from "./helpers.ts";
+import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
 
 const host = new TestHost();
@@ -43,4 +43,21 @@ test("choosing Magyar in Settings shows Mirador in Hungarian after the page relo
   await Promise.all([page.waitForEvent("load"), beallitasok.getByLabel("Nyelv").selectOption("en")]);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect((await openSettings(page)).getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+});
+
+test("in Hungarian, the chat's header, message box and buttons speak Hungarian", async ({ page }) => {
+  await signIn(page, host);
+  await page.evaluate(() => localStorage.setItem("mirador-language", "hu"));
+  await page.reload();
+  await addWorkspace(page, host.projectDir);
+  await startConversation(page);
+
+  const header = page.locator(".chat-header:visible");
+  await expect(header.getByRole("button", { name: "Vászon elrejtése" }).or(header.getByRole("button", { name: "Vászon mutatása" }))).toBeVisible();
+  await expect(header.getByLabel("Kérdések").locator("option")).toHaveText(["Az ágens vár a válaszomra", "A válaszom a következő üzenetként megy el"]);
+  const composer = page.locator(".composer-area:visible");
+  await expect(composer.locator("[placeholder^='Üzenet ide:'], [aria-placeholder^='Üzenet ide:']").first()).toBeAttached();
+  await expect(composer.getByRole("button", { name: "Küldés" })).toBeDisabled();
+  await expect(composer.getByRole("button", { name: "Sablonok" })).toBeVisible();
+  await page.evaluate(() => localStorage.removeItem("mirador-language"));
 });

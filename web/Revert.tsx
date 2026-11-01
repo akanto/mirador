@@ -1,9 +1,13 @@
 import { createContext, useEffect, useState } from "react";
 import type { ListedPaths, RestoreFiles } from "../shared/model.ts";
-import { anythingToUndo, listsAnyFile, putsAnyFileBack, whatFiles, whatLeaves, type Turn, type UndoPreview } from "../shared/reverts.ts";
+import { anythingToUndo, listsAnyFile, putsAnyFileBack, type Turn, type UndoPreview } from "../shared/reverts.ts";
+import { formatNumber, t } from "./i18n/index.ts";
+import { whatFiles, whatLeaves } from "./revert-text.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { Modal } from "./Palette.tsx";
+
+const words = t.revert;
 
 /** What a turn's message offers: going back to it, and putting its files back where the agent cannot go back. */
 export interface UndoRequest {
@@ -90,7 +94,7 @@ function FileGroup({ title, listed }: { title: string; listed: ListedPaths }) {
           <li key={path}>{path}</li>
         ))}
       </ul>
-      {listed.more > 0 && <p className="hint">and {listed.more.toLocaleString("en")} more</p>}
+      {listed.more > 0 && <p className="hint">{words.andMore(formatNumber(listed.more))}</p>}
     </section>
   );
 }
@@ -101,13 +105,13 @@ function FileList({ files, headMovedElsewhere }: { files: RestoreFiles; headMove
   return (
     <div className="revert-files">
       <button type="button" className="link" aria-expanded={shown} data-hint={hints.revertFiles} onClick={() => setShown(!shown)}>
-        {shown ? "Hide the files" : "Show the files"}
+        {shown ? words.hideFiles : words.showFiles}
       </button>
       {shown && (
         <div className="revert-file-groups">
-          <FileGroup title="Deleted" listed={files.deleted} />
-          <FileGroup title="Put back as they were" listed={files.putBack} />
-          <FileGroup title={headMovedElsewhere ? "Stay as they are" : "Stay as committed"} listed={files.committed} />
+          <FileGroup title={words.deleted} listed={files.deleted} />
+          <FileGroup title={words.putBackAsTheyWere} listed={files.putBack} />
+          <FileGroup title={headMovedElsewhere ? words.stayAsTheyAre : words.stayAsCommitted} listed={files.committed} />
         </div>
       )}
     </div>
@@ -133,8 +137,8 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
   const offersToKeepFiles = rewind && preview && !blocked && !preview.filesNote && putsAnyFileBack(preview.plan);
   const listedFiles = preview && !blocked && !preview.filesNote && !keepFiles && preview.files && listsAnyFile(preview.files) ? preview.files : null;
   return (
-    <Modal label={rewind ? "Rewind to here" : "Undo the files of a turn"} className="revert" onClose={onClose}>
-      <h2>{rewind ? "Rewind to here" : "Undo the files"}</h2>
+    <Modal label={rewind ? words.rewindToHere : words.undoTheFilesOfATurn} className="revert" onClose={onClose}>
+      <h2>{rewind ? words.rewindToHere : words.undoTheFiles}</h2>
       <p className="revert-turn">{turn.text}</p>
       {blocked ? (
         <p className="revert-summary">{blocked}</p>
@@ -146,20 +150,20 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
           {offersToKeepFiles && (
             <label className="revert-files-choice" data-hint={hints.rewindPutFilesBack}>
               <input type="checkbox" checked={!keepFiles} onChange={(event) => setKeepFiles(!event.target.checked)} />
-              Put the files back too
+              {words.putFilesBackToo}
             </label>
           )}
         </>
       ) : (
-        <p className="revert-summary">Checking what would change…</p>
+        <p className="revert-summary">{words.checking}</p>
       )}
       <div className="form-actions">
         <button type="button" className="link" onClick={onClose}>
-          Cancel
+          {words.cancel}
         </button>
         {preview && !blocked && anythingToUndo(preview, rewind) && (
           <button type="button" className="primary" data-hint={rewind ? hints.rewindConfirm : hints.undoFilesConfirm} disabled={working} onClick={go}>
-            {working ? (rewind ? "Going back…" : "Putting the files back…") : rewind ? "Rewind" : "Put the files back"}
+            {working ? (rewind ? words.goingBack : words.puttingFilesBack) : rewind ? words.rewind : words.putFilesBack}
           </button>
         )}
       </div>
@@ -171,7 +175,7 @@ export function RevertDialog({ conversationId, turn, rewind, onClose }: { conver
 export function UndoButton({ turn, rewind, ask }: { turn: Turn; rewind: boolean; ask: AskToRevert }) {
   return (
     <button type="button" className="link undo-files" data-hint={rewind ? hints.rewind : hints.undoFiles} onClick={() => ask({ turn, rewind })}>
-      {rewind ? "Rewind to here" : "Undo files"}
+      {rewind ? words.rewindToHere : words.undoFiles}
     </button>
   );
 }

@@ -5,6 +5,7 @@ import { connection } from "./connection.ts";
 import { splitRows, type EditRequest } from "./edit-approval.ts";
 import { highlightRows, type CodeSpan } from "./highlight.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { CodeText } from "./CodeText.tsx";
 import { gapsOf, type Gap } from "./review-context.ts";
 import { SettledNoteLine, type SettledNote } from "./SettledNote.tsx";
@@ -13,11 +14,10 @@ import { rowWordChanges, type TextRange } from "./word-diff.ts";
 
 const diffStyles = ["unified", "split"] as const;
 type DiffStyle = (typeof diffStyles)[number];
-const diffStyleLabels: Record<DiffStyle, string> = { unified: "Unified", split: "Split" };
+const diffStyleLabels: Record<DiffStyle, string> = { unified: t.chat.edits.unified, split: t.chat.edits.split };
 export const diffStyle = storedChoice<DiffStyle>("mirador-edit-diff-style", diffStyles, "unified");
 
 const marker = (row: DiffRow) => (row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " ");
-const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 export function answerPermission(conversationId: string, permissionId: string, optionId: string | null) {
   connection.send({ type: "permission.respond", conversationId, permissionId, optionId });
@@ -49,7 +49,7 @@ export function EditCounts({ edits }: { edits: EditDiff[] }) {
 function GapLine({ gap, lineCount }: { gap: Gap | undefined; lineCount: number | null }) {
   const end = gap && (gap.end ?? lineCount);
   if (!gap || end === null || end === undefined || end < gap.start) return null;
-  return <div className="edit-gap">⋯ {end === gap.start ? `line ${end}` : `lines ${gap.start}–${end}`}</div>;
+  return <div className="edit-gap">⋯ {end === gap.start ? t.chat.edits.line(end) : t.chat.edits.lines(gap.start, end)}</div>;
 }
 
 interface RowsProps {
@@ -105,7 +105,7 @@ function EditedRows({ path, rows, style }: { path: string; rows: DiffRow[]; styl
   );
 }
 
-const UNLOCATED_EDIT = "The change could not be found in the file as it is now, so this is the agent's own snippet, without line numbers.";
+const UNLOCATED_EDIT = t.chat.edits.unlocated;
 
 export function EditedFile({ edit, style, unlocatedHint = UNLOCATED_EDIT }: { edit: EditDiff; style: DiffStyle; unlocatedHint?: string | null }) {
   const gaps = edit.located ? gapsOf(edit) : [];
@@ -113,13 +113,13 @@ export function EditedFile({ edit, style, unlocatedHint = UNLOCATED_EDIT }: { ed
     <section className="edited-file" aria-label={edit.path}>
       <header className="file-header">
         <h3>{edit.path}</h3>
-        {edit.change === "added" && <span className="edit-new-file">new file</span>}
-        {edit.change === "deleted" && <span className="edit-new-file">deleted</span>}
+        {edit.change === "added" && <span className="edit-new-file">{t.chat.edits.newFile}</span>}
+        {edit.change === "deleted" && <span className="edit-new-file">{t.chat.edits.deleted}</span>}
         <EditCounts edits={[edit]} />
       </header>
       {!edit.located && unlocatedHint && <p className="hint">{unlocatedHint}</p>}
-      {edit.hiddenBecause && <p className="review-empty">Not shown: {edit.hiddenBecause}.</p>}
-      {!edit.hiddenBecause && edit.hunks.length === 0 && <p className="review-empty">It changes no lines.</p>}
+      {edit.hiddenBecause && <p className="review-empty">{t.chat.edits.notShown(edit.hiddenBecause)}</p>}
+      {!edit.hiddenBecause && edit.hunks.length === 0 && <p className="review-empty">{t.chat.edits.noLines}</p>}
       {edit.hunks.map((hunk, index) => (
         <Fragment key={index}>
           <GapLine gap={gaps[index]} lineCount={edit.lineCount} />
@@ -133,7 +133,7 @@ export function EditedFile({ edit, style, unlocatedHint = UNLOCATED_EDIT }: { ed
 
 export function DiffStyleChoice({ style }: { style: DiffStyle }) {
   return (
-    <div className="diff-style" role="group" aria-label="Diff style" data-hint={hints.editDiffStyle}>
+    <div className="diff-style" role="group" aria-label={t.chat.edits.diffStyle} data-hint={hints.editDiffStyle}>
       {diffStyles.map((each) => (
         <button key={each} type="button" className={style === each ? "on" : ""} aria-pressed={style === each} onClick={() => diffStyle.set(each)}>
           {diffStyleLabels[each]}
@@ -150,7 +150,7 @@ export function EditApproval({ request, moreWaiting, note, conversationId }: { r
     <div className="edit-approval">
       <SettledNoteLine note={note} />
       <div className="edit-approval-bar">
-        {moreWaiting > 0 && <span className="edits-more">{plural(moreWaiting, "more edit")} waiting</span>}
+        {moreWaiting > 0 && <span className="edits-more">{t.chat.edits.moreWaiting(moreWaiting)}</span>}
         <span className="spacer" />
         <DiffStyleChoice style={style} />
       </div>

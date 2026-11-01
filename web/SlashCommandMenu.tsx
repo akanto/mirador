@@ -5,6 +5,7 @@ import { clearSlashCommand, latestSlashCommands, matchingCommands, slashQuery, t
 import { connection } from "./connection.ts";
 import { loginSlashCommand } from "./login-request.ts";
 import { SuggestionList, suggestionAttributes, suggestionKey, usePickedSuggestion } from "./SuggestionList.tsx";
+import { t } from "./i18n/index.ts";
 
 const LIST_ID = "slash-commands";
 
@@ -30,10 +31,12 @@ function useSlashCommands(conversationId: string, events: StoredEvent[], wanted:
   return listed ?? (hasGuess ? guessed.commands : []);
 }
 
-const miradorCommands = [clearSlashCommand, loginSlashCommand];
+const inPageLanguage = (command: SlashCommand) => ({ ...command, description: t.chat.slashCommandDescriptions[command.name] ?? command.description });
+
+const miradorCommands = [clearSlashCommand, loginSlashCommand].map(inPageLanguage);
 
 /** The commands Mirador runs itself, so they stand even where the agent does not list them. */
-const miradorCommandsFor = (harness: HarnessId) => (harness === "claude" ? [...miradorCommands, ...panelSlashCommands] : miradorCommands);
+const miradorCommandsFor = (harness: HarnessId) => (harness === "claude" ? [...miradorCommands, ...panelSlashCommands.map(inPageLanguage)] : miradorCommands);
 
 const withMiradorCommands = (commands: SlashCommand[], own: SlashCommand[]) => [
   ...commands.filter(({ name }) => !own.some((same) => same.name === name)),
@@ -88,7 +91,7 @@ export function useSlashCommandMenu({
   };
 
   const menu = open ? (
-    <SuggestionList id={LIST_ID} label="Slash commands" className="slash-commands" items={matches} keyOf={({ name }) => name} pickedIndex={pickedIndex} onPick={writeOut}>
+    <SuggestionList id={LIST_ID} label={t.chat.menus.slashCommands} className="slash-commands" items={matches} keyOf={({ name }) => name} pickedIndex={pickedIndex} onPick={writeOut}>
       {(command) => (
         <>
           <span className="slash-command-name">/{command.name}</span>
