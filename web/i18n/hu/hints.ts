@@ -53,31 +53,31 @@ export const hints: Messages["hints"] = {
   promptTemplates: "Gyakran küldött üzenetek, azokkal az értékekkel, amelyeket minden alkalommal kitöltesz. A Beállításokban adhatsz hozzá, módosíthatod és törölheted őket.",
   deleteTemplateArmed: "Kattints újra a sablon törléséhez. Az itt törölt alapértelmezett sablonok nem jönnek vissza.",
   findAddress:
-    "Megkérdezi, milyen címen érik el más eszközök a Miradort: ennek a gépnek a nevét a tailnetjén, és azokat a címeket, amelyeket eszközök már használtak. Mindegyiket ellenőrzi, mielőtt felajánlja — ennek a Miradornak kell válaszolnia, a saját portján és a vászonkönyvtárak portján is. A host a következő indulásától a kiválasztott címet használja.",
+    "Megkérdezi, milyen címen érik el más készülékek a Miradort: ennek a gépnek a nevét a tailnetjén, és azokat a címeket, amelyeket készülékek már használtak. Mindegyiket ellenőrzi, mielőtt felajánlja — ennek a Miradornak kell válaszolnia, a saját portján és a vászonkönyvtárak portján is. A host a következő indulásától a kiválasztott címet használja.",
   exposeOnTailscale:
     "Lefuttatja a tailscale serve-öt a Mirador két portjára, tükrözve, így a tailnet HTTPS-en éri el a Miradort a https://<ez a gép a tailneten>:<a portja> címen, a vászonkönyvtárakat pedig ugyanezen a néven a vászon portján. A tailneten semmi más nem változik; a host a következő indulásától használja a címeket.",
   address:
-    "Ahol más eszközök megnyitják a Miradort: http://127.0.0.1:4600 csak ezen a gépen, vagy egy cím, amelyet egy proxy ide továbbít, például https://macbook.example.ts.net:4600. A port a Mirador saját portja, 4600, hacsak a host nem mással indult.",
+    "Ahol más készülékek megnyitják a Miradort: http://127.0.0.1:4600 csak ezen a gépen, vagy egy cím, amelyet egy proxy ide továbbít, például https://macbook.example.ts.net:4600. A port a Mirador saját portja, 4600, hacsak a host nem mással indult.",
   canvasAddress:
     "Ahonnan egy vászonoldal betölti a D3-at, a Mermaidot és a three-t. A Mirador saját porton szolgálja ki őket (4601), az alkalmazásétól eltérő originen, így egy ágens által írt oldal nem fér hozzá a Mirador saját tárolójához. Egy proxynak ezt a portot is továbbítania kell: https://macbook.example.ts.net:4601.",
   reachRoute:
-    "A Mirador egyszerre egyféleképpen éri el a többi eszközt. Egy lehetőség kiválasztása csak megmutatja; a Használat vagy a Cím mentése gombja alkalmazza, és visszavonja a másikat, így itt semmi nincs beállítva, amit a host nem használ. A host a következő indulásakor olvassa be. Egy elérhető címet egy proxynak kell adnia, például a tailscale serve-nek, különben a host maga szolgál ki HTTPS-t a hálózaton egy általa készített tanúsítvánnyal.",
+    "A Mirador egyszerre egyféleképpen éri el a többi készüléket. Egy lehetőség kiválasztása csak megmutatja; a Használat vagy a Cím mentése gombja alkalmazza, és visszavonja a másikat, így itt semmi nincs beállítva, amit a host nem használ. A host a következő indulásakor olvassa be. Egy elérhető címet egy proxynak kell adnia, például a tailscale serve-nek, különben a host maga szolgál ki HTTPS-t a hálózaton egy általa készített tanúsítvánnyal.",
   proxyElsewhere:
     "Egy másik gépen futó proxyhoz a hálózatodon, például Nginx Proxy Managerhez, amely nem éri el ennek a gépnek a saját portjait. A cím mentésekor a Mirador ilyenkor HTTPS-t is kiszolgál a hálózaton, és a proxy ezekre a portokra továbbít.",
   networkReachability:
-    "A Mirador maga szolgál ki HTTPS-t ezen a porton, egy általa készített tanúsítványkiadóval, így az ugyanazon a hálózaton lévő eszközöknek nem kell sem proxy, sem cím. Minden böngésző egyszer figyelmeztet a tanúsítványra (vagy végleg megbízik benne, ha telepíti a mirador-ca.pem-et).",
+    "A Mirador maga szolgál ki HTTPS-t ezen a porton, egy általa készített tanúsítványkiadóval, így az ugyanazon a hálózaton lévő készülékeknek nem kell sem proxy, sem cím. Minden böngésző egyszer figyelmeztet a tanúsítványra (vagy végleg megbízik benne, ha telepíti a mirador-ca.pem-et).",
   inviteDevice:
-    "Egyszer használható kódot készít, amellyel egy másik böngésző vagy alkalmazás 15 percen belül csatlakozhat ehhez a Miradorhoz. Egy csatlakozott eszköz itt mindent megtehet, terminálokban parancsokat is futtathat.",
+    "Egyszer használható kódot készít, amellyel egy másik böngésző vagy alkalmazás 15 percen belül csatlakozhat ehhez a Miradorhoz. Egy csatlakozott készülék itt mindent megtehet, terminálokban parancsokat is futtathat.",
   inviteRoute:
     "Az egyenrangú (peer to peer) kapcsolat bárhonnan eléri ezt a Macet VPN nélkül, egy telefonon futó Mirador alkalmazáson keresztül; böngésző csak a címen csatlakozhat. A QR-kód és a link a választással együtt változik.",
-  removeMachineArmed: "Kattints újra, hogy eltávolítsd ezt a gépet a listáról. Tovább fut, és ez a számítógép az eszközei között marad, amíg ott vissza nem vonod.",
+  removeMachineArmed: "Kattints újra, hogy eltávolítsd ezt a gépet a listáról. Tovább fut, és ez a számítógép a készülékei között marad, amíg ott vissza nem vonod.",
   thisComputer: "Ennek a számítógépnek a saját munkaterületei és beszélgetései",
   manageMachines: "Gépek hozzáadása vagy eltávolítása",
   machineColor: "Adj színt ennek a gépnek, hogy megkülönböztesd a sávban. Ez a számítógép jegyzi meg.",
   machineColorStyle:
     "Hol mutatja a színét egy gép, amelynek színt adtál: csak a sávgombján, vagy egy csíkként a nézete tetején is, így egy pillantásból látod, melyik gépen dolgozol. Színt a Gépek… menüpontban adhatsz egy gépnek.",
   machines: "Más számítógépek, amelyeken Mirador fut, például egy szerver, amelynek az ágensei tovább dolgoznak, amíg ez a gép alszik.",
-  revokeDeviceArmed: "Kattints újra, hogy kijelentkeztesd ezt az eszközt. Az újbóli csatlakozáshoz új meghívókód kell.",
+  revokeDeviceArmed: "Kattints újra, hogy kijelentkeztesd ezt a készüléket. Az újbóli csatlakozáshoz új meghívókód kell.",
   officialPlugin: "Az egyik hivatalos Mirador-bővítmény, amely a sodre90/mirador-plugins katalógusban szerepel.",
   installOfficialPlugin: "Klónozza a bővítmény repóját, és megmutatja, mi fut belőle. Semmi sem fut belőle, amíg bele nem egyezel.",
   addPlugin: "Klónozza a repót, és megmutatja, mi fut belőle: a build parancsát és a host-kódját. Semmi sem fut belőle, amíg bele nem egyezel.",
@@ -105,8 +105,8 @@ export const hints: Messages["hints"] = {
   terminalFontWeightBold: "Milyen vastag a félkövér szöveg a terminálokban.",
   terminalScrollback: "Hány sort őriz meg egy terminál, miután kigördültek a tetején.",
   connectedDevicesInSidebar:
-    "Amíg eszközök csatlakoznak, az oldalsáv alján egy sor mutatja, hány; kattints rá, hogy lásd, melyek. Ez a böngésző megjegyzi.",
-  connectedDevices: (names) => `Most csatlakozva: ${names.join(", ")}. Kattints, hogy lásd az összes eszközt a Beállítások → Eszközök részben.`,
+    "Amíg készülékek csatlakoznak, az oldalsáv alján egy sor mutatja, hány; kattints rá, hogy lásd, melyek. Ez a böngésző megjegyzi.",
+  connectedDevices: (names) => `Most csatlakozva: ${names.join(", ")}. Kattints, hogy lásd az összes készüléket a Beállítások → Készülékek részben.`,
   pageLibrariesSetting:
     "Ahonnan a vászonról másolt vagy mentett oldal betölti a D3-at, a Mermaidot és a three.js-t. A vászon maga szolgálja ki őket, de ezt egy Miradoron kívüli oldal nem éri el. A three.js mindig a CDN-ről jön.",
   editsInCanvasSetting:
@@ -245,7 +245,7 @@ export const hints: Messages["hints"] = {
   claudeProgram: (installFolders) =>
     `A claude program, amellyel a Mirador a Claude Code-ot futtatja a host gépén. Üresen: a PATH-on lévő claude, különben ezekben: ${installFolders}.\n\nEgy profil a környezetében a CLAUDE_CODE_EXECUTABLE-lel másikat is futtathat.`,
   keepAwake:
-    "Megakadályozza, hogy a gép, amelyen a Mirador fut, tétlenül elaludjon.\n\nAmíg az ágensek dolgoznak: amíg minden futó kör véget nem ér, hogy a hosszú feladatok befejeződjenek.\n\nMindig: amíg a Mirador fut, hogy a telefonod és a többi eszközöd bármikor elérje.\n\nmacOS-en és Linuxon.",
+    "Megakadályozza, hogy a gép, amelyen a Mirador fut, tétlenül elaludjon.\n\nAmíg az ágensek dolgoznak: amíg minden futó kör véget nem ér, hogy a hosszú feladatok befejeződjenek.\n\nMindig: amíg a Mirador fut, hogy a telefonod és a többi készüléked bármikor elérje.\n\nmacOS-en és Linuxon.",
   canvasUse:
     "Szükség szerint: az ágens a vászon saját utasításai alapján dönt.\n\nGyakran: a Claude Code és a pi rendszerpromptja arra is utasítja őket, hogy a magyarázatokat, összehasonlításokat, terveket és egy nagyobb munka összefoglalóját a vászonra tegyék, és a választásokat ott kérdezzék meg tőled.\n\nAz oldalak több tokenbe kerülnek, mint ugyanaz a válasz szövegként.",
   terminalCommand:
@@ -282,7 +282,7 @@ export const hints: Messages["hints"] = {
   scriptProgram:
     "Ahol egy szkriptre mutató fájllink megnyílik, szövegként, a host gépén. A típusához tartozó program le is futtathatná: a Git for Windows a .sh fájlokat futtatja, a Python indítója a .py fájlokat.\n\nA rendszer szövegszerkesztője: macOS-en az, amelyet a szöveghez választottál, Windowson a Jegyzettömb. A Linuxnak nincs sajátja, így ott az xdg-open választja ki a programot a szkript típusához, egy futtatható szkript pedig – amelyet az a program futtathatna – nem nyílik meg.\n\nEgy általad megadott program: a neve a host PATH-ján, például code vagy subl, vagy a teljes útvonala. A fájl útvonalát kapja meg. Windowson .exe-t adj meg, például Code.exe-t: egy .cmd vagy .bat a cmd.exe-n keresztül futna, amely egy fájlnév egy részét parancsnak vehetné.",
   profilePicture:
-    "A képed, amely az üzeneteid mellett látszik. Négyzetre vágja, itt 128 pixelesen rajzolja ki, és a host őrzi meg: minden böngésző és eszköz, amely megnyitja ezt a Miradort, látja.",
+    "A képed, amely az üzeneteid mellett látszik. Négyzetre vágja, itt 128 pixelesen rajzolja ki, és a host őrzi meg: minden böngésző és készülék, amely megnyitja ezt a Miradort, látja.",
   blockedImage:
     "Megnyitja a képet a böngésződben. A Mirador maga nem tölt be képeket más oldalakról, így egy ágens nem küldheti el nekik, amit olvasott; a Beállítások → Beszélgetések részben ezt módosíthatod.",
   scriptMessage:

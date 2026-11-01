@@ -18,7 +18,7 @@ export const settings: Messages["settings"] = {
   },
   profilePicture: {
     title: "Profilkép",
-    hint: "Az üzeneteid mellett látszik. A host őrzi meg minden böngészőnek és eszköznek, amely csatlakozik hozzá.",
+    hint: "Az üzeneteid mellett látszik. A host őrzi meg minden böngészőnek és készüléknek, amely csatlakozik hozzá.",
     remove: "Eltávolítás",
   },
   appearance: {

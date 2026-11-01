@@ -41,7 +41,7 @@ export const labels: Messages["labels"] = {
     canvas: "Vászon",
     plugins: "Bővítmények",
     layout: "Elrendezés",
-    devices: "Eszközök",
+    devices: "Készülékek",
     notifications: "Értesítések",
     about: "Névjegy",
   },

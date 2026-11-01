@@ -24,7 +24,7 @@ These terms stay the same everywhere:
 | checklist | ellenőrzőlista |
 | History (canvas) | Előzmények |
 | queue / queued | sor / sorba állított |
-| device | eszköz |
+| device | készülék |
 | machine | gép |
 | rail | sáv |
 | tool (agent's) | eszköz |

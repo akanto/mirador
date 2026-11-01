@@ -29,7 +29,7 @@ test("choosing Magyar in Settings shows Mirador in Hungarian after the page relo
     "Vászon",
     "Bővítmények",
     "Elrendezés",
-    "Eszközök",
+    "Készülékek",
     "Értesítések",
     "Névjegy",
   ]);
