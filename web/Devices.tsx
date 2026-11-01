@@ -10,20 +10,23 @@ import { setConnectedDevicesInSidebar, useConnectedDevicesInSidebar } from "./co
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { QrCode } from "./QrCode.tsx";
 import { saveSetting } from "./saved-setting.ts";
 import type { DevicesListed } from "./state.ts";
+
+const words = t.devices;
 
 /** Read before the app first draws: it then replaces the address's #part with the open conversation's. */
 const joinCodeInLink = joinCodeIn(location.hash);
 
 function browserName(userAgent: string) {
-  if (inDesktopApp()) return "Mirador app";
+  if (inDesktopApp()) return words.guessedName.desktopApp;
   if (/Edg\//.test(userAgent)) return "Edge";
   if (/Firefox\/|FxiOS/.test(userAgent)) return "Firefox";
   if (/Chrome\/|CriOS/.test(userAgent)) return "Chrome";
   if (/Safari\//.test(userAgent)) return "Safari";
-  return "Browser";
+  return words.guessedName.browser;
 }
 
 function systemName(userAgent: string) {
@@ -37,7 +40,7 @@ function systemName(userAgent: string) {
 
 function guessedDeviceName() {
   const system = systemName(navigator.userAgent);
-  return system ? `${browserName(navigator.userAgent)} on ${system}` : browserName(navigator.userAgent);
+  return system ? words.guessedName.browserOn(browserName(navigator.userAgent), system) : browserName(navigator.userAgent);
 }
 
 const isThisMachine = () => ["127.0.0.1", "localhost"].includes(location.hostname);
@@ -76,7 +79,7 @@ export function JoinMachine() {
       body: JSON.stringify({ code: codeToUse, name }),
     }).catch(() => null);
     if (response?.ok) return location.replace("/");
-    setProblem(response ? await response.text() : "The machine did not answer. Is its Mirador running?");
+    setProblem(response ? await response.text() : words.joinMachine.noAnswer);
     setJoining(false);
   };
 
@@ -96,22 +99,25 @@ export function JoinMachine() {
 
   return (
     <div className="gate join-machine">
-      <h1>Join this machine</h1>
+      <h1>{words.joinMachine.title}</h1>
       {askedNumber ? (
-        <div className="join-asked" role="status" aria-label="Waiting for approval">
+        <div className="join-asked" role="status" aria-label={words.joinMachine.waitingForApproval}>
           <p>
-            Waiting for approval on <strong>{location.hostname}</strong>. Type this number there:
+            {words.joinMachine.waitingOn} <strong>{location.hostname}</strong>
+            {words.joinMachine.typeNumberThere}
           </p>
           <p className="join-number">{spacedNumber(askedNumber)}</p>
           <p className="hint">
-            Its Mirador shows the request on its own screen, and on the devices that have joined it; or run <code>mirador approve</code> there.
+            {words.joinMachine.requestShowsBefore} <code>mirador approve</code>
+            {words.joinMachine.requestShowsAfter}
           </p>
         </div>
       ) : (
         <>
           <p>
-            Mirador on <strong>{location.host}</strong> lets in devices that someone there approves, or that have an invite code. Get one in Settings →
-            Devices on a device that has joined, or run <code>mirador invite</code> on the machine.
+            {words.joinMachine.introBefore} <strong>{location.host}</strong>
+            {words.joinMachine.introMiddle} <code>mirador invite</code>
+            {words.joinMachine.introAfter}
           </p>
           <form
             onSubmit={(event: FormEvent) => {
@@ -120,20 +126,20 @@ export function JoinMachine() {
             }}
           >
             <label>
-              Name this device
+              {words.joinMachine.name}
               <input value={name} onChange={(event) => setName(event.target.value)} />
             </label>
             {!shownInAnotherMirador() && (
               <button type="button" className="primary" disabled={joining || !name.trim()} onClick={() => void ask()}>
-                Ask to join
+                {words.joinMachine.askToJoin}
               </button>
             )}
             <label>
-              Invite code
+              {words.joinMachine.inviteCode}
               <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
             </label>
             <button type="submit" className="primary" disabled={joining || !code.trim()}>
-              {joining ? "Joining…" : "Join"}
+              {joining ? words.joinMachine.joining : words.joinMachine.join}
             </button>
           </form>
         </>
@@ -141,7 +147,8 @@ export function JoinMachine() {
       {problem && <p className="join-problem">{problem}</p>}
       {isThisMachine() && (
         <p className="hint">
-          On this machine itself, you can instead sign in with a one-time link: the host prints one in the terminal that started it, and <code>mirador sign-in</code> makes a new one.
+          {words.joinMachine.signInLinkBefore} <code>mirador sign-in</code>
+          {words.joinMachine.signInLinkAfter}
         </p>
       )}
     </div>
@@ -240,36 +247,38 @@ function AddressRoute({
   };
 
   return (
-    <form className="public-address" aria-label="Address on your network" onSubmit={save}>
+    <form className="public-address" aria-label={words.address.formLabel} onSubmit={save}>
       <p className="hint">
         {setByEnvironment ? (
           <>
-            The host's environment sets its address (<code>MIRADOR_PUBLIC_ORIGIN</code> and <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code>), so it can't be changed
-            here.
+            {words.address.setByEnvironmentBefore}
+            <code>MIRADOR_PUBLIC_ORIGIN</code> {words.address.and} <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code>
+            {words.address.setByEnvironmentAfter}
           </>
         ) : proxyElsewhere ? (
           <>
-            Where other devices open Mirador, and where its canvas pages load the libraries they draw with. A proxy on another machine can't reach this
-            machine's own ports, so Mirador also serves HTTPS on the network, and the proxy forwards to port <code>{settings.networkPort}</code> for Mirador
-            and <code>{settings.networkCanvasPort}</code> for the canvas.
+            {words.address.proxyElsewhereBefore} <code>{settings.networkPort}</code>
+            {words.address.proxyElsewhereMiddle} <code>{settings.networkCanvasPort}</code>
+            {words.address.proxyElsewhereAfter}
           </>
         ) : (
           <>
-            Where other devices open Mirador — its own port, <code>{settings.port}</code> — and where its canvas pages load the libraries they draw with, a port
-            of their own, <code>{settings.canvasAssetsPort}</code>: a separate origin, so a page an agent wrote cannot reach Mirador's own storage.
+            {words.address.ownPortBefore} <code>{settings.port}</code>
+            {words.address.ownPortMiddle} <code>{settings.canvasAssetsPort}</code>
+            {words.address.ownPortAfter}
           </>
         )}
       </p>
       {!setByEnvironment && (
         <label className="proxy-elsewhere" data-hint={hints.proxyElsewhere}>
           <input type="checkbox" checked={proxyElsewhere} onChange={(event) => setProxyElsewhere(event.target.checked)} />
-          The proxy runs on another machine
+          {words.address.proxyElsewhere}
         </label>
       )}
       {!setByEnvironment && <AddressFinder onUse={useFound} onProblem={onProblem} />}
       <div className="address-fields">
         <label data-hint={hints.address}>
-          Address
+          {words.address.address}
           <input
             value={origin}
             onChange={(event) => setOrigin(event.target.value)}
@@ -280,7 +289,7 @@ function AddressRoute({
           />
         </label>
         <label data-hint={hints.canvasAddress}>
-          Canvas address
+          {words.address.canvasAddress}
           <input
             value={canvasOrigin}
             onChange={(event) => setCanvasOrigin(event.target.value)}
@@ -291,7 +300,7 @@ function AddressRoute({
           />
         </label>
         <button type="submit" disabled={setByEnvironment || !edited}>
-          Save address
+          {words.address.save}
         </button>
       </div>
     </form>
@@ -324,7 +333,7 @@ function AddressFinder({ onUse, onProblem }: { onUse: (address: PublicAddress) =
   return (
     <div className="address-finder">
       <button type="button" data-hint={hints.findAddress} disabled={looking !== null} onClick={() => void look(false)}>
-        {looking === "find" ? "Looking…" : "Find the address"}
+        {looking === "find" ? words.address.looking : words.address.find}
       </button>
       {search && <AddressOutcome search={search} looking={looking} onServe={() => void look(true)} onUse={onUse} />}
     </div>
@@ -344,15 +353,15 @@ function AddressOutcome({
 }) {
   if (search.addresses.length > 0) {
     return (
-      <ul className="addresses-found" aria-label="Addresses found">
+      <ul className="addresses-found" aria-label={words.address.found}>
         {search.addresses.map((address) => (
           <li key={address.origin}>
             <span>
-              <code>{address.origin}</code> and <code>{address.canvasOrigin}</code>{" "}
-              <span className="address-how">{address.how === "tailnet" ? "this machine's name on the tailnet" : "an address a device already used"}</span>
+              <code>{address.origin}</code> {words.address.and} <code>{address.canvasOrigin}</code>{" "}
+              <span className="address-how">{address.how === "tailnet" ? words.address.foundTailnet : words.address.foundUsed}</span>
             </span>
             <button type="button" onClick={() => onUse(address)}>
-              Use these
+              {words.address.useThese}
             </button>
           </li>
         ))}
@@ -362,16 +371,16 @@ function AddressOutcome({
   if (search.tailscale === "present") {
     return (
       <p className="hint">
-        Nothing answered yet. This machine has Tailscale, which can put Mirador on the tailnet itself.
+        {words.address.nothingYetWithTailscale}
         <button type="button" data-hint={hints.exposeOnTailscale} disabled={looking !== null} onClick={onServe}>
-          {looking === "serve" ? "Exposing…" : "Expose Mirador on Tailscale"}
+          {looking === "serve" ? words.address.exposing : words.address.expose}
         </button>
       </p>
     );
   }
   return (
     <p className="hint">
-      Nothing answered: no address of this machine's reaches Mirador yet, and it has no Tailscale. The choice below spells out what else there is.
+      {words.address.nothingAnswered}
     </p>
   );
 }
@@ -400,49 +409,51 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
   const useThis = (wanted: ReachRoute) =>
     savedChoice !== wanted && (
       <button type="button" onClick={() => apply(wanted)}>
-        Use this
+        {words.reach.useThis}
       </button>
     );
 
   return (
-    <section className="reachability" aria-label="How other devices reach this Mirador">
-      <h3>How other devices reach Mirador</h3>
+    <section className="reachability" aria-label={words.reach.label}>
+      <h3>{words.reach.title}</h3>
       <p className="hint" data-hint={hints.reachRoute}>
-        One at a time. The host uses the chosen one from its next start, for invite links and for the devices that already joined.
+        {words.reach.intro}
       </p>
-      <div className="routes" role="radiogroup" aria-label="How other devices reach this Mirador">
+      <div className="routes" role="radiogroup" aria-label={words.reach.label}>
         <RouteOption
-          title="Only on this machine"
+          title={words.reach.noneTitle}
           chosen={route === "none"}
           locked={locked}
           onChoose={() => reveal("none")}
-          description="No other device reaches it, and the host serves nothing on the network."
+          description={words.reach.noneDescription}
         >
           {useThis("none")}
         </RouteOption>
         <RouteOption
-          title="At an address a proxy gives it"
+          title={words.reach.addressTitle}
           chosen={route === "address"}
           locked={locked}
           onChoose={() => reveal("address")}
-          description="A proxy in front of Mirador gives it an address other devices reach it at — tailscale serve does this in one command."
+          description={words.reach.addressDescription}
         >
           <AddressRoute settings={settings} onSave={(address, proxyElsewhere) => apply("address", address, proxyElsewhere)} onProblem={setProblem} />
         </RouteOption>
         <RouteOption
-          title="Over the network, with no address"
+          title={words.reach.networkTitle}
           hint={hints.networkReachability}
           chosen={route === "network"}
           locked={locked}
           onChoose={() => reveal("network")}
           description={
             <>
-              Mirador serves HTTPS itself on port <code>{settings.networkPort}</code>, with a certificate it makes. Devices on the same network reach it
-              directly{settings.network && settings.publicAddress && !proxyGivesTheAddress ? ` at ${settings.publicAddress.origin}` : ""}, with no proxy and no VPN; browsers warn once about
-              the certificate
+              {words.reach.networkBefore} <code>{settings.networkPort}</code>
+              {words.reach.networkMiddle}
+              {settings.network && settings.publicAddress && !proxyGivesTheAddress ? words.reach.networkAt(settings.publicAddress.origin) : ""}
+              {words.reach.networkAfter}
               {settings.network && settings.authorityFingerprint ? (
                 <>
-                  , or trust it for good once they install Mirador's <a href="/mirador-ca.pem">certificate authority</a>
+                  {words.reach.trustBefore}
+                  <a href="/mirador-ca.pem">{words.reach.certificateAuthority}</a>
                 </>
               ) : null}
               .
@@ -454,16 +465,17 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
       </div>
       {locked && (
         <p className="hint">
-          The host's environment sets how other devices reach it (<code>MIRADOR_PUBLIC_ORIGIN</code>, <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code> or{" "}
-          <code>MIRADOR_NETWORK</code>), so this can't be changed here.
+          {words.reach.lockedBefore}
+          <code>MIRADOR_PUBLIC_ORIGIN</code>, <code>MIRADOR_PUBLIC_CANVAS_ORIGIN</code> {words.reach.or} <code>MIRADOR_NETWORK</code>
+          {words.reach.lockedAfter}
         </p>
       )}
       {problem && <p className="setting-problem">{problem}</p>}
       {settings.restartNeeded && (
         <p className="restart-needed">
-          Saved. The host uses it from its next start.
+          {words.reach.saved}
           <button type="button" data-hint={hints.restartHost} onClick={() => connection.send({ type: "host.restart" })}>
-            Restart host
+            {words.reach.restartHost}
           </button>
         </p>
       )}
@@ -474,18 +486,19 @@ function ReachabilitySettingsSection({ settings }: { settings: ReachabilitySetti
 function InviteLink({ link, appOnly }: { link: string; appOnly: boolean }) {
   return (
     <>
-      <QrCode text={link} label="Link as a QR code" />
+      <QrCode text={link} label={words.invite.qrLabel} />
       {appOnly ? (
         <div>
-          Scan this with the Mirador app on a phone.
+          {words.invite.scanWithApp}
           <details className="invite-link-details">
-            <summary>Show the link</summary>
-            Only the Mirador app opens it, not a browser: <code className="invite-link">{link}</code>
+            <summary>{words.invite.showLink}</summary>
+            {words.invite.appOnly} <code className="invite-link">{link}</code>
           </details>
         </div>
       ) : (
         <span>
-          Or scan this with the Mirador app on a phone, or open <code className="invite-link">{link}</code> on the device.
+          {words.invite.scanOrOpenBefore} <code className="invite-link">{link}</code>
+          {words.invite.scanOrOpenAfter}
         </span>
       )}
     </>
@@ -504,14 +517,14 @@ function inviteLinkThrough(invite: Invite, route: InviteRoute, publicOrigin: str
 
 function InviteRouteChoice({ address, route, onChange }: { address: string; route: InviteRoute; onChange: (route: InviteRoute) => void }) {
   return (
-    <div className="invite-routes" role="radiogroup" aria-label="How the device joins" data-hint={hints.inviteRoute}>
+    <div className="invite-routes" role="radiogroup" aria-label={words.invite.routeLabel} data-hint={hints.inviteRoute}>
       <label>
         <input type="radio" name="invite-route" checked={route === "tunnel"} onChange={() => onChange("tunnel")} />
-        Peer to peer, with the Mirador app
+        {words.invite.peerToPeer}
       </label>
       <label>
         <input type="radio" name="invite-route" checked={route === "address"} onChange={() => onChange("address")} />
-        At {new URL(address).host}
+        {words.invite.atHost(new URL(address).host)}
       </label>
     </div>
   );
@@ -521,14 +534,13 @@ function InviteRouteHint({ throughTunnel, address }: { throughTunnel: boolean; a
   if (throughTunnel)
     return (
       <span className="hint invite-route-hint">
-        The app connects straight to this Mac from most networks, over mobile data or another Wi-Fi, with no VPN. A server of yours only introduces the two;
-        what they send is encrypted end to end.
+        {words.invite.throughTunnel}
       </span>
     );
   return (
     address && (
       <span className="hint invite-route-hint">
-        A browser or the app joins at {new URL(address).host}, so the device has to reach that address, for example by being on the same tailnet.
+        {words.invite.atAddress(new URL(address).host)}
       </span>
     )
   );
@@ -537,8 +549,7 @@ function InviteRouteHint({ throughTunnel, address }: { throughTunnel: boolean; a
 function InviteWithoutLink() {
   return (
     <span className="hint invite-without-link">
-      No link and no QR code: nothing has told Mirador how other devices reach it. One of the choices below gives it an address — the host uses it from its next
-      start.
+      {words.invite.withoutLink}
     </span>
   );
 }
@@ -564,45 +575,47 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const link = invite && inviteLinkThrough(invite, inviteRoute, publicOrigin, listed?.reachability.authorityFingerprint ?? null);
   return (
     <>
-      <h3>Devices</h3>
+      <h3>{words.list.title}</h3>
       <p className="hint">
-        Other browsers and apps that joined this Mirador with an invite code. Each signs in with a key of its own; revoking one signs it out at once.
+        {words.list.intro}
       </p>
       <label className="connected-devices-switch" data-hint={hints.connectedDevicesInSidebar}>
         <input type="checkbox" checked={shownInSidebar} onChange={(event) => setConnectedDevicesInSidebar(event.target.checked)} />
-        Show the connected devices in the sidebar
+        {words.list.showInSidebar}
       </label>
-      <ul className="device-list" aria-label="Devices">
+      <ul className="device-list" aria-label={words.list.title}>
         {listed?.devices.map((device) => (
           <li key={device.id} className={device.connection ? "connected" : undefined}>
             <span className="device-dot" aria-hidden="true" />
             <span className="device-name">{device.name}</span>
-            {device.id === listed.thisDeviceId && <span className="device-this">this device</span>}
+            {device.id === listed.thisDeviceId && <span className="device-this">{words.list.thisDevice}</span>}
             <span className="device-seen">
               {deviceStatus(device)}
-              {device.connection && ` · ${connectedFrom(device.connection)}`} · joined {joinedOn(device.joinedAt)}
+              {device.connection && ` · ${connectedFrom(device.connection)}`}
+              {words.list.joined(joinedOn(device.joinedAt))}
             </span>
             <ConfirmButton
               className="danger"
-              label={`Revoke ${device.name}`}
-              armedText="Revoke?"
+              label={words.list.revokeLabel(device.name)}
+              armedText={words.list.revokeArmed}
               armedHint={hints.revokeDeviceArmed}
               onConfirm={() => connection.send({ type: "device.revoke", deviceId: device.id })}
             >
-              Revoke
+              {words.list.revoke}
             </ConfirmButton>
           </li>
         ))}
-        {listed?.devices.length === 0 && <li className="device-none">No device has joined yet.</li>}
+        {listed?.devices.length === 0 && <li className="device-none">{words.list.none}</li>}
       </ul>
       <div className="device-invite">
         <button type="button" onClick={createInvite} data-hint={hints.inviteDevice}>
-          Invite a device
+          {words.invite.button}
         </button>
         {invite && (
-          <div className="invite" aria-label="Invite">
+          <div className="invite" aria-label={words.invite.label}>
             <span>
-              Code <code className="invite-code">{invite.code}</code>, works once until {timeOf(invite.expiresAt)}.
+              {words.invite.code} <code className="invite-code">{invite.code}</code>
+              {words.invite.worksUntil(timeOf(invite.expiresAt))}
             </span>
             {publicOrigin && invite.tunnel && <InviteRouteChoice address={publicOrigin} route={inviteRoute} onChange={setInviteRoute} />}
             {invite.tunnel && <InviteRouteHint throughTunnel={joinsThroughTunnel(invite, inviteRoute, publicOrigin)} address={publicOrigin} />}

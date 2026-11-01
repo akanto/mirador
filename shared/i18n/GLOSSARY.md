@@ -42,6 +42,7 @@ These terms stay the same everywhere:
 | Settings | Beállítások | Configuración |
 | Add / Remove / Delete | Hozzáadás / Eltávolítás / Törlés | Agregar / Quitar / Eliminar |
 | uncommitted | nem commitolt | sin confirmar |
+| effort (thinking) | erőfeszítés | esfuerzo |
 
 ## Hungarian
 

@@ -7,7 +7,11 @@ import { revert } from "./revert.ts";
 import { settings } from "./settings.ts";
 import { shell } from "./shell.ts";
 import { terminals } from "./terminals.ts";
+import { devices } from "./devices.ts";
+import { voice } from "./voice.ts";
+import { profiles } from "./profiles.ts";
+import { plugins } from "./plugins.ts";
 
-export const en = { hints, waitingHints, statusHints, labels, settings, chat, revert, dictation, shell, canvas, terminals };
+export const en = { hints, waitingHints, statusHints, labels, settings, chat, revert, dictation, shell, canvas, terminals, devices, voice, profiles, plugins };
 
 export type Messages = typeof en;

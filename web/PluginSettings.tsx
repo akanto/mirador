@@ -15,7 +15,10 @@ import type { ClientMessage, ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { choosePluginSetting, usePluginSettings } from "./plugin-settings.ts";
+
+const words = t.plugins;
 
 type PluginsListed = Extract<ServerMessage, { type: "plugins.listed" }>;
 
@@ -50,7 +53,7 @@ function OfferDetails({ offer }: { offer: PluginOffer }) {
       <span className="plugin-version">{offer.version}</span>
       <span className="plugin-source">{offerSource(offer)}</span>
       {offer.replaces && offer.replaces.commits.length > 0 && (
-        <ul className="plugin-commits" aria-label={`Commits the update of ${offer.title} brings`}>
+        <ul className="plugin-commits" aria-label={words.commitsOfUpdate(offer.title)}>
           {offer.replaces.commits.map(({ commit, subject }) => (
             <li key={commit}>
               <code>{commit}</code> {subject}
@@ -58,7 +61,7 @@ function OfferDetails({ offer }: { offer: PluginOffer }) {
           ))}
         </ul>
       )}
-      <ul className="plugin-runs" aria-label={`What runs of ${offer.title}`}>
+      <ul className="plugin-runs" aria-label={words.whatRuns(offer.title)}>
         {offerRuns(offer).map((line) => (
           <li key={line}>{line}</li>
         ))}
@@ -92,9 +95,9 @@ function PluginConsent({ question, offers, agree, decline, onSettled }: { questi
       {offers.map((offer) => (
         <OfferDetails key={offer.id} offer={offer} />
       ))}
-      <p className="hint">Mirador has cloned it and run none of its code. Agree only to code you trust.</p>
+      <p className="hint">{words.consentHint}</p>
       {installing ? (
-        <span className="plugin-status">Building {installing}…</span>
+        <span className="plugin-status">{words.building(installing)}</span>
       ) : (
         <span className="plugin-actions">
           <button type="button" data-hint={hints.agreeToPlugin} onClick={install}>
@@ -123,11 +126,11 @@ async function findNews(folder: string): Promise<PluginNews & { problem: string 
 function sourceLine(source: PluginSource) {
   switch (source.kind) {
     case "git":
-      return [source.remote ?? "no remote", source.release ? "releases" : (source.branch ?? "no branch"), `${source.commit} ${source.subject}`].join(" · ");
+      return [source.remote ?? words.noRemote, source.release ? words.releases : (source.branch ?? words.noBranch), `${source.commit} ${source.subject}`].join(" · ");
     case "linked":
-      return `Linked to ${source.target}`;
+      return words.linkedTo(source.target);
     case "folder":
-      return "A folder put there by hand";
+      return words.folderByHand;
   }
 }
 
@@ -143,7 +146,7 @@ type Updating =
 export function UpdatesWaiting({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <span className="updates-waiting" data-hint={hints.pluginUpdatesWaiting} aria-label={`${count} ${count === 1 ? "plugin update" : "plugin updates"}`}>
+    <span className="updates-waiting" data-hint={hints.pluginUpdatesWaiting} aria-label={words.updatesWaiting(count)}>
       {count}
     </span>
   );
@@ -169,18 +172,18 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews
     case "idle":
       return (
         <button type="button" data-hint={hints.checkPluginUpdates} onClick={check}>
-          Check for updates
+          {words.checkForUpdates}
         </button>
       );
     case "checking":
-      return <span className="plugin-status">Checking for updates…</span>;
+      return <span className="plugin-status">{words.checking}</span>;
     case "found":
       if (isNothingNew(updating.news)) {
         return (
           <>
-            <span className="plugin-status">Up to date.</span>
+            <span className="plugin-status">{words.upToDate}</span>
             <button type="button" data-hint={hints.checkPluginUpdates} onClick={check}>
-              Check again
+              {words.checkAgain}
             </button>
           </>
         );
@@ -192,7 +195,7 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews
               {plugin.version ?? "?"} → {updating.news.release}
             </span>
           )}
-          <ul className="plugin-commits" aria-label={`New commits of ${plugin.title ?? plugin.folder}`}>
+          <ul className="plugin-commits" aria-label={words.newCommits(plugin.title ?? plugin.folder)}>
             {updating.news.commits.map(({ commit, subject }) => (
               <li key={commit}>
                 <code>{commit}</code> {subject}
@@ -200,19 +203,19 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews
             ))}
           </ul>
           <button type="button" data-hint={hints.updatePlugin} onClick={() => offerUpdate(updating.news)}>
-            Update
+            {words.update}
           </button>
         </>
       );
     case "cloning":
-      return <span className="plugin-status">Cloning…</span>;
+      return <span className="plugin-status">{words.cloning}</span>;
     case "consenting":
       return (
         <PluginConsent
-          question={`Update ${updating.offer.title}?`}
+          question={words.updateQuestion(updating.offer.title)}
           offers={[updating.offer]}
-          agree="Update"
-          decline="Don't update"
+          agree={words.update}
+          decline={words.dontUpdate}
           onSettled={(outcome) => settled(updating.news, outcome)}
         />
       );
@@ -221,7 +224,7 @@ function PluginUpdate({ plugin, found }: { plugin: PluginInfo; found: PluginNews
         <>
           <pre className="plugin-output">{updating.problem}</pre>
           <button type="button" data-hint={hints.checkPluginUpdates} onClick={check}>
-            Check again
+            {words.checkAgain}
           </button>
         </>
       );
@@ -260,24 +263,24 @@ function PluginRow({ plugin, official, found }: { plugin: PluginInfo; official?:
       {plugin.version && <span className="plugin-version">{plugin.version}</span>}
       {official && (
         <span className="plugin-official" data-hint={hints.officialPlugin}>
-          Official
+          {words.official}
         </span>
       )}
-      {plugin.waitsForRestart && <span className="plugin-waits">used from the next start</span>}
+      {plugin.waitsForRestart && <span className="plugin-waits">{words.waitsForRestart}</span>}
       {official && <span className="plugin-description">{official.description}</span>}
       <span className="plugin-source">{sourceLine(plugin.source)}</span>
-      {plugin.problem && <span className="plugin-problem">Didn't load: {plugin.problem}</span>}
+      {plugin.problem && <span className="plugin-problem">{words.didntLoad(plugin.problem)}</span>}
       {settings && settings.settings.length > 0 && <SettingsOf settings={settings} />}
       <span className="plugin-actions">
         {plugin.source.kind === "git" && <PluginUpdate key={plugin.source.commit} plugin={plugin} found={found} />}
         <ConfirmButton
           className="danger"
-          label={`Remove ${title}`}
-          armedText={linked ? "Remove the link?" : "Remove?"}
+          label={words.removeLabel(title)}
+          armedText={linked ? words.removeLinkArmed : words.removeArmed}
           armedHint={linked ? hints.unlinkPluginArmed : hints.removePluginArmed}
           onConfirm={remove}
         >
-          Remove
+          {words.remove}
         </ConfirmButton>
       </span>
       {problem && <pre className="plugin-output">{problem}</pre>}
@@ -305,11 +308,11 @@ function OfficialPluginToInstall({ plugin }: { plugin: CatalogPlugin }) {
       <span className="plugin-name">{plugin.name}</span>
       <span className="plugin-description">{plugin.description}</span>
       {typeof step === "object" ? (
-        <PluginConsent question={`Install ${step.title}?`} offers={[step]} agree="Install" decline="Don't install" onSettled={settled} />
+        <PluginConsent question={words.installQuestion(step.title)} offers={[step]} agree={words.install} decline={words.dontInstall} onSettled={settled} />
       ) : (
         <span className="plugin-actions">
           <button type="button" data-hint={hints.installOfficialPlugin} disabled={step === "cloning"} onClick={offer}>
-            {step === "cloning" ? "Cloning…" : "Install"}
+            {step === "cloning" ? words.cloning : words.install}
           </button>
         </span>
       )}
@@ -346,13 +349,13 @@ function AddPlugin() {
   };
   const busy = cloning || offer !== null;
   return (
-    <form className="plugin-add" aria-label="Add a plugin" onSubmit={add}>
-      <input aria-label="Git URL or path" placeholder="Git URL or path of the plugin's repo" value={url} disabled={busy} onChange={(event) => setUrl(event.target.value)} />
-      <input aria-label="Branch" placeholder="Branch (optional)" value={branch} disabled={busy} onChange={(event) => setBranch(event.target.value)} />
+    <form className="plugin-add" aria-label={words.addLabel} onSubmit={add}>
+      <input aria-label={words.urlLabel} placeholder={words.urlPlaceholder} value={url} disabled={busy} onChange={(event) => setUrl(event.target.value)} />
+      <input aria-label={words.branchLabel} placeholder={words.branchPlaceholder} value={branch} disabled={busy} onChange={(event) => setBranch(event.target.value)} />
       <button type="submit" data-hint={hints.addPlugin} disabled={busy || !url.trim()}>
-        {cloning ? "Cloning…" : "Add"}
+        {cloning ? words.cloning : words.add}
       </button>
-      {offer && <PluginConsent question={`Install ${offer.title}?`} offers={[offer]} agree="Install" decline="Don't install" onSettled={settled} />}
+      {offer && <PluginConsent question={words.installQuestion(offer.title)} offers={[offer]} agree={words.install} decline={words.dontInstall} onSettled={settled} />}
       {problem && <pre className="plugin-output">{problem}</pre>}
     </form>
   );
@@ -410,12 +413,18 @@ function UpdateAll({ updates }: { updates: FoundUpdate[] }) {
   return (
     <div className="plugin-update-all">
       {cloning ? (
-        <span className="plugin-status">Cloning {cloning}…</span>
+        <span className="plugin-status">{words.cloningPlugin(cloning)}</span>
       ) : offers ? (
-        <PluginConsent question={`Update ${offers.length === 1 ? offers[0]!.title : `${offers.length} plugins`}?`} offers={offers} agree="Update all" decline="Don't update" onSettled={settled} />
+        <PluginConsent
+          question={offers.length === 1 ? words.updateQuestion(offers[0]!.title) : words.updateSeveralQuestion(offers.length)}
+          offers={offers}
+          agree={words.updateAll}
+          decline={words.dontUpdate}
+          onSettled={settled}
+        />
       ) : (
         <button type="button" data-hint={hints.updateAllPlugins} onClick={offerAll}>
-          Update all ({updates.length})
+          {words.updateAllCount(updates.length)}
         </button>
       )}
       {problem && <pre className="plugin-output">{problem}</pre>}
@@ -428,22 +437,22 @@ export function PluginSettings({ pluginUpdates }: { pluginUpdates: FoundUpdate[]
   const waiting = pluginUpdates.filter(({ folder }) => listed?.plugins.some((plugin) => plugin.folder === folder && newsFor(plugin, pluginUpdates)));
   return (
     <>
-      <h3>Plugins</h3>
+      <h3>{words.title}</h3>
       <p className="hint">
-        A plugin gives the agent tools of its own on the canvas, or brings an app: a document that you and the agent change together. Plugins are
-        the folders in {listed ? <code>{listed.folder}</code> : "Mirador's plugins folder"}, and load when Mirador starts. Mirador updates the ones it
-        installed from a git repo; a linked folder is your own checkout, so you update it there.
+        {words.introBeforeFolder}
+        {listed ? <code>{listed.folder}</code> : words.pluginsFolder}
+        {words.introAfterFolder}
       </p>
       {listed?.restartNeeded && (
         <p className="restart-needed">
-          Mirador uses the changed plugins from its next start.
+          {words.restartNeeded}
           <button type="button" data-hint={hints.restartHost} onClick={() => connection.send({ type: "host.restart" })}>
-            Restart host
+            {t.shell.app.restartHost}
           </button>
         </p>
       )}
       {waiting.length > 0 && <UpdateAll updates={waiting} />}
-      <ul className="plugin-list" aria-label="Plugins">
+      <ul className="plugin-list" aria-label={words.title}>
         {listed?.plugins.map((plugin) => (
           <PluginRow
             key={plugin.folder}
@@ -452,24 +461,22 @@ export function PluginSettings({ pluginUpdates }: { pluginUpdates: FoundUpdate[]
             found={newsFor(plugin, pluginUpdates)}
           />
         ))}
-        {listed?.plugins.length === 0 && <li className="plugin-none">No plugin is installed.</li>}
+        {listed?.plugins.length === 0 && <li className="plugin-none">{words.noPlugins}</li>}
       </ul>
       {listed && toInstall(listed.official ?? [], listed.plugins).length > 0 && (
         <>
-          <h3>More official plugins</h3>
-          <p className="hint">Made for Mirador. An agent recommends one when it would help, and installs it only when you say so.</p>
-          <ul className="plugin-list" aria-label="More official plugins">
+          <h3>{words.moreOfficial}</h3>
+          <p className="hint">{words.moreOfficialHint}</p>
+          <ul className="plugin-list" aria-label={words.moreOfficial}>
             {toInstall(listed.official ?? [], listed.plugins).map((plugin) => (
               <OfficialPluginToInstall key={plugin.name} plugin={plugin} />
             ))}
           </ul>
         </>
       )}
-      <h3>Add a plugin from a git repo</h3>
+      <h3>{words.addFromGit}</h3>
       <p className="hint">
-        Its code runs inside Mirador with your permissions, and installing it runs the build command its plugin.json names. Mirador clones it
-        first and shows you what of it runs, and runs none of it until you agree; an update asks again. A plugin stays on the commit it was
-        added at until you update it.
+        {words.addFromGitHint}
       </p>
       <AddPlugin />
     </>

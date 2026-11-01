@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { profileSettingValue } from "../shared/apps.ts";
 import { knownChoices } from "../shared/config-options.ts";
-import { askModeLabels, harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Pastel, type Profile } from "../shared/model.ts";
+import { harnessIds, harnessLabels, type AskMode, type Conversation, type HarnessId, type Pastel, type Profile } from "../shared/model.ts";
 import { maskSecrets, parseEnvironment } from "../shared/profile-environment.ts";
 import type { ProfileDraft } from "../shared/protocol.ts";
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { choicesOf, usePluginSettings } from "./plugin-settings.ts";
 import { ProfileDot } from "./ProfileDot.tsx";
 import { useTypingAidAttributes } from "./typing-aids.ts";
+
+const words = t.profiles;
+const environmentFormat = words.environmentFormat;
 
 const NEW_PROFILE = "new";
 
@@ -63,15 +67,15 @@ function EnvironmentField({
   if (!revealed) {
     return (
       <div className="environment-preview">
-        <pre aria-label="Environment (secrets hidden)">{maskSecrets(value) || "(nothing set)"}</pre>
-        <button onClick={() => setRevealed(true)}>Edit environment</button>
+        <pre aria-label={words.environmentHidden}>{maskSecrets(value) || words.nothingSet}</pre>
+        <button onClick={() => setRevealed(true)}>{words.editEnvironment}</button>
       </div>
     );
   }
   return (
     <textarea
       {...typingAidAttributes}
-      aria-label="Environment"
+      aria-label={words.environment}
       className="environment"
       rows={10}
       spellCheck={false}
@@ -88,7 +92,7 @@ const AGENTS_OWN_CHOICE = "";
 function profileChoices(conversations: Conversation[], harness: HarnessId, category: "mode" | "thought_level", saved: string) {
   const known = knownChoices(conversations, harness, category).map(({ value, name }) => ({ value, name }));
   const savedButUnknown = saved !== AGENTS_OWN_CHOICE && !known.some(({ value }) => value === saved) ? [{ value: saved, name: saved }] : [];
-  return [{ value: AGENTS_OWN_CHOICE, name: "Agent's default" }, ...known, ...savedButUnknown];
+  return [{ value: AGENTS_OWN_CHOICE, name: words.agentsDefault }, ...known, ...savedButUnknown];
 }
 
 /** A new profile runs an agent this machine has; one named after its agent keeps following the agent picked until it is renamed. */
@@ -110,7 +114,7 @@ function PluginProfileFields({
   return withProfileSettings.map(({ plugin, setting }) => (
     <label key={`${plugin}/${setting.id}`} data-hint={setting.hint}>
       <span>{setting.label}</span>
-      <select aria-label={`Profile ${setting.label}`} value={profileSettingValue(chosen, plugin, setting)} onChange={(event) => onChoose(plugin, setting.id, event.target.value)}>
+      <select aria-label={words.pluginSetting(setting.label)} value={profileSettingValue(chosen, plugin, setting)} onChange={(event) => onChoose(plugin, setting.id, event.target.value)}>
         {choicesOf(setting, profiles, profileId).map((choice) => (
           <option key={choice.value} value={choice.value}>
             {choice.label}
@@ -181,16 +185,16 @@ function ProfileEditor({
       }}
     >
       <label>
-        <span>Name</span>
-        <input {...typingAidAttributes} aria-label="Profile name" value={name} placeholder="e.g. work, local qwen" onChange={(event) => setName(event.target.value)} />
+        <span>{words.name}</span>
+        <input {...typingAidAttributes} aria-label={words.nameLabel} value={name} placeholder={words.namePlaceholder} onChange={(event) => setName(event.target.value)} />
       </label>
       <label>
-        <span>Agent</span>
+        <span>{words.agent}</span>
         <select
-          aria-label="Profile agent"
+          aria-label={words.agentLabel}
           value={harness}
           disabled={Boolean(profile)}
-          title={profile ? "A profile's agent is fixed: its conversations keep running on it." : undefined}
+          title={profile ? words.agentFixed : undefined}
           onChange={(event) => {
             const picked = event.target.value as HarnessId;
             if (name === harnessLabels[harness]) setName(harnessLabels[picked]);
@@ -201,17 +205,17 @@ function ProfileEditor({
         >
           {harnessIds.map((id) => (
             <option key={id} value={id} disabled={!profile && !installedAgents.includes(id)}>
-              {installedAgents.includes(id) ? harnessLabels[id] : `${harnessLabels[id]} (not installed)`}
+              {installedAgents.includes(id) ? harnessLabels[id] : words.notInstalled(harnessLabels[id])}
             </option>
           ))}
         </select>
       </label>
-      <div className="field-label">Colour</div>
-      <ColorSwatches label="Profile colour" chosen={color} focusChosen={false} onChoose={setColor} />
-      <div className="hint">A dot in this colour goes before the profile's name wherever it shows, and its conversations get an edge of it in the sidebar.</div>
+      <div className="field-label">{words.colour}</div>
+      <ColorSwatches label={words.colourLabel} chosen={color} focusChosen={false} onChoose={setColor} />
+      <div className="hint">{words.colourHint}</div>
       <label>
-        <span>Mode</span>
-        <select aria-label="Profile mode" value={mode} onChange={(event) => setMode(event.target.value)}>
+        <span>{words.mode}</span>
+        <select aria-label={words.modeLabel} value={mode} onChange={(event) => setMode(event.target.value)}>
           {profileChoices(conversations, harness, "mode", mode).map((choice) => (
             <option key={choice.value} value={choice.value}>
               {choice.name}
@@ -220,8 +224,8 @@ function ProfileEditor({
         </select>
       </label>
       <label>
-        <span>Effort</span>
-        <select aria-label="Profile effort" value={effort} onChange={(event) => setEffort(event.target.value)}>
+        <span>{words.effort}</span>
+        <select aria-label={words.effortLabel} value={effort} onChange={(event) => setEffort(event.target.value)}>
           {profileChoices(conversations, harness, "thought_level", effort).map((choice) => (
             <option key={choice.value} value={choice.value}>
               {choice.name}
@@ -230,30 +234,35 @@ function ProfileEditor({
         </select>
       </label>
       <label className="checkbox">
-        <input type="checkbox" aria-label="Profile YOLO" checked={bypassPermissions} onChange={(event) => setBypassPermissions(event.target.checked)} />
-        <span>YOLO: approve whatever the agent asks permission for</span>
+        <input type="checkbox" aria-label={words.yoloLabel} checked={bypassPermissions} onChange={(event) => setBypassPermissions(event.target.checked)} />
+        <span>{words.yolo}</span>
       </label>
       <label>
-        <span>Questions</span>
-        <select aria-label="Profile questions" value={askMode} onChange={(event) => setAskMode(event.target.value as AskMode)}>
-          {(Object.keys(askModeLabels) as AskMode[]).map((choice) => (
+        <span>{words.questions}</span>
+        <select aria-label={words.questionsLabel} value={askMode} onChange={(event) => setAskMode(event.target.value as AskMode)}>
+          {(Object.keys(t.chat.askMode) as AskMode[]).map((choice) => (
             <option key={choice} value={choice}>
-              {askModeLabels[choice]}
+              {t.chat.askMode[choice]}
             </option>
           ))}
         </select>
       </label>
-      <div className="hint">
-        A conversation takes the mode, effort, YOLO and Questions when it starts with this profile or moves to it; its own menus
-        change them after that. The modes and effort levels are the ones the agent last listed, so they show once one of its
-        conversations has run. A conversation whose model does not offer the level keeps its own effort.
-      </div>
+      <div className="hint">{words.takenAtStart}</div>
       <PluginProfileFields profileId={profile?.id} profiles={profiles} chosen={pluginSettings} onChoose={choosePluginSetting} />
-      <div className="field-label">Environment</div>
+      <div className="field-label">{words.environment}</div>
       <EnvironmentField value={environment} harness={harness} onChange={setEnvironment} startRevealed={!profile} />
       <div className="hint">
-        One per line: <code>KEY=value</code>, <code>-u KEY</code> to unset, <code># comment</code>. The lines of a{" "}
-        <code>claude_env=( … )</code> array paste as they are. Values are literal; <code>$VAR</code> is not expanded.
+        {environmentFormat.onePerLine}
+        <code>KEY=value</code>
+        {environmentFormat.afterKeyValue}
+        <code>-u KEY</code>
+        {environmentFormat.toUnset}
+        <code>{environmentFormat.comment}</code>
+        {environmentFormat.afterComment}
+        <code>claude_env=( … )</code>
+        {environmentFormat.afterArray}
+        <code>$VAR</code>
+        {environmentFormat.notExpanded}
       </div>
       {errors.length > 0 && (
         <ul className="form-errors">
@@ -263,10 +272,10 @@ function ProfileEditor({
         </ul>
       )}
       <label>
-        <span>Pre-launch command (optional)</span>
+        <span>{words.prelaunch}</span>
         <textarea
           {...typingAidAttributes}
-          aria-label="Pre-launch command"
+          aria-label={words.prelaunchLabel}
           rows={3}
           spellCheck={false}
           placeholder="lsof -ti:8083 >/dev/null || (python3 ~/proxy.py >> ~/proxy.log 2>&1 &)"
@@ -274,25 +283,22 @@ function ProfileEditor({
           onChange={(event) => setPrelaunch(event.target.value)}
         />
       </label>
-      <div className="hint">
-        Runs with your shell and this environment before the agent starts. It must finish within a minute; start long-running
-        proxies in the background.
-      </div>
+      <div className="hint">{words.prelaunchHint}</div>
       <div className="form-actions">
         <button type="submit" disabled={saving || errors.length > 0 || !name.trim() || unchanged}>
-          {profile ? "Save" : "Create profile"}
+          {profile ? words.save : words.create}
         </button>
         {profile && !isOnlyProfile && (
-          <ConfirmButton className="danger" label="Delete profile" armedText="Delete?" armedHint={hints.deleteProfileArmed} onConfirm={deleteProfile}>
-            Delete
+          <ConfirmButton className="danger" label={words.deleteLabel} armedText={words.deleteArmed} armedHint={hints.deleteProfileArmed} onConfirm={deleteProfile}>
+            {words.delete}
           </ConfirmButton>
         )}
-        {savedOnce && unchanged && <span className="saved">Saved</span>}
+        {savedOnce && unchanged && <span className="saved">{words.saved}</span>}
       </div>
       {profile && (
-        <div className="hint">Saving a changed environment or pre-launch command restarts this profile's agent; a turn in progress stops.</div>
+        <div className="hint">{words.restartHint}</div>
       )}
-      {isOnlyProfile && <div className="hint">This is your only profile, and every conversation needs one, so it stays until you create another.</div>}
+      {isOnlyProfile && <div className="hint">{words.onlyProfile}</div>}
     </form>
   );
 }
@@ -302,18 +308,15 @@ export function FirstProfile({ installedAgents, conversations }: { installedAgen
   if (installedAgents.length === 0) {
     return (
       <div className="empty-state">
-        <h2>Install an agent to start</h2>
-        <p>Mirador runs Claude Code, opencode or pi, and this machine has none of them. Install one, then reload this page.</p>
+        <h2>{words.installAgentTitle}</h2>
+        <p>{words.installAgentText}</p>
       </div>
     );
   }
   return (
     <div className="empty-state first-profile">
-      <h2>Set up a profile to start</h2>
-      <p>
-        Every conversation runs on a profile: an agent and the environment it starts with. With nothing more set, it runs the agent as
-        it is set up on this machine. You can add profiles for other accounts, gateways or local models later in Profiles.
-      </p>
+      <h2>{words.firstProfileTitle}</h2>
+      <p>{words.firstProfileText}</p>
       <ProfileEditor profile={undefined} profiles={[]} conversations={conversations} installedAgents={installedAgents} namedAfterAgent onSaved={() => {}} />
     </div>
   );
@@ -345,17 +348,14 @@ export function ProfilesDialog({
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal profiles" role="dialog" aria-label="Profiles">
+      <div className="modal profiles" role="dialog" aria-label={words.title}>
         <header>
-          <h2>Profiles</h2>
-          <button className="icon" title="Close" aria-label="Close" onClick={onClose}>
+          <h2>{words.title}</h2>
+          <button className="icon" title={words.close} aria-label={words.close} onClick={onClose}>
             ×
           </button>
         </header>
-        <p className="hint">
-          A profile is an agent plus the environment it starts with: which account, gateway, local model or opencode config it
-          uses. Every conversation runs on one; with no environment set, the agent runs as it is set up on this machine.
-        </p>
+        <p className="hint">{words.dialogHint}</p>
         <div className="profiles-body">
           <ul className="profile-list">
             {profiles.map((profile) => (
@@ -366,7 +366,7 @@ export function ProfilesDialog({
               </li>
             ))}
             <li className={selectedId === NEW_PROFILE ? "selected" : ""} onClick={() => setSelectedId(NEW_PROFILE)}>
-              + New profile
+              {words.newProfile}
             </li>
           </ul>
           <ProfileEditor

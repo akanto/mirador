@@ -40,6 +40,9 @@ test("choosing Magyar in Settings shows Mirador in Hungarian after the page relo
   await beallitasok.getByRole("tab", { name: "Terminál" }).click();
   await expect(beallitasok.getByLabel("Visszagörgethető sorok").locator("option").first()).toHaveText(/^1\s?000 sor$/);
 
+  await beallitasok.getByRole("tab", { name: "Bővítmények" }).click();
+  await expect(beallitasok.getByRole("heading", { name: "Bővítmény hozzáadása git-repóból" })).toBeVisible();
+
   await beallitasok.getByRole("tab", { name: "Megjelenés" }).click();
   await Promise.all([page.waitForEvent("load"), beallitasok.getByLabel("Nyelv").selectOption("en")]);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
@@ -66,6 +69,12 @@ test("in Hungarian, the sidebar, the palette and the chat's header, message box 
   await expect(entries.filter({ hasText: "Teljes képernyő: beszélgetés" })).toHaveCount(1);
   await expect(entries.filter({ hasText: "Elrendezés visszaállítása az alapértelmezettre" })).toHaveCount(1);
   await page.keyboard.press("Escape");
+
+  await sidebar.getByRole("button", { name: "Profilok…" }).click();
+  const profilok = page.getByRole("dialog", { name: "Profilok" });
+  await expect(profilok.getByRole("heading", { name: "Profilok" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(profilok).toBeHidden();
 
   const header = page.locator(".chat-header:visible");
   await expect(header.getByRole("button", { name: "Vászon elrejtése" }).or(header.getByRole("button", { name: "Vászon mutatása" }))).toBeVisible();
@@ -117,6 +126,9 @@ test("Español in Settings shows Mirador in Spanish", async ({ page }) => {
   ]);
   await expect(configuracion.getByRole("radiogroup", { name: "Tema" }).getByRole("radio")).toHaveText(["Claro", "Oscuro", "Igual que el sistema"]);
 
+  await configuracion.getByRole("tab", { name: "Dispositivos" }).click();
+  await expect(configuracion.getByRole("heading", { name: "Cómo llegan otros dispositivos a Mirador" })).toBeVisible();
+  await configuracion.getByRole("tab", { name: "Apariencia" }).click();
   await Promise.all([page.waitForEvent("load"), configuracion.getByLabel("Idioma").selectOption("en")]);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });

@@ -1,20 +1,22 @@
 import { gigabytes, SERVER_OF, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { fitsMemory, memoryGb, memoryNeededGb, type ChoosableModel } from "../shared/voice-engine-models.ts";
+import { t } from "./i18n/index.ts";
+
+const words = t.voice;
 
 export const modelWithQuality = ({ name, quality }: ChoosableModel) => (quality ? `${name} · ${quality}` : name);
 
-const licence = ({ nonCommercial }: ChoosableModel) => (nonCommercial ? " · non-commercial use only" : "");
+const licence = ({ nonCommercial }: ChoosableModel) => (nonCommercial ? words.nonCommercialUseOnly : "");
 
 /** How good the model is, what its licence allows and what it downloads, or, when this Mac has too little memory for it, how much a Mac needs. */
 export const modelChoice = (model: ChoosableModel, memoryBytes: number) =>
-  `${modelWithQuality(model)}${licence(model)} · ${fitsMemory(model, memoryBytes) ? gigabytes(model.bytes) : `needs a Mac with ${memoryNeededGb(model)} GB of memory`}`;
+  `${modelWithQuality(model)}${licence(model)} · ${fitsMemory(model, memoryBytes) ? gigabytes(model.bytes) : words.needsAMacWith(memoryNeededGb(model))}`;
 
 /** A model on this Mac by its name and quality; one still to download also says what it downloads, or what Mac it needs. */
 export const modelOffer = (model: ChoosableModel, engine: Pick<VoiceEngineStatus, "onDisk" | "memoryBytes">) =>
   engine.onDisk.includes(model.id) ? modelWithQuality(model) : modelChoice(model, engine.memoryBytes);
 
-export const tooLittleMemoryForVoiceModel = (memoryBytes: number) =>
-  `This Mac's ${memoryGb(memoryBytes)} GB of memory is too little for a voice model of its own. A profile's API or a server of your own can translate, set below.`;
+export const tooLittleMemoryForVoiceModel = (memoryBytes: number) => words.tooLittleMemoryForVoiceModel(memoryGb(memoryBytes));
 
 /** What shows beside a model chosen for this Mac: whether its server has it loaded, its download, or why this Mac can't have it. */
 export type ModelState =

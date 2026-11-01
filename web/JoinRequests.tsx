@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { typedNumber } from "../shared/join-requests.ts";
 import type { JoinRequest } from "../shared/model.ts";
 import { connection } from "./connection.ts";
+import { t } from "./i18n/index.ts";
+
+const words = t.devices.joinRequest;
 
 const NUMBER_LENGTH = 6;
 
@@ -25,20 +28,20 @@ function JoinRequestPrompt({ request }: { request: JoinRequest }) {
   };
 
   return (
-    <section className="join-request" role="alertdialog" aria-label={`${request.name} asks to join`}>
-      <h2>{request.name} asks to join this Mirador</h2>
+    <section className="join-request" role="alertdialog" aria-label={words.label(request.name)}>
+      <h2>{words.title(request.name)}</h2>
       <p>
-        From {request.fromAddress}
+        {words.from(request.fromAddress)}
         {request.tailscaleUser && (
           <>
-            , signed in to Tailscale as <strong>{request.tailscaleUser}</strong>
+            {words.signedInAs} <strong>{request.tailscaleUser}</strong>
           </>
         )}
-        . Approve it only if you just asked from there: type the number it shows.
+        {words.approveOnly}
       </p>
       <form onSubmit={approve}>
         <input
-          aria-label="Number it shows"
+          aria-label={words.number}
           value={number}
           onChange={(event) => setNumber(event.target.value)}
           placeholder="123 456"
@@ -47,10 +50,10 @@ function JoinRequestPrompt({ request }: { request: JoinRequest }) {
           spellCheck={false}
         />
         <button type="submit" className="primary" disabled={answering || typedNumber(number).length !== NUMBER_LENGTH}>
-          Approve
+          {words.approve}
         </button>
         <button type="button" disabled={answering} onClick={() => setAnswering(connection.send({ type: "join-request.deny", joinRequestId: request.id }))}>
-          Deny
+          {words.deny}
         </button>
       </form>
     </section>

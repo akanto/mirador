@@ -16,9 +16,12 @@ import {
   type VoiceSource,
 } from "../shared/voice.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { saveSetting } from "./saved-setting.ts";
 import { modelOffer } from "./voice-models.ts";
 import { ModelBeside, ModelsOnThisMac, ServerState, VoiceEngineSetupPanel } from "./VoiceEngineSetup.tsx";
+
+const words = t.voice;
 
 /** Languages Whisper recognizes well, as codes it takes. */
 const spokenLanguages = ["en", "hu", "de", "fr", "es", "it", "pt", "nl", "pl", "cs", "sk", "ro", "uk", "ru", "sv", "da", "fi", "no", "el", "tr", "ja", "zh", "ko", "hi", "ar", "he"];
@@ -26,7 +29,7 @@ const spokenLanguages = ["en", "hu", "de", "fr", "es", "it", "pt", "nl", "pl", "
 const languageNames = new Intl.DisplayNames([navigator.language], { type: "language" });
 const languageName = (code: string) => languageNames.of(code) ?? code;
 
-const replyLanguageNames: Record<ReplyLanguage, string> = { en: "English", hu: "Hungarian" };
+const replyLanguageNames: Record<ReplyLanguage, string> = words.replyLanguages;
 
 const noEndpoint: CustomEndpoint = { url: "", apiKey: "", model: "" };
 
@@ -75,7 +78,7 @@ function useSavedAtOnce(settings: Settings) {
       pending.current--;
       if (problem) latest.current = before;
       setShown(latest.current);
-      setOutcome({ section, text: problem ?? "Saved." });
+      setOutcome({ section, text: problem ?? words.saved });
     };
   return { shown, outcome, saveIn };
 }
@@ -102,7 +105,7 @@ function SaveTyped({ unsaved, onSave }: { unsaved: boolean; onSave: () => void }
   return (
     <div className="sending-settings">
       <button type="button" disabled={!unsaved} onClick={onSave}>
-        Save
+        {words.save}
       </button>
     </div>
   );
@@ -112,15 +115,15 @@ function EndpointFields({ endpoint, modelPlaceholder, onChange }: { endpoint: Cu
   return (
     <div className="sending-settings voice-endpoint">
       <label data-hint={hints.voiceAddress}>
-        Address
+        {words.address}
         <input type="url" value={endpoint.url} placeholder="http://127.0.0.1:8000/v1" spellCheck={false} onChange={(event) => onChange({ ...endpoint, url: event.target.value })} />
       </label>
       <label>
-        API key
-        <input type="password" value={endpoint.apiKey} placeholder="None" autoComplete="off" onChange={(event) => onChange({ ...endpoint, apiKey: event.target.value })} />
+        {words.apiKey}
+        <input type="password" value={endpoint.apiKey} placeholder={words.noApiKey} autoComplete="off" onChange={(event) => onChange({ ...endpoint, apiKey: event.target.value })} />
       </label>
       <label>
-        Model
+        {words.model}
         <input type="text" value={endpoint.model} placeholder={modelPlaceholder} spellCheck={false} onChange={(event) => onChange({ ...endpoint, model: event.target.value })} />
       </label>
     </div>
@@ -133,10 +136,11 @@ const isSetUpHere = (engine: VoiceEngineStatus) => engine.onDisk.includes(SPOKEN
 function ThisMacOption({ engine, service }: { engine: VoiceEngineStatus; service: ThisMacService | null }) {
   if (engine.setup.state === "unsupported") return null;
   const fits = service === null || bestFitting(service, engine.memoryBytes) !== null;
-  const why = !isSetUpHere(engine) ? ", once set up above" : fits ? "" : ", too little memory";
+  const why = !isSetUpHere(engine) ? words.onceSetUpAbove : fits ? "" : words.tooLittleMemory;
   return (
     <option value="this-mac" disabled={why !== ""}>
-      On this Mac{why}
+      {words.onThisMac}
+      {why}
     </option>
   );
 }
@@ -165,7 +169,7 @@ function ThisMacModel({
   return (
     <>
       <label data-hint={hints.thisMacModel}>
-        Model
+        {words.model}
         <select value={model} onChange={(event) => onChange(event.target.value)}>
           {modelsFor(service).map((offer) => (
             <option key={offer.id} value={offer.id} disabled={offer.id !== model && !engine.onDisk.includes(offer.id) && !fitsMemory(offer, engine.memoryBytes)}>
@@ -193,11 +197,11 @@ function RecognitionChoice({ saved, engine, idleMinutes, save }: { saved: VoiceS
     <>
       <div className="sending-settings">
         <label data-hint={hints.voiceRecognition}>
-          Speech recognition
+          {words.speechRecognition}
           <select value={draft.kind} onChange={(event) => chooseKind(event.target.value)}>
-            <option value="off">Off</option>
+            <option value="off">{words.off}</option>
             <ThisMacOption engine={engine} service="recognition" />
-            <option value="custom">With a server of your own</option>
+            <option value="custom">{words.withOwnServer}</option>
           </select>
         </label>
         {draft.kind === "this-mac" && (
@@ -241,13 +245,13 @@ function VoiceModelChoice({
     <>
       <div className="sending-settings">
         <label data-hint={hints.voiceModel}>
-          Voice model
+          {words.voiceModel}
           <select value={draft.kind} onChange={(event) => chooseKind(event.target.value)}>
-            <option value="off">Off</option>
+            <option value="off">{words.off}</option>
             <ThisMacOption engine={engine} service="voiceModel" />
-            <option value="custom">With a server of your own</option>
+            <option value="custom">{words.withOwnServer}</option>
             <option value="profile" disabled={profiles.length === 0}>
-              With a profile's API
+              {words.withProfileApi}
             </option>
           </select>
         </label>
@@ -257,7 +261,7 @@ function VoiceModelChoice({
         {draft.kind === "profile" && (
           <>
             <label data-hint={hints.voiceModelProfile}>
-              Profile
+              {words.profile}
               <select value={draft.profileId} onChange={(event) => change({ ...draft, profileId: event.target.value })}>
                 {profiles.map((profile) => (
                   <option key={profile.id} value={profile.id}>
@@ -267,7 +271,7 @@ function VoiceModelChoice({
               </select>
             </label>
             <label>
-              Model
+              {words.model}
               <input type="text" value={draft.model} placeholder="claude-opus-5-5" spellCheck={false} onChange={(event) => change({ ...draft, model: event.target.value })} />
             </label>
           </>
@@ -279,7 +283,7 @@ function VoiceModelChoice({
           <div className="sending-settings">
             <label data-hint={hints.voiceModelThinkingOff}>
               <input type="checkbox" checked={draft.turnsThinkingOff ?? false} onChange={(event) => change({ ...draft, turnsThinkingOff: event.target.checked })} />
-              Ask it not to think first
+              {words.askNotToThink}
             </label>
           </div>
         </>
@@ -295,8 +299,8 @@ function ThisMacReplyVoice({ language, engine, idleMinutes }: { language: ReplyL
   return (
     <div className="sending-settings">
       <span>
-        Spoken by {voice?.name ?? SPOKEN_VOICE.name}
-        {voice?.nonCommercial && ", for non-commercial use only"}
+        {words.spokenBy(voice?.name ?? SPOKEN_VOICE.name)}
+        {voice?.nonCommercial && words.forNonCommercialUseOnly}
       </span>
       {voice ? <ModelBeside model={voice} engine={engine} idleMinutes={idleMinutes} /> : <ServerState state={engine.servers.speaking} idleMinutes={idleMinutes} />}
     </div>
@@ -329,16 +333,16 @@ function ReplyChoice({
     <>
       <div className="sending-settings">
         <label data-hint={hints.replyVoice}>
-          Read aloud
+          {t.dictation.readAloud}
           <select value={draft.kind} onChange={(event) => chooseKind(event.target.value)}>
-            <option value="off">Off</option>
+            <option value="off">{words.off}</option>
             <ThisMacOption engine={engine} service={null} />
-            <option value="custom">With a server of your own</option>
+            <option value="custom">{words.withOwnServer}</option>
           </select>
         </label>
         {draft.kind !== "off" && (
           <label data-hint={hints.replyLanguage}>
-            Language
+            {words.language}
             <select value={language} onChange={(event) => save({ replyLanguage: event.target.value as ReplyLanguage })}>
               {Object.entries(replyLanguageNames).map(([code, name]) => (
                 <option key={code} value={code}>
@@ -350,7 +354,7 @@ function ReplyChoice({
         )}
         {draft.kind === "custom" && (
           <label data-hint={hints.replyVoiceName}>
-            Voice
+            {words.voice}
             <input type="text" value={draft.voice} placeholder="alloy" spellCheck={false} onChange={(event) => change({ ...draft, voice: event.target.value })} />
           </label>
         )}
@@ -362,7 +366,7 @@ function ReplyChoice({
           <SaveTyped unsaved={unsaved} onSave={() => save({ replyVoice: draft }, { showOnceSaved: true })} />
         </>
       )}
-      {draft.kind !== "off" && !voiceModelSet && <p className="hint">Spoken replies need a voice model, which sums each reply up. Set one above.</p>}
+      {draft.kind !== "off" && !voiceModelSet && <p className="hint">{words.needsVoiceModel}</p>}
     </>
   );
 }
@@ -378,16 +382,16 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
   const speaking = saveIn("speaking");
   return (
     <>
-      <h3>Voice</h3>
-      <p className="hint">Speak to agents, and hear short summaries of their replies. Kept by the host for every browser and the phone.</p>
+      <h3>{t.labels.settingsPage.voice}</h3>
+      <p className="hint">{words.intro}</p>
       <VoiceEngineSetupPanel engine={engine} />
       <fieldset className="voice-service">
-        <legend>When you speak</legend>
+        <legend>{words.whenYouSpeak}</legend>
         <div className="sending-settings">
           <label data-hint={hints.voiceLanguage}>
-            You speak
+            {words.youSpeak}
             <select value={shown.language} onChange={(event) => speaking({ language: event.target.value })}>
-              <option value={AUTO_LANGUAGE}>Any language, told apart by itself</option>
+              <option value={AUTO_LANGUAGE}>{words.anyLanguage}</option>
               {spokenLanguages.map((code) => (
                 <option key={code} value={code}>
                   {languageName(code)}
@@ -403,7 +407,7 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
                 disabled={!voiceModelSet}
                 onChange={(event) => speaking({ translateToEnglish: event.target.checked })}
               />
-              Translate into English
+              {words.translateIntoEnglish}
             </label>
           )}
         </div>
@@ -411,24 +415,24 @@ export function VoiceSettings({ settings, engine, profiles }: { settings: Settin
         <div className="sending-settings">
           <label data-hint={hints.sendRightAway}>
             <input type="checkbox" checked={shown.sendRightAway} onChange={(event) => speaking({ sendRightAway: event.target.checked })} />
-            Send right away
+            {words.sendRightAway}
           </label>
         </div>
         <SavedStatus section="speaking" outcome={outcome} />
       </fieldset>
       <fieldset className="voice-service">
-        <legend>Translating and summing up</legend>
+        <legend>{words.translatingAndSummingUp}</legend>
         <VoiceModelChoice saved={shown.voiceModel} engine={engine} idleMinutes={idleMinutes} profiles={profiles} save={saveIn("voiceModel")} />
         <SavedStatus section="voiceModel" outcome={outcome} />
       </fieldset>
       <fieldset className="voice-service">
-        <legend>When the agent replies</legend>
+        <legend>{words.whenTheAgentReplies}</legend>
         <ReplyChoice saved={shown.replyVoice} language={shown.replyLanguage} engine={engine} idleMinutes={idleMinutes} voiceModelSet={voiceModelSet} save={saveIn("replies")} />
         {speaksReplies(shown) && (
           <div className="sending-settings">
             <label data-hint={hints.keepTalking}>
               <input type="checkbox" checked={shown.keepTalking} onChange={(event) => saveIn("replies")({ keepTalking: event.target.checked })} />
-              Keep talking
+              {words.keepTalking}
             </label>
           </div>
         )}
