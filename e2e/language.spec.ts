@@ -73,6 +73,9 @@ test("in Hungarian, the sidebar, the palette and the chat's header, message box 
   await sidebar.getByRole("button", { name: "Profilok…" }).click();
   const profilok = page.getByRole("dialog", { name: "Profilok" });
   await expect(profilok.getByRole("heading", { name: "Profilok" })).toBeVisible();
+  const colours = profilok.getByRole("radiogroup", { name: "Profil színe" }).getByRole("radio");
+  await expect(colours.first()).toHaveAccessibleName("Nincs szín");
+  await expect(profilok.getByRole("radio", { name: "Levendula" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(profilok).toBeHidden();
 

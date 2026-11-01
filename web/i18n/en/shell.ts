@@ -1,5 +1,6 @@
 import type { PaneId } from "../../layout.ts";
 import type { QuotaName } from "../../usage.ts";
+import type { WaitingTone } from "../../../shared/waiting.ts";
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
@@ -7,6 +8,14 @@ export const shell = {
   close: "Close",
   sidebar: {
     workspaces: "Workspaces",
+    waiting: { decision: "Needs you", failed: "Failed", done: "Done", unread: "Unread" } satisfies Record<WaitingTone, string>,
+    connectedDevices: (count: number) => plural(count, "1 device connected", `${count} devices connected`),
+    otherDevicesConnected: (count: number) => plural(count, "1 other device connected", `${count} other devices connected`),
+    process: (pid: number) => `process ${pid}`,
+    container: (name: string) => `container ${name}`,
+    jobOnHost: (job: string, host: string) => `${job} on ${host}`,
+    waitingForJob: (job: string) => `Waiting for ${job}: the agent carries on when it ends.`,
+    waitingForJobToTellYou: (job: string) => `Waiting for ${job}: you are told when it ends.`,
     newGroup: "New group",
     addWorkspace: "Add workspace",
     addProjectDirectory: "+ Add a project directory",
@@ -230,10 +239,19 @@ export const shell = {
     builtIn: "Built-in",
     yours: "Your statusline",
     context: (percent: string) => `Context ${percent} used`,
+    contextInUse: (used: string, size: string, percent: string) => `Context window: ${used} of ${size} tokens in use (${percent}).`,
+    contextExplained:
+      "The agent reports this after each response (ACP usage_update). Close to the limit it compacts the conversation: older turns are replaced by a summary.",
+    costSoFar: (cost: string) => `Cost so far, as the agent reports it: ${cost}.`,
+    days: (count: number) => `${count}d`,
+    hours: (count: number) => `${count}h`,
+    minutes: (count: number) => `${count}m`,
     quotaLimitNames: { fiveHour: "Five-hour", sevenDay: "Weekly" } satisfies Record<QuotaName, string>,
     quota: (limit: string, percent: string, resetsIn: string) => `${limit} limit ${percent} used, starts over in ${resetsIn}`,
   },
   newerVersion: {
+    releaseOut: (version: string) => `Mirador ${version} is out`,
+    newCommits: (count: number, upstream: string) => plural(count, `1 new commit on ${upstream}`, `${count} new commits on ${upstream}`),
     pullToUpdate: "Pull them to update.",
     downloading: "Downloading…",
     download: "Download",

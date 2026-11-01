@@ -1,5 +1,5 @@
 import { Activity, memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type Dispatch, type ReactNode } from "react";
-import { harnessRewinds, launchLabel, pastelLabels, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
+import { harnessRewinds, type Conversation, type Machine, type Workspace } from "../shared/model.ts";
 import { turnTitle, turnsFrom, undoableTurns, type Turn } from "../shared/reverts.ts";
 import { sidebarItems } from "../shared/sidebar-order.ts";
 import { countWaiting } from "../shared/waiting.ts";
@@ -20,6 +20,7 @@ import { HintLayer } from "./Hint.tsx";
 import { SearchDialog } from "./Search.tsx";
 import { hints } from "./hints.ts";
 import { t } from "./i18n/index.ts";
+import { launchLabel } from "./launch-label.ts";
 import { useProgramRequest } from "./program-request.ts";
 import { requestOfTerminalPane, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
@@ -167,7 +168,7 @@ function paletteEntries(
     {
       id: `color-${workspace.id}`,
       label: words.colour(workspace.name),
-      detail: workspace.color ? pastelLabels[workspace.color] : words.noColour,
+      detail: workspace.color ? t.labels.pastel[workspace.color] : words.noColour,
       kind: "action",
       run: () => dispatch({ type: "open-overlay", overlay: { kind: "workspace-color", workspaceId: workspace.id } }),
     },

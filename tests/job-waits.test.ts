@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { checkJob, followJobProgram, jobCheckCommand, JobWaitRefused, JobWaits, jobWaitGuidance, jobWaitToolDescription, type JobState } from "../host/job-waits.ts";
 import { Store } from "../host/store.ts";
-import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, waitingOnJobsHint, waitSetUpReply, type JobWaitRequest } from "../shared/job-waits.ts";
+import { FAILED_CHECKS_BEFORE_GIVING_UP, jobWaitEndedNotice, messageAtEnd, readJobWaitRequest, waitSetUpReply, type JobWaitRequest } from "../shared/job-waits.ts";
 import type { JobWait, JobWaitEnd } from "../shared/model.ts";
+import { waitingOnJobsHint } from "../web/job-waits.ts";
 import { fakeProgram } from "./fake-program.ts";
 
 // These tests start real processes and follow them for a few seconds; a loaded machine takes longer than Bun's 5 s default.

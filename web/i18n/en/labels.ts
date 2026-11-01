@@ -1,4 +1,4 @@
-import type { CanvasUse, KeepAwake } from "../../../shared/model.ts";
+import type { CanvasUse, KeepAwake, Pastel } from "../../../shared/model.ts";
 import type { PageLibraries } from "../../../shared/canvas-export.ts";
 import type { ShellOutputStyle } from "../../../shared/shell-output.ts";
 import type { EnterWhileBusy } from "../../busy-sending.ts";
@@ -41,6 +41,18 @@ export const labels = {
     cdn: "From a public CDN: small files that need a network connection to draw",
     inline: "Inside the file: works offline, but Mermaid adds about 3 MB",
   } satisfies Record<PageLibraries, string>,
+  pastel: {
+    rose: "Rose",
+    peach: "Peach",
+    butter: "Butter",
+    mint: "Mint",
+    teal: "Teal",
+    sky: "Sky",
+    lavender: "Lavender",
+    lilac: "Lilac",
+  } satisfies Record<Pastel, string>,
+  noColour: "No colour",
+  noProfile: "No profile",
   pane: { conversation: "Conversation", canvas: "Canvas", terminals: "Terminals" } satisfies Record<PaneId, string>,
   thumbnail: { conversation: "Chat", canvas: "Canvas", terminals: "Terminals" } satisfies Record<PaneId, string>,
   startHidden: { canvas: "Canvas starts hidden", terminals: "Terminals start hidden" } satisfies Record<HideablePane, string>,

@@ -8,4 +8,7 @@ const messages: Record<Language, Messages> = { en, hu, es };
 
 export const t = messages[language];
 
-export const formatNumber = (value: number) => value.toLocaleString(language);
+/** The browser's own locale when it is in the chosen language, so its region's dates stay; otherwise the language. */
+export const locale = typeof navigator !== "undefined" && navigator.language?.split("-")[0] === language ? navigator.language : language;
+
+export const formatNumber = (value: number, options?: Intl.NumberFormatOptions) => value.toLocaleString(locale, options);

@@ -3,7 +3,7 @@ import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
 import type { Conversation, ConversationMatches, SearchHit, Workspace } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { requestFind } from "./FindBar.tsx";
-import { formatNumber, t } from "./i18n/index.ts";
+import { formatNumber, locale, t } from "./i18n/index.ts";
 import { Modal } from "./Palette.tsx";
 import { relativeTimeOf } from "../shared/relative-time.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
@@ -156,7 +156,7 @@ export function SearchDialog({
                         <mark>{hit.snippet.match}</mark>
                         {hit.snippet.after}
                       </span>
-                      <span className="search-when">{relativeTimeOf(hit.at)}</span>
+                      <span className="search-when">{relativeTimeOf(hit.at, locale)}</span>
                     </div>
                   );
                 })}

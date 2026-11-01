@@ -1,10 +1,11 @@
 import { useEffect, useState, type Dispatch } from "react";
-import { harnessLabels, launchLabel, type AdoptMode, type ExternalSession, type Profile, type SessionSearchHit, type Workspace } from "../shared/model.ts";
+import { harnessLabels, type AdoptMode, type ExternalSession, type Profile, type SessionSearchHit, type Workspace } from "../shared/model.ts";
 import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
-import { connection } from "./connection.ts";
 import { relativeTimeOf } from "../shared/relative-time.ts";
+import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
-import { t } from "./i18n/index.ts";
+import { locale, t } from "./i18n/index.ts";
+import { launchLabel } from "./launch-label.ts";
 import type { AppAction } from "./state.ts";
 
 const words = t.shell.sessions;
@@ -52,7 +53,7 @@ function useSessionSearch(workspace: Workspace, query: string, enabled: boolean)
   return answered;
 }
 
-const ago = (isoTime: string | null) => (isoTime ? relativeTimeOf(Date.parse(isoTime)) : "");
+const ago = (isoTime: string | null) => (isoTime ? relativeTimeOf(Date.parse(isoTime), locale) : "");
 
 function SessionRow({
   session,

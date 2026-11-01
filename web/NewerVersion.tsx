@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { DesktopUpdate } from "../shared/desktop-menu.ts";
-import { newerVersionKey, newerVersionLabel, type NewerVersion } from "../shared/newer-version.ts";
+import { newerVersionKey, type NewerVersion } from "../shared/newer-version.ts";
 import { connection } from "./connection.ts";
 import { checkForUpdate, restartToUpdate, useDesktopUpdate } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
@@ -40,7 +40,8 @@ const notReadyYet = (newerVersion: NewerVersion | null, desktopUpdate: DesktopUp
 
 function newerVersionSentence(newerVersion: NewerVersion, desktopUpdate: DesktopUpdate | null) {
   const blockedBy = newerVersion.kind === "release" && desktopUpdate?.stage === "blocked" ? `: ${desktopUpdate.blockedBy}` : "";
-  return `${newerVersionLabel(newerVersion)}${blockedBy}.`;
+  const label = newerVersion.kind === "release" ? words.releaseOut(newerVersion.version) : words.newCommits(newerVersion.commits, newerVersion.upstream);
+  return `${label}${blockedBy}.`;
 }
 
 /**

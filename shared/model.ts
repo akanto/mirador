@@ -179,14 +179,6 @@ export interface Launch {
   profileId: string | null;
 }
 
-/** A profile's name, then its agent's unless the name already is it. */
-export function launchLabel(launch: Launch, profiles: Profile[]): string {
-  const profile = profiles.find(({ id }) => id === launch.profileId);
-  if (!profile) return "No profile";
-  const agent = harnessLabels[profile.harness];
-  return profile.name === agent ? agent : `${profile.name} · ${agent}`;
-}
-
 export type ConversationStatus = "idle" | "starting" | "running" | "error";
 
 /** What Claude Code is doing with the conversation's session in a terminal, when it is open in one too. */

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
-import { connectedDevicesLabel, otherConnectedDevices } from "../shared/devices.ts";
-import { waitingOnJobsHint } from "../shared/job-waits.ts";
+import { otherConnectedDevices } from "../shared/devices.ts";
 import {
-  launchLabel,
   type Conversation,
   type Profile,
   type WaitingFor,
@@ -12,7 +10,7 @@ import {
 import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { ContextMenu } from "./ContextMenu.tsx";
-import { useConnectedDevicesInSidebar } from "./connected-devices.ts";
+import { connectedDevicesLabel, useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { ConversationTitle } from "./ConversationTitle.tsx";
 import { DesktopMenu } from "./DesktopMenu.tsx";
@@ -20,6 +18,8 @@ import { useDragToReorder, usePointerDrag } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
 import { t } from "./i18n/index.ts";
+import { waitingOnJobsHint } from "./job-waits.ts";
+import { launchLabel } from "./launch-label.ts";
 import { conversationsIn, isUnderCaller } from "./navigation.ts";
 import { pastelVariables } from "./pastels.ts";
 import { UpdatesWaiting } from "./PluginSettings.tsx";

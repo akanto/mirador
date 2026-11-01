@@ -2,7 +2,7 @@
 
 Mirador's Hungarian uses the informal *te* form ("Válaszd ki", "Kattints újra").
 Its Spanish is neutral international Spanish in the *tú* form ("Elige", "Haz clic de nuevo"): no *vosotros*, and no
-words only one region uses (*equipo*, not *ordenador* or *computadora*; *archivo*, not *fichero*).
+words only one region uses (*equipo*, not *ordenador* or *computadora*; *archivo*, not *fichero*; *durazno*, not *melocotón*).
 These terms stay the same everywhere:
 
 | English | Magyar | Español |

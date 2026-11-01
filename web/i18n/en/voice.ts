@@ -1,5 +1,5 @@
 import type { ReplyLanguage } from "../../../shared/voice.ts";
-import type { EngineServerState } from "../../../shared/voice-engine.ts";
+import type { EngineServerState, VoiceEngineStep } from "../../../shared/voice-engine.ts";
 import type { EngineService } from "../../../shared/voice-engine-models.ts";
 
 export const voice = {
@@ -44,6 +44,15 @@ export const voice = {
   setUpVoice: "Set up voice on this Mac",
   voiceOnThisMac: "Voice on this Mac",
   settingUpVoice: "Setting up voice on this Mac",
+  steps: {
+    space: "Checking free space",
+    uv: "Downloading uv",
+    python: "Installing Python",
+    packages: "Installing the speech servers",
+    models: "Downloading the models",
+  } satisfies Record<VoiceEngineStep, string>,
+  quality: { best: "best", good: "good", fair: "fair" } as Record<string, string>,
+  gigabytes: (amount: string) => `${amount} GB`,
   serverStates: { stopped: "Unloaded", loading: "Loading…", ready: "Loaded" } satisfies Record<EngineServerState, string>,
   downloading: (name: string) => `Downloading ${name}`,
   needsMacWithMemory: (gb: number) => `Needs a Mac with ${gb} GB of memory.`,

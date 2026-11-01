@@ -4,14 +4,16 @@ export {
   mostUrgentTone,
   tonesByUrgency,
   waitingByUrgency,
-  waitingLabels,
   waitingShowsOnDot,
   waitingTones,
   type WaitingTone,
 } from "../shared/waiting.ts";
+import type { WaitingTone } from "../shared/waiting.ts";
 import { t } from "./i18n/index.ts";
 
 export type WaitingStyle = "pills" | "dots" | "list";
+
+export const waitingLabels: Record<WaitingTone, string> = t.shell.sidebar.waiting;
 
 export const waitingStyleLabels: Record<WaitingStyle, string> = t.labels.waitingStyle;
 

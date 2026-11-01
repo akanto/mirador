@@ -1,7 +1,7 @@
 import type { DeviceConnection, ListedDevice } from "./model.ts";
 import { relativeTimeOf } from "./relative-time.ts";
 
-export const joinedOn = (at: number) => new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+export const joinedOn = (at: number, locale?: string) => new Date(at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 
 const pagesOpen = (pages: number) => (pages === 0 ? "in the background" : pages === 1 ? "1 page open" : `${pages} pages open`);
 
@@ -15,9 +15,3 @@ export const connectedFrom = ({ fromAddress, tailscaleUser }: DeviceConnection) 
 /** The devices connected now, besides the one looking. */
 export const otherConnectedDevices = (devices: ListedDevice[], thisDeviceId: string | null) =>
   devices.filter(({ id, connection }) => connection !== null && id !== thisDeviceId);
-
-/** "2 devices connected"; on a joined device, which is connected itself, "1 other device connected". */
-export function connectedDevicesLabel(count: number, lookingFromAJoinedDevice: boolean) {
-  const devices = count === 1 ? "device" : "devices";
-  return lookingFromAJoinedDevice ? `${count} other ${devices} connected` : `${count} ${devices} connected`;
-}

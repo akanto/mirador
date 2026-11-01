@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { gigabytes, voiceEngineStepLabels, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { bestFitting, choosableModels, ENGINE_PACKAGES_BYTES, fitsMemory, modelsFor, SPOKEN_VOICE, type ChoosableModel, type EngineService } from "../shared/voice-engine-models.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
 import { t } from "./i18n/index.ts";
-import { modelChoice, modelState, tooLittleMemoryForVoiceModel } from "./voice-models.ts";
+import { gigabytes, modelChoice, modelState, tooLittleMemoryForVoiceModel } from "./voice-models.ts";
 
 const words = t.voice;
 
@@ -19,7 +19,7 @@ function DownloadProgress({ setup: { step, done, total }, label }: { setup: Sett
   const counted = total > 0;
   return (
     <span className="voice-engine-progress">
-      <span>{counted ? words.progress(voiceEngineStepLabels[step], gigabytes(done), gigabytes(total)) : `${voiceEngineStepLabels[step]}…`}</span>
+      <span>{counted ? words.progress(words.steps[step], gigabytes(done), gigabytes(total)) : `${words.steps[step]}…`}</span>
       <progress aria-label={label} value={counted ? done : undefined} max={counted ? total : undefined} />
       <button type="button" onClick={() => connection.send({ type: "voice.engine.cancel" })}>
         {words.cancel}

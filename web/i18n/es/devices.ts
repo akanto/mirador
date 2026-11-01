@@ -1,5 +1,7 @@
 import type { Messages } from "../en/index.ts";
 
+const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
+
 export const devices: Messages["devices"] = {
   guessedName: {
     desktopApp: "Aplicación Mirador",
@@ -105,6 +107,10 @@ export const devices: Messages["devices"] = {
       "Otros navegadores y aplicaciones que se unieron a este Mirador con un código de invitación. Cada uno inicia sesión con una clave propia; revocar uno cierra su sesión al instante.",
     showInSidebar: "Mostrar los dispositivos conectados en la barra lateral",
     thisDevice: "este dispositivo",
+    connectedInBackground: "conectado ahora, en segundo plano",
+    connectedWithPages: (pages) => plural(pages, "conectado ahora, 1 página abierta", `conectado ahora, ${pages} páginas abiertas`),
+    lastSeen: (ago) => `visto por última vez ${ago}`,
+    from: (address) => `desde ${address}`,
     joined: (date) => ` · se unió: ${date}`,
     revokeLabel: (device) => `Revocar ${device}`,
     revokeArmed: "¿Revocar?",

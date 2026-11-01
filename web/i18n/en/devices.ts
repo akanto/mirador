@@ -1,3 +1,5 @@
+const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
+
 export const devices = {
   guessedName: {
     desktopApp: "Mirador app",
@@ -99,6 +101,10 @@ export const devices = {
     intro: "Other browsers and apps that joined this Mirador with an invite code. Each signs in with a key of its own; revoking one signs it out at once.",
     showInSidebar: "Show the connected devices in the sidebar",
     thisDevice: "this device",
+    connectedInBackground: "connected now, in the background",
+    connectedWithPages: (pages: number) => plural(pages, "connected now, 1 page open", `connected now, ${pages} pages open`),
+    lastSeen: (ago: string) => `last seen ${ago}`,
+    from: (address: string) => `from ${address}`,
     joined: (date: string) => ` · joined ${date}`,
     revokeLabel: (device: string) => `Revoke ${device}`,
     revokeArmed: "Revoke?",

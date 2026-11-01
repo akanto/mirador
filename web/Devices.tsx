@@ -1,16 +1,17 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { connectedFrom, deviceStatus, joinedOn } from "../shared/devices.ts";
+import { joinedOn } from "../shared/devices.ts";
 import { askToJoin, spacedNumber } from "../shared/join-requests.ts";
 import { inviteLink, joinCodeIn } from "../shared/machines.ts";
+import { relativeTimeOf } from "../shared/relative-time.ts";
 import { tunnelOrigin } from "../shared/tunnel.ts";
-import type { PublicAddress, ReachabilitySettings } from "../shared/model.ts";
+import type { DeviceConnection, ListedDevice, PublicAddress, ReachabilitySettings } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { setConnectedDevicesInSidebar, useConnectedDevicesInSidebar } from "./connected-devices.ts";
 import { connection } from "./connection.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
-import { t } from "./i18n/index.ts";
+import { locale, t } from "./i18n/index.ts";
 import { QrCode } from "./QrCode.tsx";
 import { saveSetting } from "./saved-setting.ts";
 import type { DevicesListed } from "./state.ts";
@@ -157,7 +158,7 @@ export function JoinMachine() {
 
 type Invite = Extract<ServerMessage, { type: "devices.invited" }>;
 
-const timeOf = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+const timeOf = (at: number) => new Date(at).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 /** How other devices reach this host: at an address a proxy gives it, over the network itself, or nowhere. */
 type ReachRoute = "address" | "network" | "none";
 
@@ -554,6 +555,13 @@ function InviteWithoutLink() {
   );
 }
 
+const connectionStatus = ({ pages }: DeviceConnection) => (pages === 0 ? words.list.connectedInBackground : words.list.connectedWithPages(pages));
+
+const deviceStatus = ({ connection, lastSeenAt }: ListedDevice) =>
+  connection ? connectionStatus(connection) : words.list.lastSeen(relativeTimeOf(lastSeenAt, locale));
+
+const connectedFrom = ({ fromAddress, tailscaleUser }: DeviceConnection) => words.list.from(tailscaleUser ? `${fromAddress} (${tailscaleUser})` : fromAddress);
+
 export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [inviteRoute, setInviteRoute] = useState<InviteRoute>("tunnel");
@@ -592,7 +600,7 @@ export function DeviceSettings({ listed }: { listed: DevicesListed | null }) {
             <span className="device-seen">
               {deviceStatus(device)}
               {device.connection && ` · ${connectedFrom(device.connection)}`}
-              {words.list.joined(joinedOn(device.joinedAt))}
+              {words.list.joined(joinedOn(device.joinedAt, locale))}
             </span>
             <ConfirmButton
               className="danger"

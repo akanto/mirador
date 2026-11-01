@@ -3,14 +3,6 @@ import type { EngineService } from "./voice-engine-models.ts";
 /** What setting up voice on this Mac is doing, in order. */
 export type VoiceEngineStep = "space" | "uv" | "python" | "packages" | "models";
 
-export const voiceEngineStepLabels: Record<VoiceEngineStep, string> = {
-  space: "Checking free space",
-  uv: "Downloading uv",
-  python: "Installing Python",
-  packages: "Installing the speech servers",
-  models: "Downloading the models",
-};
-
 /** Mirador's own speech engine on this Mac: speech recognition and Kokoro, and a voice model if the user wants one. */
 export type VoiceEngineSetup =
   | { state: "unsupported"; reason: string }

@@ -1,4 +1,7 @@
 import type { ContextUsage, PlanQuotas, QuotaWindow } from "../shared/model.ts";
+import { formatNumber, t } from "./i18n/index.ts";
+
+const words = t.shell.statusline;
 
 export type ContextLevel = "ok" | "high" | "full";
 
@@ -20,14 +23,13 @@ export function usedPercentLabel(usage: ContextUsage) {
 export const contextLevel = (share: number): ContextLevel => (share >= 0.9 ? "full" : share >= 0.75 ? "high" : "ok");
 
 export const formatCost = ({ amount, currency }: NonNullable<ContextUsage["cost"]>) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: amount < 1 ? 4 : 2 }).format(amount);
+  formatNumber(amount, { style: "currency", currency, maximumFractionDigits: amount < 1 ? 4 : 2 });
 
 export function contextHint(usage: ContextUsage) {
-  const counts = `${usage.used.toLocaleString("en-US")} of ${usage.size.toLocaleString("en-US")} tokens`;
   return [
-    `Context window: ${counts} in use (${usedPercentLabel(usage)}).`,
-    "The agent reports this after each response (ACP usage_update). Close to the limit it compacts the conversation: older turns are replaced by a summary.",
-    ...(usage.cost ? [`Cost so far, as the agent reports it: ${formatCost(usage.cost)}.`] : []),
+    words.contextInUse(formatNumber(usage.used), formatNumber(usage.size), usedPercentLabel(usage)),
+    words.contextExplained,
+    ...(usage.cost ? [words.costSoFar(formatCost(usage.cost))] : []),
   ].join("\n\n");
 }
 
@@ -35,7 +37,7 @@ export type QuotaName = keyof PlanQuotas;
 
 export const QUOTA_NAMES: readonly QuotaName[] = ["fiveHour", "sevenDay"];
 
-export const quotaLabels: Record<QuotaName, string> = { fiveHour: "5h", sevenDay: "7d" };
+export const quotaLabels: Record<QuotaName, string> = { fiveHour: words.hours(5), sevenDay: words.days(7) };
 
 export const quotaShare = ({ usedPercent }: QuotaWindow) => Math.min(1, Math.max(0, usedPercent / 100));
 
@@ -47,6 +49,6 @@ const MINUTE_MS = 60_000;
 export function timeUntil(at: number, now: number) {
   const minutes = Math.max(0, Math.ceil((at - now) / MINUTE_MS));
   const [days, hours, restMinutes] = [Math.floor(minutes / 1440), Math.floor((minutes % 1440) / 60), minutes % 60];
-  if (days > 0) return `${days}d ${hours}h`;
-  return hours > 0 ? `${hours}h ${restMinutes}m` : `${restMinutes}m`;
+  if (days > 0) return `${words.days(days)} ${words.hours(hours)}`;
+  return hours > 0 ? `${words.hours(hours)} ${words.minutes(restMinutes)}` : words.minutes(restMinutes);
 }

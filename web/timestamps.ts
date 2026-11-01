@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { t } from "./i18n/index.ts";
+import { locale, t } from "./i18n/index.ts";
 
 const STORAGE_KEY = "mirador-timestamps";
 
@@ -28,8 +28,8 @@ export function useTimestampsShown() {
   return [shown, choose] as const;
 }
 
-const clockTime = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const fullTime = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "medium" });
+const clockTime = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const fullTime = new Intl.DateTimeFormat(locale, { dateStyle: "full", timeStyle: "medium" });
 
 export const formatClockTime = (at: number) => clockTime.format(at);
 

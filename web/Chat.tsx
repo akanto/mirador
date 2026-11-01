@@ -60,7 +60,7 @@ import { FormatBarToggle } from "./FormatBar.tsx";
 import { ReadAloud, ReadsRepliesAloud } from "./ReadAloud.tsx";
 import { awaitSpokenReply, forgetSpokenReply, readWhenSpokenTurnEnds, stopReading, stopReadingIn } from "./reply-player.ts";
 import { hints, statusHints } from "./hints.ts";
-import { formatNumber, t } from "./i18n/index.ts";
+import { formatNumber, locale, t } from "./i18n/index.ts";
 import { SearchableSelect } from "./SearchableSelect.tsx";
 import { useMentionMenu } from "./MentionMenu.tsx";
 import { usePromptHistory } from "./PromptHistory.ts";
@@ -1260,7 +1260,7 @@ function QueuedMessages({
   );
 }
 
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
+const weekday = new Intl.DateTimeFormat(locale, { weekday: "long" });
 const resetTime = (at: number) => (new Date(at).toDateString() === new Date().toDateString() ? formatClockTime(at) : `${weekday.format(at)} ${formatClockTime(at)}`);
 
 function usageLimitStatus({ resetsAt, continuesAt }: UsageLimitWait) {

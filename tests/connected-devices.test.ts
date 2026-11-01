@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Hub, socketData, type BrowserSocket, type SocketData } from "../host/hub.ts";
-import { connectedDevicesLabel, connectedFrom, deviceStatus, otherConnectedDevices } from "../shared/devices.ts";
+import { connectedFrom, deviceStatus, otherConnectedDevices } from "../shared/devices.ts";
 import type { ClientAddress, DeviceConnection, ListedDevice } from "../shared/model.ts";
+import { connectedDevicesLabel } from "../web/connected-devices.ts";
 
 const phoneAddress: ClientAddress = { fromAddress: "100.101.5.7", tailscaleUser: "someone@github" };
 const laptopAddress: ClientAddress = { fromAddress: "192.168.1.23", tailscaleUser: null };

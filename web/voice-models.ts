@@ -1,10 +1,12 @@
-import { gigabytes, SERVER_OF, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
+import { SERVER_OF, type EngineServerState, type VoiceEngineSetup, type VoiceEngineStatus } from "../shared/voice-engine.ts";
 import { fitsMemory, memoryGb, memoryNeededGb, type ChoosableModel } from "../shared/voice-engine-models.ts";
-import { t } from "./i18n/index.ts";
+import { formatNumber, t } from "./i18n/index.ts";
 
 const words = t.voice;
 
-export const modelWithQuality = ({ name, quality }: ChoosableModel) => (quality ? `${name} · ${quality}` : name);
+export const gigabytes = (bytes: number) => words.gigabytes(formatNumber(bytes / 1e9, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+
+export const modelWithQuality = ({ name, quality }: ChoosableModel) => (quality ? `${name} · ${words.quality[quality] ?? quality}` : name);
 
 const licence = ({ nonCommercial }: ChoosableModel) => (nonCommercial ? words.nonCommercialUseOnly : "");
 
