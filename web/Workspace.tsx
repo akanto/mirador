@@ -12,10 +12,10 @@ import {
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { hints } from "./hints.ts";
 import { t } from "./i18n/index.ts";
-
-const panes = t.shell.panes;
 import { DEFAULT_LEFT_SHARE, DEFAULT_TOP_SHARE, placement, swapPanes, type PaneId, type PaneLayout } from "./layout.ts";
 import { Splitter, type SplitAxis } from "./Splitter.tsx";
+
+const panes = t.shell.panes;
 
 const MIN_PANE_WIDTH = 240;
 const MIN_PANE_HEIGHT = 120;

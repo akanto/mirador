@@ -106,8 +106,9 @@ import { FullscreenToggle, PaneGrip } from "./Workspace.tsx";
 /** Past this many choices a plain select is hard to scan: opencode lists every model of every provider. */
 const SEARCHABLE_FROM_CHOICES = 20;
 
-/** A command Claude Code opens a panel for only in its own terminal gets one there, on the conversation's profile. */
 const words = t.chat;
+
+/** A command Claude Code opens a panel for only in its own terminal gets one there, on the conversation's profile. */
 const requestPanelCommand = (conversationId: string, line: string) => requestProgram({ type: "terminal.open-panel-command", conversationId, line });
 
 const configOptionHint = (option: SessionConfigOption) => [option.description, hints.configOption].filter(Boolean).join("\n\n");

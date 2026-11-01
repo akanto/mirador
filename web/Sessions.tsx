@@ -5,9 +5,9 @@ import { connection } from "./connection.ts";
 import { relativeTimeOf } from "../shared/relative-time.ts";
 import { hints } from "./hints.ts";
 import { t } from "./i18n/index.ts";
+import type { AppAction } from "./state.ts";
 
 const words = t.shell.sessions;
-import type { AppAction } from "./state.ts";
 
 type Listing = { state: "loading" } | { state: "failed"; message: string } | { state: "listed"; sessions: ExternalSession[] };
 type SearchAnswer = { query: string; sessions: SessionSearchHit[] } | { query: string; failed: string };
