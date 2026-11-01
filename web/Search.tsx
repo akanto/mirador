@@ -3,6 +3,7 @@ import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
 import type { Conversation, ConversationMatches, SearchHit, Workspace } from "../shared/model.ts";
 import { connection } from "./connection.ts";
 import { requestFind } from "./FindBar.tsx";
+import { formatNumber, t } from "./i18n/index.ts";
 import { Modal } from "./Palette.tsx";
 import { relativeTimeOf } from "../shared/relative-time.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
@@ -55,14 +56,16 @@ function byWorkspace(found: ConversationMatches[], conversations: Conversation[]
   return [...groups.values()];
 }
 
-const plural = (count: number, one: string, many: string) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
+const words = t.shell.search;
+const matchCount = (count: number) => words.matches(count, formatNumber(count));
 
 function summaryOf(query: string, results: { query: string; conversations: ConversationMatches[] } | null) {
-  if (query.trim().length < MIN_SEARCH_LENGTH) return `Type at least ${MIN_SEARCH_LENGTH} characters to search every conversation in every workspace.`;
-  if (!results) return "Searching…";
-  if (results.conversations.length === 0) return results.query === query ? "No matches." : "Searching…";
+  if (query.trim().length < MIN_SEARCH_LENGTH) return words.typeAtLeast(MIN_SEARCH_LENGTH);
+  if (!results) return words.searching;
+  if (results.conversations.length === 0) return results.query === query ? words.noMatches : words.searching;
   const matches = results.conversations.reduce((sum, { matches }) => sum + matches, 0);
-  return `${plural(matches, "match", "matches")} in ${plural(results.conversations.length, "conversation", "conversations")}`;
+  const conversationCount = results.conversations.length;
+  return words.summary(matchCount(matches), conversationCount, formatNumber(conversationCount));
 }
 
 export function SearchDialog({
@@ -113,13 +116,13 @@ export function SearchDialog({
   };
 
   return (
-    <Modal label="Search all workspaces" className="search" onClose={onClose}>
+    <Modal label={words.label} className="search" onClose={onClose}>
       <input
         {...typingAidAttributes}
         autoFocus
         onFocus={(event) => event.target.select()}
-        aria-label="Search all workspaces"
-        placeholder="Search every conversation in every workspace…"
+        aria-label={words.label}
+        placeholder={words.placeholder}
         value={query}
         onChange={(event) => search(event.target.value)}
         onKeyDown={onKeyDown}
@@ -127,7 +130,7 @@ export function SearchDialog({
       <div className="search-summary" aria-live="polite">
         {summaryOf(query, results)}
       </div>
-      <div ref={list} className="search-results" role="listbox" aria-label="Matches">
+      <div ref={list} className="search-results" role="listbox" aria-label={words.matchesLabel}>
         {groups.map(({ workspace, conversations }) => (
           <section key={workspace.id} aria-label={workspace.name}>
             <h3 className="search-workspace">{workspace.name}</h3>
@@ -135,7 +138,7 @@ export function SearchDialog({
               <div key={conversation.id} className="search-conversation">
                 <div className="search-conversation-title">
                   {conversation.title}
-                  <span className="search-count">{plural(matches, "match", "matches")}</span>
+                  <span className="search-count">{matchCount(matches)}</span>
                 </div>
                 {hits.map((hit) => {
                   const position = positionOf.get(hit)!;

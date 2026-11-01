@@ -4,7 +4,8 @@ import { hints, statusHints, waitingHints } from "./hints.ts";
 import { labels } from "./labels.ts";
 import { revert } from "./revert.ts";
 import { settings } from "./settings.ts";
+import { shell } from "./shell.ts";
 
-export const en = { hints, waitingHints, statusHints, labels, settings, chat, revert, dictation };
+export const en = { hints, waitingHints, statusHints, labels, settings, chat, revert, dictation, shell };
 
 export type Messages = typeof en;

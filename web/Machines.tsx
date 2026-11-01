@@ -6,12 +6,15 @@ import { ColorSwatches } from "./ColorSwatches.tsx";
 import { ConfirmButton } from "./ConfirmButton.tsx";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { colorAttributes } from "./MachineRail.tsx";
 
 /** Where this host cannot show the machine (a page opened from another device), a tab of its own, used again next time. */
 export function openMachine(origin: string, conversationId: string | null = null) {
   window.open(`${origin}/${conversationId ? `#/c/${conversationId}` : ""}`, `mirador-machine-${origin}`);
 }
+
+const words = t.shell.machines;
 
 function AddMachine({ machines }: { machines: Machine[] }) {
   const [name, setName] = useState("");
@@ -29,11 +32,11 @@ function AddMachine({ machines }: { machines: Machine[] }) {
   return (
     <form className="add-machine" onSubmit={add}>
       <label>
-        Name
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Home server" />
+        {words.name}
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder={words.namePlaceholder} />
       </label>
       <label>
-        Address or invite link
+        {words.address}
         <input
           value={address}
           onChange={(event) => setAddress(event.target.value)}
@@ -43,9 +46,9 @@ function AddMachine({ machines }: { machines: Machine[] }) {
         />
       </label>
       <button type="submit" className="primary" disabled={!parsed || !!known}>
-        {parsed?.joinCode ? "Add and join" : "Add"}
+        {parsed?.joinCode ? words.addAndJoin : words.add}
       </button>
-      {known && <p className="hint">This machine is already in the list.</p>}
+      {known && <p className="hint">{words.alreadyListed}</p>}
     </form>
   );
 }
@@ -62,7 +65,7 @@ function MachineRow({ machine, onOpen }: { machine: Machine; onOpen: (machine: M
         type="button"
         className="machine-mark"
         {...colorAttributes(machine.color)}
-        aria-label="Machine colour"
+        aria-label={words.colour}
         aria-expanded={pickingColor}
         data-hint={hints.machineColor}
         onClick={() => setPickingColor(!pickingColor)}
@@ -71,20 +74,20 @@ function MachineRow({ machine, onOpen }: { machine: Machine; onOpen: (machine: M
       </button>
       <span className="machine-name">{machine.name}</span>
       <span className="machine-origin">{machine.origin}</span>
-      {!machine.joined && <span className="machine-not-joined">not joined yet</span>}
+      {!machine.joined && <span className="machine-not-joined">{words.notJoinedYet}</span>}
       <button type="button" onClick={() => onOpen(machine)}>
-        Open
+        {words.open}
       </button>
       <ConfirmButton
         className="danger"
-        label={`Remove ${machine.name}`}
-        armedText="Remove?"
+        label={words.removeLabel(machine.name)}
+        armedText={words.removeArmed}
         armedHint={hints.removeMachineArmed}
         onConfirm={() => connection.send({ type: "machine.remove", machineId: machine.id })}
       >
-        Remove
+        {words.remove}
       </ConfirmButton>
-      {pickingColor && <ColorSwatches label={`Colour of ${machine.name}`} chosen={machine.color} onChoose={choose} />}
+      {pickingColor && <ColorSwatches label={words.colourOf(machine.name)} chosen={machine.color} onChoose={choose} />}
     </li>
   );
 }
@@ -98,23 +101,22 @@ export function MachinesDialog({ machines, onOpen, onClose }: { machines: Machin
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal machines" role="dialog" aria-label="Machines">
+      <div className="modal machines" role="dialog" aria-label={words.title}>
         <header>
-          <h2>Machines</h2>
-          <button className="icon" title="Close" aria-label="Close" onClick={onClose}>
+          <h2>{words.title}</h2>
+          <button className="icon" title={t.shell.close} aria-label={t.shell.close} onClick={onClose}>
             ×
           </button>
         </header>
         <p className="hint">
-          Other computers running Mirador, such as a server whose agents keep working while this one sleeps. Each shows in the rail on the left, as its own
-          Mirador. Paste an invite link from the machine to join it right away; get one in its Settings → Devices, or run <code>mirador invite</code> there.
-          With only its address, you ask to join it, or paste an invite code, when you first open it. Click a machine's initials to give it a colour.
+          {words.about} <code>mirador invite</code>
+          {words.aboutAfterCommand}
         </p>
-        <ul className="machine-list" aria-label="Machines">
+        <ul className="machine-list" aria-label={words.title}>
           {machines.map((machine) => (
             <MachineRow key={machine.id} machine={machine} onOpen={onOpen} />
           ))}
-          {machines.length === 0 && <li className="machine-none">No machines yet.</li>}
+          {machines.length === 0 && <li className="machine-none">{words.noneYet}</li>}
         </ul>
         <AddMachine machines={machines} />
       </div>

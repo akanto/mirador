@@ -6,6 +6,7 @@ import type { Machine, MachineStatus, Pastel } from "../shared/model.ts";
 import type { ClientMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { useMachineColorStyle } from "./machine-colors.ts";
 import { placeIn } from "./machine-place.ts";
 import { pastelVariables } from "./pastels.ts";
@@ -15,6 +16,8 @@ const machineFromHash = () => location.hash.match(/^#\/m\/([\w-]+)$/)?.[1] ?? nu
 
 /** This host shows other machines at ports of this computer, which a page opened from elsewhere cannot reach. */
 export const showsMachinesHere = () => ["127.0.0.1", "localhost"].includes(location.hostname);
+
+const words = t.shell.machines;
 
 const relayAddress = (machine: Machine) => `${location.protocol}//${location.hostname}:${machine.relayPort}/`;
 
@@ -78,9 +81,9 @@ const machineHint = (machine: Machine, status: MachineStatus | undefined) =>
   [
     machine.name,
     machine.origin,
-    !machine.joined && "not joined yet",
-    status?.reachable === false && "not answering",
-    status?.waiting.length && `${status.waiting.length} waiting for you`,
+    !machine.joined && words.notJoinedYet,
+    status?.reachable === false && words.notAnswering,
+    status?.waiting.length && words.waitingForYou(status.waiting.length),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -99,11 +102,11 @@ export function MachineRail({
   onManage: () => void;
 }) {
   return (
-    <nav className="machine-rail" aria-label="Machines">
+    <nav className="machine-rail" aria-label={words.title}>
       <button
         type="button"
         className={`rail-machine this-computer ${shownId === null ? "shown" : ""}`}
-        aria-label="This computer"
+        aria-label={words.thisComputer}
         aria-current={shownId === null}
         data-hint={hints.thisComputer}
         onClick={() => onShow(null)}
@@ -129,7 +132,7 @@ export function MachineRail({
           </button>
         );
       })}
-      <button type="button" className="rail-manage" aria-label="Machines…" data-hint={hints.manageMachines} onClick={onManage}>
+      <button type="button" className="rail-manage" aria-label={words.manage} data-hint={hints.manageMachines} onClick={onManage}>
         +
       </button>
     </nav>
@@ -208,37 +211,40 @@ function JoinMachinePanel({ machine }: { machine: Machine }) {
   const askToJoin = () => tryToJoin((requestId) => ({ type: "machine.ask-to-join", requestId, machineId: machine.id }));
 
   return (
-    <section className="machine-join gate join-machine" aria-label={`Join ${machine.name}`}>
-      <h1>Join {machine.name}</h1>
+    <section className="machine-join gate join-machine" aria-label={words.join(machine.name)}>
+      <h1>{words.join(machine.name)}</h1>
       {askedNumber ? (
-        <div className="join-asked" role="status" aria-label="Waiting for approval">
+        <div className="join-asked" role="status" aria-label={words.waitingForApproval}>
           <p>
-            Waiting for approval on <strong>{machine.name}</strong>. Type this number there:
+            {words.waitingOn} <strong>{machine.name}</strong>
+            {words.typeNumberThere}
           </p>
           <p className="join-number">{spacedNumber(askedNumber)}</p>
           <p className="hint">
-            Its Mirador shows the request on its own screen, and on the devices that have joined it; or run <code>mirador approve</code> there.
+            {words.requestShowsBefore} <code>mirador approve</code>
+            {words.requestShowsAfter}
           </p>
         </div>
       ) : (
         <>
           <p>
-            This computer has not joined <strong>{machine.name}</strong> at {new URL(machine.origin).host} yet. Ask to join, and approve it there by typing
-            the number this computer then shows.
+            {words.notJoinedBefore} <strong>{machine.name}</strong>
+            {words.notJoinedAfter(new URL(machine.origin).host)}
           </p>
           <button type="button" className="primary" disabled={joining} onClick={askToJoin}>
-            Ask to join
+            {words.askToJoin}
           </button>
           <p>
-            Or join with an invite code. Get one in its Settings → Devices, from a device that has joined it, or run <code>mirador invite</code> on it.
+            {words.inviteBefore} <code>mirador invite</code>
+            {words.inviteAfter}
           </p>
           <form onSubmit={join}>
             <label>
-              Invite code or link
+              {words.inviteCode}
               <input value={text} onChange={(event) => setText(event.target.value)} placeholder="ABCD-EFGH-JKLM" autoFocus autoComplete="off" spellCheck={false} />
             </label>
             <button type="submit" className="primary" disabled={joining || !text.trim()}>
-              {joining ? "Joining…" : "Join"}
+              {joining ? words.joining : words.joinButton}
             </button>
           </form>
         </>

@@ -24,7 +24,7 @@ import { useProgramRequest } from "./program-request.ts";
 import { requestOfTerminalPane, type TerminalPaneRequest } from "./terminal-pane-request.ts";
 import { adjacentConversation, adjacentWorkspaceConversation, currentWorkspace, numberedConversation } from "./navigation.ts";
 import { Palette, ShortcutHelp, type PaletteEntry } from "./Palette.tsx";
-import { DEFAULT_SIDEBAR_WIDTH, inView, paneLabels, sidebarWidthWithinLimits, swapPanes, toggledInView, type PaneId, type PaneLayout } from "./layout.ts";
+import { DEFAULT_SIDEBAR_WIDTH, inView, sidebarWidthWithinLimits, swapPanes, toggledInView, type PaneId, type PaneLayout } from "./layout.ts";
 import { useConversationLayouts, useSidebarWidth } from "./paneLayouts.ts";
 import { FirstProfile, ProfilesDialog } from "./Profiles.tsx";
 import { AskToRevert, RevertDialog } from "./Revert.tsx";
@@ -64,14 +64,14 @@ function useReloadWhenHostRestarted(hostRunId: string | null) {
 }
 
 function HostBanner({ status, state }: { status: ConnectionStatus; state: AppState }) {
-  if (state.hostRestarting) return <div className="banner">Restarting the host…</div>;
-  if (status !== "open") return <div className="banner">{status === "connecting" ? "Connecting…" : "Connection lost, reconnecting…"}</div>;
+  if (state.hostRestarting) return <div className="banner">{t.shell.app.restartingHost}</div>;
+  if (status !== "open") return <div className="banner">{status === "connecting" ? t.shell.app.connecting : t.shell.app.reconnecting}</div>;
   if (!state.hostCodeChanged) return null;
   return (
     <div className="banner host-code-changed">
-      <span>The host's code changed since it started.</span>
+      <span>{t.shell.app.hostCodeChanged}</span>
       <button type="button" data-hint={hints.restartHost} onClick={restartHost}>
-        Restart host <kbd>{shortcutKeys().restartHost}</kbd>
+        {t.shell.app.restartHost} <kbd>{shortcutKeys().restartHost}</kbd>
       </button>
     </div>
   );
@@ -81,7 +81,7 @@ function DesktopAppBanner({ state }: { state: AppState }) {
   if (!state.desktopAppOutdated) return null;
   return (
     <div className="banner desktop-app-outdated">
-      The Mirador app is older than its code. Quit it and run <code>bun run build</code> in <code>desktop/</code>.
+      {t.shell.app.desktopAppOutdatedBefore} <code>bun run build</code> {t.shell.app.desktopAppOutdatedMiddle} <code>desktop/</code>.
     </div>
   );
 }
@@ -117,6 +117,8 @@ function paletteEntries(
   panes: PanesInPalette,
   showMachine: (machine: Machine) => void,
 ): PaletteEntry[] {
+  const words = t.shell.palette;
+  const paneWords = t.shell.panes;
   const workspaceName = (workspaceId: string) => state.workspaces.find(({ id }) => id === workspaceId)?.name ?? "";
   const conversations = recentConversations(state).map(
     (conversation): PaletteEntry => ({
@@ -140,9 +142,9 @@ function paletteEntries(
     const ownGroup = state.workspaceGroups.find(({ id }) => id === workspace.groupId);
     const intoOthers = state.workspaceGroups
       .filter(({ id }) => id !== ownGroup?.id)
-      .map((group): PaletteEntry => ({ id: `group-${workspace.id}-${group.id}`, label: `Move ${workspace.name} to group ${group.name}`, kind: "action", run: () => moveToGroup(workspace, group.id) }));
+      .map((group): PaletteEntry => ({ id: `group-${workspace.id}-${group.id}`, label: words.moveToGroup(workspace.name, group.name), kind: "action", run: () => moveToGroup(workspace, group.id) }));
     const outOfOwn: PaletteEntry[] = ownGroup
-      ? [{ id: `ungroup-${workspace.id}`, label: `Take ${workspace.name} out of group ${ownGroup.name}`, kind: "action", run: () => takeOutOfGroup(workspace, ownGroup.id) }]
+      ? [{ id: `ungroup-${workspace.id}`, label: words.takeOutOfGroup(workspace.name, ownGroup.name), kind: "action", run: () => takeOutOfGroup(workspace, ownGroup.id) }]
       : [];
     return [...intoOthers, ...outOfOwn];
   };
@@ -151,21 +153,21 @@ function paletteEntries(
   const workspaceActions = currentFirst.flatMap((workspace): PaletteEntry[] => [
     {
       id: `new-${workspace.id}`,
-      label: `New conversation in ${workspace.name}`,
+      label: words.newConversationIn(workspace.name),
       detail: launchLabel(workspace.defaultLaunch, state.profiles),
       kind: "action",
       run: () => startConversationIn(workspace, dispatch),
     },
     {
       id: `continue-${workspace.id}`,
-      label: `Continue a session in ${workspace.name}…`,
+      label: words.continueSessionIn(workspace.name),
       kind: "action",
       run: () => dispatch({ type: "open-overlay", overlay: { kind: "sessions", workspaceId: workspace.id } }),
     },
     {
       id: `color-${workspace.id}`,
-      label: `Colour ${workspace.name}…`,
-      detail: workspace.color ? pastelLabels[workspace.color] : "no colour",
+      label: words.colour(workspace.name),
+      detail: workspace.color ? pastelLabels[workspace.color] : words.noColour,
       kind: "action",
       run: () => dispatch({ type: "open-overlay", overlay: { kind: "workspace-color", workspaceId: workspace.id } }),
     },
@@ -187,22 +189,22 @@ function paletteEntries(
   const undoable = backTo(undoableTurns(openHistory?.events ?? []), false);
   const { canvas, terminal, askTerminals, fullscreen } = panes;
   const terminalActions: PaletteEntry[] = [
-    { id: "toggle-terminal", label: terminal.visible ? "Hide terminal" : "Show terminal", kind: "action", run: terminal.toggle },
-    { id: "new-terminal-tab", label: "New terminal tab", kind: "action", run: () => askTerminals({ type: "new-tab" }) },
-    { id: "split-terminal-right", label: "Split the terminal right", kind: "action", run: () => askTerminals({ type: "split", axis: "columns" }) },
-    { id: "split-terminal-down", label: "Split the terminal down", kind: "action", run: () => askTerminals({ type: "split", axis: "rows" }) },
-    { id: "focus-terminal", label: "Focus the terminal", kind: "action", run: () => askTerminals({ type: "focus" }) },
+    { id: "toggle-terminal", label: terminal.visible ? t.chat.header.hideTerminal : t.chat.header.showTerminal, kind: "action", run: terminal.toggle },
+    { id: "new-terminal-tab", label: words.newTerminalTab, kind: "action", run: () => askTerminals({ type: "new-tab" }) },
+    { id: "split-terminal-right", label: words.splitTerminalRight, kind: "action", run: () => askTerminals({ type: "split", axis: "columns" }) },
+    { id: "split-terminal-down", label: words.splitTerminalDown, kind: "action", run: () => askTerminals({ type: "split", axis: "rows" }) },
+    { id: "focus-terminal", label: words.focusTerminal, kind: "action", run: () => askTerminals({ type: "focus" }) },
   ];
   const panesInView: PaneId[] = ["conversation", ...(canvas.visible ? ["canvas" as const] : []), ...(terminal.visible ? ["terminals" as const] : [])];
   const fullscreenActions: PaletteEntry[] = fullscreen
-    ? [{ id: "exit-fullscreen", label: "Exit fullscreen", detail: paneLabels[fullscreen], kind: "action", run: () => panes.setFullscreen(null) }]
-    : panesInView.map((pane) => ({ id: `fullscreen-${pane}`, label: `Fullscreen ${paneLabels[pane].toLowerCase()}`, kind: "action", run: () => panes.setFullscreen(pane) }));
+    ? [{ id: "exit-fullscreen", label: paneWords.exitFullscreen, detail: t.labels.pane[fullscreen], kind: "action", run: () => panes.setFullscreen(null) }]
+    : panesInView.map((pane) => ({ id: `fullscreen-${pane}`, label: paneWords.fullscreen(paneWords.names[pane]), kind: "action", run: () => panes.setFullscreen(pane) }));
   const swapActions: PaletteEntry[] = fullscreen
     ? []
     : panesInView.flatMap((first, index) =>
         panesInView.slice(index + 1).map((second) => ({
           id: `swap-${first}-${second}`,
-          label: `Swap ${paneLabels[first].toLowerCase()} and ${paneLabels[second].toLowerCase()}`,
+          label: paneWords.swap(paneWords.names[first], paneWords.names[second]),
           kind: "action",
           run: () => panes.swap(first, second),
         })),
@@ -210,35 +212,35 @@ function paletteEntries(
   const openConversationActions: PaletteEntry[] =
     openHistory && openConversation
       ? [
-          { id: "rename", label: "Rename conversation…", kind: "action", run: startRenamingOpenConversation },
+          { id: "rename", label: words.renameConversation, kind: "action", run: startRenamingOpenConversation },
           ...(canMarkUnread(openConversation)
-            ? [{ id: "mark-unread", label: "Mark as unread", detail: openConversation.title, kind: "action" as const, run: () => markUnread(openConversation.id, dispatch) }]
+            ? [{ id: "mark-unread", label: t.shell.sidebar.markUnread, detail: openConversation.title, kind: "action" as const, run: () => markUnread(openConversation.id, dispatch) }]
             : []),
-          { id: "toggle-canvas", label: canvas.visible ? "Hide canvas" : "Show canvas", kind: "action", run: canvas.toggle },
+          { id: "toggle-canvas", label: canvas.visible ? t.chat.header.hideCanvas : t.chat.header.showCanvas, kind: "action", run: canvas.toggle },
           ...terminalActions,
           ...fullscreenActions,
           ...swapActions,
-          { id: "reset-layout", label: "Reset layout to default", detail: openConversation.title, kind: "action", run: panes.resetLayout },
+          { id: "reset-layout", label: t.settings.layout.resetCommand, detail: openConversation.title, kind: "action", run: panes.resetLayout },
           ...rewindable,
           ...undoable,
         ]
       : [];
   const machineActions = state.machines.map(
-    (machine): PaletteEntry => ({ id: `machine-${machine.id}`, label: `Open machine ${machine.name}`, detail: machine.origin, kind: "action", run: () => showMachine(machine) }),
+    (machine): PaletteEntry => ({ id: `machine-${machine.id}`, label: words.openMachine(machine.name), detail: machine.origin, kind: "action", run: () => showMachine(machine) }),
   );
   return [
     ...conversations,
     ...workspaceActions,
     ...openConversationActions,
     ...machineActions,
-    { id: "search", label: "Search all workspaces…", detail: "every conversation", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "search" } }) },
-    { id: "add-workspace", label: "Add workspace…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace" } }) },
-    { id: "add-workspace-group", label: "New group…", detail: "of workspaces", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace-group" } }) },
-    { id: "profiles", label: "Profiles…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "profiles" } }) },
-    { id: "machines", label: "Machines…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "machines" } }) },
-    { id: "settings", label: "Settings…", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "settings" } }) },
-    { id: "help", label: "Keyboard shortcuts", kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "help" } }) },
-    { id: "restart-host", label: "Restart the host", detail: "runs its code as it is now", kind: "action", run: restartHost },
+    { id: "search", label: words.searchAll, detail: words.everyConversation, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "search" } }) },
+    { id: "add-workspace", label: words.addWorkspace, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace" } }) },
+    { id: "add-workspace-group", label: words.newGroup, detail: words.ofWorkspaces, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "add-workspace-group" } }) },
+    { id: "profiles", label: words.profiles, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "profiles" } }) },
+    { id: "machines", label: words.machines, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "machines" } }) },
+    { id: "settings", label: words.settings, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "settings" } }) },
+    { id: "help", label: words.keyboardShortcuts, kind: "action", run: () => dispatch({ type: "open-overlay", overlay: { kind: "help" } }) },
+    { id: "restart-host", label: words.restartHost, detail: words.runsCodeAsItIsNow, kind: "action", run: restartHost },
   ];
 }
 
@@ -509,8 +511,8 @@ export function App() {
           <FirstProfile installedAgents={state.installedAgents} conversations={state.conversations} />
         ) : (
           <div className="empty-state">
-            <h2>No conversation selected</h2>
-            <p>Add a workspace (a project directory) on the left, then start a conversation in it on one of your profiles.</p>
+            <h2>{t.shell.app.noConversation}</h2>
+            <p>{t.shell.app.noConversationHint}</p>
           </div>
         ))}
     </main>
@@ -530,7 +532,7 @@ export function App() {
       <div ref={layoutElement} className={`layout ${shownMachine ? "covered" : ""}`} style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
         <Sidebar state={state} dispatch={dispatch} />
         <Splitter
-          label="Resize the sidebar"
+          label={t.shell.panes.resizeSidebar}
           share={sidebarWidth / layoutWidth}
           resetShare={DEFAULT_SIDEBAR_WIDTH / layoutWidth}
           minimumSize={0}

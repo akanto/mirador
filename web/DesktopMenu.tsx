@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { DESKTOP_MENU_EVENT, type DesktopMenu as Menu, type DesktopMenuItem } from "../shared/desktop-menu.ts";
 import { sendToDesktopApp } from "./desktop-bridge.ts";
+import { t } from "./i18n/index.ts";
 
 /** The menu the Linux desktop app hands its window; in a browser, or on macOS with its menu bar, there is none. */
 function useDesktopMenu() {
@@ -73,10 +74,10 @@ export function DesktopMenu() {
   return (
     <div className="desktop-menu" ref={root}>
       <button className="link" aria-haspopup="menu" aria-expanded={open} onClick={(event) => setPlacement(open ? null : placedAbove(event.currentTarget))}>
-        Desktop app…
+        {t.shell.app.desktopApp}
       </button>
       {open && (
-        <ul role="menu" aria-label="Desktop app" style={placement}>
+        <ul role="menu" aria-label={t.shell.app.desktopAppMenu} style={placement}>
           {menu.items.map((item, index) => (
             <MenuEntry key={index} item={item} onChoose={choose} />
           ))}

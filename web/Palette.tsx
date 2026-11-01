@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { t } from "./i18n/index.ts";
 import { shortcutHelp, terminalShortcutKeys } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
@@ -61,17 +62,17 @@ export function Palette({ entries, onClose }: { entries: PaletteEntry[]; onClose
   };
 
   return (
-    <Modal label="Palette" className="palette" onClose={onClose}>
+    <Modal label={t.shell.palette.label} className="palette" onClose={onClose}>
       <input
         {...typingAidAttributes}
         autoFocus
-        aria-label="Search conversations and actions"
-        placeholder="Go to a conversation, or type an action (new, continue, profiles, canvas)…"
+        aria-label={t.shell.palette.searchLabel}
+        placeholder={t.shell.palette.placeholder}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onKeyDown}
       />
-      <ul ref={list} role="listbox" aria-label="Results">
+      <ul ref={list} role="listbox" aria-label={t.shell.palette.results}>
         {visible.map((entry, index) => (
           <li
             key={entry.id}
@@ -85,7 +86,7 @@ export function Palette({ entries, onClose }: { entries: PaletteEntry[]; onClose
             {entry.detail && <span className="entry-detail">{entry.detail}</span>}
           </li>
         ))}
-        {visible.length === 0 && <li className="none">Nothing matches.</li>}
+        {visible.length === 0 && <li className="none">{t.shell.palette.nothingMatches}</li>}
       </ul>
     </Modal>
   );
@@ -98,10 +99,10 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
   return (
-    <Modal label="Keyboard shortcuts" className="shortcut-help" onClose={onClose}>
+    <Modal label={t.shell.shortcuts.title} className="shortcut-help" onClose={onClose}>
       <header>
-        <h2>Keyboard shortcuts</h2>
-        <button className="icon" title="Close" aria-label="Close" onClick={onClose}>
+        <h2>{t.shell.shortcuts.title}</h2>
+        <button className="icon" title={t.shell.close} aria-label={t.shell.close} onClick={onClose}>
           ×
         </button>
       </header>
@@ -117,8 +118,8 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
           ))}
         </tbody>
       </table>
-      <p className="hint">They also work while a canvas page has focus, except those that create things.</p>
-      {terminalShortcutKeys() && <p className="hint">In Chrome, ⌘T, ⌘W, ⌘⇧[ ⌘⇧] and ⌥⌘← ⌥⌘→ stay Chrome's.</p>}
+      <p className="hint">{t.shell.shortcuts.workInCanvas}</p>
+      {terminalShortcutKeys() && <p className="hint">{t.shell.shortcuts.chromeKeeps}</p>}
     </Modal>
   );
 }

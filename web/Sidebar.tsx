@@ -3,7 +3,6 @@ import { connectedDevicesLabel, otherConnectedDevices } from "../shared/devices.
 import { waitingOnJobsHint } from "../shared/job-waits.ts";
 import {
   launchLabel,
-  terminalActivityLabels,
   type Conversation,
   type Profile,
   type WaitingFor,
@@ -20,6 +19,7 @@ import { DesktopMenu } from "./DesktopMenu.tsx";
 import { useDragToReorder, usePointerDrag } from "./drag-to-reorder.ts";
 import { startConversationIn } from "./actions.ts";
 import { hints, statusHints, waitingHints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { conversationsIn, isUnderCaller } from "./navigation.ts";
 import { pastelVariables } from "./pastels.ts";
 import { UpdatesWaiting } from "./PluginSettings.tsx";
@@ -56,11 +56,14 @@ function useDirectoryCompletions(prefix: string) {
   return completions;
 }
 
+const words = t.shell.sidebar;
+
+
 const typedName = (path: string) => path.split(/[\\/]/).pop();
 
 function folderHint(path: string, completionHighlighted: boolean, createsDirectory: boolean) {
-  if (completionHighlighted) return `Enter or Tab takes the highlighted folder, ⇧Enter ${createsDirectory ? "creates" : "adds"} ${typedName(path)}, Esc cancels`;
-  return createsDirectory ? "Enter creates the folder and adds it, Esc cancels" : "Enter adds, Tab completes, Esc cancels";
+  if (completionHighlighted) return words.folderHintHighlighted(typedName(path) ?? "", createsDirectory);
+  return createsDirectory ? words.folderHintCreates : words.folderHint;
 }
 
 /**
@@ -128,7 +131,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
         autoFocus
         value={path}
         spellCheck={false}
-        aria-label="Workspace directory"
+        aria-label={words.workspaceDirectory}
         onChange={(event) => {
           setPath(event.target.value);
           backToFolder();
@@ -137,8 +140,8 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
       />
       {pickingProfile ? (
         <>
-          <div className="hint">Pick the profile its conversations start on: ↑↓ and Enter, or click. Esc goes back to the folder.</div>
-          <ul className="completions" role="listbox" aria-label="Profile of the new workspace">
+          <div className="hint">{words.pickProfile}</div>
+          <ul className="completions" role="listbox" aria-label={words.profileOfNewWorkspace}>
             {profiles.map((profile, index) => (
               <li
                 key={profile.id}
@@ -160,7 +163,7 @@ function AddWorkspace({ profiles, onDone }: { profiles: Profile[]; onDone: () =>
           <ul className="completions">
             {highlighted !== null && createsDirectory && (
               <li className="create-folder" onMouseDown={(event) => event.preventDefault()} onClick={submit}>
-                + New folder {typedName(path)}
+                {words.newFolder(typedName(path) ?? "")}
               </li>
             )}
             {completions.map((completion, index) => (
@@ -183,7 +186,7 @@ function statusDot(conversation: Conversation) {
   }
   const inTerminal = conversation.openInTerminal;
   if (inTerminal && conversation.status === "idle") {
-    return <span className={`dot terminal-${inTerminal}`} data-hint={`Open in a terminal: ${terminalActivityLabels[inTerminal]}`} />;
+    return <span className={`dot terminal-${inTerminal}`} data-hint={words.openInTerminal(t.chat.terminalActivity[inTerminal])} />;
   }
   return <span className={`dot status-${conversation.status}`} data-hint={conversation.statusDetail ?? statusHints[conversation.status]} />;
 }
@@ -215,8 +218,8 @@ function WaitingList({ state, dispatch }: { state: AppState; dispatch: Dispatch<
   if (waiting.length === 0) return null;
   const workspaceName = (workspaceId: string) => state.workspaces.find(({ id }) => id === workspaceId)?.name ?? "";
   return (
-    <section className="waiting-list" aria-label="Waiting for you">
-      <h2>Waiting for you · {waiting.length}</h2>
+    <section className="waiting-list" aria-label={words.waitingForYou}>
+      <h2>{words.waitingForYouCount(waiting.length)}</h2>
       <ul>
         {waiting.map((conversation) => (
           <li
@@ -238,8 +241,8 @@ function WaitingList({ state, dispatch }: { state: AppState; dispatch: Dispatch<
 /** Outside the row, so choosing an entry does not also click the row and open the conversation, which would clear its mark. */
 function ConversationMenu({ conversation, at, dispatch, onClose }: { conversation: Conversation; at: { x: number; y: number }; dispatch: Dispatch<AppAction>; onClose: () => void }) {
   const entry = lastsUntilOpened(conversation.waitingFor)
-    ? { label: "Mark as read", onChoose: () => markRead(conversation.id) }
-    : { label: "Mark as unread", onChoose: () => markUnread(conversation.id, dispatch), disabled: !canMarkUnread(conversation) };
+    ? { label: words.markRead, onChoose: () => markRead(conversation.id) }
+    : { label: words.markUnread, onChoose: () => markUnread(conversation.id, dispatch), disabled: !canMarkUnread(conversation) };
   return <ContextMenu name={conversation.title} at={at} entries={[entry]} onClose={onClose} />;
 }
 
@@ -257,7 +260,7 @@ function DelegatedToggle({ callerId, delegated, open }: { callerId: string; dele
       type="button"
       className="link delegated-toggle"
       aria-expanded={open}
-      aria-label={`${delegated.length} delegated`}
+      aria-label={words.delegated(delegated.length)}
       data-hint={hints.delegatedFold}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -266,7 +269,7 @@ function DelegatedToggle({ callerId, delegated, open }: { callerId: string; dele
       }}
     >
       {open ? "▾" : "▸"} {delegated.length}
-      {working > 0 && <span className="delegated-toggle-working"> · {working} working</span>}
+      {working > 0 && <span className="delegated-toggle-working">{words.delegatedWorking(working)}</span>}
     </button>
   );
 }
@@ -279,7 +282,7 @@ function LaunchPicker({ workspace, profiles, dispatch }: { workspace: Workspace;
   if (profiles.length === 0) {
     return (
       <button className="link" data-hint={hints.setUpProfile} onClick={() => dispatch({ type: "select", conversationId: null })}>
-        Set up a profile
+        {words.setUpProfile}
       </button>
     );
   }
@@ -291,7 +294,7 @@ function LaunchPicker({ workspace, profiles, dispatch }: { workspace: Workspace;
     <span className="agent-chip">
       <ProfileDot profile={profiles.find(({ id }) => id === workspace.defaultLaunch.profileId)} />
       <span className="agent-chip-label">{launchLabel(workspace.defaultLaunch, profiles)}</span>
-      <select aria-label="Agent" data-hint={hints.launch} value={workspace.defaultLaunch.profileId ?? ""} onChange={(event) => choose(event.target.value)}>
+      <select aria-label={words.agent} data-hint={hints.launch} value={workspace.defaultLaunch.profileId ?? ""} onChange={(event) => choose(event.target.value)}>
         {profiles.map(({ id, harness }) => (
           <option key={id} value={id}>
             {launchLabel({ harness, profileId: id }, profiles)}
@@ -324,7 +327,7 @@ function WorkspaceColorPicker({ workspace, mark, onClose }: { workspace: Workspa
   };
   return (
     <div className="workspace-color-picker" ref={picker}>
-      <ColorSwatches label={`Colour of ${workspace.name}`} chosen={workspace.color} onChoose={choose} />
+      <ColorSwatches label={words.colourOf(workspace.name)} chosen={workspace.color} onChoose={choose} />
     </div>
   );
 }
@@ -385,7 +388,7 @@ function WorkspaceSection({
           type="button"
           className="icon workspace-fold"
           aria-expanded={!folded}
-          aria-label={`${folded ? "Unfold" : "Fold"} ${workspace.name}`}
+          aria-label={folded ? words.unfold(workspace.name) : words.fold(workspace.name)}
           data-hint={folded ? hints.unfoldWorkspace : hints.foldWorkspace}
           onClick={toggleFolded}
         >
@@ -396,7 +399,7 @@ function WorkspaceSection({
           type="button"
           className="workspace-mark"
           style={{ background: workspaceMarkColor(workspace.name) }}
-          aria-label="Workspace colour"
+          aria-label={words.workspaceColour}
           aria-expanded={pickingColor}
           data-hint={hints.workspaceColor}
           onClick={togglePicker}
@@ -410,9 +413,9 @@ function WorkspaceSection({
         <WaitingCount conversations={conversations} />
         <ConfirmButton
           className="icon"
-          label="Remove workspace"
+          label={words.removeWorkspace}
           hint={hints.removeWorkspace}
-          armedText="Remove?"
+          armedText={words.removeArmed}
           armedHint={hints.removeWorkspaceArmed}
           onConfirm={deleteWorkspace}
         >
@@ -439,9 +442,9 @@ function WorkspaceSection({
               {conversation.waitingFor && <WaitingPill waitingFor={conversation.waitingFor} />}
               <ConfirmButton
                 className="icon"
-                label="Delete conversation"
+                label={words.deleteConversation}
                 hint={hints.deleteConversation}
-                armedText="Delete?"
+                armedText={words.deleteArmed}
                 armedHint={hints.deleteConversationArmed}
                 onConfirm={() => deleteConversation(conversation)}
               >
@@ -455,21 +458,21 @@ function WorkspaceSection({
         <div className="workspace-actions">
           <button
             className="link"
-            aria-label="+ New conversation"
+            aria-label={words.newConversationLabel}
             data-hint={hints.newConversation}
             data-shortcut={shortcutKeys().newConversation}
             onClick={() => startConversationIn(workspace, dispatch)}
           >
-            + New
+            {words.newConversation}
           </button>
           <LaunchPicker workspace={workspace} profiles={profiles} dispatch={dispatch} />
           <button
             className="link continue-session"
-            aria-label="Continue a session…"
+            aria-label={words.continueSessionLabel}
             data-hint={hints.continueSession}
             onClick={() => dispatch({ type: "open-overlay", overlay: { kind: "sessions", workspaceId: workspace.id } })}
           >
-            Continue…
+            {words.continueSession}
           </button>
         </div>
       )}
@@ -502,7 +505,7 @@ function GroupNameField({ initial, label, onSave, onCancel }: { initial: string;
       autoFocus
       className="group-name-field"
       aria-label={label}
-      placeholder="Group name"
+      placeholder={words.groupName}
       value={name}
       spellCheck={false}
       onFocus={(event) => event.target.select()}
@@ -550,11 +553,11 @@ function WorkspaceGroupSection({
         onPointerDown={onStartDrag}
         onClick={toggleFromHeading}
       >
-        <button type="button" className="icon group-fold" aria-expanded={!folded} aria-label={`${folded ? "Unfold" : "Fold"} ${group.name}`} onClick={toggleFolded}>
+        <button type="button" className="icon group-fold" aria-expanded={!folded} aria-label={folded ? words.unfold(group.name) : words.fold(group.name)} onClick={toggleFolded}>
           ›
         </button>
         {renaming ? (
-          <GroupNameField initial={group.name} label="Group name" onSave={rename} onCancel={() => setRenaming(false)} />
+          <GroupNameField initial={group.name} label={words.groupName} onSave={rename} onCancel={() => setRenaming(false)} />
         ) : (
           <span className="group-name">{group.name}</span>
         )}
@@ -563,14 +566,14 @@ function WorkspaceGroupSection({
         </span>
         {folded && <WaitingCount conversations={conversations} hint={hints.waitingInGroup} />}
         <span className="group-actions">
-          <button type="button" className="icon" aria-label="Rename group" data-hint={hints.renameWorkspaceGroup} onClick={() => setRenaming(true)}>
+          <button type="button" className="icon" aria-label={words.renameGroup} data-hint={hints.renameWorkspaceGroup} onClick={() => setRenaming(true)}>
             ✎
           </button>
           <ConfirmButton
             className="icon"
-            label="Delete group"
+            label={words.deleteGroup}
             hint={hints.deleteWorkspaceGroup}
-            armedText="Delete?"
+            armedText={words.deleteArmed}
             armedHint={hints.deleteWorkspaceGroupArmed}
             onConfirm={() => connection.send({ type: "workspace-group.delete", groupId: group.id })}
           >
@@ -580,7 +583,7 @@ function WorkspaceGroupSection({
       </header>
       {!folded && workspaces.length === 0 && (
         <div className="group-empty" data-drop-row="group-empty" data-group-id={group.id}>
-          Drag a workspace here by its heading
+          {words.dragHere}
         </div>
       )}
       {!folded && children}
@@ -627,11 +630,11 @@ function WaitingEdge({ side, hidden, onClick }: { side: "above" | "below"; hidde
       <button
         type="button"
         className={`tone-${hidden.tone}`}
-        aria-label={`${hidden.count} waiting for you ${side}`}
+        aria-label={side === "above" ? words.waitingAbove(hidden.count) : words.waitingBelow(hidden.count)}
         data-hint={side === "above" ? hints.waitingAbove : hints.waitingBelow}
         onClick={onClick}
       >
-        {side === "above" ? "↑" : "↓"} {hidden.count} waiting
+        {side === "above" ? "↑" : "↓"} {words.waitingEdgeText(hidden.count)}
       </button>
     </div>
   );
@@ -728,12 +731,12 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         <WaitingEdge side="above" hidden={outOfView.above} onClick={() => scrollToWaiting("above")} />
         <WaitingList state={state} dispatch={dispatch} />
         <header>
-          <h1>Workspaces</h1>
+          <h1>{words.workspaces}</h1>
           <span className="sidebar-header-buttons">
-            <button className="icon" aria-label="New group" data-hint={hints.addWorkspaceGroup} onClick={() => openOverlay({ kind: "add-workspace-group" })}>
+            <button className="icon" aria-label={words.newGroup} data-hint={hints.addWorkspaceGroup} onClick={() => openOverlay({ kind: "add-workspace-group" })}>
               ⊞
             </button>
-            <button className="icon" aria-label="Add workspace" data-hint={hints.addWorkspace} data-shortcut={shortcutKeys().newWorkspace} onClick={() => setAdding(true)}>
+            <button className="icon" aria-label={words.addWorkspace} data-hint={hints.addWorkspace} data-shortcut={shortcutKeys().newWorkspace} onClick={() => setAdding(true)}>
               +
             </button>
           </span>
@@ -741,10 +744,10 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         {adding && <AddWorkspace profiles={state.profiles} onDone={() => setAdding(false)} />}
         {state.workspaces.length === 0 && !adding && (
           <button className="link" onClick={() => setAdding(true)}>
-            + Add a project directory
+            {words.addProjectDirectory}
           </button>
         )}
-        {addingGroup && <GroupNameField initial="" label="New group name" onSave={createGroup} onCancel={() => dispatch({ type: "close-overlay" })} />}
+        {addingGroup && <GroupNameField initial="" label={words.newGroupName} onSave={createGroup} onCancel={() => dispatch({ type: "close-overlay" })} />}
         {items.map(sidebarItem)}
         <WaitingEdge side="below" hidden={outOfView.below} onClick={() => scrollToWaiting("below")} />
       </div>
@@ -756,23 +759,23 @@ export function Sidebar({ state, dispatch }: { state: AppState; dispatch: Dispat
         <DesktopMenu />
         <div className="footer-buttons">
           <button className="link" data-hint={hints.settings} onClick={() => openOverlay({ kind: "settings" })}>
-            Settings…
+            {words.settings}
             <UpdatesWaiting count={state.pluginUpdates.length} />
           </button>
           <button className="link" data-hint={hints.profiles} onClick={() => openOverlay({ kind: "profiles" })}>
-            Profiles…
+            {words.profiles}
           </button>
           <button className="link" data-hint={hints.machines} onClick={() => openOverlay({ kind: "machines" })}>
-            Machines…
+            {words.machines}
           </button>
           <button className="link" data-hint={hints.searchAll} data-shortcut={shortcutKeys().search} onClick={() => openOverlay({ kind: "search" })}>
-            Search…
+            {words.search}
           </button>
           <button className="link" onClick={() => openOverlay({ kind: "palette" })}>
-            Palette <kbd>{shortcutKeys().palette}</kbd>
+            {words.palette} <kbd>{shortcutKeys().palette}</kbd>
           </button>
           <button className="link" onClick={() => openOverlay({ kind: "help" })}>
-            Shortcuts <kbd>{shortcutKeys().help}</kbd>
+            {words.shortcuts} <kbd>{shortcutKeys().help}</kbd>
           </button>
         </div>
       </footer>

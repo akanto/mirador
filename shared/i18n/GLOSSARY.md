@@ -29,6 +29,10 @@ These terms stay the same everywhere:
 | rail | sáv |
 | tool (agent's) | eszköz |
 | approve / approval | jóváhagy / jóváhagyás |
+| statusline | állapotsor |
+| fork (a session) | elágaztatás |
+| invite code / link | meghívókód / meghívólink |
+| keyboard shortcuts | billentyűparancsok |
 
 Never attach a suffix or an article to a value filled in at runtime (a name, a version, a number):
 vowel harmony and a/az can't be chosen in advance. Phrase around it, as in "Ezt futtatja: ${program}".

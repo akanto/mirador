@@ -1,3 +1,6 @@
+import { t } from "./i18n/index.ts";
+
+
 export type ShortcutCommand =
   | { type: "palette" }
   | { type: "help" }
@@ -126,43 +129,45 @@ export function shortcutKeys(mac = isMac) {
 /** The keys cmux and iTerm2 share, which a focused terminal takes on macOS; Linux terminals have no such convention. */
 export const terminalShortcutKeys = (mac = isMac) => (mac ? { splitRight: "⌘D", splitDown: "⌘⇧D", newTab: "⌘T", close: "⌘W", zoom: "⌘⇧↩" } : null);
 
+const actions = t.shell.shortcuts.help;
+
 const terminalHelp = (keys: NonNullable<ReturnType<typeof terminalShortcutKeys>>) => [
-  { keys: `${keys.splitRight} / ${keys.splitDown}`, action: "In a terminal: split it, the new shell right of it / below it" },
-  { keys: "⌥⌘← ⌥⌘→ ⌥⌘↑ ⌥⌘↓ · ⌘[ / ⌘]", action: "In a terminal: go to the split that way · the previous / next split" },
-  { keys: "⌘⇧[ / ⌘⇧] · ⌘1 … ⌘9, ⌃1 … ⌃9", action: "In a terminal: previous / next terminal tab · terminal tab by number" },
-  { keys: `${keys.newTab} / ${keys.close}`, action: "In a terminal: new terminal tab / close this terminal; one running a command asks first" },
-  { keys: keys.zoom, action: "In a terminal: let it fill its tab, and back" },
+  { keys: `${keys.splitRight} / ${keys.splitDown}`, action: actions.terminalSplit },
+  { keys: "⌥⌘← ⌥⌘→ ⌥⌘↑ ⌥⌘↓ · ⌘[ / ⌘]", action: actions.terminalGoToSplit },
+  { keys: "⌘⇧[ / ⌘⇧] · ⌘1 … ⌘9, ⌃1 … ⌃9", action: actions.terminalTabs },
+  { keys: `${keys.newTab} / ${keys.close}`, action: actions.terminalNewTabOrClose },
+  { keys: keys.zoom, action: actions.terminalZoom },
 ];
 
 export function shortcutHelp(mac = isMac): { keys: string; action: string }[] {
   const { primary, option, shift } = keyLabels(mac);
   const keys = shortcutKeys(mac);
   return [
-    { keys: keys.palette, action: "Palette: go to a conversation, start one, open a dialog (in a terminal, clears it instead)" },
-    { keys: `${option}↑ / ${option}↓`, action: "Previous / next conversation" },
-    { keys: `${option}${shift}↑ / ${option}${shift}↓`, action: "Previous / next workspace" },
-    { keys: `${option}1 … ${option}9`, action: "Conversation 1–9 in this workspace" },
-    { keys: keys.newConversation, action: "New conversation in this workspace (with its profile)" },
-    { keys: keys.newWorkspace, action: "Add a workspace (a project directory)" },
-    { keys: keys.toggleCanvas, action: "Show / hide the canvas" },
-    { keys: keys.toggleTerminal, action: "Show / hide the terminal" },
-    { keys: keys.search, action: "Search every conversation in every workspace" },
-    { keys: keys.markUnread, action: "Mark this conversation unread and go back to the one open before it (right-click a conversation in the sidebar to mark any)" },
-    { keys: keys.find, action: "Find in this conversation, earlier entries and folded cards included; Aa matches case (Enter: older match, Shift+Enter: newer)" },
-    { keys: keys.find, action: "In a review or tour: find in the code of its changed files, with match case, whole word and regular expression toggles (Enter: next match, Shift+Enter: previous)" },
-    { keys: mac ? keys.find : "Ctrl+Shift+F", action: "In a terminal: find in its output, with match case, whole word and regular expression toggles (Enter: match further up, Shift+Enter: further down)" },
-    { keys: `${primary}V`, action: "In the message box, an image on the clipboard goes in as [Image #1] (dropping an image file does too)" },
-    { keys: keys.templates, action: "In the message box: find a prompt template by typing and put it in; Tab / Shift+Tab then go through its {{values}}" },
-    { keys: `${keys.bold} / ${keys.italic} / ${keys.strikethrough} / ${keys.code}`, action: "In the formatted message box: bold / italic / strikethrough / code, on the selection or on what you type next (Aa shows every format)" },
-    { keys: keys.dictate, action: "Dictate into the message box: tap to start, and it stops when you pause or tap again; or hold while you talk. Esc cancels (Settings → Voice turns it on)" },
-    { keys: `${primary}${shift}← / ${primary}${shift}→ / ${primary}${shift}↓`, action: "Focus the message box / the canvas / the terminal (not while editing text)" },
-    { keys: `${primary}+ / ${primary}−`, action: "Make text bigger / smaller (in a terminal, changes its font size instead)" },
-    { keys: `${primary}0`, action: "Reset text size to 100% (in a terminal, resets to 12 px)" },
-    { keys: `${primary}R`, action: "Reload the page, with the UI code as it is now" },
-    { keys: keys.restartHost, action: "Restart the host to run its code as it is now; working agents stop and then continue where they left off" },
-    { keys: `${keys.send} / ${keys.sendTheOtherWay}`, action: "While the agent works: add the message to its running turn, or send it after the turn ends (Settings picks which key does which)" },
-    { keys: "Esc", action: "Close a dialog; in the message box, stop the running turn" },
-    { keys: keys.help, action: "This list (outside text fields)" },
+    { keys: keys.palette, action: actions.palette },
+    { keys: `${option}↑ / ${option}↓`, action: actions.conversations },
+    { keys: `${option}${shift}↑ / ${option}${shift}↓`, action: actions.workspaces },
+    { keys: `${option}1 … ${option}9`, action: actions.conversationByNumber },
+    { keys: keys.newConversation, action: actions.newConversation },
+    { keys: keys.newWorkspace, action: actions.newWorkspace },
+    { keys: keys.toggleCanvas, action: actions.toggleCanvas },
+    { keys: keys.toggleTerminal, action: actions.toggleTerminal },
+    { keys: keys.search, action: actions.search },
+    { keys: keys.markUnread, action: actions.markUnread },
+    { keys: keys.find, action: actions.find },
+    { keys: keys.find, action: actions.findInReview },
+    { keys: mac ? keys.find : "Ctrl+Shift+F", action: actions.findInTerminal },
+    { keys: `${primary}V`, action: actions.pasteImage },
+    { keys: keys.templates, action: actions.templates },
+    { keys: `${keys.bold} / ${keys.italic} / ${keys.strikethrough} / ${keys.code}`, action: actions.format },
+    { keys: keys.dictate, action: actions.dictate },
+    { keys: `${primary}${shift}← / ${primary}${shift}→ / ${primary}${shift}↓`, action: actions.focus },
+    { keys: `${primary}+ / ${primary}−`, action: actions.zoom },
+    { keys: `${primary}0`, action: actions.resetZoom },
+    { keys: `${primary}R`, action: actions.reload },
+    { keys: keys.restartHost, action: actions.restartHost },
+    { keys: `${keys.send} / ${keys.sendTheOtherWay}`, action: actions.sendWhileBusy },
+    { keys: "Esc", action: actions.escape },
+    { keys: keys.help, action: actions.help },
     ...(mac ? terminalHelp(terminalShortcutKeys(mac)!) : []),
   ];
 }

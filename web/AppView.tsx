@@ -23,6 +23,7 @@ import {
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { CanvasFrame } from "./Canvas.tsx";
 import { connection, type ConnectionStatus } from "./connection.ts";
+import { t } from "./i18n/index.ts";
 import { uploadImage } from "./pasted-images.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
 
@@ -180,16 +181,16 @@ export function AppView({
     <div className="app-view">
       {documentState?.problem && (
         <p className="app-problem">
-          {openApp.file} can't be read: {documentState.problem}. This is how it was before.
+          {t.shell.appView.cannotRead(openApp.file, documentState.problem)}
         </p>
       )}
       {page && <CanvasFrame frameId={frameId} html={page} assetsOrigin={assetsOrigin} className="app" frameRef={frame} onMessage={received} />}
       {sent && (
         <div className="app-sent" role="status">
-          Sent to the agent. The answer comes in the chat.
+          {t.shell.appView.sent}
           {fullscreen?.isFullscreen && (
             <button type="button" className="link" onClick={() => fullscreen.setFullscreen(false)}>
-              Show the chat
+              {t.shell.appView.showChat}
             </button>
           )}
         </div>

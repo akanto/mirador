@@ -4,6 +4,7 @@ import { newerVersionKey, newerVersionLabel, type NewerVersion } from "../shared
 import { connection } from "./connection.ts";
 import { checkForUpdate, restartToUpdate, useDesktopUpdate } from "./desktop-bridge.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 
 const DISMISSED_KEY = "mirador-newer-version-dismissed";
 const READY_UPDATE_DISMISSED_KEY = "mirador-ready-update-dismissed";
@@ -27,6 +28,8 @@ function useDismissal(storageKey: string) {
   return [dismissed, dismiss] as const;
 }
 
+const words = t.shell.newerVersion;
+
 type ReadyUpdate = Extract<DesktopUpdate, { stage: "ready" }>;
 
 const readyIn = (desktopUpdate: DesktopUpdate | null) => (desktopUpdate?.stage === "ready" ? desktopUpdate : null);
@@ -45,18 +48,18 @@ function newerVersionSentence(newerVersion: NewerVersion, desktopUpdate: Desktop
  * does, there is nothing to offer. A pulled checkout needs no word about restarting: the host offers that itself.
  */
 function NextStep({ newerVersion, desktopUpdate }: { newerVersion: NewerVersion; desktopUpdate: DesktopUpdate | null }) {
-  if (newerVersion.kind === "checkout") return <span>Pull them to update.</span>;
+  if (newerVersion.kind === "checkout") return <span>{words.pullToUpdate}</span>;
   if (!desktopUpdate) return null;
-  if (desktopUpdate.stage === "downloading") return <span>Downloading…</span>;
+  if (desktopUpdate.stage === "downloading") return <span>{words.downloading}</span>;
   if (desktopUpdate.stage === "idle")
     return (
       <button type="button" onClick={checkForUpdate}>
-        Download
+        {words.download}
       </button>
     );
   return (
     <a href={newerVersion.url} target="_blank" rel="noreferrer">
-      Download
+      {words.download}
     </a>
   );
 }
@@ -64,7 +67,7 @@ function NextStep({ newerVersion, desktopUpdate }: { newerVersion: NewerVersion;
 function RestartToUpdate() {
   return (
     <button type="button" onClick={restartToUpdate}>
-      Restart to update
+      {words.restartToUpdate}
     </button>
   );
 }
@@ -74,10 +77,10 @@ function ReadyUpdateBanner({ readyUpdate }: { readyUpdate: ReadyUpdate }) {
   if (dismissed === readyUpdate.version) return null;
   return (
     <div className="banner newer-version">
-      <span>Mirador {readyUpdate.version} is ready.</span>
+      <span>{words.ready(readyUpdate.version)}</span>
       <RestartToUpdate />
       <button type="button" data-hint={hints.dismissNewerVersion} onClick={() => dismiss(readyUpdate.version)}>
-        Dismiss
+        {words.dismiss}
       </button>
     </div>
   );
@@ -91,7 +94,7 @@ function NewerVersionSign({ newerVersion, desktopUpdate }: { newerVersion: Newer
       <span>{newerVersionSentence(newerVersion, desktopUpdate)}</span>
       <NextStep newerVersion={newerVersion} desktopUpdate={desktopUpdate} />
       <button type="button" data-hint={hints.dismissNewerVersion} onClick={() => dismiss(newerVersionKey(newerVersion))}>
-        Dismiss
+        {words.dismiss}
       </button>
     </div>
   );
@@ -117,7 +120,7 @@ export function NewerVersionNote({ newerVersion }: { newerVersion: NewerVersion 
     <>
       {readyUpdate && (
         <p className="hint newer-version">
-          Mirador {readyUpdate.version} is ready. <RestartToUpdate />
+          {words.ready(readyUpdate.version)} <RestartToUpdate />
         </p>
       )}
       {outThere && (
@@ -146,7 +149,7 @@ async function checkForNewerVersion(): Promise<string | null> {
 function UpdateCheckOutcome({ check, version, newerVersion }: { check: UpdateCheck; version: string; newerVersion: NewerVersion | null }) {
   if (check.step !== "checked") return null;
   if (check.failure) return <span>{check.failure}.</span>;
-  return newerVersion ? null : <span>Mirador {version} is up to date.</span>;
+  return newerVersion ? null : <span>{words.upToDate(version)}</span>;
 }
 
 /** The host looks now; the desktop app that updates itself looks too, and downloads what it finds. What is newer shows in NewerVersionNote. */
@@ -160,7 +163,7 @@ export function UpdateCheckButton({ version, newerVersion }: { version: string; 
   return (
     <p className="hint update-check" role="status">
       <button type="button" data-hint={hints.checkForUpdates} disabled={check.step === "checking"} onClick={checkNow}>
-        {check.step === "checking" ? "Checking…" : "Check for updates"}
+        {check.step === "checking" ? words.checking : words.checkForUpdates}
       </button>{" "}
       <UpdateCheckOutcome check={check} version={version} newerVersion={newerVersion} />
     </p>

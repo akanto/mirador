@@ -11,7 +11,10 @@ import {
 } from "react";
 import { isCanvasFrameMessage } from "../shared/canvas-document.ts";
 import { hints } from "./hints.ts";
-import { DEFAULT_LEFT_SHARE, DEFAULT_TOP_SHARE, paneLabels, placement, swapPanes, type PaneId, type PaneLayout } from "./layout.ts";
+import { t } from "./i18n/index.ts";
+
+const panes = t.shell.panes;
+import { DEFAULT_LEFT_SHARE, DEFAULT_TOP_SHARE, placement, swapPanes, type PaneId, type PaneLayout } from "./layout.ts";
 import { Splitter, type SplitAxis } from "./Splitter.tsx";
 
 const MIN_PANE_WIDTH = 240;
@@ -41,7 +44,7 @@ export function PaneGrip({ pane }: { pane: PaneId }) {
     <button
       type="button"
       className="icon pane-grip"
-      aria-label={`Move ${paneLabels[pane].toLowerCase()}`}
+      aria-label={panes.move(panes.names[pane])}
       data-hint={hints.paneGrip}
       onPointerDown={(event) => controls.startMove(pane, event)}
     >
@@ -65,7 +68,7 @@ export function FullscreenToggle({ pane }: { pane: PaneId }) {
     <button
       type="button"
       className={`icon pane-fullscreen ${isFullscreen ? "on" : ""}`}
-      aria-label={isFullscreen ? "Exit fullscreen" : `Fullscreen ${paneLabels[pane].toLowerCase()}`}
+      aria-label={isFullscreen ? panes.exitFullscreen : panes.fullscreen(panes.names[pane])}
       aria-pressed={isFullscreen}
       data-hint={isFullscreen ? hints.paneExitFullscreen : hints.paneFullscreen}
       onClick={() => controls.toggleFullscreen(pane)}
@@ -219,7 +222,7 @@ export function WorkspaceArea({
             share={shownLayout.leftShare}
             onDrag={(leftShare) => setDragged({ leftShare })}
             onChange={(leftShare) => commitShares({ leftShare })}
-            label="Resize the left and right panes"
+            label={panes.resizeColumns}
             resetShare={DEFAULT_LEFT_SHARE}
             minimumSize={MIN_PANE_WIDTH}
             area={areaAlong("columns")}
@@ -232,7 +235,7 @@ export function WorkspaceArea({
             share={shownLayout.topShare}
             onDrag={(topShare) => setDragged({ topShare })}
             onChange={(topShare) => commitShares({ topShare })}
-            label="Resize the top and bottom panes"
+            label={panes.resizeRows}
             resetShare={DEFAULT_TOP_SHARE}
             axis="rows"
             minimumSize={minimumHeightOf(shownLayout.slots[1])}

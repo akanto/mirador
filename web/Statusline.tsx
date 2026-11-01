@@ -4,6 +4,7 @@ import type { ContextUsage, Conversation, PlanQuotas, Profile, QuotaWindow, Stat
 import { parseAnsi, plainTextOf, type AnsiRun } from "./ansi.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { readableOn } from "./readable-color.ts";
 import { ProfileDot } from "./ProfileDot.tsx";
 import { drawsShapesOnly, statuslineLooks, type StatuslineLook } from "./terminal-look.ts";
@@ -16,7 +17,6 @@ import {
   formatCost,
   QUOTA_NAMES,
   quotaLabels,
-  quotaLimitNames,
   quotaPercentLabel,
   quotaShare,
   timeUntil,
@@ -27,6 +27,8 @@ import {
 
 const TERMINAL_FONT_SIZE = 12;
 const TERMINAL_PADDING_X = 8;
+const words = t.shell.statusline;
+
 const REQUEST_DELAY_MS = 300;
 const REFRESH_MS = 30_000;
 const PREFERENCE_KEY = "mirador-statusline";
@@ -37,7 +39,7 @@ const lastRenders = new Map<string, StatuslineRender>();
 export function ContextMeter({ usage }: { usage: ContextUsage }) {
   const share = usedShare(usage);
   return (
-    <span className={`usage-meter context-meter level-${contextLevel(share)}`} data-hint={contextHint(usage)} aria-label={`Context ${usedPercentLabel(usage)} used`}>
+    <span className={`usage-meter context-meter level-${contextLevel(share)}`} data-hint={contextHint(usage)} aria-label={words.context(usedPercentLabel(usage))}>
       <span className="usage-bar" aria-hidden="true">
         <span style={{ width: `${share * 100}%` }} />
       </span>
@@ -53,8 +55,8 @@ function QuotaMeter({ name, window }: { name: QuotaName; window: QuotaWindow }) 
   return (
     <span
       className={`usage-meter quota-meter level-${contextLevel(share)}`}
-      data-hint={hints.quota(quotaLimitNames[name], percent, resetsIn)}
-      aria-label={`${quotaLimitNames[name]} limit ${percent} used, starts over in ${resetsIn}`}
+      data-hint={hints.quota(words.quotaLimitNames[name], percent, resetsIn)}
+      aria-label={words.quota(words.quotaLimitNames[name], percent, resetsIn)}
     >
       <span className="usage-bar" aria-hidden="true">
         <span style={{ width: `${share * 100}%` }} />
@@ -232,7 +234,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
   const commandOutput = prefersCommand ? (render?.output ?? null) : null;
 
   return (
-    <section className="statusline" aria-label="Statusline">
+    <section className="statusline" aria-label={words.label}>
       <div className="statusline-content" ref={content}>
         {commandOutput !== null ? (
           <TerminalText text={commandOutput} fontFamily={terminalFont} />
@@ -241,7 +243,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
         )}
       </div>
       {prefersCommand && render?.error && (
-        <span className="statusline-error" role="img" aria-label="Statusline command failed" data-hint={render.error}>
+        <span className="statusline-error" role="img" aria-label={words.commandFailed} data-hint={render.error}>
           ⚠
         </span>
       )}
@@ -252,7 +254,7 @@ export function Statusline({ conversation, profiles }: { conversation: Conversat
           data-hint={prefersCommand ? hints.statuslineCommand(render.command) : hints.statuslineBuiltIn(render.command)}
           onClick={() => setPrefersCommand(!prefersCommand)}
         >
-          {prefersCommand ? "Built-in" : "Your statusline"}
+          {prefersCommand ? words.builtIn : words.yours}
         </button>
       )}
     </section>

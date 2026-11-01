@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { expect, test } from "@playwright/test";
 import { addWorkspace, openSettings, signIn, startConversation } from "./helpers.ts";
 import { TestHost } from "./test-host.ts";
@@ -18,7 +19,7 @@ test("choosing Magyar in Settings shows Mirador in Hungarian after the page relo
   await Promise.all([page.waitForEvent("load"), settings.getByLabel("Language").selectOption("hu")]);
 
   await expect(page.locator("html")).toHaveAttribute("lang", "hu");
-  await page.getByRole("button", { name: "Settings…" }).click();
+  await page.getByRole("button", { name: "Beállítások…" }).click();
   const beallitasok = page.getByRole("dialog", { name: "Beállítások" });
   await expect(beallitasok.getByRole("tablist", { name: "Beállítási oldalak" }).getByRole("tab")).toHaveText([
     "Megjelenés",
@@ -45,12 +46,26 @@ test("choosing Magyar in Settings shows Mirador in Hungarian after the page relo
   await expect((await openSettings(page)).getByRole("radiogroup", { name: "Theme" })).toBeVisible();
 });
 
-test("in Hungarian, the chat's header, message box and buttons speak Hungarian", async ({ page }) => {
+test("in Hungarian, the sidebar, the palette and the chat's header, message box and buttons speak Hungarian", async ({ page }) => {
   await signIn(page, host);
-  await page.evaluate(() => localStorage.setItem("mirador-language", "hu"));
-  await page.reload();
   await addWorkspace(page, host.projectDir);
   await startConversation(page);
+  await page.evaluate(() => localStorage.setItem("mirador-language", "hu"));
+  await page.reload();
+
+  const sidebar = page.locator("nav.sidebar");
+  await expect(sidebar.getByRole("heading", { name: "Munkaterületek" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "+ Új beszélgetés" })).toBeVisible();
+  await expect(sidebar.locator(".footer-buttons > button")).toHaveText([/^Beállítások…/, "Profilok…", "Gépek…", "Keresés…", /^Paletta/, /^Billentyűk/]);
+
+  await sidebar.getByRole("button", { name: /^Paletta/ }).click();
+  const palette = page.getByRole("dialog", { name: "Paletta" });
+  await expect(palette.getByRole("textbox", { name: "Beszélgetések és műveletek keresése" })).toBeVisible();
+  const entries = palette.getByRole("option");
+  await expect(entries.filter({ hasText: `Új beszélgetés itt: ${basename(host.projectDir)}` })).toHaveCount(1);
+  await expect(entries.filter({ hasText: "Teljes képernyő: beszélgetés" })).toHaveCount(1);
+  await expect(entries.filter({ hasText: "Elrendezés visszaállítása az alapértelmezettre" })).toHaveCount(1);
+  await page.keyboard.press("Escape");
 
   const header = page.locator(".chat-header:visible");
   await expect(header.getByRole("button", { name: "Vászon elrejtése" }).or(header.getByRole("button", { name: "Vászon mutatása" }))).toBeVisible();

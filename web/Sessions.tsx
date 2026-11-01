@@ -4,6 +4,9 @@ import { MIN_SEARCH_LENGTH } from "../shared/find.ts";
 import { connection } from "./connection.ts";
 import { relativeTimeOf } from "../shared/relative-time.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
+
+const words = t.shell.sessions;
 import type { AppAction } from "./state.ts";
 
 type Listing = { state: "loading" } | { state: "failed"; message: string } | { state: "listed"; sessions: ExternalSession[] };
@@ -63,20 +66,20 @@ function SessionRow({
   return (
     <li>
       <div className="session-summary">
-        <div className="session-title">{session.title || "(untitled)"}</div>
+        <div className="session-title">{session.title || words.untitled}</div>
         {session.match && <div className="session-match">{session.match}</div>}
         <div className="session-meta">
           {ago(session.updatedAt)} · <code>{session.sessionId.slice(0, 8)}</code>
         </div>
       </div>
       {session.conversationId ? (
-        <button onClick={() => onOpen(session.conversationId!)}>Open</button>
+        <button onClick={() => onOpen(session.conversationId!)}>{words.open}</button>
       ) : (
         <>
           <button className="primary" onClick={() => onAdopt(session, "continue")}>
-            Continue
+            {words.continue}
           </button>
-          <button onClick={() => onAdopt(session, "fork")}>Fork</button>
+          <button onClick={() => onAdopt(session, "fork")}>{words.fork}</button>
         </>
       )}
     </li>
@@ -127,28 +130,27 @@ export function SessionsDialog({
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="modal sessions" role="dialog" aria-label="Continue a session">
+      <div className="modal sessions" role="dialog" aria-label={words.label}>
         <header>
-          <h2>Continue a session in {workspace.name}</h2>
-          <button className="icon" title="Close" aria-label="Close" onClick={onClose}>
+          <h2>{words.title(workspace.name)}</h2>
+          <button className="icon" title={t.shell.close} aria-label={t.shell.close} onClick={onClose}>
             ×
           </button>
         </header>
         <p className="hint">
-          {agent} sessions started in <code>{workspace.path}</code>, newest first, including ones from a terminal. They continue
-          as <strong>{launchLabel(workspace.defaultLaunch, profiles)}</strong>, the workspace's choice next to{" "}
-          <em>New conversation</em>.
+          {words.startedInBefore(agent)} <code>{workspace.path}</code>
+          {words.startedInMiddle} <strong>{launchLabel(workspace.defaultLaunch, profiles)}</strong>
+          {words.startedInAfter} <em>{words.newConversation}</em>.
         </p>
         <p className="warning">
-          <strong>Continue</strong> keeps the same session. If it is still open in a terminal, both would write to it, so close
-          it there first. <strong>Fork</strong> copies the history into a new conversation and leaves the original alone.
+          <strong>{words.continue}</strong> {words.continueKeepsBefore} <strong>{words.fork}</strong> {words.forkCopies}
         </p>
         {searchable && (
           <input
             className="session-search"
             type="search"
-            placeholder="Search sessions by what was said in them"
-            aria-label="Search sessions by what was said in them"
+            placeholder={words.searchPlaceholder}
+            aria-label={words.searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             autoFocus
@@ -159,9 +161,9 @@ export function SessionsDialog({
           failure !== null ? (
             <div className="form-errors">{failure}</div>
           ) : hits === null ? (
-            <div className="notice-line">Searching…</div>
+            <div className="notice-line">{words.searching}</div>
           ) : hits.length === 0 ? (
-            <div className="notice-line">No sessions here say that.</div>
+            <div className="notice-line">{words.noneSayThat}</div>
           ) : (
             <ul className="session-list">
               {hits.map((session) => (
@@ -171,10 +173,10 @@ export function SessionsDialog({
           )
         ) : (
           <>
-            {listing.state === "loading" && <div className="notice-line">Loading sessions…</div>}
+            {listing.state === "loading" && <div className="notice-line">{words.loading}</div>}
             {listing.state === "failed" && <div className="form-errors">{listing.message}</div>}
             {listing.state === "listed" && listing.sessions.length === 0 && (
-              <div className="notice-line">No {agent} sessions in this directory yet.</div>
+              <div className="notice-line">{words.noneYet(agent)}</div>
             )}
             {listing.state === "listed" && listing.sessions.length > 0 && (
               <ul className="session-list">

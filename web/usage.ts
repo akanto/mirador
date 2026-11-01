@@ -37,8 +37,6 @@ export const QUOTA_NAMES: readonly QuotaName[] = ["fiveHour", "sevenDay"];
 
 export const quotaLabels: Record<QuotaName, string> = { fiveHour: "5h", sevenDay: "7d" };
 
-export const quotaLimitNames: Record<QuotaName, string> = { fiveHour: "Five-hour", sevenDay: "Weekly" };
-
 export const quotaShare = ({ usedPercent }: QuotaWindow) => Math.min(1, Math.max(0, usedPercent / 100));
 
 export const quotaPercentLabel = ({ usedPercent }: QuotaWindow) => `${Math.round(usedPercent)}%`;

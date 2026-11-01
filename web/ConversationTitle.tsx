@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import type { Conversation } from "../shared/model.ts";
 import { connection } from "./connection.ts";
+import { t } from "./i18n/index.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 
 /** A conversation's title that turns into a text field for renaming: Enter or leaving the field saves, Esc cancels. */
@@ -35,7 +36,7 @@ export function ConversationTitle({
         {...typingAidAttributes}
         autoFocus
         className={`${className} rename`}
-        aria-label="Conversation name"
+        aria-label={t.shell.conversationTitle.label}
         value={draft}
         onFocus={(event) => event.target.select()}
         onChange={(event) => setDraft(event.target.value)}
@@ -49,7 +50,7 @@ export function ConversationTitle({
   return (
     <span
       className={`${className} renamable`}
-      title={`${conversation.title} (${startEditingOn === "click" ? "click" : "double-click"} to rename)`}
+      title={startEditingOn === "click" ? t.shell.conversationTitle.clickToRename(conversation.title) : t.shell.conversationTitle.doubleClickToRename(conversation.title)}
       data-rename-trigger={startEditingOn}
       onClick={startEditingOn === "click" ? startEditing : undefined}
       onDoubleClick={startEditingOn === "double-click" ? startEditing : undefined}
