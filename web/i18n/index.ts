@@ -1,9 +1,10 @@
 import type { Language } from "../../shared/i18n/languages.ts";
 import { language } from "../language.ts";
 import { en, type Messages } from "./en/index.ts";
+import { es } from "./es/index.ts";
 import { hu } from "./hu/index.ts";
 
-const messages: Record<Language, Messages> = { en, hu };
+const messages: Record<Language, Messages> = { en, hu, es };
 
 export const t = messages[language];
 

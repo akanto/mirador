@@ -86,3 +86,31 @@ test("in Hungarian, the sidebar, the palette and the chat's header, message box 
   await expect(composer.getByRole("button", { name: "Sablonok" })).toBeVisible();
   await page.evaluate(() => localStorage.removeItem("mirador-language"));
 });
+
+test("Español in Settings shows Mirador in Spanish", async ({ page }) => {
+  await signIn(page, host);
+  await Promise.all([page.waitForEvent("load"), (await openSettings(page)).getByLabel("Language").selectOption("es")]);
+
+  await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  const sidebar = page.locator("nav.sidebar");
+  await expect(sidebar.getByRole("heading", { name: "Espacios de trabajo" })).toBeVisible();
+  await sidebar.getByRole("button", { name: "Configuración…" }).click();
+  const configuracion = page.getByRole("dialog", { name: "Configuración" });
+  await expect(configuracion.getByRole("tab")).toHaveText([
+    "Apariencia",
+    "Conversaciones",
+    "Agentes",
+    "Voz",
+    "Terminal",
+    "Lienzo",
+    "Complementos",
+    "Diseño",
+    "Dispositivos",
+    "Notificaciones",
+    "Acerca de",
+  ]);
+  await expect(configuracion.getByRole("radiogroup", { name: "Tema" }).getByRole("radio")).toHaveText(["Claro", "Oscuro", "Igual que el sistema"]);
+
+  await Promise.all([page.waitForEvent("load"), configuracion.getByLabel("Idioma").selectOption("en")]);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { isLanguage, LANGUAGES } from "../shared/i18n/languages.ts";
 import { en } from "../web/i18n/en/index.ts";
+import { es } from "../web/i18n/es/index.ts";
 import { hu } from "../web/i18n/hu/index.ts";
 
 type Entry = string | ((...values: string[]) => string) | { [key: string]: Entry } | Entry[];
@@ -22,11 +23,14 @@ describe("languages", () => {
     expect(isLanguage(null)).toBe(false);
   });
 
-  test("Hungarian has every text English has, in the same order, none of them empty, and fills in every value it is given", () => {
+  test.each([
+    ["Hungarian", hu],
+    ["Spanish", es],
+  ])("%s has every text English has, in the same order, none of them empty, and fills in every value it is given", (_, translated) => {
     const english = new Map(texts(en as unknown as Entry, ""));
-    const hungarian = texts(hu as unknown as Entry, "");
-    expect(hungarian.map(([path]) => path)).toEqual([...english.keys()]);
-    for (const [path, text] of hungarian) {
+    const translatedTexts = texts(translated as unknown as Entry, "");
+    expect(translatedTexts.map(([path]) => path)).toEqual([...english.keys()]);
+    for (const [path, text] of translatedTexts) {
       expect(text.trim(), path).not.toBe("");
       const valuesGiven = english.get(path)!.split(SAMPLE).length - 1;
       expect(text.split(SAMPLE).length - 1, path).toBe(valuesGiven);
