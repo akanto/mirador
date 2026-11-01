@@ -1,10 +1,23 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, watch, type FSWatcher } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { appKey, type AppAuthor, type AppChange, type AppDocumentState, type AppMediaGrant, type AppShownBy, type AppTaskContext, type AppTaskState, type OpenApp } from "../../shared/apps.ts";
+import {
+  appKey,
+  type AppAuthor,
+  type AppChange,
+  type AppDocumentState,
+  type AppFileBase,
+  type AppMediaGrant,
+  type AppShownBy,
+  type AppTaskContext,
+  type AppTaskState,
+  type AppWorkspaceFiles,
+  type OpenApp,
+} from "../../shared/apps.ts";
 import { toPosix } from "../paths.ts";
 import { renameWhenFree } from "../rename-when-free.ts";
 import type { Store } from "../store.ts";
+import { projectFiles } from "../working-tree.ts";
 import { AppMediaGrants } from "./media.ts";
 import { AppProblem, appViewPath, installedApp, messageOf, type AppPlugin } from "./plugins.ts";
 
@@ -75,6 +88,7 @@ const publicChange = ({ operation: _, inverse: __, ...change }: LoggedChange): A
 const stateOf = (opened: AppDocument): AppDocumentState => ({
   workspaceId: opened.workspaceId,
   app: opened.plugin.manifest.name,
+  file: opened.file,
   document: opened.document,
   lastChange: opened.changes.length > 0 ? publicChange(opened.changes.at(-1)!) : null,
   problem: opened.problem,
@@ -100,12 +114,12 @@ const realPathOrNull = (path: string) => {
 
 const isInside = (folder: string, path: string) => path.startsWith(folder + sep);
 
-/** The real folder of a document, and a path in it or below it: links that lead out of the folder are refused, and so is a file that doesn't exist unless `mayBeNew`. */
-function pathInFolder(documentPath: string, path: unknown, { mayBeNew }: { mayBeNew: boolean }) {
-  if (typeof path !== "string" || path === "" || isAbsolute(path)) throw new AppFileRefused(400, "Give the file's path relative to the document's folder.");
-  const folder = realPathOrNull(dirname(documentPath));
-  if (!folder) throw new AppFileRefused(404, "The document's folder doesn't exist.");
-  const refusedAsOutside = new AppFileRefused(403, `${path} is outside the document's folder.`);
+/** The real path of a file in a folder or below it: links that lead out of the folder are refused, and so is a file that doesn't exist unless `mayBeNew`. */
+function pathInFolder(folderPath: string, path: unknown, { mayBeNew, named = "the document's folder" }: { mayBeNew: boolean; named?: string }) {
+  if (typeof path !== "string" || path === "" || isAbsolute(path)) throw new AppFileRefused(400, `Give the file's path relative to ${named}.`);
+  const folder = realPathOrNull(folderPath);
+  if (!folder) throw new AppFileRefused(404, `${named[0]!.toUpperCase()}${named.slice(1)} doesn't exist.`);
+  const refusedAsOutside = new AppFileRefused(403, `${path} is outside ${named}.`);
   const wanted = resolve(folder, path);
   if (!isInside(folder, wanted)) throw refusedAsOutside;
   const real = realPathOrNull(wanted);
@@ -186,20 +200,43 @@ export class AppDocuments {
     return this.plugins.find((plugin) => appViewPath(plugin) === pathname)?.view.code ?? null;
   }
 
-  /** The real path of a file in the folder of the app's open document, or below it: links that lead out of the folder are refused. */
-  fileNextToDocument(workspaceId: string, appName: string, path: unknown, maxBytes = this.maxFileBytes): string {
-    const opened = this.documents.get(appKey({ workspaceId, app: appName }));
-    if (!opened) throw new AppFileRefused(404, `${appName} isn't open in this workspace.`);
-    const file = pathInFolder(opened.path, path, { mayBeNew: false });
+  /**
+   * The real path of a file for the app's view: named from the folder of the app's open document and in it or below it,
+   * or named from the workspace and anywhere in it. Links that lead out of that folder are refused.
+   */
+  fileForView(workspaceId: string, appName: string, path: unknown, { from = "document", maxBytes = this.maxFileBytes }: { from?: AppFileBase; maxBytes?: number } = {}): string {
+    const opened = this.openForView(workspaceId, appName);
+    const file =
+      from === "workspace"
+        ? pathInFolder(opened.workspacePath, path, { mayBeNew: false, named: "the workspace" })
+        : pathInFolder(dirname(opened.path), path, { mayBeNew: false });
     const stats = statSync(file);
     if (!stats.isFile()) throw new AppFileRefused(400, `${path} isn't a file.`);
     if (stats.size > maxBytes) throw new AppFileRefused(413, `${path} is larger than ${maxBytes / 1024 / 1024} MB.`);
     return file;
   }
 
-  /** An address on the canvas assets that streams a file next to the app's document, of any size, while the app stays open. */
-  mediaGrant(workspaceId: string, appName: string, path: unknown): AppMediaGrant {
-    return this.media.grant(appKey({ workspaceId, app: appName }), this.fileNextToDocument(workspaceId, appName, path, Infinity));
+  /** An address on the canvas assets that streams a file for the app's view, of any size, while the app stays open. */
+  mediaGrant(workspaceId: string, appName: string, path: unknown, from: AppFileBase = "document"): AppMediaGrant {
+    return this.media.grant(appKey({ workspaceId, app: appName }), this.fileForView(workspaceId, appName, path, { from, maxBytes: Infinity }));
+  }
+
+  /** The files of the workspace the app is open in, for its view to show. */
+  async workspaceFiles(workspaceId: string, appName: string): Promise<AppWorkspaceFiles> {
+    return projectFiles(this.openForView(workspaceId, appName).workspacePath);
+  }
+
+  /** Opens the app on another file of its workspace, as its view asks: as app_open does, but brought forward in no conversation. */
+  async openFromView(workspaceId: string, appName: string, file: unknown): Promise<OpenApp> {
+    this.openForView(workspaceId, appName);
+    if (typeof file !== "string" || file === "" || isAbsolute(file)) throw new AppFileRefused(400, "Give the file's path relative to the workspace.");
+    return this.open(workspaceId, appName, file);
+  }
+
+  private openForView(workspaceId: string, appName: string) {
+    const opened = this.documents.get(appKey({ workspaceId, app: appName }));
+    if (!opened) throw new AppFileRefused(404, `${appName} isn't open in this workspace.`);
+    return opened;
   }
 
   /** The file a path on the canvas assets streams, while its app is open. */
@@ -366,7 +403,7 @@ export class AppDocuments {
   private taskContext(opened: AppDocument, running: RunningTask): AppTaskContext {
     return {
       document: opened.document,
-      file: (path) => pathInFolder(opened.path, path, { mayBeNew: true }),
+      file: (path) => pathInFolder(dirname(opened.path), path, { mayBeNew: true }),
       documentFolder: dirname(opened.path),
       workspaceFolder: opened.workspacePath,
       pluginFolder: opened.plugin.folder,

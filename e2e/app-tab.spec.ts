@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { addWorkspace, callCanvasTool, createProfile, reloadFromRestartedHost, sendMessage, signIn } from "./helpers.ts";
@@ -442,5 +442,35 @@ test("the agent opens an app that its changes, your clicks and outside edits all
     expect(opened).toContain("The count is 0. Started for week.tally.");
     expect(JSON.parse(readFileSync(join(host.projectDir, "week.json"), "utf8"))).toEqual({ count: 0, startedFor: "week.tally" });
     await expect(view(page).locator("#count")).toHaveText("0");
+  });
+
+  await test.step("the view lists the workspace's files, and opens another of them, as the agent's app_open does", async () => {
+    mkdirSync(join(host.projectDir, "plans"), { recursive: true });
+    writeFileSync(join(host.projectDir, "plans", "week.json"), '{ "count": 7 }\n');
+    await view(page).getByRole("button", { name: "List files" }).click();
+    await expect(view(page).locator("#file-list")).toContainText("plans/week.json");
+    await expect(view(page).locator("#file-list")).toContainText("counter.json");
+    await expect(view(page).locator("#document-file")).toHaveText("week.json");
+    await view(page).getByLabel("File to open").fill("plans/week.json");
+    await view(page).getByRole("button", { name: "Open", exact: true }).click();
+    await expect(view(page).locator("#open-result")).toHaveText("opened");
+    await expect(view(page).locator("#count")).toHaveText("7");
+    await expect(view(page).locator("#document-file")).toHaveText("plans/week.json");
+  });
+
+  await test.step("opening a file outside the workspace is refused, and the view stays where it was", async () => {
+    await view(page).getByLabel("File to open").fill("../outside.json");
+    await view(page).getByRole("button", { name: "Open", exact: true }).click();
+    await expect(view(page).locator("#open-result")).toHaveText(/^\.\.\/outside\.json is outside the workspace/);
+    await expect(view(page).locator("#document-file")).toHaveText("plans/week.json");
+    await expect(view(page).locator("#count")).toHaveText("7");
+  });
+
+  await test.step("from a document in a subfolder, the view reads a file of the workspace's root only when it names it from the workspace", async () => {
+    writeFileSync(join(host.projectDir, "root-note.txt"), "Kept at the root\n");
+    await view(page).getByRole("button", { name: "Read from the workspace" }).click();
+    await expect(view(page).locator("#file-text")).toHaveText("Kept at the root");
+    await view(page).getByRole("button", { name: "Read up from the document" }).click();
+    await expect(view(page).locator("#file-text")).toHaveText("../root-note.txt is outside the document's folder.");
   });
 });

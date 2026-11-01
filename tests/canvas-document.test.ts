@@ -226,8 +226,10 @@ describe("serveCanvasAssets", () => {
 
 interface FrameWindow {
   mirador: {
-    readFile(path: string): Promise<Blob>;
-    mediaUrl(path: string): Promise<string>;
+    readFile(path: string, options?: { from?: string }): Promise<Blob>;
+    mediaUrl(path: string, options?: { from?: string }): Promise<string>;
+    listFiles(): Promise<unknown>;
+    open(file: string): Promise<void>;
     prompt(text: string, options?: { images?: Blob[] }): Promise<void>;
     run(task: string): void;
     stopTask(): void;
@@ -317,7 +319,7 @@ describe("an app view's window.mirador.readFile", () => {
     const { mirador, posted, answer } = runAppBridge();
     const reading = mirador.readFile("textures/1.jpg");
     const request = posted.find(({ kind }) => kind === "app-read-file")!;
-    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-read-file", requestId: expect.any(String), path: "textures/1.jpg" });
+    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-read-file", requestId: expect.any(String), path: "textures/1.jpg", from: "document" });
     answer(appFileMessage(request.requestId as string, new TextEncoder().encode("hello").buffer as ArrayBuffer, "image/png"));
     const blob = await reading;
     expect(blob.type).toBe("image/png");
@@ -358,7 +360,7 @@ describe("an app view's window.mirador.mediaUrl", () => {
     const { mirador, posted, answer } = runAppBridge();
     const asking = mirador.mediaUrl("clips/a.mp4");
     const request = posted.find(({ kind }) => kind === "app-media-url")!;
-    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-media-url", requestId: expect.any(String), path: "clips/a.mp4" });
+    expect(request).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-media-url", requestId: expect.any(String), path: "clips/a.mp4", from: "document" });
     answer(appAnswerMessage(request.requestId as string, "http://assets/media/t/a.mp4?v=1"));
     expect(await asking).toBe("http://assets/media/t/a.mp4?v=1");
   });
@@ -371,6 +373,39 @@ describe("an app view's window.mirador.mediaUrl", () => {
     const unanswered = mirador.mediaUrl("b.mp4");
     timers.at(-1)!.fire();
     await expect(unanswered).rejects.toThrow("Mirador didn't answer the request for b.mp4.");
+  });
+});
+
+describe("an app view's window.mirador, for the workspace's files", () => {
+  const request = (posted: Record<string, unknown>[], kind: string) => posted.find((message) => message.kind === kind)!;
+
+  test("reads and streams a file named from the workspace", () => {
+    const { mirador, posted } = runAppBridge();
+    void mirador.readFile("chapters/one.tex", { from: "workspace" });
+    void mirador.mediaUrl("figures/a.mp4", { from: "workspace" });
+    expect(request(posted, "app-read-file")).toMatchObject({ path: "chapters/one.tex", from: "workspace" });
+    expect(request(posted, "app-media-url")).toMatchObject({ path: "figures/a.mp4", from: "workspace" });
+  });
+
+  test("lists the files, resolving with the list it is answered with", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const listing = mirador.listFiles();
+    const asked = request(posted, "app-list-files");
+    expect(asked).toEqual({ source: CANVAS_MESSAGE_SOURCE, itemId: "app:w1/counter", kind: "app-list-files", requestId: expect.any(String) });
+    answer(appAnswerMessage(asked.requestId as string, { files: ["main.tex"], truncated: false }));
+    expect(await listing).toEqual({ files: ["main.tex"], truncated: false });
+  });
+
+  test("opens another file, resolving once it is open, or rejecting with the reason it isn't", async () => {
+    const { mirador, posted, answer } = runAppBridge();
+    const opening = mirador.open("chapters/one.tex");
+    const asked = request(posted, "app-open");
+    expect(asked).toMatchObject({ kind: "app-open", file: "chapters/one.tex" });
+    answer(appAnswerMessage(asked.requestId as string, null));
+    expect(await opening).toBeUndefined();
+    const refused = mirador.open("../out.tex");
+    answer(appAnswerFailedMessage(posted.filter(({ kind }) => kind === "app-open").at(-1)!.requestId as string, "../out.tex is outside the workspace."));
+    await expect(refused).rejects.toThrow("../out.tex is outside the workspace.");
   });
 });
 
