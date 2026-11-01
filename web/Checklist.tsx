@@ -2,6 +2,7 @@ import type { PlanEntry } from "@agentclientprotocol/sdk";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CanvasItem, PluginCanvasItem } from "../shared/model.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 
 const AGENT_EDIT_FLASH_MS = 2000;
 
@@ -44,9 +45,9 @@ export function useFlashOnAgentEdit(itemId: string | undefined, at: number | und
 
 function PinnedPlan({ plan }: { plan: PlanEntry[] }) {
   return (
-    <section className="checklist-section checklist-plan" aria-label="Agent's plan">
+    <section className="checklist-section checklist-plan" aria-label={t.canvas.checklist.agentsPlan}>
       <h4 data-hint={hints.checklistPlan}>
-        Agent's plan <span className="checklist-progress">{planProgress(plan)}</span>
+        {t.canvas.checklist.agentsPlan} <span className="checklist-progress">{planProgress(plan)}</span>
       </h4>
       <ul>
         {plan.map((entry, index) => (
@@ -54,7 +55,7 @@ function PinnedPlan({ plan }: { plan: PlanEntry[] }) {
             <label>
               <input type="checkbox" checked={entry.status === "completed"} disabled />
               <span className="checklist-text">{entry.content}</span>
-              {entry.status === "in_progress" && <span className="checklist-owner">in progress</span>}
+              {entry.status === "in_progress" && <span className="checklist-owner">{t.canvas.checklist.inProgress}</span>}
             </label>
           </li>
         ))}

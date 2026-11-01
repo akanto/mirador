@@ -6,26 +6,23 @@ import { changedFiles, firstChangedLine, projectFilesWithChanges, startsFolded, 
 import { connection } from "./connection.ts";
 import { DiffStyleChoice, diffStyle, EditedFile } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
+import { formatNumber, t } from "./i18n/index.ts";
 import { storedChoice } from "./stored-choice.ts";
 import { withHomeAsTilde } from "./workspace-folder.ts";
 
-const scopeLabels: Record<ChangeScope, string> = { turn: "This turn", uncommitted: "Uncommitted", session: "This session" };
+const words = t.canvas.changes;
+const scopeLabels: Record<ChangeScope, string> = words.scope;
 const changesScope = storedChoice<ChangeScope>("mirador-changes-scope", changeScopes, "turn");
 const ignoredFiles = storedChoice<"shown" | "hidden">("mirador-changes-ignored", ["shown", "hidden"] as const, "shown");
 const statusLetters: Record<ChangedFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 const listViews = ["list", "tree", "all"] as const;
 type ListView = (typeof listViews)[number];
-const listViewLabels: Record<ListView, string> = { list: "List", tree: "Tree", all: "All files" };
+const listViewLabels: Record<ListView, string> = words.view;
 const listView = storedChoice<ListView>("mirador-changes-view", listViews, "all");
 
-const listNotes: Partial<Record<ChangesBase, string>> = {
-  session: "The files the agent changed with its edit tools in this conversation, and the files written while its commands ran, including those of the commits they made.",
-  "turn-file-times": "This folder is not a git repository, so the list holds the files written since this turn began, and the agent's edits. Deleted files and earlier versions are not known.",
-  "not-a-repository": "This folder is not a git repository, so the list holds only the files the agent edited.",
-  "turn-not-kept": "The files from this turn's start are no longer kept, so the list holds only the files the agent edited.",
-};
+const listNotes: Partial<Record<ChangesBase, string>> = words.notes;
 const nothingChanged = (list: ChangeList) =>
-  list.base === "no-turn" ? "Files the agent changes in this conversation show here." : list.scope === "turn" ? "No file changed in this turn." : list.scope === "session" ? "The agent has not changed a file in this conversation." : "No uncommitted changes.";
+  list.base === "no-turn" ? words.noTurnYet : list.scope === "turn" ? words.nothingThisTurn : list.scope === "session" ? words.nothingThisSession : words.nothingUncommitted;
 
 function changesRequest<T>(send: (requestId: string) => ClientMessage, picked: (message: ServerMessage) => T | undefined) {
   return connection.sendAndAwait(send, (message, requestId) => {
@@ -150,19 +147,19 @@ function FileRow({ file, name, depth, rows }: { file: ListedFile; name: string; 
         aria-pressed={selected}
         onClick={() => rows.onSelect(file.path)}
       >
-        <span className="change-status" title={change?.status}>
+        <span className="change-status" title={change ? words.status[change.status] : undefined}>
           {change && statusLetters[change.status]}
         </span>
         <span className="changed-path">{name}</span>
         {change && <LineCounts files={[change]} />}
         {change?.byAgent && (
-          <span className="by-agent" aria-label="Changed by the agent" data-hint={hints.changesByAgent}>
+          <span className="by-agent" aria-label={words.changedByAgent} data-hint={hints.changesByAgent}>
             ●
           </span>
         )}
         {file.fromCommit && (
           <span className="from-commit" data-hint={hints.changesFromCommit}>
-            commit
+            {words.commit}
           </span>
         )}
       </button>
@@ -174,7 +171,7 @@ function FileRow({ file, name, depth, rows }: { file: ListedFile; name: string; 
 function FolderRow({ folder, depth, rows, folding }: { folder: TreeFolder<ListedFile>; depth: number; rows: RowContext; folding: Folding }) {
   const folded = folding.isFolded(folder);
   const changes = folder.items.flatMap(({ change }) => (change ? [change] : []));
-  const summary = folding.everyFile ? (changes.length > 0 ? `${changes.length} changed` : null) : changes.length === 1 ? "1 file" : `${changes.length} files`;
+  const summary = folding.everyFile ? (changes.length > 0 ? words.changedInFolder(changes.length) : null) : words.filesInFolder(changes.length);
   return (
     <li>
       <button type="button" className={`changed-folder ${changes.length === 0 ? "unchanged" : ""}`} style={indentedBy(depth)} aria-expanded={!folded} onClick={() => folding.toggle(folder)}>
@@ -243,10 +240,10 @@ function UnchangedFile({ conversationId, path }: { conversationId: string; path:
   return (
     <div className="changes-diff">
       <div className="edit-approval-bar">
-        <span className="review-empty">No changes in this file.</span>
+        <span className="review-empty">{words.noChangesInFile}</span>
         <span className="spacer" />
         <button type="button" className="link" data-hint={hints.changesOpenInIdea} onClick={() => connection.send({ type: "changes.open-in-editor", conversationId, path, line: 1 })}>
-          Open in IDEA
+          {words.openInIdea}
         </button>
       </div>
     </div>
@@ -267,14 +264,14 @@ function SelectedFile({ conversationId, file, loaded, homeDir }: { conversationI
             data-hint={hints.changesOpenInIdea}
             onClick={() => connection.send({ type: "changes.open-in-editor", conversationId, path: file.path, line: firstChangedLine(changes) })}
           >
-            Open in IDEA
+            {words.openInIdea}
           </button>
         )}
         <DiffStyleChoice style={style} />
       </div>
       {loaded && "error" in loaded && <p className="review-empty">{loaded.error}</p>}
-      {changes?.source === "agent" && <p className="hint">The agent's own edits to this file, one by one, without line numbers.</p>}
-      {changes && changes.diffs.length === 0 && <p className="review-empty">No line changes.</p>}
+      {changes?.source === "agent" && <p className="hint">{words.agentsOwnEdits}</p>}
+      {changes && changes.diffs.length === 0 && <p className="review-empty">{words.noLineChanges}</p>}
       {changes?.diffs.map((diff, index) => (
         <EditedFile key={index} edit={{ ...diff, path: withHomeAsTilde(diff.path, homeDir) }} style={style} unlocatedHint={null} />
       ))}
@@ -353,7 +350,7 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
   return (
     <div className="changes">
       <div className="changes-bar">
-        <div className="diff-style" role="group" aria-label="Changes since">
+        <div className="diff-style" role="group" aria-label={words.since}>
           {changeScopes.map((each) => (
             <button key={each} type="button" className={scope === each ? "on" : ""} aria-pressed={scope === each} data-hint={hints.changesScope[each]} onClick={() => changesScope.set(each)}>
               {scopeLabels[each]}
@@ -361,7 +358,7 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
           ))}
         </div>
         {scope === "session" && (
-          <div className="diff-style" role="group" aria-label="Git-ignored files">
+          <div className="diff-style" role="group" aria-label={words.ignoredFiles}>
             <button
               type="button"
               className={showIgnored ? "on" : ""}
@@ -369,17 +366,17 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
               data-hint={hints.changesIgnored}
               onClick={() => ignoredFiles.set(showIgnored ? "hidden" : "shown")}
             >
-              Git-ignored files
+              {words.ignoredFiles}
             </button>
           </div>
         )}
         <span className="spacer" />
         {view !== "list" && (
           <button type="button" className="link" data-hint={hints.changesFoldAll} onClick={foldEveryFolder}>
-            Fold all
+            {words.foldAll}
           </button>
         )}
-        <div className="diff-style" role="group" aria-label="Show as">
+        <div className="diff-style" role="group" aria-label={words.showAs}>
           {listViews.map((each) => (
             <button key={each} type="button" className={view === each ? "on" : ""} aria-pressed={view === each} data-hint={hints.changesView[each]} onClick={() => listView.set(each)}>
               {listViewLabels[each]}
@@ -387,35 +384,35 @@ export function ChangesView({ conversationId, refreshPoint, homeDir }: { convers
           ))}
         </div>
         <button type="button" className="link" data-hint={hints.changesRefresh} onClick={() => setRefreshes((count) => count + 1)}>
-          Refresh
+          {words.refresh}
         </button>
       </div>
-      {loadedList && "error" in loadedList ? <p className="review-empty">{loadedList.error}</p> : !visible && <p className="changes-none">Loading…</p>}
+      {loadedList && "error" in loadedList ? <p className="review-empty">{loadedList.error}</p> : !visible && <p className="changes-none">{words.loading}</p>}
       {visible && listNotes[visible.base] && <p className="hint">{listNotes[visible.base]}</p>}
       {visible?.filesCheckedAtMost !== undefined && (
-        <p className="review-empty">This folder holds more than {visible.filesCheckedAtMost.toLocaleString("en")} files, so only that many were checked and some changed files may be missing.</p>
+        <p className="review-empty">{words.checkedAtMost(formatNumber(visible.filesCheckedAtMost))}</p>
       )}
-      {hiddenIgnored.length > 0 && <p className="hint">{hiddenIgnored.length === 1 ? "1 git-ignored file hidden." : `${hiddenIgnored.length} git-ignored files hidden.`}</p>}
+      {hiddenIgnored.length > 0 && <p className="hint">{words.ignoredHidden(hiddenIgnored.length)}</p>}
       {visible && files.length === 0 && hiddenIgnored.length === 0 && <p className="changes-none">{nothingChanged(visible)}</p>}
       {everyFile && loadedProjectFiles && "error" in loadedProjectFiles && <p className="review-empty">{loadedProjectFiles.error}</p>}
       {projectFiles?.filesListedAtMost !== undefined && (
-        <p className="review-empty">This project holds more than {projectFiles.filesListedAtMost.toLocaleString("en")} files, so only that many are shown.</p>
+        <p className="review-empty">{words.listedAtMost(formatNumber(projectFiles.filesListedAtMost))}</p>
       )}
       {sections && (
         <>
-          <FileSection title="Project" files={sections.project} asTree={view !== "list"} rows={rows} folding={foldingOf("project")} />
-          <FileSection title="Edited by the agent" hint={hints.changesEditedByAgent} files={sections.editedByAgent} asTree={view !== "list"} rows={rows} folding={foldingOf("edited-by-agent")} />
-          <FileSection title="Changed some other way" hint={hints.changesChangedOtherwise} files={sections.changedOtherwise} asTree={view !== "list"} rows={rows} folding={foldingOf("changed-otherwise")} />
+          <FileSection title={words.sections.project} files={sections.project} asTree={view !== "list"} rows={rows} folding={foldingOf("project")} />
+          <FileSection title={words.sections.editedByAgent} hint={hints.changesEditedByAgent} files={sections.editedByAgent} asTree={view !== "list"} rows={rows} folding={foldingOf("edited-by-agent")} />
+          <FileSection title={words.sections.changedOtherwise} hint={hints.changesChangedOtherwise} files={sections.changedOtherwise} asTree={view !== "list"} rows={rows} folding={foldingOf("changed-otherwise")} />
           <FileSection
-            title="Maybe written by another conversation"
+            title={words.sections.othersMayHaveWritten}
             hint={hints.changesOthersMayHaveWritten}
             files={sections.othersMayHaveWritten}
             asTree={view !== "list"}
             rows={rows}
             folding={foldingOf("others-may-have-written")}
           />
-          <FileSection title="From commits since the turn began" files={sections.committed} asTree={view !== "list"} rows={rows} folding={foldingOf("committed")} />
-          <FileSection title="Outside the project" files={sections.outside} asTree={view !== "list"} rows={rows} folding={foldingOf("outside")} />
+          <FileSection title={words.sections.committed} files={sections.committed} asTree={view !== "list"} rows={rows} folding={foldingOf("committed")} />
+          <FileSection title={words.sections.outside} files={sections.outside} asTree={view !== "list"} rows={rows} folding={foldingOf("outside")} />
         </>
       )}
     </div>

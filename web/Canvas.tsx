@@ -12,6 +12,7 @@ import { ChangesView } from "./Changes.tsx";
 import { ChecklistView, currentTabItem, isTabItem, tabCount, useFlashOnAgentEdit } from "./Checklist.tsx";
 import { EditApproval } from "./EditApproval.tsx";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { usePageExport } from "./PageExport.tsx";
 import { usePageMarks } from "./PageMarks.tsx";
 import { PluginItemView } from "./PluginItemView.tsx";
@@ -24,6 +25,8 @@ import { openWebAddress } from "./outside-links.ts";
 import { opensWithRoom, takeArrivedReview } from "./review-placement.ts";
 import { roomOf } from "./plugin-settings.ts";
 import { FullscreenToggle, PaneGrip, usePaneFullscreen } from "./Workspace.tsx";
+
+const words = t.canvas;
 
 /** Content as wide as the viewport would otherwise widen the frame that measures it without end. */
 const MAX_CONTENT_WIDTH = 2400;
@@ -307,7 +310,7 @@ function AskQuestionFields({
                 onChange={() => onChange({ choice: option.label })}
               />
               <span className="ask-option-label">{option.label}</span>
-              {option.recommended && <span className="ask-option-recommended">Recommended</span>}
+              {option.recommended && <span className="ask-option-recommended">{words.ask.recommended}</span>}
             </span>
             {option.description && <span className="ask-option-description">{option.description}</span>}
             {option.html && (
@@ -327,13 +330,13 @@ function AskQuestionFields({
         <div className="ask-extras">
           {question.allowOther && (
             <label className={`ask-other ${draft.choice === SOMETHING_ELSE ? "chosen" : ""}`}>
-              <input type="radio" name={radioName} aria-label="Something else" checked={draft.choice === SOMETHING_ELSE} onChange={() => onChange({ choice: SOMETHING_ELSE })} />
+              <input type="radio" name={radioName} aria-label={words.ask.somethingElseLabel} checked={draft.choice === SOMETHING_ELSE} onChange={() => onChange({ choice: SOMETHING_ELSE })} />
               <textarea
                 {...typingAidAttributes}
                 rows={Math.min(6, draft.other.split("\n").length)}
                 value={draft.other}
-                placeholder="Something else…"
-                aria-label="Your own answer"
+                placeholder={words.ask.somethingElse}
+                aria-label={words.ask.ownAnswer}
                 onFocus={() => onChange({ choice: SOMETHING_ELSE })}
                 onChange={(event) => onChange({ other: event.target.value })}
                 onKeyDown={answerOnEnter}
@@ -343,7 +346,7 @@ function AskQuestionFields({
           <textarea
             {...typingAidAttributes}
             value={draft.note}
-            placeholder="Optional note for the agent (sent with your answer)"
+            placeholder={words.ask.note}
             onChange={(event) => onChange({ note: event.target.value })}
             onKeyDown={answerOnEnter}
           />
@@ -360,12 +363,12 @@ function answerOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   event.currentTarget.form?.requestSubmit();
 }
 
-const deliveredNote = (answer: NonNullable<AskItem["answer"]>) => (answer.deliveredAs === "tool-result" ? " (returned to the agent)" : " (sent as your next message)");
+const deliveredNote = (answer: NonNullable<AskItem["answer"]>) => (answer.deliveredAs === "tool-result" ? words.ask.returnedToAgent : words.ask.sentAsNextMessage);
 
 function AnsweredSeveral({ answer }: { answer: NonNullable<AskItem["answer"]> }) {
   return (
     <div className="ask-answer">
-      You answered:
+      {words.ask.youAnswered}
       <ol className="ask-review">
         {(answer.answers ?? []).map((entry, index) => (
           <li key={index}>
@@ -374,7 +377,7 @@ function AnsweredSeveral({ answer }: { answer: NonNullable<AskItem["answer"]> })
           </li>
         ))}
       </ol>
-      {answer.note && <div>Note on all the answers: “{answer.note}”</div>}
+      {answer.note && <div>{words.ask.noteOnAllAnswers(answer.note)}</div>}
       <span className="delivered">{deliveredNote(answer)}</span>
     </div>
   );
@@ -412,22 +415,22 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
 
   return (
     <form className="ask" onSubmit={submit}>
-      {several && waiting && !onReviewPage && <p className="ask-progress">{`Question ${page + 1} of ${questions.length}`}</p>}
-      {several && waiting && onReviewPage && <p className="ask-progress">Review your answers</p>}
-      <h3>{several ? (waiting ? (onReviewPage ? "Is this right?" : shownQuestion.question) : item.title) : item.question}</h3>
+      {several && waiting && !onReviewPage && <p className="ask-progress">{words.ask.questionOf(page + 1, questions.length)}</p>}
+      {several && waiting && onReviewPage && <p className="ask-progress">{words.ask.review}</p>}
+      <h3>{several ? (waiting ? (onReviewPage ? words.ask.isThisRight : shownQuestion.question) : item.title) : item.question}</h3>
       {item.status === "answered" && item.answer && !several && (
         <div className="ask-answer">
-          You chose <strong>{item.answer.label}</strong>
+          {words.ask.youChose} <strong>{item.answer.label}</strong>
           {item.answer.note && <> — “{item.answer.note}”</>}
           <span className="delivered">{deliveredNote(item.answer)}</span>
         </div>
       )}
       {item.status === "answered" && item.answer && several && <AnsweredSeveral answer={item.answer} />}
-      {item.status === "cancelled" && <div className="ask-answer">This question was withdrawn.</div>}
+      {item.status === "cancelled" && <div className="ask-answer">{words.ask.withdrawn}</div>}
       {pagesBeforeShown.map((before) => (
-        <section key={before.id} className="ask-page-before" aria-label={`Shown before the question: ${before.title}`}>
+        <section key={before.id} className="ask-page-before" aria-label={words.ask.shownBeforeLabel(before.title)}>
           <div className="ask-page-before-title" data-hint={hints.askPageBefore}>
-            Shown just before: {before.title}
+            {words.ask.shownJustBefore(before.title)}
           </div>
           <CanvasFrame frameId={`${item.id}-before-${before.id}`} html={before.html ?? ""} assetsOrigin={assetsOrigin} className="ask-context" fitsContent />
         </section>
@@ -439,7 +442,7 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
               {question.question} <strong>{answers[index]}</strong>
               {drafts[index]!.note.trim() && <> — “{drafts[index]!.note.trim()}”</>}{" "}
               <button type="button" className="link" onClick={() => setPage(index)}>
-                Change
+                {words.ask.change}
               </button>
             </li>
           ))}
@@ -460,9 +463,9 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
       )}
       {waiting && !several && (
         <div className="ask-submit">
-          <span className="ask-selection">{currentAnswer ? <>Your answer: <strong>{currentAnswer}</strong></> : "Pick an option to answer"}</span>
+          <span className="ask-selection">{currentAnswer ? <>{words.ask.yourAnswer} <strong>{currentAnswer}</strong></> : words.ask.pickAnOption}</span>
           <button type="submit" className="primary" disabled={!currentAnswer}>
-            Submit
+            {words.ask.submit}
           </button>
         </div>
       )}
@@ -470,9 +473,9 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
         <div className="ask-extras">
           <textarea
             {...typingAidAttributes}
-            aria-label="Note for the agent on all the answers"
+            aria-label={words.ask.noteOnAll}
             value={note}
-            placeholder="Optional note for the agent (sent with all your answers)"
+            placeholder={words.ask.noteOnAllPlaceholder}
             onChange={(event) => setNote(event.target.value)}
             onKeyDown={answerOnEnter}
           />
@@ -481,16 +484,16 @@ function AskView({ item, pagesBefore, assetsOrigin }: { item: AskItem; pagesBefo
       {waiting && several && (
         <div className="ask-submit">
           <button type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>
-            Back
+            {words.ask.back}
           </button>
-          <span className="ask-selection">{onReviewPage ? "" : currentAnswer ? <>Your answer: <strong>{currentAnswer}</strong></> : "Pick an option to answer"}</span>
+          <span className="ask-selection">{onReviewPage ? "" : currentAnswer ? <>{words.ask.yourAnswer} <strong>{currentAnswer}</strong></> : words.ask.pickAnOption}</span>
           {onReviewPage ? (
             <button key="submit" type="submit" className="primary" disabled={answers.some((answer) => !answer)}>
-              Submit
+              {words.ask.submit}
             </button>
           ) : (
             <button key="next" type="button" className="primary" disabled={!currentAnswer} onClick={() => setPage(page + 1)}>
-              Next
+              {words.ask.next}
             </button>
           )}
         </div>
@@ -508,8 +511,8 @@ const iconOf = (item: CanvasItem) => (item.kind === "plugin" ? item.icon : kindI
 
 function outcomeOf(item: CanvasItem) {
   if (item.kind === "plugin" && item.outcome) return item.outcome;
-  if (item.status === "waiting") return "needs your answer";
-  if (item.status === "cancelled") return "withdrawn";
+  if (item.status === "waiting") return words.outcome.needsYourAnswer;
+  if (item.status === "cancelled") return words.outcome.withdrawn;
   if (item.kind === "ask" && item.status === "answered" && item.answer) return `→ ${item.answer.label}`;
   return "";
 }
@@ -523,7 +526,7 @@ const outcomeIsFreeText = (item: CanvasItem) => isVerdict(item) || item.status =
 const isSettledQuestion = (item: CanvasItem): item is AskItem => item.kind === "ask" && item.status !== "waiting";
 
 function settledMessage(item: AskItem): SettledNote {
-  return item.status === "answered" ? { text: `✓ Answer sent: “${item.answer?.label ?? ""}”`, tone: "done" } : { text: "The agent withdrew its question.", tone: "neutral" };
+  return item.status === "answered" ? { text: words.ask.answerSent(item.answer?.label ?? ""), tone: "done" } : { text: words.ask.agentWithdrew, tone: "neutral" };
 }
 
 /** A note that goes away by itself a few seconds after it is set. */
@@ -579,7 +582,7 @@ function useEditsOnCanvas(edits: EditRequest[], clear: () => void) {
 
 function CanvasHistory({ items, selectedId, onPick }: { items: CanvasItem[]; selectedId: string | null; onPick: (id: string) => void }) {
   return (
-    <ul className="canvas-history" aria-label="Canvas history">
+    <ul className="canvas-history" aria-label={words.bar.history}>
       {items.map((item) => (
         <li key={item.id}>
           <button type="button" className={`history-entry ${item.id === selectedId ? "selected" : ""} status-${item.status}`} onClick={() => onPick(item.id)}>
@@ -816,28 +819,28 @@ export function CanvasPanel({
   const pageMarks = usePageMarks(shownPage, shownPageFrame);
   const bar = useRef<HTMLDivElement>(null);
   const foldLevel = useFoldLevel(bar);
-  const checklistCountText = (tabItem || plan) && `Checklist ${tabCount(tabItem, plan)}`;
+  const checklistCountText = (tabItem || plan) && words.bar.checklist(String(tabCount(tabItem, plan)));
   const foldedEntries: BarMenuEntry[] = [
     ...(foldLevel >= FOLDS.navigation
       ? [
-          { label: "Older", disabled: !older, onChoose: () => older && pick(older.id) },
-          { label: "Newer", disabled: !newer, onChoose: () => newer && pick(newer.id) },
-          { label: "Changes", checked: changesShown, disabled: !somethingElseShown && !checklistOpen, onChoose: () => toggleTab("changes") },
+          { label: words.bar.older, disabled: !older, onChoose: () => older && pick(older.id) },
+          { label: words.bar.newer, disabled: !newer, onChoose: () => newer && pick(newer.id) },
+          { label: words.bar.changes, checked: changesShown, disabled: !somethingElseShown && !checklistOpen, onChoose: () => toggleTab("changes") },
         ]
       : []),
     ...(foldLevel >= FOLDS.checklist && checklistCountText ? [{ label: checklistCountText, checked: checklistOpen, onChoose: () => toggleTab("checklist") }] : []),
     ...(foldLevel >= FOLDS.checklist ? apps.open.map(({ app, title }) => ({ label: title, checked: tab === appTab(app), onChoose: () => toggleTab(appTab(app)) })) : []),
-    ...(foldLevel >= FOLDS.checklist && checklistOpen && tabItem ? [{ label: "Dismiss", onChoose: dismissChecklist }] : []),
+    ...(foldLevel >= FOLDS.checklist && checklistOpen && tabItem ? [{ label: words.bar.dismiss, onChoose: dismissChecklist }] : []),
     ...(foldLevel >= FOLDS.leastUsed
       ? [
-          { label: `History (${pages.length})`, checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
-          { label: "Clear", disabled: !somethingElseShown && !checklistOpen, onChoose: clear },
-          ...(shownPage ? [{ label: "Point and ask", checked: pageMarks.pointing, separatorBefore: true, onChoose: () => pageMarks.point(!pageMarks.pointing) }] : []),
+          { label: words.bar.historyCount(pages.length), checked: historyOpen, disabled: pages.length === 0, onChoose: toggleHistory },
+          { label: words.bar.clear, disabled: !somethingElseShown && !checklistOpen, onChoose: clear },
+          ...(shownPage ? [{ label: words.bar.pointAndAsk, checked: pageMarks.pointing, separatorBefore: true, onChoose: () => pageMarks.point(!pageMarks.pointing) }] : []),
           ...pageExport.entries.map((entry, index) => (index === 0 ? { ...entry, separatorBefore: true } : entry)),
         ]
       : []),
     ...apps.elsewhere.map(({ workspaceId, app, title }, index) => ({
-      label: `Show ${title}`,
+      label: words.bar.showApp(title),
       separatorBefore: index === 0,
       onChoose: () => connection.send({ type: "app.use-in", workspaceId, app, conversationId }),
     })),
@@ -855,7 +858,7 @@ export function CanvasPanel({
       <div className="canvas-header" data-pane-bar ref={bar} data-fold={foldLevel}>
         <PaneGrip pane="canvas" />
         {changesOpen ? (
-          <span className="canvas-title">Changes</span>
+          <span className="canvas-title">{words.bar.changes}</span>
         ) : shownApp ? (
           <>
             <span className="canvas-title">{shownApp.title}</span>
@@ -864,13 +867,13 @@ export function CanvasPanel({
         ) : checklistOpen ? (
           <>
             <span className="canvas-kind">{tabItem?.icon ?? PLAN_ICON}</span>
-            <span className="canvas-title">{tabItem?.title ?? "Agent's plan"}</span>
-            <button type="button" className="icon checklist-close" aria-label="Close the checklist" data-hint={hints.checklistClose} onClick={() => setTab(null)}>
+            <span className="canvas-title">{tabItem?.title ?? words.bar.agentsPlan}</span>
+            <button type="button" className="icon checklist-close" aria-label={words.bar.closeChecklist} data-hint={hints.checklistClose} onClick={() => setTab(null)}>
               ×
             </button>
             {tabItem && (
-              <button type="button" className="icon checklist-dismiss" aria-label="Dismiss the checklist" data-hint={hints.checklistDismiss} onClick={dismissChecklist}>
-                Dismiss
+              <button type="button" className="icon checklist-dismiss" aria-label={words.bar.dismissChecklist} data-hint={hints.checklistDismiss} onClick={dismissChecklist}>
+                {words.bar.dismiss}
               </button>
             )}
           </>
@@ -878,7 +881,7 @@ export function CanvasPanel({
           <>
             <span className="canvas-kind">✎</span>
             <span className="canvas-title">{edit.shown.title}</span>
-            <span className="canvas-outcome status-waiting">needs your answer</span>
+            <span className="canvas-outcome status-waiting">{words.outcome.needsYourAnswer}</span>
           </>
         ) : selected ? (
           <>
@@ -891,7 +894,7 @@ export function CanvasPanel({
             )}
           </>
         ) : (
-          <span className="canvas-title empty-title">Canvas</span>
+          <span className="canvas-title empty-title">{words.bar.canvas}</span>
         )}
         {(tab || !edit.shown) && edit.waiting > 0 && (
           <button
@@ -903,7 +906,7 @@ export function CanvasPanel({
               edit.bringBack();
             }}
           >
-            {edit.waiting === 1 ? "1 edit waiting" : `${edit.waiting} edits waiting`}
+            {words.bar.editsWaiting(edit.waiting)}
           </button>
         )}
         <span className="spacer" />
@@ -915,14 +918,14 @@ export function CanvasPanel({
             data-hint={hints.canvasPoint}
             onClick={() => pageMarks.point(!pageMarks.pointing)}
           >
-            Point and ask
+            {words.bar.pointAndAsk}
           </button>
         )}
-        {shownPage && <BarMenu className="page-export" label="Export ▾" menuName="Export the page" hint={hints.canvasPageExport} entries={pageExport.entries} />}
-        <button type="button" className="icon canvas-nav" aria-label="Older" data-hint={hints.canvasOlder} disabled={!older} onClick={() => older && pick(older.id)}>
+        {shownPage && <BarMenu className="page-export" label={words.bar.export} menuName={words.bar.exportMenu} hint={hints.canvasPageExport} entries={pageExport.entries} />}
+        <button type="button" className="icon canvas-nav" aria-label={words.bar.older} data-hint={hints.canvasOlder} disabled={!older} onClick={() => older && pick(older.id)}>
           ‹
         </button>
-        <button type="button" className="icon canvas-nav" aria-label="Newer" data-hint={hints.canvasNewer} disabled={!newer} onClick={() => newer && pick(newer.id)}>
+        <button type="button" className="icon canvas-nav" aria-label={words.bar.newer} data-hint={hints.canvasNewer} disabled={!newer} onClick={() => newer && pick(newer.id)}>
           ›
         </button>
         <button
@@ -933,7 +936,7 @@ export function CanvasPanel({
           disabled={!somethingElseShown && !checklistOpen}
           onClick={() => toggleTab("changes")}
         >
-          Changes
+          {words.bar.changes}
         </button>
         {(tabItem || plan) && (
           <button
@@ -966,7 +969,7 @@ export function CanvasPanel({
           disabled={pages.length === 0}
           onClick={toggleHistory}
         >
-          History ({pages.length})
+          {words.bar.historyCount(pages.length)}
         </button>
         <button
           type="button"
@@ -975,20 +978,20 @@ export function CanvasPanel({
           disabled={!somethingElseShown && !checklistOpen}
           onClick={clear}
         >
-          Clear
+          {words.bar.clear}
         </button>
         <BarMenu
           className={apps.elsewhere.length > 0 ? "canvas-more offers-apps" : "canvas-more"}
           label="⋯"
-          buttonName="More"
-          menuName="More of the canvas bar"
+          buttonName={words.bar.more}
+          menuName={words.bar.moreMenu}
           hint={hints.canvasMore}
           entries={foldedEntries}
           flashing={foldLevel >= FOLDS.checklist && checklistFlashing}
         />
         <FullscreenToggle pane="canvas" />
         <button type="button" className="link canvas-hide" data-hint={hints.canvasHide} data-shortcut={shortcutKeys().toggleCanvas} onClick={onHide}>
-          Hide
+          {words.bar.hide}
         </button>
       </div>
       {pageExport.opened}
@@ -1000,8 +1003,8 @@ export function CanvasPanel({
               <div className="empty-state">
                 <SettledNoteLine note={settledNote} />
                 {pages.length === 0
-                  ? "When the agent shows something or asks you to choose, it appears here."
-                  : "Nothing on the canvas right now. Earlier drawings and questions are in History."}
+                  ? words.bar.emptyFirst
+                  : words.bar.empty}
               </div>
             )}
             <ChangesView conversationId={conversationId} refreshPoint={changesRefreshPoint} homeDir={homeDir} />

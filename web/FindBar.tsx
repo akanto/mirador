@@ -6,7 +6,10 @@ import { connection } from "./connection.ts";
 import type { EarlierHistory } from "./earlier-history.ts";
 import { FindToggle } from "./FindToggle.tsx";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import type { TimelineBlock } from "../shared/timeline.ts";
+
+const words = t.canvas.find;
 
 /** Whether text matches what the find bar looks for, so that output folded away unfolds where it matches. */
 export const MatchesFind = createContext<(text: string) => boolean>(() => false);
@@ -362,22 +365,22 @@ export function FindBar({ find: { query, options, tally, search, toggleCase, ste
         value={query ?? ""}
         onChange={(event) => search(event.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Find in this conversation"
-        aria-label="Find in this conversation"
+        placeholder={words.placeholder}
+        aria-label={words.placeholder}
         spellCheck={false}
         autoComplete="off"
       />
-      <FindToggle label="Aa" name="Match case" hint={hints.findMatchCase} on={options.caseSensitive} onToggle={toggleCase} />
+      <FindToggle label="Aa" name={words.matchCase} hint={hints.findMatchCase} on={options.caseSensitive} onToggle={toggleCase} />
       <span className="find-tally" aria-live="polite">
-        {query ? (tally.total > 0 ? `${tally.position} of ${tally.total}` : "No matches") : ""}
+        {query ? (tally.total > 0 ? words.position(tally.position, tally.total) : words.noMatches) : ""}
       </span>
-      <button type="button" className="icon" aria-label="Older match" data-hint={hints.findOlder} disabled={tally.total === 0} onClick={() => step(-1)}>
+      <button type="button" className="icon" aria-label={words.older} data-hint={hints.findOlder} disabled={tally.total === 0} onClick={() => step(-1)}>
         ↑
       </button>
-      <button type="button" className="icon" aria-label="Newer match" data-hint={hints.findNewer} disabled={tally.total === 0} onClick={() => step(1)}>
+      <button type="button" className="icon" aria-label={words.newer} data-hint={hints.findNewer} disabled={tally.total === 0} onClick={() => step(1)}>
         ↓
       </button>
-      <button type="button" className="icon" aria-label="Close find" onClick={close}>
+      <button type="button" className="icon" aria-label={words.close} onClick={close}>
         ×
       </button>
     </div>

@@ -5,10 +5,14 @@ import { pageMarkFrom, pageMarkLabel, pageMarkPrompt, type MarkIntent, type Page
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { connection } from "./connection.ts";
 import { hints } from "./hints.ts";
+import { t } from "./i18n/index.ts";
 import { uploadImage } from "./pasted-images.ts";
 import { isMac, keyLabels } from "./shortcuts.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
 import { usePaneFullscreen } from "./Workspace.tsx";
+
+const phrases = t.canvas.pageMarks;
+const markLabel = (mark: PageMark) => pageMarkLabel(mark, { area: phrases.markedArea, element: phrases.element });
 
 const SENT_NOTE_MS = 8000;
 
@@ -39,7 +43,7 @@ function blobOfDataUrl(dataUrl: string) {
 const picturesOf = async (conversationId: string, mark: PageMark) => (mark.kind === "area" ? [await uploadImage(conversationId, blobOfDataUrl(mark.image))] : []);
 
 const sentNoteFor = (label: string, intent: MarkIntent) =>
-  intent === "change" ? `Asked the agent to change ${label}. The new page comes on the canvas.` : `Asked about ${label}. The answer comes in the chat.`;
+  intent === "change" ? phrases.askedToChange(label) : phrases.askedAbout(label);
 
 /**
  * Marking part of the page the agent showed, to ask about it or have it changed: point mode, which the canvas bar turns
@@ -74,7 +78,7 @@ export function usePageMarks(page: ShowItem | undefined, frame: RefObject<HTMLIF
   };
   const received = (message: CanvasFrameMessage) => {
     if (message.kind === "pointing") setPointing(false);
-    if (message.kind === "mark-failed") setNote({ text: `The marked area could not be drawn as a picture: ${String(message.message)}`, failed: true });
+    if (message.kind === "mark-failed") setNote({ text: phrases.couldNotDraw(String(message.message)), failed: true });
     if (message.kind !== "mark") return;
     const reported = pageMarkFrom(message.mark);
     if (!reported) return;
@@ -87,8 +91,8 @@ export function usePageMarks(page: ShowItem | undefined, frame: RefObject<HTMLIF
     if (!page || !mark) return;
     const text = pageMarkPrompt(page.title, mark, words, intent);
     const imageIds = await picturesOf(page.conversationId, mark);
-    if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds, afterTurn: enterWhileBusy === "after-turn" })) throw new Error("Mirador is not connected.");
-    setNote({ text: sentNoteFor(pageMarkLabel(mark), intent) });
+    if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds, afterTurn: enterWhileBusy === "after-turn" })) throw new Error(phrases.notConnected);
+    setNote({ text: sentNoteFor(markLabel(mark), intent) });
     finishMark();
   };
 
@@ -100,7 +104,7 @@ export function usePageMarks(page: ShowItem | undefined, frame: RefObject<HTMLIF
           {note.text}
           {fullscreen?.isFullscreen && (
             <button type="button" className="link" onClick={() => fullscreen.setFullscreen(false)}>
-              Show the chat
+              {phrases.showChat}
             </button>
           )}
         </div>
@@ -139,27 +143,27 @@ function MarkWordsBox({ mark, onSend, onClose }: { mark: PageMark; onSend: (word
     }
   };
   return (
-    <div className="page-mark-box" role="dialog" aria-label="Ask the agent about what you marked">
-      <div className="ask-about-label">Ask the agent about {pageMarkLabel(mark)}, or tell it what to change there</div>
-      {mark.kind === "area" && <img className="page-mark-area" src={mark.image} alt="The marked area" />}
+    <div className="page-mark-box" role="dialog" aria-label={phrases.boxLabel}>
+      <div className="ask-about-label">{phrases.askAbout(markLabel(mark))}</div>
+      {mark.kind === "area" && <img className="page-mark-area" src={mark.image} alt={phrases.areaAlt} />}
       <textarea
         {...typingAidAttributes}
         autoFocus
         value={words}
         rows={2}
-        placeholder={`Your words (Enter asks, ${primary}Enter changes the page, Shift+Enter for a new line, Esc cancels)`}
+        placeholder={phrases.placeholder(primary)}
         onChange={(event) => setWords(event.target.value)}
         onKeyDown={sendOnEnter}
       />
       <div className="ask-about-actions">
         <button type="button" className="primary" disabled={!canSend} onClick={() => send("ask")}>
-          Ask
+          {phrases.ask}
         </button>
         <button type="button" disabled={!canSend} onClick={() => send("change")} data-hint={hints.pageMarkChange}>
-          Change
+          {phrases.change}
         </button>
         <button type="button" onClick={onClose}>
-          Cancel
+          {phrases.cancel}
         </button>
       </div>
       {problem && (

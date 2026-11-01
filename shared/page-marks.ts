@@ -56,11 +56,18 @@ export function pageMarkFrom(value: unknown): PageMark | null {
 
 const lastStep = (path: string) => path.split(" > ").pop() ?? path;
 
+export interface MarkLabelWords {
+  area: string;
+  element: (step: string) => string;
+}
+
+const englishMarkLabelWords: MarkLabelWords = { area: "the marked area", element: (step) => `the element ${step}` };
+
 /** A few words for what was marked, for the box that asks about it. */
-export function pageMarkLabel(mark: PageMark) {
+export function pageMarkLabel(mark: PageMark, words = englishMarkLabelWords) {
   if (mark.kind === "text") return `“${clipped(mark.text.replace(/\s+/g, " "), LABEL_CHARACTERS)}”`;
-  if (mark.kind === "area") return "the marked area";
-  return `the element ${lastStep(mark.element.path)}`;
+  if (mark.kind === "area") return words.area;
+  return words.element(lastStep(mark.element.path));
 }
 
 function markedPart(pageTitle: string, mark: PageMark) {

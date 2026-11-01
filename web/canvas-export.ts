@@ -3,7 +3,10 @@ import { markdownRequest, pageFileName, type MarkdownDelivery } from "../shared/
 import type { ShowItem } from "../shared/model.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { connection } from "./connection.ts";
+import { t } from "./i18n/index.ts";
 import { currentPageLibraries } from "./page-libraries.ts";
+
+const words = t.canvas.pageExport;
 
 /** Save to project found a file at the path; saving again with `replace` writes over it. */
 export class AlreadyThere extends Error {}
@@ -38,7 +41,7 @@ const CAPTURE_TIMEOUT_MS = 30_000;
 /** The page drawn as a PNG by its own frame, as only the frame can see its content. */
 function capturedPage(frame: HTMLIFrameElement): Promise<Blob> {
   const page = frame.contentWindow;
-  if (!page) return Promise.reject(new Error("The page is not shown."));
+  if (!page) return Promise.reject(new Error(words.pageNotShown));
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
     const stopWaiting = () => {
@@ -54,12 +57,12 @@ function capturedPage(frame: HTMLIFrameElement): Promise<Blob> {
       }
       if (message.kind === "capture-failed" && message.requestId === requestId) {
         stopWaiting();
-        reject(new Error(`The page could not be drawn as an image: ${message.message}`));
+        reject(new Error(words.couldNotDraw(message.message)));
       }
     };
     const timer = setTimeout(() => {
       stopWaiting();
-      reject(new Error("The page took too long to draw as an image."));
+      reject(new Error(words.tookTooLong));
     }, CAPTURE_TIMEOUT_MS);
     window.addEventListener("message", listener);
     page.postMessage(canvasCaptureMessage(requestId), "*");
@@ -78,7 +81,7 @@ const asBase64 = async (blob: Blob) => {
 export const MAX_SENT_IMAGE_BYTES = 12 * 1024 * 1024 - 64 * 1024;
 
 export const refuseOversizedImage = (image: Blob) => {
-  if (image.size > MAX_SENT_IMAGE_BYTES) throw new Error("The page's image is too large to send to the host.");
+  if (image.size > MAX_SENT_IMAGE_BYTES) throw new Error(words.imageTooLarge);
   return image;
 };
 
@@ -109,7 +112,7 @@ export const copyPageHtml = (itemId: string) =>
 /** Sends the request as the user's message to the conversation that showed the page. */
 export function askAgentForMarkdown(page: ShowItem, delivery: MarkdownDelivery, afterTurn: boolean) {
   const text = markdownRequest({ title: page.title, html: page.html ?? "" }, delivery);
-  if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds: [], afterTurn })) throw new Error("Not connected to the host.");
+  if (!connection.send({ type: "conversation.prompt", conversationId: page.conversationId, text, imageIds: [], afterTurn })) throw new Error(words.notConnected);
 }
 
 const DOWNLOAD_LINK_LIFETIME_MS = 60_000;

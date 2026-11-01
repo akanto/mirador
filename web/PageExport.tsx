@@ -5,7 +5,10 @@ import { placedBelow, useClosing, type BarMenuEntry } from "./BarMenu.tsx";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { AlreadyThere, askAgentForMarkdown, copyPageHtml, copyPageImage, downloadPage, savePageImageToProject, savePageToProject } from "./canvas-export.ts";
 import { inDesktopApp } from "./desktop-bridge.ts";
+import { t } from "./i18n/index.ts";
 import { useTypingAidAttributes } from "./typing-aids.ts";
+
+const words = t.canvas.pageExport;
 
 const DONE_NOTE_MS = 4000;
 const FAILURE_NOTE_MS = 12_000;
@@ -54,12 +57,12 @@ export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLI
       setStatus({ text: failureText(error), failed: true });
     }
   };
-  const copyImage = () => (frame.current ? copyPageImage(frame.current) : Promise.reject(new Error("The page is not shown.")));
+  const copyImage = () => (frame.current ? copyPageImage(frame.current) : Promise.reject(new Error(words.pageNotShown)));
   const askForMarkdown = (label: string, delivery: MarkdownDelivery, done: string): BarMenuEntry => ({
     label,
-    onChoose: (opener) => run(opener, "Asking the agent…", async () => askAgentForMarkdown(page, delivery, enterWhileBusy === "after-turn"), done),
+    onChoose: (opener) => run(opener, words.askingAgent, async () => askAgentForMarkdown(page, delivery, enterWhileBusy === "after-turn"), done),
   });
-  const download: BarMenuEntry ={ label: "Download", onChoose: (opener) => run(opener, "Preparing the file…", () => downloadPage(page), "Downloaded") };
+  const download: BarMenuEntry ={ label: words.download, onChoose: (opener) => run(opener, words.preparingFile, () => downloadPage(page), words.downloaded) };
   const saveAs = (label: string, kind: SaveKind): BarMenuEntry => ({
     label,
     onChoose: (opener) => {
@@ -68,15 +71,15 @@ export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLI
       setSaving(kind);
     },
   });
-  const saveToProject = saveAs("Save to project…", "html");
-  const saveImageToProject = saveAs("Save image to project…", "image");
+  const saveToProject = saveAs(words.saveToProject, "html");
+  const saveImageToProject = saveAs(words.saveImageToProject, "image");
   // The desktop app's webview puts downloads in ~/Downloads without a word, so there the file is only saved to the project.
   const [firstSaving, ...otherSaving] = inDesktopApp() ? [saveToProject, saveImageToProject] : [download, saveToProject, saveImageToProject];
   const entries: BarMenuEntry[] = [
-    { label: "Copy as image", onChoose: (opener) => run(opener, "Drawing the page…", copyImage, "Copied as an image") },
-    { label: "Copy HTML", onChoose: (opener) => run(opener, "Copying…", () => copyPageHtml(page.id), "Copied the HTML") },
-    { ...askForMarkdown("Ask agent for Markdown", "reply", "Asked the agent. The Markdown comes in the chat."), separatorBefore: true },
-    askForMarkdown("Ask agent to save Markdown file", "file", `Asked the agent. The Markdown comes in the chat and in ${markdownPagePath(page.title)}.`),
+    { label: words.copyAsImage, onChoose: (opener) => run(opener, words.drawingPage, copyImage, words.copiedAsImage) },
+    { label: words.copyHtml, onChoose: (opener) => run(opener, words.copying, () => copyPageHtml(page.id), words.copiedHtml) },
+    { ...askForMarkdown(words.askForMarkdown, "reply", words.askedForMarkdown), separatorBefore: true },
+    askForMarkdown(words.askToSaveMarkdown, "file", words.askedToSaveMarkdown(markdownPagePath(page.title))),
     { ...firstSaving!, separatorBefore: true },
     ...otherSaving,
   ];
@@ -88,12 +91,12 @@ export function usePageExport(page: ShowItem | undefined, frame: RefObject<HTMLI
       style={placement}
       onSave={(path, replace) => {
         if (saving === "html") return savePageToProject(page.id, path, replace);
-        if (!frame.current) return Promise.reject(new Error("The page is not shown."));
+        if (!frame.current) return Promise.reject(new Error(words.pageNotShown));
         return savePageImageToProject(page.id, frame.current, path, replace);
       }}
       onSaved={(path) => {
         setSaving(null);
-        setStatus({ text: `Saved to ${path}` });
+        setStatus({ text: words.savedTo(path) });
       }}
       onCancel={() => setSaving(null)}
     />
@@ -144,7 +147,7 @@ function SaveToProject({
   return (
     <form ref={form} className="page-save" style={style} onSubmit={save}>
       <label>
-        Save in the project as
+        {words.saveAs}
         <input
           autoFocus
           spellCheck={false}
@@ -160,15 +163,15 @@ function SaveToProject({
       {problem && (
         <p className="page-save-problem" role="alert">
           {problem}
-          {alreadyThere && " Replace it?"}
+          {alreadyThere && words.replaceIt}
         </p>
       )}
       <div className="page-save-buttons">
         <button type="button" onClick={onCancel}>
-          Cancel
+          {words.cancel}
         </button>
         <button type="submit" className="primary" disabled={saving || !path.trim()}>
-          {alreadyThere ? "Replace" : "Save"}
+          {alreadyThere ? words.replace : words.save}
         </button>
       </div>
     </form>

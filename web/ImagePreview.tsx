@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "./i18n/index.ts";
 import { useClosesAsDialog } from "./desktop-close.ts";
 
 /** The image at full size over the page; a click anywhere or Esc closes it. */
@@ -18,7 +19,7 @@ function ImagePreview({ src, onClose }: { src: string; onClose: () => void }) {
     return true;
   });
   return (
-    <div className="modal-backdrop image-preview" role="dialog" aria-label="Image" onClick={onClose}>
+    <div className="modal-backdrop image-preview" role="dialog" aria-label={t.canvas.imagePreview} onClick={onClose}>
       <img src={src} alt="" />
     </div>
   );

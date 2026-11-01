@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { connection } from "./connection.ts";
+import { t } from "./i18n/index.ts";
 import type { AppAction, AppState } from "./state.ts";
 
 /**
@@ -20,21 +21,21 @@ export function FileToOpenPrompt({ fileToOpen, dispatch }: { fileToOpen: AppStat
     <section
       className="file-to-open"
       role="alertdialog"
-      aria-label="Open a file outside this workspace?"
+      aria-label={t.canvas.fileToOpen.title}
       onKeyDown={(event) => {
         if (event.key === "Escape") cancel();
       }}
     >
-      <h2>Open a file outside this workspace?</h2>
+      <h2>{t.canvas.fileToOpen.title}</h2>
       <p>
-        <code>{fileToOpen.file}</code> is outside this workspace, and the agent did not change it in this conversation.
+        <code>{fileToOpen.file}</code> {t.canvas.fileToOpen.outside}
       </p>
       <div className="actions">
         <button type="button" className="primary" onClick={open}>
-          Open
+          {t.canvas.fileToOpen.open}
         </button>
         <button ref={cancelButton} type="button" onClick={cancel}>
-          Cancel
+          {t.canvas.fileToOpen.cancel}
         </button>
       </div>
     </section>

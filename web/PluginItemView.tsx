@@ -12,6 +12,7 @@ import {
 import type { PluginCanvasItem } from "../shared/model.ts";
 import { CanvasFrame } from "./Canvas.tsx";
 import { connection } from "./connection.ts";
+import { t } from "./i18n/index.ts";
 import { useEnterWhileBusy } from "./busy-sending.ts";
 import { useExternalImagesBlocked } from "./external-images.ts";
 import { useFontScale } from "./font-scale.ts";
@@ -69,7 +70,7 @@ function promptFrom(conversationId: string, text: string, afterTurn: boolean) {
 function WithoutItsPlugin({ item }: { item: PluginCanvasItem }) {
   return (
     <div className="plugin-item-missing">
-      <p>The {item.plugin} plugin isn't installed, so this is what it published, as it is.</p>
+      <p>{t.canvas.pluginMissing(item.plugin)}</p>
       <pre>{JSON.stringify(item.data, null, 2)}</pre>
     </div>
   );

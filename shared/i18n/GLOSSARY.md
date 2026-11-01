@@ -33,6 +33,9 @@ These terms stay the same everywhere:
 | fork (a session) | elágaztatás |
 | invite code / link | meghívókód / meghívólink |
 | keyboard shortcuts | billentyűparancsok |
+| Changes (canvas) | Változások |
+| Point and ask | Mutass és kérdezz |
+| Dismiss | Elvetés |
 
 Never attach a suffix or an article to a value filled in at runtime (a name, a version, a number):
 vowel harmony and a/az can't be chosen in advance. Phrase around it, as in "Ezt futtatja: ${program}".

@@ -2,6 +2,7 @@ import type { PermissionOption } from "@agentclientprotocol/sdk";
 import type { StoredEvent } from "../shared/model.ts";
 import type { EditDiff } from "../shared/review.ts";
 import type { SettledNote } from "./SettledNote.tsx";
+import { t } from "./i18n/index.ts";
 
 /** A permission request to change files, and what the user answered. */
 export interface EditRequest {
@@ -28,19 +29,14 @@ export function editRequestsIn(events: StoredEvent[]): EditRequest[] {
   return [...requests.values()];
 }
 
-const outcomeLabels: Record<PermissionOption["kind"], string> = {
-  allow_once: "✓ Allowed",
-  allow_always: "✓ Always allowed",
-  reject_once: "✗ Rejected",
-  reject_always: "✗ Always rejected",
-};
+const outcomeLabels: Record<PermissionOption["kind"], string> = t.canvas.edits.outcome;
 
 /** What the user answered to an edit, for the note left on the canvas. */
 export function settledEditNote(request: EditRequest): SettledNote {
   const kind = request.options.find(({ optionId }) => optionId === request.chosenOptionId)?.kind;
   const files = request.edits.map(({ path }) => path).join(", ");
-  if (!kind) return { text: `The agent no longer waits to edit ${files}.`, tone: "neutral" };
-  return { text: `${outcomeLabels[kind]}: edit to ${files}`, tone: kind.startsWith("allow") ? "done" : "neutral" };
+  if (!kind) return { text: t.canvas.edits.noLongerWaits(files), tone: "neutral" };
+  return { text: t.canvas.edits.answered(outcomeLabels[kind], files), tone: kind.startsWith("allow") ? "done" : "neutral" };
 }
 
 /** A row of a side-by-side diff: the index of the old version's row on the left and of the new version's on the right. */
