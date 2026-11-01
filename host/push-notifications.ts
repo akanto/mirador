@@ -21,8 +21,9 @@ export function pushRelayAddressProblem(address: string): string | null {
     return "The push relay's address isn't a web address.";
   }
   const onThisMachine = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (url.protocol === "https:" || (url.protocol === "http:" && onThisMachine)) return null;
-  return "The push relay's address must start with https://.";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && onThisMachine)) return "The push relay's address must start with https://.";
+  const justOrigin = url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
+  return justOrigin ? null : "The push relay's address is just its origin, like https://push.example.com.";
 }
 
 export function pushRegistrationProblem(registration: PushRegistration): string | null {

@@ -84,6 +84,9 @@ test("a phone that doesn't show a notification gets it pushed through the relay 
     await settings.locator(".push-relay-token").fill("relay-token-for-this-mac");
     await settings.getByRole("button", { name: "Save" }).click();
     await expect(settings.locator(".push-relay-problem")).toHaveText("The push relay's address must start with https://.");
+    await settings.locator(".push-relay-address").fill(`${relayOrigin()}/health`);
+    await settings.getByRole("button", { name: "Save" }).click();
+    await expect(settings.locator(".push-relay-problem")).toHaveText("The push relay's address is just its origin, like https://push.example.com.");
     await settings.locator(".push-relay-address").fill(relayOrigin());
     await settings.getByRole("button", { name: "Save" }).click();
     await expect(settings.locator(".push-relay-problem")).toBeHidden();

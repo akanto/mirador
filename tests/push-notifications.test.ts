@@ -154,6 +154,13 @@ describe("push settings", () => {
     expect(store.pushRelaySetting()).toEqual({ address: null, tokenSet: false });
   });
 
+  test("a relay's address is just its origin, so /push goes on it alone", () => {
+    expect(pushRelayAddressProblem("https://push.example.com/")).toBeNull();
+    expect(pushRelayAddressProblem("https://push.example.com/health")).not.toBeNull();
+    expect(pushRelayAddressProblem("https://push.example.com?x=1")).not.toBeNull();
+    expect(pushRelayAddressProblem("https://user:pass@push.example.com")).not.toBeNull();
+  });
+
   test("a relay is reached over HTTPS, or plain HTTP on this machine", () => {
     expect(pushRelayAddressProblem("https://push.example.com")).toBeNull();
     expect(pushRelayAddressProblem("http://127.0.0.1:8790")).toBeNull();
